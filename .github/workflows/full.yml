@@ -1,0 +1,236 @@
+name: Full Validation
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  MISE_YES: '1'
+  MISE_DATA_DIR: ${{ github.workspace }}/.mise-data
+  MISE_CACHE_DIR: ${{ github.workspace }}/.cache/mise
+  MISE_GLOBAL_CONFIG_FILE: ${{ github.workspace }}/.mise-ci-global.toml
+  CARGO_HOME: ${{ github.workspace }}/.cache/cargo
+  RUSTUP_HOME: ${{ github.workspace }}/.mise-data/rustup
+  UV_CACHE_DIR: ${{ github.workspace }}/.cache/uv
+  MISE_LOCKED: '1'
+  MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+  CARGO_TERM_COLOR: always
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: core.longPaths
+  GIT_CONFIG_VALUE_0: 'true'
+
+concurrency:
+  group: full-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  route:
+    name: check:merge-route
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify Main Promotion Route
+        env:
+          EVENT: ${{ github.event_name }}
+          TARGET: ${{ github.base_ref }}
+          SOURCE: ${{ github.head_ref }}
+          SOURCE_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          if [ "$EVENT" = pull_request ] && [ "$TARGET" = main ]; then
+            test "$SOURCE_REPOSITORY" = stokker-technologies/harmos
+            [[ "$SOURCE" =~ ^release/(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          fi
+
+  check_linux:
+    name: check (linux)
+    needs: route
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    environment: ${{ github.event_name == 'pull_request' && 'full-validation' || '' }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: ./.github/actions/setup
+      - name: check
+        run: mise run check
+
+  build_release_linux:
+    name: Build Release (linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    needs: [route, check_linux]
+    outputs:
+      artifact: ${{ steps.upload.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: ./.github/actions/setup
+      - name: build:release
+        run: mise run build:release
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        id: upload
+        if: success()
+        with:
+          name: harmos-build-linux-${{ github.run_attempt }}
+          path: dist/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
+  test_linux:
+    name: test (linux)
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    needs: build_release_linux
+    steps:
+      - name: Require Matching Release Build
+        shell: bash
+        env:
+          BUILD_RESULT: ${{ needs.build_release_linux.result }}
+          BUILD_ARTIFACT: ${{ needs.build_release_linux.outputs.artifact }}
+        run: test "$BUILD_RESULT" = success && test -n "$BUILD_ARTIFACT"
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: ./.github/actions/setup
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          artifact-ids: ${{ needs.build_release_linux.outputs.artifact }}
+          path: dist
+          merge-multiple: true
+      - name: test
+        env:
+          STKR_COVERAGE: '1'
+        run: |
+          mise run packages:restore
+          mise run test
+          mise run packages:validate
+      - name: packages:export
+        if: always()
+        run: mise run packages:export
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        id: upload
+        if: always()
+        with:
+          name: harmos-test-linux-${{ github.run_attempt }}
+          path: dist/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
+  check_windows:
+    name: check (windows)
+    needs: route
+    runs-on: windows-2022
+    timeout-minutes: 240
+    environment: ${{ github.event_name == 'pull_request' && 'full-validation' || '' }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: ./.github/actions/setup
+      - name: check
+        run: mise run check
+
+  build_release_windows:
+    name: Build Release (windows)
+    runs-on: windows-2022
+    timeout-minutes: 240
+    needs: [route, check_windows]
+    outputs:
+      artifact: ${{ steps.upload.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: ./.github/actions/setup
+      - name: build:release
+        run: mise run build:release
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        id: upload
+        if: success()
+        with:
+          name: harmos-build-windows-${{ github.run_attempt }}
+          path: dist/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
+  test_windows:
+    name: test (windows)
+    if: always()
+    runs-on: windows-2022
+    timeout-minutes: 240
+    needs: build_release_windows
+    steps:
+      - name: Require Matching Release Build
+        shell: bash
+        env:
+          BUILD_RESULT: ${{ needs.build_release_windows.result }}
+          BUILD_ARTIFACT: ${{ needs.build_release_windows.outputs.artifact }}
+        run: test "$BUILD_RESULT" = success && test -n "$BUILD_ARTIFACT"
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: ./.github/actions/setup
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          artifact-ids: ${{ needs.build_release_windows.outputs.artifact }}
+          path: dist
+          merge-multiple: true
+      - name: test
+        env:
+          STKR_COVERAGE: '1'
+        run: |
+          mise run packages:restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          mise run test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          mise run packages:validate
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: packages:export
+        if: always()
+        run: mise run packages:export
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        id: upload
+        if: always()
+        with:
+          name: harmos-test-windows-${{ github.run_attempt }}
+          path: dist/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
+  promote:
+    name: packages:promote
+    if: always()
+    needs: [route, test_linux, test_windows]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require Fresh Native Validation
+        env:
+          ROUTE: ${{ needs.route.result }}
+          LINUX: ${{ needs.test_linux.result }}
+          WINDOWS: ${{ needs.test_windows.result }}
+        run: test "$ROUTE" = success && test "$LINUX" = success && test "$WINDOWS" = success

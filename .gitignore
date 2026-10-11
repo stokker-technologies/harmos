@@ -1,0 +1,60 @@
+# Rust
+/target
+/target-editor
+/.stkr-cargo-*.json
+/.stkr-cargo-*.lock
+/.stkr-cargo-*.pending
+Cargo.lock.orig
+
+# Toolchain State
+/.venv/
+
+# Mise local overrides
+.mise.local.toml
+mise.local.lock
+
+# Canonical Agent Guidance
+.agents/*
+!.agents/GUIDANCE.md
+!.agents/skills/
+
+# Local agent context overrides
+AGENTS.local.md
+CLAUDE.local.md
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Private Agent Artifacts
+/.stkr/state/
+/.stkr/task/
+/.stkr/generated/
+
+# Repository Tooling
+/tools/python/.venv/
+__pycache__/
+.ruff_cache/
+!.vscode/stkr.code-snippets
+
+# Native Coverage Profiles
+*.profraw
+
+# Retired Private Namespace Must Never Enter History
+/.stkr/agents/
+
+# Native CI And Downloads
+/dist/
+/.cache/
+/.mise-data/
+/.mise-ci-global.toml
+/.tmp/
+/.stkr/tests/
+/.stkr/benchmarks/

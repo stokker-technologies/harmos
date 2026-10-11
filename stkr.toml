@@ -1,0 +1,52 @@
+# Project Policy Owned By The Hub
+# Native manifests own package metadata; mise owns executable recipes.
+# Defaults stay implicit. Commented sections do not declare configuration.
+
+# === Project ===
+
+[project]
+name = "Harmos"
+visibility = "public"
+
+
+# === Repository ===
+
+[housekeeping.branches]
+exclude = ["main", "master", "dev", "develop", "release/**"]
+
+
+# === CI ===
+
+
+# === Agents ===
+
+
+# === Hooks ===
+
+[hooks]
+step_timeout_seconds = 600
+
+
+# === Conventions ===
+
+[conventions.ci.multitask]
+"test_linux" = ["packages:restore", "test", "packages:validate", "packages:export"]
+"test_windows" = ["packages:restore", "test", "packages:validate", "packages:export"]
+
+
+# === Templates ===
+
+
+# === Release ===
+
+
+# === Documentation ===
+
+
+# === Screenshots ===
+
+
+# === Catalogs ===
+
+
+# === PyO3 ===

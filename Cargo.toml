@@ -1,0 +1,157 @@
+# === Workspace ===
+
+[workspace]
+resolver = "3"
+members = [
+  "crates/*",
+  "tests/fixtures/grpc",
+  "examples/jsonl-adapter",
+  "examples/standalone-sidecar",
+  "examples/minibench/*",
+  "examples/minischematic/*",
+]
+
+# === Workspace Package ===
+
+[workspace.package]
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.99"
+license = "Apache-2.0"
+publish = true
+
+# === Workspace Dependencies ===
+
+[workspace.dependencies]
+# Local
+harmos = { path = "crates/harmos" }
+harmos-contract = { path = "crates/harmos-contract", default-features = false }
+harmos-guest = { path = "crates/harmos-guest", default-features = false }
+harmos-macros = { path = "crates/harmos-macros" }
+harmos-sidecar = { path = "crates/harmos-sidecar", default-features = false }
+harmos-signal = { path = "crates/harmos-signal", default-features = false }
+
+# Git
+
+# Error Handling
+thiserror = { version = "2", default-features = false }
+
+# Logging
+tracing = { version = "0.1", default-features = false }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
+
+# Utilities
+bytes = { version = "1.12", default-features = false }
+getrandom = { version = "0.4.3", default-features = false }
+heck = { version = "0.5", default-features = false }
+libc = { version = "0.2", default-features = false }
+petgraph = { version = "0.8", default-features = false }
+rustfft = { version = "6.4", default-features = false }
+semver = { version = "1", default-features = false }
+sha2 = { version = "0.11.0", default-features = false }
+time = { version = "0.3", default-features = false, features = ["formatting", "parsing", "serde"] }
+wasmtime = { version = "=49.0.2", default-features = false, features = [
+  "async",
+  "component-model",
+  "component-model-async",
+  "cranelift",
+  "runtime",
+  "std",
+] }
+windows-sys = { version = "0.61", default-features = false, features = [
+  "Win32_Foundation",
+  "Win32_System_Pipes",
+  "Win32_System_SystemInformation",
+] }
+
+# Serialization
+postcard = { version = "1.1", default-features = false, features = ["alloc"] }
+prost = { version = "0.14", default-features = false }
+prost-reflect = { version = "0.16", default-features = false }
+protoc-bin-vendored = { version = "3", default-features = false }
+serde = { version = "1", default-features = false, features = ["derive"] }
+serde_json = { version = "1", default-features = false }
+wit-bindgen = { version = "=0.62.0", default-features = false }
+wit-component = { version = "=0.261.0", default-features = false }
+
+# Configuration
+clap = { version = "4", default-features = false }
+
+# Filesystem
+tar = { version = "0.4.46", default-features = false }
+tempfile = { version = "3", default-features = false }
+
+# Parsing
+memchr = { version = "2", default-features = false }
+proc-macro-crate = { version = "3.5.0", default-features = false }
+proc-macro2 = { version = "1", default-features = false }
+quote = { version = "1", default-features = false }
+syn = { version = "3", default-features = false, features = ["full"] }
+
+# Concurrency
+
+# Async
+futures-core = { version = "0.3", default-features = false }
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+tokio = { version = "1", default-features = false, features = ["sync"] }
+tokio-stream = { version = "0.1", default-features = false }
+
+# Networking
+http-body = { version = "1", default-features = false }
+http-body-util = { version = "0.1", default-features = false }
+hyper-util = { version = "0.1", default-features = false, features = ["tokio"] }
+tonic = { version = "0.14.6", default-features = false }
+tonic-prost = { version = "0.14.6", default-features = false }
+tonic-prost-build = { version = "0.14.6", default-features = false }
+tonic-reflection = { version = "0.14.6", default-features = false }
+tonic-web = { version = "0.14.6", default-features = false }
+tower = { version = "0.5", default-features = false, features = ["util"] }
+
+# Storage
+
+# UI
+
+# Testing
+criterion = { version = "0.8.2", default-features = false }
+
+# === Workspace Lints ===
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+
+[workspace.lints.clippy]
+all = "warn"
+
+# === Lints ===
+
+# === Profiles ===
+
+# Guest Tests Compile Real Components With The Native JIT Compiler.
+[profile.dev.package.cranelift-codegen]
+opt-level = 3
+
+[profile.dev.package.cranelift-frontend]
+opt-level = 3
+
+[profile.dev.package.regalloc2]
+opt-level = 3
+
+[profile.dev.package.wasmtime]
+opt-level = 3
+
+[profile.dev.package.wasmtime-environ]
+opt-level = 3
+
+[profile.dev.package.wasmtime-internal-cranelift]
+opt-level = 3
+
+# Artifact Admission Scans And Hashes Full Executables, Including Debug Builds.
+[profile.dev.package.memchr]
+opt-level = 3
+
+[profile.dev.package.sha2]
+opt-level = 3
+
+# === Patches ===
+
+# === Other ===

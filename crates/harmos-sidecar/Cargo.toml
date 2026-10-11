@@ -1,0 +1,286 @@
+# === Package ===
+
+[package]
+name = "harmos-sidecar"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+version = { workspace = true }
+
+# === Package Targets ===
+
+[[bin]]
+name = "harmos-sidecar-export"
+path = "src/bin/harmos-sidecar-export.rs"
+required-features = ["packaging"]
+
+[[bin]]
+name = "harmos-sidecar-catalog-fixture"
+path = "tests/fixtures/catalog_sidecar.rs"
+required-features = ["kit"]
+test = false
+bench = false
+
+[[bin]]
+name = "harmos-sidecar-throughput-fixture"
+path = "tests/fixtures/throughput_sidecar.rs"
+required-features = ["kit"]
+test = false
+bench = false
+
+[[bin]]
+name = "harmos-sidecar-attach-fixture"
+path = "tests/fixtures/attach_sidecar.rs"
+required-features = ["transport"]
+test = false
+bench = false
+
+# === Features ===
+
+[features]
+default = ["derive", "kit"]
+kit = ["transport", "dep:getrandom"]
+# The Shared Process Boundary Without Plugin Authoring Or Callback Runners
+transport = [
+  "dep:getrandom",
+  "dep:libc",
+  "dep:postcard",
+  "dep:futures-util",
+  "dep:tokio",
+  "dep:windows-sys",
+]
+
+derive = ["harmos-contract/derive"]
+packaging = ["harmos-contract/reflection"]
+# Optional Payload Codec Only; No Host Networking Or gRPC Carrier
+grpc = ["harmos-contract/grpc"]
+streaming = ["harmos-contract/streaming"]
+
+# === Dependencies ===
+
+[dependencies]
+# Local
+harmos-contract = { workspace = true }
+
+# Git
+
+# Error Handling
+thiserror = { workspace = true, default-features = true }
+
+# Logging
+tracing = { workspace = true, default-features = true }
+
+# Utilities
+getrandom = { workspace = true, features = ["std"], optional = true }
+semver = { workspace = true, default-features = true }
+
+# Serialization
+postcard = { workspace = true, optional = true }
+serde = { workspace = true, default-features = true }
+serde_json = { workspace = true, default-features = true }
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+futures-util = { workspace = true, optional = true }
+tokio = { workspace = true, default-features = true, features = [
+  "io-std",
+  "io-util",
+  "macros",
+  "net",
+  "process",
+  "rt",
+  "sync",
+  "time",
+], optional = true }
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Build Dependencies ===
+
+[build-dependencies]
+# Local
+
+# Git
+
+# Error Handling
+
+# Logging
+
+# Utilities
+
+# Serialization
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Dev Dependencies ===
+
+[dev-dependencies]
+# Local
+harmos-macros = { workspace = true, default-features = true }
+
+# Git
+
+# Error Handling
+
+# Logging
+
+# Utilities
+
+# Serialization
+
+# Configuration
+
+# Filesystem
+tempfile = { workspace = true, default-features = true }
+
+# Parsing
+
+# Concurrency
+
+# Async
+tokio = { workspace = true, default-features = true, features = ["time", "test-util"] }
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+criterion = { workspace = true, default-features = true }
+
+# === Target Dependencies ===
+
+[target.'cfg(unix)'.dependencies]
+# Local
+
+# Git
+
+# Error Handling
+
+# Logging
+
+# Utilities
+libc = { workspace = true, default-features = true, optional = true }
+
+# Serialization
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+[target.'cfg(windows)'.dependencies]
+# Local
+
+# Git
+
+# Error Handling
+
+# Logging
+
+# Utilities
+windows-sys = { workspace = true, default-features = true, optional = true }
+
+# Serialization
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Test Targets ===
+
+[[test]]
+name = "packaging"
+path = "tests/packaging/main.rs"
+required-features = ["kit", "packaging"]
+
+[[test]]
+name = "attach"
+path = "tests/attach/main.rs"
+required-features = ["transport"]
+
+[[test]]
+name = "transport"
+path = "tests/transport/main.rs"
+required-features = ["kit"]
+
+# === Bench Targets ===
+
+[[bench]]
+name = "transport"
+path = "benches/transport/main.rs"
+required-features = ["kit"]
+harness = false
+
+# === Example Targets ===
+
+# === Workspace Lints ===
+
+# === Lints ===
+
+[lints]
+workspace = true
+
+# === Profiles ===
+
+# === Patches ===
+
+# === Other ===

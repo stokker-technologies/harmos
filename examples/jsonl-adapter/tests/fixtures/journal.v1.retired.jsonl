@@ -1,0 +1,2 @@
+{"schema":1,"generation":0,"origin":0}
+{"position":1,"kind":"Transaction","id":"ledger.deposit","version":1,"metadata":{"principal":null,"correlation":1,"causation":null,"request":null,"link":null,"at":{"secs_since_epoch":1700000000,"nanos_since_epoch":0}},"payload":{"amount":40}}

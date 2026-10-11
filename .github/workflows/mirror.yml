@@ -1,0 +1,47 @@
+name: GitLab Mirror
+
+on:
+  push:
+    branches: [dev, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gitlab-mirror
+  cancel-in-progress: false
+
+jobs:
+  ci_mirror:
+    name: Ci Mirror
+    if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install Mise
+        run: |
+          sh tools/ci/install-mise.sh
+          echo "$GITHUB_WORKSPACE/.tmp/mise/bin" >> "$GITHUB_PATH"
+      - name: Mirror Published Ref
+        shell: bash
+        env:
+          GITLAB_MIRROR_SSH_KEY: ${{ secrets.GITLAB_MIRROR_SSH_KEY }}
+          GITLAB_MIRROR_KNOWN_HOSTS: ${{ vars.GITLAB_MIRROR_KNOWN_HOSTS }}
+          MISE_AUTO_INSTALL: 'false'
+          MISE_LOCKED: '1'
+        run: |
+          set -euo pipefail
+          test -n "$GITLAB_MIRROR_SSH_KEY"
+          test -n "$GITLAB_MIRROR_KNOWN_HOSTS"
+          mirror_key="$RUNNER_TEMP/gitlab-mirror-key"
+          mirror_hosts="$RUNNER_TEMP/gitlab-mirror-hosts"
+          trap 'rm -f "$mirror_key" "$mirror_hosts"' EXIT
+          umask 077
+          printf '%s\n' "$GITLAB_MIRROR_SSH_KEY" > "$mirror_key"
+          printf '%s\n' "$GITLAB_MIRROR_KNOWN_HOSTS" > "$mirror_hosts"
+          export GIT_SSH_COMMAND="ssh -i $mirror_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$mirror_hosts"
+          mise run --skip-tools ci:mirror
