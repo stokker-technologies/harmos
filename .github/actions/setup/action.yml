@@ -1,0 +1,41 @@
+name: Native Toolchain
+description: Install Verified Stable Mise And Locked Native Tools
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+      with:
+        path: |
+          .cache/mise
+          .mise-data
+          .cache/cargo/registry
+          .cache/cargo/git
+          .cache/uv
+        key: native-${{ runner.os }}-${{ hashFiles('mise.lock', 'Cargo.lock', 'tools/python/uv.lock') }}
+    - name: Install Mise On Linux
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sh tools/ci/install-mise.sh
+        echo "$GITHUB_WORKSPACE/.tmp/mise/bin" >> "$GITHUB_PATH"
+    - name: Install Mise On Windows
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        . ./tools/ci/install-mise.ps1
+        "$PWD/.tmp/mise/mise/bin" >> $env:GITHUB_PATH
+        $before = @{}
+        Get-ChildItem Env: | ForEach-Object { $before[$_.Name] = $_.Value }
+        . ./tools/ci/bootstrap.ps1
+        Get-ChildItem Env: | Where-Object { $_.Name -notmatch '^(GITHUB_|RUNNER_|PATH$)' -and $before[$_.Name] -ne $_.Value } | ForEach-Object { "$($_.Name)=$($_.Value)" } | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+        $env:PATH.Substring(0, $env:PATH.Length - $before['PATH'].Length).TrimEnd(';') -split ';' | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+    - name: Install Locked Tools
+      shell: bash
+      run: |
+        mise install --locked
+        mise ls --current
+        mise run ci:bootstrap
+        mise exec -- rustc -vV
+        mise exec -- cargo --version
+        mise exec -- python --version
+        mise exec -- uv --version

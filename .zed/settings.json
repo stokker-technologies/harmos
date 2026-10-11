@@ -1,0 +1,22 @@
+{
+  "lsp": {
+    "rust-analyzer": {
+      "binary": {
+        "path": "stkr",
+        "arguments": [
+          "project",
+          "housekeeping",
+          "cargo-run",
+          "--target-dir",
+          "target-editor",
+          "--quiet",
+          "--",
+          "mise",
+          "exec",
+          "--",
+          "rust-analyzer"
+        ]
+      }
+    }
+  }
+}

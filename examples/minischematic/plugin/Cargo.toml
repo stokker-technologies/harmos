@@ -1,0 +1,85 @@
+# === Package ===
+
+[package]
+name = "minischematic-plugin"
+description = "Names the routed power net and reports its progress."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+version = { workspace = true }
+
+# === Package Targets ===
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# === Features ===
+
+# === Dependencies ===
+
+# The contract crate and nothing above it: a guest compiles the editor's contract
+# with its plugins, never the host half that serves it.
+[dependencies]
+# Local
+harmos = { path = "../../../crates/harmos", default-features = false, features = [
+  "derive",
+  "guest",
+] }
+minischematic-contract = { path = "../contract" }
+
+# Git
+
+# Error Handling
+thiserror = { workspace = true, default-features = true }
+
+# Logging
+tracing = { workspace = true, default-features = true }
+
+# Utilities
+
+# Serialization
+serde = { workspace = true, default-features = true }
+serde_json = { workspace = true, default-features = true }
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Build Dependencies ===
+
+# === Dev Dependencies ===
+
+# === Target Dependencies ===
+
+# === Test Targets ===
+
+# === Bench Targets ===
+
+# === Example Targets ===
+
+# === Workspace Lints ===
+
+# === Lints ===
+
+[lints]
+workspace = true
+
+# === Profiles ===
+
+# === Patches ===
+
+# === Other ===

@@ -1,0 +1,5 @@
+# Harmos source is LF in the repository and LF in every working tree. Windows
+# checkouts otherwise land CRLF under `core.autocrlf`, and the conditional
+# compilation census reads its own source text: an assertion that spans a line
+# break stops matching the file it audits.
+* text=auto eol=lf

@@ -1,0 +1,31 @@
+package harmos:guest@0.2.0;
+
+interface capabilities {
+    record refusal {
+        code: string,
+        message: string,
+    }
+
+    /// One consumer-owned declaration registered before initialization.
+    record registration {
+        namespace: string,
+        schema: u32,
+        payload: list<u8>,
+    }
+}
+
+/// The host resolves child calls against the original finite attempt or
+/// initialized plugin generation, retaining admission and settlement authority.
+interface operation-context {
+    use capabilities.{refusal};
+    child: async func(call: list<u8>) -> result<list<u8>, refusal>;
+}
+
+/// SDK lifecycle and ordinary operations share the original retained table.
+world plugin {
+    import operation-context;
+    use capabilities.{registration, refusal as operation-refusal};
+    /// Read-only metadata collection; never prepares lifecycle resources.
+    export register: func() -> result<list<registration>, string>;
+    export operate: async func(command: list<u8>) -> result<list<u8>, operation-refusal>;
+}

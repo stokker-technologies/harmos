@@ -1,0 +1,82 @@
+# === Package ===
+
+[package]
+name = "harmos-signal"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+version = { workspace = true }
+
+# === Package Targets ===
+
+# === Features ===
+
+[features]
+default = []
+fft = ["dep:rustfft"]
+
+# === Dependencies ===
+
+[dependencies]
+# Local
+
+# Git
+
+# Error Handling
+thiserror = { workspace = true, default-features = true }
+
+# Logging
+tracing = { workspace = true, default-features = true }
+
+# Utilities
+rustfft = { workspace = true, default-features = true, optional = true }
+
+# Serialization
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Build Dependencies ===
+
+# === Dev Dependencies ===
+
+# === Target Dependencies ===
+
+# === Test Targets ===
+
+[[test]]
+name = "census"
+path = "tests/waveform/main.rs"
+
+# === Bench Targets ===
+
+# === Example Targets ===
+
+# === Workspace Lints ===
+
+# === Lints ===
+
+[lints]
+workspace = true
+
+# === Profiles ===
+
+# === Patches ===
+
+# === Other ===

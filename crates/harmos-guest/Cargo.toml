@@ -1,0 +1,215 @@
+# === Package ===
+
+[package]
+name = "harmos-guest"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+version = { workspace = true }
+
+# === Package Targets ===
+
+[[bin]]
+name = "harmos-component"
+path = "src/bin/harmos-component.rs"
+required-features = ["componentize"]
+
+[[bin]]
+name = "harmos-component-fixture"
+path = "tests/fixtures/componentizer.rs"
+required-features = ["test-component"]
+test = false
+bench = false
+
+# === Features ===
+
+[features]
+default = ["derive"]
+derive = ["harmos-contract/derive"]
+# Optional Payload Codec Only; No Host Networking Or gRPC Carrier
+grpc = ["harmos-contract/grpc"]
+# Stream Traffic Wakes An Original Operation Waiting On A Rust Channel.
+streaming = ["harmos-contract/streaming", "wit-bindgen?/inter-task-wakeup"]
+# The generated world bindings and the wrappers over them — everything a guest
+# author writes against. Optional because the other half of this crate is not
+# authoring at all: `Declaration::inspect` reads an already-built component's
+# custom sections, and a native host that only does that has no world to bind.
+kit = ["dep:wit-bindgen"]
+componentize = ["dep:wit-component", "harmos-contract/reflection"]
+test-component = ["componentize", "kit"]
+
+# === Dependencies ===
+
+[dependencies]
+# Local
+harmos-contract = { workspace = true }
+
+# Git
+
+# Error Handling
+thiserror = { workspace = true, default-features = true }
+
+# Logging
+tracing = { workspace = true, default-features = true }
+
+# Utilities
+semver = { workspace = true, default-features = true }
+
+# Serialization
+serde = { workspace = true, default-features = true }
+serde_json = { workspace = true, default-features = true }
+wit-bindgen = { workspace = true, default-features = true, optional = true }
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Build Dependencies ===
+
+# === Dev Dependencies ===
+
+# === Target Dependencies ===
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# Local
+
+# Git
+
+# Error Handling
+
+# Logging
+
+# Utilities
+
+# Serialization
+wit-component = { workspace = true, default-features = true, optional = true }
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+# Local
+
+# Git
+
+# Error Handling
+
+# Logging
+
+# Utilities
+wasmtime = { workspace = true }
+
+# Serialization
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+tokio = { workspace = true, features = ["rt", "macros"] }
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Test Targets ===
+
+[[test]]
+name = "world"
+path = "tests/kit/main.rs"
+required-features = ["componentize"]
+
+# === Bench Targets ===
+
+# === Example Targets ===
+
+[[example]]
+name = "test-component"
+path = "examples/test_component.rs"
+crate-type = ["cdylib"]
+required-features = ["test-component"]
+
+# Retired metadata must be rejected before either current-world export runs.
+[[example]]
+name = "legacy-component"
+path = "examples/legacy_component.rs"
+crate-type = ["cdylib"]
+required-features = ["componentize", "kit"]
+
+# The routed guest the host harness drives. A second binary rather than a mode
+# of the routeless one, so that "a guest serving routes presents the same world
+# as one serving none" is a claim about two components.
+[[example]]
+name = "route-component"
+path = "examples/route_component.rs"
+crate-type = ["cdylib"]
+required-features = ["test-component"]
+
+[[example]]
+name = "catalog-component"
+path = "examples/catalog_component.rs"
+crate-type = ["cdylib"]
+required-features = ["componentize", "kit"]
+
+[[example]]
+name = "operation-component"
+path = "examples/operation_component.rs"
+crate-type = ["cdylib"]
+required-features = ["componentize", "kit", "streaming"]
+
+[[example]]
+name = "plugin-component"
+path = "examples/plugin_component.rs"
+crate-type = ["cdylib"]
+required-features = ["componentize", "kit"]
+
+# === Workspace Lints ===
+
+# === Lints ===
+
+[lints]
+workspace = true
+
+# === Profiles ===
+
+# === Patches ===
+
+# === Other ===

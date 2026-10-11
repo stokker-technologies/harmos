@@ -1,0 +1,93 @@
+# === Package ===
+
+[package]
+name = "harmos-macros"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+version = { workspace = true }
+
+# === Package Targets ===
+
+[lib]
+proc-macro = true
+
+# === Features ===
+
+# === Dependencies ===
+
+[dependencies]
+# Local
+
+# Git
+
+# Error Handling
+
+# Logging
+
+# Utilities
+heck = { workspace = true }
+semver = { workspace = true, default-features = true }
+
+# Serialization
+serde_json = { workspace = true, default-features = true }
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+proc-macro-crate = { workspace = true }
+proc-macro2 = { workspace = true, default-features = true }
+quote = { workspace = true, default-features = true }
+syn = { workspace = true, default-features = true }
+
+# Concurrency
+
+# Async
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Build Dependencies ===
+
+# === Dev Dependencies ===
+
+# === Target Dependencies ===
+
+# === Test Targets ===
+
+[[test]]
+name = "facade"
+path = "tests/path/main.rs"
+
+[[test]]
+name = "metadata"
+path = "tests/artifact/main.rs"
+
+[[test]]
+name = "ui"
+path = "tests/catalog/main.rs"
+
+# === Bench Targets ===
+
+# === Example Targets ===
+
+# === Workspace Lints ===
+
+# === Lints ===
+
+[lints]
+workspace = true
+
+# === Profiles ===
+
+# === Patches ===
+
+# === Other ===

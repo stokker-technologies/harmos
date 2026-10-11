@@ -1,0 +1,140 @@
+# === Package ===
+
+[package]
+name = "minischematic-app"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+version = { workspace = true }
+
+# === Package Targets ===
+
+# === Features ===
+
+[features]
+default = []
+sim = ["harmos/sim"]
+
+# === Dependencies ===
+
+# Compiled for the host and nothing else, which is what lets the adapter, the
+# JSON codec and the guest host sit in one unconditional list. The contract crate is
+# here because `services/` is where an autorouter's request is held to the
+# transaction it is decoded as.
+[dependencies]
+# Local
+harmos = { workspace = true, default-features = true, features = ["guest-host", "sidecar-host"] }
+jsonl-adapter = { path = "../../jsonl-adapter" }
+minischematic-contract = { path = "../contract" }
+
+# Git
+
+# Error Handling
+thiserror = { workspace = true, default-features = true }
+
+# Logging
+tracing = { workspace = true, default-features = true }
+
+# Utilities
+sha2 = { workspace = true, default-features = true }
+
+# Serialization
+serde = { workspace = true, default-features = true }
+serde_json = { workspace = true, default-features = true }
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+tokio = { workspace = true, default-features = true, features = ["time"] }
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Build Dependencies ===
+
+# === Dev Dependencies ===
+
+[dev-dependencies]
+# Local
+harmos = { workspace = true, features = ["componentize"] }
+
+# Git
+
+# Error Handling
+
+# Logging
+
+# Utilities
+
+# Serialization
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+futures-core = { workspace = true, default-features = true }
+tokio = { workspace = true, default-features = true, features = [
+  "macros",
+  "rt",
+  "rt-multi-thread",
+  "time",
+] }
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+criterion = { workspace = true, default-features = true }
+
+# === Target Dependencies ===
+
+# === Test Targets ===
+
+[[test]]
+name = "schematic"
+path = "tests/app/main.rs"
+
+[[test]]
+name = "simulation"
+path = "tests/app/simulation.rs"
+
+# === Bench Targets ===
+
+[[bench]]
+name = "guest"
+path = "benches/services/main.rs"
+harness = false
+
+# === Example Targets ===
+
+# === Workspace Lints ===
+
+# === Lints ===
+
+[lints]
+workspace = true
+
+# === Profiles ===
+
+# === Patches ===
+
+# === Other ===

@@ -1,0 +1,78 @@
+/* ***
+ *
+ * Harmos
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * ***
+ */
+
+/* === Modules === */
+
+/* === Re-Exports === */
+
+/* === Imports === */
+
+// Standard Library Imports
+
+// Third Party Imports
+
+// Local Imports
+use super::*;
+
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+/* === Enums === */
+
+/* === Traits === */
+
+/* === Implementations === */
+impl<C> StorageManager<C> {
+    pub async fn append_file_once(
+        &self,
+        mutation: &MutationId,
+        token: &FileSession,
+        offset: u64,
+        bytes: &[u8],
+    ) -> Result<FileProducer> {
+        self.inner.primary.history().check(&token.history)?;
+        let mut hash = Sha256::new();
+        hash_part(&mut hash, b"storage.append_file:v1");
+        hash_session(&mut hash, token);
+        hash.update(offset.to_le_bytes());
+        hash_part(&mut hash, bytes);
+        let fingerprint = hash.finalize().into();
+        self.mutate_file(mutation, fingerprint, |state| {
+            if bytes.is_empty() || bytes.len() > self.inner.settings.file_chunk_bytes.get() { return Err(invalid("append requires a nonempty bounded chunk")); }
+            let (id, file) = active(state, token)?;
+            file.check_session(Some(token))?;
+            if file.command.is_some() || file.in_flight { return Ok(false); }
+            if file.length != offset {
+                tracing::error!(file = %token.id, generation = token.generation, offset, actual = file.length, reason = "append offset mismatch", "file append rejected");
+                return Err(invalid("append offset differs from acknowledged length"));
+            }
+            let length = offset.checked_add(bytes.len() as u64).ok_or_else(size_error)?;
+            if file.metadata.expected_length.is_some_and(|expected| length > expected) { return Err(invalid("append exceeds expected file length")); }
+            let ticket = file.ticket.checked_add(1).ok_or_else(size_error)?;
+            let outcome = MutationValue::Producer(FileProducer { session: token.clone(), length });
+            reserve(state, mutation, fingerprint, outcome.memory_size(), bytes.len(), &self.inner.settings)?;
+            let file = state.files.get_mut(&id).expect("selected file");
+            file.ticket = ticket;
+            file.command = Some(Command::Write(Arc::from(bytes)));
+            file.mutation = Some(Mutation { id: mutation.clone(), kind: Kind::Append });
+            Ok(true)
+        }).await?.producer()
+    }
+}
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

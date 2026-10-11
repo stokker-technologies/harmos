@@ -1,0 +1,91 @@
+name: Validated Promotion
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [dev, main]
+  workflow_dispatch:
+    inputs:
+      validation_run:
+        description: Original Full Validation Run ID
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  MISE_YES: '1'
+  MISE_DATA_DIR: ${{ github.workspace }}/.mise-data
+  MISE_CACHE_DIR: ${{ github.workspace }}/.cache/mise
+  MISE_GLOBAL_CONFIG_FILE: ${{ github.workspace }}/.mise-ci-global.toml
+  CARGO_HOME: ${{ github.workspace }}/.cache/cargo
+  RUSTUP_HOME: ${{ github.workspace }}/.mise-data/rustup
+  UV_CACHE_DIR: ${{ github.workspace }}/.cache/uv
+  MISE_LOCKED: '1'
+  MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+  CARGO_TERM_COLOR: always
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: core.longPaths
+  GIT_CONFIG_VALUE_0: 'true'
+
+jobs:
+  route:
+    name: check:merge-route
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify Main Promotion Route
+        env:
+          EVENT: ${{ github.event_name }}
+          SOURCE: ${{ github.head_ref }}
+          SOURCE_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            test "$SOURCE" = dev && test "$SOURCE_REPOSITORY" = stokker-technologies/harmos
+          fi
+  packages_reuse:
+    name: Packages Reuse (${{ matrix.platform }})
+    needs: route
+    environment: ${{ github.event_name == 'pull_request' && 'full-validation' || '' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            runner: ubuntu-24.04
+          - platform: windows
+            runner: windows-2022
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: ./.github/actions/setup
+      - name: packages:reuse
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HARMOS_BASELINE_VALIDATION_RUN_ID: ${{ vars.HARMOS_BASELINE_VALIDATION_RUN_ID }}
+          HARMOS_VALIDATION_RUN_ID: ${{ inputs.validation_run }}
+        run: mise run packages:reuse
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: harmos-reused-${{ matrix.platform }}-${{ github.run_attempt }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+  promote:
+    name: packages:promote
+    needs: [route, packages_reuse]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require Both Native Packages
+        env:
+          ROUTE: ${{ needs.route.result }}
+          REUSE: ${{ needs.packages_reuse.result }}
+        run: test "$ROUTE" = success && test "$REUSE" = success
