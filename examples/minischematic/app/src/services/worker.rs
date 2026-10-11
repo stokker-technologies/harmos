@@ -111,10 +111,7 @@ impl Resident<SchematicEditor> for Traffic {
             };
             let response = match response {
                 Ok(response) => response,
-                // Runtime stop closes operation admission before it signals
-                // application services, so a call racing shutdown is refused by
-                // design. Closed admission is this loop's settlement result:
-                // wait for the stop signal that follows and end cleanly.
+                // Wait For Resident Settlement When Admission Has Closed
                 Err(Error::Closing { .. }) => {
                     context.until_stopping(std::future::pending::<()>()).await;
                     return Ok(());

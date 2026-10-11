@@ -63,8 +63,149 @@ impl JournalConsumer<Editor> for HeldDrain {
     }
 }
 
+#[derive(Default)]
+struct Cancellation {
+    started: Notify,
+    finalized: AtomicUsize,
+}
+
+struct PendingCall(Arc<Cancellation>);
+
+#[harmos::catalog]
+enum Operations {
+    #[operation(
+        request = (),
+        response = (),
+        id = "shutdown.pending",
+        policy = harmos::operations::OperationPolicy {
+            timeout: Duration::from_secs(3),
+            attempt_timeout: Duration::from_secs(2),
+            retries: harmos::operations::RetryPolicy::Never,
+        },
+    )]
+    PendingContract,
+}
+
+#[harmos::lanes]
+enum Lanes {
+    #[default]
+    Open,
+}
+
+impl harmos::operations::Operation for PendingCall {
+    type Declaration = PendingContract;
+    type Resources = Cancellation;
+    type Error = std::convert::Infallible;
+    type Endpoints = ();
+    type Context<'a> = harmos::operations::Context<'a>;
+
+    fn new(trace: Arc<Cancellation>) -> Result<Self, Self::Error> {
+        Ok(Self(trace))
+    }
+
+    async fn run<'ctx>(
+        &mut self,
+        _: Self::Context<'ctx>,
+        _: &mut (),
+        _: &mut (),
+    ) -> Result<(), Self::Error> {
+        self.0.started.notify_one();
+        std::future::pending().await
+    }
+
+    async fn finalize(&mut self) -> Result<(), Self::Error> {
+        self.0.finalized.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+}
+
+struct StopNotification {
+    operations: harmos::OperationManager,
+    operation: harmos::operations::OperationInstanceId,
+    cancelled: Arc<std::sync::OnceLock<bool>>,
+}
+
+impl std::task::Wake for StopNotification {
+    fn wake(self: Arc<Self>) {
+        self.cancelled.get_or_init(|| {
+            self.operations
+                .status(self.operation)
+                .expect("in-flight operation remains owned")
+                .cancellation_requested()
+        });
+    }
+}
+
 #[test]
 fn contract_scenario() {
+    {
+        scenario_runtime::check("services_stop_before_calls", || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    let runtime = Runtime::<Editor>::builder(Sheet::default(), ())
+                        .register(Lanes::catalog())
+                        .runtime()
+                        .await
+                        .unwrap();
+                    let trace = Arc::new(Cancellation::default());
+                    runtime
+                        .operations
+                        .register_operation::<PendingCall>("shutdown", Lanes::Open, trace.clone())
+                        .unwrap();
+                    let operation = runtime.operations.submit::<PendingContract>(()).unwrap();
+                    trace.started.notified().await;
+                    runtime
+                        .services
+                        .register(
+                            harmos::services::ServiceDefinition {
+                                id: "caller".into(),
+                                policy: harmos::ServicePolicy::default(),
+                            },
+                            |_: Arc<()>| {
+                                |mut context: harmos::Service<Editor>| async move {
+                                    context.ready();
+                                    context.stopping().await;
+                                    Ok::<(), harmos::Fault<std::convert::Infallible>>(())
+                                }
+                            },
+                        )
+                        .unwrap();
+                    let lease = runtime
+                        .services
+                        .activate("caller", &runtime.services.root_scope())
+                        .await
+                        .unwrap();
+                    lease.ready().await.unwrap();
+                    let service = lease.instance();
+                    let mut status = service.subscribe();
+                    status.borrow_and_update();
+                    let cancelled = Arc::new(std::sync::OnceLock::new());
+                    let waker = std::task::Waker::from(Arc::new(StopNotification {
+                        operations: runtime.operations.clone(),
+                        operation: operation.id(),
+                        cancelled: cancelled.clone(),
+                    }));
+                    let mut changed = std::pin::pin!(status.changed());
+                    let mut context = std::task::Context::from_waker(&waker);
+                    assert!(std::future::Future::poll(changed.as_mut(), &mut context).is_pending());
+
+                    // Observe The Stop Notification Synchronously, Before Scheduling Cleanup
+                    runtime.stop().await.unwrap();
+                    assert_eq!(cancelled.get(), Some(&false));
+                    assert!(service.status().cancellation_requested());
+                    assert!(matches!(
+                        operation.await,
+                        Err(Error::OperationRefused(harmos::Refusal::Cancelled))
+                    ));
+                    assert_eq!(trace.finalized.load(Ordering::SeqCst), 1);
+                    service.join().await.unwrap();
+                });
+        });
+    }
+
     {
         scenario_runtime::check("budget_retains_journal", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();

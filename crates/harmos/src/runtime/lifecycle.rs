@@ -117,8 +117,9 @@ impl<A: Application> Runtime<A> {
         self.closing.store(true, Ordering::Release);
         #[cfg(feature = "grpc")]
         self.grpc.close_admission();
-        self.operations.close_admission();
+        // Notify Residents Before Cancelling Their In-Flight Calls
         self.services.close_admission();
+        self.operations.close_admission();
         self.observers.close_admission();
         #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
         {
