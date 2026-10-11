@@ -29,7 +29,8 @@ runs:
         . ./tools/ci/bootstrap.ps1
         Get-ChildItem Env: | Where-Object { $_.Name -notmatch '^(GITHUB_|RUNNER_|PATH$)' -and $before[$_.Name] -ne $_.Value } | ForEach-Object { "$($_.Name)=$($_.Value)" } | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
         $env:PATH.Substring(0, $env:PATH.Length - $before['PATH'].Length).TrimEnd(';') -split ';' | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-    - name: Install Locked Tools
+    - name: Install Locked Tools On Linux
+      if: runner.os == 'Linux'
       shell: bash
       run: |
         mise install --locked
@@ -39,3 +40,21 @@ runs:
         mise exec -- cargo --version
         mise exec -- python --version
         mise exec -- uv --version
+    - name: Install Locked Tools On Windows
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        mise install --locked
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        mise ls --current
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        mise run ci:bootstrap
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        mise exec -- rustc -vV
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        mise exec -- cargo --version
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        mise exec -- python --version
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        mise exec -- uv --version
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
