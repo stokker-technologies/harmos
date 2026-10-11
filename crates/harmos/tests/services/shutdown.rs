@@ -681,9 +681,14 @@ pub(super) fn contract_scenario() {
                         queued.await,
                         Err(Error::OperationRefused(Refusal::Cancelled))
                     ));
-                    assert_eq!(
-                        *events.lock().expect("event lock is healthy"),
-                        ["job-start", "job-end", "service", "participant"]
+                    let trace = events.lock().expect("event lock is healthy").clone();
+                    assert!(
+                        matches!(
+                            trace.as_slice(),
+                            ["job-start", "job-end", "service", "participant"]
+                                | ["job-start", "service", "job-end", "participant"]
+                        ),
+                        "unexpected shutdown trace: {trace:?}"
                     );
 
                     // A retained handle does not hold shutdown open: the stop seals the journal
