@@ -78,6 +78,36 @@ class WorkflowTests(unittest.TestCase):
                     f"custom-target/debug/minibench-probe-sidecar{suffix}",
                 )
 
+    def test_fixture_deadlines(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = root / "consumer.json"
+            manifest.write_text('{"artifacts": {"old": "stale"}}')
+            failure = subprocess.TimeoutExpired("cargo build", 1)
+            with patch(
+                "harmos_tools.artifacts.subprocess.run",
+                side_effect=[
+                    subprocess.CompletedProcess(
+                        [], 0, "host: x86_64-pc-windows-msvc\n"
+                    ),
+                    failure,
+                ],
+            ) as run:
+                with self.assertRaises(subprocess.TimeoutExpired):
+                    artifacts.prepare(root)
+                self.assertFalse(manifest.exists())
+                self.assertEqual(run.call_count, 2)
+                compiler = run.call_args_list[0].kwargs
+                build = run.call_args_list[1].kwargs
+                self.assertGreater(build["timeout"], compiler["timeout"])
+                self.assertTrue(build["check"])
+                run.reset_mock()
+                run.side_effect = subprocess.TimeoutExpired("cargo metadata", 1)
+                with self.assertRaises(subprocess.TimeoutExpired):
+                    artifacts._run(root, ["metadata", "--locked", "--no-deps"])
+                self.assertEqual(run.call_args.kwargs["timeout"], compiler["timeout"])
+                self.assertEqual(run.call_count, 1)
+
     def test_artifact_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

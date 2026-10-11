@@ -46,4 +46,6 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup
+        with:
+          cargo-cache-role: check
       - run: mise run check

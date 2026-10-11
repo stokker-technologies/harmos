@@ -1,5 +1,10 @@
 name: Native Toolchain
 description: Install Verified Stable Mise And Locked Native Tools
+inputs:
+  cargo-cache-role:
+    description: Cargo Compilation Profile For This Job
+    required: false
+    default: none
 runs:
   using: composite
   steps:
@@ -58,3 +63,20 @@ runs:
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         mise exec -- uv --version
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    - name: Cache Cargo Compilation
+      if: inputs.cargo-cache-role != 'none'
+      uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+      with:
+        path: |
+          target/debug
+          target/release
+          target/wasm32-unknown-unknown/debug
+          target/wasm32-unknown-unknown/release
+          target/wasm32-wasip2/debug
+          target/fixtures/harmos/build
+          target/validation/cargo/coverage
+          !target/**/*.profraw
+          !target/**/*.profdata
+        key: cargo-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.cargo-cache-role }}-${{ hashFiles('mise.lock', 'mise.toml', 'Cargo.toml', 'Cargo.lock', 'crates/**/Cargo.toml', 'examples/**/Cargo.toml', 'tests/fixtures/**/Cargo.toml', '.cargo/config*', 'tools/python/uv.lock', 'tools/python/pyproject.toml', 'tools/python/src/harmos_tools/evidence.py', 'tools/python/src/harmos_tools/artifacts.py', '.github/actions/setup/action.yml') }}-${{ github.event.pull_request.head.sha || github.sha }}
+        restore-keys: |
+          cargo-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.cargo-cache-role }}-${{ hashFiles('mise.lock', 'mise.toml', 'Cargo.toml', 'Cargo.lock', 'crates/**/Cargo.toml', 'examples/**/Cargo.toml', 'tests/fixtures/**/Cargo.toml', '.cargo/config*', 'tools/python/uv.lock', 'tools/python/pyproject.toml', 'tools/python/src/harmos_tools/evidence.py', 'tools/python/src/harmos_tools/artifacts.py', '.github/actions/setup/action.yml') }}-

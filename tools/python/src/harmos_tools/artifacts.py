@@ -30,6 +30,8 @@ from pathlib import Path
 # === Constants === #
 
 PREPARATION_TIMEOUT = 300
+# Cold Cargo Builds Compile SDK Dependencies Before Tests Begin
+BUILD_TIMEOUT = 900
 VERSIONS = ("7.8.9", "7.8.10-beta.2+build")
 BUILDS = (
     (False, "dev"),
@@ -435,14 +437,15 @@ def _run(
     capture: bool = False,
     env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    print("Preparing fixture: " + " ".join(arguments), flush=True)
+    timeout = BUILD_TIMEOUT if arguments[0] == "build" else PREPARATION_TIMEOUT
+    print(f"Preparing fixture ({timeout}s budget): " + " ".join(arguments), flush=True)
     return subprocess.run(
         [os.environ.get("CARGO", "cargo"), *arguments],
         cwd=root,
         check=True,
         stdout=subprocess.PIPE if capture else None,
         text=True,
-        timeout=PREPARATION_TIMEOUT,
+        timeout=timeout,
         env=env,
     )
 
