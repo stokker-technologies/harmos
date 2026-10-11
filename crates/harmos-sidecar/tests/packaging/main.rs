@@ -20,7 +20,7 @@ mod prepared_fixtures;
 /* === Imports === */
 
 // Standard Library Imports
-use std::{process::Stdio, time::Duration};
+use std::{path::Path, process::Stdio, time::Duration};
 
 // Third Party Imports
 use tokio::process::Command;
@@ -133,10 +133,8 @@ target-dir = "configured-target"
                             String::from_utf8_lossy(&output.stderr)
                         );
                         let exported = target.join("grpc/native");
-                        assert_eq!(
-                            String::from_utf8(output.stdout).unwrap().trim(),
-                            exported.to_str().unwrap()
-                        );
+                        let reported = String::from_utf8(output.stdout).unwrap();
+                        assert_eq!(Path::new(reported.trim()), exported);
                         assert!(exported.join("descriptors.bin").is_file());
                         let proto =
                             std::fs::read_to_string(exported.join("fixture/v1/Native.proto"))

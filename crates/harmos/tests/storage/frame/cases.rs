@@ -83,13 +83,15 @@ async fn seed(fixture: &Fixture, values: &[u64]) {
         .unwrap();
     let scope = Identifier::new("line").unwrap();
     for (index, value) in values.iter().enumerate() {
+        // Keep Source Time Independent Of Exact Numeric Payloads
+        let source_seconds = (index as u64 + 1).pow(2);
         let payload = value.encode_to_vec();
         let item = Identifier::new(format!("value{index}")).unwrap();
         fixture
             .storage
             .write_records(&[RecordWrite {
                 scope: Some(&scope),
-                source_time: Some(UNIX_EPOCH + Elapsed::from_secs(*value)),
+                source_time: Some(UNIX_EPOCH + Elapsed::from_secs(source_seconds)),
                 ..record(&schema(), &item, &payload)
             }])
             .await

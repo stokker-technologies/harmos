@@ -140,7 +140,15 @@ async fn storage_uses_data() {
         };
         let sample = Identifier::new("sample").unwrap();
         let source = Identifier::new("sensor").unwrap();
-        let source_time = std::time::UNIX_EPOCH - Duration::from_nanos(1);
+        // Use A Pre-Epoch Tick Representable On Linux And Windows
+        let source_time = std::time::UNIX_EPOCH - Duration::from_nanos(100);
+        assert_eq!(
+            source_time
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_err()
+                .duration(),
+            Duration::from_nanos(100)
+        );
         let record = harmos::storage::RecordWrite {
             schema: &key,
             scope: None,

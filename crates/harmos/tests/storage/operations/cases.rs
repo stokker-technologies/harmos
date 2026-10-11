@@ -420,7 +420,12 @@ fn own_contract() {
                     .unwrap();
                     let key = super::schema();
                     let stream = harmos::Identifier::new("voltage").unwrap();
-                    let timestamp = UNIX_EPOCH - Duration::from_nanos(1);
+                    // Use A Pre-Epoch Tick Representable On Linux And Windows
+                    let timestamp = UNIX_EPOCH - Duration::from_nanos(100);
+                    assert_eq!(
+                        timestamp.duration_since(UNIX_EPOCH).unwrap_err().duration(),
+                        Duration::from_nanos(100)
+                    );
                     for name in ["selected", "excluded"] {
                         let item = harmos::Identifier::new(name).unwrap();
                         let mut record = super::record(&key, &item, name.as_bytes());
