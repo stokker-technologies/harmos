@@ -297,9 +297,14 @@ mise run test                   # Run the test suite
 mise run bench                  # Record benchmark results
 ```
 
-Every new commit SHA runs fresh Linux and Windows checks, release builds, and
-covered tests, including squash, merge, and history-reset commits with identical
-trees. PR full validation requires approval; integration into `dev` and `main`
+Every new commit SHA runs fresh checks, release builds and complete tests,
+including squash, merge and history-reset commits with identical trees. `dev`
+requires Linux validation and its separate `development.json` artifact proof.
+Windows runs independently with visible outcomes and remains advisory for `dev`
+until its requirements are explicitly restored. `main` and releases
+always require both native platforms. Coverage is an optional diagnostic through
+`STKR_COVERAGE=1 mise run test`; ordinary validation keeps the full selection.
+Qualified dev pushes may use the restricted local Linux runner. PR full validation requires approval; integration into `dev` and `main`
 starts automatic validation of the resulting SHA. Caches accelerate those builds.
 `mise run packages:reuse` retrieves successful artifacts only for the current SHA,
 with matching inputs and intact hashes; it never rebuilds or changes provenance.

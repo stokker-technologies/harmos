@@ -6,6 +6,11 @@ on:
   push:
     branches: [dev, main]
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      windows-only:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -27,12 +32,14 @@ env:
   GIT_CONFIG_VALUE_0: 'true'
 
 concurrency:
-  group: full-${{ github.event.pull_request.number || github.ref }}
+  group: full-${{ inputs.windows-only && 'advisory-windows' || 'native' }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   route:
     name: check:merge-route
+    outputs:
+      fast: ${{ steps.policy.outputs.fast }}
     runs-on: ubuntu-24.04
     steps:
       - name: Verify Main Promotion Route
@@ -47,10 +54,20 @@ jobs:
             [[ "$SOURCE" =~ ^release/(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           fi
 
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - id: policy
+        env:
+          PYTHONPATH: tools/python/src
+        run: python -m harmos_tools.packages policy
+
   check_linux:
     name: check (linux)
+    if: ${{ !inputs.windows-only }}
     needs: route
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.ref == 'refs/heads/dev' && github.event_name == 'push' && fromJSON('["stokker-local-linux-x64"]') || fromJSON('["ubuntu-24.04"]') }}
     timeout-minutes: 240
     environment: ${{ github.event_name == 'pull_request' && 'full-validation' || '' }}
     steps:
@@ -67,7 +84,7 @@ jobs:
 
   build_release_linux:
     name: Build Release (linux)
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.ref == 'refs/heads/dev' && github.event_name == 'push' && fromJSON('["stokker-local-linux-x64"]') || fromJSON('["ubuntu-24.04"]') }}
     timeout-minutes: 240
     needs: [route, check_linux]
     outputs:
@@ -95,8 +112,8 @@ jobs:
 
   test_linux:
     name: test (linux)
-    if: always()
-    runs-on: ubuntu-24.04
+    if: always() && !inputs.windows-only
+    runs-on: ${{ github.ref == 'refs/heads/dev' && github.event_name == 'push' && fromJSON('["stokker-local-linux-x64"]') || fromJSON('["ubuntu-24.04"]') }}
     timeout-minutes: 240
     needs: build_release_linux
     steps:
@@ -113,15 +130,13 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: ./.github/actions/setup
         with:
-          cargo-cache-role: coverage
+          cargo-cache-role: integration
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           artifact-ids: ${{ needs.build_release_linux.outputs.artifact }}
           path: dist
           merge-multiple: true
       - name: test
-        env:
-          STKR_COVERAGE: '1'
         run: |
           mise run packages:restore
           mise run test
@@ -141,6 +156,7 @@ jobs:
 
   check_windows:
     name: check (windows)
+    if: ${{ inputs.windows-only && needs.route.outputs.fast == 'true' || !inputs.windows-only && needs.route.outputs.fast != 'true' }}
     needs: route
     runs-on: windows-2022
     timeout-minutes: 240
@@ -187,10 +203,10 @@ jobs:
 
   test_windows:
     name: test (windows)
-    if: always()
+    if: always() && (inputs.windows-only && needs.route.outputs.fast == 'true' || !inputs.windows-only && needs.route.outputs.fast != 'true')
     runs-on: windows-2022
     timeout-minutes: 240
-    needs: build_release_windows
+    needs: [route, build_release_windows]
     steps:
       - name: Require Matching Release Build
         shell: bash
@@ -205,15 +221,13 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: ./.github/actions/setup
         with:
-          cargo-cache-role: coverage
+          cargo-cache-role: integration
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           artifact-ids: ${{ needs.build_release_windows.outputs.artifact }}
           path: dist
           merge-multiple: true
       - name: test
-        env:
-          STKR_COVERAGE: '1'
         run: |
           mise run packages:restore
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -234,9 +248,41 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  packages_development:
+    name: Packages Development
+    if: always() && !inputs.windows-only && (github.event_name == 'pull_request' && github.base_ref == 'dev' || github.event_name == 'push' && github.ref == 'refs/heads/dev')
+    needs: [route, test_linux]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Require Fresh Development Validation
+        env:
+          ROUTE: ${{ needs.route.result }}
+          LINUX: ${{ needs.test_linux.result }}
+        run: test "$ROUTE" = success && test "$LINUX" = success
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: ./.github/actions/setup
+        with:
+          cargo-cache-role: none
+      - name: packages:development
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HARMOS_VALIDATION_RUN_ID: ${{ github.run_id }}
+        run: mise run packages:development
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: harmos-development-${{ github.run_attempt }}
+          path: dist/development.json
+          if-no-files-found: error
+          retention-days: 14
+
   promote:
     name: packages:promote
-    if: always()
+    if: always() && !inputs.windows-only && needs.route.outputs.fast != 'true'
     needs: [route, test_linux, test_windows]
     runs-on: ubuntu-24.04
     steps:

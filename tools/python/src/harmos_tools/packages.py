@@ -250,6 +250,8 @@ def validate(repository: Path) -> None:
     records = manifest.get("tests", {})
     if set(records) != expected:
         raise RuntimeError("required test categories are incomplete")
+    measured = set()
+    requested_coverage = os.environ.get("STKR_COVERAGE") == "1"
     for name in expected:
         entry = records[name]
         if entry.get("outcome") != "passed" or entry.get("requested_configuration"):
@@ -294,13 +296,14 @@ def validate(repository: Path) -> None:
         )
         if summary["failed"]:
             raise RuntimeError(f"required category {name} contains failures")
-        if os.environ.get("CI") == "true" and not entry.get("coverage"):
-            raise RuntimeError(f"required CI coverage is absent for {name}")
-    if os.environ.get("CI") == "true":
-        for language in ("rust", "python"):
-            evidence.validate_coverage(
-                (directory / f"coverage-{language}.xml").read_text(encoding="utf-8")
-            )
+        if requested_coverage and not entry.get("coverage"):
+            raise RuntimeError(f"requested coverage is absent for {name}")
+        if entry.get("coverage"):
+            measured.add(language)
+    for language in measured:
+        evidence.validate_coverage(
+            (directory / f"coverage-{language}.xml").read_text(encoding="utf-8")
+        )
     root = location(repository)
     record = {
         "schema": 2,
@@ -317,7 +320,7 @@ def validate(repository: Path) -> None:
     )
 
 
-def reuse(repository: Path) -> None:
+def reuse(repository: Path, *, development: bool = False) -> dict:
     # One Native Run Identifies Both Required Platform Packages
     run_id = os.environ.get("HARMOS_VALIDATION_RUN_ID") or _reference(repository)
     if not re.fullmatch(r"[1-9][0-9]*", run_id):
@@ -325,7 +328,13 @@ def reuse(repository: Path) -> None:
             "set HARMOS_VALIDATION_RUN_ID to the original full validation run"
         )
     run = _json(f"actions/runs/{run_id}")
-    if run.get("conclusion") != "success" or run.get("status") != "completed":
+    if development:
+        _development()
+        if str(run.get("id")) != os.environ.get("GITHUB_RUN_ID"):
+            raise RuntimeError("development proof requires the current native run")
+        if run.get("event") != os.environ.get("GITHUB_EVENT_NAME"):
+            raise RuntimeError("development proof event differs from the native run")
+    elif run.get("conclusion") != "success" or run.get("status") != "completed":
         raise RuntimeError("the original validation run has not succeeded")
     if run.get("path") != ".github/workflows/full.yml":
         raise RuntimeError(
@@ -348,8 +357,10 @@ def reuse(repository: Path) -> None:
     required = {
         f"{phase} ({system})"
         for phase in ("check", "Build Release", "test")
-        for system in ("linux", "windows")
+        for system in (("linux",) if development else ("linux", "windows"))
     }
+    if development:
+        required.add("check:merge-route")
     selected = {}
     for job in jobs.values():
         name = job.get("name")
@@ -479,11 +490,71 @@ def reuse(repository: Path) -> None:
         shutil.move(str(extracted), root)
         shutil.move(str(download), root.parent / f"harmos-{platform()}.zip")
 
+    return {
+        "revision": revision,
+        "source": source(repository),
+        "run": int(run_id),
+        "jobs": {name: job["id"] for name, job in selected.items()},
+        "artifacts": [
+            {
+                "id": artifact["id"],
+                "name": artifact_name,
+                "provider_digest": artifact["digest"],
+                "sha256": _digest(root.parent / f"harmos-{platform()}.zip"),
+                "job": job["id"],
+                "attempt": job["attempt"],
+            }
+        ],
+        "validation": record,
+    }
+
+
+def development_catalog(repository: Path) -> None:
+    destination = repository / "dist/development.json"
+    destination.unlink(missing_ok=True)
+    _development()
+    proof = reuse(repository, development=True)
+    catalog = {
+        "schema": 1,
+        "purpose": "development-validation",
+        "platforms": ["linux"],
+        "proof": proof,
+    }
+    destination.write_text(json.dumps(catalog, indent=2) + "\n", encoding="utf-8")
+
+
+def development_fast() -> bool:
+    event = os.environ.get("GITHUB_EVENT_NAME")
+    target = (
+        os.environ.get("GITHUB_BASE_REF")
+        if event == "pull_request"
+        else os.environ.get("GITHUB_REF")
+    )
+    return (event, target) in {
+        ("pull_request", "dev"),
+        ("push", "refs/heads/dev"),
+    }
+
+
+def development_policy() -> None:
+    with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+        output.write(f"fast={str(development_fast()).lower()}\n")
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "action", choices=("stage", "verify", "restore", "validate", "export", "reuse")
+        "action",
+        choices=(
+            "stage",
+            "verify",
+            "restore",
+            "validate",
+            "export",
+            "reuse",
+            "development",
+            "policy",
+        ),
     )
     arguments = parser.parse_args()
     repository = Path(__file__).resolve().parents[4]
@@ -494,10 +565,17 @@ def main() -> None:
         "validate": validate,
         "export": export,
         "reuse": reuse,
+        "development": development_catalog,
+        "policy": lambda _: development_policy(),
     }[arguments.action](repository)
 
 
 # === Private Functions === #
+
+
+def _development() -> None:
+    if not development_fast() or platform() != "linux":
+        raise RuntimeError("Linux-only proof is restricted to native dev validation")
 
 
 def _verify(repository: Path, root: Path) -> dict[str, Path]:

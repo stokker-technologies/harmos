@@ -324,6 +324,11 @@ depends = ["sync"]
 description = "Reuse Exact Validated Assets From One Native Validation Run"
 run = "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harmos_tools.packages reuse"
 
+[tasks."packages:development"]
+depends = ["sync"]
+description = "Verify Dated Linux Development Proof Without Release Promotion"
+run = "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harmos_tools.packages development"
+
 [tasks."packages:export"]
 description = "Export Platform Assets And Retained Diagnostics"
 run = "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harmos_tools.packages export"
