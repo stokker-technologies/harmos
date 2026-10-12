@@ -1,0 +1,19 @@
+name: Development Windows Validation
+
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  windows_advisory:
+    name: Windows Advisory
+    uses: ./.github/workflows/full.yml
+    with:
+      windows-only: true

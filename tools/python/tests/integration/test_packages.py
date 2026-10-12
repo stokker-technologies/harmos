@@ -42,6 +42,30 @@ from harmos_tools import packages
 
 class PackageTests(unittest.TestCase):
     def test_native_requests(self) -> None:
+        for event, target, expected in (
+            ("push", "refs/heads/dev", True),
+            ("push", "refs/heads/main", False),
+            ("pull_request", "dev", True),
+            ("pull_request", "main", False),
+            ("workflow_dispatch", "refs/heads/dev", False),
+        ):
+            with patch.dict(
+                "os.environ",
+                {
+                    "GITHUB_EVENT_NAME": event,
+                    "GITHUB_REF": target,
+                    "GITHUB_BASE_REF": target,
+                },
+                clear=True,
+            ):
+                self.assertEqual(packages.development_fast(), expected)
+                with tempfile.TemporaryDirectory() as directory:
+                    output = Path(directory) / "output"
+                    with patch.dict("os.environ", {"GITHUB_OUTPUT": str(output)}):
+                        packages.development_policy()
+                    self.assertEqual(
+                        output.read_text(), f"fast={str(expected).lower()}\n"
+                    )
         with patch.dict("os.environ", {"GITHUB_TOKEN": "native-test-token"}):
             request = packages._request("actions/artifacts/123/zip")
         self.assertEqual(
@@ -267,6 +291,17 @@ class PackageTests(unittest.TestCase):
                 packages.validate(root)
             self.assertFalse(record.exists())
 
+            for entry in original["tests"].values():
+                entry["coverage"] = False
+            manifest.write_text(json.dumps(original))
+            with patch.dict("os.environ", {"STKR_COVERAGE": "0"}):
+                packages.validate(root)
+                self.assertTrue(record.exists())
+            with patch.dict("os.environ", {"STKR_COVERAGE": "1"}):
+                with self.assertRaisesRegex(RuntimeError, "requested coverage"):
+                    packages.validate(root)
+                self.assertFalse(record.exists())
+
     def test_reuse_archive(self) -> None:
         with (
             tempfile.TemporaryDirectory() as directory,
@@ -323,7 +358,7 @@ class PackageTests(unittest.TestCase):
                 "path": ".github/workflows/full.yml",
                 "run_attempt": 2,
             }
-            jobs = [
+            jobs: list[dict[str, int | str | None]] = [
                 {
                     "id": (99 if system == packages.platform() else 100)
                     if phase == "test"
@@ -382,6 +417,67 @@ class PackageTests(unittest.TestCase):
                 self.assertEqual(
                     (proposed / "dist" / downloadable.name).read_bytes(), immutable
                 )
+                if packages.platform() == "linux":
+                    # Linux Dev Proof Is Independent Of Honest Windows Outcomes
+                    pipeline.update(status="in_progress", conclusion=None, event="push")
+                    jobs.append(
+                        {
+                            "id": 200,
+                            "name": "check:merge-route",
+                            "conclusion": "success",
+                        }
+                    )
+                    for job in jobs:
+                        if "(windows)" in str(job["name"]):
+                            job["conclusion"] = None
+                    with (
+                        patch.dict(
+                            "os.environ",
+                            {
+                                "GITHUB_EVENT_NAME": "push",
+                                "GITHUB_REF": "refs/heads/dev",
+                            },
+                        ),
+                    ):
+                        packages.development_catalog(proposed)
+                        catalog = proposed / "dist/development.json"
+                        proof = json.loads(catalog.read_text())
+                        self.assertEqual(proof["purpose"], "development-validation")
+                        self.assertEqual(proof["platforms"], ["linux"])
+                        self.assertEqual(proof["proof"]["revision"], revision)
+                        self.assertEqual(len(proof["proof"]["artifacts"]), 1)
+                        self.assertFalse(
+                            any("windows" in name for name in proof["proof"]["jobs"])
+                        )
+                        for conclusion in (None, "failure", "success"):
+                            for job in jobs:
+                                if "(windows)" in str(job["name"]):
+                                    job["conclusion"] = conclusion
+                            packages.development_catalog(proposed)
+                            self.assertEqual(
+                                json.loads(catalog.read_text())["platforms"], ["linux"]
+                            )
+                        linux = next(
+                            job for job in jobs if job["name"] == "test (linux)"
+                        )
+                        linux["conclusion"] = "failure"
+                        with self.assertRaisesRegex(
+                            RuntimeError, "native platform matrix"
+                        ):
+                            packages.development_catalog(proposed)
+                        self.assertFalse(catalog.exists())
+                        linux["conclusion"] = "success"
+                        with patch.dict(
+                            "os.environ", {"GITHUB_REF": "refs/heads/main"}
+                        ):
+                            with self.assertRaisesRegex(RuntimeError, "restricted"):
+                                packages.development_catalog(proposed)
+                        with self.assertRaisesRegex(RuntimeError, "has not succeeded"):
+                            packages.reuse(proposed)
+                    pipeline.update(status="completed", conclusion="success")
+                    jobs.pop()
+                    for job in jobs:
+                        job["conclusion"] = "success"
                 for field, value, message in (
                     ("expired", True, "missing or expired"),
                     ("digest", "sha256:" + "0" * 64, "digest is corrupt"),
