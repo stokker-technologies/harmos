@@ -1,0 +1,47 @@
+[changelog]
+header = "# Changelog\n\nAll notable changes to this project will be documented in this file.\n\n"
+body = """
+{% if version %}\
+## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+## [Unreleased]
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+
+### {{ group | upper_first }}
+{% for commit in commits %}
+- {{ commit.message | upper_first }}\
+{% endfor %}
+{% endfor %}\n
+"""
+trim = true
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+commit_parsers = [
+  { message = "^feat", group = "added" },
+  { message = "^fix", group = "fixed" },
+  { message = "^docs", group = "changed" },
+  { message = "^refactor", group = "changed" },
+  { message = "^perf", group = "changed" },
+  { message = "^style", group = "changed" },
+  { message = "^test", group = "changed" },
+  { message = "^build", group = "changed" },
+  { message = "^ci", group = "changed" },
+  { message = "^chore", group = "changed" },
+  { message = "^revert", group = "changed" },
+]
+protect_breaking_commits = true
+tag_pattern = "v[0-9]*"
+sort_commits = "oldest"
+
+# Heavy-dev phase: every release is a patch of 0.2 — tags are a plain counter
+# (consumers pin exact revs/tags; nothing resolves semver ranges against an
+# unpublished workspace). When the dev phase ends, DELETE bump_type and the
+# 0.x rule beneath it takes over: breaking bumps minor, a feature bumps patch.
+[bump]
+bump_type = "patch"
+breaking_always_bump_major = false
+features_always_bump_minor = false
+initial_tag = "v0.1.0"

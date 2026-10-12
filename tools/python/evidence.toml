@@ -1,0 +1,9 @@
+# Native Test Execution And Evidence
+
+[testing.rust]
+categories = ["integration"]
+
+[testing.python]
+categories = ["integration", "acceptance"]
+project = "tools/python"
+sources = ["src/harmos_tools"]

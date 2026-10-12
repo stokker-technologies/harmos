@@ -1,0 +1,358 @@
+/* ***
+ *
+ * Harmos
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * ***
+ */
+
+/* === Modules === */
+use crate::scenario_runtime;
+
+/* === Re-Exports === */
+
+/* === Imports === */
+
+// Standard Library Imports
+
+// Third Party Imports
+
+// Local Imports
+use super::*;
+
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+/* === Enums === */
+
+/* === Traits === */
+
+/* === Implementations === */
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */
+
+#[test]
+fn contract_scenario() {
+    {
+        scenario_runtime::check("value_retains_charge", || {
+            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
+            scenario_executor
+                .enable_all()
+                .build()
+                .expect("scenario runtime is valid")
+                .block_on(async {
+                    let f = Fixture::new().await;
+                    f.storage
+                        .write_object(&Document { id: 7, value: 1 })
+                        .await
+                        .unwrap();
+                    f.storage.flush().await.unwrap();
+                    let value = f
+                        .storage
+                        .read_object::<Document>(
+                            &7,
+                            ObjectVersion::Latest,
+                            NonZeroUsize::new(4096).unwrap(),
+                        )
+                        .await
+                        .unwrap()
+                        .unwrap();
+                    until(|| f.data.control.releases.load(Ordering::SeqCst) == 1).await;
+                    assert!(f.storage.status().read_bytes >= value.memory_size());
+                    assert_eq!(value.value.value, 1);
+                    assert_eq!(f.data.control.query_views.load(Ordering::SeqCst), 1);
+                    drop(value);
+                    assert_eq!(f.storage.status().read_bytes, 0);
+                    f.finish().await;
+                });
+        });
+    }
+    {
+        scenario_runtime::check("reads_preserve_fixed", || {
+            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
+            scenario_executor
+                .enable_all()
+                .build()
+                .expect("scenario runtime is valid")
+                .block_on(async {
+                    let f = Fixture::new().await;
+                    let first = f
+                        .storage
+                        .write_object(&Document { id: 7, value: 1 })
+                        .await
+                        .unwrap();
+                    f.storage.flush_until(&first.position).await.unwrap();
+                    let view = f
+                        .storage
+                        .view_with_limits(StorageSettings::default().query_execution)
+                        .await
+                        .unwrap();
+                    let pinned = f.storage.status().read_bytes;
+                    let second = f
+                        .storage
+                        .write_object(&Document { id: 7, value: 2 })
+                        .await
+                        .unwrap();
+                    f.storage.flush_until(&second.position).await.unwrap();
+
+                    let value = f
+                        .storage
+                        .read_object_in::<Document>(
+                            &view,
+                            &7,
+                            ObjectVersion::Latest,
+                            NonZeroUsize::new(4096).unwrap(),
+                        )
+                        .await
+                        .unwrap()
+                        .unwrap();
+                    assert_eq!(value.position, first.position);
+                    assert_eq!(value.version, first.version);
+                    assert_eq!(value.value.value, 1);
+                    assert!(f.storage.status().read_bytes >= pinned + value.memory_size());
+                    let charged = f.storage.status().read_bytes;
+                    assert!(
+                        f.storage
+                            .read_object_in::<Document>(
+                                &view,
+                                &7,
+                                ObjectVersion::Exact(second.version.clone()),
+                                NonZeroUsize::new(4096).unwrap()
+                            )
+                            .await
+                            .unwrap()
+                            .is_none()
+                    );
+                    assert_eq!(f.storage.status().read_bytes, charged);
+                    assert_eq!(f.data.control.query_views.load(Ordering::SeqCst), 1);
+                    drop(value);
+                    assert_eq!(f.storage.status().read_bytes, pinned);
+                    drop(view);
+                    until(|| f.storage.status().read_bytes == 0).await;
+
+                    let current = f
+                        .storage
+                        .read_object::<Document>(
+                            &7,
+                            ObjectVersion::Latest,
+                            NonZeroUsize::new(4096).unwrap(),
+                        )
+                        .await
+                        .unwrap()
+                        .unwrap();
+                    assert_eq!(current.position, second.position);
+                    assert_eq!(current.version, second.version);
+                    assert_eq!(current.value.value, 2);
+                    assert_eq!(f.data.control.query_views.load(Ordering::SeqCst), 2);
+                    drop(current);
+                    f.finish().await;
+                });
+        });
+    }
+    {
+        scenario_runtime::check("reads_refuse_limits", || {
+            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
+            scenario_executor
+                .enable_all()
+                .build()
+                .expect("scenario runtime is valid")
+                .block_on(async {
+                    let f = Fixture::new().await;
+                    let other = Fixture::new().await;
+                    let execution = StorageSettings::default().query_execution;
+                    let view = f.storage.view_with_limits(execution).await.unwrap();
+                    let different = f
+                        .storage
+                        .view_with_limits(QueryLimits {
+                            timeout: execution.timeout / 2,
+                            ..execution
+                        })
+                        .await
+                        .unwrap();
+                    let pinned = f.storage.status().read_bytes;
+                    assert!(matches!(
+                        other
+                            .storage
+                            .read_object_in::<Document>(
+                                &view,
+                                &7,
+                                ObjectVersion::Latest,
+                                NonZeroUsize::new(4096).unwrap()
+                            )
+                            .await,
+                        Err(Error::InvalidInput {
+                            field: "query view",
+                            reason: "view belongs to another manager"
+                        })
+                    ));
+                    for invalid in [&different] {
+                        assert!(matches!(
+                            f.storage
+                                .read_object_in::<Document>(
+                                    invalid,
+                                    &7,
+                                    ObjectVersion::Latest,
+                                    NonZeroUsize::new(4096).unwrap()
+                                )
+                                .await,
+                            Err(Error::InvalidInput {
+                                field: "query view",
+                                reason: "view was not acquired with the same execution limits"
+                            })
+                        ));
+                    }
+                    assert_eq!(f.storage.status().read_bytes, pinned);
+                    assert_eq!(other.storage.status().read_bytes, 0);
+                    f.storage.close().await.unwrap();
+                    assert!(matches!(
+                        f.storage
+                            .read_object_in::<Document>(
+                                &view,
+                                &7,
+                                ObjectVersion::Latest,
+                                NonZeroUsize::new(4096).unwrap()
+                            )
+                            .await,
+                        Err(Error::ViewExpired)
+                    ));
+                    drop(view);
+                    drop(different);
+                    f.finish().await;
+                    other.finish().await;
+                });
+        });
+    }
+    {
+        scenario_runtime::check("point_timeout_releases", || {
+            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
+            scenario_executor
+                .enable_all()
+                .build()
+                .expect("scenario runtime is valid")
+                .block_on(async {
+                    let f = Fixture::with_settings(StorageSettings {
+                        query_execution: QueryLimits {
+                            timeout: Duration::from_millis(50),
+                            ..StorageSettings::default().query_execution
+                        },
+                        ..StorageSettings::default()
+                    })
+                    .await;
+                    f.storage
+                        .write_object(&Document { id: 7, value: 1 })
+                        .await
+                        .unwrap();
+                    f.storage.flush().await.unwrap();
+                    f.data.control.block_read.store(true, Ordering::SeqCst);
+                    let storage = f.storage.clone();
+                    let reading = tokio::spawn(async move {
+                        storage
+                            .read_object::<Document>(
+                                &7,
+                                ObjectVersion::Latest,
+                                NonZeroUsize::new(4096).unwrap(),
+                            )
+                            .await
+                    });
+                    f.data.control.read_entered.notified().await;
+                    assert!(matches!(
+                        reading.await.unwrap(),
+                        Err(Error::ResourceExhausted {
+                            resource: "query computation time"
+                        })
+                    ));
+                    until(|| f.storage.status().read_bytes == 0).await;
+                    assert_eq!(f.data.control.releases.load(Ordering::SeqCst), 1);
+                    f.data.control.block_read.store(false, Ordering::SeqCst);
+                    let value = f
+                        .storage
+                        .read_object::<Document>(
+                            &7,
+                            ObjectVersion::Latest,
+                            NonZeroUsize::new(4096).unwrap(),
+                        )
+                        .await
+                        .unwrap()
+                        .unwrap();
+                    assert_eq!(value.value.value, 1);
+                    drop(value);
+                    f.finish().await;
+                });
+        });
+    }
+    {
+        scenario_runtime::check("point_page_ceiling", || {
+            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
+            scenario_executor
+                .enable_all()
+                .build()
+                .expect("scenario runtime is valid")
+                .block_on(async {
+                    let f = Fixture::new().await;
+                    f.data.control.block_view.store(true, Ordering::SeqCst);
+                    let before = f.storage.status().read_bytes;
+                    assert!(
+                        f.storage
+                            .read_object::<Document>(
+                                &7,
+                                ObjectVersion::Latest,
+                                NonZeroUsize::new(8193).unwrap()
+                            )
+                            .await
+                            .is_err()
+                    );
+                    assert_eq!(f.data.control.query_views.load(Ordering::SeqCst), 0);
+                    assert_eq!(f.storage.status().read_bytes, before);
+                    f.finish().await;
+                });
+        });
+    }
+    {
+        scenario_runtime::check("working_bound_enforced", || {
+            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
+            scenario_executor
+                .enable_all()
+                .build()
+                .expect("scenario runtime is valid")
+                .block_on(async {
+                    let f = Fixture::with_settings(StorageSettings {
+                        query_execution: QueryLimits {
+                            memory_bytes: NonZeroUsize::new(1).unwrap(),
+                            ..StorageSettings::default().query_execution
+                        },
+                        ..StorageSettings::default()
+                    })
+                    .await;
+                    f.storage
+                        .write_object(&Document { id: 7, value: 1 })
+                        .await
+                        .unwrap();
+                    f.storage.flush().await.unwrap();
+                    assert!(
+                        f.storage
+                            .read_object::<Document>(
+                                &7,
+                                ObjectVersion::Latest,
+                                NonZeroUsize::new(4096).unwrap()
+                            )
+                            .await
+                            .is_err()
+                    );
+                    assert_eq!(f.data.control.query_views.load(Ordering::SeqCst), 1);
+                    until(|| f.storage.status().read_bytes == 0).await;
+                    assert_eq!(f.data.control.releases.load(Ordering::SeqCst), 0);
+                    f.finish().await;
+                });
+        });
+    }
+}

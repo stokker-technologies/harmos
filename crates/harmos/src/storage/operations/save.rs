@@ -1,0 +1,115 @@
+/* ***
+ *
+ * Harmos
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * ***
+ */
+
+/* === Modules === */
+
+/* === Re-Exports === */
+
+/* === Imports === */
+
+// Standard Library Imports
+#[cfg(feature = "runtime")]
+use std::sync::Arc;
+
+// Third Party Imports
+
+// Local Imports
+#[cfg(feature = "runtime")]
+use crate::operations::{Context, Operation};
+use crate::operations::{OperationDeclaration, ReplaySafety, Visibility, WireOperation};
+#[cfg(feature = "runtime")]
+use crate::storage::StorageManager;
+use crate::storage::{MutationId, StorageCursor};
+#[cfg(feature = "runtime")]
+use crate::{Error, Result};
+
+/* === Constants === */
+
+/* === Macros === */
+crate::storage_codec::product!(SaveRequest {
+    mutation: crate::storage_codec::Nested<MutationId> => 1,
+    through: crate::storage_codec::Nested<StorageCursor> => 2,
+});
+
+/* === Type Aliases === */
+
+/* === Structs === */
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SaveRequest {
+    pub mutation: MutationId,
+    pub through: StorageCursor,
+}
+
+pub struct Save;
+
+#[cfg(feature = "runtime")]
+pub(super) struct Handler<C> {
+    storage: Arc<StorageManager<C>>,
+}
+
+/* === Enums === */
+
+/* === Traits === */
+
+/* === Implementations === */
+impl crate::MemorySize for SaveRequest {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>() + self.mutation.memory_size()
+            - std::mem::size_of::<MutationId>()
+            + self.through.memory_size()
+            - std::mem::size_of::<StorageCursor>()
+    }
+}
+
+impl OperationDeclaration for Save {
+    type Request = SaveRequest;
+    type Response = StorageCursor;
+    const ID: &'static str = "storage.save";
+    const POLICY: crate::operations::OperationPolicy = super::POLICY;
+    const VISIBILITY: Visibility = Visibility::Host;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+}
+
+impl WireOperation for Save {
+    const VERSION: u32 = 1;
+}
+
+#[cfg(feature = "runtime")]
+impl<C: 'static> Operation for Handler<C> {
+    type Declaration = Save;
+    type Resources = StorageManager<C>;
+    type Error = Error;
+    type Context<'a> = Context<'a>;
+    type Endpoints = ();
+
+    fn new(storage: Arc<StorageManager<C>>) -> Result<Self> {
+        Ok(Self { storage })
+    }
+
+    async fn run<'a>(
+        &mut self,
+        _: Self::Context<'a>,
+        request: &mut SaveRequest,
+        _: &mut Self::Endpoints,
+    ) -> Result<StorageCursor> {
+        self.storage
+            .save_once(&request.mutation, &request.through)
+            .await
+    }
+
+    fn classify(error: &Error) -> crate::operations::Failure {
+        super::classify(error)
+    }
+}
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */
