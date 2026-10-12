@@ -9,17 +9,29 @@
 
 /* === Modules === */
 pub(crate) mod cleanup;
-#[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
 pub(crate) mod dependencies;
 pub(crate) mod executor;
 pub(crate) mod instance;
 
-#[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
 mod listeners;
 mod task;
 
 /* === Re-Exports === */
-#[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
 pub(crate) use listeners::{Delivery as ListenerDelivery, Listener};
 pub(crate) use task::{Task, settle_all};
 

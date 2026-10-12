@@ -39,7 +39,7 @@ use tokio::sync::{Semaphore, mpsc};
 // Local Imports
 use super::app::App;
 use harmos::operations::{Context, Operation, OperationPolicy, RetryPolicy};
-use harmos::{Capacity, Lane, Runtime};
+use harmos::{Runtime, operations::Capacity, operations::Lane};
 
 /* === Constants === */
 
@@ -71,9 +71,7 @@ enum Lanes {
     Unbounded,
 }
 
-#[harmos::catalog]
-enum Operations {
-    #[operation(
+#[harmos::operation(
         request = (),
         response = (),
         id = "lanes.measure",
@@ -83,7 +81,11 @@ enum Operations {
             retries: RetryPolicy::Never,
         },
     )]
-    MeasureContract,
+struct MeasureContract;
+
+#[harmos::catalog]
+enum Operations {
+    MeasureContract(MeasureContract),
 }
 
 /* === Traits === */

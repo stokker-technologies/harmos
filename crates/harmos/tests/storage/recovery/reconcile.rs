@@ -29,7 +29,9 @@ use super::{
     record, schema,
 };
 use harmos::storage::{ReadLimits, RecordQuery};
-use harmos::{Builder, Error, Fault, Identifier, Position, Runtime, Service};
+use harmos::{
+    Builder, Error, Identifier, Runtime, services::Fault, services::Service, state::Position,
+};
 
 /* === Constants === */
 
@@ -123,7 +125,7 @@ async fn closed(storage: &StorageManager) {
 }
 
 async fn restore(
-    journal: harmos::StateManager<Bank>,
+    journal: harmos::state::StateManager<Bank>,
     storage: StorageManager<harmos::storage::ErasedCatalog>,
 ) -> harmos::Result<()> {
     let mut query = RecordQuery::new(schema(), |bytes, allowance| {
@@ -376,7 +378,7 @@ pub(super) fn contract_scenario() {
                     assert!(
                         builder()
                             .reconcile(|journal, _| async move {
-                                harmos::RecordManager::new(journal.clone())
+                                harmos::records::RecordManager::new(journal.clone())
                                     .publish(Noted("repair".into()))
                                     .await?;
                                 Ok(())
@@ -435,7 +437,7 @@ pub(super) fn contract_scenario() {
                             let task = tokio::task::spawn_local(async move {
                                 builder()
                                     .reconcile(|journal, _| async move {
-                                        harmos::RecordManager::new(journal.clone())
+                                        harmos::records::RecordManager::new(journal.clone())
                                             .publish(Noted("before panic".into()))
                                             .await?;
                                         panic!("controlled reconciliation panic");
@@ -469,7 +471,7 @@ pub(super) fn contract_scenario() {
                     {
                         let opening = builder()
                             .reconcile(|journal, _| async move {
-                                harmos::RecordManager::new(journal.clone())
+                                harmos::records::RecordManager::new(journal.clone())
                                     .publish(Noted("repair".into()))
                                     .await?;
                                 Ok(())

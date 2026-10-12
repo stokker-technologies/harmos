@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-#[path = "concurrency.rs"]
 mod concurrency;
 
 /* === Re-Exports === */
@@ -30,7 +29,7 @@ use crate::operations::{
     InputDeclaration, OperationDeclaration, OperationInstance, OutputDeclaration, StreamItem,
     StreamSettings,
 };
-use crate::{Error, MemorySize, OperationManager, Protobuf, Refusal};
+use crate::{Error, MemorySize, Protobuf, Refusal, operations::OperationManager};
 
 /* === Constants === */
 
@@ -63,7 +62,11 @@ pub enum Authority {
     TrustedHost(OperationManager),
 
     Binding(crate::operations::GrpcBinding),
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     Plugin(crate::operations::Caller),
 }
 
@@ -80,7 +83,11 @@ impl Authority {
             Self::TrustedHost(operations) => {
                 Self::TrustedHost(operations.with_context(context.0.clone()))
             }
-            #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+            #[cfg(any(
+                feature = "plugin",
+                feature = "plugin-guest",
+                feature = "plugin-sidecar"
+            ))]
             Self::Plugin(caller) => Self::Plugin(caller.with_context(context.0.clone())),
         }
     }
@@ -93,7 +100,11 @@ impl Authority {
         match self {
             Self::Binding(binding) => binding.submit::<O, P>(request, endpoints),
             Self::TrustedHost(operations) => operations.submit_charged::<O, P>(request, endpoints),
-            #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+            #[cfg(any(
+                feature = "plugin",
+                feature = "plugin-guest",
+                feature = "plugin-sidecar"
+            ))]
             Self::Plugin(caller) => caller.submit_charged::<O, P>(request, endpoints),
         }
     }
@@ -391,7 +402,11 @@ fn code(error: &Error) -> tonic::Code {
         Error::PermissionDenied | Error::OperationUnauthorized { .. } => {
             tonic::Code::PermissionDenied
         }
-        #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+        #[cfg(any(
+            feature = "plugin",
+            feature = "plugin-guest",
+            feature = "plugin-sidecar"
+        ))]
         Error::OperationCaller { .. } => tonic::Code::Unauthenticated,
         Error::TaskFailed { source, .. } => source
             .downcast_ref::<Status>()

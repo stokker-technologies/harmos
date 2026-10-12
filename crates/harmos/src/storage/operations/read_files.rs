@@ -15,21 +15,21 @@
 
 // Standard Library Imports
 use std::any::TypeId;
-#[cfg(feature = "runtime")]
+
 use std::sync::Arc;
 
 // Third Party Imports
 
 // Local Imports
 use super::{FileBytes, FileSelection};
-#[cfg(feature = "runtime")]
+
 use crate::operations::{Context, Operation, StreamOutput};
 use crate::operations::{Grpc, OperationDeclaration, OutputDeclaration, Visibility, WireOperation};
 use crate::schema::{Described, Field};
 use crate::storage::FileProgress;
-#[cfg(feature = "runtime")]
+
 use crate::storage::StorageManager;
-#[cfg(feature = "runtime")]
+
 use crate::{Error, Result};
 use harmos_contract::plugin::Grant;
 
@@ -41,7 +41,7 @@ use harmos_contract::plugin::Grant;
 
 /* === Structs === */
 pub struct ReadFiles;
-#[cfg(feature = "runtime")]
+
 pub(super) struct Handler<C> {
     storage: Arc<StorageManager<C>>,
 }
@@ -60,6 +60,7 @@ impl OperationDeclaration for ReadFiles {
     fn grant(selection: &FileSelection) -> Option<Grant> {
         Some(super::survey(&selection.file.id))
     }
+
     fn endpoint_types() -> (Option<TypeId>, Option<TypeId>) {
         (None, Some(TypeId::of::<FileBytes>()))
     }
@@ -77,7 +78,7 @@ impl WireOperation for ReadFiles {
     }
     const OUTPUT: Option<&'static [Field]> = Some(FileBytes::FIELDS);
 }
-#[cfg(feature = "runtime")]
+
 impl<C: 'static> Operation for Handler<C> {
     type Declaration = ReadFiles;
     type Resources = StorageManager<C>;
@@ -87,6 +88,7 @@ impl<C: 'static> Operation for Handler<C> {
     fn new(storage: Arc<StorageManager<C>>) -> Result<Self> {
         Ok(Self { storage })
     }
+
     async fn run<'a>(
         &mut self,
         _: Self::Context<'a>,

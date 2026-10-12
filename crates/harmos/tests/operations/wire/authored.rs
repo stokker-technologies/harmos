@@ -83,9 +83,7 @@ enum Mode {
     PanicRun,
 }
 
-#[harmos::catalog]
-enum Operations {
-    #[operation(
+#[harmos::operation(
         request = Mode,
         response = Answer,
         id = "authored.read",
@@ -100,7 +98,11 @@ enum Operations {
         replay = ReplaySafety::Idempotent,
         key = cache_key,
     )]
-    ReadContract,
+struct ReadContract;
+
+#[harmos::catalog]
+enum Operations {
+    ReadContract(ReadContract),
 }
 
 /* === Traits === */

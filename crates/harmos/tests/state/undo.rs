@@ -19,7 +19,7 @@ use crate::scenario_runtime;
 use support::{Change, Refusal, VAULT, alice, bob, deposit, deposit_to, ledger, runtime, withdraw};
 // Local Imports
 use crate::support;
-use harmos::{At, Error, Focus, Position, Reversals};
+use harmos::{Error, state::At, state::Focus, state::Position, state::Reversals};
 
 /* === Constants === */
 

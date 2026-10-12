@@ -39,7 +39,7 @@ mod feeds {
     #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
     pub struct Run(pub u64);
 
-    impl harmos::Track for Run {
+    impl harmos::streams::Track for Run {
         fn label(&self) -> String {
             format!("run_{}", self.0)
         }
@@ -48,7 +48,7 @@ mod feeds {
     #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
     pub struct Probe(pub u64);
 
-    impl harmos::Track for Probe {
+    impl harmos::streams::Track for Probe {
         fn label(&self) -> String {
             format!("probe_{}", self.0)
         }
@@ -97,9 +97,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 // Local Imports
 use harmos::{
-    Application, Catalog, DecodeError, Definition, DefinitionId, Entry, Envelope, Incompatible,
-    Invert, JournalConsumer, Kind, Payload, Position, PrincipalId, Recorded, Recovery,
-    Registration, Runtime, Source, Transaction, Undoable,
+    Application, DefinitionId, Runtime, runtime::Catalog, runtime::Incompatible,
+    runtime::Registration, state::DecodeError, state::Entry, state::Envelope, state::Invert,
+    state::Kind, state::Position, state::PrincipalId, state::Recorded, state::Transaction,
+    state::Undoable, storage::JournalConsumer, storage::Payload, storage::Recovery,
+    storage::Source, streams::Definition,
 };
 
 /* === Constants === */
@@ -571,7 +573,7 @@ impl Source<Bank> for Ancient {
     }
 }
 
-impl harmos::CatalogCodec for Change {
+impl harmos::state::CatalogCodec for Change {
     fn identify(&self) -> (harmos::DefinitionId, u32) {
         (
             harmos::DefinitionId::new(match self {
@@ -596,7 +598,7 @@ impl harmos::CatalogCodec for Change {
     }
 }
 
-impl harmos::CatalogCodec for Fact {
+impl harmos::state::CatalogCodec for Fact {
     fn identify(&self) -> (harmos::DefinitionId, u32) {
         (harmos::DefinitionId::new("ledger.noted"), 1)
     }
@@ -607,7 +609,7 @@ impl harmos::CatalogCodec for Fact {
     }
 }
 
-impl harmos::RecordCatalog for Fact {
+impl harmos::state::RecordCatalog for Fact {
     fn restore(
         id: &harmos::DefinitionId,
         version: u32,
@@ -620,7 +622,7 @@ impl harmos::RecordCatalog for Fact {
     }
 }
 
-impl harmos::TransactionCatalog<Ledger> for Change {}
+impl harmos::state::TransactionCatalog<Ledger> for Change {}
 
 /* === Public Functions === */
 pub fn catalog() -> impl Registration<Bank> {

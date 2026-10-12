@@ -22,10 +22,10 @@ use super::caller::Source;
 use super::manager::{Entry, Submission};
 use super::wire::EncodedInput;
 use super::{EncodedInvocation, OperationManager};
-use crate::load::{PluginKind, PluginLifecycleAuthority, PluginLifecyclePhase, PluginScope};
 use crate::operations::lifecycle::{Action, InitializeRequest};
+use crate::plugin::{PluginKind, PluginLifecycleAuthority, PluginLifecyclePhase, PluginScope};
 
-#[cfg(all(feature = "guest-host", not(target_arch = "wasm32")))]
+#[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 use crate::operations::{OperationDeclaration, OperationPolicy, RetryPolicy};
 use crate::supervision::executor;
 use crate::{Error, Message, Result};
@@ -37,7 +37,7 @@ use crate::{Error, Message, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
-#[cfg(all(feature = "guest-host", not(target_arch = "wasm32")))]
+#[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 pub(super) struct Encoded;
 
 #[must_use = "retain SDK entries through original invocation settlement"]
@@ -52,7 +52,7 @@ pub struct PluginSdkRegistration {
 /* === Traits === */
 
 /* === Implementations === */
-#[cfg(all(feature = "guest-host", not(target_arch = "wasm32")))]
+#[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 impl OperationDeclaration for Encoded {
     type Request = Vec<u8>;
     type Response = Vec<u8>;
@@ -202,7 +202,7 @@ impl PluginSdkRegistration {
             });
         }
         let preparation = self.operations.claim_preparation(bytes)?;
-        #[cfg(feature = "sidecar-host")]
+        #[cfg(feature = "plugin-sidecar")]
         let native_capacity = entry
             .native
             .as_ref()
@@ -235,7 +235,7 @@ impl PluginSdkRegistration {
             EncodedInput {
                 payload,
                 preparation: Some(preparation),
-                #[cfg(feature = "sidecar-host")]
+                #[cfg(feature = "plugin-sidecar")]
                 native_capacity,
             },
         )?;
@@ -260,7 +260,7 @@ impl PluginSdkRegistration {
 
     pub async fn settle(&self) -> Result<()> {
         self.operations.settle_owned_entries(&self.entries).await?;
-        #[cfg(feature = "sidecar-host")]
+        #[cfg(feature = "plugin-sidecar")]
         if self.entries[0].plugin().is_some_and(PluginScope::is_closed)
             && let Some(binding) = &self.entries[0].native
         {
@@ -270,7 +270,7 @@ impl PluginSdkRegistration {
     }
 
     pub fn observer_outcome(&self) -> Result<()> {
-        #[cfg(feature = "sidecar-host")]
+        #[cfg(feature = "plugin-sidecar")]
         if let Some(binding) = &self.entries[0].native {
             binding.observer_outcome()?;
         }

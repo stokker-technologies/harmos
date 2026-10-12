@@ -23,7 +23,7 @@ use std::time::Duration;
 use super::{
     FollowQuery, Query, QueryOptions, QueryResult, decoded_limit, remaining_budget, sealed,
 };
-use crate::object_catalog::{LOOKUP_MEMORY_BYTES, ObjectDefinition};
+use crate::storage::catalog::{LOOKUP_MEMORY_BYTES, ObjectDefinition};
 use crate::storage::{
     ObjectEntry, ObjectKey, ObjectVersions, QueryFollower, QueryLimits, ReadHistory, ReadKind,
     ReadLimits, ReadSelection, SchemaKey, StorageManager, StorageView,
@@ -70,6 +70,7 @@ impl EncodedObjectQuery {
         selection.history = self.history;
         selection
     }
+
     fn check<C>(&self, manager: &StorageManager<C>, limits: QueryLimits) -> Result<()> {
         manager
             .inner
@@ -93,9 +94,11 @@ impl<C> Query<C> for EncodedObjectQuery {
     fn options(&self) -> &QueryOptions {
         &self.options
     }
+
     fn preflight(&self, manager: &StorageManager<C>, limits: QueryLimits) -> Result<()> {
         self.check(manager, limits)
     }
+
     fn open(
         self,
         view: StorageView,

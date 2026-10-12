@@ -8,29 +8,29 @@
  */
 
 /* === Modules === */
-#[cfg(feature = "runtime")]
+
 pub mod authentication;
-#[cfg(feature = "runtime")]
+
 mod codec;
-#[cfg(feature = "runtime")]
+
 mod decoding;
 mod envelope;
 mod generation;
-#[cfg(feature = "runtime")]
+
 mod ingress;
-#[cfg(feature = "runtime")]
+
 mod input;
-#[cfg(feature = "runtime")]
+
 mod listener;
-#[cfg(feature = "runtime")]
+
 mod manager;
-#[cfg(feature = "runtime")]
+
 pub mod middleware;
-#[cfg(feature = "runtime")]
+
 mod reflection;
-#[cfg(feature = "runtime")]
+
 pub(crate) mod routing;
-#[cfg(feature = "runtime")]
+
 pub mod server;
 
 pub mod __private {
@@ -38,22 +38,22 @@ pub mod __private {
 }
 
 /* === Re-Exports === */
-#[cfg(feature = "runtime")]
+
 pub use codec::{Codec, Encode, EncodeSettings, Encoder};
-#[cfg(feature = "runtime")]
+
 pub use decoding::{DecodeSettings, Decoder};
 pub use envelope::{InputEnvelope, OutputEnvelope};
 pub use generation::{GenerateError, GeneratedService, Method, generate_server};
 pub use harmos_contract::grpc::{Artifacts, DescriptorError, ExportError, descriptor};
-#[cfg(feature = "runtime")]
+
 pub use input::{InputError, input, open};
-#[cfg(feature = "runtime")]
+
 pub use manager::{Attached, GrpcManager, Settings};
 
 /* === Imports === */
 
 // Standard Library Imports
-#[cfg(feature = "runtime")]
+
 use std::{
     future::Future,
     pin::Pin,
@@ -62,9 +62,9 @@ use std::{
 };
 
 // Third Party Imports
-#[cfg(feature = "runtime")]
+
 use futures_core::Stream;
-#[cfg(feature = "runtime")]
+
 use tokio::sync::mpsc;
 use tonic::Status;
 
@@ -75,18 +75,17 @@ use tonic::Status;
 /* === Macros === */
 
 /* === Type Aliases === */
-#[cfg(feature = "runtime")]
+
 type Settlement<R, E> = Pin<Box<dyn Future<Output = Result<Arc<R>, E>> + Send>>;
 
 /* === Structs === */
-#[cfg(feature = "runtime")]
+
 pub struct ResponseStream<O: crate::operations::OperationDeclaration, T, E = crate::Error> {
     pending: Settlement<O::Response, E>,
     items: Option<mpsc::Receiver<crate::operations::StreamItem<T>>>,
     result: Option<Result<Arc<O::Response>, E>>,
 }
 
-#[cfg(feature = "runtime")]
 struct Pending<O: crate::operations::OperationDeclaration> {
     instance: crate::operations::OperationInstance<O>,
     delivered: bool,
@@ -103,7 +102,7 @@ pub struct Opening {
 }
 
 /* === Enums === */
-#[cfg(feature = "runtime")]
+
 pub enum Event<T, R> {
     Item(T),
     Completion(R),
@@ -118,7 +117,7 @@ enum State<R> {
 /* === Traits === */
 
 /* === Implementations === */
-#[cfg(feature = "runtime")]
+
 impl<O: crate::operations::OperationDeclaration, T, E: Unpin> Stream for ResponseStream<O, T, E> {
     type Item = Result<Event<crate::operations::StreamItem<T>, Arc<O::Response>>, E>;
 
@@ -154,7 +153,6 @@ impl<O: crate::operations::OperationDeclaration, T, E: Unpin> Stream for Respons
     }
 }
 
-#[cfg(feature = "runtime")]
 impl<O: crate::operations::OperationDeclaration> Drop for Pending<O> {
     fn drop(&mut self) {
         if !self.delivered {
@@ -219,7 +217,6 @@ impl<R> Completion<R> {
 }
 
 impl Opening {
-    #[cfg(feature = "runtime")]
     fn validate<R, I>(
         &mut self,
         envelope: InputEnvelope<R, I>,
@@ -275,7 +272,7 @@ impl Opening {
 }
 
 /* === Public Functions === */
-#[cfg(feature = "runtime")]
+
 pub fn stream<O: crate::operations::OutputDeclaration>(
     instance: crate::operations::OperationInstance<O>,
     items: crate::operations::StreamInput<O::Item>,
@@ -287,7 +284,6 @@ pub fn stream<O: crate::operations::OutputDeclaration>(
     }
 }
 
-#[cfg(feature = "runtime")]
 pub fn exchange<O, S>(
     instance: crate::operations::OperationInstance<O>,
     input: crate::operations::StreamOutput<<O as crate::operations::InputDeclaration>::Item>,
@@ -312,7 +308,6 @@ where
     }
 }
 
-#[cfg(feature = "runtime")]
 pub fn response<O: crate::operations::OperationDeclaration>(
     instance: crate::operations::OperationInstance<O>,
 ) -> impl std::future::Future<Output = crate::Result<std::sync::Arc<O::Response>>> + Send {

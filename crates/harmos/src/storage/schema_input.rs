@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-#[path = "schema_input/fields.rs"]
 mod fields;
 
 /* === Re-Exports === */
@@ -21,8 +20,8 @@ mod fields;
 
 // Local Imports
 use crate::schema::Field;
+use crate::storage::codec::{Nested, product};
 use crate::storage::{SchemaKey, StorageCursor};
-use crate::storage_codec::{Nested, product};
 use crate::{Error, MemorySize, Result};
 
 /* === Constants === */
@@ -62,6 +61,7 @@ impl SchemaInput {
             fields: fields.to_vec(),
         })
     }
+
     pub fn fields(&self) -> &[Field] {
         &self.fields
     }

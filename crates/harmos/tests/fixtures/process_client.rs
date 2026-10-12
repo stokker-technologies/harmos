@@ -21,7 +21,7 @@ use std::time::Duration;
 use super::contract;
 use contract::{Marks, POLICY, Probe, Queries, Read, Readings, Step};
 use harmos::operations::{Operation, OperationPolicy, WireTable};
-use harmos::sidecar::{Refusal, Supervisor};
+use harmos::plugin::sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
 

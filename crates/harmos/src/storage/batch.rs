@@ -104,6 +104,7 @@ impl<'a> StorageBatch<'a> {
             (end > start).then(|| part.slice(start, end))
         })
     }
+
     pub fn entries(&self) -> impl Iterator<Item = StorageEntry<'a>> + '_ {
         self.parts().flat_map(StoragePart::entries)
     }
@@ -151,18 +152,23 @@ impl<'a> StorageBatch<'a> {
             bytes,
         })
     }
+
     pub fn first(&self) -> &'a StorageCursor {
         self.first
     }
+
     pub fn through(&self) -> &'a StorageCursor {
         self.through
     }
+
     pub fn len(&self) -> usize {
         self.len
     }
+
     pub fn is_empty(&self) -> bool {
         false
     }
+
     pub fn encoded_bytes(&self) -> usize {
         self.bytes
     }
@@ -211,9 +217,11 @@ impl<'a> StoragePart<'a> {
             Self::Files(values) => values.len(),
         }
     }
+
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
     pub fn entries(self) -> impl Iterator<Item = StorageEntry<'a>> + 'a {
         (0..self.len()).map(move |index| match self {
             Self::Schemas(values) => StorageEntry::Schema(&values[index]),
@@ -235,6 +243,7 @@ impl<'a> StorageEntry<'a> {
             Self::File(value) => &value.position,
         }
     }
+
     pub(super) fn encoded_bytes(self) -> Result<usize> {
         match self {
             Self::Schema(value) => value.encoded_bytes(),

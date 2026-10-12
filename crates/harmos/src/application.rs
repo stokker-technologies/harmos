@@ -32,13 +32,13 @@
 pub trait Application: Send + Sync + 'static {
     type State: Send + Sync + 'static;
 
-    type Transaction: crate::Transaction<Self::State, Error: Send + Sync + 'static>
-        + crate::TransactionCatalog<Self::State>
+    type Transaction: crate::state::Transaction<Self::State, Error: Send + Sync + 'static>
+        + crate::state::TransactionCatalog<Self::State>
         + Send
         + Sync
         + 'static;
 
-    type Record: crate::RecordCatalog + Send + Sync + 'static;
+    type Record: crate::state::RecordCatalog + Send + Sync + 'static;
 
     type Streams: Send + Sync + 'static;
 

@@ -25,7 +25,7 @@ use tokio::sync::watch;
 use super::manager::{Activation, Cleanup, ErasedResident, Failure};
 use super::{Fault, Service, ServiceExit, ServicePolicy, ServiceStatus};
 use crate::supervision::{Backoff, executor};
-use crate::{Application, Error, FactSource, Result, SystemFact};
+use crate::{Application, Error, Result, state::FactSource, state::SystemFact};
 
 /* === Constants === */
 
@@ -109,7 +109,7 @@ pub(super) async fn run<A: Application>(
             observers: services.observers.clone(),
             stopping: stopping.subscribe(),
             ready,
-            #[cfg(feature = "sidecar-host")]
+            #[cfg(feature = "plugin-sidecar")]
             provider: cleanup.lifecycle.clone(),
         };
         let mut attempt = Box::pin(crate::supervision::attempt(
@@ -333,7 +333,7 @@ async fn settle<A: Application>(
                 observers: services.observers.clone(),
                 stopping: stopping.subscribe(),
                 ready: watch::channel(false).0,
-                #[cfg(feature = "sidecar-host")]
+                #[cfg(feature = "plugin-sidecar")]
                 provider: _provider.clone(),
             };
             if context

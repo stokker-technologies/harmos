@@ -22,16 +22,16 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 // Local Imports
 use super::wire::Text;
-use harmos::load::{
-    PluginArtifact, PluginBackend, PluginCaller, PluginContributions, PluginDefinition,
-    PluginDefinitions, PluginEndpoint, PluginLifecycle, PluginLifecycleAuthority, PluginManager,
-    PluginScope, PluginTransition, Requirement, Router,
-};
 use harmos::operations::{
     Context, Operation, OperationDeclaration, OperationPolicy, PluginRegistration, Visibility,
     WireDeclaration, WireOperation,
 };
-use harmos::{Error, Message, OperationManager, Result};
+use harmos::plugin::{
+    PluginArtifact, PluginBackend, PluginCaller, PluginContributions, PluginDefinition,
+    PluginDefinitions, PluginEndpoint, PluginLifecycle, PluginLifecycleAuthority, PluginManager,
+    PluginScope, PluginTransition, Requirement, Router,
+};
+use harmos::{Error, Message, Result, operations::OperationManager};
 use harmos_contract::inventory::contracts::Required;
 use harmos_contract::plugin::Grant;
 
@@ -185,9 +185,9 @@ impl PluginLifecycle for Host {
     }
     fn prepare(&mut self, definition: &PluginDefinition) -> Result<Backends> {
         Ok(match definition.kind() {
-            harmos::load::PluginKind::Guest => PluginBackend::Guest(Resources::default()),
-            harmos::load::PluginKind::Sidecar => PluginBackend::Sidecar(Resources::default()),
-            harmos::load::PluginKind::Embedded => PluginBackend::Embedded(Resources::default()),
+            harmos::plugin::PluginKind::Guest => PluginBackend::Guest(Resources::default()),
+            harmos::plugin::PluginKind::Sidecar => PluginBackend::Sidecar(Resources::default()),
+            harmos::plugin::PluginKind::Embedded => PluginBackend::Embedded(Resources::default()),
         })
     }
     async fn fence(&mut self, _: PluginTransition, _: &[PluginDefinition]) -> Result<()> {

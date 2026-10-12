@@ -21,7 +21,7 @@ mod scenario_runtime;
 #[path = "../../support/mod.rs"]
 mod support;
 use fixture::*;
-#[cfg(any(feature = "guest", feature = "sidecar"))]
+#[cfg(any(feature = "plugin-guest", feature = "plugin-sidecar"))]
 #[path = "artifact.rs"]
 mod artifact;
 #[path = "authored.rs"]
@@ -34,12 +34,20 @@ mod grpc;
 #[cfg(feature = "grpc")]
 #[path = "grpc_manager.rs"]
 mod grpc_manager;
-#[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
 #[path = "host.rs"]
 mod host;
 #[path = "owned_wire.rs"]
 mod owned_wire;
-#[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
 #[path = "plugin.rs"]
 mod plugin;
 #[path = "cases.rs"]
@@ -85,11 +93,19 @@ fn portable_calls() {
 
 #[test]
 fn call_projections() {
-    #[cfg(any(feature = "guest", feature = "sidecar"))]
+    #[cfg(any(feature = "plugin-guest", feature = "plugin-sidecar"))]
     artifact::contract_scenario();
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     host::contract_scenario();
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     plugin::contract_scenario();
 }
 

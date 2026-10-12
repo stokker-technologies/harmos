@@ -37,7 +37,7 @@ pub use harmos_contract::{
     ConfigError, Plugin, RESERVED, Refusal, Registrar, Registration, RegistrationError, StreamSpec,
     UNKNOWN, UNREADABLE, encode_config, reserved, validate_config,
 };
-pub use harmos_contract::{catalog, operations};
+pub use harmos_contract::{catalog, listeners, operations};
 
 pub use harmos_contract::StreamDeclaration;
 #[cfg(feature = "kit")]
@@ -51,10 +51,17 @@ pub use kit::{
 #[cfg(feature = "transport")]
 pub use wire::{Frame, ObserverControl, ObserverUpdate, PluginCatalog, Publication};
 
+#[cfg(feature = "derive")]
+pub use harmos_contract::observer;
+pub use harmos_contract::plugin;
 pub use harmos_contract::schema;
+pub use harmos_contract::streams;
+pub use harmos_contract::{
+    Axial, Batched, Definition, Metadata, Prefix, StreamField, Track, Tracked,
+};
 pub use harmos_contract::{MemorySize, Message, MessageError, RowMetadata, Storable};
 #[cfg(feature = "derive")]
-pub use harmos_contract::{message, operation};
+pub use harmos_contract::{listener, message, operation, stream};
 
 #[cfg(feature = "kit")]
 pub use kit::__private;
@@ -79,6 +86,10 @@ pub use kit::__private;
 /* === Traits === */
 
 /* === Implementations === */
+#[cfg(feature = "kit")]
+impl harmos_contract::__private::CarrierContext for Supervisor {
+    const FACILITY: &'static str = "sidecar";
+}
 
 /* === Public Functions === */
 

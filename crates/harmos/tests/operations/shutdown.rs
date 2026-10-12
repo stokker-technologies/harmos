@@ -60,9 +60,7 @@ enum Mode {
     Sleep,
 }
 
-#[harmos::catalog]
-enum Operations {
-    #[operation(
+#[harmos::operation(
         request = Mode,
         response = (),
         id = "shutdown.wait",
@@ -72,7 +70,11 @@ enum Operations {
             retries: RetryPolicy::Never,
         },
     )]
-    WaitContract,
+struct WaitContract;
+
+#[harmos::catalog]
+enum Operations {
+    WaitContract(WaitContract),
 }
 
 /* === Traits === */

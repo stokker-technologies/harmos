@@ -84,6 +84,7 @@ impl<T: Protobuf + 'static> Encode for Arc<T> {
     fn wire_len(&self) -> usize {
         self.encoded_len()
     }
+
     fn write(&self, bytes: &mut Vec<u8>) {
         self.encode_into(bytes);
     }
@@ -100,6 +101,7 @@ impl<I: Protobuf + 'static, R: Protobuf + 'static> Encode for Event<StreamItem<I
         };
         size(payload)
     }
+
     fn write(&self, bytes: &mut Vec<u8>) {
         match self {
             Self::Item(value) => encode(1, &**value, bytes),
@@ -138,6 +140,7 @@ impl<D: Protobuf + MemorySize + 'static, E: Encode> tonic::codec::Codec for Code
             response: PhantomData,
         }
     }
+
     fn decoder(&mut self) -> Self::Decoder {
         self.decoder.fork()
     }
@@ -172,6 +175,7 @@ impl<E: Encode> tonic::codec::Encoder for Encoder<E> {
         destination.put_slice(self.message(&item)?);
         Ok(())
     }
+
     fn buffer_settings(&self) -> BufferSettings {
         // Flush Each Protobuf Instead Of Accumulating An Unbounded Ready Batch.
         BufferSettings::new(self.settings.buffer_bytes.get(), 1)

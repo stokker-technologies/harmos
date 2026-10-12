@@ -24,7 +24,7 @@ use std::sync::Arc;
 // Local Imports
 use contract::{Inspect, POLICY, Queries};
 use harmos::operations::{Operation, OperationPolicy, WireTable, host};
-use harmos::sidecar::{Refusal, Supervisor};
+use harmos::plugin::sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
 
@@ -143,7 +143,7 @@ fn main() {
         .build()
         .unwrap();
     runtime
-        .block_on(harmos::sidecar::run_plugin::<Process>(
+        .block_on(harmos::plugin::sidecar::run_plugin::<Process>(
             NonZeroUsize::new(2).unwrap(),
         ))
         .unwrap();

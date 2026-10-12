@@ -27,7 +27,7 @@ use tokio::sync::Notify;
 // Local Imports
 use super::{Lanes, app::App};
 use harmos::operations::{Context, Operation, OperationPolicy, RetryPolicy};
-use harmos::{Error, Lane, Runtime};
+use harmos::{Error, Runtime, operations::Lane};
 
 /* === Constants === */
 const POLICY: OperationPolicy = OperationPolicy {
@@ -71,14 +71,20 @@ enum Mode {
     FullLane,
 }
 
+#[harmos::operation(request = Mode, response = usize, id = "scoped.parent", policy = POLICY)]
+struct ParentContract;
+
+#[harmos::operation(request = bool, response = usize, id = "scoped.bound", policy = POLICY)]
+struct BoundContract;
+
+#[harmos::operation(request = bool, response = usize, id = "scoped.free", policy = POLICY)]
+struct FreeContract;
+
 #[harmos::catalog]
 enum Operations {
-    #[operation(request = Mode, response = usize, id = "scoped.parent", policy = POLICY)]
-    ParentContract,
-    #[operation(request = bool, response = usize, id = "scoped.bound", policy = POLICY)]
-    BoundContract,
-    #[operation(request = bool, response = usize, id = "scoped.free", policy = POLICY)]
-    FreeContract,
+    ParentContract(ParentContract),
+    BoundContract(BoundContract),
+    FreeContract(FreeContract),
 }
 
 /* === Traits === */

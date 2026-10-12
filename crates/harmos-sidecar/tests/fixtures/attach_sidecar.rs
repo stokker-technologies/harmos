@@ -81,7 +81,7 @@ static OBSERVERS: [u8; harmos_sidecar::inventory::observers::encoded_len(
 fn main() {
     // `#[used]` only reaches the compiler; MSVC `link.exe` sweeps data no code
     // references, so the declaration is read from live code the way
-    // `harmos::sidecar::run_plugin` reads generated markers.
+    // `harmos::plugin::sidecar::run_plugin` reads generated markers.
     std::hint::black_box([
         HARMOS_DECLARATION.as_slice(),
         HARMOS_RESTART.as_slice(),

@@ -30,7 +30,9 @@ use super::app::App;
 use harmos::services::{
     ServiceDefinition, ServiceKey, ServiceLease, ServiceLifecycle, ServiceOutcome, ServicePhase,
 };
-use harmos::{Fault, Resident, Runtime, Service, ServicePolicy};
+use harmos::{
+    Runtime, services::Fault, services::Resident, services::Service, services::ServicePolicy,
+};
 
 /* === Constants === */
 
@@ -321,7 +323,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(trace.attempts.load(Ordering::SeqCst), 2);
                     assert!(matches!(
                         runtime.services.status(lease.key()).unwrap().status,
-                        harmos::ServiceStatus::Running { credit: 2 }
+                        harmos::services::ServiceStatus::Running { credit: 2 }
                     ));
                     // Cancellation Must Not Wait For The Pending 250 ms Health Refill.
                     tokio::time::timeout(Duration::from_millis(50), runtime.stop())

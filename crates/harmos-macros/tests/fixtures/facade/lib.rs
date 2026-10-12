@@ -10,13 +10,13 @@
 
 /* === Modules === */
 pub mod __harmos {
-    pub use harmos::{artifact, catalog, listeners, operations, schema};
-    pub use harmos::{Batched, Definition, MemorySize, Message, MessageError, Metadata, RowMetadata, StreamField, StreamSpec, __private, guest, sidecar, Capacity, Lane, LaneSet, Scope};
+    pub use harmos::{catalog, listeners, operations, plugin, schema, streams};
+    pub use harmos::{MemorySize, Message, MessageError, Metadata, RowMetadata, StreamField, StreamSpec, __private};
 }
 
 /* === Re-Exports === */
 pub use serde::*;
-pub use harmos::{stream, message, plugin, observer, listener, catalog, lanes};
+pub use harmos::{stream, message, plugin, observer, listener, catalog, lanes, operation};
 
 /* === Imports === */
 // Standard Library Imports

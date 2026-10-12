@@ -27,7 +27,7 @@ use std::time::Duration;
 // Local Imports
 use super::{Lanes, app::App};
 use harmos::operations::{Context, Operation, OperationPolicy, RetryPolicy};
-use harmos::{Error, Position, Runtime};
+use harmos::{Error, Runtime, state::Position};
 
 /* === Constants === */
 
@@ -48,9 +48,7 @@ struct Read {
 }
 
 /* === Enums === */
-#[harmos::catalog]
-enum Operations {
-    #[operation(
+#[harmos::operation(
         request = bool,
         response = (String, usize),
         id = "resources.read",
@@ -60,7 +58,11 @@ enum Operations {
             retries: RetryPolicy::Never,
         },
     )]
-    ReadContract,
+struct ReadContract;
+
+#[harmos::catalog]
+enum Operations {
+    ReadContract(ReadContract),
 }
 
 /* === Traits === */

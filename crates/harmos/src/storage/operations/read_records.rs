@@ -15,21 +15,21 @@
 
 // Standard Library Imports
 use std::any::TypeId;
-#[cfg(feature = "runtime")]
+
 use std::sync::Arc;
 
 // Third Party Imports
 
 // Local Imports
 use super::DataSelection;
-#[cfg(feature = "runtime")]
+
 use crate::operations::{Context, Operation, StreamOutput};
 use crate::operations::{Grpc, OperationDeclaration, OutputDeclaration, Visibility, WireOperation};
 use crate::schema::{Described, Field};
-#[cfg(feature = "runtime")]
+
 use crate::storage::{RecordQuery, StorageManager};
 use crate::storage::{StorageCursor, StoredRecord};
-#[cfg(feature = "runtime")]
+
 use crate::{Error, MemorySize, Result};
 use harmos_contract::plugin::Grant;
 
@@ -42,7 +42,6 @@ use harmos_contract::plugin::Grant;
 /* === Structs === */
 pub struct ReadRecords;
 
-#[cfg(feature = "runtime")]
 pub(super) struct Handler<C> {
     storage: Arc<StorageManager<C>>,
 }
@@ -61,6 +60,7 @@ impl OperationDeclaration for ReadRecords {
     fn grant(selection: &DataSelection) -> Option<Grant> {
         Some(super::survey(&selection.schema.id))
     }
+
     fn endpoint_types() -> (Option<TypeId>, Option<TypeId>) {
         (None, Some(TypeId::of::<StoredRecord>()))
     }
@@ -81,7 +81,6 @@ impl WireOperation for ReadRecords {
     const OUTPUT: Option<&'static [Field]> = Some(StoredRecord::FIELDS);
 }
 
-#[cfg(feature = "runtime")]
 impl<C: 'static> Operation for Handler<C> {
     type Declaration = ReadRecords;
     type Resources = StorageManager<C>;

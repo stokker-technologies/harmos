@@ -38,10 +38,16 @@ pub(crate) struct HarmosPath(Path);
 /* === Implementations === */
 impl HarmosPath {
     pub(crate) fn catalog() -> Self {
-        for package in ["harmos", "dokime"] {
+        for package in [
+            "harmos",
+            "dokime",
+            "harmos-guest",
+            "harmos-sidecar",
+            "harmos-contract",
+        ] {
             if let Ok(found) = proc_macro_crate::crate_name(package) {
                 let name = match found {
-                    proc_macro_crate::FoundCrate::Itself => package.to_owned(),
+                    proc_macro_crate::FoundCrate::Itself => package.replace('-', "_"),
                     proc_macro_crate::FoundCrate::Name(name) => name,
                 };
                 let name = syn::Ident::new(&name, proc_macro2::Span::call_site());
@@ -54,11 +60,11 @@ impl HarmosPath {
             }
         }
 
-        Self::resolve(None)
+        Self(syn::parse_quote!(::harmos))
     }
 
     pub(crate) fn resolve(explicit: Option<Path>) -> Self {
-        Self(explicit.unwrap_or_else(|| syn::parse_quote!(::harmos)))
+        explicit.map(Self).unwrap_or_else(Self::catalog)
     }
 }
 

@@ -32,7 +32,7 @@ use crate::operations::{
 };
 use crate::schema::Described;
 use crate::services::{NativeEndpoint, SidecarError};
-use crate::{Error, Identifier, Lane, Message, Result};
+use crate::{Error, Identifier, Message, Result, operations::Lane};
 
 /* === Constants === */
 const MAX_NATIVE_OPERATIONS: usize = 1024;
@@ -151,6 +151,7 @@ impl super::WireVisitor for Project<'_, '_> {
         self.bindings
             .register_owned_wire_at::<NativeOperation<O, ()>>(self.lane, self.resources)
     }
+
     fn upload<O>(self) -> Self::Entry
     where
         O: WireOperation + crate::operations::InputDeclaration,
@@ -164,6 +165,7 @@ impl super::WireVisitor for Project<'_, '_> {
                 self.resources,
             )
     }
+
     fn download<O>(self) -> Self::Entry
     where
         O: WireOperation + crate::operations::OutputDeclaration,
@@ -177,6 +179,7 @@ impl super::WireVisitor for Project<'_, '_> {
                 self.resources,
             )
     }
+
     fn exchange<O>(self) -> Self::Entry
     where
         O: WireOperation
@@ -215,14 +218,17 @@ impl crate::Protobuf for EncodedRequest {
     fn encode_to_vec(&self) -> Vec<u8> {
         self.payload.clone()
     }
+
     fn encoded_len(&self) -> usize {
         self.payload.len()
     }
+
     fn decoding_memory(bytes: &[u8]) -> std::result::Result<usize, crate::MessageError> {
         std::mem::size_of::<Self>()
             .checked_add(bytes.len())
             .ok_or_else(|| crate::MessageError::borrowed("forwarded request size overflows"))
     }
+
     fn decode(bytes: &[u8]) -> std::result::Result<Self, crate::MessageError> {
         Ok(Self {
             payload: bytes.to_vec(),
@@ -242,17 +248,21 @@ impl Message for Opaque {
     fn encode_to_vec(&self) -> Vec<u8> {
         self.0.clone()
     }
+
     fn encode_into(&self, bytes: &mut Vec<u8>) {
         bytes.extend_from_slice(&self.0);
     }
+
     fn encoded_len(&self) -> usize {
         self.0.len()
     }
+
     fn decoding_memory(bytes: &[u8]) -> std::result::Result<usize, crate::MessageError> {
         std::mem::size_of::<Self>()
             .checked_add(bytes.len())
             .ok_or_else(|| crate::MessageError::borrowed("forwarded payload size overflows"))
     }
+
     fn decode(bytes: &[u8]) -> std::result::Result<Self, crate::MessageError> {
         Ok(Self(bytes.to_vec()))
     }
@@ -267,22 +277,26 @@ impl crate::Protobuf for Opaque {
     fn encode_to_vec(&self) -> Vec<u8> {
         Message::encode_to_vec(self)
     }
+
     fn encode_into(&self, bytes: &mut Vec<u8>) {
         Message::encode_into(self, bytes);
     }
+
     fn encoded_len(&self) -> usize {
         Message::encoded_len(self)
     }
+
     fn decoding_memory(bytes: &[u8]) -> std::result::Result<usize, crate::MessageError> {
         <Self as Message>::decoding_memory(bytes)
     }
+
     fn decode(bytes: &[u8]) -> std::result::Result<Self, crate::MessageError> {
         <Self as Message>::decode(bytes)
     }
 }
 
 impl Native {
-    pub fn scope(&self) -> Option<&crate::load::PluginScope> {
+    pub fn scope(&self) -> Option<&crate::plugin::PluginScope> {
         self.endpoint.scope()
     }
 
@@ -351,7 +365,7 @@ impl Native {
             operations.clone(),
             scope,
             entries,
-            crate::load::PluginKind::Sidecar,
+            crate::plugin::PluginKind::Sidecar,
         )
     }
 }
@@ -804,6 +818,7 @@ impl<E: super::StreamEndpoints> Operation for EncodedOperation<E> {
         };
         Ok(Opaque(payload))
     }
+
     async fn finalize(&mut self) -> std::result::Result<(), NativeError> {
         let Some(state) = self.state.as_mut() else {
             return Ok(());
@@ -811,9 +826,11 @@ impl<E: super::StreamEndpoints> Operation for EncodedOperation<E> {
 
         self.binding.native.finalize_encoded(state).await
     }
+
     fn transferred(&self) -> bool {
         self.transferred.load(Ordering::Acquire)
     }
+
     fn classify(error: &NativeError) -> Failure {
         classify(error)
     }
@@ -947,7 +964,7 @@ pub(super) fn bindings(
     lane: &'static str,
     native: Arc<Native>,
     capacity: NonZeroUsize,
-    scope: &crate::load::PluginScope,
+    scope: &crate::plugin::PluginScope,
 ) -> Result<Vec<Arc<super::manager::Entry>>> {
     validate_inventory(&native, scope)?;
     let capacity = native.endpoint.bind_capacity(capacity)?;
@@ -1103,7 +1120,7 @@ fn encoded_binding<E: super::StreamEndpoints>(
     lane: &'static str,
     handler: &Arc<Binding>,
     definition: &Definition,
-    scope: &crate::load::PluginScope,
+    scope: &crate::plugin::PluginScope,
 ) -> Result<Arc<super::manager::Entry>> {
     operations.binding_owned_definition::<EncodedOperation<E>>(
         scope.owner(),
@@ -1136,7 +1153,7 @@ where
     }
 }
 
-fn validate_inventory(native: &Native, scope: &crate::load::PluginScope) -> Result<()> {
+fn validate_inventory(native: &Native, scope: &crate::plugin::PluginScope) -> Result<()> {
     let selected = native.scope().ok_or(Error::InvalidInput {
         field: "native operation scope",
         reason: "native endpoint has no admitted plugin generation",

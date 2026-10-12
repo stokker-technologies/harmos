@@ -32,7 +32,7 @@ use super::{
 };
 use crate::services::{ServiceLease, ServiceManager};
 use crate::supervision::executor;
-use crate::{Application, Error, Identifier, Result, Timestamp};
+use crate::{Application, Error, Identifier, Result, state::Timestamp};
 
 /* === Constants === */
 const WORKER_NAME: &str = "harmos-storage";
@@ -89,7 +89,8 @@ pub(super) struct Inner {
     pub(super) primary: Arc<dyn super::backend::ErasedBackend>,
     pub(super) recovery: Arc<dyn RecoveryBackend>,
     pub(super) has_objects: bool,
-    pub(super) object_definition: fn(&SchemaKey) -> Result<crate::object_catalog::ObjectDefinition>,
+    pub(super) object_definition:
+        fn(&SchemaKey) -> Result<crate::storage::catalog::ObjectDefinition>,
     pub(super) validate_object: fn(&super::ObjectValue, std::num::NonZeroUsize) -> Result<()>,
     pub(super) replicas: Vec<Arc<super::replication::Replica>>,
     pub(super) receipts: super::replication::Receipts,
@@ -120,7 +121,7 @@ pub(super) struct State {
     pub(super) reserved: usize,
     pub(super) reserved_batches: usize,
     pub(super) journal_limit: usize,
-    pub(super) journal_saved: Option<watch::Sender<crate::Position>>,
+    pub(super) journal_saved: Option<watch::Sender<crate::state::Position>>,
     pub(super) status: StorageStatus,
     pub(super) ready: bool,
     service_owner: Option<Arc<()>>,
@@ -159,7 +160,7 @@ pub(super) struct Target {
 }
 
 pub(super) struct Pending {
-    pub(super) journal: Option<crate::Position>,
+    pub(super) journal: Option<crate::state::Position>,
     pub(super) index: u64,
     pub(super) bytes: usize,
     pub(super) operation: Operation,
@@ -271,9 +272,9 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
                 schema_encoding,
                 primary: super::backend::erase(primary),
                 recovery,
-                validate_object: crate::object_catalog::validate_transfer::<C>,
+                validate_object: crate::storage::catalog::validate_transfer::<C>,
                 has_objects: C::definition_count() != 0,
-                object_definition: crate::object_catalog::definition::<C>,
+                object_definition: crate::storage::catalog::definition::<C>,
                 replicas,
                 receipts: super::replication::Receipts::default(),
                 state: Mutex::new(State {
@@ -357,7 +358,7 @@ impl<C> StorageManager<C> {
         }
         let primary = services.activate_internal(
             WORKER_NAME.to_owned(),
-            crate::ServicePolicy::default(),
+            crate::services::ServicePolicy::default(),
             Worker(self.erased()),
         )?;
         state.ready = true;
@@ -371,7 +372,7 @@ impl<C> StorageManager<C> {
             replica.started();
             match services.activate_internal(
                 name.clone(),
-                crate::ServicePolicy::default(),
+                crate::services::ServicePolicy::default(),
                 super::replication::Worker {
                     manager: self.erased(),
                     replica: replica.clone(),
@@ -1423,6 +1424,7 @@ impl Write for Counter {
             .ok_or_else(|| io::Error::other("encoded size overflow"))?;
         Ok(bytes.len())
     }
+
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }

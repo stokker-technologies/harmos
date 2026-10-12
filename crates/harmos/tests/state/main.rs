@@ -32,7 +32,11 @@ mod poison;
 #[path = "records.rs"]
 mod records;
 
-#[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
 mod listeners;
 
 #[path = "undo.rs"]

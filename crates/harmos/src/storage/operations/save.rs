@@ -14,27 +14,27 @@
 /* === Imports === */
 
 // Standard Library Imports
-#[cfg(feature = "runtime")]
+
 use std::sync::Arc;
 
 // Third Party Imports
 
 // Local Imports
-#[cfg(feature = "runtime")]
+
 use crate::operations::{Context, Operation};
 use crate::operations::{OperationDeclaration, ReplaySafety, Visibility, WireOperation};
-#[cfg(feature = "runtime")]
+
 use crate::storage::StorageManager;
 use crate::storage::{MutationId, StorageCursor};
-#[cfg(feature = "runtime")]
+
 use crate::{Error, Result};
 
 /* === Constants === */
 
 /* === Macros === */
-crate::storage_codec::product!(SaveRequest {
-    mutation: crate::storage_codec::Nested<MutationId> => 1,
-    through: crate::storage_codec::Nested<StorageCursor> => 2,
+crate::storage::codec::product!(SaveRequest {
+    mutation: crate::storage::codec::Nested<MutationId> => 1,
+    through: crate::storage::codec::Nested<StorageCursor> => 2,
 });
 
 /* === Type Aliases === */
@@ -48,7 +48,6 @@ pub struct SaveRequest {
 
 pub struct Save;
 
-#[cfg(feature = "runtime")]
 pub(super) struct Handler<C> {
     storage: Arc<StorageManager<C>>,
 }
@@ -80,7 +79,6 @@ impl WireOperation for Save {
     const VERSION: u32 = 1;
 }
 
-#[cfg(feature = "runtime")]
 impl<C: 'static> Operation for Handler<C> {
     type Declaration = Save;
     type Resources = StorageManager<C>;

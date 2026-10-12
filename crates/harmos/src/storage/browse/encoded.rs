@@ -23,13 +23,13 @@ use super::{
     MAX_COLUMNS, ObjectBrowseRequest, ObjectBrowseResult, ObjectColumn, ObjectOrder,
     ObjectPredicate, apply_options, invalid, open_request,
 };
-use crate::object_catalog::LOOKUP_MEMORY_BYTES;
+use crate::storage::catalog::LOOKUP_MEMORY_BYTES;
+use crate::storage::manager::MemoryReservation;
+use crate::storage::query::sealed;
 use crate::storage::{
     EncodedObjectQuery, ObjectFields, Query, QueryLimits, QueryOptions, ReadHistory, ReadKind,
     ReadLimits, ReadOrder, ReadSelection, StorageManager, StorageView,
 };
-use crate::storage_runtime::manager::MemoryReservation;
-use crate::storage_runtime::query::sealed;
 use crate::{MemorySize, Result};
 
 /* === Constants === */
@@ -154,6 +154,7 @@ impl<C> Query<C> for ObjectFieldsQuery {
     fn options(&self) -> &QueryOptions {
         &self.options
     }
+
     fn preflight(&self, manager: &StorageManager<C>, limits: QueryLimits) -> Result<()> {
         let (request, _claim) = self.prepare(manager, limits)?;
         manager
@@ -161,6 +162,7 @@ impl<C> Query<C> for ObjectFieldsQuery {
             .primary
             .validate_object_browse(&request, limits)
     }
+
     fn open(
         self,
         view: StorageView,

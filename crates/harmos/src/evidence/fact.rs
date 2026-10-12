@@ -20,7 +20,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 // Local Imports
 use crate::evidence::EvidenceError;
-use crate::{At, DefinitionId, FactSource, Identified, Position, SystemFact};
+use crate::{
+    DefinitionId, Identified, state::At, state::FactSource, state::Position, state::SystemFact,
+};
 
 /* === Constants === */
 pub(crate) const SOURCE: &str = "artifact";

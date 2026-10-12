@@ -133,10 +133,11 @@ use harmos::Message;
 use harmos::operations::{
     OperationDeclaration, OperationPolicy, RetryPolicy, Visibility, WireTable,
 };
-use harmos::sidecar::inventory::{Declaration, Facility};
-use harmos::sidecar::{Executable, Frame, Notice, SidecarError, Supervised};
+use harmos::plugin::sidecar::inventory::{Declaration, Facility};
+use harmos::plugin::sidecar::{Executable, Frame, Notice, SidecarError, Supervised};
 use harmos::{
-    FactSource, Position, Runtime, Service, ServiceExit, ServicePolicy, ServiceStatus, SystemFact,
+    Runtime, services::Service, services::ServiceExit, services::ServicePolicy,
+    services::ServiceStatus, state::FactSource, state::Position, state::SystemFact,
 };
 use harmos_sidecar::{Attach, Refusal, Supervisor};
 
@@ -217,7 +218,7 @@ struct BudgetedReply {
 struct MeterPulse;
 
 struct SampleProjection {
-    streams: harmos::StreamManager<Bank>,
+    streams: harmos::streams::StreamManager<Bank>,
 }
 
 struct Joinable {
@@ -1189,13 +1190,16 @@ fn own_contract() {
                     };
                     let runtime = assembly()
                         .register(operations::Lanes::catalog())
-                        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+                        .operation_settings(harmos::operations::Settings {
+                            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+                            ..Default::default()
+                        })
                         .runtime()
                         .await
                         .unwrap();
                     runtime
                         .operations
-                        .register_wire_operation::<harmos::sidecar::Publish<_, _, _>>(
+                        .register_wire_operation::<harmos::plugin::sidecar::Publish<_, _, _>>(
                             "meter-publication-core",
                             operations::Lanes::NativeOpen,
                             Arc::new(calls.clone()),
@@ -1220,7 +1224,7 @@ fn own_contract() {
                                 policy,
                             },
                             move |_: Arc<()>| {
-                                harmos::sidecar::Managed::new(
+                                harmos::plugin::sidecar::Managed::new(
                                     resident.clone(),
                                     definition.clone(),
                                     operations::Lanes::NativeOpen,
@@ -1395,13 +1399,16 @@ fn own_contract() {
                         (|_: &Service<Bank>, _: Notice| {}) as fn(&Service<Bank>, Notice),
                     );
                     let runtime = assembly()
-                        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+                        .operation_settings(harmos::operations::Settings {
+                            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+                            ..Default::default()
+                        })
                         .runtime()
                         .await
                         .unwrap();
                     runtime
                         .operations
-                        .register_wire_operation::<harmos::sidecar::Publish<_, _, _>>(
+                        .register_wire_operation::<harmos::plugin::sidecar::Publish<_, _, _>>(
                             "meter-publication-core",
                             HostLanes::Open,
                             Arc::new(resident.clone()),
@@ -1415,7 +1422,7 @@ fn own_contract() {
                                 policy: ServicePolicy::default(),
                             },
                             move |_: Arc<()>| {
-                                harmos::sidecar::Managed::new(
+                                harmos::plugin::sidecar::Managed::new(
                                     resident.clone(),
                                     definition.clone(),
                                     HostLanes::Open,
@@ -1602,7 +1609,7 @@ fn own_contract() {
     let mismatch = source.clone().argument("unexpected");
     let notice = (|_: &Service<Bank>, _: Notice| {}) as fn(&Service<Bank>, Notice);
     assert!(matches!(
-        harmos::sidecar::Managed::new_executable(
+        harmos::plugin::sidecar::Managed::new_executable(
             Supervised::new(mismatch, notice),
             definition.clone(),
             HostLanes::Open,
@@ -1616,7 +1623,7 @@ fn own_contract() {
     ));
 
     let resident = Supervised::new(source, notice);
-    let managed = harmos::sidecar::Managed::new_executable(
+    let managed = harmos::plugin::sidecar::Managed::new_executable(
         resident.clone(),
         definition,
         HostLanes::Open,
@@ -1626,13 +1633,13 @@ fn own_contract() {
     .unwrap();
     std::fs::write(&path, b"changed after inspection").unwrap();
     let runtime = assembly()
-        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+        .operation_settings(harmos::operations::Settings { preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()), ..Default::default() })
         .runtime()
         .await
         .unwrap();
     runtime
         .operations
-        .register_wire_operation::<harmos::sidecar::Publish<_, _, _>>(
+        .register_wire_operation::<harmos::plugin::sidecar::Publish<_, _, _>>(
             "process-publication-core",
             HostLanes::Open,
             Arc::new(resident),
@@ -1787,13 +1794,13 @@ fn own_contract() {
                     else {
                         panic!("the service retains its cleanup error: {error:?}");
                     };
-                    let Some(harmos::Fault::Application(harmos::sidecar::ManagedError::Lifecycle(
+                    let Some(harmos::services::Fault::Application(harmos::plugin::sidecar::ManagedError::Lifecycle(
                         harmos::Error::PluginLifecycle { source },
-                    ))) = source.downcast_ref::<harmos::Fault<harmos::sidecar::ManagedError>>()
+                    ))) = source.downcast_ref::<harmos::services::Fault<harmos::plugin::sidecar::ManagedError>>()
                     else {
                         panic!("the cleanup retains its lifecycle error: {error:?}");
                     };
-                    let harmos::load::PluginFailure::Cleanup(failures) = source.as_ref() else {
+                    let harmos::plugin::PluginFailure::Cleanup(failures) = source.as_ref() else {
                         panic!("the original cleanup failure is retained: {error:?}");
                     };
                     assert_eq!(failures.len(), 1);
@@ -2356,9 +2363,9 @@ fn own_contract() {
                 declared.operations[1].description,
                 "Answers with what it was handed, publishing first when asked to."
             );
-            let guest = harmos::guest::inventory::Declaration::inspect(
+            let guest = harmos::plugin::guest::inventory::Declaration::inspect(
                 &bytes,
-                harmos::guest::inventory::Facility::Guest,
+                harmos::plugin::guest::inventory::Facility::Guest,
             )
             .expect("the co-linked guest is independently inspectable");
             assert_eq!(guest.id, "meter");
@@ -2389,10 +2396,10 @@ fn own_contract() {
     }
 }
 
-fn process_definition(source: &Executable) -> harmos::load::PluginDefinition {
+fn process_definition(source: &Executable) -> harmos::plugin::PluginDefinition {
     let mut definition = operations::definition(source, b"{}".to_vec());
     definition.version = source.declaration().version.clone();
-    definition.artifact = harmos::load::PluginArtifact::Sidecar {
+    definition.artifact = harmos::plugin::PluginArtifact::Sidecar {
         path: source.path().to_path_buf(),
         sha256: Sha256::digest(std::fs::read(source.path()).unwrap()).into(),
         arguments: source.arguments().to_vec(),
@@ -2404,7 +2411,7 @@ fn process_definition(source: &Executable) -> harmos::load::PluginDefinition {
 
 async fn process_runtime<H>(
     resident: Supervised<Bank, Executable, H>,
-    definition: harmos::load::PluginDefinition,
+    definition: harmos::plugin::PluginDefinition,
     policy: ServicePolicy,
 ) -> (Runtime<Bank>, harmos::services::ServiceLease<Bank>)
 where
@@ -2423,13 +2430,16 @@ where
             .any(|required| required.contract == selected)
     );
     let runtime = assembly()
-        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+        .operation_settings(harmos::operations::Settings {
+            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+            ..Default::default()
+        })
         .runtime()
         .await
         .unwrap();
     runtime
         .operations
-        .register_wire_operation::<harmos::sidecar::Publish<_, _, _>>(
+        .register_wire_operation::<harmos::plugin::sidecar::Publish<_, _, _>>(
             "process-publication-core",
             HostLanes::Open,
             Arc::new(resident.clone()),
@@ -2444,7 +2454,7 @@ where
                 policy,
             },
             move |_: Arc<()>| {
-                harmos::sidecar::Managed::new_executable(
+                harmos::plugin::sidecar::Managed::new_executable(
                     resident.clone(),
                     definition.clone(),
                     HostLanes::Open,

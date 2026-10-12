@@ -25,10 +25,10 @@ use crate::__private::{decoding_add, decoding_vector};
 use crate::MessageError;
 use crate::schema::{Cardinality, Field, Kind, MAX_DEPTH, MAX_FIELDS, MAX_NAME_BYTES};
 #[cfg(feature = "grpc")]
-use crate::storage_codec::Unsigned;
-use crate::storage_codec::Value;
+use crate::storage::codec::Unsigned;
+use crate::storage::codec::Value;
 #[cfg(feature = "grpc")]
-use crate::storage_position::codec::{
+use crate::storage::position::codec::{
     field_len, text_field, uint_field, write_bytes, write_header,
 };
 
@@ -70,6 +70,7 @@ impl Value for Fields {
             (node.parent as u64).write(bytes);
         });
     }
+
     fn postcard_size(fields: &Vec<Field>) -> usize {
         use crate::__private::PostcardValue;
         let mut count = 0usize;
@@ -86,6 +87,7 @@ impl Value for Fields {
         });
         size.saturating_add(count.size())
     }
+
     fn postcard_memory(input: &mut crate::__private::PostcardReader<'_>) -> Result<usize> {
         let mut count = 0usize;
         let mut names = 0usize;
@@ -99,6 +101,7 @@ impl Value for Fields {
         })?;
         memory(count, names)
     }
+
     fn postcard_read(input: &mut crate::__private::PostcardReader<'_>) -> Result<Vec<Field>> {
         Self::postcard_memory(&mut input.clone())?;
         let count = input.clone().value::<usize>()?;
@@ -157,6 +160,7 @@ impl Value for Fields {
             Unsigned::write(&(node.parent as u64), 5, bytes);
         });
     }
+
     #[cfg(feature = "grpc")]
     fn size(fields: &Vec<Field>, tag: u32) -> usize {
         let mut size = 0usize;
@@ -167,6 +171,7 @@ impl Value for Fields {
         });
         size
     }
+
     #[cfg(feature = "grpc")]
     fn memory(input: DecodeInput<'_>, tag: u32) -> Result<usize> {
         let mut count = 0usize;
@@ -181,6 +186,7 @@ impl Value for Fields {
         })?;
         memory(count, names)
     }
+
     #[cfg(feature = "grpc")]
     fn read(input: DecodeInput<'_>, tag: u32) -> Result<Vec<Field>> {
         Self::memory(input, tag)?;

@@ -60,9 +60,7 @@ struct Text {
 }
 
 /* === Enums === */
-#[harmos::catalog]
-enum Operations {
-    #[operation(
+#[harmos::operation(
         request = Text,
         response = Text,
         id = "owned-wire.read",
@@ -76,7 +74,11 @@ enum Operations {
             },
         },
     )]
-    ReadContract,
+struct ReadContract;
+
+#[harmos::catalog]
+enum Operations {
+    ReadContract(ReadContract),
 }
 
 #[harmos::catalog]
@@ -167,7 +169,10 @@ impl Drop for Read {
 async fn runtime(wire: bool) -> (Runtime<App>, Arc<Resources>) {
     let runtime = Runtime::<App>::builder((), ())
         .register(Lanes::catalog())
-        .operation_preparation_bytes(std::num::NonZeroUsize::new(16 * 1024).unwrap())
+        .operation_settings(harmos::operations::Settings {
+            preparation_bytes: Some(std::num::NonZeroUsize::new(16 * 1024).unwrap()),
+            ..Default::default()
+        })
         .runtime()
         .await
         .unwrap();
@@ -199,9 +204,12 @@ pub(super) fn contract_scenario() {
                     let resources = Arc::new(Resources::default());
                     let runtime = Runtime::<App>::builder((), ())
                         .register(Lanes::catalog())
-                        .operation_preparation_bytes(
-                            std::num::NonZeroUsize::new(16 * 1024).unwrap(),
-                        )
+                        .operation_settings(harmos::operations::Settings {
+                            preparation_bytes: Some(
+                                std::num::NonZeroUsize::new(16 * 1024).unwrap(),
+                            ),
+                            ..Default::default()
+                        })
                         .wire_operations::<Authored, _>("app", Lanes::Open, Arc::clone(&resources))
                         .runtime()
                         .await
@@ -381,10 +389,12 @@ pub(super) fn contract_scenario() {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
 
-    #[harmos::catalog]
+    #[harmos::operation(request = (), response = (), input = Text, output = (), id = "owned-wire.stream", version = 1, policy = ReadContract::POLICY)]
+struct StreamContract;
+
+#[harmos::catalog]
     enum StreamContracts {
-        #[operation(request = (), response = (), input = Text, output = (), id = "owned-wire.stream", version = 1, policy = ReadContract::POLICY)]
-        StreamContract,
+        StreamContract(StreamContract),
     }
     struct Stream;
     impl Operation for Stream {

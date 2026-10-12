@@ -80,7 +80,7 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
     let (resources, capabilities) = resources(observing)?;
     let capabilities = capabilities
         .map(|ty| quote!(#ty))
-        .unwrap_or_else(|| quote!(#harmos::sidecar::Supervisor));
+        .unwrap_or_else(|| quote!(#harmos::__private::sidecar::Supervisor));
     let observed = returned(observing)?;
     let construction = if let Some(opening) = declared(&block, "new") {
         if opening.sig.asyncness.is_some() {
@@ -182,22 +182,22 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
                 #harmos::__private::PluginInventory::observers::Entry {
                     id: #id, description: #description,
                     interval: ::core::time::Duration::from_millis(#interval),
-                    activation: #harmos::sidecar::Activation::#activation,
+                    activation: #harmos::__private::sidecar::Activation::#activation,
                     streams: &[#(#harmos::__private::PluginInventory::publications::Entry::of::<#streams>()),*],
                     demand_keys: &[#(#demand_keys),*],
                 };
         }
 
         #[automatically_derived]
-        impl #harmos::sidecar::Observer<#capabilities> for #name {
+        impl #harmos::__private::sidecar::Observer<#capabilities> for #name {
             type Resources = #resources;
             type Error = <#observed as #answer>::Err;
             const ID: &'static str = <Self as #harmos::__private::PluginInventory::observers::Declared>::ENTRY.id;
             const DESCRIPTION: &'static str = <Self as #harmos::__private::PluginInventory::observers::Declared>::ENTRY.description;
             const INTERVAL: ::core::time::Duration = <Self as #harmos::__private::PluginInventory::observers::Declared>::ENTRY.interval;
-            const STREAMS: &'static [#harmos::sidecar::inventory::publications::Entry] = <Self as #harmos::__private::PluginInventory::observers::Declared>::ENTRY.streams;
-            const DEMAND_KEYS: &'static [#harmos::sidecar::DemandKey] = <Self as #harmos::__private::PluginInventory::observers::Declared>::ENTRY.demand_keys;
-            const ACTIVATION: #harmos::sidecar::Activation = <Self as #harmos::__private::PluginInventory::observers::Declared>::ENTRY.activation;
+            const STREAMS: &'static [#harmos::__private::sidecar::inventory::publications::Entry] = <Self as #harmos::__private::PluginInventory::observers::Declared>::ENTRY.streams;
+            const DEMAND_KEYS: &'static [#harmos::__private::sidecar::DemandKey] = <Self as #harmos::__private::PluginInventory::observers::Declared>::ENTRY.demand_keys;
+            const ACTIVATION: #harmos::__private::sidecar::Activation = <Self as #harmos::__private::PluginInventory::observers::Declared>::ENTRY.activation;
 
             // The author's own inherent functions are what run: an inherent
             // associated function shadows the trait's, so these delegations
@@ -210,7 +210,7 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
 
             fn observe(
                 &mut self,
-                context: &#harmos::sidecar::ObserverContext<'_, Self::Resources, #capabilities>,
+                context: &#harmos::__private::sidecar::ObserverContext<'_, Self::Resources, #capabilities>,
             ) -> impl ::core::future::Future<
                 Output = ::core::result::Result<(), Self::Error>,
             > + Send {

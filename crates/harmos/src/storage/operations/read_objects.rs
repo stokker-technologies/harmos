@@ -15,7 +15,7 @@
 
 // Standard Library Imports
 use std::any::TypeId;
-#[cfg(feature = "runtime")]
+
 use std::sync::Arc;
 
 // Third Party Imports
@@ -23,23 +23,23 @@ use std::sync::Arc;
 // Local Imports
 use super::{ObjectResult, ObjectSelection};
 use crate::MemorySize;
-#[cfg(feature = "runtime")]
+
 use crate::operations::{Context, Operation, StreamOutput};
 use crate::operations::{Grpc, OperationDeclaration, OutputDeclaration, Visibility, WireOperation};
 use crate::schema::{Described, Field};
-#[cfg(feature = "runtime")]
+
 use crate::storage::StorageManager;
 use crate::storage::{ObjectFields, StorageCursor};
-#[cfg(feature = "runtime")]
+
 use crate::{Error, Result};
 use harmos_contract::plugin::Grant;
 
 /* === Constants === */
 
 /* === Macros === */
-crate::storage_codec::product!(ReadObjectsRequest {
-    selection: crate::storage_codec::Nested<ObjectSelection> => 1,
-    fields: crate::storage_codec::Optional<crate::storage_codec::Nested<ObjectFields>> => 2,
+crate::storage::codec::product!(ReadObjectsRequest {
+    selection: crate::storage::codec::Nested<ObjectSelection> => 1,
+    fields: crate::storage::codec::Optional<crate::storage::codec::Nested<ObjectFields>> => 2,
 });
 
 /* === Type Aliases === */
@@ -53,7 +53,6 @@ pub struct ReadObjectsRequest {
 
 pub struct ReadObjects;
 
-#[cfg(feature = "runtime")]
 pub(super) struct Handler<C> {
     storage: Arc<StorageManager<C>>,
 }
@@ -84,6 +83,7 @@ impl OperationDeclaration for ReadObjects {
             None => Grant::Survey(super::EVERY_SCHEMA.into()),
         })
     }
+
     fn endpoint_types() -> (Option<TypeId>, Option<TypeId>) {
         (None, Some(TypeId::of::<ObjectResult>()))
     }
@@ -104,7 +104,6 @@ impl WireOperation for ReadObjects {
     const OUTPUT: Option<&'static [Field]> = Some(ObjectResult::FIELDS);
 }
 
-#[cfg(feature = "runtime")]
 impl<C: 'static> Operation for Handler<C> {
     type Declaration = ReadObjects;
     type Resources = StorageManager<C>;
@@ -164,7 +163,7 @@ impl<C: 'static> Operation for Handler<C> {
 /* === Public Functions === */
 
 /* === Private Functions === */
-#[cfg(feature = "runtime")]
+
 fn check_boundary(selection: &ObjectSelection, boundary: &StorageCursor) -> Result<()> {
     if let Some(after) = &selection.selection.after
         && !boundary.covers(after)?

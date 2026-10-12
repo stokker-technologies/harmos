@@ -45,7 +45,11 @@ pub struct Definition {
 pub(crate) struct Registry {
     pub(super) storage: Option<StorageManager<ErasedCatalog>>,
     state: Mutex<State>,
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     pub(super) listeners: Mutex<BTreeMap<String, Arc<super::listeners::Listening>>>,
 }
 
@@ -84,9 +88,11 @@ impl Definition {
     pub fn owner(&self) -> &str {
         &self.owner
     }
+
     pub fn schema(&self) -> &SchemaKey {
         &self.schema
     }
+
     pub fn fields(&self) -> &[Field] {
         &self.fields
     }
@@ -103,7 +109,11 @@ impl Registry {
         Self {
             storage,
             state: Mutex::new(State::default()),
-            #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+            #[cfg(any(
+                feature = "plugin",
+                feature = "plugin-guest",
+                feature = "plugin-sidecar"
+            ))]
             listeners: Mutex::new(BTreeMap::new()),
         }
     }
@@ -291,6 +301,7 @@ impl Pending {
     pub(super) fn is_committed(&self) -> bool {
         self.committed
     }
+
     pub(super) fn commit(mut self) -> Arc<Definition> {
         if !self.committed {
             let mut state = self

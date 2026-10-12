@@ -14,7 +14,7 @@ pub mod allocation;
 #[path = "../../tests/support/stream_batches.rs"]
 pub mod batches;
 
-#[cfg(all(feature = "sidecar-host", feature = "sidecar"))]
+#[cfg(feature = "plugin-sidecar")]
 #[path = "../../tests/support/native_streams.rs"]
 mod native;
 
@@ -60,7 +60,7 @@ fn benchmarks(c: &mut criterion::Criterion) {
         b.iter(|| runtime.block_on(batches::summary_cost()))
     });
     group.finish();
-    #[cfg(all(feature = "sidecar-host", feature = "sidecar"))]
+    #[cfg(feature = "plugin-sidecar")]
     {
         use harmos::Message;
         let mut codec = c.benchmark_group("streams/native_codec");
@@ -160,7 +160,7 @@ fn main() {
             (1..=60).contains(&seconds),
             "duration must be from 1 through 60 seconds"
         );
-        #[cfg(all(feature = "sidecar-host", feature = "sidecar"))]
+        #[cfg(feature = "plugin-sidecar")]
         {
             let executable = arguments
                 .iter()
@@ -174,7 +174,7 @@ fn main() {
                 });
             sustained(seconds, executable);
         }
-        #[cfg(not(all(feature = "sidecar-host", feature = "sidecar")))]
+        #[cfg(not(feature = "plugin-sidecar"))]
         panic!("native consumption requires sidecar and sidecar-host features");
     } else {
         benches();
@@ -184,7 +184,7 @@ fn main() {
     }
 }
 
-#[cfg(all(feature = "sidecar-host", feature = "sidecar"))]
+#[cfg(feature = "plugin-sidecar")]
 async fn transfer(fixture: &native::Fixture, sequence: &mut u64, size: usize) {
     for _ in 0..8 {
         fixture.runtime.streams.publish(native::Payload {
@@ -198,7 +198,7 @@ async fn transfer(fixture: &native::Fixture, sequence: &mut u64, size: usize) {
     assert_eq!(acknowledged.bytes, *sequence * size as u64);
 }
 
-#[cfg(all(feature = "sidecar-host", feature = "sidecar"))]
+#[cfg(feature = "plugin-sidecar")]
 fn sustained(seconds: u64, executable: Option<&std::path::Path>) {
     use std::time::{Duration, Instant};
     let executor = tokio::runtime::Builder::new_multi_thread()

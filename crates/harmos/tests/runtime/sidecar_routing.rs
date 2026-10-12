@@ -19,11 +19,11 @@ use crate::scenario_runtime;
 
 // Local Imports
 use super::*;
-use harmos::load::{
+use harmos::operations::{Declarations, NativeError, PluginRegistration, PluginSdkRegistration};
+use harmos::plugin::{
     PluginBackend, PluginDefinition, PluginDefinitions, PluginLifecycle, PluginManager,
     PluginTransition, Requirement, Router,
 };
-use harmos::operations::{Declarations, NativeError, PluginRegistration, PluginSdkRegistration};
 
 /* === Constants === */
 static NEXT_PROVIDER_SEED: AtomicUsize = AtomicUsize::new(1);
@@ -111,9 +111,9 @@ struct Resources {
 }
 
 struct Host {
-    operations: harmos::OperationManager,
+    operations: harmos::operations::OperationManager,
     services: harmos::services::ServiceManager<Bank>,
-    streams: harmos::StreamManager<Bank>,
+    streams: harmos::streams::StreamManager<Bank>,
     // Keeps The Original Resources Alive For The Weak Configuration Seed.
     _provider: Arc<Provider>,
     seed: ProviderSeed,
@@ -718,7 +718,7 @@ impl PluginLifecycle for Host {
                 resident = resident.ingest::<MeterPulse>();
             }
             self.operations
-                .register_wire_operation::<harmos::sidecar::Publish<_, _, _>>(
+                .register_wire_operation::<harmos::plugin::sidecar::Publish<_, _, _>>(
                     "routing-publication-core",
                     HostLanes::Open,
                     Arc::new(resident.clone()),
@@ -740,7 +740,7 @@ impl PluginLifecycle for Host {
         &mut self,
         definition: &PluginDefinition,
         router: &Router,
-        authority: &harmos::load::PluginLifecycleAuthority<'_>,
+        authority: &harmos::plugin::PluginLifecycleAuthority<'_>,
         backend: &mut Backends,
     ) -> harmos::Result<()> {
         let PluginBackend::Sidecar(resources) = backend else {
@@ -909,7 +909,7 @@ impl PluginLifecycle for Host {
     }
     async fn stop(
         definition: &PluginDefinition,
-        authority: &harmos::load::PluginLifecycleAuthority<'_>,
+        authority: &harmos::plugin::PluginLifecycleAuthority<'_>,
 
         backend: &mut Backends,
     ) -> harmos::Result<()> {
@@ -1042,7 +1042,7 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let runtime = assembly()
-                        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+                        .operation_settings(harmos::operations::Settings { preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()), ..Default::default() })
                         .runtime()
                         .await
                         .unwrap();
@@ -1065,7 +1065,7 @@ pub(super) fn contract_scenario() {
                             .unwrap()
                             .unwrap();
                         assert!(
-                            matches!(row, harmos::Item::Row(row) if row.value.sample == sample)
+                            matches!(row, harmos::streams::Item::Row(row) if row.value.sample == sample)
                         );
                     }
                     let source = runtime.streams.publication("meter.pulse", 1).unwrap();
@@ -1094,7 +1094,10 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let runtime = assembly()
-                        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+                        .operation_settings(harmos::operations::Settings {
+                            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+                            ..Default::default()
+                        })
                         .runtime()
                         .await
                         .unwrap();
@@ -1205,7 +1208,10 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let notices = Arc::new(Mutex::new(Vec::new()));
                     let runtime = assembly()
-                        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+                        .operation_settings(harmos::operations::Settings {
+                            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+                            ..Default::default()
+                        })
                         .runtime()
                         .await
                         .unwrap();
@@ -1267,7 +1273,10 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let runtime = assembly()
-                        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+                        .operation_settings(harmos::operations::Settings {
+                            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+                            ..Default::default()
+                        })
                         .runtime()
                         .await
                         .unwrap();
@@ -1299,7 +1308,7 @@ pub(super) fn contract_scenario() {
             scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
 
     let runtime = assembly()
-        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+        .operation_settings(harmos::operations::Settings { preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()), ..Default::default() })
         .runtime()
         .await
         .unwrap();
@@ -1341,7 +1350,10 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let runtime = assembly()
-                        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+                        .operation_settings(harmos::operations::Settings {
+                            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+                            ..Default::default()
+                        })
                         .runtime()
                         .await
                         .unwrap();
@@ -1376,7 +1388,7 @@ pub(super) fn contract_scenario() {
             scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
 
     let runtime = assembly()
-        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+        .operation_settings(harmos::operations::Settings { preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()), ..Default::default() })
         .runtime()
         .await
         .unwrap();
@@ -1432,7 +1444,10 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let runtime = assembly()
-                        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+                        .operation_settings(harmos::operations::Settings {
+                            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+                            ..Default::default()
+                        })
                         .runtime()
                         .await
                         .unwrap();
@@ -1462,7 +1477,10 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let runtime = assembly()
-                        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+                        .operation_settings(harmos::operations::Settings {
+                            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+                            ..Default::default()
+                        })
                         .runtime()
                         .await
                         .unwrap();
@@ -1532,7 +1550,7 @@ pub(super) fn contract_scenario() {
             scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
 
     let runtime = assembly()
-        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+        .operation_settings(harmos::operations::Settings { preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()), ..Default::default() })
         .runtime()
         .await
         .unwrap();
@@ -1590,7 +1608,7 @@ pub(super) fn contract_scenario() {
             scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
 
     let runtime = assembly()
-        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+        .operation_settings(harmos::operations::Settings { preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()), ..Default::default() })
         .runtime()
         .await
         .unwrap();
@@ -1666,7 +1684,10 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let runtime = assembly()
-                        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+                        .operation_settings(harmos::operations::Settings {
+                            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+                            ..Default::default()
+                        })
                         .runtime()
                         .await
                         .unwrap();
@@ -1694,7 +1715,7 @@ pub(super) fn contract_scenario() {
             scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
 
     let runtime = assembly()
-        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+        .operation_settings(harmos::operations::Settings { preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()), ..Default::default() })
         .runtime()
         .await
         .unwrap();
@@ -1763,7 +1784,7 @@ pub(super) fn contract_scenario() {
 
     for (dynamic, canonical) in [(true, false), (true, true), (false, true)] {
         let runtime = assembly()
-            .operation_preparation_bytes(NonZeroUsize::new(256).unwrap())
+            .operation_settings(harmos::operations::Settings { preparation_bytes: Some(NonZeroUsize::new(256).unwrap()), ..Default::default() })
             .runtime()
             .await
             .unwrap();

@@ -27,8 +27,8 @@ use super::manager::{MemoryReservation, encoded_size};
 use super::query::{ActiveBudget, execution_timeout, remaining_budget, sealed};
 use super::*;
 use crate::catalog::Contains;
-use crate::object_catalog::{object_key, object_schema};
-use crate::storage_object_fields::{MAX_COLUMNS, MAX_SELECTOR_BYTES};
+use crate::storage::catalog::{object_key, object_schema};
+use crate::storage::object_fields::{MAX_COLUMNS, MAX_SELECTOR_BYTES};
 use crate::{Error, Identifier, MemorySize, Result, schema};
 use fields::{check_predicate, check_value, compare_scalar, descriptor, matches_predicate};
 
@@ -402,6 +402,7 @@ impl ObjectBrowseCursor {
             last,
         })
     }
+
     pub fn last(&self) -> &ObjectMetadata {
         &self.last
     }
@@ -447,6 +448,7 @@ impl<C: ObjectCatalog + Contains<T>, T: StoredObject> Query<C> for ObjectBrowseQ
     fn options(&self) -> &QueryOptions {
         &self.options
     }
+
     fn preflight(&self, manager: &StorageManager<C>, limits: QueryLimits) -> Result<()> {
         let _reservation = manager.reserve_read_now(self.request.memory_size(), 1)?;
         let mut request = self.request.clone();
@@ -460,6 +462,7 @@ impl<C: ObjectCatalog + Contains<T>, T: StoredObject> Query<C> for ObjectBrowseQ
             .primary
             .validate_object_browse(&request, limits)
     }
+
     fn open(
         self,
         view: StorageView,

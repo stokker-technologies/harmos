@@ -31,7 +31,7 @@ use super::record::{PreparationError, Prepared, PreparedCommit, Records};
 use super::transaction::Inverting;
 use super::transaction::{Transaction, TransactionError};
 use super::{Context, TrackedState};
-use crate::{Application, At};
+use crate::{Application, state::At};
 
 /* === Constants === */
 
@@ -236,7 +236,7 @@ async fn run_admissions<A: Application>(
                         &draft,
                         (
                             Position(frontier - prepared.records.len() as u64),
-                            crate::Kind::Transaction,
+                            crate::state::Kind::Transaction,
                             true,
                         ),
                     )
@@ -361,7 +361,7 @@ async fn run_admissions<A: Application>(
                         &draft,
                         (
                             Position(frontier - prepared.records.len() as u64),
-                            crate::Kind::Transaction,
+                            crate::state::Kind::Transaction,
                             true,
                         ),
                     )
@@ -649,7 +649,7 @@ async fn reserve<'a, A: Application>(
     prepared: &'a Prepared,
     others: impl Iterator<Item = &'a Prepared>,
     draft: &Unsealed,
-    group: (Position, crate::Kind, bool),
+    group: (Position, crate::state::Kind, bool),
 ) -> Result<Option<super::capture::Permit>, PreparationError> {
     let Some(capture) = capture else {
         return Ok(None);
@@ -673,7 +673,7 @@ async fn reserve<'a, A: Application>(
         metadata.commit = Some((position, Position(position.0 + others.len() as u64)));
     }
     let mut entries = Vec::with_capacity(count);
-    entries.push(crate::Envelope {
+    entries.push(crate::state::Envelope {
         position,
         kind,
         id: prepared.id.clone(),
@@ -685,9 +685,9 @@ async fn reserve<'a, A: Application>(
     metadata.request = None;
     metadata.link = None;
     for (index, prepared) in others.into_iter().enumerate() {
-        entries.push(crate::Envelope {
+        entries.push(crate::state::Envelope {
             position: Position(position.0 + index as u64 + 1),
-            kind: crate::Kind::Record,
+            kind: crate::state::Kind::Record,
             id: prepared.id.clone(),
             version: prepared.version,
             metadata: metadata.clone(),

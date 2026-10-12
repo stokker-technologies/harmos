@@ -19,7 +19,7 @@ use crate::scenario_runtime;
 use support::{Change, HOUSE, balance, deposit, runtime};
 // Local Imports
 use crate::support;
-use harmos::{Entry, Position, RequestKey};
+use harmos::{state::Entry, state::Position, state::RequestKey};
 
 /* === Constants === */
 

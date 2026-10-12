@@ -180,7 +180,7 @@ impl Operation for Observing {
         assert_eq!(
             request.context(),
             DeliveryContext::Record {
-                position: harmos::Position(1)
+                position: harmos::state::Position(1)
             }
         );
         self.resources.active.fetch_add(1, Ordering::SeqCst);
@@ -204,7 +204,7 @@ impl Operation for Observing {
 fn delivered(value: u32) -> Delivery<Observation> {
     Delivery::new(
         DeliveryContext::Record {
-            position: harmos::Position(1),
+            position: harmos::state::Position(1),
         },
         Observation { value },
     )

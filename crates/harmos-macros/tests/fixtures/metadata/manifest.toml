@@ -17,10 +17,10 @@ name = "cargo-metadata-fixture"
 required-features = ["native"]
 [features]
 default = ["native"]
-native = ["harmos/derive", "harmos/sidecar"]
-guest = ["harmos/derive", "harmos/guest"]
+native = []
+guest = []
 [dependencies]
-harmos = { path = "@HARMOS_PATH@", default-features = false, features = ["artifact"] }
+harmos = { package = "@SDK_PACKAGE@", path = "@SDK_PATH@", default-features = false, features = ["derive", "kit"] }
 serde = { version = "1", features = ["derive"] }
 [workspace]
 [profile.stripped-fixture]

@@ -34,13 +34,13 @@ struct Occupied;
 /* === Traits === */
 
 /* === Implementations === */
-impl harmos::Resident<Bank> for Occupied {
+impl harmos::services::Resident<Bank> for Occupied {
     type Error = Error;
 
     async fn attempt(
         &mut self,
-        mut context: harmos::Service<Bank>,
-    ) -> Result<(), harmos::Fault<Error>> {
+        mut context: harmos::services::Service<Bank>,
+    ) -> Result<(), harmos::services::Fault<Error>> {
         context.until_stopping(std::future::pending::<()>()).await;
         Ok(())
     }
@@ -538,7 +538,7 @@ pub(super) fn contract_scenario() {
                         .register(
                             harmos::services::ServiceDefinition {
                                 id: name.into(),
-                                policy: harmos::ServicePolicy::default(),
+                                policy: harmos::services::ServicePolicy::default(),
                             },
                             |_: Arc<()>| Occupied,
                         )

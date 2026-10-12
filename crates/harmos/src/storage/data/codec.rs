@@ -19,8 +19,8 @@
 
 // Local Imports
 use super::{RecordInput, StoredRecord, StoredRow, StreamInput};
+use crate::storage::codec::{Bytes, Id, Nested, Optional, Time, Unsigned, Version, product};
 use crate::storage::{SchemaKey, StorageCursor};
-use crate::storage_codec::{Bytes, Id, Nested, Optional, Time, Unsigned, Version, product};
 
 /* === Constants === */
 
@@ -64,33 +64,39 @@ struct Encoding;
 /* === Traits === */
 
 /* === Implementations === */
-impl crate::storage_codec::Value for Encoding {
+impl crate::storage::codec::Value for Encoding {
     type Native = crate::storage::PayloadEncoding;
     const KIND: crate::schema::Kind = crate::schema::Kind::U64;
     fn postcard_write(value: &Self::Native, bytes: &mut Vec<u8>) {
         crate::__private::PostcardValue::write(&(*value as u64), bytes);
     }
+
     fn postcard_size(_: &Self::Native) -> usize {
         1
     }
+
     fn postcard_memory(
         input: &mut crate::__private::PostcardReader<'_>,
     ) -> Result<usize, crate::MessageError> {
         Self::postcard_read(input).map(|_| 0)
     }
+
     fn postcard_read(
         input: &mut crate::__private::PostcardReader<'_>,
     ) -> Result<Self::Native, crate::MessageError> {
         encoding(input.value()?)
     }
+
     #[cfg(feature = "grpc")]
     fn write(value: &Self::Native, tag: u32, bytes: &mut Vec<u8>) {
         Unsigned::write(&(*value as u64), tag, bytes);
     }
+
     #[cfg(feature = "grpc")]
     fn size(value: &Self::Native, tag: u32) -> usize {
         Unsigned::size(&(*value as u64), tag)
     }
+
     #[cfg(feature = "grpc")]
     fn memory(
         input: crate::__private::DecodeInput<'_>,
@@ -98,13 +104,14 @@ impl crate::storage_codec::Value for Encoding {
     ) -> Result<usize, crate::MessageError> {
         Self::read(input, tag).map(|_| 0)
     }
+
     #[cfg(feature = "grpc")]
     fn read(
         input: crate::__private::DecodeInput<'_>,
         tag: u32,
     ) -> Result<Self::Native, crate::MessageError> {
         // An Absent Historical Field Explicitly Means Protobuf V1.
-        encoding(crate::storage_position::codec::uint_field(input, tag)?.unwrap_or(0))
+        encoding(crate::storage::position::codec::uint_field(input, tag)?.unwrap_or(0))
     }
 }
 

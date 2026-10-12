@@ -1,0 +1,75 @@
+# === Package ===
+
+[package]
+name = "schematic-contract"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# The editor's serializable contract with its own plugins, and nothing else.
+version = { workspace = true }
+
+# === Package Targets ===
+
+# === Features ===
+
+# === Dependencies ===
+
+[dependencies]
+# Local
+harmos-contract = { workspace = true, features = ["derive"] }
+
+# Git
+
+# Error Handling
+thiserror = { workspace = true, default-features = true }
+
+# Logging
+
+# Utilities
+
+# Serialization
+serde = { workspace = true, default-features = true }
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Build Dependencies ===
+
+# === Dev Dependencies ===
+
+# === Target Dependencies ===
+
+# === Test Targets ===
+
+# === Bench Targets ===
+
+# === Example Targets ===
+
+# === Workspace Lints ===
+
+# === Lints ===
+
+[lints]
+workspace = true
+
+# === Profiles ===
+
+# === Patches ===
+
+# === Other ===

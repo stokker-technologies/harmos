@@ -2,21 +2,21 @@
 
 [tools]
 taplo = "0.10.0"
-python = "3.13.15"
-uv = "0.12.17"
+python = "3.15.0"
+uv = "0.13.0"
 rust = { version = "1.99.0", profile = "minimal", components = "clippy,rustfmt,llvm-tools,rust-analyzer", targets = [
   "wasm32-unknown-unknown",
   "wasm32-wasip2",
 ] }
 
-"cargo:cargo-nextest" = "0.9.146"
+"cargo:cargo-nextest" = "0.9.148"
 "cargo:cargo-llvm-cov" = "0.9.1"
 
 # Build Tools
-sccache = "0.17.0"
+sccache = "0.18.0"
 
 # Versioning Tools
-git-cliff = "2.13.1"
+git-cliff = "2.14.2"
 
 # === === Mise Settings === === #
 
@@ -75,24 +75,12 @@ run = "git-cliff --unreleased --strip all"
 
 [tasks."check:wasm"]
 description = "Check / Wasm"
-# The declaration surface both facilities name lives in `harmos-contract`, and a
-# guest author compiles it for the guest target. Checking it here is what keeps
-# that a compile-checked invariant rather than an intention: a dependency that
-# breaks wasm32 fails this task the day it is added, not the day a guest is
-# built.
-#
-# The example contract crates are here for the same reason one level up: a contract crate
-# is the contract a plugin compiles, so the boundary between it and the app crate
-# beside it is only a firewall while this task builds it for wasm32. Both are
-# named, including `minibench-contract`, whose one plugin happens to be native — the
-# claim a contract crate makes is about what it *contains*, not about which carrier
-# a product shipped first.
+# Portable Contracts And Guest SDKs Must Build Without The Host Runtime.
 run = [
   "{{vars.cargo_guard}}cargo check --locked -p harmos-contract --target wasm32-unknown-unknown",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-contract --target wasm32-wasip2",
-  "{{vars.cargo_guard}}cargo check --locked -p minischematic-contract --target wasm32-unknown-unknown",
-  "{{vars.cargo_guard}}cargo check --locked -p minibench-contract --target wasm32-unknown-unknown",
-  "{{vars.cargo_guard}}cargo check --locked -p minischematic-plugin --target wasm32-unknown-unknown",
+  "{{vars.cargo_guard}}cargo check --locked -p schematic-contract --target wasm32-unknown-unknown",
+  "{{vars.cargo_guard}}cargo check --locked -p schematic-guest --target wasm32-unknown-unknown",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-guest --example operation-component --features componentize,kit,streaming --target wasm32-unknown-unknown",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-guest --example plugin-component --features componentize,kit --target wasm32-unknown-unknown",
 ]
@@ -101,16 +89,16 @@ run = [
 description = "Check / Sidecar / Bench"
 run = "{{vars.cargo_guard}}cargo clippy --locked -p harmos-sidecar --features kit --bench transport --test transport --bin harmos-sidecar-throughput-fixture -- -D warnings"
 
-[tasks."run:minischematic"]
-description = "Run / Minischematic"
-run = "{{vars.cargo_guard}}cargo run -p minischematic-cli"
+[tasks."run:schematic"]
+description = "Run / Schematic"
+run = "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harmos_tools.examples sidecar"
 
-[tasks."run:minischematic:guest"]
-description = "Run / Minischematic / Guest"
+[tasks."run:schematic:guest"]
+description = "Run / Schematic / Guest"
 run = "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harmos_tools.examples guest"
 
-[tasks."run:minibench"]
-description = "Run / Minibench"
+[tasks."run:schematic:sidecar"]
+description = "Run / Schematic / Sidecar"
 run = "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harmos_tools.examples sidecar"
 
 # === === Tasks | Build === === #
@@ -125,14 +113,14 @@ run = "{{vars.cargo_guard}}cargo build --locked --workspace --all-features --rel
 
 [tasks."check:examples"]
 description = "Check / Example Crate Boundaries"
-run = "{{vars.cargo_guard}}cargo check --locked -p minibench-contract -p minibench-app -p minibench-cli -p minibench-probe-sidecar -p minischematic-contract -p minischematic-app -p minischematic-cli -p minischematic-plugin -p jsonl-adapter -p standalone-sidecar --all-targets"
+run = "{{vars.cargo_guard}}cargo check --locked -p schematic-contract -p schematic-app -p schematic-cli -p schematic-guest -p schematic-sidecar -p jsonl-adapter -p harmos-observer-fixture -p harmos-lifecycle-fixture --all-targets"
 
 
 # === === Tasks | Stats === === #
 
 [tasks.stats]
 description = "Project Statistics"
-tools."aqua:boyter/scc" = "3.7.0"
+tools."aqua:boyter/scc" = "4.1.0"
 run = "scc --include-ext rs --avg-wage 100000 --cocomo-project-type semi-detached"
 
 [tasks."check:authoring"]
@@ -143,8 +131,8 @@ run = "{{vars.cargo_guard}}cargo check --locked --workspace --all-targets --all-
 description = "Check / Plugin"
 run = [
   "{{vars.cargo_guard}}cargo check --locked -p harmos --features plugin --lib",
-  "{{vars.cargo_guard}}cargo clippy --locked -p harmos --features plugin,sidecar-host,sidecar,guest-host,guest --all-targets -- -D warnings",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --features plugin --target wasm32-unknown-unknown",
+  "{{vars.cargo_guard}}cargo clippy --locked -p harmos --features plugin-sidecar,plugin-guest --all-targets -- -D warnings",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos-contract --features derive --target wasm32-unknown-unknown",
 ]
 
 [tasks."lint:authoring"]
@@ -212,34 +200,25 @@ run = [
 
 [tasks."check:features"]
 description = "Check / Every Facility Feature On Its Own"
-# One build per feature, each resolved alone. A `--workspace` build unifies
-# features and would quietly turn the host core back on, which is exactly the
-# claim `runtime` makes and the one thing that check could not see.
+# Resolve Every Optional Host Capability Independently.
 run = [
   "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features runtime",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features grpc",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features runtime,grpc-tls",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features sidecar",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features runtime,sidecar",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features sidecar-host",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features guest",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features guest-host",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features componentize",
   "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features plugin",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features plugin-sidecar",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features plugin-guest",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features grpc",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features signal",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features signal-fft",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features simulation",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos-bundle",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos-contract --no-default-features",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos-guest --no-default-features --features kit,derive,streaming",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos-guest --no-default-features --features componentize",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-sidecar --no-default-features",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-sidecar --no-default-features --features transport --all-targets",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-sidecar --no-default-features --features kit --lib",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features artifact",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features signal",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features fft",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-signal --no-default-features --all-targets",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-signal --no-default-features --features fft --all-targets",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features sim",
-  # The author's own build: declarations, operations, and a runnable
-  # program against a harmos with no host core in it.
-  "{{vars.cargo_guard}}cargo check --locked -p standalone-sidecar --all-targets",
-  "{{vars.cargo_guard}}cargo check --locked -p minibench-probe-sidecar --all-targets",
 ]
 
 
@@ -295,7 +274,7 @@ run = [{ task = "build:workspace:dev" }]
 depends = ["sync", "ci:bootstrap"]
 run = [
   { task = "build:workspace:release" },
-  "{{vars.cargo_guard}}cargo build --locked -p minischematic-plugin --release --target wasm32-unknown-unknown --timings",
+  "{{vars.cargo_guard}}cargo build --locked -p schematic-guest --release --target wasm32-unknown-unknown --timings",
   "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harmos_tools.packages stage",
 ]
 

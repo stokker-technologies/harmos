@@ -73,9 +73,7 @@ enum Failed {
     Child(#[from] Error),
 }
 
-#[harmos::catalog]
-enum Operations {
-    #[operation(
+#[harmos::operation(
         request = Exit,
         response = (),
         id = "children.parent",
@@ -88,8 +86,9 @@ enum Operations {
             },
         },
     )]
-    ParentContract,
-    #[operation(
+struct ParentContract;
+
+#[harmos::operation(
         request = (),
         response = (),
         id = "children.child",
@@ -99,7 +98,12 @@ enum Operations {
             retries: RetryPolicy::Never,
         },
     )]
-    ChildContract,
+struct ChildContract;
+
+#[harmos::catalog]
+enum Operations {
+    ParentContract(ParentContract),
+    ChildContract(ChildContract),
 }
 
 /* === Traits === */

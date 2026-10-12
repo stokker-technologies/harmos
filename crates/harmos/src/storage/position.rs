@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-#[path = "position/codec.rs"]
 pub(super) mod codec;
 
 /* === Re-Exports === */

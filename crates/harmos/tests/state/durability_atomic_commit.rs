@@ -23,8 +23,8 @@ use serde::{Deserialize, Serialize};
 // Local Imports
 use super::support::scratch;
 use harmos::{
-    Application, Error, Focus, Origin, Position, PrincipalId, Recorded, Records, RequestKey,
-    Runtime, Transaction,
+    Application, Error, Runtime, state::Focus, state::Origin, state::Position, state::PrincipalId,
+    state::Recorded, state::Records, state::RequestKey, state::Transaction,
 };
 use jsonl_adapter::{Jsonl, Wire};
 
@@ -162,8 +162,8 @@ impl Transaction<State> for Add {
                 13 => "",
                 _ => "my.sidecar-2",
             };
-            let _ = out.push_system(harmos::SystemFact {
-                source: harmos::FactSource::Sidecar(owner.to_owned()),
+            let _ = out.push_system(harmos::state::SystemFact {
+                source: harmos::state::FactSource::Sidecar(owner.to_owned()),
                 name: if self.mode == 14 { "" } else { "result/sample" }.to_owned(),
                 version: 37,
                 payload: if self.mode == 15 {
@@ -208,7 +208,7 @@ impl Transaction<State> for Add {
     }
 }
 
-impl harmos::Invert<State> for Add {
+impl harmos::state::Invert<State> for Add {
     fn invert(&self, _: &State) -> Self {
         add(-self.amount, self.count, 0)
     }
@@ -238,23 +238,25 @@ impl Wire for Model {
         }
     }
     fn decode<'de, D: serde::Deserializer<'de> + Copy>(
-        kind: harmos::Kind,
+        kind: harmos::state::Kind,
         id: &harmos::DefinitionId,
         version: u32,
         payload: D,
-    ) -> Result<Option<harmos::Payload<Self>>, D::Error> {
+    ) -> Result<Option<harmos::storage::Payload<Self>>, D::Error> {
         Ok(match kind {
-            harmos::Kind::Transaction => {
-                Changes::restore(id, version, payload)?.map(|(value, apply)| harmos::Payload {
-                    prepared: None,
-                    id: id.clone(),
-                    version,
-                    value: Recorded::Transaction(Arc::new(value)),
-                    apply,
+            harmos::state::Kind::Transaction => {
+                Changes::restore(id, version, payload)?.map(|(value, apply)| {
+                    harmos::storage::Payload {
+                        prepared: None,
+                        id: id.clone(),
+                        version,
+                        value: Recorded::Transaction(Arc::new(value)),
+                        apply,
+                    }
                 })
             }
-            harmos::Kind::Record => {
-                Facts::restore(id, version, payload)?.map(|value| harmos::Payload {
+            harmos::state::Kind::Record => {
+                Facts::restore(id, version, payload)?.map(|value| harmos::storage::Payload {
                     prepared: None,
                     id: id.clone(),
                     version,
@@ -332,7 +334,9 @@ pub(super) fn contract_scenario() {
                     let runtime = boot(&path, 16).await;
                     assert!(matches!(
                         runtime.records.publish(Reserved).await,
-                        Err(Error::Preparation(harmos::PreparationError::Identity))
+                        Err(Error::Preparation(
+                            harmos::state::PreparationError::Identity
+                        ))
                     ));
                     for mode in [2, 3, 4, 5, 6, 7, 9, 11, 12, 13, 14, 15, 16] {
                         assert!(runtime.state.commit(add(7, 1, mode)).await.is_err());
@@ -353,7 +357,7 @@ pub(super) fn contract_scenario() {
                             .state
                             .commit(add(1, Records::MAX_RECORDS + 1, 0))
                             .await,
-                        Err(Error::Preparation(harmos::PreparationError::Limit))
+                        Err(Error::Preparation(harmos::state::PreparationError::Limit))
                     ));
                     runtime.stop().await.unwrap();
                     assert_eq!(std::fs::read_to_string(path).unwrap().lines().count(), 1);
@@ -468,7 +472,7 @@ pub(super) fn contract_scenario() {
                         .unwrap();
                     assert_eq!(
                         changes[1].metadata.link,
-                        Some(harmos::Link::UndoOf(initial.position))
+                        Some(harmos::state::Link::UndoOf(initial.position))
                     );
                     assert_eq!(
                         journal
@@ -514,7 +518,7 @@ pub(super) fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    use harmos::{JournalConsumer, Source};
+                    use harmos::{storage::JournalConsumer, storage::Source};
                     let directory = scratch("atomic-historical");
                     let path = directory.join("journal.jsonl");
                     let live = boot(&path, 1).await;
@@ -675,7 +679,7 @@ pub(super) fn contract_scenario() {
                     let runtime = boot(&path, 1).await;
                     let facts = runtime
                         .state
-                        .query::<harmos::SystemFact>(Position::ORIGIN)
+                        .query::<harmos::state::SystemFact>(Position::ORIGIN)
                         .await
                         .collect::<Result<Vec<_>, _>>()
                         .unwrap();
@@ -683,8 +687,8 @@ pub(super) fn contract_scenario() {
                     assert_eq!(facts[0].position, Position(2));
                     assert_eq!(
                         facts[0].value,
-                        harmos::SystemFact {
-                            source: harmos::FactSource::Sidecar("my.sidecar-2".to_owned()),
+                        harmos::state::SystemFact {
+                            source: harmos::state::FactSource::Sidecar("my.sidecar-2".to_owned()),
                             name: "result/sample".to_owned(),
                             version: 37,
                             payload: vec![0, 255, 17],
@@ -724,7 +728,7 @@ pub(super) fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    use harmos::Source;
+                    use harmos::storage::Source;
                     let path = scratch("atomic-query-frontier").join("journal.jsonl");
                     let runtime = boot(&path, 1).await;
                     let first = runtime.state.commit(add(5, 1, 10)).await.unwrap();
@@ -805,12 +809,12 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     struct Capture(Arc<AtomicUsize>);
-                    impl harmos::JournalCapture<Model> for Capture {
+                    impl harmos::state::JournalCapture<Model> for Capture {
                         async fn capture(
                             &mut self,
-                            _: Vec<Arc<harmos::Entry<Recorded<Model>>>>,
+                            _: Vec<Arc<harmos::state::Entry<Recorded<Model>>>>,
                             _: Position,
-                        ) -> Result<(), harmos::CaptureError> {
+                        ) -> Result<(), harmos::state::CaptureError> {
                             self.0.fetch_add(1, Ordering::SeqCst);
                             Ok(())
                         }
@@ -819,7 +823,7 @@ pub(super) fn contract_scenario() {
                     let runtime = Runtime::<Model>::builder(State::default(), ())
                         .register(Changes::catalog())
                         .require_capture(
-                            harmos::CaptureLimits {
+                            harmos::state::CaptureLimits {
                                 pending_bytes: 4096,
                                 max_group_bytes: 4096,
                             },
@@ -832,7 +836,9 @@ pub(super) fn contract_scenario() {
                     let refused = runtime.state.commit(add(7, 1, 0)).await;
                     assert!(matches!(
                         refused,
-                        Err(Error::Preparation(harmos::PreparationError::Membership))
+                        Err(Error::Preparation(
+                            harmos::state::PreparationError::Membership
+                        ))
                     ));
                     assert_eq!(runtime.state.applied(), Position::ORIGIN);
                     let state = runtime

@@ -646,6 +646,7 @@ impl FileState {
             phase: FilePhase::Producing,
         }))
     }
+
     pub(super) fn bytes(&self) -> usize {
         self.base_bytes
             + self
@@ -657,6 +658,7 @@ impl FileState {
                 _ => 0,
             }
     }
+
     pub(super) fn pending_batch(&self) -> bool {
         self.command.is_some()
     }

@@ -42,15 +42,15 @@ from . import evidence, release
 BINARIES = (
     "harmos-component",
     "harmos-sidecar-export",
-    "minischematic-cli",
-    "minischematic-worker",
-    "minibench-cli",
-    "minibench-probe-sidecar",
-    "standalone-sidecar",
+    "schematic-cli",
+    "schematic-sidecar",
+    "harmos-lifecycle-fixture",
+    "harmos-lifecycle-sidecar",
+    "harmos-observer-fixture",
 )
 PLUGINS = {
-    "minischematic_plugin": "plugins/module.wasm",
-    "autoroute": "plugins/component.wasm",
+    "schematic_guest": "plugins/module.wasm",
+    "schematic-tools": "plugins/component.wasm",
 }
 
 VERSION_COMMANDS = {
@@ -129,13 +129,13 @@ def stage(repository: Path) -> None:
         relative = f"cli/{name}{suffix}"
         shutil.copy2(target / "release" / f"{name}{suffix}", root / relative)
         artifacts[name] = relative
-    core = target / "wasm32-unknown-unknown/release/minischematic_plugin.wasm"
-    shutil.copy2(core, root / PLUGINS["minischematic_plugin"])
+    core = target / "wasm32-unknown-unknown/release/schematic_guest.wasm"
+    shutil.copy2(core, root / PLUGINS["schematic_guest"])
     subprocess.run(
         [
             str(root / artifacts["harmos-component"]),
-            str(root / PLUGINS["minischematic_plugin"]),
-            str(root / PLUGINS["autoroute"]),
+            str(root / PLUGINS["schematic_guest"]),
+            str(root / PLUGINS["schematic-tools"]),
         ],
         cwd=repository,
         check=True,

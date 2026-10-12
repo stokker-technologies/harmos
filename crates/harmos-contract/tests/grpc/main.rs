@@ -55,16 +55,24 @@ struct Payload {
     optional: Option<u32>,
     values: Vec<i64>,
 }
+#[harmos_macros::operation(request = Payload, response = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Read"))]
+struct Read;
+
+#[harmos_macros::operation(request = Payload, response = Payload, input = Payload, output = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Exchange"))]
+struct Exchange;
+
+#[harmos_macros::operation(request = Payload, response = Payload, input = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Upload"))]
+struct Upload;
+
+#[harmos_macros::operation(request = Payload, response = Payload, output = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Download"))]
+struct Download;
+
 #[harmos_macros::catalog(harmos_path = ::harmos_contract)]
 enum Routes {
-    #[operation(request = Payload, response = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Read"))]
-    Read,
-    #[operation(request = Payload, response = Payload, input = Payload, output = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Exchange"))]
-    Exchange,
-    #[operation(request = Payload, response = Payload, input = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Upload"))]
-    Upload,
-    #[operation(request = Payload, response = Payload, output = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Download"))]
-    Download,
+    Read(Read),
+    Exchange(Exchange),
+    Upload(Upload),
+    Download(Download),
 }
 #[harmos_contract::message(harmos_path = ::harmos_contract)]
 #[derive(Clone, PartialEq)]
@@ -76,10 +84,12 @@ struct Annotated {
     values: Vec<harmos_contract::Value>,
 }
 
+#[harmos_macros::operation(request = Annotated, response = Annotated, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Portable", method = "Annotate"))]
+struct Annotate;
+
 #[harmos_macros::catalog(harmos_path = ::harmos_contract)]
 enum Portable {
-    #[operation(request = Annotated, response = Annotated, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Portable", method = "Annotate"))]
-    Annotate,
+    Annotate(Annotate),
 }
 
 fn annotated() -> Annotated {

@@ -182,6 +182,7 @@ impl StorageFileReader {
     pub fn reference(&self) -> &FileReference {
         &self.file
     }
+
     pub fn offset(&self) -> u64 {
         self.offset
     }

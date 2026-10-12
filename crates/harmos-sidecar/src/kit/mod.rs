@@ -26,6 +26,7 @@ pub mod __private {
         Outputs as ObserverOutputs,
     };
     pub use super::task::spawn as spawn_observer;
+    pub use crate as sidecar;
     pub use harmos_contract::__private::*;
     pub use harmos_contract::{qualified, qualified_len, qualify};
 }

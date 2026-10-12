@@ -21,7 +21,7 @@ use std::{fs, path::Path};
 
 // Local Imports
 use super::*;
-use harmos::sidecar::{Registrar, Registration};
+use harmos::plugin::sidecar::{Registrar, Registration};
 
 /* === Constants === */
 const NAME: &str = "admission-fixture";
@@ -71,7 +71,10 @@ async fn native(
         .grace(Duration::from_millis(25));
     let runtime = assembly()
         .register(operations::Lanes::catalog())
-        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+        .operation_settings(harmos::operations::Settings {
+            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+            ..Default::default()
+        })
         .runtime()
         .await
         .unwrap();
@@ -255,7 +258,7 @@ pub(super) fn contract_scenario() {
                     assert!(!*ready.borrow());
                     assert_eq!(
                         fixture.status(NAME).unwrap().state,
-                        harmos::load::PluginState::Failed
+                        harmos::plugin::PluginState::Failed
                     );
                     fixture.shutdown().await.unwrap();
                     fixture.runtime.stop().await.unwrap();
@@ -293,7 +296,10 @@ pub(super) fn contract_scenario() {
                         let ready = calls.ready();
                         let registrations = calls.registrations();
                         let runtime = assembly()
-                            .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+                            .operation_settings(harmos::operations::Settings {
+                                preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+                                ..Default::default()
+                            })
                             .runtime()
                             .await
                             .unwrap();
@@ -306,7 +312,7 @@ pub(super) fn contract_scenario() {
                                     policy,
                                 },
                                 move |_: Arc<()>| {
-                                    harmos::sidecar::Managed::new_executable(
+                                    harmos::plugin::sidecar::Managed::new_executable(
                                         resident.clone(),
                                         definition.clone(),
                                         HostLanes::Open,

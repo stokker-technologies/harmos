@@ -21,10 +21,10 @@ use std::time::SystemTime as Timestamp;
 use serde::{Deserialize, Serialize};
 
 // Local Imports
-use crate::object_catalog::{ObjectKey, SchemaKey};
-use crate::storage_codec::{Code, Count, Id, Nested, Optional, Time, Unsigned, coded, product};
-use crate::storage_object_values::Key;
-use crate::storage_object_values::ObjectVersions;
+use crate::storage::catalog::{ObjectKey, SchemaKey};
+use crate::storage::codec::{Code, Count, Id, Nested, Optional, Time, Unsigned, coded, product};
+use crate::storage::object_values::Key;
+use crate::storage::object_values::ObjectVersions;
 use crate::{Error, Identifier, MemorySize, Result};
 
 /* === Constants === */
@@ -37,9 +37,9 @@ use crate::{Error, Identifier, MemorySize, Result};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SourceTimeRange {
-    #[serde(with = "crate::storage_timestamp")]
+    #[serde(with = "crate::storage::timestamp")]
     pub start: Timestamp,
-    #[serde(with = "crate::storage_timestamp")]
+    #[serde(with = "crate::storage::timestamp")]
     pub end: Timestamp,
 }
 

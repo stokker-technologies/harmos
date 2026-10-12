@@ -25,7 +25,7 @@ mise install --locked
 mise run sync
 ```
 
-Run the complete example with `mise run run:minischematic`. Read the relevant source-level contracts and compiled examples before changing
+Run the complete example with `mise run run:schematic`. Read the relevant source-level contracts and compiled examples before changing
 a public contract.
 
 ## Make A Change

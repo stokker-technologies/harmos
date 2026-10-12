@@ -49,7 +49,7 @@ class WorkflowTests(unittest.TestCase):
         ):
             examples.main()
             commands = [call.args[0] for call in run.call_args_list]
-            guest = Path("custom-target") / "artifacts" / "autoroute.wasm"
+            guest = Path("custom-target") / "artifacts" / "schematic-tools.wasm"
             self.assertEqual(len(commands), 4)
             self.assertEqual(commands[0][:2], ["cargo", "metadata"])
             self.assertIn("wasm32-unknown-unknown", commands[1])
@@ -70,9 +70,7 @@ class WorkflowTests(unittest.TestCase):
                 ) as run,
             ):
                 examples.main()
-                sidecar = (
-                    Path("custom-target") / "debug" / f"minibench-probe-sidecar{suffix}"
-                )
+                sidecar = Path("custom-target") / "debug" / f"schematic-sidecar{suffix}"
                 self.assertEqual(run.call_count, 4)
                 self.assertIn("harmos-sidecar-export", run.call_args_list[2].args[0])
                 self.assertEqual(

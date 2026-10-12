@@ -23,7 +23,10 @@ use std::sync::{
 // Third Party Imports
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, watch};
 // Local Imports
-use crate::{Application, Entry, Position, PreparationError, Receipt, Recorded, RequestKey};
+use crate::{
+    Application, state::Entry, state::Position, state::PreparationError, state::Receipt,
+    state::Recorded, state::RequestKey,
+};
 
 /* === Constants === */
 
@@ -204,6 +207,7 @@ impl<A: Application> Callback<A> {
             .await
             .map_err(|_| PreparationError::CaptureFailed)
     }
+
     pub fn check(&self) -> Result<(), PreparationError> {
         if self.shared.failed.load(Ordering::Acquire) {
             Err(PreparationError::CaptureFailed)
@@ -211,6 +215,7 @@ impl<A: Application> Callback<A> {
             Ok(())
         }
     }
+
     pub fn submit(
         &self,
         entries: Vec<Arc<Entry<Recorded<A>>>>,
@@ -229,12 +234,15 @@ impl<A: Application> Callback<A> {
             self.shared.fail();
         }
     }
+
     pub fn progress(&self) -> watch::Receiver<Result<Position, CaptureError>> {
         self.shared.progress.subscribe()
     }
+
     pub fn failure(&self) -> watch::Receiver<bool> {
         self.shared.signal.subscribe()
     }
+
     pub async fn finish(self) {
         drop(self.sender);
         let _ = self.worker.await;

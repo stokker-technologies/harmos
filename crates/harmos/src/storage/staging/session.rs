@@ -221,7 +221,7 @@ impl FileState {
 }
 
 impl State {
-    pub(in crate::storage_runtime) fn expire_files(&mut self) {
+    pub(in crate::storage) fn expire_files(&mut self) {
         if self.status.closing {
             return;
         }
@@ -243,7 +243,7 @@ impl State {
         }
     }
 
-    pub(in crate::storage_runtime) fn file_deadline(&self) -> Option<tokio::time::Instant> {
+    pub(in crate::storage) fn file_deadline(&self) -> Option<tokio::time::Instant> {
         if self.status.closing {
             return None;
         }

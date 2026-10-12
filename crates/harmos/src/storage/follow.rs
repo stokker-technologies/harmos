@@ -204,6 +204,7 @@ impl<R, T: MemorySize> QueryFollower<R, T> {
     pub fn saved_boundary(&self) -> &StorageCursor {
         self.source.saved_boundary()
     }
+
     pub fn accepted_boundary(&self) -> &StorageCursor {
         self.source.accepted_boundary()
     }
@@ -396,6 +397,7 @@ impl<T> StorageFollower<T> {
     pub fn saved_boundary(&self) -> &StorageCursor {
         &self.saved
     }
+
     pub fn accepted_boundary(&self) -> &StorageCursor {
         &self.accepted
     }
@@ -480,6 +482,7 @@ impl<T> StorageFollower<T> {
             }
         }
     }
+
     fn finished(&self) -> bool {
         self.history.as_ref().is_none_or(StorageReader::exhausted)
             && self
@@ -510,9 +513,11 @@ impl Following {
             failure: None,
         }
     }
+
     fn retains(&self) -> bool {
         self.failure.is_none() && self.through.is_none_or(|through| self.after < through)
     }
+
     fn check(&self) -> Result<()> {
         match self.failure {
             Some(Failure::Gap {
@@ -527,6 +532,7 @@ impl Following {
             None => Ok(()),
         }
     }
+
     pub(super) fn expire(&mut self, closing: bool, now: tokio::time::Instant) -> bool {
         if self.failure.is_some() {
             return false;
@@ -538,6 +544,7 @@ impl Following {
         }
         self.failure.is_some()
     }
+
     pub(super) fn idle_deadline(&self) -> Option<tokio::time::Instant> {
         (self.failure.is_none() && self.active == 0).then_some(self.deadline)
     }
@@ -558,6 +565,7 @@ impl Lease {
             id: self.id,
         })
     }
+
     fn check(&self) -> Result<()> {
         let mut state = self.inner.state.lock().unwrap();
         state.collect();

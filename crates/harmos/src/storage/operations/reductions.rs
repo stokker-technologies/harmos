@@ -14,24 +14,24 @@
 /* === Imports === */
 
 // Standard Library Imports
-#[cfg(feature = "runtime")]
+
 use std::sync::Arc;
 
 // Third Party Imports
 
 // Local Imports
 use crate::MemorySize;
-#[cfg(feature = "runtime")]
+
 use crate::operations::{Context, Operation};
 use crate::operations::{Grpc, OperationDeclaration, Visibility, WireOperation};
 use crate::storage::ReadLimits;
-#[cfg(feature = "runtime")]
+
 use crate::storage::frame::FrameQuery;
 use crate::storage::frame::{Collected, Frame};
-#[cfg(feature = "runtime")]
+
+use crate::storage::codec::{Nested, product};
 use crate::storage::{QueryOptions, StorageManager};
-use crate::storage_codec::{Nested, product};
-#[cfg(feature = "runtime")]
+
 use crate::{Error, Result};
 use harmos_contract::plugin::Grant;
 
@@ -50,7 +50,6 @@ pub struct ReductionsRequest {
     pub page: ReadLimits,
 }
 
-#[cfg(feature = "runtime")]
 pub(super) struct Handler<C> {
     storage: Arc<StorageManager<C>>,
 }
@@ -102,7 +101,6 @@ impl WireOperation for Reductions {
     }
 }
 
-#[cfg(feature = "runtime")]
 impl<C: 'static> Operation for Handler<C> {
     type Declaration = Reductions;
     type Resources = StorageManager<C>;

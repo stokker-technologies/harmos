@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 // Third Party Imports
 use tokio::sync::RwLock;
 // Local Imports
-use harmos::Transaction;
+use harmos::state::Transaction;
 use support::{Change, HOUSE, Ledger, deposit, runtime_from};
 
 /* === Constants === */

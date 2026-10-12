@@ -222,7 +222,7 @@ fn contract_scenario() {
                 });
         });
     }
-    #[cfg(feature = "fft")]
+    #[cfg(feature = "signal-fft")]
     {
         scenario_runtime::check("axis_refuses_unsupported", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
@@ -331,7 +331,7 @@ fn contract_scenario() {
 });
         });
     }
-    #[cfg(feature = "fft")]
+    #[cfg(feature = "signal-fft")]
     {
         scenario_runtime::check("fft_refuses_non", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();

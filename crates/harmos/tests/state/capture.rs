@@ -21,8 +21,10 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{Semaphore, mpsc};
 // Local Imports
 use harmos::{
-    Application, CaptureError, CaptureLimits, Entry, Error, FactSource, Focus, JournalCapture,
-    Position, PreparationError, PrincipalId, Recorded, Records, Runtime, SystemFact, Transaction,
+    Application, Error, Runtime, state::CaptureError, state::CaptureLimits, state::Entry,
+    state::FactSource, state::Focus, state::JournalCapture, state::Position,
+    state::PreparationError, state::PrincipalId, state::Recorded, state::Records,
+    state::SystemFact, state::Transaction,
 };
 
 /* === Constants === */
@@ -81,7 +83,7 @@ impl Transaction<i64> for Add {
     }
 }
 
-impl harmos::Invert<i64> for Add {
+impl harmos::state::Invert<i64> for Add {
     fn invert(&self, _: &i64) -> Self {
         Add(-self.0)
     }
@@ -186,7 +188,7 @@ fn contract_scenario() {
                     assert_eq!(frontier, first.frontier);
                     let journal = runtime.state.clone();
                     let mut second = tokio::spawn(async move {
-                        harmos::RecordManager::new(journal.clone())
+                        harmos::records::RecordManager::new(journal.clone())
                             .publish(Observed("y".repeat(600)))
                             .await
                     });
@@ -252,11 +254,11 @@ fn contract_scenario() {
                         (commit.position, commit.frontier),
                         (Position(1), Position(2))
                     );
-                    harmos::RecordManager::new(journal.clone())
+                    harmos::records::RecordManager::new(journal.clone())
                         .publish(Observed("typed".into()))
                         .await
                         .unwrap();
-                    harmos::RecordManager::new(journal.clone())
+                    harmos::records::RecordManager::new(journal.clone())
                         .publish_system(SystemFact {
                             source: FactSource::Sidecar("probe".into()),
                             name: "sample".into(),
@@ -285,7 +287,7 @@ fn contract_scenario() {
                             );
                             assert_eq!(
                                 entries[1].metadata.causation,
-                                Some(harmos::CausationId(entries[0].position))
+                                Some(harmos::state::CausationId(entries[0].position))
                             );
                         }
                         if expected == 4 {
@@ -325,7 +327,7 @@ fn contract_scenario() {
                     group(&mut observed).await;
                     let journal = runtime.state.clone();
                     let mut pending = tokio::spawn(async move {
-                        harmos::RecordManager::new(journal.clone())
+                        harmos::records::RecordManager::new(journal.clone())
                             .publish(Observed("y".repeat(600)))
                             .await
                     });

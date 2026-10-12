@@ -28,7 +28,7 @@ use crate::MessageError;
 use crate::schema::{Cardinality, Described, Field, Kind};
 use crate::storage::StorageCursor;
 #[cfg(feature = "grpc")]
-use crate::storage_position::codec::{
+use crate::storage::position::codec::{
     bytes_field, field_len, identifier, text_field, uint_field, write_bytes, write_cursor,
     write_header,
 };
@@ -95,7 +95,6 @@ impl Selection {
         Ok(())
     }
 
-    #[cfg(feature = "runtime")]
     pub(super) fn options(&self) -> Result<crate::storage::QueryOptions> {
         self.validate()?;
         Ok(crate::storage::QueryOptions {

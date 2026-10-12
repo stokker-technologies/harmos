@@ -297,7 +297,10 @@ impl Operation for ParentCall {
 /* === Private Functions === */
 pub(crate) async fn runtime() -> Runtime<Bank> {
     Runtime::<Bank>::builder(Ledger::default(), ())
-        .operation_preparation_bytes(std::num::NonZeroUsize::new(16 * 1024).unwrap())
+        .operation_settings(harmos::operations::Settings {
+            preparation_bytes: Some(std::num::NonZeroUsize::new(16 * 1024).unwrap()),
+            ..Default::default()
+        })
         .register(catalog())
         .register(Lanes::catalog())
         .runtime()
@@ -305,12 +308,19 @@ pub(crate) async fn runtime() -> Runtime<Bank> {
         .unwrap()
 }
 
-#[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
 pub(crate) async fn runtime_with_preparation(bytes: std::num::NonZeroUsize) -> Runtime<Bank> {
     Runtime::<Bank>::builder(Ledger::default(), ())
         .register(catalog())
         .register(Lanes::catalog())
-        .operation_preparation_bytes(bytes)
+        .operation_settings(harmos::operations::Settings {
+            preparation_bytes: Some(bytes),
+            ..Default::default()
+        })
         .runtime()
         .await
         .unwrap()

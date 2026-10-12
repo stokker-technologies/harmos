@@ -18,7 +18,9 @@ use crate::scenario_runtime;
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 // Local Imports
-use harmos::{DecodeError, Error, Position, PrincipalId, Recorded, Runtime};
+use harmos::{
+    Error, Runtime, state::DecodeError, state::Position, state::PrincipalId, state::Recorded,
+};
 
 /* === Constants === */
 
@@ -45,7 +47,7 @@ enum Records {
 /* === Implementations === */
 impl harmos::Application for Model {
     type State = ();
-    type Transaction = harmos::Never;
+    type Transaction = harmos::state::Never;
     type Record = Records;
     type Streams = ();
     type Resources = ();
@@ -112,7 +114,7 @@ pub(super) fn contract_scenario() {
                     );
                     assert_eq!(
                         entries[1].metadata.causation,
-                        Some(harmos::CausationId(first.position))
+                        Some(harmos::state::CausationId(first.position))
                     );
                     runtime.stop().await.unwrap();
                 });
@@ -147,7 +149,7 @@ pub(super) fn contract_scenario() {
                         .register("plugin", &schema, Message::FIELDS)
                         .await
                         .unwrap();
-                    let producer = harmos::RecordManager::new(
+                    let producer = harmos::records::RecordManager::new(
                         runtime.state.as_principal(PrincipalId::new("editor")),
                     );
                     assert!(Arc::ptr_eq(

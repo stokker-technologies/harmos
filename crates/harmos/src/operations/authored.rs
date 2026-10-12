@@ -30,7 +30,7 @@ use super::manager::Entry;
 use super::{Context, Operation, OperationInstanceId, OperationManager};
 use crate::operations::OperationDeclaration;
 use crate::supervision::instance::{Instance, Phase};
-use crate::{Error, Result, Scope};
+use crate::{Error, Result, operations::Scope};
 
 /* === Constants === */
 
@@ -102,7 +102,7 @@ impl<T: Operation> Bound<T> {
             operations: self.operations.clone(),
             admission: self.admission.clone(),
             source: self.source.for_attempt(&self.entry, scope, &origin),
-            #[cfg(feature = "sidecar-host")]
+            #[cfg(feature = "plugin-sidecar")]
             retirement: self.entry.retirement_control() || origin.has_lifecycle_loan(),
             origin,
         })
@@ -114,6 +114,7 @@ impl<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>> Body<Arc<Response<T>
         self.physical.operation.transferred()
             || super::EndpointSet::transferred(&self.physical.endpoints)
     }
+
     fn initialize<'s>(&'s mut self, scope: Scope<'s>) -> Attempt<'s, ()> {
         Box::pin(async move {
             let context = self.context(scope, 0)?;

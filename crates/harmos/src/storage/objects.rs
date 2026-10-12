@@ -24,7 +24,7 @@ use super::{
     StorageView, StoredObject,
 };
 use crate::catalog::Contains;
-use crate::object_catalog::{check_length, decode_admitted, invalid, object_key, object_schema};
+use crate::storage::catalog::{check_length, decode_admitted, invalid, object_key, object_schema};
 use crate::{Error, MemorySize, MessageError, Result};
 
 /* === Constants === */
@@ -113,7 +113,7 @@ impl<C> ObjectGroup<'_, C> {
             return Err(invalid("object group contains too many objects"));
         }
         // Catalog Identity Construction And Verification Share The Original Claim.
-        if self.allowance - self.used < crate::object_catalog::LOOKUP_MEMORY_BYTES {
+        if self.allowance - self.used < crate::storage::catalog::LOOKUP_MEMORY_BYTES {
             return Err(invalid("object catalog lookup exceeds allowance"));
         }
         let definition = (self.manager.inner.object_definition)(&value.schema)?;

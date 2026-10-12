@@ -18,23 +18,32 @@ mod support;
 
 #[allow(dead_code)]
 mod probe {
-    use harmos::sidecar::inventory::{Declaration, DeclarationError};
-    use harmos::sidecar::{
+    use harmos::plugin::sidecar::inventory::{Declaration, DeclarationError};
+    use harmos::plugin::sidecar::{
         Attach, Attached, Executable, Frame, Notice, SidecarError, StreamDeclaration, StreamSpec,
         Supervised,
     };
     use harmos::{
-        Aggregate, Aggregated, Application, At, Axial, Batch, BeneathWindow, Bucket, Builder,
-        Capacity, Catalog, CausationId, CorrelationId, Cursor, DecodeError, Definition,
-        DefinitionId, Demand, Draft, Entry, Envelope, Error, Evidence, EvidenceError, EvidenceKind,
-        EvidenceRecord, Excerpt, FactSource, Fault, Focus, Handle as Grouping, Horizon, Identified,
-        Incompatible, Inspection, Inspector, Invert, Item, JournalConsumer, JournalMetadata, Kind,
-        Lane, LaneSet, Link, ManagedState, Never, Origin, Payload, Point, Position, Prefix,
-        PrincipalId, Query, Receipt, Recorded, Recovery, Refusal as RuntimeRefusal, Registration,
-        RequestKey, Resident as ResidentContract, Reversals, Runtime, Scope, Seal, Series, Service,
-        ServiceExit, ServicePolicy, ServiceStatus, Source, StateManager, StopParticipant, Stream,
-        StreamConsumer, StreamManager, Survey, SystemFact, Timestamp, Track, Tracked, Transaction,
-        Undoable, Vault,
+        Application, Builder, DefinitionId, Error, Identified, Refusal as RuntimeRefusal, Runtime,
+        evidence::Draft, evidence::Evidence, evidence::EvidenceError, evidence::EvidenceKind,
+        evidence::EvidenceRecord, evidence::Excerpt, evidence::Vault, operations::Capacity,
+        operations::Lane, operations::LaneSet, operations::Scope, runtime::Catalog,
+        runtime::Handle as Grouping, runtime::Incompatible, runtime::Inspection,
+        runtime::Inspector, runtime::Registration, runtime::StopParticipant, services::Fault,
+        services::Resident as ResidentContract, services::Service, services::ServiceExit,
+        services::ServicePolicy, services::ServiceStatus, state::At, state::CausationId,
+        state::CorrelationId, state::DecodeError, state::Entry, state::Envelope, state::FactSource,
+        state::Focus, state::Invert, state::Kind, state::Link, state::ManagedState,
+        state::Metadata as JournalMetadata, state::Never, state::Origin, state::Position,
+        state::PrincipalId, state::Receipt, state::Recorded, state::RequestKey, state::Reversals,
+        state::StateManager, state::SystemFact, state::Timestamp, state::Transaction,
+        state::Undoable, storage::Batch, storage::Cursor, storage::Horizon,
+        storage::JournalConsumer, storage::Payload, storage::Recovery, storage::Series,
+        storage::Source, storage::StreamConsumer, streams::Aggregate, streams::Aggregated,
+        streams::Axial, streams::BeneathWindow, streams::Bucket, streams::Definition,
+        streams::Demand, streams::Item, streams::Point, streams::Prefix, streams::Query,
+        streams::Seal, streams::Stream, streams::StreamManager, streams::Survey, streams::Track,
+        streams::Tracked,
     };
 
     use crate::support::{Bank, Change, Deposit, Ledger, Refusal};
@@ -47,24 +56,24 @@ mod probe {
     pub type Borrowed = <Bank as Application>::Resources;
     pub type Handle = StateManager<Bank>;
     pub type ReadOnlyState = ManagedState<Bank>;
-    pub type RequiredLimits = harmos::CaptureLimits;
-    pub type StreamLimits = harmos::ReadLimits;
-    pub type StreamPageLimits = harmos::PageLimits;
-    pub type StreamPage = harmos::RowPage<u64>;
-    pub type StreamCut = harmos::ReadCut;
-    pub type StreamReadError = harmos::ReadError;
-    pub type StreamReader = harmos::RowReader<u64>;
-    pub type SharedPublication = harmos::ManagedPublication;
-    pub type PendingPublication = harmos::StagedPublication;
-    pub fn borrowed_record<R, C: harmos::RecordProjection<R>>(catalog: &C) -> Option<&R> {
+    pub type RequiredLimits = harmos::state::CaptureLimits;
+    pub type StreamLimits = harmos::streams::ReadLimits;
+    pub type StreamPageLimits = harmos::streams::PageLimits;
+    pub type StreamPage = harmos::streams::RowPage<u64>;
+    pub type StreamCut = harmos::streams::ReadCut;
+    pub type StreamReadError = harmos::streams::ReadError;
+    pub type StreamReader = harmos::streams::RowReader<u64>;
+    pub type SharedPublication = harmos::streams::ManagedPublication;
+    pub type PendingPublication = harmos::streams::StagedPublication;
+    pub fn borrowed_record<R, C: harmos::state::RecordProjection<R>>(catalog: &C) -> Option<&R> {
         catalog.project()
     }
-    pub fn row_source<S: harmos::RowSource>(source: S) -> S {
+    pub fn row_source<S: harmos::streams::RowSource>(source: S) -> S {
         source
     }
 
-    pub type CaptureFailure = harmos::CaptureError;
-    pub fn required<C: harmos::JournalCapture<Bank>>(consumer: C) -> C {
+    pub type CaptureFailure = harmos::state::CaptureError;
+    pub fn required<C: harmos::state::JournalCapture<Bank>>(consumer: C) -> C {
         consumer
     }
     pub type Answer = Error<Refusal>;
@@ -107,10 +116,10 @@ mod probe {
     pub type Envelopes = Frame;
 
     // One portable operation policy and key type across host and plugin facades.
-    pub type OperationPolicy = harmos::OperationPolicy;
-    pub type GuestOperationPolicy = harmos::guest::OperationPolicy;
-    pub type SidecarOperationPolicy = harmos::sidecar::OperationPolicy;
-    pub type OperationCacheKey = harmos::CacheKey;
+    pub type OperationPolicy = harmos::operations::OperationPolicy;
+    pub type GuestOperationPolicy = harmos::plugin::guest::OperationPolicy;
+    pub type SidecarOperationPolicy = harmos::plugin::sidecar::OperationPolicy;
+    pub type OperationCacheKey = harmos::operations::CacheKey;
 
     pub fn operation_policy_identity(
         policy: OperationPolicy,
@@ -275,8 +284,10 @@ mod probe {
 
 #[allow(dead_code)]
 mod guest_probe {
-    use harmos::guest::inventory::{Declaration, DeclarationError};
-    use harmos::guest::{Error, Host, Loaded, OperationRefusal, Registered, Registration, Serving};
+    use harmos::plugin::guest::inventory::{Declaration, DeclarationError};
+    use harmos::plugin::guest::{
+        Error, Host, Loaded, OperationRefusal, Registered, Registration, Serving,
+    };
 
     use crate::support::Bank;
 
@@ -300,7 +311,8 @@ mod guest_probe {
 
     // The route surface the guest facility gained, named through the traits it
     // carries and the table a guest serves it from.
-    pub type ServedOperations = harmos::guest::operations::WireTable<harmos::guest::Context>;
+    pub type ServedOperations =
+        harmos::plugin::guest::operations::WireTable<harmos::plugin::guest::Context>;
     pub type RouteEnvelope = OperationRefusal;
 
     pub fn implements<G: harmos::Plugin>(config: G::Config) -> G::Config {
@@ -309,16 +321,16 @@ mod guest_probe {
 
     pub fn declared_guest<D: harmos_contract::plugin::Declared>() {}
 
-    pub fn calls<O: harmos::guest::operations::OperationDeclaration>(operation: O) -> O {
+    pub fn calls<O: harmos::plugin::guest::operations::OperationDeclaration>(operation: O) -> O {
         operation
     }
 }
 
-#[cfg(feature = "sim")]
+#[cfg(feature = "simulation")]
 #[allow(dead_code)]
 mod sim_probe {
-    use harmos::SimulatedRuntime;
-    use harmos::sim::{ServiceProbe, SimError, entropy};
+    use harmos::simulation::SimulatedRuntime;
+    use harmos::simulation::{ServiceProbe, SimError, entropy};
 
     use crate::support::Bank;
 
@@ -343,32 +355,14 @@ use std::path::{Path, PathBuf};
 // Local Imports
 
 /* === Constants === */
-const CENSUS: [&str; 143] = [
+const CENSUS: [&str; 26] = [
+    "signal",
     "Plugin",
     "listeners",
     "btree_map_memory",
-    "BootstrapCleanup",
-    "BootstrapStatus",
     "MemorySize",
-    "Startup",
     "Storable",
-    "StreamRegistration",
-    "StagedPublication",
-    "OperationManager",
-    "CacheKey",
-    "OperationDeclaration",
-    "OperationPolicy",
-    "RetryPolicy",
     "BackendFailure",
-    "CaptureError",
-    "CaptureLimits",
-    "JournalCapture",
-    "Batched",
-    "Batches",
-    "BatchItem",
-    "Summary",
-    "Measurement",
-    "Statistics",
     "Message",
     "MessageError",
     "StreamSpec",
@@ -381,127 +375,28 @@ const CENSUS: [&str; 143] = [
     "RowMetadata",
     "schema",
     // Application-Facing StateManager And Stream Contracts.
-    "At",
-    "CausationId",
-    "CorrelationId",
-    "Entry",
     "Error",
     "Identified",
-    "CatalogCodec",
-    "TransactionCatalog",
-    "RecordCatalog",
-    "RecordProjection",
-    "Record",
-    "Records",
-    "Prepared",
-    "PreparationError",
-    "Invert",
-    "Undoable",
-    "StateManager",
-    "ManagedState",
-    "Link",
-    "JournalMetadata",
-    "Origin",
-    "Position",
-    "PrincipalId",
     "Application",
-    "Receipt",
-    "RequestKey",
-    "Reversals",
-    "Focus",
-    "FactSource",
-    "SystemFact",
-    "Transaction",
-    "Never",
-    "BeneathWindow",
-    "Demand",
-    "Item",
-    "Query",
-    "PageLimits",
-    "RowPage",
-    "ReadCut",
-    "ReadError",
-    "ReadLimits",
-    "RowReader",
-    "RowSource",
-    "Stream",
-    "RecordManager",
-    "StreamManager",
-    "StreamFeed",
-    "PluginStream",
-    "PublicationLease",
-    "PublicationRow",
-    "ManagedPublication",
-    "StreamAdmissionError",
-    "StreamPublicationError",
-    "Track",
-    "Prefix",
-    "Tracked",
-    "Axial",
-    "Survey",
-    "Seal",
-    "Bucket",
-    "Point",
-    "Aggregate",
-    "Aggregated",
     // Public lane admission and resident lifecycle contracts.
-    "Capacity",
-    "Fault",
-    "Lane",
-    "LaneSet",
     "Refusal",
-    "Resident",
-    "Scope",
-    "Service",
-    "ServiceExit",
-    "ServicePolicy",
-    "ServiceStatus",
     // Six names for file-shaped evidence: the facade, one piece of evidence at
     // whichever stage it has reached, the kind declaration naming the typed
     // account a piece of evidence of that kind records, a draft still being written,
     // the one bounded window both stages read through, and the refusal.
-    "EvidenceRecord",
-    "EvidenceError",
-    "Evidence",
-    "Draft",
-    "EvidenceKind",
-    "Excerpt",
     // Twelve composition names.
     "Builder",
-    "Registration",
-    "Catalog",
-    "Definition",
-    "Horizon",
-    "Incompatible",
-    "Inspection",
-    "Inspector",
-    "Handle",
     "Runtime",
-    "StopParticipant",
     // Fourteen adapter-only names: fold contracts and coordinates, the encode
     // boundary and recovery equation, and the evidence vault port — which
     // lives here beside the other two rather than in the crate that
     // implements it.
-    "Batch",
-    "Cursor",
-    "DecodeError",
     "DefinitionId",
-    "Envelope",
-    "JournalConsumer",
-    "Kind",
-    "Payload",
-    "Recorded",
-    "Recovery",
-    "Series",
-    "Source",
-    "StreamConsumer",
-    "Vault",
     // The standard-library clock.
-    "Timestamp",
     "Protobuf",
 ];
 
-const HIDDEN: [&str; 28] = [
+const HIDDEN: [&str; 29] = [
     "prost",
     // How generated code names a type the tokens it was handed cannot spell,
     // and how a hand-written contribution names the same one.
@@ -533,6 +428,7 @@ const HIDDEN: [&str; 28] = [
     "PostcardReader",
     "PostcardValue",
     "with_protobuf",
+    "sidecar",
 ];
 
 const AUTHORING: [&str; 13] = [
@@ -551,7 +447,7 @@ const AUTHORING: [&str; 13] = [
     "operation",
 ];
 
-const GUEST_CENSUS: [&str; 35] = [
+const GUEST_CENSUS: [&str; 49] = [
     "CacheKey",
     "ConfigError",
     "Context",
@@ -587,9 +483,23 @@ const GUEST_CENSUS: [&str; 35] = [
     "operation",
     "PublishError",
     "Publisher",
+    "Axial",
+    "Batched",
+    "Definition",
+    "Metadata",
+    "Prefix",
+    "Refusal",
+    "StreamField",
+    "Track",
+    "Tracked",
+    "listener",
+    "listeners",
+    "plugin",
+    "stream",
+    "streams",
 ];
 
-const SIDECAR_KIT_CENSUS: [&str; 66] = [
+const SIDECAR_KIT_CENSUS: [&str; 80] = [
     "Activation",
     "ActivationId",
     "Attach",
@@ -656,6 +566,20 @@ const SIDECAR_KIT_CENSUS: [&str; 66] = [
     "operation",
     "PublishError",
     "Publisher",
+    "Axial",
+    "Batched",
+    "Definition",
+    "Metadata",
+    "Prefix",
+    "StreamField",
+    "Track",
+    "Tracked",
+    "listener",
+    "listeners",
+    "observer",
+    "plugin",
+    "stream",
+    "streams",
 ];
 
 const DELETED: [&str; 48] = [
@@ -788,169 +712,132 @@ const DOWNSTREAM: [&str; 44] = [
     "Vault",
 ];
 
-const ALLOWANCE: [(&str, &[&str]); 17] = [
+// Reviewed Direct Dependencies Include Dev-Only Test And Benchmark Edges.
+const ALLOWANCE: [(&str, &[&str]); 16] = [
     (
         "harmos",
-        // `harmos-sidecar` owns the process boundary and this crate owns its
-        // runtime supervision. Harmos owns payload operations through the shared
-        // artifact contract; activation settings keep their JSON codec. The dependency
-        // points from runtime to boundary; the author kit does not depend back
-        // on the runtime.
-        //
-        // `jsonl-adapter` is the reference adapter under `examples/`, and it is
-        // here for the durability pillar alone: a contract about stored bytes
-        // needs an adapter to store them. The direction still runs one way —
-        // the adapter depends on this crate — and a lockfile merges dev
-        // dependencies into one list, which is why a test-only name appears in
-        // this allowance beside `tempfile` and `harmos-guest`.
         &[
-            // Borrowed gRPC Decode Buffers; Optional With grpc Only.
             "bytes",
-            // Optional gRPC Identifier Collision Checks Match Prost Casing.
-            "heck",
-            // Criterion is confined to explicit benchmark targets.
             "criterion",
             "futures-core",
-            // Concurrent operation adapters and instance/context entropy.
             "futures-util",
             "getrandom",
+            "harmos-bundle",
             "harmos-contract",
             "harmos-guest",
             "harmos-macros",
             "harmos-sidecar",
             "harmos-signal",
-            // Optional gRPC Response Body Owns The Active RPC Permit.
+            "heck",
             "http-body",
-            // In-Memory Tonic Framing Regression Bodies Only.
             "http-body-util",
             "jsonl-adapter",
             "petgraph",
-            "semver",
-            // Optional Standard gRPC Service Descriptor Composition.
             "prost-reflect",
-            // Test-Only protoc Compile Of Exported Storage Service Sources.
             "protoc-bin-vendored",
+            "semver",
+            "serde",
+            "serde_json",
+            "sha2",
+            "syn",
+            "tar",
+            "tempfile",
+            "thiserror",
+            "tokio",
+            "tonic",
+            "tonic-reflection",
+            "tonic-web",
+            "tracing",
+            "tracing-subscriber",
+            "wasmtime",
+        ],
+    ),
+    (
+        "harmos-bundle",
+        &[
+            "harmos-contract",
+            "semver",
             "serde",
             "serde_json",
             "sha2",
             "tar",
             "tempfile",
             "thiserror",
-            "tokio",
-            // Optional External gRPC Adapter; Disabled Without The grpc Feature.
-            "tonic",
-            "tonic-reflection",
-            // Optional gRPC-Web Translation On The Same Listener.
-            "tonic-web",
-            // Test-Only Rust Syntax Census.
-            "syn",
-            "wasmtime",
             "tracing",
-            // Test-only capture verifies observer diagnostic scope propagation.
+        ],
+    ),
+    (
+        "harmos-contract",
+        &[
+            "harmos-macros",
+            "heck",
+            "memchr",
+            "postcard",
+            "prost",
+            "prost-reflect",
+            "protoc-bin-vendored",
+            "semver",
+            "serde",
+            "serde_json",
+            "tempfile",
+            "thiserror",
+            "time",
+            "tokio",
+            "tracing",
+        ],
+    ),
+    (
+        "harmos-grpc-fixture",
+        &[
+            "futures-util",
+            "harmos",
+            "prost",
+            "prost-reflect",
+            "serde",
+            "serde_json",
+            "sha2",
+            "thiserror",
+            "tokio",
+            "tonic",
+            "tonic-prost",
+            "tonic-prost-build",
+            "tracing",
+        ],
+    ),
+    (
+        "harmos-guest",
+        &[
+            "harmos-contract",
+            "semver",
+            "serde",
+            "serde_json",
+            "thiserror",
+            "tokio",
+            "tracing",
+            "wasmtime",
+            "wit-bindgen",
+            "wit-component",
+        ],
+    ),
+    (
+        "harmos-lifecycle-fixture",
+        &[
+            "clap",
+            "futures-core",
+            "harmos",
+            "schematic-app",
+            "serde_json",
+            "sha2",
+            "tempfile",
+            "thiserror",
+            "tokio",
+            "tracing",
             "tracing-subscriber",
         ],
     ),
     (
-        // The declaration surface both facilities name. Postcard is the default;
-        // protobuf is an explicit projection. The macro dependency supplies
-        // the guest-safe authoring facade; nothing here reaches a transport.
-        "harmos-contract",
-        // Shared native/guest Requirement owns its semantic version constraint.
-        &[
-            "harmos-macros",
-            "memchr",
-            // Bounded Internal Serving Envelopes.
-            "postcard",
-            "prost",
-            "prost-reflect",
-            "semver",
-            "serde",
-            "serde_json",
-            "thiserror",
-            "time",
-            "tracing",
-            // Deterministic Proto Names And Explicit Optional Stream Channels.
-            "heck",
-            "tokio",
-            // Textual Proto Export Verification Uses The Standard Compiler.
-            "protoc-bin-vendored",
-            "tempfile",
-        ],
-    ),
-    (
-        "harmos-sidecar",
-        &[
-            // Native SDK Tests Author The Same Unified Plugin Contract.
-            "harmos-macros",
-            "criterion",
-            "tempfile",
-            "futures-util",
-            // Native activation identities must not repeat after process restart.
-            "getrandom",
-            "harmos-contract",
-            "hyper-util",
-            // Native Descriptor Attachment And Binary Carrier Envelopes.
-            "libc",
-            "postcard",
-            "prost",
-            "protoc-bin-vendored",
-            "semver",
-            "serde",
-            "serde_json",
-            "thiserror",
-            "tokio",
-            "tokio-stream",
-            "tonic",
-            "tonic-prost",
-            "tonic-prost-build",
-            "tower",
-            // Windows process startup restores the OS environment baseline.
-            "windows-sys",
-            "tracing",
-        ],
-    ),
-    (
-        // The contract crate: the editor's contract with its own plugins. Harmos
-        // with every default off, serde, and shared error/tracing contracts. A
-        // contract that reached an adapter or a runtime could not also be
-        // compiled by the guest that has to honor it. `mise run check:wasm` is
-        // where that stops being an intention.
-        "minischematic-contract",
-        &["harmos", "serde", "thiserror", "tracing"],
-    ),
-    (
-        // The application crate: state, catalogs, entry verbs, wire format,
-        // storage composition, the document, the host half of the guest edge,
-        // and the native readback of a finished recording. `tracing` instruments
-        // the entry verbs and nothing else — installing a subscriber over them
-        // is the shell's decision, which is why `tracing-subscriber` is absent
-        // here and present in `minischematic-cli`.
-        "minischematic-app",
-        &[
-            "futures-core",
-            "harmos",
-            "jsonl-adapter",
-            "minischematic-contract",
-            "serde",
-            "serde_json",
-            // Inspected Native Worker Artifact Identity.
-            "sha2",
-            "thiserror",
-            "tokio",
-            "tracing",
-            // Explicit Host-To-Guest Communication Benchmark.
-            "criterion",
-        ],
-    ),
-    (
-        "harmos-signal",
-        // Signal kernels and shared error/instrumentation contracts, with no runtime.
-        &["rustfft", "thiserror", "tracing"],
-    ),
-    (
         "harmos-macros",
         &[
-            // Authored Operation Names Derive The Same Snake Case As Transport Names.
             "heck",
             "proc-macro-crate",
             "proc-macro2",
@@ -961,158 +848,95 @@ const ALLOWANCE: [(&str, &[&str]); 17] = [
         ],
     ),
     (
-        // The reference adapter, which is a worked example and not a library
-        // the workspace depends on: nothing here depends back on it except the
-        // tests that need something to store bytes with. One format, one codec,
-        // no features — `serde` and `serde_json` are the codec itself rather
-        // than an optional backend, and `tokio` is what its own tests are
-        // driven by. A second format would be a second adapter, not an entry
-        // here.
-        "jsonl-adapter",
-        &[
-            "harmos",
-            "tempfile",
-            "serde",
-            "serde_json",
-            "tokio",
-            "thiserror",
-            "tracing",
-        ],
+        "harmos-observer-fixture",
+        &["harmos", "serde", "thiserror", "tokio", "tracing"],
     ),
     (
-        // `wasmtime` is the guest tests' own host and enters the graph only for
-        // them — the world is proven by running a component built from this
-        // kit, which takes a component runtime. `wit-component` is the encoder
-        // that wraps a core module into that component, and it is here rather
-        // than in a task file so it resolves beside the wasmtime that has to
-        // accept what it writes. The kit a guest author compiles for wasm32
-        // links `wit-bindgen` and the shared artifact contract; the target gate on the
-        // others is what keeps true.
-        //
-        // `prost` is the payload language at every tenant boundary, so it
-        // reaches wasm32 on purpose: a guest decodes a route's request and
-        // encodes its reply inside the instance. Its only required dependency
-        // is `bytes` and it supports `no_std`, which is what lets the guest
-        // targets keep building after routes exactly as they did before them —
-        // `mise run check:wasm` is where that stops being an intention.
-        "harmos-guest",
+        "harmos-sidecar",
         &[
+            "criterion",
+            "futures-util",
+            "getrandom",
             "harmos-contract",
+            "harmos-macros",
+            "libc",
+            "postcard",
             "semver",
             "serde",
             "serde_json",
+            "tempfile",
             "thiserror",
             "tokio",
-            "wasmtime",
-            "wit-bindgen",
-            "wit-component",
             "tracing",
+            "windows-sys",
         ],
     ),
+    ("harmos-signal", &["rustfft", "thiserror", "tracing"]),
     (
-        // The shell: it chooses the document, resolves the configuration,
-        // installs the subscriber, and renders an error once. It names the app
-        // crate and nothing beneath it — the contract crate is the plugins' contract,
-        // not a shell's.
-        "minischematic-cli",
+        "jsonl-adapter",
         &[
-            // Shell Argument Parsing.
-            "clap",
-            "futures-core",
             "harmos",
-            "minischematic-app",
+            "serde",
             "serde_json",
             "tempfile",
             "thiserror",
             "tokio",
-            "tracing-subscriber",
             "tracing",
         ],
     ),
     (
-        // The guest: it compiles the editor's contract crate and never learns there
-        // is a runtime, which is what lets it compile for wasm32.
-        "minischematic-plugin",
+        "schematic-app",
         &[
+            "criterion",
+            "futures-core",
             "harmos",
-            "minischematic-contract",
+            "harmos-guest",
+            "jsonl-adapter",
+            "schematic-contract",
             "serde",
             "serde_json",
-            "thiserror",
-            "tracing",
-        ],
-    ),
-    (
-        // Native Worker Uses Only The Portable Contract And Authoring SDK.
-        "minischematic-worker",
-        &[
-            "harmos",
-            "minischematic-contract",
-            "thiserror",
-            "tokio",
-            "tracing",
-        ],
-    ),
-    (
-        // The bench's contract crate: the probe edge's settings and route payloads,
-        // and nothing else. `Reading` is deliberately absent — a publication
-        // enters a stream, and a stream row carries the host's retention policy,
-        // so each half declares its own and the two agree on id and schema.
-        "minibench-contract",
-        &["harmos", "serde", "thiserror", "tracing"],
-    ),
-    (
-        // The bench's host half. `tokio` is the one wait a job makes while its
-        // declared child finishes opening; the deadline bounding it is the job
-        // policy's.
-        "minibench-app",
-        &[
-            "harmos",
-            "minibench-contract",
-            "serde",
-            // The Native Artifact Identity Is Its Inspected Content Digest.
             "sha2",
+            "tempfile",
             "thiserror",
             "tokio",
             "tracing",
         ],
     ),
     (
-        // The shell no longer links the sidecar crate: its calls are placed by
-        // jobs the application admits, and the executable it points at is a
-        // path the build produced rather than a crate this shell compiles.
-        "minibench-cli",
+        "schematic-cli",
         &[
-            // Shell Argument Parsing.
             "clap",
             "harmos",
-            "minibench-app",
-            // Machine-Readable Readiness For Signal Acceptance.
-            "serde_json",
+            "schematic-app",
+            "tempfile",
             "thiserror",
             "tokio",
-            "tracing-subscriber",
             "tracing",
         ],
     ),
     (
-        // The proof that a sidecar author compiles the kit and the declaration
-        // types and nothing else: this member turns harmos's default features
-        // off, declares its own stream row and its own sidecar, and would stop
-        // compiling the day a declaration attribute reached into the host core.
-        // `harmos` is here once, with `runtime` off; error and tracing
-        // dependencies do not enable the host runtime.
-        "standalone-sidecar",
-        &["harmos", "serde", "tokio", "thiserror", "tracing"],
+        "schematic-contract",
+        &["harmos-contract", "serde", "thiserror"],
     ),
     (
-        "minibench-probe-sidecar",
+        "schematic-guest",
         &[
-            "harmos",
-            "minibench-contract",
+            "harmos-guest",
+            "schematic-contract",
             "serde",
-            "tokio",
+            "serde_json",
             "thiserror",
+            "tracing",
+        ],
+    ),
+    (
+        "schematic-sidecar",
+        &[
+            "harmos-sidecar",
+            "schematic-contract",
+            "schematic-guest",
+            "thiserror",
+            "tokio",
             "tracing",
         ],
     ),
@@ -1154,6 +978,11 @@ fn sources() -> Vec<(String, String)> {
     let mut found = Vec::new();
     collect(&workspace().join("crates"), &mut found);
     collect(&workspace().join("examples"), &mut found);
+    collect(&workspace().join("tests/fixtures"), &mut found);
+    collect(
+        &workspace().join("tests/support/jsonl-adapter/src"),
+        &mut found,
+    );
     found.sort();
     found
 }
@@ -1164,7 +993,10 @@ fn collect(directory: &Path, found: &mut Vec<(String, String)>) {
     for entry in listing.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            if path.file_name().is_some_and(|name| name != "tests") {
+            if path
+                .file_name()
+                .is_some_and(|name| name != "tests" && name != "docs")
+            {
                 collect(&path, found);
             }
         } else if path.extension().is_some_and(|suffix| suffix == "rs") {
@@ -1355,68 +1187,19 @@ fn operation_facility_gate(path: &str, attribute: &str) -> bool {
         key = key.replace(",)", ")");
     }
     let owners: &[&str] = match key.as_str() {
-        // Runtime Admission Verification Is Shared By Memory And Durable Storage.
-        "#[cfg(feature=\"runtime\")]" => &[
-            "error.rs",
-            "grpc.rs",
-            "grpc/envelope.rs",
-            "storage/catalog.rs",
-            // Portable Contracts Compile Without Their Runtime Adapters. The
-            // Selected Adapter Is Identical For Memory And Persistent Backends.
-            "storage/data.rs",
-            "storage/object_values.rs",
-            "storage/timestamp.rs",
-            "storage/operations/abandon_file.rs",
-            "storage/operations/acknowledge.rs",
-            "storage/operations/append_file.rs",
-            "storage/operations/create_file.rs",
-            "storage/operations/data_selection.rs",
-            "storage/operations/delete_file.rs",
-            "storage/operations/file_selection.rs",
-            "storage/operations/finish_file.rs",
-            "storage/operations/follow.rs",
-            "storage/operations/follow_file.rs",
-            "storage/operations/follow_objects.rs",
-            "storage/operations/follow_stream.rs",
-            "storage/operations/mod.rs",
-            "storage/operations/object_result.rs",
-            "storage/operations/object_selection.rs",
-            "storage/operations/query_files.rs",
-            "storage/operations/query_schemas.rs",
-            "storage/operations/query_storage.rs",
-            "storage/operations/query_stream.rs",
-            "storage/operations/read_files.rs",
-            "storage/operations/read_objects.rs",
-            "storage/operations/read_records.rs",
-            "storage/operations/reductions.rs",
-            "storage/operations/resume_file.rs",
-            "storage/operations/save.rs",
-            "storage/operations/selection.rs",
-            "storage/operations/write_objects.rs",
-            "storage/operations/write_records.rs",
-            "storage/operations/write_schema.rs",
-            "storage/operations/write_stream.rs",
-        ],
-        "#[cfg(any(feature=\"runtime\",test))]" => {
-            &["storage/catalog.rs", "storage/object_values.rs"]
-        }
         // Test Fixtures Compile Only With Their Facility's Callers.
-        "#[cfg(all(test,any(feature=\"load\",feature=\"guest-host\",feature=\"sidecar-host\")))]" => {
+        "#[cfg(all(test,any(feature=\"plugin\",feature=\"plugin-guest\",feature=\"plugin-sidecar\")))]" => {
             &["streams/definition.rs", "streams/publication.rs"]
         }
-        "#[cfg(all(test,feature=\"sidecar-host\"))]" => &["streams/window.rs"],
-        "#[cfg(any(feature=\"sidecar-host\",test))]" => &["supervision/instance.rs"],
+        "#[cfg(all(test,feature=\"plugin-sidecar\"))]" => &["streams/window.rs"],
+        "#[cfg(any(feature=\"plugin-sidecar\",test))]" => &["supervision/instance.rs"],
         // Native And Remote Observer Adapters Share Retained Cleanup Ownership.
-        "#[cfg(any(feature=\"sidecar\",feature=\"sidecar-host\"))]" => {
-            &["observers/manager.rs", "observers/mod.rs"]
-        }
-        "#[cfg(all(feature=\"runtime\",any(feature=\"load\",feature=\"guest-host\",feature=\"sidecar-host\")))]" => {
-            &["error.rs", "lib.rs"]
-        }
-        "#[cfg(any(feature=\"load\",feature=\"guest-host\",feature=\"sidecar-host\"))]"
-        | "#[cfg(not(any(feature=\"load\",feature=\"guest-host\",feature=\"sidecar-host\")))]" => {
+        "#[cfg(any(feature=\"plugin\",feature=\"plugin-guest\",feature=\"plugin-sidecar\"))]"
+        | "#[cfg(not(any(feature=\"plugin\",feature=\"plugin-guest\",feature=\"plugin-sidecar\")))]" =>
+        {
             &[
                 "grpc/server.rs",
+                "error.rs",
                 "state/manager.rs",
                 "observers/manager.rs",
                 "observers/manager/registration.rs",
@@ -1440,31 +1223,28 @@ fn operation_facility_gate(path: &str, attribute: &str) -> bool {
                 "supervision/mod.rs",
             ]
         }
-        "#[cfg(all(feature=\"guest-host\",not(target_arch=\"wasm32\")))]" => {
-            &["load/router.rs", "operations/mod.rs", "operations/sdk.rs"]
+        "#[cfg(all(feature=\"plugin-guest\",not(target_arch=\"wasm32\")))]" => {
+            &["plugin/router.rs", "operations/mod.rs", "operations/sdk.rs"]
         }
-        "#[cfg(any(feature=\"sidecar-host\",all(feature=\"guest-host\",not(target_arch=\"wasm32\"))))]" => {
+        "#[cfg(any(feature=\"plugin-sidecar\",all(feature=\"plugin-guest\",not(target_arch=\"wasm32\"))))]" => {
             &[
-                "load/scope.rs",
+                "plugin/scope.rs",
                 "operations/mod.rs",
                 "operations/registration.rs",
                 "operations/wire.rs",
             ]
         }
         // Generation Callers And Lifecycle Loans Select Facilities, Never Persistence.
-        "#[cfg(any(feature=\"sidecar-host\",feature=\"guest-host\"))]" => {
+        "#[cfg(any(feature=\"plugin-sidecar\",feature=\"plugin-guest\"))]" => {
             &["operations/children.rs", "operations/wire.rs"]
         }
-        "#[cfg(not(feature=\"sidecar-host\"))]" => {
+        "#[cfg(not(feature=\"plugin-sidecar\"))]" => {
             &["operations/manager.rs", "operations/caller.rs"]
         }
-        "#[cfg(any(feature=\"guest\",feature=\"guest-host\"))]" => &["guest.rs"],
-        "#[cfg(any(feature=\"componentize\",feature=\"guest\",feature=\"guest-host\"))]" => {
-            &["lib.rs"]
-        }
-        "#[cfg(feature=\"sidecar\")]" => &["observers/mod.rs"],
-        "#[cfg(feature=\"sidecar-host\")]" => &[
-            "load/scope.rs",
+        "#[cfg(feature=\"plugin-guest\")]" => &["plugin/mod.rs"],
+        "#[cfg(feature=\"signal-fft\")]" => &["storage/series/transform.rs"],
+        "#[cfg(feature=\"plugin-sidecar\")]" => &[
+            "plugin/scope.rs",
             "operations/authored.rs",
             "operations/caller.rs",
             "operations/handler.rs",
@@ -1478,7 +1258,9 @@ fn operation_facility_gate(path: &str, attribute: &str) -> bool {
             "operations/registration.rs",
             "operations/wire.rs",
         ],
-        "#[cfg(feature=\"sim\")]" | "#[cfg(not(feature=\"sim\"))]" => &["runtime/boot.rs"],
+        "#[cfg(feature=\"simulation\")]" | "#[cfg(not(feature=\"simulation\"))]" => {
+            &["runtime/boot.rs"]
+        }
         "#[cfg(target_arch=\"wasm32\")]" => {
             return path.ends_with("/crates/harmos-guest/src/kit/operations.rs")
                 || path.ends_with("/crates/harmos-guest/src/kit/context.rs");
@@ -1509,7 +1291,7 @@ fn contract_facility_gate(path: &str, attribute: &str) -> bool {
             "crates/harmos-macros/src/operation.rs",
             "crates/harmos/src/operations/authored.rs",
         ],
-        "#[cfg(any(feature=\"load\",feature=\"guest-host\",feature=\"sidecar-host\"))]" => {
+        "#[cfg(any(feature=\"plugin\",feature=\"plugin-guest\",feature=\"plugin-sidecar\"))]" => {
             &["crates/harmos/src/operations/session.rs"]
         }
         "#[cfg(feature=\"grpc\")]" => &[
@@ -1658,6 +1440,7 @@ fn transport_facility_gate(path: &str, attribute: &str) -> bool {
     let key: String = attribute.chars().filter(|c| !c.is_whitespace()).collect();
     let owners: &[&str] = match key.as_str() {
         "#[cfg(feature=\"grpc\")]" => &[
+            "tests/fixtures/grpc/build.rs",
             "crates/harmos-sidecar/build.rs",
             "crates/harmos-sidecar/src/lib.rs",
             "crates/harmos-sidecar/src/wire.rs",
@@ -1675,17 +1458,8 @@ fn transport_facility_gate(path: &str, attribute: &str) -> bool {
             "crates/harmos/src/runtime/lifecycle.rs",
             "crates/harmos/src/services/sidecar/carrier.rs",
         ],
-        // TLS Selects The Listener's Handshake, Never Storage Or Recovery.
-        "#[cfg(feature=\"grpc-tls\")]" => &[
-            "crates/harmos/src/grpc/ingress.rs",
-            "crates/harmos/src/grpc/listener.rs",
-            "crates/harmos/src/grpc/manager.rs",
-        ],
-        // gRPC-Web Selects The Listener's Protocol Translation, Never Storage.
-        "#[cfg(feature=\"grpc-web\")]" | "#[cfg(not(feature=\"grpc-web\"))]" => {
-            &["crates/harmos/src/grpc/listener.rs"]
-        }
         "#[cfg(not(feature=\"grpc\"))]" => &[
+            "tests/fixtures/grpc/build.rs",
             "crates/harmos-sidecar/src/wire.rs",
             "crates/harmos-sidecar/src/kit/plugin.rs",
             "crates/harmos/src/services/sidecar/carrier.rs",
@@ -1703,19 +1477,18 @@ fn transport_facility_gate(path: &str, attribute: &str) -> bool {
         }
         "#[cfg(unix)]" => &[
             "crates/harmos-sidecar/src/attach.rs",
-            "examples/minibench/cli/src/commands/serve.rs",
-            "examples/minischematic/cli/src/commands/serve.rs",
+            "tests/fixtures/lifecycle/src/serve.rs",
+            "tests/fixtures/lifecycle/src/serve.rs",
         ],
         "#[cfg(windows)]" => &[
-            "examples/minibench/cli/src/commands/serve.rs",
-            "examples/minischematic/cli/src/commands/serve.rs",
+            "tests/fixtures/lifecycle/src/serve.rs",
+            "tests/fixtures/lifecycle/src/serve.rs",
         ],
         "#[cfg(any(unix,windows))]" => &[
             "crates/harmos-sidecar/src/attach.rs",
             "crates/harmos-sidecar/src/kit/plugin.rs",
         ],
-        "#[cfg(all(feature=\"sidecar-host\",feature=\"sidecar\"))]"
-        | "#[cfg(not(all(feature=\"sidecar-host\",feature=\"sidecar\")))]" => {
+        "#[cfg(feature=\"plugin-sidecar\")]" | "#[cfg(not(feature=\"plugin-sidecar\"))]" => {
             &["crates/harmos/benches/streams/main.rs"]
         }
         _ => return false,
@@ -1764,16 +1537,16 @@ fn contract_scenario() {
                 "/crates/harmos/src/operations/streaming.rs",
                 grpc
             ));
-            assert!(operation_facility_gate(
+            assert!(!operation_facility_gate(
                 "/crates/harmos/src/grpc/envelope.rs",
                 "#[cfg(feature = \"runtime\")]"
             ));
             assert!(operation_facility_gate(
                 "/crates/harmos/src/grpc/server.rs",
-                "#[cfg(any(feature = \"load\", feature = \"guest-host\", feature = \"sidecar-host\"))]"
+                "#[cfg(any(feature = \"plugin\", feature = \"plugin-guest\", feature = \"plugin-sidecar\"))]"
             ));
             let runtime = "#[cfg(feature = \"runtime\")]";
-            assert!(operation_facility_gate(
+            assert!(!operation_facility_gate(
                 "/crates/harmos/src/storage/operations/save.rs",
                 runtime
             ));
@@ -1837,16 +1610,16 @@ fn contract_scenario() {
             // that reached a plugin would be linking a leaf in order to drive it.
             for (contract, application, shell, plugin) in [
                 (
-                    "minibench-contract",
-                    "minibench-app",
-                    "minibench-cli",
-                    "minibench-probe-sidecar",
+                    "schematic-contract",
+                    "schematic-app",
+                    "schematic-cli",
+                    "schematic-sidecar",
                 ),
                 (
-                    "minischematic-contract",
-                    "minischematic-app",
-                    "minischematic-cli",
-                    "minischematic-plugin",
+                    "schematic-contract",
+                    "schematic-app",
+                    "schematic-cli",
+                    "schematic-guest",
                 ),
             ] {
                 let beneath = locked_dependencies(contract)
@@ -1854,6 +1627,10 @@ fn contract_scenario() {
                 assert!(!beneath.contains(application));
                 assert!(!beneath.contains(shell));
                 assert!(!beneath.contains(plugin));
+                assert!(
+                    !beneath.contains("harmos"),
+                    "portable contracts exclude the host runtime"
+                );
 
                 let host =
                     locked_dependencies(application).expect("the app crate is a workspace member");
@@ -1868,6 +1645,10 @@ fn contract_scenario() {
                 let leaf = locked_dependencies(plugin).expect("the plugin is a workspace member");
                 assert!(leaf.contains(contract));
                 assert!(!leaf.contains(application));
+                assert!(
+                    !leaf.contains("harmos"),
+                    "plugins use their independent SDKs"
+                );
             }
         });
     }
@@ -1882,7 +1663,6 @@ fn contract_scenario() {
                 .iter()
                 .chain(&AUTHORING)
                 .map(|name| (*name).to_owned())
-                .chain(["SimulatedRuntime".to_owned()])
                 .collect();
 
             assert_eq!(handed_out, accepted);
@@ -1963,7 +1743,7 @@ fn contract_scenario() {
             // contracts. New aliases or placement elsewhere fail this audit.
             let saved: Vec<String> = declarations()
                 .into_iter()
-                .filter(|(path, _)| !path.contains("/examples/jsonl-adapter/"))
+                .filter(|(path, _)| !path.contains("/tests/support/jsonl-adapter/"))
                 .filter(|(_, declared)| declared.public && declared.keyword == "fn")
                 .filter(|(path, declared)| {
                     !(declared.name == "seal" && path.contains("/crates/harmos/src/streams/"))
@@ -1989,10 +1769,16 @@ fn contract_scenario() {
                 format!("{manager}: flush_until"),
                 format!("{manager}: flush_recovery"),
                 format!("{saving}: save_once"),
+                // Application Document Serialization Uses The Original Adapter Checkpoint.
+                format!(
+                    "{}/examples/schematic/app/src/document.rs: save",
+                    workspace().display()
+                )
+                .replace('\\', "/"),
             ];
             assert_eq!(
                 saved, expected,
-                "only the storage manager exposes data and recovery durability boundaries"
+                "framework durability stays on StorageManager; the document delegates to its adapter checkpoint"
             );
         });
     }
@@ -2020,8 +1806,8 @@ fn contract_scenario() {
                 }
                 for module in [
                     "crate::runtime",
-                    "crate::consumer",
-                    "crate::attachments",
+                    "crate::storage::consumer",
+                    "crate::storage::attachments",
                     "crate::evidence",
                     "crate::storage::manager",
                     "crate::storage::backend",
@@ -2060,7 +1846,11 @@ fn contract_scenario() {
                 );
             }
 
-            assert!(audited >= 2, "the audit found no crate to check");
+            assert_eq!(
+                audited,
+                ALLOWANCE.len(),
+                "every reviewed workspace package is audited"
+            );
         });
     }
     {
@@ -2093,11 +1883,6 @@ fn contract_scenario() {
                                 || path.ends_with("/crates/harmos-signal/src/spectrum/mod.rs")))
                         && !operation_facility_gate(&path, line)
                         && !transport_facility_gate(&path, line)
-                        && !((line == "#[cfg(feature = \"runtime\")]"
-                            || line == "#[cfg(feature = \"storage\")]"
-                            || line
-                                == "#[cfg(any(feature = \"load\", feature = \"guest-host\", feature = \"sidecar-host\"))]")
-                            && path.ends_with("/crates/harmos/src/lib.rs"))
                         && !(line == "#[cfg(all(not(target_arch = \"wasm32\"), feature = \"plugin\"))]"
                             && path.ends_with("/crates/harmos/src/lib.rs"))
                         // Console flags and SystemRoot belong to native process
@@ -2105,46 +1890,27 @@ fn contract_scenario() {
                         && !(line == "#[cfg(windows)]"
                             && path.ends_with("/crates/harmos-sidecar/src/attach.rs"))
                         && !((line == "#[cfg(unix)]" || line == "#[cfg(not(unix))]")
-                            && path.ends_with("/crates/harmos/src/plugin/archive.rs"))
-                        && !((line == "#[cfg(feature = \"sim\")]"
-                            || line == "#[cfg(not(feature = \"sim\"))]")
+                            && path.ends_with("/crates/harmos-bundle/src/archive.rs"))
+                        && !((line == "#[cfg(feature = \"simulation\")]"
+                            || line == "#[cfg(not(feature = \"simulation\"))]")
                             && (path.ends_with("/crates/harmos/src/lib.rs")
                                 || path.ends_with("/crates/harmos/src/runtime.rs")
                                 || path.ends_with("/crates/harmos/src/supervision/executor.rs")))
-                        && !(line == "#[cfg(feature = \"sidecar-host\")]"
+                        && !(line == "#[cfg(feature = \"plugin-sidecar\")]"
                             && (path.ends_with("/crates/harmos/src/lib.rs")
                                 || path.ends_with("/crates/harmos/src/runtime.rs")
                                 || path.ends_with("/crates/harmos/src/services/mod.rs")
                                 || path.ends_with("/crates/harmos/src/observers/mod.rs")
-                                || path.ends_with("/crates/harmos/src/load.rs")
+                                || path.ends_with("/crates/harmos/src/plugin/mod.rs")
                                 || path.ends_with("/crates/harmos/src/streams/manager.rs")
                                 || path.ends_with("/crates/harmos/src/streams/window.rs")))
                         // Source-loss input exists only at the sidecar seam;
                         // aggregation and retention themselves are unconditional.
-                        && !(line == "#[cfg(any(feature = \"sidecar-host\", test))]"
+                        && !(line == "#[cfg(any(feature = \"plugin-sidecar\", test))]"
                             && path.ends_with("/crates/harmos/src/streams/batches.rs"))
-                        && !(line == "#[cfg(feature = \"guest\")]"
-                            && path.ends_with("/crates/harmos/src/load.rs"))
-                        // The entry crate's facade gates. Each one decides
-                        // whether an application may name a facility, not
-                        // whether the runtime persists — `harmos::guest` splits
-                        // on the same rule one level down, so the encoder that
-                        // builds a component compiles without the runtime that
-                        // runs one.
-                        && !((line == "#[cfg(feature = \"artifact\")]"
-                            || line == "#[cfg(feature = \"sidecar\")]"
-                            || line == "#[cfg(any(feature = \"sidecar\", feature = \"sidecar-host\"))]"
-                            || line == "#[cfg(feature = \"guest\")]"
-                            || line == "#[cfg(feature = \"signal\")]"
-                            || line == "#[cfg(feature = \"fft\")]"
-                            || line == "#[cfg(any(feature = \"guest\", feature = \"sidecar-host\"))]"
-                            || line
-                                == "#[cfg(any(feature = \"componentize\", feature = \"guest\"))]")
+                        // The Host Exposes Optional Signal Processing As A Crate.
+                        && !(line == "#[cfg(feature = \"signal\")]"
                             && path.ends_with("/crates/harmos/src/lib.rs"))
-                        && !((line == "#[cfg(feature = \"guest\")]"
-                            || line
-                                == "#[cfg(all(not(target_arch = \"wasm32\"), feature = \"guest-host\"))]")
-                            && path.ends_with("/crates/harmos/src/guest.rs"))
                         // Authoring binds the world and reading a built
                         // component's declaration does not, so the guest kit is
                         // its own feature and a host that only installs
@@ -2167,8 +1933,7 @@ fn contract_scenario() {
                         // writes the same implementations by hand. Not a
                         // durability decision by any reading.
                         && !(line == "#[cfg(feature = \"derive\")]"
-                            && (path.ends_with("/crates/harmos/src/lib.rs")
-                                || path.ends_with("/crates/harmos-contract/src/lib.rs")
+                            && (path.ends_with("/crates/harmos-contract/src/lib.rs")
                                 || path.ends_with("/crates/harmos-guest/src/lib.rs")
                                 || path.ends_with("/crates/harmos-sidecar/src/lib.rs")))
                         // Series analysis opens a read-only view over saved rows;
@@ -2176,8 +1941,6 @@ fn contract_scenario() {
                         // not a durability decision. Writes never pass through it.
                         && !(line == "#[cfg(feature = \"signal\")]"
                             && path.ends_with("/crates/harmos/src/storage/mod.rs"))
-                        && !(line == "#[cfg(feature = \"fft\")]"
-                            && path.ends_with("/crates/harmos/src/series/transform.rs"))
                         // Reflection selects a standard row decoder; capture and
                         // durable storage still use the same Postcard bytes.
                         && !(line == "#[cfg(feature = \"reflection\")]"
@@ -2195,14 +1958,13 @@ fn contract_scenario() {
                         // crate compiles for both targets unconditionally and its
                         // app crate compiles for the host only, which is the
                         // whole point of splitting them.
-                        && !(line == "#[cfg(feature = \"sim\")]"
-                            && (path.ends_with("/examples/minischematic/app/src/app.rs")
-                                || path.ends_with("/examples/minibench/app/src/app.rs")))
+                        && !(line == "#[cfg(feature = \"simulation\")]"
+                            && path.ends_with("/examples/schematic/app/src/app.rs"))
                         && !((line == "#[cfg(not(target_arch = \"wasm32\"))]"
                             || line
                                 == "#[cfg(all(not(target_arch = \"wasm32\"), feature = \"componentize\"))]")
                             && (path.ends_with("/crates/harmos-guest/src/lib.rs")
-                                || path.ends_with("/crates/harmos/src/guest.rs")))
+                                || path.ends_with("/crates/harmos/src/plugin/guest/mod.rs")))
                 })
                 .map(|(line, _)| format!("{path}: {line}"))
                 .collect::<Vec<_>>()
@@ -2228,12 +1990,10 @@ fn contract_scenario() {
             // A simulation recovers through an in-memory copy, so it is a host that
             // persists: `runtime` includes storage, and the two test-only tokio
             // features are the rest of it.
-            assert!(
-                manifest.contains("sim = [\"runtime\", \"tokio/macros\", \"tokio/test-util\"]")
-            );
-            assert!(root.contains("#[cfg(feature = \"sim\")]\npub mod sim;"));
+            assert!(manifest.contains("simulation = [\"tokio/test-util\"]"));
+            assert!(root.contains("#[cfg(feature = \"simulation\")]\npub mod simulation;"));
 
-            #[cfg(feature = "sim")]
+            #[cfg(feature = "simulation")]
             {
                 let _ = std::any::TypeId::of::<sim_probe::Harness>();
                 let _ = std::any::TypeId::of::<sim_probe::FaultDelivery>();

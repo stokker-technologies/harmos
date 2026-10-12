@@ -34,8 +34,8 @@ use crate::support;
 use crate::support::fixtures::component as load;
 use harmos::Message;
 use harmos::Runtime;
-use harmos::guest::{Error, Host};
 use harmos::operations::{OperationDeclaration, OperationPolicy, RetryPolicy};
+use harmos::plugin::guest::{Error, Host};
 use harmos_sidecar::Attach;
 
 /* === Constants === */
@@ -98,15 +98,15 @@ enum GuestLanes {
     Open,
 }
 
-async fn retire_failed_guest<L: harmos::load::PluginLifecycle>(
-    manager: &mut harmos::load::PluginManager<L::Guest, L::Sidecar, L::Embedded>,
+async fn retire_failed_guest<L: harmos::plugin::PluginLifecycle>(
+    manager: &mut harmos::plugin::PluginManager<L::Guest, L::Sidecar, L::Embedded>,
     lifecycle: &mut L,
 ) {
     let harmos::Error::PluginLifecycle { source } = manager.shutdown(lifecycle).await.unwrap_err()
     else {
         panic!("the original failed generation must report its SDK shutdown refusal")
     };
-    let harmos::load::PluginFailure::Cleanup(failures) = *source else {
+    let harmos::plugin::PluginFailure::Cleanup(failures) = *source else {
         panic!("the failed generation retains its original physical cleanup owner")
     };
     assert_eq!(failures.len(), 1);
@@ -195,7 +195,7 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    use harmos::load::PluginDefinitions;
+                    use harmos::plugin::PluginDefinitions;
                     use std::sync::Arc;
                     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -564,8 +564,8 @@ fn contract_scenario() {
                     };
                     assert!(matches!(
                         error,
-                        harmos::guest::Error::Declaration(
-                            harmos::guest::inventory::DeclarationError::IncompatiblePayload
+                        harmos::plugin::guest::Error::Declaration(
+                            harmos::plugin::guest::inventory::DeclarationError::IncompatiblePayload
                         )
                     ));
                     assert!(runtime.operations.definitions().is_empty());
@@ -607,7 +607,7 @@ fn contract_scenario() {
                         let component = load("catalog-component", "componentize,kit", Some(case));
                         let result = tokio::time::timeout(
                             Duration::from_secs(30),
-                            harmos::guest::registrations(&component),
+                            harmos::plugin::guest::registrations(&component),
                         )
                         .await
                         .expect("collection and runtime cleanup finish");
@@ -656,7 +656,7 @@ fn contract_scenario() {
                         }
                     }
                     assert!(
-                        harmos::guest::registrations(b"not a component")
+                        harmos::plugin::guest::registrations(b"not a component")
                             .await
                             .is_err()
                     );
@@ -671,7 +671,7 @@ fn contract_scenario() {
     let runtime = runtime().await;
     let provider = std::sync::Arc::new(ProviderOwner::default());
     let mut lifecycle = DependencyHost::new(&runtime, provider.clone());
-    let mut manager = harmos::load::PluginManager::new(
+    let mut manager = harmos::plugin::PluginManager::new(
         dependency_candidate(&mut lifecycle, "dependencies").await,
     )
     .unwrap();
@@ -723,7 +723,7 @@ fn contract_scenario() {
                     let runtime = runtime().await;
                     let provider = std::sync::Arc::new(ProviderOwner::default());
                     let mut lifecycle = DependencyHost::new(&runtime, provider.clone());
-                    let mut manager = harmos::load::PluginManager::new(
+                    let mut manager = harmos::plugin::PluginManager::new(
                         dependency_candidate(&mut lifecycle, "idle").await,
                     )
                     .unwrap();
@@ -771,7 +771,7 @@ fn contract_scenario() {
     let provider = Arc::new(ProviderOwner::default());
     let mut lifecycle = DependencyHost::new(&runtime, provider.clone());
     let mut manager =
-        harmos::load::PluginManager::new(dependency_candidate(&mut lifecycle, "idle").await)
+        harmos::plugin::PluginManager::new(dependency_candidate(&mut lifecycle, "idle").await)
             .unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
     let prepared = provider.prepared.load(Ordering::SeqCst);
@@ -811,7 +811,7 @@ fn contract_scenario() {
     let harmos::Error::PluginLifecycle { source } = first else {
         panic!("the failed guest must report its original shutdown refusal");
     };
-    let harmos::load::PluginFailure::Cleanup(failures) = *source else {
+    let harmos::plugin::PluginFailure::Cleanup(failures) = *source else {
         panic!("the failed guest must retain its original ending");
     };
     assert_eq!(failures.len(), 1);
@@ -835,7 +835,7 @@ fn contract_scenario() {
         else {
             panic!("the original host cleanup must remain retryable");
         };
-        let harmos::load::PluginFailure::Cleanup(failures) = *source else {
+        let harmos::plugin::PluginFailure::Cleanup(failures) = *source else {
             panic!("the original cleanup failure must remain inspectable");
         };
         assert_eq!(failures.len(), 1);
@@ -914,7 +914,7 @@ fn contract_scenario() {
                         .filter(|definition| definition.id != "provider")
                         .cloned();
                     // No Plugin Provides It, So Planning Routes It To The Host, Whose Preflight Refuses It
-                    let planned = harmos::load::PluginDefinitions::new(missing, []).unwrap();
+                    let planned = harmos::plugin::PluginDefinitions::new(missing, []).unwrap();
                     let routed = planned
                         .host_requirements()
                         .map(|(definition, required)| {
@@ -962,7 +962,7 @@ fn contract_scenario() {
                     let runtime = runtime().await;
                     let provider = Arc::new(ProviderOwner::default());
                     let mut lifecycle = DependencyHost::new(&runtime, provider.clone());
-                    let mut manager = harmos::load::PluginManager::new(
+                    let mut manager = harmos::plugin::PluginManager::new(
                         native_dependency_candidate(&mut lifecycle, "dependencies", true).await,
                     )
                     .unwrap();
@@ -1019,7 +1019,7 @@ fn contract_scenario() {
     let runtime = runtime().await;
     let provider = Arc::new(ProviderOwner::default());
     let mut lifecycle = DependencyHost::new(&runtime, provider.clone());
-    let mut manager = harmos::load::PluginManager::new(
+    let mut manager = harmos::plugin::PluginManager::new(
         native_dependency_candidate(&mut lifecycle, "dependencies", false).await,
     )
     .unwrap();
@@ -1078,7 +1078,7 @@ fn contract_scenario() {
                     let runtime = runtime().await;
                     let provider = Arc::new(ProviderOwner::default());
                     let mut lifecycle = DependencyHost::new(&runtime, provider.clone());
-                    let mut manager = harmos::load::PluginManager::new(
+                    let mut manager = harmos::plugin::PluginManager::new(
                         native_dependency_candidate(&mut lifecycle, "idle", false).await,
                     )
                     .unwrap();
@@ -1113,7 +1113,7 @@ fn contract_scenario() {
                         .is_err()
                     );
 
-                    let mut manager = harmos::load::PluginManager::new(
+                    let mut manager = harmos::plugin::PluginManager::new(
                         native_dependency_candidate(&mut lifecycle, "dependencies", false).await,
                     )
                     .unwrap();
@@ -1156,7 +1156,7 @@ fn contract_scenario() {
                                 "failed physical cleanup must remain owned by the original manager"
                             )
                         };
-                        let harmos::load::PluginFailure::Cleanup(failures) = *source else {
+                        let harmos::plugin::PluginFailure::Cleanup(failures) = *source else {
                             panic!("original cleanup failure expected")
                         };
                         assert_eq!(failures.len(), 1);
@@ -1272,7 +1272,10 @@ async fn runtime() -> Runtime<Bank> {
     Runtime::builder(support::Ledger::default(), ())
         .register(GuestLanes::catalog())
         .register(support::catalog())
-        .operation_preparation_bytes(std::num::NonZeroUsize::new(4096).unwrap())
+        .operation_settings(harmos::operations::Settings {
+            preparation_bytes: Some(std::num::NonZeroUsize::new(4096).unwrap()),
+            ..Default::default()
+        })
         .runtime()
         .await
         .expect("an empty ledger has nothing to recover")
@@ -1649,11 +1652,11 @@ fn native_client() -> harmos_sidecar::PluginNative<NativeClientPlugin> {
     harmos_sidecar::PluginNative::new(std::num::NonZeroUsize::new(NATIVE_CAPACITY).unwrap())
         .unwrap()
 }
-fn dependency_notice(_: &harmos::Service<Bank>, _: harmos::sidecar::Notice) {}
-type NativeResident = harmos::sidecar::Supervised<
+fn dependency_notice(_: &harmos::services::Service<Bank>, _: harmos::plugin::sidecar::Notice) {}
+type NativeResident = harmos::plugin::sidecar::Supervised<
     Bank,
     NativeAttachment,
-    fn(&harmos::Service<Bank>, harmos::sidecar::Notice),
+    fn(&harmos::services::Service<Bank>, harmos::plugin::sidecar::Notice),
 >;
 #[derive(Default)]
 struct NativeResources {
@@ -1671,15 +1674,15 @@ struct NativeResources {
 type GuestResources = publications::Resources;
 #[derive(Default)]
 struct ProviderResources {
-    endpoint: Option<harmos::load::PluginEndpoint>,
+    endpoint: Option<harmos::plugin::PluginEndpoint>,
     registration: Option<harmos::operations::PluginRegistration>,
 }
 type DependencyBackends =
-    harmos::load::PluginBackend<GuestResources, NativeResources, ProviderResources>;
+    harmos::plugin::PluginBackend<GuestResources, NativeResources, ProviderResources>;
 struct DependencyHost {
     native_seed: Option<std::sync::Arc<NativeSeed>>,
     guest: publications::Lifecycle,
-    operations: harmos::OperationManager,
+    operations: harmos::operations::OperationManager,
     provider: std::sync::Arc<ProviderOwner>,
     services: harmos::services::ServiceManager<Bank>,
 }
@@ -1694,26 +1697,26 @@ impl DependencyHost {
         }
     }
 }
-impl harmos::load::PluginLifecycle for DependencyHost {
+impl harmos::plugin::PluginLifecycle for DependencyHost {
     type Guest = GuestResources;
     type Sidecar = NativeResources;
     type Embedded = ProviderResources;
-    fn preflight(&mut self, candidate: &harmos::load::PluginDefinitions) -> harmos::Result<()> {
+    fn preflight(&mut self, candidate: &harmos::plugin::PluginDefinitions) -> harmos::Result<()> {
         self.operations.validate_requirements(candidate)
     }
     fn prepare(
         &mut self,
-        definition: &harmos::load::PluginDefinition,
+        definition: &harmos::plugin::PluginDefinition,
     ) -> harmos::Result<DependencyBackends> {
         Ok(match definition.kind() {
-            harmos::load::PluginKind::Guest => {
-                harmos::load::PluginBackend::Guest(self.guest.guest_seed())
+            harmos::plugin::PluginKind::Guest => {
+                harmos::plugin::PluginBackend::Guest(self.guest.guest_seed())
             }
-            harmos::load::PluginKind::Embedded => {
-                harmos::load::PluginBackend::Embedded(ProviderResources::default())
+            harmos::plugin::PluginKind::Embedded => {
+                harmos::plugin::PluginBackend::Embedded(ProviderResources::default())
             }
-            harmos::load::PluginKind::Sidecar => {
-                harmos::load::PluginBackend::Sidecar(NativeResources {
+            harmos::plugin::PluginKind::Sidecar => {
+                harmos::plugin::PluginBackend::Sidecar(NativeResources {
                     services: Some(self.services.clone()),
                     ..NativeResources::default()
                 })
@@ -1722,20 +1725,20 @@ impl harmos::load::PluginLifecycle for DependencyHost {
     }
     async fn fence(
         &mut self,
-        _: harmos::load::PluginTransition,
-        _: &[harmos::load::PluginDefinition],
+        _: harmos::plugin::PluginTransition,
+        _: &[harmos::plugin::PluginDefinition],
     ) -> harmos::Result<()> {
         Ok(())
     }
     async fn start(
         &mut self,
-        definition: &harmos::load::PluginDefinition,
-        router: &harmos::load::Router,
-        authority: &harmos::load::PluginLifecycleAuthority<'_>,
+        definition: &harmos::plugin::PluginDefinition,
+        router: &harmos::plugin::Router,
+        authority: &harmos::plugin::PluginLifecycleAuthority<'_>,
         backend: &mut DependencyBackends,
     ) -> harmos::Result<()> {
         match backend {
-            harmos::load::PluginBackend::Embedded(resources) => {
+            harmos::plugin::PluginBackend::Embedded(resources) => {
                 resources.endpoint = Some(router.enter(&definition.id).unwrap());
                 let scope = resources.endpoint.as_ref().unwrap().scope().unwrap();
                 resources.registration = Some(self.operations.stage_plugin(scope, |bindings| {
@@ -1745,7 +1748,7 @@ impl harmos::load::PluginLifecycle for DependencyHost {
                     )
                 })?);
             }
-            harmos::load::PluginBackend::Guest(resources) => {
+            harmos::plugin::PluginBackend::Guest(resources) => {
                 resources
                     .start::<GuestOperations, _>(
                         &self.operations,
@@ -1756,8 +1759,8 @@ impl harmos::load::PluginLifecycle for DependencyHost {
                     )
                     .await?;
             }
-            harmos::load::PluginBackend::Sidecar(resources) => {
-                let resident: NativeResident = harmos::sidecar::Supervised::new(
+            harmos::plugin::PluginBackend::Sidecar(resources) => {
+                let resident: NativeResident = harmos::plugin::sidecar::Supervised::new(
                     NativeAttachment {
                         id: definition.id.clone(),
                         _seed: if definition.id == "provider" {
@@ -1766,7 +1769,8 @@ impl harmos::load::PluginLifecycle for DependencyHost {
                             None
                         },
                     },
-                    dependency_notice as fn(&harmos::Service<Bank>, harmos::sidecar::Notice),
+                    dependency_notice
+                        as fn(&harmos::services::Service<Bank>, harmos::plugin::sidecar::Notice),
                 )
                 .routed(router);
                 resources.resident = Some(resident.clone());
@@ -1774,7 +1778,7 @@ impl harmos::load::PluginLifecycle for DependencyHost {
                 self.services.register(
                     harmos::services::ServiceDefinition {
                         id: definition.id.clone(),
-                        policy: harmos::ServicePolicy::default(),
+                        policy: harmos::services::ServicePolicy::default(),
                     },
                     move |_: std::sync::Arc<()>| resident.clone(),
                 )?;
@@ -1851,23 +1855,23 @@ impl harmos::load::PluginLifecycle for DependencyHost {
         Ok(())
     }
     async fn stop(
-        definition: &harmos::load::PluginDefinition,
-        authority: &harmos::load::PluginLifecycleAuthority<'_>,
+        definition: &harmos::plugin::PluginDefinition,
+        authority: &harmos::plugin::PluginLifecycleAuthority<'_>,
 
         backend: &mut DependencyBackends,
     ) -> harmos::Result<()> {
         match backend {
-            harmos::load::PluginBackend::Guest(resources) => {
+            harmos::plugin::PluginBackend::Guest(resources) => {
                 resources.stop(authority).await?;
             }
-            harmos::load::PluginBackend::Embedded(resources) => {
+            harmos::plugin::PluginBackend::Embedded(resources) => {
                 if let Some(registration) = &mut resources.registration {
                     registration.shutdown().await?;
                 }
                 resources.registration.take();
                 resources.endpoint.take();
             }
-            harmos::load::PluginBackend::Sidecar(resources) => {
+            harmos::plugin::PluginBackend::Sidecar(resources) => {
                 if let Some(sdk) = &resources.sdk {
                     sdk.settle().await?;
                     if let Some(initializing) = &mut resources.initializing {
@@ -1916,7 +1920,7 @@ impl harmos::load::PluginLifecycle for DependencyHost {
 async fn dependency_candidate(
     lifecycle: &mut DependencyHost,
     configuration: &str,
-) -> harmos::load::PluginDefinitions {
+) -> harmos::plugin::PluginDefinitions {
     lifecycle.guest.candidate(configuration).await
 }
 
@@ -1924,8 +1928,8 @@ async fn native_dependency_candidate(
     lifecycle: &mut DependencyHost,
     configuration: &str,
     client: bool,
-) -> harmos::load::PluginDefinitions {
-    use harmos::load::{
+) -> harmos::plugin::PluginDefinitions {
+    use harmos::plugin::{
         PluginArtifact, PluginContributions, PluginDefinition, PluginDefinitions, Requirement,
     };
     let mut definitions: Vec<_> = dependency_candidate(lifecycle, configuration)
@@ -1989,7 +1993,7 @@ async fn native_guest_benchmark() {
         ..ProviderOwner::default()
     });
     let mut lifecycle = DependencyHost::new(&runtime, provider.clone());
-    let mut manager = harmos::load::PluginManager::new(
+    let mut manager = harmos::plugin::PluginManager::new(
         native_dependency_candidate(&mut lifecycle, "dependencies", true).await,
     )
     .unwrap();

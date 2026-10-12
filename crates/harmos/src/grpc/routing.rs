@@ -42,7 +42,7 @@ pub(crate) struct Project;
 
 #[derive(Clone)]
 pub(super) struct Router {
-    operations: crate::OperationManager,
+    operations: crate::operations::OperationManager,
     settings: server::Settings,
     calls: server::Calls,
 }
@@ -54,7 +54,7 @@ pub(super) struct Router {
 /* === Implementations === */
 impl Router {
     pub(super) fn new(
-        operations: crate::OperationManager,
+        operations: crate::operations::OperationManager,
         settings: server::Settings,
     ) -> Result<Self, tonic::Status> {
         settings.validate()?;
@@ -77,6 +77,7 @@ where
     fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Infallible>> {
         Poll::Ready(Ok(()))
     }
+
     fn call(&mut self, request: http::Request<B>) -> Self::Future {
         let binding = self.operations.grpc_binding(request.uri().path());
         let settings = self.settings;
@@ -112,6 +113,7 @@ impl GrpcVisitor for Project {
     {
         server::unary::<O>
     }
+
     fn upload<O: WireOperation + InputDeclaration>(self) -> Handler
     where
         O::Request: Protobuf + MemorySize,
@@ -120,6 +122,7 @@ impl GrpcVisitor for Project {
     {
         server::upload::<O>
     }
+
     fn download<O: WireOperation + OutputDeclaration>(self) -> Handler
     where
         O::Request: Protobuf + MemorySize,
@@ -128,6 +131,7 @@ impl GrpcVisitor for Project {
     {
         server::download::<O>
     }
+
     fn exchange<O: WireOperation + InputDeclaration + OutputDeclaration>(self) -> Handler
     where
         O::Request: Protobuf + MemorySize,

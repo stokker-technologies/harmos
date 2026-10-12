@@ -13,19 +13,19 @@
 
 /* === Imports === */
 // Standard Library Imports
-#[cfg(feature = "runtime")]
+
 use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-#[cfg(feature = "runtime")]
+
 use crate::operations::{Context, Operation};
 use crate::operations::{Grpc, OperationDeclaration, ReplaySafety, Visibility, WireOperation};
 use crate::storage::StorageCursor;
-#[cfg(feature = "runtime")]
+
+use crate::storage::codec::{Id, Nested, product};
 use crate::storage::{ReplicaHolder, StorageManager};
-use crate::storage_codec::{Id, Nested, product};
-#[cfg(feature = "runtime")]
+
 use crate::{Error, Result};
 use crate::{Identifier, MemorySize};
 
@@ -44,7 +44,6 @@ pub struct AcknowledgeRequest {
     pub cursor: StorageCursor,
 }
 
-#[cfg(feature = "runtime")]
 pub(super) struct Handler<C> {
     storage: Arc<StorageManager<C>>,
 }
@@ -94,7 +93,6 @@ impl WireOperation for Acknowledge {
     }
 }
 
-#[cfg(feature = "runtime")]
 impl<C: 'static> Operation for Handler<C> {
     type Declaration = Acknowledge;
     type Resources = StorageManager<C>;
@@ -121,9 +119,13 @@ impl<C: 'static> Operation for Handler<C> {
 /* === Public Functions === */
 
 /* === Private Functions === */
-#[cfg(feature = "runtime")]
+
 fn holder(_context: &Context<'_>) -> Result<ReplicaHolder> {
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     if let Some(scope) = _context.caller_scope() {
         return Ok(ReplicaHolder {
             owner: scope.owner().to_owned(),

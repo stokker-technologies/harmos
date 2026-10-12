@@ -17,7 +17,11 @@ mod support;
 #[path = "retention.rs"]
 mod retention;
 
-#[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
 mod listeners;
 
 #[path = "series.rs"]
@@ -54,8 +58,9 @@ use std::task::{Context, Poll};
 use serde::{Deserialize, Serialize};
 // Local Imports
 use harmos::{
-    At, Batch, BeneathWindow, Cursor, Definition, Item, Position, Runtime, Stream, StreamConsumer,
-    StreamManager,
+    Runtime, state::At, state::Position, storage::Batch, storage::Cursor, storage::StreamConsumer,
+    streams::BeneathWindow, streams::Definition, streams::Item, streams::Stream,
+    streams::StreamManager,
 };
 use support::{Bank, Ledger, Pulse, Reading, deposit, pulse, streaming, streams};
 

@@ -59,8 +59,8 @@ enum Undo {
 impl Sort {
     pub(crate) fn kind(self, harmos: &HarmosPath) -> TokenStream {
         match self {
-            Self::Transaction => quote!(#harmos::Kind::Transaction),
-            Self::Record => quote!(#harmos::Kind::Record),
+            Self::Transaction => quote!(#harmos::state::Kind::Transaction),
+            Self::Record => quote!(#harmos::state::Kind::Record),
         }
     }
 
@@ -98,7 +98,7 @@ fn undoing(name: &Ident, undo: &Undo, harmos: &HarmosPath) -> TokenStream {
     match undo {
         Undo::Inverse(inverse) => quote! {
             #[automatically_derived]
-            impl #harmos::Undoable for #name {
+            impl #harmos::state::Undoable for #name {
                 type Inverse = #inverse;
             }
 
@@ -110,7 +110,7 @@ fn undoing(name: &Ident, undo: &Undo, harmos: &HarmosPath) -> TokenStream {
                 fn mutual<A, B: #harmos::__private::Mutual<A>>() {}
 
                 fn pairs() {
-                    mutual::<#name, <#inverse as #harmos::Undoable>::Inverse>();
+                    mutual::<#name, <#inverse as #harmos::state::Undoable>::Inverse>();
                 }
             };
 
@@ -118,11 +118,11 @@ fn undoing(name: &Ident, undo: &Undo, harmos: &HarmosPath) -> TokenStream {
 
                 pub fn __harmos_inverse<S, C>(&self, before: &S) -> ::core::option::Option<C>
                 where
-                    Self: #harmos::Invert<S>,
+                    Self: #harmos::state::Invert<S>,
                     #inverse: #harmos::__private::Catalogued<C>,
                 {
                     ::core::option::Option::Some(#harmos::__private::Catalogued::catalogued(
-                        #harmos::Invert::invert(self, before),
+                        #harmos::state::Invert::invert(self, before),
                     ))
                 }
             }
@@ -198,16 +198,16 @@ fn expand(attribute: TokenStream, item: &TokenStream, sort: Sort) -> Result<Toke
 
     let historical_apply = &declared.history;
     let record_marker = match sort {
-        Sort::Record => quote! { impl #harmos::Record for #name {} },
+        Sort::Record => quote! { impl #harmos::state::Record for #name {} },
         Sort::Transaction => quote! {
-            impl<S> #harmos::TransactionCatalog<S> for #name
-            where Self: #harmos::Transaction<S>, S: 'static, #(#historical_apply: #harmos::Transaction<S>,)* {
-                fn replay(&self, prepared: &#harmos::Prepared, state: &mut S) -> ::core::result::Result<(), #harmos::DecodeError> {
-                    let refusal = || #harmos::DecodeError::Malformed { id: prepared.id.clone(), version: prepared.version };
+            impl<S> #harmos::state::TransactionCatalog<S> for #name
+            where Self: #harmos::state::Transaction<S>, S: 'static, #(#historical_apply: #harmos::state::Transaction<S>,)* {
+                fn replay(&self, prepared: &#harmos::state::Prepared, state: &mut S) -> ::core::result::Result<(), #harmos::state::DecodeError> {
+                    let refusal = || #harmos::state::DecodeError::Malformed { id: prepared.id.clone(), version: prepared.version };
                     if prepared.id.as_str() != Self::DEFINITION.1 { return Err(refusal()); }
                     let (value, applying) = Self::restore::<S, _>(prepared.version, &prepared.payload)
                         .map_err(|_| refusal())?.ok_or_else(refusal)?;
-                    if let Some(apply) = applying { apply(state); } else { #harmos::Transaction::apply(&value, state); }
+                    if let Some(apply) = applying { apply(state); } else { #harmos::state::Transaction::apply(&value, state); }
                     Ok(())
                 }
             }
@@ -222,10 +222,10 @@ fn expand(attribute: TokenStream, item: &TokenStream, sort: Sort) -> Result<Toke
 
         impl #name {
 
-            pub const DEFINITION: (#harmos::Kind, &'static str, u32) = (#kind, #id, #version);
+            pub const DEFINITION: (#harmos::state::Kind, &'static str, u32) = (#kind, #id, #version);
 
 
-            pub const HISTORY: [(#harmos::Kind, &'static str, u32); #count] = [#(#history),*];
+            pub const HISTORY: [(#harmos::state::Kind, &'static str, u32); #count] = [#(#history),*];
 
             #restore
         }
@@ -265,7 +265,7 @@ fn restore(declared: &Declaration, sort: Sort) -> TokenStream {
             where
                 D: ::serde::Deserializer<'de> + ::core::marker::Copy,
                 S: 'static,
-                #(#historical: #harmos::Transaction<S>,)*
+                #(#historical: #harmos::state::Transaction<S>,)*
             {
                 if version == #version {
                     // The stored version is the one this build writes, so the
@@ -286,7 +286,7 @@ fn restore(declared: &Declaration, sort: Sort) -> TokenStream {
                             ::core::convert::From::from(carried),
                             ::core::option::Option::Some(::std::boxed::Box::new(
                                 move |state: &mut S| {
-                                    #harmos::Transaction::apply(&applying, state)
+                                    #harmos::state::Transaction::apply(&applying, state)
                                 },
                             )),
                         )));

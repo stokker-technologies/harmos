@@ -25,8 +25,8 @@ use super::{
     config, history, write,
 };
 use harmos::{
-    Builder, Entry, Fault, Incompatible, JournalConsumer, Position, Recorded, Recovery, Service,
-    Source,
+    Builder, runtime::Incompatible, services::Fault, services::Service, state::Entry,
+    state::Position, state::Recorded, storage::JournalConsumer, storage::Recovery, storage::Source,
 };
 
 /* === Constants === */
@@ -561,14 +561,14 @@ pub(super) fn contract_scenario() {
                             ..
                         }
                     ));
-                    assert_eq!(cleanup.status(), harmos::BootstrapStatus::Failed);
+                    assert_eq!(cleanup.status(), harmos::runtime::BootstrapStatus::Failed);
                     assert!(cleanup.failure().is_some());
                     assert!(probe.data.control.open.load(Ordering::SeqCst));
                     assert!(probe.storage.status().closing);
                     assert!(!probe.storage.status().closed);
                     probe.data.control.fail_close.store(false, Ordering::SeqCst);
                     cleanup.retry().await.unwrap();
-                    assert_eq!(cleanup.status(), harmos::BootstrapStatus::Settled);
+                    assert_eq!(cleanup.status(), harmos::runtime::BootstrapStatus::Settled);
                     assert!(!probe.data.control.open.load(Ordering::SeqCst));
                     assert!(!probe.recovery.control.open.load(Ordering::SeqCst));
                 });

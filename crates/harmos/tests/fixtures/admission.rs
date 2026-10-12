@@ -17,7 +17,7 @@ use std::{fs, io::Write, path::PathBuf, time::Duration};
 // Third Party Imports
 
 // Local Imports
-use harmos::sidecar::{Refusal, RegistrationError};
+use harmos::plugin::sidecar::{Refusal, RegistrationError};
 use harmos_sidecar::{Registrar, Supervisor};
 
 /* === Constants === */
@@ -39,12 +39,13 @@ struct Program {
 
 /* === Implementations === */
 impl harmos::operations::lifecycle::Policy for Program {
-    const INITIALIZATION_POLICY: harmos::OperationPolicy = harmos::OperationPolicy {
-        timeout: Duration::from_secs(2),
-        attempt_timeout: Duration::from_secs(2),
-        retries: harmos::RetryPolicy::Never,
-    };
-    const SHUTDOWN_POLICY: harmos::OperationPolicy = Self::INITIALIZATION_POLICY;
+    const INITIALIZATION_POLICY: harmos::operations::OperationPolicy =
+        harmos::operations::OperationPolicy {
+            timeout: Duration::from_secs(2),
+            attempt_timeout: Duration::from_secs(2),
+            retries: harmos::operations::RetryPolicy::Never,
+        };
+    const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
 #[harmos::plugin(description = "Witnesses Registration And Initialization Separately.",
@@ -145,7 +146,7 @@ fn main() {
         .build()
         .expect("the admission fixture runtime builds");
     runtime
-        .block_on(harmos::sidecar::run_plugin::<Program>(
+        .block_on(harmos::plugin::sidecar::run_plugin::<Program>(
             std::num::NonZeroUsize::new(1).unwrap(),
         ))
         .expect("the admission fixture serves its declared catalog");

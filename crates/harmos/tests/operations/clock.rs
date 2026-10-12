@@ -37,9 +37,7 @@ use harmos::operations::{Context, Operation, OperationPolicy, RetryPolicy};
 struct Measure;
 
 /* === Enums === */
-#[harmos::catalog]
-enum Operations {
-    #[operation(
+#[harmos::operation(
         request = Duration,
         response = (Duration, Duration),
         id = "clock.measure",
@@ -49,7 +47,11 @@ enum Operations {
             retries: RetryPolicy::Never,
         },
     )]
-    MeasureContract,
+struct MeasureContract;
+
+#[harmos::catalog]
+enum Operations {
+    MeasureContract(MeasureContract),
 }
 
 /* === Traits === */

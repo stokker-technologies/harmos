@@ -16,22 +16,22 @@
 // Standard Library Imports
 use std::any::TypeId;
 use std::borrow::Cow;
-#[cfg(feature = "runtime")]
+
 use std::sync::Arc;
 
 // Third Party Imports
 
 // Local Imports
 use super::DataSelection;
-#[cfg(feature = "runtime")]
+
 use crate::operations::{Context, Operation, StreamOutput};
 use crate::operations::{Grpc, OperationDeclaration, OutputDeclaration, Visibility, WireOperation};
 use crate::schema::{Cardinality, Described, Field, Kind};
-#[cfg(feature = "runtime")]
+
+use crate::storage::codec::{Nested, product};
 use crate::storage::{RecordQuery, StorageManager};
 use crate::storage::{StorageCursor, StoredRecord};
-use crate::storage_codec::{Nested, product};
-#[cfg(feature = "runtime")]
+
 use crate::{Error, Result};
 use crate::{MemorySize, MessageError};
 use harmos_contract::plugin::Grant;
@@ -51,7 +51,6 @@ pub struct FollowBoundaries {
     pub accepted: StorageCursor,
 }
 
-#[cfg(feature = "runtime")]
 pub(super) struct Handler<C> {
     storage: Arc<StorageManager<C>>,
 }
@@ -135,12 +134,14 @@ impl crate::__private::PostcardValue for Followed {
             }
         }
     }
+
     fn size(&self) -> usize {
         1usize.saturating_add(match self {
             Self::Boundaries(value) => value.size(),
             Self::Record(value) => value.size(),
         })
     }
+
     fn memory(
         input: &mut crate::__private::PostcardReader<'_>,
     ) -> std::result::Result<usize, MessageError> {
@@ -155,6 +156,7 @@ impl crate::__private::PostcardValue for Followed {
             crate::__private::decoding_add(std::mem::size_of::<Self>(), heap)
         })
     }
+
     fn read(
         input: &mut crate::__private::PostcardReader<'_>,
     ) -> std::result::Result<Self, MessageError> {
@@ -176,14 +178,14 @@ crate::with_protobuf! {
             bytes
         }
         fn encode_into(&self, bytes: &mut Vec<u8>) {
-            use crate::storage_codec::Value;
+            use crate::storage::codec::Value;
             match self {
                 Self::Boundaries(value) => Nested::<FollowBoundaries>::write(value, 1, bytes),
                 Self::Record(value) => Nested::<StoredRecord>::write(value, 2, bytes),
             }
         }
         fn encoded_len(&self) -> usize {
-            use crate::storage_codec::Value;
+            use crate::storage::codec::Value;
             match self {
                 Self::Boundaries(value) => Nested::<FollowBoundaries>::size(value, 1),
                 Self::Record(value) => Nested::<StoredRecord>::size(value, 2),
@@ -234,6 +236,7 @@ impl OperationDeclaration for Follow {
     fn endpoint_types() -> (Option<TypeId>, Option<TypeId>) {
         (None, Some(TypeId::of::<Followed>()))
     }
+
     fn grant(selection: &DataSelection) -> Option<Grant> {
         Some(super::survey(&selection.schema.id))
     }
@@ -254,7 +257,6 @@ impl WireOperation for Follow {
     }
 }
 
-#[cfg(feature = "runtime")]
 impl<C: 'static> Operation for Handler<C> {
     type Declaration = Follow;
     type Resources = StorageManager<C>;
@@ -321,7 +323,6 @@ impl<C: 'static> Operation for Handler<C> {
 }
 
 impl Followed {
-    #[cfg(feature = "runtime")]
     fn wrapping_memory(record: usize) -> usize {
         std::mem::size_of::<Self>()
             .saturating_add(record.saturating_sub(std::mem::size_of::<StoredRecord>()))

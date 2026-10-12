@@ -265,7 +265,10 @@ pub(super) fn contract_scenario() {
                             crate::support::Ledger::default(),
                             (),
                         )
-                        .operation_preparation_bytes(std::num::NonZeroUsize::new(4096).unwrap())
+                        .operation_settings(harmos::operations::Settings {
+                            preparation_bytes: Some(std::num::NonZeroUsize::new(4096).unwrap()),
+                            ..Default::default()
+                        })
                         .register(Lanes::catalog())
                         .runtime()
                         .await
@@ -306,7 +309,10 @@ pub(super) fn contract_scenario() {
                         crate::support::Ledger::default(),
                         (),
                     )
-                    .operation_preparation_bytes(std::num::NonZeroUsize::new(4096).unwrap())
+                    .operation_settings(harmos::operations::Settings {
+                        preparation_bytes: Some(std::num::NonZeroUsize::new(4096).unwrap()),
+                        ..Default::default()
+                    })
                     .register(Lanes::catalog())
                     .runtime()
                     .await
@@ -479,7 +485,7 @@ pub(super) fn contract_scenario() {
                         address: "127.0.0.1:0".parse().unwrap(),
                         operations: harmos::grpc::server::Settings::default(),
                         reflection: true,
-                        #[cfg(feature = "grpc-tls")]
+                        web: false,
                         tls: None,
                         connections: NonZeroUsize::new(4).unwrap(),
                         calls_per_connection: NonZeroUsize::new(8).unwrap(),

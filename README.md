@@ -14,8 +14,10 @@ Move an object in a diagram, rename a connection, then undo just the move:
 ```rust
 let editor = runtime.state.as_principal(alice.clone());
 
-editor.commit(MoveSymbol { symbol, to: Point::new(10, 45) }).await?;
-editor.commit(RenameNet { net, to: NetName::parse("VCC") }).await?;
+let movement = MoveSymbol { symbol, to: Point::new(10, 45) };
+let rename = RenameNet { net, to: NetName::parse("VCC") };
+editor.commit(movement).await?;
+editor.commit(rename).await?;
 
 let selection = Focus::matching(move |change: &Transactions| {
     change.symbol() == Some(symbol)
@@ -25,7 +27,7 @@ editor.undo(alice, selection).await?;
 ```
 
 This excerpt uses the application-defined transactions and diagram objects in
-[Minischematic](examples/minischematic/). Harmos manages the accepted history;
+[Schematic](examples/schematic/). Harmos manages the accepted history;
 your application defines what each change means.
 
 ## Features
@@ -96,12 +98,12 @@ cd harmos
 mise trust
 mise install --locked
 mise run sync
-mise run run:minischematic
+mise run run:schematic
 ```
 
 Install [mise](https://mise.jdx.dev) first. The walkthrough runs in the terminal
-and demonstrates editing, scoped undo/redo, stream capture, and recovery; it does
-not require a graphical editor or connected hardware.
+and demonstrates editing, plugin validation and routing, undo/redo, and recovery.
+It needs no graphical editor or connected hardware.
 
 To use Harmos in your application, pin a tested Git commit:
 
@@ -114,141 +116,60 @@ Select optional facilities with [Cargo Features](#cargo-features).
 
 ## Examples
 
-### A Diagram Editor
+The [Schematic Editor](examples/schematic/README.md) is one application with two
+plugin backends. Read the [walkthrough](examples/schematic/cli/src/walkthrough.rs)
+from top to bottom: place two symbols, connect them, ask the plugin to validate
+and propose a route, apply the proposal as a host transaction, undo/redo, and
+save/reopen the document.
 
-A drawing application owns its shapes, connections, and edit rules. Harmos owns
-which changes were accepted and in which order. Minischematic uses circuit
-symbols and nets to demonstrate this division.
-
-Its [walkthrough](examples/minischematic/cli/src/commands/run.rs) places symbols,
-connects pins, moves an object, and undoes that move without reverting a later
-connection rename. It then reopens persisted state and demonstrates that undo
-still works after recovery.
-
-The same model runs under deterministic simulation. Its
-[simulation test](examples/minischematic/app/tests/app/simulation.rs) checks:
-
-```rust
-let first = scripted(42);
-let second = scripted(42);
-
-first.assert_same(&second);
-assert_eq!(first.trace(), second.trace());
-first.assert_replay_equivalent();
-first.assert_inverses_restore();
+```sh
+mise run run:schematic:sidecar
+mise run run:schematic:guest
 ```
 
-Here, `scripted` is the example's helper that performs edits and reboots the
-simulated application. For persistence, the
-[JSONL adapter](examples/jsonl-adapter/) demonstrates a journal, snapshots,
-stream capture, and evidence files in an application-owned format.
+Both plugins implement `ValidateSchematic`, `ProposeRoute`, and the streaming
+`AnalyzeSchematic`. The native sidecar additionally implements `ListDirectories`,
+which lists immediate subdirectories of its explicitly configured working
+directory. The guest has no filesystem capability and omits that operation.
 
-### An On-Board Charger Test Bench
-
-A charger test application needs to configure the unit, control charging, and
-observe voltage, current, temperature, and status. Put charger communication
-and device resources in a plugin; let the host coordinate the test and consume
-its measurements.
-
-The following is an illustrative adaptation of the
-[standalone plugin observer](examples/standalone-sidecar/src/observers/drift.rs).
-`ChargerPlugin`, `Resources`, and the simulated device's `read` method are
-application-defined; a complete charger example is not bundled yet.
-
-```rust
-#[harmos::stream(id = "charger.readings", window = 4096)]
-#[harmos::message]
-#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct Reading {
-    pub voltage_v: f64,
-    pub current_a: f64,
-    pub temperature_c: f64,
-}
-
-#[derive(Default)]
-pub struct Measurements;
-
-#[harmos::observer(
-    interval_ms = 100,
-    streams(Reading),
-    activation = "demand"
-)]
-impl Measurements {
-    async fn observe(
-        &mut self,
-        ctx: &ObserverContext<'_, Resources, Publisher<ChargerPlugin>>,
-    ) -> Result<(), PublishError> {
-        let reading = ctx.resources().charger.read();
-        ctx.publish_on::<Reading>(&reading).await
-    }
-}
-```
-
-The plugin declares this observer in its catalog and attaches it to its original
-initialized resources. The host leases the stream when it needs measurements;
-operations on the same plugin configure the charger and start or stop work.
-
-Those operations can expose gRPC from the same declaration. For example, an
-operation serving a charger reading would select:
-
-```rust
-grpc(package = "charger.v1", service = "Charger", method = "Read")
-```
-
-This metadata belongs on the operation declaration. The build or packaging step
-exports its protobuf schema; normal operation registration makes the declared
-method available through the configured runtime gRPC listener. Requests and
-responses remain typed, without a second hand-maintained protocol definition.
-
-For runnable native-plugin examples, start with
-[Minibench](examples/minibench/) and the
-[standalone sidecar](examples/standalone-sidecar/). The
-[Autoroute guest](examples/minischematic/README.md#autoroute-guest) demonstrates
-Wasm capability admission and execution budgets using the diagram application.
-
-Building a complete test application?
-[Dokime](https://github.com/stokker-technologies/dokime) builds on
-Harmos with test procedures, operator workflows, live visualization, and
-captured evidence reports.
+The [advanced follow-on](examples/schematic/cli/src/advanced.rs) demonstrates
+bounded streaming, cancellation with settlement, and native directory access.
+The [simulation test](examples/schematic/app/tests/app/simulation.rs) checks
+repeatability, replay, and inverses. Reusable [JSONL test support](tests/support/jsonl-adapter/)
+provides the example's persistence adapter; shutdown stress scenarios live in
+[test fixtures](tests/fixtures/lifecycle/).
 
 ## Cargo Features
 
-The `harmos` crate enables `runtime` and `derive` by default. Choose additional
-facilities for your application, or disable defaults when authoring a plugin
-that does not need the host runtime.
+The host runtime, managed state, streams, storage, recovery, and authoring macros
+are always available. Optional facilities are disabled by default.
 
-| Feature | Default | Enables |
-| --- | --- | --- |
-| `runtime` | Yes | Host runtime, managed state, streams, storage, and recovery. |
-| `derive` | Yes | Authoring macros for plugins, operations, observers, and catalogs. |
-| `load` | No | In-process plugin loading and lifecycle management. |
-| `sidecar` | No | Native sidecar authoring SDK. |
-| `sidecar-host` | No | Native plugin hosting and process transport. |
-| `guest` | No | Wasm guest authoring SDK. |
-| `guest-host` | No | Sandboxed Wasm execution through Wasmtime. |
-| `grpc` | No | gRPC integration and reflection. |
-| `grpc-tls` | No | TLS support for gRPC. |
-| `grpc-web` | No | gRPC-Web on the gRPC listener. |
-| `signal` | No | Signal-processing kernels. |
-| `fft` | No | FFT support for signal processing. |
-| `sim` | No | Runtime simulation support. |
-| `artifact` | No | Plugin artifact declarations and admission interfaces. |
-| `componentize` | No | Packaging core Wasm modules as components. |
-| `plugin` | No | Plugin bundle packaging. |
+| Feature | Enables |
+| --- | --- |
+| `plugin` | Shared plugin management, activation, routing, and reload. |
+| `plugin-sidecar` | Native process hosting; includes `plugin`. |
+| `plugin-guest` | Sandboxed Wasmtime hosting; includes `plugin`. |
+| `grpc` | gRPC, reflection, TLS, and Web support; settings select their use. |
+| `signal` | Signal-processing kernels. |
+| `signal-fft` | FFT support; includes `signal`. |
+| `simulation` | Deterministic runtime simulation. |
 
-`load`, `sidecar-host`, `guest-host`, and `sim` enable `runtime` automatically.
-`grpc-tls` and `grpc-web` enable `grpc`; `fft` enables `signal`. Authoring flags
-`sidecar` and `guest` do not enable their corresponding hosts.
-
-For example, a Wasm guest can select its authoring SDK and macros without the
-host runtime or Wasmtime engine:
+Portable declarations use `harmos-contract`. Plugin authors use the dedicated
+`harmos-sidecar` or `harmos-guest` SDK, without importing the host runtime:
 
 ```toml
 [dependencies]
-harmos = { git = "https://github.com/stokker-technologies/harmos", rev = "<tested-commit>", default-features = false, features = ["guest", "derive"] }
+harmos-guest = { git = "https://github.com/stokker-technologies/harmos", rev = "<tested-commit>", features = ["kit", "streaming"] }
 ```
 
-See the [crate manifest](crates/harmos/Cargo.toml) for exact feature dependencies.
+`harmos-guest/componentize` packages Wasm components. `harmos-bundle` packages
+plugin bundles without a host runtime. Host consumers reach bundle support at
+`harmos::plugin::bundle`.
+
+Operation metadata belongs on its owning struct in a vertical file; catalogs
+assemble those types. `harmos::prelude::*` provides a bounded set of common
+authoring imports. See the [crate manifest](crates/harmos/Cargo.toml) and
+[authoring skill](.agents/skills/harmos-authoring/SKILL.md) for details.
 
 ## Performance
 
@@ -271,15 +192,15 @@ these native benchmarks do not establish Wasm guest performance.
 - [Runnable Examples](examples/) — application composition and plugin integration.
 - [Public Rust API](crates/harmos/src/lib.rs) — the SDK facade and module documentation.
 - [Cargo Features](crates/harmos/Cargo.toml) — select the facilities your application needs.
-- [Storage Adapter](examples/jsonl-adapter/) — own your persistence format.
+- [Storage Adapter](tests/support/jsonl-adapter/) — own your persistence format.
 
 ## Project Status & Roadmap
 
 Harmos is in active development. Pin the revision you integrate and expect
 changes to public APIs and plugin contracts before 1.0.
 
-The next documentation milestones are a complete simulated charger walkthrough
-and reproducible published stream and plugin-transport results. GitHub hosts the
+Reproducible published stream and plugin-transport results remain a documentation
+milestone. GitHub hosts the
 authoritative repository and native CI; GitLab retains a one-way mirror.
 
 Follow [issues](https://github.com/stokker-technologies/harmos/issues)
@@ -290,8 +211,8 @@ for development discussions and [the changelog](CHANGELOG.md) for recorded chang
 Use the setup commands in [Quick Start](#quick-start), then choose a task:
 
 ```sh
-mise run run:minibench           # Run the native instrument-plugin example
-mise run run:minischematic:guest # Run the sandboxed Wasm example
+mise run run:schematic:sidecar # Run the native plugin example
+mise run run:schematic:guest # Run the sandboxed Wasm example
 mise run check                  # Run repository checks
 mise run test                   # Run the test suite
 mise run bench                  # Record benchmark results

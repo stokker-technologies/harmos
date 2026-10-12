@@ -45,7 +45,7 @@ enum Change {
 /* === Traits === */
 
 /* === Implementations === */
-impl harmos::Transaction<Sheet> for Place {
+impl harmos::state::Transaction<Sheet> for Place {
     type Error = Infallible;
 
     fn check(&self, _sheet: &Sheet) -> Result<(), Self::Error> {
@@ -55,13 +55,13 @@ impl harmos::Transaction<Sheet> for Place {
     fn apply(&self, _sheet: &mut Sheet) {}
 }
 
-impl harmos::Invert<Sheet> for Place {
+impl harmos::state::Invert<Sheet> for Place {
     fn invert(&self, _sheet: &Sheet) -> Remove {
         Remove
     }
 }
 
-impl harmos::Transaction<Sheet> for Remove {
+impl harmos::state::Transaction<Sheet> for Remove {
     type Error = Infallible;
 
     fn check(&self, _sheet: &Sheet) -> Result<(), Self::Error> {
@@ -71,7 +71,7 @@ impl harmos::Transaction<Sheet> for Remove {
     fn apply(&self, _sheet: &mut Sheet) {}
 }
 
-impl harmos::Invert<Sheet> for Remove {
+impl harmos::state::Invert<Sheet> for Remove {
     fn invert(&self, _sheet: &Sheet) -> Place {
         Place
     }

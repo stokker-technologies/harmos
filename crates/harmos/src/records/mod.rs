@@ -8,13 +8,21 @@
  */
 
 /* === Modules === */
-#[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
 mod listeners;
 mod manager;
 mod registration;
 
 /* === Re-Exports === */
-#[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
 pub use listeners::{PluginListenerBindings, PluginListenerRegistration};
 pub use manager::RecordManager;
 pub use registration::Definition;

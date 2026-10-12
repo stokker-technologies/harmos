@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 // Local Imports
 use super::{MAX_SELECTOR_BYTES, heap, invalid};
 use crate::storage::ReadOrder;
-use crate::storage_object_fields::{
+use crate::storage::object_fields::{
     ObjectComparison, ObjectNullOrder, ObjectScalar, ObjectScalarKind,
 };
 

@@ -80,22 +80,32 @@ impl Invocation {
     pub fn is_host_call(&self) -> bool {
         self.origin.identity == super::caller::Identity::Host
     }
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
-    pub fn caller_scope(&self) -> Option<&crate::load::PluginScope> {
+
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
+    pub fn caller_scope(&self) -> Option<&crate::plugin::PluginScope> {
         self.origin.scope.as_ref()
     }
+
     pub fn operation(&self) -> &Definition {
         &self.operation
     }
+
     pub fn id(&self) -> OperationInstanceId {
         self.id
     }
+
     pub fn generation(&self) -> OperationGeneration {
         self.generation
     }
+
     pub fn context(&self) -> &CallContext {
         &self.context
     }
+
     pub fn context_mut(&mut self) -> crate::operations::ContextMut<'_> {
         super::ContextMut::new(&mut self.context)
     }

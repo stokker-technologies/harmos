@@ -19,10 +19,13 @@ Use the original runtime and resource owners. Consult the relevant section only;
   portable requests and persisted configuration.
 - The original OperationManager owns admission, generation, policy and physical
   settlement. `#[harmos::operation(declaration = contract::Read)]` forwards the
-  resource-bound implementation to the shared declaration. Inline metadata may
-  instead generate `<Owner>Declaration` for an unshared operation.
+  resource-bound implementation to the shared declaration. Put declaration
+  metadata on a unit struct in its vertical operation file, including unshared
+  declarations. Never put operation metadata on catalog enum entries. Catalogs
+  assemble already-declared leaf types.
 - `new(Arc<Resources>)` constructs an inert owner. `initialize(context)` prepares
-  common resources. `run(context, &mut request, &mut endpoints)` performs work;
+  common resources. `run(context, &mut request, &mut input, &mut output)` performs
+  work, omitting each endpoint argument when that direction is not declared;
   retain request-dependent handles on `self` for `stop()` and `finalize()`, including
   partial failures. The same request, endpoints and owner survive allowed retries.
 - Declare `input = Item` and/or `output = Item` explicitly. Context has no optional
@@ -41,6 +44,32 @@ Use the original runtime and resource owners. Consult the relevant section only;
   need shape-aware `visit_wire`/`visit_grpc` projections or explicit bindings.
 
 
+```rust
+// operations/validate.rs
+#[harmos_contract::operation(
+    id = "schematic.validate",
+    request = Request,
+    response = Response,
+    policy = POLICY,
+    version = 1,
+)]
+pub struct Validate;
+
+// operations/mod.rs
+mod validate;
+pub use validate::Validate;
+
+#[harmos_contract::catalog]
+pub enum Operations {
+    Validate(Validate),
+}
+```
+
+The declaration attribute belongs on the struct; the implementation-binding
+attribute belongs on its implementation. Catalog-level composition remains on
+the catalog. Rust helper attributes for lane/default or nested selection do not
+declare operation metadata.
+
 ## gRPC Composition And Discovery
 
 - Normal operation registration automatically publishes declared gRPC methods
@@ -51,7 +80,7 @@ Use the original runtime and resource owners. Consult the relevant section only;
   standard reflection when enabled. Startup/registration tracing reports counts.
 - Register ordered asynchronous transport middleware before startup. Trusted
   identity flows into original operation admission; reflection uses the same
-  interception boundary. TLS and anonymous-access choices belong to the host.
+  interception boundary. TLS, gRPC-Web (`Settings::web`), and anonymous-access choices belong to the host.
 - Macro expansion produces metadata only. Application build scripts use
   `Artifacts::new(&Contracts::of::<Operations>()?)?.export_cargo(manifest, name)`
   from `harmos-contract` with `reflection`; packaging inspects plugin metadata
@@ -130,9 +159,11 @@ layouts for guests and sidecars.
   context-independent `cleanup(&mut self)` releases physical resources after
   partial setup or EOF. Acknowledged domain shutdown is not replayed while
   physical cleanup resumes.
-- The concrete SDK context selects the carrier when both authoring kits are
-  available. `guest` and `sidecar` select authoring; `guest-host` and
-  `sidecar-host` select runtime execution. `componentize` selects packaging.
+- Author portable guests with `harmos-guest` and native plugins with
+  `harmos-sidecar`; neither authoring crate depends on the host runtime.
+  The SDK context identifies its carrier. Host features `plugin-guest` and
+  `plugin-sidecar` enable execution and imply the shared `plugin` manager.
+  `harmos-guest/componentize` and `harmos-bundle` own host-independent packaging.
 - Keep SDK initialization/shutdown leaves separate from ordinary provides and
   requires. Their explicit policies belong to the authored lifecycle owner;
   the host owns admission, generation and physical settlement.

@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use support::{Bank, Ledger, Noted, alice, booted, deposit, ledger, opened, scratch, withdraw};
 // Local Imports
 use super::support;
-use harmos::Position;
+use harmos::state::Position;
 use jsonl_adapter::{Jsonl, Snapshot};
 
 /* === Constants === */

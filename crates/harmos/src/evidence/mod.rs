@@ -26,7 +26,9 @@ use std::sync::{Arc, Mutex, Weak};
 use tokio::sync::watch;
 // Local Imports
 use crate::supervision::executor;
-use crate::{Application, At, DefinitionId, Entry, Recorded, StateManager};
+use crate::{
+    Application, DefinitionId, state::At, state::Entry, state::Recorded, state::StateManager,
+};
 use draft::{Open, Staged};
 use vault::Keeping;
 
@@ -450,7 +452,7 @@ impl<A: Application> Inner<A> {
             length,
             open.described.clone(),
         );
-        let receipt = crate::RecordManager::new(self.state.clone())
+        let receipt = crate::records::RecordManager::new(self.state.clone())
             .publish_system(record.recorded(digest))
             .await
             .map_err(|_| EvidenceError::Unavailable)?;

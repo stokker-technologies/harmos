@@ -25,7 +25,10 @@ use std::task::Poll;
 use super::manager::{ENTRY_OVERHEAD, MemoryReservation, ReservationKind, encoded_size};
 use super::*;
 use crate::supervision::executor;
-use crate::{Application, BackendFailure, Error, Fault, Identifier, Resident, Result, Service};
+use crate::{
+    Application, BackendFailure, Error, Identifier, Result, services::Fault, services::Resident,
+    services::Service,
+};
 
 /* === Constants === */
 
@@ -744,7 +747,7 @@ fn transfer_bytes(
         .and_then(|n| {
             if objects {
                 n.checked_add(
-                    crate::object_catalog::verification_bytes(settings.replication_limits.bytes)
+                    crate::storage::catalog::verification_bytes(settings.replication_limits.bytes)
                         .ok()?,
                 )
             } else {

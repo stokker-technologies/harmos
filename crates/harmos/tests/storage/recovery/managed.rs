@@ -27,7 +27,7 @@ use super::{
     history,
 };
 use harmos::storage::{ReadLimits, StorageSettings};
-use harmos::{Focus, Position, PrincipalId, RequestKey};
+use harmos::{state::Focus, state::Position, state::PrincipalId, state::RequestKey};
 
 /* === Constants === */
 
@@ -86,7 +86,7 @@ impl harmos::Application for Model {
     type Resources = ();
 }
 
-impl harmos::Transaction<i64> for Add {
+impl harmos::state::Transaction<i64> for Add {
     type Error = &'static str;
     fn check(&self, _: &i64) -> Result<(), Self::Error> {
         if self.amount < 0 {
@@ -95,10 +95,10 @@ impl harmos::Transaction<i64> for Add {
             Ok(())
         }
     }
-    fn records(&self, state: &i64, out: &mut harmos::Records) {
+    fn records(&self, state: &i64, out: &mut harmos::state::Records) {
         out.push(Seen { before: *state }).unwrap();
-        out.push_system(harmos::SystemFact {
-            source: harmos::FactSource::Work("probe".into()),
+        out.push_system(harmos::state::SystemFact {
+            source: harmos::state::FactSource::Work("probe".into()),
             name: "observed".into(),
             version: 1,
             payload: vec![1, 2],
@@ -110,12 +110,12 @@ impl harmos::Transaction<i64> for Add {
     }
 }
 
-impl harmos::Transaction<i64> for OldAdd {
+impl harmos::state::Transaction<i64> for OldAdd {
     type Error = &'static str;
     fn check(&self, _: &i64) -> Result<(), Self::Error> {
         panic!("replay must not check")
     }
-    fn records(&self, _: &i64, _: &mut harmos::Records) {
+    fn records(&self, _: &i64, _: &mut harmos::state::Records) {
         panic!("replay must not emit records")
     }
     fn apply(&self, state: &mut i64) {
@@ -204,7 +204,7 @@ pub(super) fn contract_scenario() {
                     for _ in 0..5 {
                         journal.commit(deposit(3)).await.unwrap();
                     }
-                    harmos::RecordManager::new(journal.clone())
+                    harmos::records::RecordManager::new(journal.clone())
                         .publish(Noted("saved".into()))
                         .await
                         .unwrap();
@@ -554,7 +554,7 @@ pub(super) fn contract_scenario() {
                     assert!(facts[0].is_ok());
                     let system: Vec<_> = runtime
                         .state
-                        .query::<harmos::SystemFact>(Position::ORIGIN)
+                        .query::<harmos::state::SystemFact>(Position::ORIGIN)
                         .await
                         .collect();
                     assert_eq!(system.len(), 1);

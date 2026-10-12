@@ -27,8 +27,10 @@ use super::snapshot::{Restored, SnapshotPolicy};
 use crate::state::{Metadata, Tail, UndoEntry, Undos, dispatch::Dispatch};
 use crate::storage::SchemaKey;
 use crate::{
-    Application, At, CatalogCodec, DefinitionId, Entry, Envelope, Error, Incompatible, Kind,
-    Payload, Position, Prepared, PrincipalId, Receipt, Recorded, RequestKey, Result,
+    Application, DefinitionId, Error, Result, runtime::Incompatible, state::At,
+    state::CatalogCodec, state::Entry, state::Envelope, state::Kind, state::Position,
+    state::Prepared, state::PrincipalId, state::Receipt, state::Recorded, state::RequestKey,
+    storage::Payload,
 };
 
 /* === Constants === */
@@ -172,6 +174,7 @@ impl Write for Bounded {
         self.bytes.extend_from_slice(bytes);
         Ok(bytes.len())
     }
+
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }

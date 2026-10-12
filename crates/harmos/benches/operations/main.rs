@@ -58,9 +58,7 @@ enum Lanes {
     Open,
 }
 
-#[harmos::catalog]
-enum Operations {
-    #[operation(
+#[harmos::operation(
         request = Option<Arc<Signals>>,
         response = usize,
         id = "bench.dispatch",
@@ -70,7 +68,11 @@ enum Operations {
             retries: RetryPolicy::Never,
         },
     )]
-    Dispatch,
+struct Dispatch;
+
+#[harmos::catalog]
+enum Operations {
+    Dispatch(Dispatch),
 }
 
 /* === Traits === */

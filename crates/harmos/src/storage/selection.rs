@@ -45,6 +45,7 @@ pub(super) trait Entry: Clone + Serialize + Send + Sync + 'static {
             limits
         }
     }
+
     fn decoding_overhead(encoding: SchemaEncoding) -> usize {
         if Self::KIND == ReadKind::Schemas {
             encoding.decoding_overhead()
@@ -56,6 +57,7 @@ pub(super) trait Entry: Clone + Serialize + Send + Sync + 'static {
     fn validate(&self, _: &super::manager::Inner, _: ReadLimits) -> crate::Result<()> {
         Ok(())
     }
+
     fn validate_read(
         &self,
         inner: &super::manager::Inner,
@@ -63,6 +65,7 @@ pub(super) trait Entry: Clone + Serialize + Send + Sync + 'static {
     ) -> crate::Result<()> {
         self.validate(inner, limits)
     }
+
     fn position(&self) -> &StorageCursor;
     fn part(entries: &[Self]) -> StoragePart<'_>;
     fn matches(&self, selection: &ReadSelection) -> bool;
@@ -91,6 +94,7 @@ impl Entry for ObjectEntry {
     fn position(&self) -> &StorageCursor {
         &self.position
     }
+
     fn matches(&self, selection: &ReadSelection) -> bool {
         selection
             .schema
@@ -101,14 +105,17 @@ impl Entry for ObjectEntry {
                 .as_ref()
                 .is_none_or(|key| key == &self.value.item)
     }
+
     fn validate(&self, inner: &super::manager::Inner, limits: ReadLimits) -> crate::Result<()> {
         self.version.check_position(&self.position)?;
         (inner.validate_object)(&self.value, limits.bytes)
     }
+
     fn validate_read(&self, _: &super::manager::Inner, _: ReadLimits) -> crate::Result<()> {
         // Typed Reads Verify Payload And Key Under Their Original Output Preclaim.
         self.version.check_position(&self.position)
     }
+
     fn fetch<'a>(
         backend: &'a dyn super::backend::ErasedBackend,
         view: &'a ReadView,
@@ -135,6 +142,7 @@ impl Entry for StoredRecord {
     fn position(&self) -> &StorageCursor {
         &self.position
     }
+
     fn matches(&self, selection: &ReadSelection) -> bool {
         selection
             .schema
@@ -147,6 +155,7 @@ impl Entry for StoredRecord {
             && optional(&selection.scope, self.scope.as_ref())
             && optional(&selection.item, Some(&self.item))
     }
+
     fn fetch<'a>(
         backend: &'a dyn super::backend::ErasedBackend,
         view: &'a ReadView,
@@ -173,9 +182,11 @@ impl Entry for StoredRow {
     fn position(&self) -> &StorageCursor {
         &self.record.position
     }
+
     fn matches(&self, selection: &ReadSelection) -> bool {
         self.record.matches(selection) && optional(&selection.stream, Some(&self.stream))
     }
+
     fn fetch<'a>(
         backend: &'a dyn super::backend::ErasedBackend,
         view: &'a ReadView,
@@ -216,6 +227,7 @@ impl Entry for StorageSchema {
         }
         Ok(())
     }
+
     fn part(entries: &[Self]) -> StoragePart<'_> {
         StoragePart::Schemas(entries)
     }
@@ -231,10 +243,12 @@ impl Entry for StorageSchema {
     fn position(&self) -> &StorageCursor {
         &self.position
     }
+
     fn matches(&self, selection: &ReadSelection) -> bool {
         selection.schema.as_ref().is_none_or(|key| key == &self.key)
             && optional(&selection.item, Some(&self.key.id))
     }
+
     fn fetch<'a>(
         backend: &'a dyn super::backend::ErasedBackend,
         view: &'a ReadView,
@@ -261,10 +275,12 @@ impl Entry for FileReference {
     fn position(&self) -> &StorageCursor {
         &self.position
     }
+
     fn matches(&self, selection: &ReadSelection) -> bool {
         optional(&selection.scope, self.metadata.scope.as_ref())
             && optional(&selection.item, Some(&self.metadata.id))
     }
+
     fn fetch<'a>(
         backend: &'a dyn super::backend::ErasedBackend,
         view: &'a ReadView,

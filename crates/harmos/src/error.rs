@@ -29,82 +29,82 @@ use std::convert::Infallible;
 /* === Enums === */
 #[derive(Debug, thiserror::Error)]
 pub enum Error<E = Infallible> {
-    #[cfg(feature = "runtime")]
     #[error("runtime shutdown budget expired during {phase}; cleanup remains owned")]
     ShutdownTimeout { phase: &'static str },
-    #[cfg(feature = "runtime")]
+
     #[error("authenticated caller identity is required")]
     Unauthenticated,
-    #[cfg(feature = "runtime")]
+
     #[error("caller is not permitted to perform this action")]
     PermissionDenied,
-    #[cfg(feature = "runtime")]
+
     #[error("record protobuf schema is invalid: {source}")]
     RecordSchema {
         #[source]
         source: crate::schema::Error,
     },
-    #[cfg(feature = "runtime")]
+
     #[error("record protobuf payload is invalid: {source}")]
     RecordPayload {
         #[source]
         source: crate::schema::PayloadError,
     },
-    #[cfg(feature = "runtime")]
+
     #[error("record declaration is unavailable: {source}")]
     RecordDeclaration {
         #[source]
-        source: crate::DecodeError,
+        source: crate::state::DecodeError,
     },
-    #[cfg(feature = "runtime")]
+
     #[error(transparent)]
     OperationRefused(#[from] crate::Refusal),
-    #[cfg(feature = "runtime")]
+
     #[error("operation child lane `{child}` would cycle with held lane `{parent}`")]
     OperationLaneCycle {
         parent: &'static str,
         child: &'static str,
     },
-    #[cfg(all(
-        feature = "runtime",
-        any(feature = "load", feature = "guest-host", feature = "sidecar-host")
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
     ))]
     #[error("operation caller is unavailable: {source}")]
     OperationCaller {
         #[source]
-        source: crate::load::DispatchError,
+        source: crate::plugin::DispatchError,
     },
-    #[cfg(feature = "runtime")]
+
     #[error("caller `{caller}` may not invoke operation `{operation}` on `{owner}`")]
     OperationUnauthorized {
         caller: String,
         owner: String,
         operation: String,
     },
-    #[cfg(feature = "runtime")]
+
     #[error("operation `{operation}` payload is unreadable: {source}")]
     OperationPayload {
         operation: String,
         #[source]
         source: harmos_contract::MessageError,
     },
-    #[cfg(feature = "runtime")]
+
     #[error("operation `{operation}` panicked")]
     OperationPanicked { operation: String },
-    #[cfg(feature = "runtime")]
+
     #[error("operation declaration is invalid: {source}")]
     OperationDeclaration {
         #[source]
         source: harmos_contract::Error,
     },
-    #[cfg(feature = "runtime")]
+
     #[error("operation `{operation}` failed: {source}")]
     OperationFailed {
         operation: String,
         #[source]
         source: std::sync::Arc<dyn std::error::Error + Send + Sync>,
     },
-    #[cfg(feature = "runtime")]
+
     #[error("operation `{operation}` could not finalize its invocation state")]
     OperationFinalization {
         operation: String,
@@ -112,20 +112,21 @@ pub enum Error<E = Infallible> {
         #[source]
         source: std::sync::Arc<Error>,
     },
-    #[cfg(feature = "runtime")]
+
     #[error("operation physical settlement failed: {source}")]
     OperationSettlement {
         #[source]
         source: std::sync::Arc<Error>,
     },
-    #[cfg(all(
-        feature = "runtime",
-        any(feature = "load", feature = "guest-host", feature = "sidecar-host")
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
     ))]
     #[error("plugin lifecycle failed: {source}")]
     PluginLifecycle {
         #[source]
-        source: Box<crate::load::PluginFailure>,
+        source: Box<crate::plugin::PluginFailure>,
     },
     #[error("{domain} task failed: {source}")]
     TaskFailed {

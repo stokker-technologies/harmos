@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 use super::manager::{ENTRY_OVERHEAD, MemoryReservation};
 use super::*;
 use crate::catalog::Contains;
-use crate::object_catalog::{decode_admitted, object_key, object_schema};
+use crate::storage::catalog::{decode_admitted, object_key, object_schema};
 use crate::{Error, Identifier, MemorySize, Result};
 
 /* === Constants === */
@@ -399,6 +399,7 @@ impl<C, T: MemorySize + 'static> Query<C> for RecordQuery<T> {
     fn options(&self) -> &QueryOptions {
         &self.options
     }
+
     fn open(
         self,
         view: StorageView,
@@ -433,6 +434,7 @@ impl<C, T: MemorySize + 'static> Query<C> for StreamQuery<T> {
     fn options(&self) -> &QueryOptions {
         &self.options
     }
+
     fn open(
         self,
         view: StorageView,
@@ -551,6 +553,7 @@ impl<C> Query<C> for SchemaQuery {
     fn options(&self) -> &QueryOptions {
         &self.options
     }
+
     fn open(
         self,
         view: StorageView,
@@ -581,6 +584,7 @@ impl<C> Query<C> for FileQuery {
     fn options(&self) -> &QueryOptions {
         &self.options
     }
+
     fn open(
         self,
         view: StorageView,
@@ -613,12 +617,14 @@ impl<C: ObjectCatalog + Contains<T>, T: StoredObject> Query<C> for ObjectQuery<'
     fn options(&self) -> &QueryOptions {
         &self.options
     }
+
     fn preflight(&self, manager: &StorageManager<C>, _limits: QueryLimits) -> Result<()> {
         manager
             .inner
             .primary
             .validate_object_versions(self.versions)
     }
+
     fn open(
         self,
         view: StorageView,

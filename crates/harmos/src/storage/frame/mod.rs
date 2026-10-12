@@ -10,12 +10,16 @@
 /* === Modules === */
 mod execute;
 mod fields;
+pub(crate) mod plan;
 mod query;
 
 /* === Re-Exports === */
-pub use crate::storage_frame::*;
 pub use execute::{ProjectedRow, ScanCursor, ScanOrder, ScanPage, ScanSource, collect};
 pub use fields::ScalarProjection;
+pub use plan::{
+    AsOf, AsOfStrategy, Collected, Compare, Explain, Expr, Frame, GroupBy, GroupOutput, GroupRow,
+    LastBy, Predicate, ScalarField, ScalarPath, Scan,
+};
 pub use query::{FrameQuery, FrameResult};
 
 /* === Imports === */
@@ -27,7 +31,7 @@ pub use query::{FrameQuery, FrameResult};
 // Local Imports
 use super::reduce::{Accumulator, Agg, ScalarKind, ScalarValue};
 use super::{ReadLimits, ReadView};
-use crate::storage_frame::{compare_iter, heap, invalid};
+use crate::storage::frame::plan::{compare_iter, heap, invalid};
 use crate::{MemorySize, Result};
 
 /* === Constants === */

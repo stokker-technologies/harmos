@@ -28,7 +28,7 @@ use super::OperationManager;
 use super::admission::Admission;
 use super::caller::{Origin, Source};
 use crate::operations::OperationDeclaration;
-use crate::{Error, Position, Result, Scope};
+use crate::{Error, Result, operations::Scope, state::Position};
 
 /* === Constants === */
 static NEXT_INSTANCE: AtomicU64 = AtomicU64::new(1);
@@ -60,7 +60,7 @@ pub struct Context<'a> {
     pub(super) admission: Admission,
     pub(super) source: Source,
     pub(super) origin: Origin,
-    #[cfg(feature = "sidecar-host")]
+    #[cfg(feature = "plugin-sidecar")]
     pub(super) retirement: bool,
 }
 
@@ -78,6 +78,7 @@ impl OperationInstanceId {
                 resource: "operation instance identities",
             })
     }
+
     pub fn value(self) -> u64 {
         self.0
     }
@@ -92,6 +93,7 @@ impl OperationGeneration {
                 resource: "operation provider generations",
             })
     }
+
     pub fn value(self) -> u64 {
         self.0
     }
@@ -101,9 +103,11 @@ impl<O: OperationDeclaration> OperationInstance<O> {
     pub fn id(&self) -> OperationInstanceId {
         self.id
     }
+
     pub fn generation(&self) -> OperationGeneration {
         self.generation
     }
+
     pub fn cancel(&self) {
         self.control.cancel();
     }
@@ -143,9 +147,11 @@ impl Context<'_> {
     pub fn id(&self) -> OperationInstanceId {
         self.id
     }
+
     pub fn attempt(&self) -> usize {
         self.attempt
     }
+
     pub fn scope(&self) -> &Scope<'_> {
         &self.scope
     }
@@ -154,13 +160,21 @@ impl Context<'_> {
         self.origin.identity == super::caller::Identity::Host
     }
 
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
-    pub fn caller_scope(&self) -> Option<&crate::load::PluginScope> {
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
+    pub fn caller_scope(&self) -> Option<&crate::plugin::PluginScope> {
         self.origin.scope.as_ref()
     }
 
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
-    pub(crate) fn retains_publication(&self, scope: &crate::load::PluginScope) -> bool {
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
+    pub(crate) fn retains_publication(&self, scope: &crate::plugin::PluginScope) -> bool {
         self.source.check().is_ok_and(|origin| {
             (origin.has_lifecycle_loan() || origin.observer_publication)
                 && origin

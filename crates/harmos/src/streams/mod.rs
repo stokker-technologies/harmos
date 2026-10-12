@@ -12,26 +12,45 @@ mod batches;
 mod definition;
 mod demand;
 
-#[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
 mod listeners;
 mod manager;
 mod publication;
 mod publications;
 mod reader;
 
-#[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
 mod registration;
 mod series;
 
-#[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
 mod staging;
 mod window;
 
 /* === Re-Exports === */
 pub use batches::{BatchItem, Batches, Measurement, Statistics, Summary};
 pub use definition::Stream;
+pub use harmos_contract::streams::{
+    Axial, BatchDefinition, Batched, Definition, Prefix, StreamCatalog, StreamRow, Track, Tracked,
+};
 
-#[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
 pub use listeners::{PluginListenerBindings, PluginListenerRegistration};
 pub use manager::{Query, Seal, StreamFeed, StreamManager, Survey};
 pub use publication::ManagedPublication;
@@ -41,19 +60,27 @@ pub use publications::{
 };
 pub use reader::{PageLimits, ReadCut, ReadError, ReadLimits, RowPage, RowReader, RowSource};
 
-#[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
 pub use registration::StreamRegistration;
 
-#[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
 pub(crate) use staging::Activation;
 
-#[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
 pub use staging::StagedPublication;
 
-// Declared beside the row type rather than beside the machinery that serves
-// one. The crate root hands them out from there; this is what lets the modules
-// below go on reaching them through `super::`.
-pub(crate) use crate::declaration::{Axial, BatchDefinition, Batched, Definition, Prefix, Tracked};
 pub(crate) use definition::{Refused, Table, Wired};
 pub use demand::Demand;
 pub(crate) use demand::Holding;

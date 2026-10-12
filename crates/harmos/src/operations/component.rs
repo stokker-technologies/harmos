@@ -24,13 +24,13 @@ use tokio::sync::mpsc;
 use super::children::{CHILD_REQUESTS, ChildRequest, Children};
 use super::{Context, Operation};
 use crate::catalog::{Catalog, Member, Visitor};
-use crate::guest::Error as GuestError;
-use crate::guest::host::session::Endpoint;
 use crate::operations::{
     Declarations, Definition, Failure, OperationDeclaration, WireAnswer, WireCommand, WireOperation,
 };
+use crate::plugin::guest::Error as GuestError;
+use crate::plugin::guest::host::session::Endpoint;
 use crate::schema::Described;
-use crate::{Error, Identifier, Lane, Message};
+use crate::{Error, Identifier, Message, operations::Lane};
 
 /* === Constants === */
 
@@ -119,6 +119,7 @@ impl super::WireVisitor for Project<'_, '_> {
         self.bindings
             .register_owned_wire_at::<ComponentOperation<O, ()>>(self.lane, self.resources)
     }
+
     fn upload<O>(self) -> Self::Entry
     where
         O: WireOperation + crate::operations::InputDeclaration,
@@ -132,6 +133,7 @@ impl super::WireVisitor for Project<'_, '_> {
                 self.resources,
             )
     }
+
     fn download<O>(self) -> Self::Entry
     where
         O: WireOperation + crate::operations::OutputDeclaration,
@@ -145,6 +147,7 @@ impl super::WireVisitor for Project<'_, '_> {
                 self.resources,
             )
     }
+
     fn exchange<O>(self) -> Self::Entry
     where
         O: WireOperation
@@ -432,7 +435,7 @@ impl Component {
 }
 
 impl Component {
-    pub fn scope(&self) -> Option<&crate::load::PluginScope> {
+    pub fn scope(&self) -> Option<&crate::plugin::PluginScope> {
         self.endpoint.scope()
     }
 
@@ -490,7 +493,7 @@ impl Component {
             operations.clone(),
             scope,
             entries,
-            crate::load::PluginKind::Guest,
+            crate::plugin::PluginKind::Guest,
         )
     }
 }
@@ -567,6 +570,7 @@ impl Operation for SdkOperation {
 
         self.binding.component.finalize_encoded(state).await
     }
+
     fn classify(error: &ComponentError) -> Failure {
         classify(error)
     }

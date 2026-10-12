@@ -739,7 +739,7 @@ pub(super) fn contract_scenario() {
                 });
         });
     }
-    #[cfg(feature = "sim")]
+    #[cfg(feature = "simulation")]
     {
         scenario_runtime::check("simulation_reboot_rebinds", || {
             let owner = Arc::new(Owner {
@@ -768,7 +768,7 @@ pub(super) fn contract_scenario() {
             sim.stop().unwrap();
         });
     }
-    #[cfg(feature = "sim")]
+    #[cfg(feature = "simulation")]
     {
         scenario_runtime::check("simulation_replays_against", || {
             let owner = Arc::new(Owner::default());

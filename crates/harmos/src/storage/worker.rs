@@ -27,7 +27,10 @@ use super::staging::{FileAction, FileCompleted};
 use super::views::ViewAction;
 use super::{RecoveryPosition, StorageManager, StoragePart};
 use crate::supervision::executor;
-use crate::{Application, BackendFailure, Error, Fault, Resident, Result, Service};
+use crate::{
+    Application, BackendFailure, Error, Result, services::Fault, services::Resident,
+    services::Service,
+};
 
 /* === Constants === */
 

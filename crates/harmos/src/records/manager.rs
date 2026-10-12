@@ -21,8 +21,8 @@ use super::{Definition, Registry};
 use crate::state::dispatch::Dispatch;
 use crate::storage::SchemaKey;
 use crate::{
-    Application, Error, Position, Prepared, PrincipalId, Receipt, Recorded, Result, StateManager,
-    SystemFact,
+    Application, Error, Result, state::Position, state::Prepared, state::PrincipalId,
+    state::Receipt, state::Recorded, state::StateManager, state::SystemFact,
 };
 
 /* === Constants === */
@@ -34,7 +34,7 @@ use crate::{
 /* === Structs === */
 pub struct RecordManager<A: Application> {
     pub(super) state: StateManager<A>,
-    pub(super) catalog: Arc<Dispatch<A, crate::Payload<A>>>,
+    pub(super) catalog: Arc<Dispatch<A, crate::storage::Payload<A>>>,
     preparing: Arc<Semaphore>,
     pub(super) schemas: Arc<Registry>,
 }
@@ -108,7 +108,7 @@ impl<A: Application> RecordManager<A> {
             .map_err(|source| Error::RecordDeclaration { source })?;
         if !declared {
             return Err(Error::RecordDeclaration {
-                source: crate::DecodeError::UnknownDefinition { id: prepared.id },
+                source: crate::state::DecodeError::UnknownDefinition { id: prepared.id },
             });
         }
         self.state

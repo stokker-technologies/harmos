@@ -20,7 +20,7 @@
 use super::manager::encoded_size;
 use super::recovery::Permit;
 use super::{ReadLimits, RecordWrite, StorageFuture};
-use crate::{Envelope, Error, Result};
+use crate::{Error, Result, state::Envelope};
 
 /* === Constants === */
 

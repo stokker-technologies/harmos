@@ -24,8 +24,9 @@ use support::{
 // Local Imports
 use crate::support;
 use harmos::{
-    Batch, Cursor, Entry, Incompatible, JournalConsumer, Position, Recorded, Recovery, Runtime,
-    Source, StreamConsumer,
+    Runtime, runtime::Incompatible, state::Entry, state::Position, state::Recorded, storage::Batch,
+    storage::Cursor, storage::JournalConsumer, storage::Recovery, storage::Source,
+    storage::StreamConsumer,
 };
 
 /* === Constants === */
@@ -126,7 +127,7 @@ impl StreamConsumer<Bank> for Tape {
         Cursor(self.kept.cursor.load(Ordering::Acquire))
     }
 
-    fn selections(&self) -> Vec<harmos::Definition> {
+    fn selections(&self) -> Vec<harmos::streams::Definition> {
         vec![Pulse::definition()]
     }
 

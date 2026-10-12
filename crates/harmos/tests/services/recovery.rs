@@ -27,7 +27,10 @@ use tokio::sync::Notify;
 // Local Imports
 use super::{app::App, service_status};
 use harmos::services::{ServiceOutcome, ServicePhase};
-use harmos::{Fault, Resident, Runtime, ServiceExit, ServicePolicy, ServiceStatus};
+use harmos::{
+    Runtime, services::Fault, services::Resident, services::ServiceExit, services::ServicePolicy,
+    services::ServiceStatus,
+};
 
 /* === Constants === */
 
@@ -61,7 +64,10 @@ enum CleanupRequest {
 impl Resident<App> for RetainedCleanup {
     type Error = String;
 
-    async fn attempt(&mut self, context: harmos::Service<App>) -> Result<(), Fault<String>> {
+    async fn attempt(
+        &mut self,
+        context: harmos::services::Service<App>,
+    ) -> Result<(), Fault<String>> {
         let gate = self.gate.take().expect("one original blocking worker");
         let completed = self.completed.clone();
         self.join = Some(tokio::task::spawn_blocking(move || {
@@ -138,7 +144,7 @@ pub(super) fn contract_scenario() {
                                 },
                                 move |_: Arc<()>| {
                                     let signals = signals.clone();
-                                    move |mut context: harmos::Service<App>| {
+                                    move |mut context: harmos::services::Service<App>| {
                                         let (entered, release, cleaned) = signals.clone();
                                         async move {
                                             context.ready();
@@ -226,7 +232,7 @@ pub(super) fn contract_scenario() {
                         let release = Arc::new(Notify::new());
                         let cleaned = Arc::new(AtomicBool::new(false));
                         let signals = (entered.clone(), release.clone(), cleaned.clone());
-                        let resident = move |mut context: harmos::Service<App>| {
+                        let resident = move |mut context: harmos::services::Service<App>| {
                             let (entered, release, cleaned) = signals.clone();
                             async move {
                                 context.ready();

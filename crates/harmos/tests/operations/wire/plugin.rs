@@ -26,16 +26,16 @@ use super::{
     Compute, ComputeCall, Failed, Implemented, Lanes, Operations, Owner, Parent, ParentCall,
     ParentOwner, Request, Response, SlowCall, State, request, runtime,
 };
-use harmos::load::{
-    PluginArtifact, PluginBackend, PluginCaller, PluginContributions, PluginDefinition,
-    PluginDefinitions, PluginEndpoint, PluginLifecycle, PluginManager, PluginScope,
-    PluginTransition, Requirement, Router,
-};
 use harmos::operations::{
     CacheKey, Context, Failure, OperationDeclaration, OperationPolicy, PluginRegistration,
     Visibility, WireDeclaration, WireOperation,
 };
-use harmos::{Error, Message, OperationManager, Result};
+use harmos::plugin::{
+    PluginArtifact, PluginBackend, PluginCaller, PluginContributions, PluginDefinition,
+    PluginDefinitions, PluginEndpoint, PluginLifecycle, PluginManager, PluginScope,
+    PluginTransition, Requirement, Router,
+};
+use harmos::{Error, Message, Result, operations::OperationManager};
 
 /* === Constants === */
 
@@ -150,7 +150,7 @@ impl PluginLifecycle for SelectedHost {
         &mut self,
         definition: &PluginDefinition,
         router: &Router,
-        _: &harmos::load::PluginLifecycleAuthority<'_>,
+        _: &harmos::plugin::PluginLifecycleAuthority<'_>,
         backend: &mut Backends,
     ) -> Result<()> {
         let PluginBackend::Embedded(resources) = backend else {
@@ -176,7 +176,7 @@ impl PluginLifecycle for SelectedHost {
     }
     async fn stop(
         _: &PluginDefinition,
-        _: &harmos::load::PluginLifecycleAuthority<'_>,
+        _: &harmos::plugin::PluginLifecycleAuthority<'_>,
         backend: &mut Backends,
     ) -> Result<()> {
         let PluginBackend::Embedded(resources) = backend else {
@@ -318,7 +318,7 @@ impl PluginLifecycle for Host {
         &mut self,
         definition: &PluginDefinition,
         router: &Router,
-        _authority: &harmos::load::PluginLifecycleAuthority<'_>,
+        _authority: &harmos::plugin::PluginLifecycleAuthority<'_>,
         backend: &mut Backends,
     ) -> Result<()> {
         let PluginBackend::Embedded(resources) = backend else {
@@ -388,7 +388,7 @@ impl PluginLifecycle for Host {
 
     async fn stop(
         _definition: &PluginDefinition,
-        _authority: &harmos::load::PluginLifecycleAuthority<'_>,
+        _authority: &harmos::plugin::PluginLifecycleAuthority<'_>,
         backend: &mut Backends,
     ) -> Result<()> {
         let PluginBackend::Embedded(resources) = backend else {
@@ -445,7 +445,7 @@ fn selected_candidate(provider: &str, first: bool) -> PluginDefinitions {
     PluginDefinitions::new_with_providers(
         definitions,
         [],
-        [harmos::load::OperationProvider {
+        [harmos::plugin::OperationProvider {
             consumer: "client".into(),
             operation: harmos::Identifier::new(Selected::ID).unwrap(),
             provider: provider.into(),
@@ -1433,7 +1433,7 @@ pub(super) fn contract_scenario() {
                         let harmos::Error::PluginLifecycle { source } = &error else {
                             panic!("plugin lifecycle failure is retained: {error:?}");
                         };
-                        let harmos::load::PluginFailure::Start { source, .. } = source.as_ref()
+                        let harmos::plugin::PluginFailure::Start { source, .. } = source.as_ref()
                         else {
                             panic!("initialization failure is retained: {error:?}");
                         };
@@ -1444,16 +1444,16 @@ pub(super) fn contract_scenario() {
                             assert!(
                                 matches!(
                                     source.as_ref(),
-                                    harmos::load::PluginFailure::Routing(
-                                        harmos::load::DispatchError::Unavailable
+                                    harmos::plugin::PluginFailure::Routing(
+                                        harmos::plugin::DispatchError::Unavailable
                                     )
                                 ),
                                 "dropping the original receipt closes staging: {error:?}"
                             );
                         } else {
                             assert!(
-                                matches!(source.as_ref(), harmos::load::PluginFailure::Routing(
-                harmos::load::DispatchError::IncompleteOperations { owner }
+                                matches!(source.as_ref(), harmos::plugin::PluginFailure::Routing(
+                harmos::plugin::DispatchError::IncompleteOperations { owner }
             ) if owner == "fixture"),
                                 "{error:?}"
                             );

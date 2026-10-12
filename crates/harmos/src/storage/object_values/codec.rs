@@ -22,10 +22,10 @@ use super::{ObjectEntry, ObjectReceipt, ObjectVersionToken};
 #[cfg(feature = "grpc")]
 use crate::__private::DecodeInput;
 use crate::MessageError;
-use crate::storage::{ObjectKey, ObjectValue, SchemaKey, StorageCursor};
-use crate::storage_codec::{Bytes, Nested, Value, product};
+use crate::storage::codec::{Bytes, Nested, Value, product};
 #[cfg(feature = "grpc")]
-use crate::storage_position::codec::{field_len, text_field, write_bytes};
+use crate::storage::position::codec::{field_len, text_field, write_bytes};
+use crate::storage::{ObjectKey, ObjectValue, SchemaKey, StorageCursor};
 
 /* === Constants === */
 
@@ -57,18 +57,20 @@ pub(crate) struct Key;
 
 /* === Implementations === */
 impl Value for Key {
-    crate::storage_codec::postcard_field!();
+    crate::storage::codec::postcard_field!();
     type Native = ObjectKey;
     const KIND: crate::schema::Kind = crate::schema::Kind::String;
     #[cfg(feature = "grpc")]
     fn write(value: &ObjectKey, tag: u32, bytes: &mut Vec<u8>) {
         write_bytes(tag, value.as_str().as_bytes(), bytes);
     }
+
     #[cfg(feature = "grpc")]
     fn size(value: &ObjectKey, tag: u32) -> usize {
         field_len(value.as_str().len())
             .saturating_add(crate::__private::prost::encoding::key_len(tag) - 1)
     }
+
     #[cfg(feature = "grpc")]
     fn memory(input: DecodeInput<'_>, tag: u32) -> Result<usize> {
         let text = text_field(input, tag)?.unwrap_or("");
@@ -77,6 +79,7 @@ impl Value for Key {
         }
         Ok(text.len())
     }
+
     #[cfg(feature = "grpc")]
     fn read(input: DecodeInput<'_>, tag: u32) -> Result<ObjectKey> {
         ObjectKey::from_owned(text_field(input, tag)?.unwrap_or("").into())
@@ -89,11 +92,13 @@ impl crate::__private::PostcardValue for ObjectKey {
         crate::__private::PostcardValue::write(&self.as_str().len(), bytes);
         bytes.extend_from_slice(self.as_str().as_bytes());
     }
+
     fn size(&self) -> usize {
         self.as_str()
             .len()
             .saturating_add(crate::__private::PostcardValue::size(&self.as_str().len()))
     }
+
     fn memory(input: &mut crate::__private::PostcardReader<'_>) -> Result<usize> {
         let text: &str = input.value()?;
         if text.is_empty() {
@@ -101,6 +106,7 @@ impl crate::__private::PostcardValue for ObjectKey {
         }
         crate::__private::decoding_add(std::mem::size_of::<Self>(), text.len())
     }
+
     fn read(input: &mut crate::__private::PostcardReader<'_>) -> Result<Self> {
         let text: &str = input.value()?;
         if text.is_empty() {

@@ -15,31 +15,31 @@
 
 // Standard Library Imports
 use std::any::TypeId;
-#[cfg(feature = "runtime")]
+
 use std::sync::Arc;
 
 // Third Party Imports
 
 // Local Imports
 use super::Selection;
-#[cfg(feature = "runtime")]
+
 use crate::operations::{Context, Operation, StreamOutput};
 use crate::operations::{OperationDeclaration, OutputDeclaration, Visibility, WireOperation};
 use crate::schema::{Described, Field};
-#[cfg(feature = "runtime")]
+
 use crate::storage::SchemaInput;
 use crate::storage::{SchemaInfo, SchemaKey, StorageCursor};
-#[cfg(feature = "runtime")]
+
 use crate::storage::{SchemaQuery, StorageManager};
-#[cfg(feature = "runtime")]
+
 use crate::{Error, MemorySize, Result};
 
 /* === Constants === */
 
 /* === Macros === */
-crate::storage_codec::product!(QuerySchemasRequest {
-    selection: crate::storage_codec::Nested<Selection> => 1,
-    schema: crate::storage_codec::Optional<crate::storage_codec::Nested<SchemaKey>> => 2,
+crate::storage::codec::product!(QuerySchemasRequest {
+    selection: crate::storage::codec::Nested<Selection> => 1,
+    schema: crate::storage::codec::Optional<crate::storage::codec::Nested<SchemaKey>> => 2,
 });
 
 /* === Type Aliases === */
@@ -53,7 +53,6 @@ pub struct QuerySchemasRequest {
 
 pub struct QuerySchemas;
 
-#[cfg(feature = "runtime")]
 pub(super) struct Handler<C> {
     storage: Arc<StorageManager<C>>,
 }
@@ -92,7 +91,6 @@ impl WireOperation for QuerySchemas {
     const OUTPUT: Option<&'static [Field]> = Some(SchemaInfo::FIELDS);
 }
 
-#[cfg(feature = "runtime")]
 impl<C: 'static> Operation for Handler<C> {
     type Declaration = QuerySchemas;
     type Resources = StorageManager<C>;

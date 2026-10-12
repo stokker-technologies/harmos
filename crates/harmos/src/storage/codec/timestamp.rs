@@ -29,8 +29,8 @@ use crate::__private::prost::encoding::{bool as boolean, uint32, uint64};
 use crate::MessageError;
 use crate::schema::{Cardinality, Field, Kind};
 #[cfg(feature = "grpc")]
-use crate::storage_position::codec::{bytes_field, uint_field, write_header};
-use crate::storage_timestamp::Wire;
+use crate::storage::position::codec::{bytes_field, uint_field, write_header};
+use crate::storage::timestamp::Wire;
 
 /* === Constants === */
 
@@ -54,17 +54,20 @@ impl Value for Time {
         wire.nanos_since_epoch.write(bytes);
         wire.before_epoch.write(bytes);
     }
+
     fn postcard_size(value: &SystemTime) -> usize {
         use crate::__private::PostcardValue;
         let wire = Wire::from(*value);
         wire.secs_since_epoch.size() + wire.nanos_since_epoch.size() + 1
     }
+
     fn postcard_memory(
         input: &mut crate::__private::PostcardReader<'_>,
     ) -> Result<usize, MessageError> {
         Self::postcard_read(input)?;
         Ok(0)
     }
+
     fn postcard_read(
         input: &mut crate::__private::PostcardReader<'_>,
     ) -> Result<SystemTime, MessageError> {
@@ -110,15 +113,18 @@ impl Value for Time {
         uint32::encode(2, &wire.nanos_since_epoch, bytes);
         boolean::encode(3, &wire.before_epoch, bytes);
     }
+
     #[cfg(feature = "grpc")]
     fn size(value: &SystemTime, tag: u32) -> usize {
         length_delimited_size(tag, size(&Wire::from(*value)))
     }
+
     #[cfg(feature = "grpc")]
     fn memory(input: DecodeInput<'_>, tag: u32) -> Result<usize, MessageError> {
         Self::read(input, tag)?;
         Ok(0)
     }
+
     #[cfg(feature = "grpc")]
     fn read(input: DecodeInput<'_>, tag: u32) -> Result<SystemTime, MessageError> {
         bytes_field(input, tag)?

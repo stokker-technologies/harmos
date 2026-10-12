@@ -61,7 +61,7 @@ def main() -> None:
                 "build",
                 "--locked",
                 "-p",
-                "minischematic-plugin",
+                "schematic-guest",
                 "--target",
                 "wasm32-unknown-unknown",
             ],
@@ -80,8 +80,8 @@ def main() -> None:
                 "--bin",
                 "harmos-component",
                 "--",
-                str(target / "wasm32-unknown-unknown/debug/minischematic_plugin.wasm"),
-                str(target / "artifacts/autoroute.wasm"),
+                str(target / "wasm32-unknown-unknown/debug/schematic_guest.wasm"),
+                str(target / "artifacts/schematic-tools.wasm"),
             ],
             check=True,
         )
@@ -91,16 +91,16 @@ def main() -> None:
                 "run",
                 "--locked",
                 "-p",
-                "minischematic-cli",
+                "schematic-cli",
                 "--",
                 "--guest",
-                str(target / "artifacts/autoroute.wasm"),
+                str(target / "artifacts/schematic-tools.wasm"),
             ],
             check=True,
         )
     else:
         subprocess.run(
-            ["cargo", "build", "--locked", "-p", "minibench-probe-sidecar"], check=True
+            ["cargo", "build", "--locked", "-p", "schematic-sidecar"], check=True
         )
         suffix = ".exe" if os.name == "nt" else ""
         subprocess.run(
@@ -116,9 +116,9 @@ def main() -> None:
                 "--bin",
                 "harmos-sidecar-export",
                 "--",
-                str(target / f"debug/minibench-probe-sidecar{suffix}"),
-                "examples/minibench/probe-sidecar/Cargo.toml",
-                "minibench-probe-sidecar",
+                str(target / f"debug/schematic-sidecar{suffix}"),
+                "examples/schematic/sidecar/Cargo.toml",
+                "schematic-sidecar",
             ],
             check=True,
         )
@@ -128,9 +128,10 @@ def main() -> None:
                 "run",
                 "--locked",
                 "-p",
-                "minibench-cli",
+                "schematic-cli",
                 "--",
-                str(target / f"debug/minibench-probe-sidecar{suffix}"),
+                "--sidecar",
+                str(target / f"debug/schematic-sidecar{suffix}"),
             ],
             check=True,
         )

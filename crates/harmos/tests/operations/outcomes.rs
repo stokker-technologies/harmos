@@ -32,7 +32,7 @@ use super::{
 use harmos::operations::{
     Backoff, Context, Failure, Jitter, Operation, OperationPolicy, RetryPolicy,
 };
-use harmos::{Error, FactSource, Position, Refusal, Runtime, SystemFact};
+use harmos::{Error, Refusal, Runtime, state::FactSource, state::Position, state::SystemFact};
 
 /* === Constants === */
 
@@ -76,9 +76,7 @@ enum Failed {
     Child(#[from] Error),
 }
 
-#[harmos::catalog]
-enum Operations {
-    #[operation(
+#[harmos::operation(
         request = Mode,
         response = usize,
         id = "outcomes.compute",
@@ -91,8 +89,9 @@ enum Operations {
             },
         },
     )]
-    ComputeContract,
-    #[operation(
+struct ComputeContract;
+
+#[harmos::operation(
         request = Mode,
         response = usize,
         id = "outcomes.parent",
@@ -102,7 +101,12 @@ enum Operations {
             retries: RetryPolicy::Never,
         },
     )]
-    ParentContract,
+struct ParentContract;
+
+#[harmos::catalog]
+enum Operations {
+    ComputeContract(ComputeContract),
+    ParentContract(ParentContract),
 }
 
 /* === Traits === */

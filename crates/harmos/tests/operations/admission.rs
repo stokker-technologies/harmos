@@ -56,9 +56,7 @@ struct Counts {
 }
 
 /* === Enums === */
-#[harmos::catalog]
-enum Operations {
-    #[operation(
+#[harmos::operation(
         request = Request,
         response = (),
         id = "queue.hold",
@@ -68,7 +66,11 @@ enum Operations {
             retries: RetryPolicy::Never,
         },
     )]
-    HoldContract,
+struct HoldContract;
+
+#[harmos::catalog]
+enum Operations {
+    HoldContract(HoldContract),
 }
 
 /* === Traits === */

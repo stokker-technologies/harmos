@@ -121,7 +121,7 @@ impl Drop for Child {
 }
 
 /* === Public Functions === */
-#[cfg(any(feature = "sidecar-host", feature = "guest-host"))]
+#[cfg(any(feature = "plugin-sidecar", feature = "plugin-guest"))]
 pub(crate) async fn lifecycle(
     invocation: EncodedInvocation,
     mut cancelled: oneshot::Receiver<()>,

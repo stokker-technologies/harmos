@@ -212,6 +212,7 @@ impl Receipts {
     pub(super) fn snapshot_bytes(&self) -> usize {
         self.bytes
     }
+
     pub(super) fn clear(&mut self) {
         self.entries = BTreeMap::new();
         self.bytes = 0;
@@ -449,12 +450,14 @@ impl MutationValue {
             _ => Err(rejected()),
         }
     }
+
     pub(super) fn reference(self) -> Result<super::FileReference> {
         match self {
             Self::Reference(value) => Ok(*value),
             _ => Err(rejected()),
         }
     }
+
     pub(super) fn progress(self) -> Result<super::FileProgress> {
         match self {
             Self::Progress(value) => Ok(value),

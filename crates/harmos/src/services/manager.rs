@@ -29,7 +29,9 @@ use super::{
 };
 use crate::observers::ObserverManager;
 use crate::supervision::{self, Task};
-use crate::{Application, Error, Evidence, Result, StateManager, StreamManager};
+use crate::{
+    Application, Error, Result, evidence::Evidence, state::StateManager, streams::StreamManager,
+};
 
 /* === Constants === */
 static NEXT_SCOPE: AtomicU64 = AtomicU64::new(1);
@@ -112,8 +114,8 @@ pub(super) struct Failure {
 
 pub(crate) struct Handles<A: Application> {
     pub(crate) state: StateManager<A>,
-    pub(crate) records: crate::RecordManager<A>,
-    pub(crate) operations: crate::OperationManager,
+    pub(crate) records: crate::records::RecordManager<A>,
+    pub(crate) operations: crate::operations::OperationManager,
     pub(crate) streams: StreamManager<A>,
     pub(crate) evidence: Evidence<A>,
     pub(crate) observers: ObserverManager,
@@ -122,8 +124,8 @@ pub(crate) struct Handles<A: Application> {
 pub(super) struct Services<A: Application> {
     identity: Arc<()>,
     pub(super) state: StateManager<A>,
-    pub(super) records: crate::RecordManager<A>,
-    pub(super) operations: crate::OperationManager,
+    pub(super) records: crate::records::RecordManager<A>,
+    pub(super) operations: crate::operations::OperationManager,
     pub(super) streams: StreamManager<A>,
     pub(super) evidence: Evidence<A>,
     pub(super) observers: ObserverManager,
@@ -266,6 +268,7 @@ where
                 })
         })
     }
+
     fn finalize(
         &mut self,
     ) -> Pin<Box<dyn Future<Output = std::result::Result<(), Failure>> + Send + '_>> {
@@ -311,6 +314,7 @@ where
     fn resources(&self) -> TypeId {
         TypeId::of::<R>()
     }
+
     fn create(
         &self,
         resources: Resources,
@@ -336,6 +340,7 @@ impl<A: Application> Factory<A> for Once<A> {
     fn resources(&self) -> TypeId {
         TypeId::of::<()>()
     }
+
     fn create(&self, _: Resources, _: bool) -> Result<Option<Box<dyn ErasedResident<A>>>> {
         let resident = self.0.lock().unwrap().take().ok_or(Error::NotReady {
             domain: "retired assembly service",
@@ -413,32 +418,37 @@ impl<A: Application> ServiceManager<A> {
             resources: Arc::new(()),
             closed: AtomicBool::new(false),
         });
+        let registry = Registry {
+            closed: false,
+            next: 0,
+            reserved,
+            definitions: BTreeMap::new(),
+            scopes: BTreeMap::from([(root.id, Arc::clone(&root))]),
+            instances: BTreeMap::new(),
+        };
+        let (statuses, _) = watch::channel(BTreeMap::new());
+        let services = Services {
+            identity,
+            records: handles.records,
+            operations: handles.operations,
+            state: handles.state,
+            streams: handles.streams,
+            evidence: handles.evidence,
+            observers: handles.observers,
+            root,
+            registry: Mutex::new(registry),
+            statuses,
+            assembly: Mutex::new(Vec::new()),
+        };
         Ok(Self {
-            inner: Arc::new(Services {
-                identity,
-                records: handles.records,
-                operations: handles.operations,
-                state: handles.state,
-                streams: handles.streams,
-                evidence: handles.evidence,
-                observers: handles.observers,
-                root: root.clone(),
-                registry: Mutex::new(Registry {
-                    closed: false,
-                    next: 0,
-                    reserved,
-                    definitions: BTreeMap::new(),
-                    scopes: BTreeMap::from([(root.id, root)]),
-                    instances: BTreeMap::new(),
-                }),
-                statuses: watch::channel(BTreeMap::new()).0,
-                assembly: Mutex::new(Vec::new()),
-            }),
+            inner: Arc::new(services),
         })
     }
+
     pub(crate) fn identity(&self) -> Arc<()> {
         self.inner.identity.clone()
     }
+
     pub fn root_scope(&self) -> ServiceScope<()> {
         ServiceScope {
             scope: self.inner.root.clone(),
@@ -461,6 +471,7 @@ impl<A: Application> ServiceManager<A> {
             false,
         )
     }
+
     fn register_factory(
         &self,
         definition: ServiceDefinition,
@@ -491,6 +502,7 @@ impl<A: Application> ServiceManager<A> {
         );
         Ok(())
     }
+
     pub fn definition(&self, id: &str) -> Option<ServiceDefinition> {
         self.inner
             .registry
@@ -500,6 +512,7 @@ impl<A: Application> ServiceManager<A> {
             .get(id)
             .map(|item| item.definition.clone())
     }
+
     pub fn definitions(&self) -> Vec<ServiceDefinition> {
         self.inner
             .registry
@@ -510,6 +523,7 @@ impl<A: Application> ServiceManager<A> {
             .map(|item| item.definition.clone())
             .collect()
     }
+
     pub fn scope<R: Send + Sync + 'static>(&self, resources: Arc<R>) -> Result<ServiceScope<R>> {
         let mut registry = self.inner.registry.lock().unwrap();
         registry.admit()?;
@@ -533,6 +547,7 @@ impl<A: Application> ServiceManager<A> {
             marker: PhantomData,
         })
     }
+
     fn check_scope<R>(&self, scope: &ServiceScope<R>) -> Result<()> {
         if !Weak::ptr_eq(&scope.scope.owner, &Arc::downgrade(&self.inner.identity)) {
             return Err(Error::InvalidInput {
@@ -542,6 +557,7 @@ impl<A: Application> ServiceManager<A> {
         }
         Ok(())
     }
+
     pub async fn activate<R: Send + Sync + 'static>(
         &self,
         id: &str,
@@ -564,6 +580,7 @@ impl<A: Application> ServiceManager<A> {
             }
         }
     }
+
     fn acquire<R: Send + Sync + 'static>(
         &self,
         id: &str,
@@ -744,6 +761,7 @@ impl<A: Application> ServiceManager<A> {
         drop(retired);
         Ok(Acquisition::Lease(lease))
     }
+
     fn lease(&self, key: &ServiceKey, instance: &Instance<A>, id: u64) -> ServiceLease<A> {
         ServiceLease {
             owner: Arc::downgrade(&self.inner),
@@ -755,6 +773,7 @@ impl<A: Application> ServiceManager<A> {
             joins_release: false,
         }
     }
+
     pub(crate) fn start(&self, declared: Vec<Definition<A>>) -> Result<()> {
         for definition in declared {
             let lease = self.start_once(definition, false, true)?;
@@ -762,6 +781,7 @@ impl<A: Application> ServiceManager<A> {
         }
         Ok(())
     }
+
     fn start_once(
         &self,
         definition: Definition<A>,
@@ -787,6 +807,7 @@ impl<A: Application> ServiceManager<A> {
             }
         }
     }
+
     pub(crate) fn activate_internal<R: Resident<A>>(
         &self,
         name: String,
@@ -795,12 +816,15 @@ impl<A: Application> ServiceManager<A> {
     ) -> Result<ServiceLease<A>> {
         self.start_once(Definition::new(name, policy, resident), true, false)
     }
+
     pub fn status(&self, key: &ServiceKey) -> Option<ServiceSnapshot> {
         self.inner.statuses.borrow().get(key).cloned()
     }
+
     pub fn statuses(&self) -> BTreeMap<ServiceKey, ServiceSnapshot> {
         self.inner.statuses.borrow().clone()
     }
+
     pub fn subscribe(&self) -> watch::Receiver<BTreeMap<ServiceKey, ServiceSnapshot>> {
         self.inner.statuses.subscribe()
     }
@@ -858,6 +882,7 @@ impl<A: Application> ServiceManager<A> {
         drop((resources, definitions, instances));
         result
     }
+
     pub async fn unregister(&self, id: &str) -> Result<()> {
         let (registration, tasks) = {
             let mut registry = self.inner.registry.lock().unwrap();
@@ -907,6 +932,7 @@ impl<A: Application> ServiceManager<A> {
         drop((registration, retired));
         result
     }
+
     pub(crate) fn cleanup_pending(&self, include_infrastructure: bool) -> bool {
         let registry = self.inner.registry.lock().unwrap();
         registry.instances.iter().any(|(key, instance)| {
@@ -924,12 +950,15 @@ impl<A: Application> ServiceManager<A> {
         registry.stop(|_, internal| !internal);
         self.inner.publish(&registry);
     }
+
     pub(crate) async fn shutdown_application(&self) -> Result<()> {
         self.shutdown_part(false).await
     }
+
     pub async fn shutdown(&self) -> Result<()> {
         self.shutdown_part(true).await
     }
+
     async fn shutdown_part(&self, all: bool) -> Result<()> {
         let tasks = {
             let mut registry = self.inner.registry.lock().unwrap();
@@ -1004,6 +1033,7 @@ impl<A: Application> Services<A> {
                 .collect(),
         );
     }
+
     fn complete(&self, key: &ServiceKey, instance_id: ServiceInstanceId, outcome: &Outcome) {
         let mut registry = self.registry.lock().unwrap();
         if let Some(instance) = registry
@@ -1030,6 +1060,7 @@ impl<A: Application> Services<A> {
             self.publish(&registry);
         }
     }
+
     fn release(&self, key: &ServiceKey, instance_id: ServiceInstanceId, id: u64) -> bool {
         let mut registry = self.registry.lock().unwrap();
         let Some(instance) = registry
@@ -1119,6 +1150,7 @@ impl<A: Application> Registry<A> {
             Ok(())
         }
     }
+
     fn next(&mut self) -> Result<u64> {
         self.next = self.next.checked_add(1).ok_or(Error::InvalidInput {
             field: "service identity",
@@ -1126,6 +1158,7 @@ impl<A: Application> Registry<A> {
         })?;
         Ok(self.next)
     }
+
     fn stop(&mut self, predicate: impl Fn(&ServiceKey, bool) -> bool) -> Vec<Running<A>> {
         self.instances
             .iter_mut()
@@ -1278,9 +1311,11 @@ impl<A: Application> ServiceLease<A> {
     pub fn key(&self) -> &ServiceKey {
         &self.key
     }
+
     pub fn id(&self) -> ServiceInstanceId {
         self.instance_id
     }
+
     pub async fn ready(&self) -> Result<()> {
         let owner = self.owner.upgrade().ok_or(Error::NotReady {
             domain: "service owner",
@@ -1306,6 +1341,7 @@ impl<A: Application> ServiceLease<A> {
             })?;
         }
     }
+
     pub async fn release(mut self) -> Result<()> {
         self.begin_release().await
     }
@@ -1352,6 +1388,7 @@ impl<A: Application> ServiceLease<A> {
         let task = self.joins_release.then(|| self.task.clone());
         async move { settle(task.into_iter().collect()).await }
     }
+
     fn request(&mut self) -> bool {
         if self.released {
             return self.joins_release;

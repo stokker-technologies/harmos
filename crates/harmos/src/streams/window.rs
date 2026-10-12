@@ -26,7 +26,7 @@ use std::task::{Context, Poll};
 use tokio::sync::watch;
 // Local Imports
 use super::demand::Holding;
-use crate::{At, Position};
+use crate::{state::At, state::Position};
 
 /* === Constants === */
 
@@ -61,7 +61,11 @@ struct Ring {
     standing: bool,
 }
 
-#[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
 pub(super) struct ListenerCandidate {
     pub(super) cursor: u64,
     pub(super) sequence: u64,
@@ -304,7 +308,7 @@ impl Window {
         Some(())
     }
 
-    #[cfg(feature = "sidecar-host")]
+    #[cfg(feature = "plugin-sidecar")]
     pub(crate) fn miss(&self, count: u64) {
         let _visibility = self.visibility.read().expect("stream visibility poisoned");
         if count == 0 {
@@ -397,14 +401,14 @@ impl Window {
             fn next(
                 &mut self,
                 cancelled: &AtomicBool,
-            ) -> Result<Option<crate::At<Row>>, super::ReadError> {
+            ) -> Result<Option<crate::state::At<Row>>, super::ReadError> {
                 if cancelled.load(Ordering::Acquire) {
                     return Err(super::ReadError::Closed);
                 }
                 Ok(self
                     .rows
                     .next()
-                    .map(|(position, value)| crate::At { position, value }))
+                    .map(|(position, value)| crate::state::At { position, value }))
             }
         }
         let _visibility = self.visibility.read().expect("stream visibility poisoned");
@@ -435,7 +439,7 @@ impl Window {
         }
         Ok(Box::new(Frozen {
             cut: super::ReadCut::Window {
-                delivered: crate::Cursor(ring.last),
+                delivered: crate::storage::Cursor(ring.last),
             },
             rows: rows.into_iter(),
         }))
@@ -483,7 +487,11 @@ impl Window {
         (rows, ring.evicted > resume || ring.missed > resume)
     }
 
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     pub(super) fn listener_candidates(
         &self,
         after: u64,
@@ -524,7 +532,11 @@ impl Window {
         }
     }
 
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     pub(super) fn listener_row(&self, cursor: u64) -> Option<Row> {
         let ring = self.ring.read().expect("the ring is never poisoned");
         let mut lower = 0;
@@ -543,7 +555,11 @@ impl Window {
             .map(|row| Arc::clone(&row.3))
     }
 
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     pub(super) fn logical_frontier(&self) -> u64 {
         self.ring.read().expect("the ring is never poisoned").next
     }

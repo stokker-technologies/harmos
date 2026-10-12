@@ -5,10 +5,10 @@ resolver = "3"
 members = [
   "crates/*",
   "tests/fixtures/grpc",
-  "examples/jsonl-adapter",
-  "examples/standalone-sidecar",
-  "examples/minibench/*",
-  "examples/minischematic/*",
+  "tests/fixtures/lifecycle",
+  "tests/support/jsonl-adapter",
+  "tests/fixtures/observer",
+  "examples/schematic/*",
 ]
 
 # === Workspace Package ===
@@ -25,6 +25,7 @@ publish = true
 [workspace.dependencies]
 # Local
 harmos = { path = "crates/harmos" }
+harmos-bundle = { path = "crates/harmos-bundle" }
 harmos-contract = { path = "crates/harmos-contract", default-features = false }
 harmos-guest = { path = "crates/harmos-guest", default-features = false }
 harmos-macros = { path = "crates/harmos-macros" }

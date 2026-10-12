@@ -6,7 +6,7 @@ description: Design Harmos application boundaries, operation ownership, resource
 
 # Harmos Architecture
 
-Project contracts take precedence over generic architecture defaults. Read current source for exact signatures; do not load restricted docs implicitly.
+Project contracts take precedence over generic architecture defaults. Read current source for exact signatures.
 
 ## Application And Contract Layout
 
@@ -37,6 +37,9 @@ Project contracts take precedence over generic architecture defaults. Read curre
 - Name domain catalogs by their role: `Operations`, `Observers`, `Services`,
   `Listeners`, `Streams`, `Records`, `Transactions`, and `Lanes`. Generic typed
   catalogs may use the application's own domain vocabulary.
+- Declare each operation on its owning unit struct in a vertical leaf file.
+  Catalog entries reference the leaf type; never attach operation metadata to
+  enum entries.
 - Assemble each catalog once and compose it directly. Avoid parallel aliases and
   catalog-wrapper functions. Use `()` for an absent generic catalog.
 - Place managers inside their domains, such as `services/manager.rs` and
@@ -49,10 +52,28 @@ Project contracts take precedence over generic architecture defaults. Read curre
   `harmos::Result` and `harmos::Error`, not separate per-manager error facades.
 
 
+## Features And Imports
+
+The host runtime, managed state, streams, and authoring are unconditional.
+Features select optional facilities: `plugin`, `plugin-sidecar`, `plugin-guest`,
+`grpc`, `signal`, `signal-fft`, and `simulation`. Sidecar and guest hosting imply
+`plugin`; FFT implies `signal`. TLS and Web behavior is configured through the
+single gRPC manager's settings.
+
+Portable contracts and plugin SDKs are deliberate exceptions to facade-only
+consumption: shared contracts depend on `harmos-contract`, guests on
+`harmos-guest`, and native plugins on `harmos-sidecar`. They must not import the
+host library merely to author declarations. `harmos-bundle` owns standalone
+bundle packaging; the host re-exports it as `harmos::plugin::bundle`.
+
+`harmos::prelude` is a bounded authoring convenience for application entry points,
+common operation/transaction traits, and macros. Domain modules retain canonical
+ownership. Do not expand the prelude into an automatic manager/type inventory.
+
 ## Simulation Surface
 
 Keep the shared builder at `harmos::Builder`. Supporting simulation names belong
-under `harmos::sim`; do not expose internal reboot factories or restore obsolete
+under `harmos::simulation`; do not expose internal reboot factories or restore obsolete
 runtime aliases in consumer APIs.
 
 For concrete plugin and transport authoring, use `harmos-authoring`.

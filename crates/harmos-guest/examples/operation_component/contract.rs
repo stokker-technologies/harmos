@@ -38,17 +38,23 @@ pub struct Value {
 }
 
 /* === Enums === */
+#[harmos_guest::operation(request = u32, response = u32, input = u32, policy = Read::POLICY, version = 1,
+        grpc(package = "fixture.v1", service = "Guest", method = "Upload"))]
+pub struct Upload;
+
+#[harmos_guest::operation(request = u32, response = u32, output = u32, policy = Read::POLICY, version = 1,
+        grpc(package = "fixture.v1", service = "Guest", method = "Download"))]
+pub struct Download;
+
+#[harmos_guest::operation(request = u32, response = u32, input = u32, output = u32, policy = Read::POLICY, version = 1,
+        grpc(package = "fixture.v1", service = "Guest", method = "Exchange"))]
+pub struct Exchange;
+
 #[harmos_guest::catalog(harmos_path = ::harmos_guest)]
 pub enum Streaming {
-    #[operation(request = u32, response = u32, input = u32, policy = Read::POLICY, version = 1,
-        grpc(package = "fixture.v1", service = "Guest", method = "Upload"))]
-    Upload,
-    #[operation(request = u32, response = u32, output = u32, policy = Read::POLICY, version = 1,
-        grpc(package = "fixture.v1", service = "Guest", method = "Download"))]
-    Download,
-    #[operation(request = u32, response = u32, input = u32, output = u32, policy = Read::POLICY, version = 1,
-        grpc(package = "fixture.v1", service = "Guest", method = "Exchange"))]
-    Exchange,
+    Upload(Upload),
+    Download(Download),
+    Exchange(Exchange),
 }
 
 /* === Traits === */

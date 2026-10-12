@@ -74,7 +74,7 @@ pub use write_stream::{WriteStream, WriteStreamRequest};
 /* === Imports === */
 
 // Standard Library Imports
-#[cfg(feature = "runtime")]
+
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -82,13 +82,13 @@ use std::time::Duration;
 
 // Local Imports
 use crate::catalog::{Catalog, Contains, Member, Visitor};
-#[cfg(feature = "runtime")]
+
 use crate::operations::OperationManager;
 use crate::operations::{Backoff, Jitter, OperationPolicy, RetryPolicy};
-#[cfg(feature = "runtime")]
+
 use crate::storage::StorageManager;
-#[cfg(feature = "runtime")]
-use crate::{Lane, Result};
+
+use crate::{Result, operations::Lane};
 
 /* === Constants === */
 pub const POLICY: OperationPolicy = OperationPolicy {
@@ -122,7 +122,7 @@ macro_rules! catalog {
             const ENTRIES: Self::Entries = [$(<V as Member<$leaf>>::ENTRY),*];
         }
         $(impl Contains<$leaf> for Operations {})*
-        #[cfg(feature = "runtime")]
+
         impl<C: 'static, V> Catalog<V> for Provider<C>
         where V: Visitor $(+ Member<$module::Handler<C>>)* {
             type Entries = [V::Entry; [$(stringify!($leaf)),*].len()];
@@ -161,14 +161,14 @@ catalog! {
 /* === Type Aliases === */
 
 /* === Structs === */
-#[cfg(feature = "runtime")]
+
 struct Provider<C>(std::marker::PhantomData<fn() -> C>);
 
 /* === Enums === */
 /* === Traits === */
 
 /* === Implementations === */
-#[cfg(feature = "runtime")]
+
 impl Operations {
     pub fn register<C: 'static>(
         operations: &OperationManager,
@@ -191,7 +191,6 @@ fn survey(selector: &crate::Identifier) -> harmos_contract::plugin::Grant {
     harmos_contract::plugin::Grant::Survey(selector.as_str().to_owned().into())
 }
 
-#[cfg(feature = "runtime")]
 fn classify(error: &crate::Error) -> crate::operations::Failure {
     let mut cause = error;
     while let crate::Error::Persistence { source } = cause {

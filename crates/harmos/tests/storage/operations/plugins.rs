@@ -22,12 +22,12 @@ use std::sync::Arc;
 // Local Imports
 use super::{Fixture, Lanes, Operations, config};
 use harmos::Message;
-use harmos::load::{
+use harmos::operations::{OperationManager, WireDeclaration, WireOperation};
+use harmos::plugin::{
     PluginArtifact, PluginBackend, PluginCaller, PluginContributions, PluginDefinition,
     PluginDefinitions, PluginEndpoint, PluginLifecycle, PluginLifecycleAuthority, PluginManager,
     PluginTransition, Router,
 };
-use harmos::operations::{OperationManager, WireDeclaration, WireOperation};
 use harmos::storage::frame::{Expr, Frame, GroupBy, ScalarField, ScalarPath};
 use harmos::storage::operations::{
     Acknowledge, AcknowledgeRequest, Reductions, ReductionsRequest, WriteRecords,

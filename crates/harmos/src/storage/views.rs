@@ -351,13 +351,16 @@ impl StorageView {
             reason: "original view has no bounded computation profile",
         })
     }
+
     pub(super) fn manager(&self) -> &StorageManager<super::manager::ErasedCatalog> {
         &self.lease.manager
     }
+
     pub fn accepted(&self) -> Result<StorageCursor> {
         let (_pin, view) = self.pin()?;
         Ok(view.accepted().clone())
     }
+
     pub fn saved(&self) -> Result<StorageCursor> {
         let (_pin, view) = self.pin()?;
         Ok(view.saved().clone())
@@ -369,15 +372,18 @@ impl StorageView {
     ) -> Result<StorageReader<ObjectEntry>> {
         self.reader::<ObjectEntry>(selection)
     }
+
     pub(super) fn read_records(
         &self,
         selection: ReadSelection,
     ) -> Result<StorageReader<StoredRecord>> {
         self.reader::<StoredRecord>(selection)
     }
+
     pub(super) fn read_stream(&self, selection: ReadSelection) -> Result<StorageReader<StoredRow>> {
         self.reader::<StoredRow>(selection)
     }
+
     pub fn execution_limits(&self) -> Result<Option<QueryLimits>> {
         let state = self.lease.manager.inner.state.lock().unwrap();
         let view = state.views.get(&self.lease.id).ok_or(Error::ViewExpired)?;
@@ -550,6 +556,7 @@ impl StorageView {
             fetch: fetch::<T>,
         })
     }
+
     pub(super) fn activity(&self) -> Result<Activity> {
         let inner = &self.lease.manager.inner;
         let mut state = inner.state.lock().unwrap();
@@ -739,9 +746,11 @@ impl StorageViewComputation {
     pub fn deadline(&self) -> tokio::time::Instant {
         self.owner.started + self.owner.timeout
     }
+
     pub(super) fn timeout(&self) -> Duration {
         self.owner.timeout
     }
+
     pub(super) fn finish<T>(&self, value: T) -> Result<T> {
         self.check()?;
         Ok(value)
@@ -890,6 +899,7 @@ impl State {
                 .map(|held| held.bytes)
                 .sum::<usize>();
     }
+
     pub(super) fn view_action(&mut self, allow_release: bool) -> Option<ViewAction> {
         self.collect();
         for (&id, view) in &mut self.views {
@@ -904,6 +914,7 @@ impl State {
         }
         None
     }
+
     pub(super) fn opened(
         &mut self,
         id: u64,
@@ -947,6 +958,7 @@ impl State {
         }
         self.collect();
     }
+
     pub(super) fn view_deadline(&self) -> Option<tokio::time::Instant> {
         self.views
             .values()

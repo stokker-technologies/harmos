@@ -65,6 +65,7 @@ impl ScalarProjection {
             schema::Validator::new(schema).map_err(|_| invalid("invalid projection schema"))?;
         Ok(Self { validator, fields })
     }
+
     pub fn project(
         &self,
         bytes: &[u8],

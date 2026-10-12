@@ -20,7 +20,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 // Local Imports
 use crate::support::{Bank, DEPOSIT};
 use harmos::operations::{Context, Operation, host};
-use harmos::{PrincipalId, RequestKey, StateManager};
+use harmos::{state::PrincipalId, state::RequestKey, state::StateManager};
 
 /* === Constants === */
 

@@ -47,7 +47,50 @@ pub(crate) fn declare(attribute: TokenStream, item: TokenStream) -> TokenStream 
 }
 
 /* === Private Functions === */
+fn arguments(input: syn::parse::ParseStream<'_>) -> Result<Punctuated<Meta, Token![,]>, Error> {
+    input.parse_terminated(argument, Token![,])
+}
+
+fn argument(input: syn::parse::ParseStream<'_>) -> Result<Meta, Error> {
+    let fork = input.fork();
+    let path: syn::Path = fork.parse()?;
+    if ["request", "response", "input", "output", "declaration"]
+        .iter()
+        .any(|name| path.is_ident(name))
+    {
+        let path = input.parse()?;
+        let eq_token = input.parse()?;
+        let value: Type = input.parse()?;
+        return Ok(Meta::NameValue(syn::MetaNameValue {
+            path,
+            eq_token,
+            value: syn::Expr::Verbatim(quote!(#value)),
+        }));
+    }
+    input.parse()
+}
+
 fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Error> {
+    if let Ok(declaration) = syn::parse2::<syn::ItemStruct>(item.clone()) {
+        let arguments = arguments.parse2(attribute)?;
+        let mut sdk = None;
+        let mut metadata = Vec::new();
+        for argument in arguments {
+            if let Some(value) = path::declared(&argument) {
+                if sdk.is_some() {
+                    return Err(Error::new_spanned(
+                        argument,
+                        "operation arguments cannot repeat",
+                    ));
+                }
+                sdk = Some(value?);
+            } else {
+                metadata.push(argument);
+            }
+        }
+        let sdk = HarmosPath::resolve(sdk);
+        return crate::catalog::operation::structure(quote!(#(#metadata),*), declaration, &sdk);
+    }
     let implementation: ItemImpl = syn::parse2(item)?;
     if implementation.trait_.is_some() || implementation.unsafety.is_some() {
         return Err(Error::new_spanned(
@@ -55,7 +98,7 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
             "operation requires a safe inherent impl",
         ));
     }
-    let arguments = Punctuated::<Meta, Token![,]>::parse_terminated.parse2(attribute)?;
+    let arguments = arguments.parse2(attribute)?;
     let mut sdk = None;
     let mut declaration = None::<Type>;
     let mut input = None::<Type>;
@@ -182,12 +225,9 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
             metadata.push(syn::parse_quote!(id = #id));
         }
         let visibility = &constructor.vis;
-        let mut variant: syn::Variant = syn::parse2(quote! {
-            #[operation(request = #request, response = #response, #(#metadata),*)]
-            #name
-        })?;
-        projected = crate::catalog::operation::project(&mut variant, visibility, &sdk)?
-            .expect("authored metadata");
+        let declaration = syn::parse_quote!(#visibility struct #name;);
+        let metadata = quote!(request = #request, response = #response, #(#metadata),*);
+        projected = crate::catalog::operation::structure(metadata, declaration, &sdk)?;
         syn::parse_quote!(#name)
     };
     let construct = match &constructor.sig.output {

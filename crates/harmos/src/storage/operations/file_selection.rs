@@ -14,7 +14,7 @@
 /* === Imports === */
 
 // Standard Library Imports
-#[cfg(feature = "runtime")]
+
 use std::num::NonZeroUsize;
 
 // Third Party Imports
@@ -22,20 +22,20 @@ use std::num::NonZeroUsize;
 // Local Imports
 use crate::MemorySize;
 use crate::storage::StagedFile;
-#[cfg(feature = "runtime")]
+
 use crate::{Error, Result};
 
 /* === Constants === */
 
 /* === Macros === */
-crate::storage_codec::product!(FileSelection {
-    file: crate::storage_codec::Nested<StagedFile> => 1,
-    offset: crate::storage_codec::Unsigned => 2,
-    chunk_bytes: crate::storage_codec::Unsigned => 3,
+crate::storage::codec::product!(FileSelection {
+    file: crate::storage::codec::Nested<StagedFile> => 1,
+    offset: crate::storage::codec::Unsigned => 2,
+    chunk_bytes: crate::storage::codec::Unsigned => 3,
 });
-crate::storage_codec::product!(FileBytes {
-    offset: crate::storage_codec::Unsigned => 1,
-    bytes: crate::storage_codec::Bytes => 2,
+crate::storage::codec::product!(FileBytes {
+    offset: crate::storage::codec::Unsigned => 1,
+    bytes: crate::storage::codec::Bytes => 2,
 });
 
 /* === Type Aliases === */
@@ -60,7 +60,6 @@ pub struct FileBytes {
 
 /* === Implementations === */
 impl FileSelection {
-    #[cfg(feature = "runtime")]
     pub(super) fn maximum(&self) -> Result<NonZeroUsize> {
         usize::try_from(self.chunk_bytes)
             .ok()
@@ -71,7 +70,6 @@ impl FileSelection {
             })
     }
 
-    #[cfg(feature = "runtime")]
     pub(super) async fn transfer<C>(
         &self,
         storage: &crate::storage::StorageManager<C>,

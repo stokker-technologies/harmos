@@ -20,12 +20,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::watch;
 // Local Imports
 use super::{RecordManager, Registry};
-use crate::load::PluginScope;
 use crate::operations::{EncodedInvocation, OperationManager, PluginCallback};
+use crate::plugin::PluginScope;
 use crate::schema::Described;
 use crate::supervision::{Listener, ListenerDelivery};
 use crate::{
-    Application, CatalogCodec, Error, Message, Position, Record, RecordProjection, Recorded, Result,
+    Application, Error, Message, Result, state::CatalogCodec, state::Position, state::Record,
+    state::RecordProjection, state::Recorded,
 };
 use harmos_contract::listeners::{Context, Delivery, Source};
 
@@ -398,7 +399,7 @@ where
 }
 
 async fn deliver<A: Application>(
-    journal: crate::StateManager<A>,
+    journal: crate::state::StateManager<A>,
     scope: &PluginScope,
     entries: Vec<Binding<A>>,
     delivery: &ListenerDelivery,

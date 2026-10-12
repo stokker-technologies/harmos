@@ -56,10 +56,10 @@ pub(crate) struct Instances {
 
 pub(crate) struct Reservation<O> {
     outcome: oneshot::Receiver<Result<O>>,
-    deposit: oneshot::Sender<(Prepared<O>, Option<crate::Position>)>,
+    deposit: oneshot::Sender<(Prepared<O>, Option<crate::state::Position>)>,
     control: Arc<Instance>,
     admission: Admission,
-    cause: Option<crate::Position>,
+    cause: Option<crate::state::Position>,
 }
 
 struct State {
@@ -145,9 +145,9 @@ impl Instances {
             .map(|instance| instance.status())
     }
 
-    pub(crate) fn state_of<A: crate::Application>(&self) -> crate::StateManager<A> {
+    pub(crate) fn state_of<A: crate::Application>(&self) -> crate::state::StateManager<A> {
         self.application_state
-            .downcast_ref::<crate::StateManager<A>>()
+            .downcast_ref::<crate::state::StateManager<A>>()
             .expect("operation scope names its runtime's application")
             .clone()
     }
@@ -282,7 +282,7 @@ impl<O> Reservation<O> {
         self.control.clone()
     }
 
-    pub(crate) fn inherit(mut self, cause: Option<crate::Position>) -> Self {
+    pub(crate) fn inherit(mut self, cause: Option<crate::state::Position>) -> Self {
         self.cause = cause;
         self
     }
@@ -290,7 +290,7 @@ impl<O> Reservation<O> {
     pub(crate) fn submit(
         self,
         prepared: Prepared<O>,
-        cause: Option<crate::Position>,
+        cause: Option<crate::state::Position>,
     ) -> oneshot::Receiver<Result<O>> {
         if let Err((prepared, _)) = self.deposit.send((prepared, cause.or(self.cause))) {
             prepared.retain_unavailable(&self.control, self.admission);

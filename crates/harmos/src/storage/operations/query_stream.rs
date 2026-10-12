@@ -15,21 +15,21 @@
 
 // Standard Library Imports
 use std::any::TypeId;
-#[cfg(feature = "runtime")]
+
 use std::sync::Arc;
 
 // Third Party Imports
 
 // Local Imports
 use super::DataSelection;
-#[cfg(feature = "runtime")]
+
 use crate::operations::{Context, Operation, StreamOutput};
 use crate::operations::{OperationDeclaration, OutputDeclaration, Visibility, WireOperation};
 use crate::schema::{Described, Field};
 use crate::storage::{StorageCursor, StoredRow};
-#[cfg(feature = "runtime")]
+
 use crate::storage::{StorageManager, StreamQuery};
-#[cfg(feature = "runtime")]
+
 use crate::{Error, MemorySize, Result};
 
 /* === Constants === */
@@ -41,7 +41,6 @@ use crate::{Error, MemorySize, Result};
 /* === Structs === */
 pub struct QueryStream;
 
-#[cfg(feature = "runtime")]
 pub(super) struct Handler<C> {
     storage: Arc<StorageManager<C>>,
 }
@@ -71,7 +70,6 @@ impl WireOperation for QueryStream {
     const OUTPUT: Option<&'static [Field]> = Some(StoredRow::FIELDS);
 }
 
-#[cfg(feature = "runtime")]
 impl<C: 'static> Operation for Handler<C> {
     type Declaration = QueryStream;
     type Resources = StorageManager<C>;

@@ -22,14 +22,14 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 // Local Imports
-use harmos::load::{
-    PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions,
-    PluginEndpoint, PluginLifecycle, PluginLifecycleAuthority, PluginManager, PluginScope,
-    PluginTransition, Router,
-};
 use harmos::operations::{
     Context, Operation, OperationDeclaration, OperationPolicy, PluginRegistration, RetryPolicy,
     Visibility, WireDeclaration, WireOperation,
+};
+use harmos::plugin::{
+    PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions,
+    PluginEndpoint, PluginLifecycle, PluginLifecycleAuthority, PluginManager, PluginScope,
+    PluginTransition, Router,
 };
 use harmos::schema::{Described, Field};
 use harmos::streams::PluginListenerRegistration;
@@ -63,7 +63,7 @@ struct Model;
 struct Heard<const FIRST: bool>;
 
 struct Owner {
-    streams: harmos::StreamManager<Model>,
+    streams: harmos::streams::StreamManager<Model>,
     seen: Mutex<Seen>,
     observed: Notify,
     started: Notify,
@@ -88,12 +88,12 @@ struct Resources {
 }
 
 struct Host {
-    operations: harmos::OperationManager,
+    operations: harmos::operations::OperationManager,
     owner: Arc<Owner>,
     scope: Option<PluginScope>,
     fail_start: bool,
     managed: bool,
-    lease: Option<Arc<harmos::PublicationLease>>,
+    lease: Option<Arc<harmos::streams::PublicationLease>>,
     skip_sources: bool,
     drop_before_commit: bool,
     original_drop: Arc<AtomicUsize>,
@@ -131,7 +131,7 @@ enum Failed {
 /* === Implementations === */
 impl Fact {
     const DEFINITION: (&'static str, u32, usize) = ("listener.samples", 1, 512);
-    fn definition() -> harmos::Definition {
+    fn definition() -> harmos::streams::Definition {
         harmos::__private::stream_definition::<Self>(
             Self::DEFINITION.0,
             Self::DEFINITION.1,
@@ -180,7 +180,7 @@ impl Message for Fact {
 
 impl harmos::Application for Model {
     type State = ();
-    type Transaction = harmos::Never;
+    type Transaction = harmos::state::Never;
     type Record = ();
     type Streams = Rows;
     type Resources = ();
@@ -428,8 +428,8 @@ fn publication() -> harmos_contract::StreamDeclaration {
     }
 }
 
-fn publication_row(value: u32) -> harmos::PublicationRow {
-    harmos::PublicationRow {
+fn publication_row(value: u32) -> harmos::streams::PublicationRow {
+    harmos::streams::PublicationRow {
         payload: WireFact { value }.encode_to_vec(),
         published_unix_micros: None,
         context: None,
@@ -508,7 +508,10 @@ async fn setup_source(
         .register(if managed { vec![] } else { Rows::catalog() })
         .register(Lanes::catalog())
         .tail(tail)
-        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+        .operation_settings(harmos::operations::Settings {
+            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+            ..Default::default()
+        })
         .runtime()
         .await
         .unwrap();
@@ -658,7 +661,7 @@ fn contract_scenario() {
                     assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
                     assert_eq!(
                         manager.status("listener").unwrap().state,
-                        harmos::load::PluginState::Failed
+                        harmos::plugin::PluginState::Failed
                     );
                     assert!(matches!(
                         host.view
@@ -1010,7 +1013,7 @@ fn contract_scenario() {
                     ));
                     assert_eq!(
                         manager.status("listener").unwrap().state,
-                        harmos::load::PluginState::Failed
+                        harmos::plugin::PluginState::Failed
                     );
                     assert_eq!(host.owner.seen.lock().unwrap().len(), 2);
                     manager.shutdown(&mut host).await.unwrap();

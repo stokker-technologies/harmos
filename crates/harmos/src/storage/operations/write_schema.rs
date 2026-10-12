@@ -14,27 +14,27 @@
 /* === Imports === */
 
 // Standard Library Imports
-#[cfg(feature = "runtime")]
+
 use std::sync::Arc;
 
 // Third Party Imports
 
 // Local Imports
-#[cfg(feature = "runtime")]
+
 use crate::operations::{Context, Operation};
 use crate::operations::{OperationDeclaration, ReplaySafety, Visibility, WireOperation};
-#[cfg(feature = "runtime")]
+
 use crate::storage::StorageManager;
 use crate::storage::{MutationId, SchemaInput, StorageCursor};
-#[cfg(feature = "runtime")]
+
 use crate::{Error, Result};
 
 /* === Constants === */
 
 /* === Macros === */
-crate::storage_codec::product!(WriteSchemaRequest {
-    mutation: crate::storage_codec::Nested<MutationId> => 1,
-    schema: crate::storage_codec::Nested<SchemaInput> => 2,
+crate::storage::codec::product!(WriteSchemaRequest {
+    mutation: crate::storage::codec::Nested<MutationId> => 1,
+    schema: crate::storage::codec::Nested<SchemaInput> => 2,
 });
 
 /* === Type Aliases === */
@@ -46,7 +46,7 @@ pub struct WriteSchemaRequest {
     pub schema: SchemaInput,
 }
 pub struct WriteSchema;
-#[cfg(feature = "runtime")]
+
 pub(super) struct Handler<C> {
     storage: Arc<StorageManager<C>>,
 }
@@ -75,7 +75,7 @@ impl crate::MemorySize for WriteSchemaRequest {
             - std::mem::size_of::<SchemaInput>()
     }
 }
-#[cfg(feature = "runtime")]
+
 impl<C: 'static> Operation for Handler<C> {
     type Declaration = WriteSchema;
     type Resources = StorageManager<C>;
@@ -85,6 +85,7 @@ impl<C: 'static> Operation for Handler<C> {
     fn new(storage: Arc<StorageManager<C>>) -> Result<Self> {
         Ok(Self { storage })
     }
+
     async fn run<'a>(
         &mut self,
         _: Self::Context<'a>,
@@ -99,6 +100,7 @@ impl<C: 'static> Operation for Handler<C> {
             )
             .await
     }
+
     fn classify(error: &Error) -> crate::operations::Failure {
         super::classify(error)
     }

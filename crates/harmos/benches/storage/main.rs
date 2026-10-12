@@ -32,7 +32,7 @@ use serde_json::json;
 // Local Imports
 use backend::{Data, Recovery, history};
 use harmos::storage::*;
-use harmos::{Envelope, Identifier, Runtime};
+use harmos::{Identifier, Runtime, state::Envelope};
 
 /* === Constants === */
 const PAYLOAD_BYTES: usize = 128;
@@ -95,14 +95,14 @@ impl harmos::Application for Model {
     type Resources = ();
 }
 
-impl harmos::Transaction<State> for Advance {
+impl harmos::state::Transaction<State> for Advance {
     type Error = Infallible;
 
     fn check(&self, _: &State) -> Result<(), Infallible> {
         Ok(())
     }
 
-    fn records(&self, _: &State, output: &mut harmos::Records) {
+    fn records(&self, _: &State, output: &mut harmos::state::Records) {
         output
             .push(Observed {
                 payload: self.payload.clone(),

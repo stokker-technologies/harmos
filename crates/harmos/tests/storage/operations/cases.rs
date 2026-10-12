@@ -16,7 +16,7 @@ mod deletion;
 mod files;
 #[path = "objects.rs"]
 mod objects;
-#[cfg(feature = "load")]
+#[cfg(feature = "plugin")]
 #[path = "plugins.rs"]
 mod plugins;
 #[path = "saves.rs"]
@@ -726,7 +726,7 @@ fn file_mutations() {
 
 #[test]
 fn schema_registry() {
-    #[cfg(feature = "load")]
+    #[cfg(feature = "plugin")]
     plugins::contract_scenario();
     schemas::contract_scenario();
 }

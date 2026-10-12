@@ -21,11 +21,11 @@ use std::num::NonZeroUsize;
 use serde::{Deserialize, Serialize};
 
 // Local Imports
-use crate::storage_codec::{
+use crate::storage::codec::{
     Both, Code, Count, Index, Many, Nested, Optional, Repeated, Wrap, coded, product, variants,
 };
-use crate::storage_reads::{ReadKind, ReadSelection};
-use crate::storage_scalar::{Agg, ScalarKind, ScalarValue};
+use crate::storage::read_selection::{ReadKind, ReadSelection};
+use crate::storage::reduce::scalar::{Agg, ScalarKind, ScalarValue};
 use crate::{Error, Identifier, MemorySize, Result, schema};
 
 /* === Constants === */
@@ -609,6 +609,7 @@ impl ScalarField {
         }
         Ok(())
     }
+
     pub fn check_schema(&self, fields: &[schema::Field]) -> Result<()> {
         self.check()?;
         let ScalarPath::Payload(path) = &self.path else {

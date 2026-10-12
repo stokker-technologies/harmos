@@ -29,8 +29,8 @@ use super::{HostLanes, assembly, process_definition, service_status};
 use crate::core_egress::Endpoint;
 use crate::support::Bank;
 use contract::{Inspect, Queries};
-use harmos::sidecar::{Executable, Notice, Supervised};
-use harmos::{Runtime, Service, ServicePolicy, ServiceStatus};
+use harmos::plugin::sidecar::{Executable, Notice, Supervised};
+use harmos::{Runtime, services::Service, services::ServicePolicy, services::ServiceStatus};
 
 /* === Constants === */
 
@@ -67,7 +67,10 @@ impl Fixture {
         let prepared = Arc::new(AtomicUsize::new(0));
         let calls = Arc::new(AtomicUsize::new(0));
         let runtime = assembly()
-            .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+            .operation_settings(harmos::operations::Settings {
+                preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+                ..Default::default()
+            })
             .runtime()
             .await
             .unwrap();
@@ -98,7 +101,7 @@ impl Fixture {
                     },
                 },
                 move |_: Arc<()>| {
-                    harmos::sidecar::Managed::new_executable_catalog::<Queries>(
+                    harmos::plugin::sidecar::Managed::new_executable_catalog::<Queries>(
                         resident.clone(),
                         definition.clone(),
                         HostLanes::Open,

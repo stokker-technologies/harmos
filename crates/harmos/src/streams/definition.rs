@@ -13,9 +13,12 @@
 
 /* === Imports === */
 // Standard Library Imports
-use std::any::TypeId;
 
-#[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
 use std::collections::BTreeMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::AtomicU64;
@@ -27,8 +30,8 @@ use tokio::sync::watch;
 // Local Imports
 use super::demand::Holding;
 use super::window::{Row, Window};
-use crate::declaration::{BatchDefinition, Definition, StreamCatalog, StreamRow};
-use crate::{Application, Cursor, Position};
+use crate::streams::{BatchDefinition, Definition, StreamCatalog, StreamRow};
+use crate::{Application, state::Position, storage::Cursor};
 
 /* === Constants === */
 
@@ -50,7 +53,11 @@ pub(crate) struct Wired {
     pub(crate) window: Arc<Window>,
     pub(super) validation: Option<Arc<crate::schema::Validator>>,
     pub(super) publisher: Mutex<Weak<Mutex<bool>>>,
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     pub(super) staged: Option<super::registration::Staged>,
 }
 
@@ -61,7 +68,11 @@ pub(crate) struct Table {
     pub(super) pump: watch::Sender<()>,
     pub(super) visibility: Arc<RwLock<()>>,
     pub(super) publications: Arc<super::publication::Pool>,
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     pub(super) listeners: Mutex<BTreeMap<String, Arc<super::listeners::Listening>>>,
 }
 
@@ -103,17 +114,9 @@ pub trait Stream<A: Application>:
     }
 
     fn definition() -> Definition {
-        Definition {
-            metadata: Self::metadata(),
-            row_metadata: Self::row_metadata(),
-            id: Self::ID.into(),
-            version: Self::VERSION,
-            window: Self::WINDOW,
-            row: TypeId::of::<Self>(),
-            batch: Self::batch_definition(),
-            owner: None,
-            fields: None,
-        }
+        Definition::declared::<Self>(Self::ID, Self::VERSION, Self::WINDOW)
+            .batching(Self::batch_definition())
+            .presentation(Self::metadata(), Self::row_metadata())
     }
 }
 
@@ -130,9 +133,11 @@ where
     fn metadata() -> crate::Metadata {
         S::metadata()
     }
+
     fn row_metadata() -> Vec<crate::StreamField> {
         S::row_metadata()
     }
+
     fn batch_definition() -> Option<BatchDefinition> {
         S::batch_definition()
     }
@@ -151,7 +156,11 @@ impl Table {
             pump,
             visibility: Arc::new(RwLock::new(())),
             publications: Arc::new(super::publication::Pool::new()),
-            #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+            #[cfg(any(
+                feature = "plugin",
+                feature = "plugin-guest",
+                feature = "plugin-sidecar"
+            ))]
             listeners: Mutex::new(BTreeMap::new()),
         };
 
@@ -167,37 +176,41 @@ impl Table {
         definition: Definition,
         floor: Position,
     ) -> Result<Arc<Wired>, Refused> {
-        if definition.window == 0 {
-            return Err(Refused::EmptyWindow(definition.id));
+        if definition.window() == 0 {
+            return Err(Refused::EmptyWindow(definition.id().into()));
         }
 
         let _visibility = self.visibility.read().expect("stream visibility poisoned");
         let mut windows = self.windows.write().expect("stream registry poisoned");
         if windows.contains_key(definition.id()) {
-            return Err(Refused::SharedId(definition.id));
+            return Err(Refused::SharedId(definition.id().into()));
         }
 
         let window = Arc::new(
             Window::wired(
-                definition.window,
+                definition.window(),
                 floor,
                 Arc::clone(&self.sequence),
                 self.pump.clone(),
             )
             .visible_with(self.visibility.clone())
-            .batching(definition.batch),
+            .batching(definition.batch()),
         );
         let wired = Arc::new(Wired {
             validation: None,
             definition,
             window,
             publisher: Mutex::new(Weak::new()),
-            #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+            #[cfg(any(
+                feature = "plugin",
+                feature = "plugin-guest",
+                feature = "plugin-sidecar"
+            ))]
             staged: None,
         });
         windows.insert(
-            Arc::clone(&wired.definition.id),
-            HashMap::from([(wired.definition.version, Arc::clone(&wired))]),
+            Arc::<str>::from(wired.definition.id()),
+            HashMap::from([(wired.definition.version(), Arc::clone(&wired))]),
         );
 
         Ok(wired)
@@ -237,12 +250,12 @@ impl Table {
         for selections in selections {
             let mut distinct = HashSet::new();
             for definition in selections {
-                if !distinct.insert((Arc::clone(&definition.id), definition.version)) {
+                if !distinct.insert((Arc::<str>::from(definition.id()), definition.version())) {
                     continue;
                 }
                 let wired = self
-                    .wired(definition.id(), definition.version)
-                    .ok_or(Refused::UndeclaredSelection(definition.id))?;
+                    .wired(definition.id(), definition.version())
+                    .ok_or(Refused::UndeclaredSelection(definition.id().into()))?;
                 held.push(Holding::engage(Arc::clone(&wired.window)));
             }
         }
@@ -305,7 +318,11 @@ impl Table {
         )
     }
 
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     pub(super) fn can_advance(&self, count: u64) -> bool {
         self.sequence
             .load(std::sync::atomic::Ordering::Relaxed)
@@ -323,7 +340,11 @@ impl Table {
 
 impl Wired {
     fn admitted(self: &Arc<Self>) -> Option<Arc<Self>> {
-        #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+        #[cfg(any(
+            feature = "plugin",
+            feature = "plugin-guest",
+            feature = "plugin-sidecar"
+        ))]
         if let Some(staged) = &self.staged
             && !staged.scope.has_committed()
         {
@@ -338,7 +359,11 @@ impl Wired {
 /* === Private Functions === */
 fn visible(wires: impl IntoIterator<Item = Arc<Wired>>) -> Vec<Arc<Wired>> {
     let wires = wires.into_iter();
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     let wires = {
         let mut commits = std::collections::BTreeMap::new();
         wires.filter_map(move |wired| {

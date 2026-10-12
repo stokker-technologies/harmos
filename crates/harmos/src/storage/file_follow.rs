@@ -99,6 +99,7 @@ impl FileFollower {
     pub fn offset(&self) -> u64 {
         self.offset
     }
+
     pub fn progress(&self) -> FileProgress {
         self.progress
     }

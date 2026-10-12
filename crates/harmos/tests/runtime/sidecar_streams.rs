@@ -42,7 +42,7 @@ macro_rules! serving {
             type Resources = Counts;
             type Error = harmos::Error;
             type Endpoints = $endpoints;
-            type Context<'a> = &'a harmos::sidecar::Supervisor;
+            type Context<'a> = &'a harmos::plugin::sidecar::Supervisor;
             fn new(counts: Arc<Counts>) -> Result<Self, Self::Error> {
                 counts.prepared.fetch_add(1, Ordering::SeqCst);
                 Ok(Self(counts))
@@ -77,17 +77,23 @@ macro_rules! serving {
 /* === Structs === */
 
 /* === Enums === */
+#[harmos::operation(request = u32, response = u32, input = u32, policy = Read::POLICY, version = 1,
+        grpc(package = "fixture.v1", service = "Native", method = "Upload"))]
+pub(super) struct Upload;
+
+#[harmos::operation(request = u32, response = u32, output = u32, policy = Read::POLICY, version = 1,
+        grpc(package = "fixture.v1", service = "Native", method = "Download"))]
+pub(super) struct Download;
+
+#[harmos::operation(request = u32, response = u32, input = u32, output = u32, policy = Read::POLICY, version = 1,
+        grpc(package = "fixture.v1", service = "Native", method = "Exchange"))]
+pub(super) struct Exchange;
+
 #[harmos::catalog]
 pub(super) enum Operations {
-    #[operation(request = u32, response = u32, input = u32, policy = Read::POLICY, version = 1,
-        grpc(package = "fixture.v1", service = "Native", method = "Upload"))]
-    Upload,
-    #[operation(request = u32, response = u32, output = u32, policy = Read::POLICY, version = 1,
-        grpc(package = "fixture.v1", service = "Native", method = "Download"))]
-    Download,
-    #[operation(request = u32, response = u32, input = u32, output = u32, policy = Read::POLICY, version = 1,
-        grpc(package = "fixture.v1", service = "Native", method = "Exchange"))]
-    Exchange,
+    Upload(Upload),
+    Download(Download),
+    Exchange(Exchange),
 }
 
 /* === Traits === */
@@ -124,7 +130,7 @@ serving!(
 
 /* === Public Functions === */
 pub(super) fn bind(
-    table: &mut WireTable<harmos::sidecar::Supervisor>,
+    table: &mut WireTable<harmos::plugin::sidecar::Supervisor>,
     counts: Arc<Counts>,
 ) -> Result<(), harmos::operations::ServingError> {
     let direction = StreamSettings {
@@ -175,7 +181,7 @@ fn contract_scenario() {
                             address: "127.0.0.1:0".parse().unwrap(),
                             operations,
                             reflection: true,
-                            #[cfg(feature = "grpc-tls")]
+                            web: false,
                             tls: None,
                             connections: NonZeroUsize::new(4).unwrap(),
                             calls_per_connection: NonZeroUsize::new(8).unwrap(),

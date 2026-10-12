@@ -273,6 +273,7 @@ impl State {
             .values()
             .any(|deletion| deletion.work.file.id == *file)
     }
+
     pub(super) fn request_deletions(&mut self) {
         for deletion in self
             .deletions
@@ -289,6 +290,7 @@ impl State {
             }
         }
     }
+
     pub(super) fn deletion_action(&self, floor: u64) -> Option<Arc<DeleteWork>> {
         self.deletions
             .values()
@@ -299,17 +301,20 @@ impl State {
             })
             .map(|deletion| deletion.work.clone())
     }
+
     pub(super) fn deleting_data(&self, index: u64) -> bool {
         self.deletions
             .values()
             .any(|deletion| deletion.failure.is_none() && deletion.work.target.index >= index)
     }
+
     pub(super) fn deletion_failed(&mut self, mutation: &MutationId, source: Arc<Error>) {
         if let Some(deletion) = self.deletions.get_mut(mutation) {
             tracing::error!(file = %deletion.work.file.id, window = %mutation.window, mutation = %mutation.key, error = %source, reason = "file deletion failed", "file deletion retained for retry");
             deletion.failure = Some(source);
         }
     }
+
     pub(super) fn deletion_data_failed(&mut self, index: u64, source: Arc<Error>) {
         for deletion in self
             .deletions

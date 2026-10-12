@@ -19,7 +19,7 @@ use std::sync::atomic::Ordering;
 use support::{Bank, Explode, Ledger, Payouts, booted, deposit, ledger, pay, scratch};
 // Local Imports
 use super::support;
-use harmos::{Error, Position};
+use harmos::{Error, state::Position};
 use jsonl_adapter::Jsonl;
 
 /* === Constants === */

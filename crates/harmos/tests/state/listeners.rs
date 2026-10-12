@@ -22,18 +22,18 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 // Local Imports
-use harmos::load::{
-    PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions,
-    PluginEndpoint, PluginLifecycle, PluginLifecycleAuthority, PluginManager, PluginScope,
-    PluginTransition, Router,
-};
 use harmos::operations::{
     Context, Operation, OperationDeclaration, OperationPolicy, PluginRegistration, RetryPolicy,
     Visibility, WireDeclaration, WireOperation,
 };
+use harmos::plugin::{
+    PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions,
+    PluginEndpoint, PluginLifecycle, PluginLifecycleAuthority, PluginManager, PluginScope,
+    PluginTransition, Router,
+};
 use harmos::records::PluginListenerRegistration;
 use harmos::schema::{Described, Field};
-use harmos::{Error, Message, MessageError, Position, Result, Runtime};
+use harmos::{Error, Message, MessageError, Result, Runtime, state::Position};
 use harmos_contract::listeners::{Context as DeliveryContext, Delivery, Source};
 
 /* === Constants === */
@@ -64,7 +64,7 @@ struct Model;
 struct Heard<const FIRST: bool>;
 
 struct Owner {
-    records: harmos::RecordManager<Model>,
+    records: harmos::records::RecordManager<Model>,
     seen: Mutex<Seen>,
     observed: Notify,
     started: Notify,
@@ -87,7 +87,7 @@ struct Resources {
 }
 
 struct Host {
-    operations: harmos::OperationManager,
+    operations: harmos::operations::OperationManager,
     owner: Arc<Owner>,
     scope: Option<PluginScope>,
     fail_start: bool,
@@ -154,7 +154,7 @@ impl Message for Fact {
 
 impl harmos::Application for Model {
     type State = ();
-    type Transaction = harmos::Never;
+    type Transaction = harmos::state::Never;
     type Record = Rows;
     type Streams = ();
     type Resources = ();
@@ -411,7 +411,10 @@ async fn setup(
         .register(Rows::catalog())
         .register(Lanes::catalog())
         .tail(tail)
-        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+        .operation_settings(harmos::operations::Settings {
+            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+            ..Default::default()
+        })
         .runtime()
         .await
         .unwrap();
@@ -527,7 +530,7 @@ fn contract_scenario() {
                     assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
                     assert_eq!(
                         manager.status("listener").unwrap().state,
-                        harmos::load::PluginState::Failed
+                        harmos::plugin::PluginState::Failed
                     );
                     assert!(matches!(
                         host.view
@@ -773,7 +776,7 @@ fn contract_scenario() {
                     ));
                     assert_eq!(
                         manager.status("listener").unwrap().state,
-                        harmos::load::PluginState::Failed
+                        harmos::plugin::PluginState::Failed
                     );
                     assert_eq!(
                         *host.owner.seen.lock().unwrap(),
@@ -844,7 +847,7 @@ fn contract_scenario() {
                     ));
                     assert_eq!(
                         manager.status("listener").unwrap().state,
-                        harmos::load::PluginState::Failed
+                        harmos::plugin::PluginState::Failed
                     );
                     assert_eq!(host.owner.seen.lock().unwrap().len(), 2);
                     manager.shutdown(&mut host).await.unwrap();

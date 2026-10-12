@@ -27,7 +27,7 @@ use super::{
     support::{self, Bank, Fact, Ledger, Noted, catalog},
 };
 use harmos::operations::{Context, Operation, OperationPolicy, RetryPolicy};
-use harmos::{CausationId, Error, Position, Runtime};
+use harmos::{Error, Runtime, state::CausationId, state::Position};
 
 /* === Constants === */
 const POLICY: OperationPolicy = OperationPolicy {
@@ -46,14 +46,20 @@ struct Descend;
 struct Family;
 
 /* === Enums === */
+#[harmos::operation(request = String, response = (), id = "causation.note", policy = POLICY)]
+struct NoteContract;
+
+#[harmos::operation(request = String, response = (), id = "causation.descend", policy = POLICY)]
+struct DescendContract;
+
+#[harmos::operation(request = Position, response = (), id = "causation.family", policy = POLICY)]
+struct FamilyContract;
+
 #[harmos::catalog]
 enum Operations {
-    #[operation(request = String, response = (), id = "causation.note", policy = POLICY)]
-    NoteContract,
-    #[operation(request = String, response = (), id = "causation.descend", policy = POLICY)]
-    DescendContract,
-    #[operation(request = Position, response = (), id = "causation.family", policy = POLICY)]
-    FamilyContract,
+    NoteContract(NoteContract),
+    DescendContract(DescendContract),
+    FamilyContract(FamilyContract),
 }
 
 /* === Traits === */

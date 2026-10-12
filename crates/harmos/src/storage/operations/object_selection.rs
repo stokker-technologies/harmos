@@ -21,11 +21,11 @@
 use super::Selection;
 #[cfg(feature = "grpc")]
 use crate::__private::DecodeInput;
-use crate::storage::{ObjectKey, ObjectVersions, SchemaKey};
 #[cfg(feature = "grpc")]
-use crate::storage_codec::Unsigned;
-use crate::storage_codec::{Nested, Optional, Value, product};
-use crate::storage_object_values::Key;
+use crate::storage::codec::Unsigned;
+use crate::storage::codec::{Nested, Optional, Value, product};
+use crate::storage::object_values::Key;
+use crate::storage::{ObjectKey, ObjectVersions, SchemaKey};
 use crate::{Error, MemorySize, MessageError, Result};
 
 /* === Constants === */
@@ -76,7 +76,7 @@ impl ObjectSelection {
         }
         Ok(())
     }
-    #[cfg(feature = "runtime")]
+
     pub(super) fn validate_follow(&self) -> Result<()> {
         self.validate()?;
         if self.versions != ObjectVersions::Revisions
@@ -90,7 +90,7 @@ impl ObjectSelection {
         }
         Ok(())
     }
-    #[cfg(feature = "runtime")]
+
     pub(super) fn query(&self, following: bool) -> Result<crate::storage::EncodedObjectQuery> {
         if following {
             self.validate_follow()?;
@@ -130,15 +130,18 @@ impl Value for Versions {
             bytes,
         );
     }
+
     fn postcard_size(_: &Self::Native) -> usize {
         1
     }
+
     fn postcard_memory(
         input: &mut crate::__private::PostcardReader<'_>,
     ) -> std::result::Result<usize, MessageError> {
         Self::postcard_read(input)?;
         Ok(0)
     }
+
     fn postcard_read(
         input: &mut crate::__private::PostcardReader<'_>,
     ) -> std::result::Result<Self::Native, MessageError> {
@@ -155,14 +158,17 @@ impl Value for Versions {
     fn write(value: &ObjectVersions, tag: u32, bytes: &mut Vec<u8>) {
         Unsigned::write(&u64::from(*value == ObjectVersions::Latest), tag, bytes);
     }
+
     #[cfg(feature = "grpc")]
     fn size(value: &ObjectVersions, tag: u32) -> usize {
         Unsigned::size(&u64::from(*value == ObjectVersions::Latest), tag)
     }
+
     #[cfg(feature = "grpc")]
     fn memory(input: DecodeInput<'_>, tag: u32) -> std::result::Result<usize, MessageError> {
         Self::read(input, tag).map(|_| 0)
     }
+
     #[cfg(feature = "grpc")]
     fn read(input: DecodeInput<'_>, tag: u32) -> std::result::Result<ObjectVersions, MessageError> {
         match Unsigned::read(input, tag)? {

@@ -388,7 +388,7 @@ fn settings() -> harmos::grpc::Settings {
         operations: harmos::grpc::server::Settings::default(),
         reflection: false,
         address: "127.0.0.1:0".parse().unwrap(),
-        #[cfg(feature = "grpc-tls")]
+        web: false,
         tls: None,
         connections: NonZeroUsize::new(4).unwrap(),
         calls_per_connection: NonZeroUsize::new(8).unwrap(),
@@ -480,7 +480,7 @@ pub(super) fn contract_scenario() {
                 });
         });
     }
-    #[cfg(feature = "grpc-web")]
+    #[cfg(feature = "grpc")]
     {
         scenario_runtime::check("grpc_web_served", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
@@ -495,7 +495,9 @@ pub(super) fn contract_scenario() {
                         .runtime()
                         .await
                         .unwrap();
-                    let attached = runtime.grpc().attach(settings()).await.unwrap();
+                    let mut settings = settings();
+                    settings.web = true;
+                    let attached = runtime.grpc().attach(settings).await.unwrap();
                     let mut stream = tokio::net::TcpStream::connect(attached.local_addr())
                         .await
                         .unwrap();
@@ -715,7 +717,7 @@ pub(super) fn contract_scenario() {
 });
         });
     }
-    #[cfg(feature = "grpc-tls")]
+    #[cfg(feature = "grpc")]
     {
         scenario_runtime::check("configured_tls_serves", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();

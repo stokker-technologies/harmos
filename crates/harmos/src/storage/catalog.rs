@@ -24,7 +24,7 @@ use crate::{BackendFailure, Error, Identified, Identifier, MemorySize, Result, s
 /* === Constants === */
 const MAX_DEFINITIONS: usize = 4096;
 const MAX_IDENTITY_BYTES: usize = 1024;
-#[cfg(feature = "runtime")]
+
 pub(crate) const LOOKUP_MEMORY_BYTES: usize = MAX_IDENTITY_BYTES * 2;
 const VALIDATION_BYTES: usize = 8 * 1024 * 1024;
 
@@ -60,7 +60,7 @@ pub struct ObjectDefinition {
     fields: &'static [schema::Field],
     retention: ObjectRetention,
     verify: fn(&ObjectValue, NonZeroUsize) -> Result<()>,
-    #[cfg(feature = "runtime")]
+
     verify_admitted: fn(&ObjectValue, NonZeroUsize, usize) -> Result<()>,
 }
 
@@ -370,7 +370,6 @@ impl ObjectDefinition {
         self.fields
     }
 
-    #[cfg(feature = "runtime")]
     pub(crate) fn validate_admitted(
         &self,
         value: &ObjectValue,
@@ -393,7 +392,7 @@ impl<T: StoredObject> Member<T> for ObjectDefinitions {
         fields: T::FIELDS,
         retention: T::RETENTION,
         verify: verify::<T>,
-        #[cfg(feature = "runtime")]
+
         verify_admitted: verify_admitted::<T>,
     };
 }
@@ -412,7 +411,7 @@ impl fmt::Write for KeyMatch<'_> {
 }
 
 /* === Public Functions === */
-#[cfg(feature = "runtime")]
+
 pub(crate) fn definition<C: ObjectCatalog>(key: &SchemaKey) -> Result<ObjectDefinition> {
     let mut found = None;
     C::definitions().try_for_each(|entry| {
@@ -470,7 +469,6 @@ pub(crate) fn decode_admitted<T: StoredObject>(
     Ok(decoded)
 }
 
-#[cfg(any(feature = "runtime", test))]
 pub(super) fn verification_bytes(payload: NonZeroUsize) -> Result<usize> {
     payload
         .get()
@@ -480,7 +478,6 @@ pub(super) fn verification_bytes(payload: NonZeroUsize) -> Result<usize> {
         .ok_or_else(|| invalid("object verification size overflow"))
 }
 
-#[cfg(feature = "runtime")]
 pub(super) fn validate_transfer<C: ObjectCatalog>(
     value: &ObjectValue,
     payload: NonZeroUsize,
@@ -526,7 +523,6 @@ fn verify<T: StoredObject>(value: &ObjectValue, max_payload_bytes: NonZeroUsize)
     decode::<T>(value, max_payload_bytes).map(|_| ())
 }
 
-#[cfg(any(feature = "runtime", test))]
 fn verify_admitted<T: StoredObject>(
     value: &ObjectValue,
     payload: NonZeroUsize,
@@ -551,7 +547,6 @@ fn verify_admitted<T: StoredObject>(
     Ok(())
 }
 
-#[cfg(any(feature = "runtime", test))]
 fn verification_limit() -> Error {
     Error::ResourceExhausted {
         resource: "storage object verification",

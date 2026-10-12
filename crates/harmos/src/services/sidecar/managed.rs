@@ -26,13 +26,16 @@ use super::{
     Notice, Supervised,
     physical::{Physical, Polling},
 };
-use crate::load::{
+use crate::operations::{EncodedInvocation, PluginRegistration, PluginSdkRegistration};
+use crate::plugin::{
     PluginArtifact, PluginBackend, PluginDefinition, PluginDefinitions, PluginLifecycle,
     PluginLifecycleAuthority, PluginManager, PluginTransition, Router,
 };
-use crate::operations::{EncodedInvocation, PluginRegistration, PluginSdkRegistration};
 use crate::services::Resident;
-use crate::{Application, Error, Fault, Lane, OperationManager, Result, Service};
+use crate::{
+    Application, Error, Result, operations::Lane, operations::OperationManager, services::Fault,
+    services::Service,
+};
 use harmos_sidecar::{Attach, Executable};
 
 /* === Constants === */
@@ -148,7 +151,7 @@ where
         if owners.is_empty()
             || owners
                 .values()
-                .any(|kind| *kind != crate::load::PluginKind::Sidecar)
+                .any(|kind| *kind != crate::plugin::PluginKind::Sidecar)
         {
             return Err(Error::InvalidInput {
                 field: "managed native graph",
@@ -380,6 +383,7 @@ where
             .unwrap_or(Ok(()))
             .map_err(map_fault)
     }
+
     async fn stop(&mut self) -> std::result::Result<(), ManagedError> {
         let Some(host) = &mut self.host else {
             return Ok(());
@@ -409,6 +413,7 @@ where
     fn preflight(&mut self, candidate: &PluginDefinitions) -> Result<()> {
         self.operations.validate_requirements(candidate)
     }
+
     fn prepare(
         &mut self,
         definition: &PluginDefinition,
@@ -432,9 +437,11 @@ where
             stream_listeners: None,
         }))
     }
+
     async fn fence(&mut self, _: PluginTransition, _: &[PluginDefinition]) -> Result<()> {
         Ok(())
     }
+
     async fn start(
         &mut self,
         definition: &PluginDefinition,
@@ -514,6 +521,7 @@ where
         result?;
         Ok(())
     }
+
     async fn stop(
         _: &PluginDefinition,
         authority: &PluginLifecycleAuthority<'_>,

@@ -246,9 +246,10 @@ def prepare(root: Path) -> None:
         shutil.copyfile(fixture / name, source_root / "src" / name)
     shutil.copy2(repository / "Cargo.lock", source_root / "Cargo.lock")
     for version in VERSIONS:
-        manifest = (fixture / "manifest.toml").read_text(encoding="utf-8")
-        manifest = manifest.replace('"@VERSION@"', json.dumps(version)).replace(
-            '"@HARMOS_PATH@"', json.dumps(str(repository / "crates/harmos"))
+        template = (fixture / "manifest.toml").read_text(encoding="utf-8")
+        template = template.replace('"@VERSION@"', json.dumps(version))
+        manifest = template.replace('"@SDK_PACKAGE@"', '"harmos-sidecar"').replace(
+            '"@SDK_PATH@"', json.dumps(str(repository / "crates/harmos-sidecar"))
         )
         (source_root / "Cargo.toml").write_text(manifest, encoding="utf-8")
         if version == VERSIONS[0]:
@@ -267,6 +268,11 @@ def prepare(root: Path) -> None:
                     clean.extend(["--target", "wasm32-unknown-unknown"])
                 _run(source_root, clean)
         for guest, profile in BUILDS:
+            sdk = "harmos-guest" if guest else "harmos-sidecar"
+            manifest = template.replace('"@SDK_PACKAGE@"', json.dumps(sdk)).replace(
+                '"@SDK_PATH@"', json.dumps(str(repository / "crates" / sdk))
+            )
+            (source_root / "Cargo.toml").write_text(manifest, encoding="utf-8")
             command = [
                 "build",
                 "--offline",
@@ -390,11 +396,11 @@ def _catalogs(
         '[package]\nname = "dokime"\nversion = "0.0.0"\nedition = "2024"\n'
         "[dependencies]\nharmos = { path = "
         + json.dumps(str(repository / "crates/harmos"))
-        + ', default-features = false, features = ["derive"] }\n[workspace]\n',
+        + ", default-features = false }\n[workspace]\n",
         encoding="utf-8",
     )
     (facade / "src/lib.rs").write_text(
-        "pub mod catalog { pub use harmos::catalog::*; } pub use harmos::macros::catalog; pub use harmos as __harmos;",
+        "pub use harmos::catalog; pub use harmos as __harmos;",
         encoding="utf-8",
     )
     for package, dependency in (
@@ -406,10 +412,9 @@ def _catalogs(
         consumer = directory / f"{package}-{dependency}"
         (consumer / "src").mkdir(parents=True, exist_ok=True)
         path = facade if package == "dokime" else repository / "crates/harmos"
-        features = ', features = ["derive"]' if package == "harmos" else ""
         (consumer / "Cargo.toml").write_text(
             '[package]\nname = "catalog-consumer"\nversion = "0.0.0"\nedition = "2024"\n[dependencies]\n'
-            + f'{dependency} = {{ package = "{package}", path = {json.dumps(str(path))}, default-features = false{features} }}\n[workspace]\n',
+            + f'{dependency} = {{ package = "{package}", path = {json.dumps(str(path))}, default-features = false }}\n[workspace]\n',
             encoding="utf-8",
         )
         shutil.copy2(repository / "Cargo.lock", consumer / "Cargo.lock")

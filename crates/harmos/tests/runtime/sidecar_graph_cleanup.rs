@@ -37,8 +37,8 @@ use super::graph::{contract, marked};
 use super::{HostLanes, assembly, operations, service_status};
 use crate::support::Bank;
 use harmos::operations::OperationPolicy;
-use harmos::sidecar::{Attach, Attached, Notice, Refusal, Supervised, Supervisor};
-use harmos::{Runtime, Service, ServiceStatus};
+use harmos::plugin::sidecar::{Attach, Attached, Notice, Refusal, Supervised, Supervisor};
+use harmos::{Runtime, services::Service, services::ServiceStatus};
 use harmos_sidecar::attach::{End, Ending};
 
 /* === Constants === */
@@ -304,11 +304,14 @@ impl Fixture {
             + std::mem::size_of::<harmos::operations::lifecycle::InitializeRequest>()
             + 84;
         assert!(encoding_bytes <= 512);
-        let definitions = harmos::load::PluginDefinitions::new(definitions, []).unwrap();
+        let definitions = harmos::plugin::PluginDefinitions::new(definitions, []).unwrap();
         let residents =
             sources.map(|source| Supervised::new(source, notices as fn(&Service<Bank>, Notice)));
         let runtime = assembly()
-            .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+            .operation_settings(harmos::operations::Settings {
+                preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+                ..Default::default()
+            })
             .runtime()
             .await
             .unwrap();
@@ -317,13 +320,13 @@ impl Fixture {
             .register(
                 harmos::services::ServiceDefinition {
                     id: "local-graph".into(),
-                    policy: harmos::ServicePolicy {
+                    policy: harmos::services::ServicePolicy {
                         credit: 0,
                         ..Default::default()
                     },
                 },
                 move |_: Arc<()>| {
-                    harmos::sidecar::Managed::new_graph(
+                    harmos::plugin::sidecar::Managed::new_graph(
                         residents.clone(),
                         definitions.clone(),
                         HostLanes::Open,

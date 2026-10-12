@@ -45,7 +45,7 @@ use crate::{Application, Error, Result};
 pub struct GrpcManager {
     state: Arc<Mutex<State>>,
     host: Arc<dyn listener::Host>,
-    operations: crate::OperationManager,
+    operations: crate::operations::OperationManager,
 }
 
 #[must_use = "dropping the attachment detaches the listener"]
@@ -61,7 +61,7 @@ pub struct Settings {
     pub address: SocketAddr,
     pub operations: super::server::Settings,
     pub reflection: bool,
-    #[cfg(feature = "grpc-tls")]
+    pub web: bool,
     pub tls: Option<tonic::transport::ServerTlsConfig>,
     pub connections: NonZeroUsize,
     pub calls_per_connection: NonZeroUsize,
@@ -84,7 +84,7 @@ struct State {
 impl GrpcManager {
     pub(crate) fn new<A: Application>(
         services: &crate::services::ServiceManager<A>,
-        operations: &crate::OperationManager,
+        operations: &crate::operations::OperationManager,
     ) -> Self {
         Self {
             state: Arc::new(Mutex::new(State {
@@ -239,7 +239,8 @@ impl Default for Settings {
             address: ([127, 0, 0, 1], 0).into(),
             operations: super::server::Settings::default(),
             reflection: false,
-            #[cfg(feature = "grpc-tls")]
+            web: false,
+
             tls: None,
             connections: NonZeroUsize::new(64).unwrap(),
             calls_per_connection: NonZeroUsize::new(32).unwrap(),

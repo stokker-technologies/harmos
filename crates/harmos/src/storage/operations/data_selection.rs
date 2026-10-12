@@ -20,7 +20,7 @@ use std::time::SystemTime;
 // Local Imports
 use super::Selection;
 use crate::storage::SchemaKey;
-use crate::storage_codec::{Id, Nested, Optional, Time, product};
+use crate::storage::codec::{Id, Nested, Optional, Time, product};
 use crate::{Error, Identifier, MemorySize, Result};
 
 /* === Constants === */
@@ -65,7 +65,6 @@ impl DataSelection {
         }
     }
 
-    #[cfg(feature = "runtime")]
     pub(super) fn source_time(&self) -> Option<crate::storage::SourceTimeRange> {
         self.source_start
             .zip(self.source_end)
@@ -97,7 +96,7 @@ impl MemorySize for DataSelection {
 /* === Public Functions === */
 
 /* === Private Functions === */
-#[cfg(feature = "runtime")]
+
 pub(super) fn decode(bytes: &[u8], allowance: std::num::NonZeroUsize) -> Result<Vec<u8>> {
     let required = std::mem::size_of::<Vec<u8>>().saturating_add(bytes.len());
     if required > allowance.get() {

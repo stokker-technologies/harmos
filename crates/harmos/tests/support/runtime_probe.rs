@@ -19,7 +19,7 @@
 
 // Local Imports
 use harmos::state::{Invert, Transaction, Undoable};
-use harmos::{Application, DefinitionId, Kind};
+use harmos::{Application, DefinitionId, state::Kind};
 
 /* === Constants === */
 pub(crate) const RENAME: (Kind, &str, u32) = (Kind::Transaction, "sheet.rename", 1);
@@ -129,9 +129,9 @@ impl Application for Editor {
     type Resources = ();
 }
 
-impl harmos::TransactionCatalog<Sheet> for Change {}
+impl harmos::state::TransactionCatalog<Sheet> for Change {}
 
-impl harmos::CatalogCodec for Change {
+impl harmos::state::CatalogCodec for Change {
     fn identify(&self) -> (harmos::DefinitionId, u32) {
         (
             harmos::DefinitionId::new(match self {
@@ -151,7 +151,7 @@ impl harmos::CatalogCodec for Change {
     }
 }
 
-impl harmos::CatalogCodec for Note {
+impl harmos::state::CatalogCodec for Note {
     fn identify(&self) -> (harmos::DefinitionId, u32) {
         (harmos::DefinitionId::new("sheet.exported"), 1)
     }
@@ -160,7 +160,7 @@ impl harmos::CatalogCodec for Note {
     }
 }
 
-impl harmos::RecordCatalog for Note {
+impl harmos::state::RecordCatalog for Note {
     fn restore(
         id: &harmos::DefinitionId,
         version: u32,

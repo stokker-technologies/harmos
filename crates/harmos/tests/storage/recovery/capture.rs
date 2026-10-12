@@ -25,7 +25,7 @@ use std::time::Duration;
 // Local Imports
 use super::{Data, Recovery, config, history, record, schema, schema_query};
 use harmos::storage::*;
-use harmos::{Envelope, Error, Identifier, Position, Runtime};
+use harmos::{Error, Identifier, Runtime, state::Envelope, state::Position};
 
 /* === Constants === */
 
@@ -90,12 +90,12 @@ impl harmos::Application for Model {
     type Resources = ();
 }
 
-impl harmos::Transaction<u64> for Advance {
+impl harmos::state::Transaction<u64> for Advance {
     type Error = Refusal;
     fn check(&self, _: &u64) -> Result<(), Refusal> {
         Ok(())
     }
-    fn records(&self, state: &u64, out: &mut harmos::Records) {
+    fn records(&self, state: &u64, out: &mut harmos::state::Records) {
         out.push(Observed { before: *state }).unwrap();
     }
     fn apply(&self, state: &mut u64) {
@@ -575,20 +575,23 @@ fn contract_scenario() {
                             storage.write_schema(&schema(), &[]).await?;
                             Ok(())
                         })
-                        .service("producer", move |context: harmos::Service<Model>| {
-                            let check = check.clone();
-                            let notify = notify.clone();
-                            async move {
-                                assert_eq!(check.status().saved.sequence, 1);
-                                context
-                                    .records()
-                                    .publish(Observed { before: 0 })
-                                    .await
-                                    .unwrap();
-                                notify.notify_one();
-                                Ok::<(), harmos::Fault<String>>(())
-                            }
-                        })
+                        .service(
+                            "producer",
+                            move |context: harmos::services::Service<Model>| {
+                                let check = check.clone();
+                                let notify = notify.clone();
+                                async move {
+                                    assert_eq!(check.status().saved.sequence, 1);
+                                    context
+                                        .records()
+                                        .publish(Observed { before: 0 })
+                                        .await
+                                        .unwrap();
+                                    notify.notify_one();
+                                    Ok::<(), harmos::services::Fault<String>>(())
+                                }
+                            },
+                        )
                         .runtime_with_storage(&storage)
                         .await
                         .unwrap();

@@ -24,14 +24,14 @@ use futures_core::Stream;
 // Local Imports
 use super::{Bank, Duration, Host, Message, Runtime, route_component, runtime, wire};
 use crate::core_journal::OriginalJournal;
-use harmos::load::{
-    PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions,
-    PluginLifecycle, PluginLifecycleAuthority, PluginManager, PluginScope, PluginTransition,
-    Router,
-};
 use harmos::operations::{
     Context, EncodedInvocation, Operation, OperationDeclaration, PluginRegistration,
     PluginSdkRegistration, WireDeclaration,
+};
+use harmos::plugin::{
+    PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions,
+    PluginLifecycle, PluginLifecycleAuthority, PluginManager, PluginScope, PluginTransition,
+    Router,
 };
 
 /* === Constants === */
@@ -56,9 +56,9 @@ struct Publish {
 
 #[derive(Default)]
 pub(super) struct Resources {
-    registered: Option<harmos::guest::Registered<Bank>>,
-    serving: Option<harmos::guest::Serving<Bank>>,
-    endpoint: Option<harmos::load::PluginEndpoint>,
+    registered: Option<harmos::plugin::guest::Registered<Bank>>,
+    serving: Option<harmos::plugin::guest::Serving<Bank>>,
+    endpoint: Option<harmos::plugin::PluginEndpoint>,
     registration: Option<PluginRegistration>,
     sdk: Option<PluginSdkRegistration>,
     initializing: Option<EncodedInvocation>,
@@ -70,8 +70,8 @@ pub(super) struct Resources {
 pub(super) struct Lifecycle<C = GuestOperations, L = super::GuestLanes> {
     pub(super) state: Option<Arc<OriginalJournal>>,
     loader: Host<Bank>,
-    operations: harmos::OperationManager,
-    prepared: Option<harmos::guest::Registered<Bank>>,
+    operations: harmos::operations::OperationManager,
+    prepared: Option<harmos::plugin::guest::Registered<Bank>>,
     bytes: Vec<u8>,
     lane: L,
     provider: Option<PluginDefinition>,
@@ -145,7 +145,7 @@ impl Operation for Publish {
             });
         }
         let lease = scope.publication(&row.stream, row.schema)?;
-        let row = harmos::PublicationRow {
+        let row = harmos::streams::PublicationRow {
             payload: std::mem::take(&mut row.payload),
             published_unix_micros: None,
             context: None,
@@ -164,7 +164,7 @@ impl<C, L> PluginLifecycle for Lifecycle<C, L>
 where
     C: harmos::catalog::Catalog<harmos::operations::Declarations>
         + harmos::catalog::Catalog<harmos::operations::ComponentBindings>,
-    L: harmos::Lane + Copy,
+    L: harmos::operations::Lane + Copy,
 {
     type Guest = Resources;
     type Sidecar = ();
@@ -174,9 +174,11 @@ where
     }
     fn prepare(&mut self, definition: &PluginDefinition) -> harmos::Result<Backends> {
         match definition.kind() {
-            harmos::load::PluginKind::Guest => Ok(PluginBackend::Guest(self.guest_seed())),
-            harmos::load::PluginKind::Embedded => Ok(PluginBackend::Embedded(Resources::default())),
-            harmos::load::PluginKind::Sidecar => {
+            harmos::plugin::PluginKind::Guest => Ok(PluginBackend::Guest(self.guest_seed())),
+            harmos::plugin::PluginKind::Embedded => {
+                Ok(PluginBackend::Embedded(Resources::default()))
+            }
+            harmos::plugin::PluginKind::Sidecar => {
                 unreachable!("the fixture owns no native transport")
             }
         }
@@ -229,7 +231,7 @@ where
 impl Resources {
     pub(super) async fn start<C, L>(
         &mut self,
-        operations: &harmos::OperationManager,
+        operations: &harmos::operations::OperationManager,
         definition: &PluginDefinition,
         router: &Router,
         authority: &PluginLifecycleAuthority<'_>,
@@ -238,7 +240,7 @@ impl Resources {
     where
         C: harmos::catalog::Catalog<harmos::operations::Declarations>
             + harmos::catalog::Catalog<harmos::operations::ComponentBindings>,
-        L: harmos::Lane + Copy,
+        L: harmos::operations::Lane + Copy,
     {
         let registered = self
             .registered
@@ -465,7 +467,7 @@ impl<C, L> Lifecycle<C, L> {
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn guest_error(source: harmos::guest::Error) -> harmos::Error {
+fn guest_error(source: harmos::plugin::guest::Error) -> harmos::Error {
     harmos::Error::OperationFailed {
         operation: "route-guest".into(),
         source: Arc::new(source),
@@ -479,7 +481,7 @@ fn guest_scope<'a>(context: &'a Context<'_>) -> harmos::Result<&'a PluginScope> 
     })
 }
 
-async fn values(stream: &harmos::PluginStream) -> Vec<String> {
+async fn values(stream: &harmos::streams::PluginStream) -> Vec<String> {
     stream
         .query(..)
         .await
@@ -646,7 +648,7 @@ pub(super) fn contract_scenario() {
                     )
                     .await
                     .unwrap();
-                    assert_eq!(gap, Some(harmos::Item::Gap { missed: 4 }));
+                    assert_eq!(gap, Some(harmos::streams::Item::Gap { missed: 4 }));
                     let mut retained = Vec::new();
                     for _ in 0..4 {
                         let row = tokio::time::timeout(
@@ -655,7 +657,7 @@ pub(super) fn contract_scenario() {
                         )
                         .await
                         .unwrap();
-                        let Some(harmos::Item::Row(row)) = row else {
+                        let Some(harmos::streams::Item::Row(row)) = row else {
                             panic!("retained row expected")
                         };
                         retained.push(

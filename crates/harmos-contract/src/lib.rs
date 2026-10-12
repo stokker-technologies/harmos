@@ -28,9 +28,35 @@ mod refusal;
 mod registration;
 mod scan;
 pub mod schema;
+pub mod streams;
 mod value;
 
 pub mod __private {
+    pub extern crate serde;
+    pub extern crate serde_json;
+    pub use crate::streams::{BatchDefinition, StreamCatalog, StreamRow};
+
+    pub fn stream_definition<S: StreamRow>(
+        id: &'static str,
+        version: u32,
+        window: usize,
+    ) -> crate::streams::Definition {
+        crate::streams::Definition::declared::<S>(id, version, window)
+            .batching(S::batch_definition())
+            .presentation(S::metadata(), S::row_metadata())
+    }
+
+    pub use crate::inventory as PluginInventory;
+    pub use crate::plugin::{
+        Contribution as PluginContribution, Declared as PluginDeclared, Grant as PluginGrant,
+        Requirement as PluginRequirement, Requirements as PluginRequirements,
+    };
+    pub use crate::{Registrar as PluginRegistrar, RegistrationError as PluginRegistrationError};
+
+    pub trait CarrierContext {
+        const FACILITY: &'static str;
+    }
+
     pub use crate::answer::Answer;
     #[cfg(feature = "grpc")]
     pub use crate::message::Protobuf;
@@ -60,11 +86,12 @@ pub use scan::{FRAGMENT_LIMIT, KINDS, PREFIX, ScanError, fragments};
 pub use value::{VALUE_DEPTH, Value, ValueError};
 
 #[cfg(feature = "derive")]
-pub use harmos_macros::{catalog, message, operation};
+pub use harmos_macros::{catalog, listener, message, observer, operation, plugin, stream};
 #[cfg(feature = "grpc")]
 pub use message::Protobuf;
 pub use message::{MemorySize, Message, MessageError, Storable, btree_map_memory};
 pub use presentation::{RowMetadata, StreamField};
+pub use streams::{Axial, Batched, Definition, Prefix, Track, Tracked};
 
 #[cfg(feature = "grpc")]
 #[macro_export]

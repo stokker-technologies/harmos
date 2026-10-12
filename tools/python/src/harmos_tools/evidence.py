@@ -705,7 +705,7 @@ def normalize_python_paths(
             raise EvidenceError("Python coverage class has no filename")
         filename = filename.replace("\\", "/")
         matches = [
-            relative
+            (suffix, relative)
             for suffix, relative in authored
             if filename in (relative, suffix)
             or any(
@@ -713,12 +713,17 @@ def normalize_python_paths(
                 for source in reported
             )
         ]
+        if matches:
+            specificity = max(len(suffix.split("/")) for suffix, _ in matches)
+            matches = [
+                match for match in matches if len(match[0].split("/")) == specificity
+            ]
         if len(matches) != 1:
             raise EvidenceError(
                 f"Python coverage source {filename} does not resolve uniquely to declared "
                 "authored sources"
             )
-        node.set("filename", matches[0])
+        node.set("filename", matches[0][1])
     for node in report.iter("source"):
         node.text = root.replace("\\", "/")
     return _document(report)

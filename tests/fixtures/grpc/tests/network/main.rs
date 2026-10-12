@@ -27,7 +27,7 @@ use std::{
 
 // Local Imports
 use harmos::operations::{Context, Operation, StreamInput, StreamOutput};
-use harmos::{Application, Never, Runtime};
+use harmos::{Application, Runtime, state::Never};
 use harmos_grpc_fixture::contract::*;
 
 /* === Constants === */

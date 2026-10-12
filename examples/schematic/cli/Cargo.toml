@@ -1,0 +1,82 @@
+# === Package ===
+
+[package]
+name = "schematic-cli"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+version = { workspace = true }
+
+# === Package Targets ===
+
+# === Features ===
+
+# === Dependencies ===
+
+[dependencies]
+# Local
+harmos = { workspace = true, default-features = true, features = ["plugin-guest", "plugin"] }
+schematic-app = { path = "../app" }
+
+# Git
+
+# Error Handling
+thiserror = { workspace = true, default-features = true }
+
+# Logging
+tracing = { workspace = true, default-features = true }
+
+# Utilities
+
+# Serialization
+
+# Configuration
+clap = { workspace = true, features = ["derive", "std", "help", "usage", "error-context"] }
+
+# Filesystem
+tempfile = { workspace = true, default-features = true }
+
+# Parsing
+
+# Concurrency
+
+# Async
+tokio = { workspace = true, default-features = true, features = [
+  "macros",
+  "rt",
+  "rt-multi-thread",
+  "time",
+] }
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Build Dependencies ===
+
+# === Dev Dependencies ===
+
+# === Target Dependencies ===
+
+# === Test Targets ===
+
+# === Bench Targets ===
+
+# === Example Targets ===
+
+# === Workspace Lints ===
+
+# === Lints ===
+
+[lints]
+workspace = true
+
+# === Profiles ===
+
+# === Patches ===
+
+# === Other ===

@@ -84,6 +84,7 @@ impl<T: Identified + Serialize> CatalogCodec for T {
     fn identify(&self) -> (DefinitionId, u32) {
         T::definition()
     }
+
     fn encode<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         self.serialize(serializer)
     }
@@ -106,6 +107,7 @@ impl CatalogCodec for () {
     fn identify(&self) -> (DefinitionId, u32) {
         (DefinitionId::new("harmos:unit"), 1)
     }
+
     fn encode<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         self.serialize(serializer)
     }
@@ -170,6 +172,7 @@ impl Prepared {
         }
         Ok(prepared)
     }
+
     pub(crate) fn typed_record(value: &impl CatalogCodec) -> Result<Self, PreparationError> {
         let prepared = Self::encode(value)?;
         if ["harmos:work/", "harmos:guest/", "harmos:sidecar/"]
@@ -180,6 +183,7 @@ impl Prepared {
         }
         Ok(prepared)
     }
+
     pub(crate) fn system(fact: &SystemFact) -> Result<Self, PreparationError> {
         let owner = match &fact.source {
             FactSource::Work(owner) | FactSource::Guest(owner) | FactSource::Sidecar(owner) => {
@@ -211,6 +215,7 @@ impl Prepared {
         }
         Ok(prepared)
     }
+
     pub(crate) fn bytes(&self) -> Result<usize, PreparationError> {
         if self.id.as_str().len() > Records::MAX_BYTES {
             return Err(PreparationError::Limit);
@@ -250,6 +255,7 @@ impl Records {
         }
         result
     }
+
     pub fn push_system(&mut self, fact: SystemFact) -> Result<(), PreparationError> {
         if let Some(refusal) = self.refusal {
             return Err(refusal);
@@ -268,6 +274,7 @@ impl Records {
         }
         result
     }
+
     fn reserve(&mut self, bytes: usize) -> Result<(), PreparationError> {
         self.bytes = self
             .bytes
@@ -276,15 +283,16 @@ impl Records {
             .ok_or(PreparationError::Limit)?;
         Ok(())
     }
+
     pub(crate) fn prepare<A: Application>(
         transaction: &A::Transaction,
         state: &A::State,
-        catalog: &super::dispatch::Dispatch<A, crate::Payload<A>>,
+        catalog: &super::dispatch::Dispatch<A, crate::storage::Payload<A>>,
     ) -> Result<PreparedCommit<A>, PreparationError> {
         let prepared = Prepared::encode(transaction)?;
         let mut out = Self::default();
         out.reserve(prepared.bytes()?)?;
-        crate::Transaction::records(transaction, state, &mut out);
+        crate::state::Transaction::records(transaction, state, &mut out);
         if let Some(refusal) = out.refusal {
             return Err(refusal);
         }

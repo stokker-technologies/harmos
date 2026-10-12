@@ -26,7 +26,6 @@ use harmos_contract::__private::{DecodeInput, decoding_add, prost};
 /* === Macros === */
 macro_rules! envelope {
     ($name:ident, $first:ident, $second:ident) => {
-        #[cfg(feature = "runtime")]
         impl<A: MemorySize, B: MemorySize> $name<A, B> {
             pub fn project(
                 item: crate::operations::StreamItem<Self>,

@@ -64,18 +64,23 @@ impl Invocation {
     pub fn path(&self) -> &str {
         &self.path
     }
+
     pub fn transport(&self) -> &tonic::codegen::http::Extensions {
         &self.extensions
     }
+
     pub fn metadata(&self) -> &MetadataMap {
         &self.metadata
     }
+
     pub fn peer(&self) -> Option<std::net::SocketAddr> {
         self.peer
     }
+
     pub fn context(&self) -> &CallContext {
         &self.context
     }
+
     pub fn context_mut(&mut self) -> crate::operations::ContextMut<'_> {
         crate::operations::ContextMut::new(&mut self.context)
     }

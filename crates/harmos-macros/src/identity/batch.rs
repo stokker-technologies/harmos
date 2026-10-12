@@ -164,7 +164,7 @@ pub(super) fn expand(
         .collect();
     let name = &row.ident;
     Ok(quote! {
-        impl #harmos::Batched for #name {
+        impl #harmos::streams::Batched for #name {
             const SAMPLES: u64 = #samples;
             const MEASURES: &'static [&'static str] = &[#(#names),*];
             fn measure(&self, visit: &mut dyn FnMut(f64)) { #(visit(self.#fields as f64);)* }

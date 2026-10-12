@@ -35,7 +35,10 @@ use std::time::Duration;
 use tokio::sync::{Barrier, Notify};
 // Local Imports
 use harmos::operations::{Context, Operation, OperationPolicy, RetryPolicy};
-use harmos::{Error, Fault, Runtime, Service, ServicePolicy, ServiceStatus};
+use harmos::{
+    Error, Runtime, services::Fault, services::Service, services::ServicePolicy,
+    services::ServiceStatus,
+};
 use support::{Bank, Ledger, catalog};
 
 /* === Constants === */
@@ -48,9 +51,7 @@ use support::{Bank, Ledger, catalog};
 struct Ping;
 
 /* === Enums === */
-#[harmos::catalog]
-enum Operations {
-    #[operation(
+#[harmos::operation(
         request = (),
         response = usize,
         id = "service.ping",
@@ -60,7 +61,11 @@ enum Operations {
             retries: RetryPolicy::Never,
         },
     )]
-    PingContract,
+struct PingContract;
+
+#[harmos::catalog]
+enum Operations {
+    PingContract(PingContract),
 }
 
 #[harmos::lanes]
