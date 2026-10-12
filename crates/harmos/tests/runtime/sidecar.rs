@@ -1692,15 +1692,14 @@ fn own_contract() {
                 .block_on(async {
                     let logged = Arc::new(Mutex::new(Vec::new()));
                     let lines = Arc::clone(&logged);
-                    let source = native_process();
+                    let source = native_process().variable("HARMOS_TEST_DELAY_SHUTDOWN", "1");
                     let definition = process_definition(&source);
                     let meter =
                         Supervised::new(source, move |_context: &Service<Bank>, notice: Notice| {
                             if let Notice::Logged { line } = notice {
                                 lines.lock().expect("the notice lock is healthy").push(line);
                             }
-                        })
-                        .grace(Duration::from_millis(50));
+                        });
 
                     let (runtime, _lease) =
                         process_runtime(meter, definition, ServicePolicy::default()).await;

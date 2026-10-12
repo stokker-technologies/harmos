@@ -134,7 +134,10 @@ target-dir = "configured-target"
                         );
                         let exported = target.join("grpc/native");
                         let reported = String::from_utf8(output.stdout).unwrap();
-                        assert_eq!(Path::new(reported.trim()), exported);
+                        assert_eq!(
+                            Path::new(reported.trim()).canonicalize().unwrap(),
+                            exported.canonicalize().unwrap()
+                        );
                         assert!(exported.join("descriptors.bin").is_file());
                         let proto =
                             std::fs::read_to_string(exported.join("fixture/v1/Native.proto"))

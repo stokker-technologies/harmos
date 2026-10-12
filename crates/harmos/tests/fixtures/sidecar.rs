@@ -199,6 +199,9 @@ impl harmos::Plugin for Stubborn {
         table.bind_operation::<Echoing>(self.resources())
     }
     async fn shutdown(&mut self, _: &Supervisor) -> Result<(), Refusal> {
+        if std::env::var("HARMOS_TEST_DELAY_SHUTDOWN").as_deref() == Ok("1") {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Refusal> {

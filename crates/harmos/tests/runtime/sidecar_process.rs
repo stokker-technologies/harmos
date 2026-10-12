@@ -110,8 +110,7 @@ impl Fixture {
         let source = Executable::at(prepared_fixtures::artifact("harmos-process-fixture")).unwrap();
         let mut definition = process_definition(&source);
         definition.configuration = serde_json::to_vec(root.path().to_str().unwrap()).unwrap();
-        let resident = Supervised::new(source, notices as fn(&Service<Bank>, Notice))
-            .grace(Duration::from_millis(50));
+        let resident = Supervised::new(source, notices as fn(&Service<Bank>, Notice));
         let runtime = assembly()
             .operation_preparation_bytes(
                 NonZeroUsize::new(harmos_sidecar::Frame::LIMIT * 4).unwrap(),
@@ -463,8 +462,7 @@ fn contract_scenario() {
                                 );
                                 notices.fetch_add(1, Ordering::SeqCst);
                             }
-                        })
-                        .grace(Duration::from_millis(50));
+                        });
                     let calls = resident.clone();
                     let runtime = assembly()
                         .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
