@@ -474,12 +474,16 @@ where
         context: Self::Context<'ctx>,
         request: &mut crate::operations::host::Publication,
         _endpoints: &mut Self::Endpoints,
-    ) -> crate::Result<()> {
-        let scope = context.caller_scope().ok_or(crate::Error::InvalidInput {
-            field: "native publication",
-            reason: "the original plugin caller is required",
-        })?;
-        self.endpoint.publish(scope, request, &context).await
+    ) -> crate::Result<crate::operations::Response<()>> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            let scope = context.caller_scope().ok_or(crate::Error::InvalidInput {
+                field: "native publication",
+                reason: "the original plugin caller is required",
+            })?;
+            self.endpoint.publish(scope, request, &context).await
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 

@@ -117,17 +117,21 @@ impl<C: 'static> Operation for Handler<C> {
         _: Self::Context<'a>,
         request: &mut ReductionsRequest,
         _: &mut Self::Endpoints,
-    ) -> Result<Collected> {
-        let query = FrameQuery {
-            frame: request.frame.clone(),
-            options: QueryOptions {
-                page: Some(request.page),
-                ..QueryOptions::default()
-            },
-        };
-        let mut reader = self.storage.query(query).await?;
-        let collected = reader.read().await?;
-        Ok(Collected::clone(&collected))
+    ) -> Result<crate::operations::Response<Collected>> {
+        let result: ::core::result::Result<Collected, Self::Error> = async move {
+            let query = FrameQuery {
+                frame: request.frame.clone(),
+                options: QueryOptions {
+                    page: Some(request.page),
+                    ..QueryOptions::default()
+                },
+            };
+            let mut reader = self.storage.query(query).await?;
+            let collected = reader.read().await?;
+            Ok(Collected::clone(&collected))
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 

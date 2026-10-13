@@ -99,9 +99,17 @@ impl harmos::operations::Operation for Surveying {
         _: Self::Context<'ctx>,
         _request: &mut harmos::operations::host::SurveyRequest,
         _endpoints: &mut Self::Endpoints,
-    ) -> std::result::Result<harmos::operations::host::SurveyResponse, Self::Error> {
-        self.0.called.fetch_add(1, Ordering::SeqCst);
-        Ok(harmos::operations::host::SurveyResponse::default())
+    ) -> std::result::Result<
+        harmos::operations::Response<harmos::operations::host::SurveyResponse>,
+        Self::Error,
+    > {
+        let result: ::core::result::Result<harmos::operations::host::SurveyResponse, Self::Error> =
+            async move {
+                self.0.called.fetch_add(1, Ordering::SeqCst);
+                Ok(harmos::operations::host::SurveyResponse::default())
+            }
+            .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -120,16 +128,20 @@ impl harmos::operations::Operation for CorePublication {
         context: Self::Context<'ctx>,
         _request: &mut harmos::operations::host::Publication,
         _endpoints: &mut Self::Endpoints,
-    ) -> std::result::Result<(), Self::Error> {
-        assert_eq!(context.context().require::<Principal>().unwrap().0, "alice");
-        assert!(!context.is_host_call());
-        assert_eq!(context.caller_scope().unwrap().owner(), "client");
-        assert!(matches!(
-            context.submit::<Control>("child".into()),
-            Err(Error::OperationUnauthorized { .. })
-        ));
-        self.0.called.fetch_add(1, Ordering::SeqCst);
-        Ok(())
+    ) -> std::result::Result<harmos::operations::Response<()>, Self::Error> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            assert_eq!(context.context().require::<Principal>().unwrap().0, "alice");
+            assert!(!context.is_host_call());
+            assert_eq!(context.caller_scope().unwrap().owner(), "client");
+            assert!(matches!(
+                context.submit::<Control>("child".into()),
+                Err(Error::OperationUnauthorized { .. })
+            ));
+            self.0.called.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -171,8 +183,10 @@ impl Operation for Controlling {
         _: Self::Context<'ctx>,
         request: &mut Text,
         _endpoints: &mut Self::Endpoints,
-    ) -> std::result::Result<String, Self::Error> {
-        Ok(request.value.clone())
+    ) -> std::result::Result<harmos::operations::Response<String>, Self::Error> {
+        let result: ::core::result::Result<String, Self::Error> =
+            async move { Ok(request.value.clone()) }.await;
+        result.map(::core::convert::Into::into)
     }
 }
 

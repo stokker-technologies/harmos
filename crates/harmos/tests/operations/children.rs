@@ -125,18 +125,22 @@ impl Operation for Parent {
         context: Self::Context<'ctx>,
         exit: &mut Exit,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Failed> {
-        self.trace.attempts.fetch_add(1, Ordering::SeqCst);
-        self.trace.events.lock().unwrap().push("parent-attempt");
-        let _child = context.submit::<ChildContract>(())?;
-        self.trace.child_started.notified().await;
-        self.trace.parent_ready.notify_one();
-        match exit {
-            Exit::Return => Ok(()),
-            Exit::Fail => Err(Failed::Attempt),
-            Exit::Wait => std::future::pending().await,
-            Exit::Retry => Err(Failed::Retry),
+    ) -> Result<harmos::operations::Response<()>, Failed> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            self.trace.attempts.fetch_add(1, Ordering::SeqCst);
+            self.trace.events.lock().unwrap().push("parent-attempt");
+            let _child = context.submit::<ChildContract>(())?;
+            self.trace.child_started.notified().await;
+            self.trace.parent_ready.notify_one();
+            match exit {
+                Exit::Return => Ok(()),
+                Exit::Fail => Err(Failed::Attempt),
+                Exit::Wait => std::future::pending().await,
+                Exit::Retry => Err(Failed::Retry),
+            }
         }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     fn classify(error: &Failed) -> Failure {
@@ -163,10 +167,14 @@ impl Operation for Child {
         _context: Self::Context<'ctx>,
         _request: &mut (),
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Self::Error> {
-        self.0.events.lock().unwrap().push("child-started");
-        self.0.child_started.notify_one();
-        std::future::pending().await
+    ) -> Result<harmos::operations::Response<()>, Self::Error> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            self.0.events.lock().unwrap().push("child-started");
+            self.0.child_started.notify_one();
+            std::future::pending().await
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     async fn finalize(&mut self) -> Result<(), Self::Error> {
@@ -214,7 +222,7 @@ async fn runtime(block_cleanup: bool) -> (Runtime<App>, Arc<Trace>) {
     (runtime, trace)
 }
 
-async fn torn_down(exit: Exit, cancel: bool) -> Result<Arc<()>, Error> {
+async fn torn_down(exit: Exit, cancel: bool) -> Result<harmos::operations::Response<()>, Error> {
     let (runtime, trace) = runtime(false).await;
     let parent = runtime.operations.submit::<ParentContract>(exit).unwrap();
     if cancel {

@@ -43,6 +43,13 @@ use harmos::operations::{
 use harmos::{Error, Runtime};
 
 /* === Constants === */
+// A google.rpc.Status With One Typed Domain Rejection In An Any Envelope.
+const REJECTION_DETAILS: &[u8] = &[
+    8, 5, 18, 13, 110, 111, 32, 115, 117, 99, 104, 32, 97, 99, 116, 111, 114, 26, 49, 10, 37, 116,
+    121, 112, 101, 46, 103, 111, 111, 103, 108, 101, 97, 112, 105, 115, 46, 99, 111, 109, 47, 102,
+    105, 120, 116, 117, 114, 101, 46, 82, 101, 106, 101, 99, 116, 105, 111, 110, 18, 8, 10, 6, 97,
+    98, 115, 101, 110, 116,
+];
 
 /* === Macros === */
 
@@ -166,10 +173,14 @@ impl Operation for Read {
         context: Self::Context<'a>,
         _request: &mut Ask,
         _: &mut Self::Endpoints,
-    ) -> harmos::Result<Reply> {
-        Ok(Reply {
-            actor: context.context().require::<Principal>()?.0.clone(),
-        })
+    ) -> harmos::Result<harmos::operations::Response<Reply>> {
+        let result: ::core::result::Result<Reply, Self::Error> = async move {
+            Ok(Reply {
+                actor: context.context().require::<Principal>()?.0.clone(),
+            })
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 impl harmos::operations::authorization::Authorizer for ExternalAccess {
@@ -255,21 +266,25 @@ impl Operation for Guard {
         context: Self::Context<'a>,
         _: &mut Ask,
         _: &mut (),
-    ) -> harmos::Result<Reply> {
-        let principal = context
-            .context()
-            .get::<Principal>()
-            .map_or("anonymous", |value| value.0.as_str());
-        Ok(Reply {
-            actor: format!(
-                "{}:{principal}",
-                if context.is_host_call() {
-                    "host"
-                } else {
-                    "external"
-                }
-            ),
-        })
+    ) -> harmos::Result<harmos::operations::Response<Reply>> {
+        let result: ::core::result::Result<Reply, Self::Error> = async move {
+            let principal = context
+                .context()
+                .get::<Principal>()
+                .map_or("anonymous", |value| value.0.as_str());
+            Ok(Reply {
+                actor: format!(
+                    "{}:{principal}",
+                    if context.is_host_call() {
+                        "host"
+                    } else {
+                        "external"
+                    }
+                ),
+            })
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 impl OperationDeclaration for Descendant {
@@ -298,11 +313,15 @@ impl Operation for Descend {
         context: Self::Context<'a>,
         _: &mut Ask,
         _: &mut (),
-    ) -> harmos::Result<Reply> {
-        let response = context.call::<Guarded>(Ask {}).await?;
-        Ok(Reply {
-            actor: response.actor.clone(),
-        })
+    ) -> harmos::Result<harmos::operations::Response<Reply>> {
+        let result: ::core::result::Result<Reply, Self::Error> = async move {
+            let response = context.call::<Guarded>(Ask {}).await?;
+            Ok(Reply {
+                actor: response.actor.clone(),
+            })
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -376,16 +395,20 @@ impl Operation for Download {
         context: Self::Context<'a>,
         _request: &mut Ask,
         output: &mut Self::Endpoints,
-    ) -> harmos::Result<Reply> {
-        let actor = context.context().require::<Principal>()?.0.clone();
-        output
-            .send_with(128, || {
-                Ok(Reply {
-                    actor: actor.clone(),
+    ) -> harmos::Result<harmos::operations::Response<Reply>> {
+        let result: ::core::result::Result<Reply, Self::Error> = async move {
+            let actor = context.context().require::<Principal>()?.0.clone();
+            output
+                .send_with(128, || {
+                    Ok(Reply {
+                        actor: actor.clone(),
+                    })
                 })
-            })
-            .await?;
-        Ok(Reply { actor })
+                .await?;
+            Ok(Reply { actor })
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 impl Operation for Reject {
@@ -402,8 +425,10 @@ impl Operation for Reject {
         _: Self::Context<'a>,
         _: &mut Ask,
         _: &mut Self::Endpoints,
-    ) -> Result<Reply, tonic::Status> {
-        Err(tonic::Status::not_found("no such actor"))
+    ) -> Result<harmos::operations::Response<Reply>, tonic::Status> {
+        let result: ::core::result::Result<Reply, Self::Error> =
+            async move { Err(authored_rejection()) }.await;
+        result.map(::core::convert::Into::into)
     }
 }
 impl Operation for Crash {
@@ -420,8 +445,10 @@ impl Operation for Crash {
         _: Self::Context<'a>,
         _: &mut Ask,
         _: &mut Self::Endpoints,
-    ) -> Result<Reply, std::io::Error> {
-        Err(std::io::Error::other("disk detail"))
+    ) -> Result<harmos::operations::Response<Reply>, std::io::Error> {
+        let result: ::core::result::Result<Reply, Self::Error> =
+            async move { Err(std::io::Error::other("disk detail")) }.await;
+        result.map(::core::convert::Into::into)
     }
 }
 impl Operation for RejectStream {
@@ -438,8 +465,10 @@ impl Operation for RejectStream {
         _: Self::Context<'a>,
         _: &mut Ask,
         _: &mut Self::Endpoints,
-    ) -> Result<Reply, tonic::Status> {
-        Err(tonic::Status::not_found("no such actor"))
+    ) -> Result<harmos::operations::Response<Reply>, tonic::Status> {
+        let result: ::core::result::Result<Reply, Self::Error> =
+            async move { Err(authored_rejection()) }.await;
+        result.map(::core::convert::Into::into)
     }
 }
 impl Operation for CrashStream {
@@ -456,8 +485,10 @@ impl Operation for CrashStream {
         _: Self::Context<'a>,
         _: &mut Ask,
         _: &mut Self::Endpoints,
-    ) -> Result<Reply, std::io::Error> {
-        Err(std::io::Error::other("disk detail"))
+    ) -> Result<harmos::operations::Response<Reply>, std::io::Error> {
+        let result: ::core::result::Result<Reply, Self::Error> =
+            async move { Err(std::io::Error::other("disk detail")) }.await;
+        result.map(::core::convert::Into::into)
     }
 }
 impl Operation for RejectUpload {
@@ -474,20 +505,22 @@ impl Operation for RejectUpload {
         _: Self::Context<'a>,
         _: &mut Ask,
         _: &mut Self::Endpoints,
-    ) -> Result<Reply, tonic::Status> {
-        Err(tonic::Status::not_found("no such actor"))
+    ) -> Result<harmos::operations::Response<Reply>, tonic::Status> {
+        let result: ::core::result::Result<Reply, Self::Error> =
+            async move { Err(authored_rejection()) }.await;
+        result.map(::core::convert::Into::into)
     }
 }
 impl Operation for RejectExchange {
     type Declaration = Exchange;
     type Resources = ();
-    type Error = tonic::Status;
+    type Error = Error;
     type Endpoints = (
         harmos::operations::StreamInput<Reply>,
         harmos::operations::StreamOutput<Reply>,
     );
     type Context<'a> = Context<'a>;
-    fn new(_: Arc<()>) -> Result<Self, tonic::Status> {
+    fn new(_: Arc<()>) -> Result<Self, Error> {
         Ok(Self)
     }
     async fn run<'a>(
@@ -495,8 +528,18 @@ impl Operation for RejectExchange {
         _: Self::Context<'a>,
         _: &mut Ask,
         _: &mut Self::Endpoints,
-    ) -> Result<Reply, tonic::Status> {
-        Err(tonic::Status::not_found("no such actor"))
+    ) -> Result<harmos::operations::Response<Reply>, Error> {
+        let result: ::core::result::Result<Reply, Self::Error> = async move {
+            Err(Error::TaskFailed {
+                domain: "fixture response",
+                source: Arc::<Error>::new(Error::OperationFailed {
+                    operation: "fixture rejection".into(),
+                    source: Arc::new(authored_rejection()),
+                }),
+            })
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 impl Operation for CrashUpload {
@@ -513,8 +556,10 @@ impl Operation for CrashUpload {
         _: Self::Context<'a>,
         _: &mut Ask,
         _: &mut Self::Endpoints,
-    ) -> Result<Reply, std::io::Error> {
-        Err(std::io::Error::other("disk detail"))
+    ) -> Result<harmos::operations::Response<Reply>, std::io::Error> {
+        let result: ::core::result::Result<Reply, Self::Error> =
+            async move { Err(std::io::Error::other("disk detail")) }.await;
+        result.map(::core::convert::Into::into)
     }
 }
 impl Operation for CrashExchange {
@@ -534,8 +579,10 @@ impl Operation for CrashExchange {
         _: Self::Context<'a>,
         _: &mut Ask,
         _: &mut Self::Endpoints,
-    ) -> Result<Reply, std::io::Error> {
-        Err(std::io::Error::other("disk detail"))
+    ) -> Result<harmos::operations::Response<Reply>, std::io::Error> {
+        let result: ::core::result::Result<Reply, Self::Error> =
+            async move { Err(std::io::Error::other("disk detail")) }.await;
+        result.map(::core::convert::Into::into)
     }
 }
 impl OperationDeclaration for Upload {
@@ -564,11 +611,15 @@ impl Operation for Upload {
         context: Self::Context<'a>,
         _request: &mut Ask,
         input: &mut Self::Endpoints,
-    ) -> harmos::Result<Reply> {
-        while input.recv().await.is_some() {}
-        Ok(Reply {
-            actor: context.context().require::<Principal>()?.0.clone(),
-        })
+    ) -> harmos::Result<harmos::operations::Response<Reply>> {
+        let result: ::core::result::Result<Reply, Self::Error> = async move {
+            while input.recv().await.is_some() {}
+            Ok(Reply {
+                actor: context.context().require::<Principal>()?.0.clone(),
+            })
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 impl OperationDeclaration for Exchange {
@@ -606,19 +657,23 @@ impl Operation for Exchange {
         context: Self::Context<'a>,
         _request: &mut Ask,
         endpoints: &mut Self::Endpoints,
-    ) -> harmos::Result<Reply> {
-        let actor = context.context().require::<Principal>()?.0.clone();
-        while endpoints.0.recv().await.is_some() {
-            endpoints
-                .1
-                .send_with(128, || {
-                    Ok(Reply {
-                        actor: actor.clone(),
+    ) -> harmos::Result<harmos::operations::Response<Reply>> {
+        let result: ::core::result::Result<Reply, Self::Error> = async move {
+            let actor = context.context().require::<Principal>()?.0.clone();
+            while endpoints.0.recv().await.is_some() {
+                endpoints
+                    .1
+                    .send_with(128, || {
+                        Ok(Reply {
+                            actor: actor.clone(),
+                        })
                     })
-                })
-                .await?;
+                    .await?;
+            }
+            Ok(Reply { actor })
         }
-        Ok(Reply { actor })
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -648,10 +703,14 @@ impl Operation for Hold {
         context: Self::Context<'a>,
         _request: &mut Ask,
         output: &mut Self::Endpoints,
-    ) -> harmos::Result<Reply> {
-        let actor = context.context().require::<Principal>()?.0.clone();
-        output.send_with(128, || Ok(Reply { actor })).await?;
-        std::future::pending().await
+    ) -> harmos::Result<harmos::operations::Response<Reply>> {
+        let result: ::core::result::Result<Reply, Self::Error> = async move {
+            let actor = context.context().require::<Principal>()?.0.clone();
+            output.send_with(128, || Ok(Reply { actor })).await?;
+            std::future::pending().await
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
     async fn stop(&mut self) -> harmos::Result<()> {
         self.stopped.add_permits(1);
@@ -662,6 +721,21 @@ impl Operation for Hold {
 /* === Public Functions === */
 
 /* === Private Functions === */
+fn authored_rejection() -> tonic::Status {
+    let mut metadata = tonic::metadata::MetadataMap::new();
+    metadata.insert("x-fixture-rejection", "absent".parse().unwrap());
+    metadata.insert_bin(
+        "x-fixture-context-bin",
+        tonic::metadata::MetadataValue::from_bytes(&[0, 255, 1]),
+    );
+    tonic::Status::with_details_and_metadata(
+        tonic::Code::NotFound,
+        "no such actor",
+        bytes::Bytes::from_static(REJECTION_DETAILS),
+        metadata,
+    )
+}
+
 fn limits() -> (DecodeSettings, EncodeSettings) {
     let bytes = NonZeroUsize::new(4096).unwrap();
     (
@@ -716,7 +790,7 @@ async fn call(
         .ready()
         .await
         .map_err(|_| tonic::Status::unavailable("channel"))?;
-    let mut request = tonic::Request::new(Arc::new(Ask {}));
+    let mut request = tonic::Request::new(harmos::operations::Response::new(Ask {}));
     if let Some(token) = token {
         request
             .metadata_mut()
@@ -727,7 +801,7 @@ async fn call(
         .unary(
             request,
             http::uri::PathAndQuery::from_static("/fixture.Identity/Who"),
-            Codec::<Reply, Arc<Ask>>::new(decode, encode)?,
+            Codec::<Reply, harmos::operations::Response<Ask>>::new(decode, encode)?,
         )
         .await?;
     Ok(response.into_inner().actor.clone())
@@ -743,7 +817,7 @@ async fn external_call(
         .ready()
         .await
         .map_err(|_| tonic::Status::unavailable("channel"))?;
-    let mut request = tonic::Request::new(Arc::new(Ask {}));
+    let mut request = tonic::Request::new(harmos::operations::Response::new(Ask {}));
     if let Some(token) = token {
         request
             .metadata_mut()
@@ -754,7 +828,7 @@ async fn external_call(
         .unary(
             request,
             http::uri::PathAndQuery::from_static(path),
-            Codec::<Reply, Arc<Ask>>::new(decode, encode)?,
+            Codec::<Reply, harmos::operations::Response<Ask>>::new(decode, encode)?,
         )
         .await?;
     Ok(response.into_inner().actor.clone())
@@ -770,7 +844,7 @@ async fn external_catalog(
         .ready()
         .await
         .map_err(|_| tonic::Status::unavailable("channel"))?;
-    let mut request = tonic::Request::new(Arc::new(OperationsRequest {
+    let mut request = tonic::Request::new(harmos::operations::Response::new(OperationsRequest {
         after: None,
         rows: None,
         bytes: None,
@@ -785,7 +859,9 @@ async fn external_catalog(
         .unary(
             request,
             http::uri::PathAndQuery::from_static("/harmos.host.v1.Host/Operations"),
-            Codec::<OperationsResponse, Arc<OperationsRequest>>::new(decode, encode)?,
+            Codec::<OperationsResponse, harmos::operations::Response<OperationsRequest>>::new(
+                decode, encode,
+            )?,
         )
         .await?;
     Ok(serde_json::from_slice(&response.into_inner().catalog).unwrap())
@@ -848,7 +924,7 @@ async fn failures(
     let mut client = tonic::client::Grpc::new(channel);
     client.ready().await.unwrap();
     let (decode, encode) = limits();
-    let mut request = tonic::Request::new(Arc::new(Ask {}));
+    let mut request = tonic::Request::new(harmos::operations::Response::new(Ask {}));
     request
         .metadata_mut()
         .insert("authorization", "Bearer alice".parse().unwrap());
@@ -856,7 +932,10 @@ async fn failures(
         .server_streaming(
             request,
             http::uri::PathAndQuery::from_static("/fixture.Identity/Download"),
-            Codec::<OutputEnvelope<Reply, Reply>, Arc<Ask>>::new(decode, encode).unwrap(),
+            Codec::<OutputEnvelope<Reply, Reply>, harmos::operations::Response<Ask>>::new(
+                decode, encode,
+            )
+            .unwrap(),
         )
         .await
     {
@@ -869,12 +948,9 @@ async fn failures(
         Err(status) => status,
     };
     client.ready().await.unwrap();
-    let mut request = tonic::Request::new(futures_util::stream::iter([Arc::new(InputEnvelope::<
-        Ask,
-        Reply,
-    >::Request(
-        Ask {}
-    ))]));
+    let mut request = tonic::Request::new(futures_util::stream::iter([
+        harmos::operations::Response::new(InputEnvelope::<Ask, Reply>::Request(Ask {})),
+    ]));
     request
         .metadata_mut()
         .insert("authorization", "Bearer alice".parse().unwrap());
@@ -882,18 +958,18 @@ async fn failures(
         .client_streaming(
             request,
             http::uri::PathAndQuery::from_static("/fixture.Identity/Upload"),
-            Codec::<Reply, Arc<InputEnvelope<Ask, Reply>>>::new(decode, encode).unwrap(),
+            Codec::<Reply, harmos::operations::Response<InputEnvelope<Ask, Reply>>>::new(
+                decode, encode,
+            )
+            .unwrap(),
         )
         .await
         .err()
         .expect("upload fails");
     client.ready().await.unwrap();
-    let mut request = tonic::Request::new(futures_util::stream::iter([Arc::new(InputEnvelope::<
-        Ask,
-        Reply,
-    >::Request(
-        Ask {}
-    ))]));
+    let mut request = tonic::Request::new(futures_util::stream::iter([
+        harmos::operations::Response::new(InputEnvelope::<Ask, Reply>::Request(Ask {})),
+    ]));
     request
         .metadata_mut()
         .insert("authorization", "Bearer alice".parse().unwrap());
@@ -901,9 +977,10 @@ async fn failures(
         .streaming(
             request,
             http::uri::PathAndQuery::from_static("/fixture.Identity/Exchange"),
-            Codec::<OutputEnvelope<Reply, Reply>, Arc<InputEnvelope<Ask, Reply>>>::new(
-                decode, encode,
-            )
+            Codec::<
+                OutputEnvelope<Reply, Reply>,
+                harmos::operations::Response<InputEnvelope<Ask, Reply>>,
+            >::new(decode, encode)
             .unwrap(),
         )
         .await
@@ -1510,6 +1587,21 @@ pub(super) fn contract_scenario() {
                     for status in statuses {
                         assert_eq!(status.code(), tonic::Code::NotFound);
                         assert_eq!(status.message(), "no such actor");
+                        assert_eq!(status.details(), REJECTION_DETAILS);
+                        assert_eq!(
+                            status.metadata().get("x-fixture-rejection").unwrap(),
+                            "absent"
+                        );
+                        assert_eq!(
+                            status
+                                .metadata()
+                                .get_bin("x-fixture-context-bin")
+                                .unwrap()
+                                .to_bytes()
+                                .unwrap()
+                                .as_ref(),
+                            &[0, 255, 1]
+                        );
                     }
                     let statuses = failures(|operations| {
                         operations
@@ -1660,7 +1752,7 @@ pub(super) fn contract_scenario() {
     let mut client = tonic::client::Grpc::new(channel);
     client.ready().await.unwrap();
     let (decode, encode) = limits();
-    let mut request = tonic::Request::new(Arc::new(Ask {}));
+    let mut request = tonic::Request::new(harmos::operations::Response::new(Ask {}));
     request
         .metadata_mut()
         .insert("authorization", "Bearer alice".parse().unwrap());
@@ -1668,7 +1760,7 @@ pub(super) fn contract_scenario() {
         .server_streaming(
             request,
             http::uri::PathAndQuery::from_static("/fixture.Identity/Download"),
-            Codec::<OutputEnvelope<Reply, Reply>, Arc<Ask>>::new(decode, encode).unwrap(),
+            Codec::<OutputEnvelope<Reply, Reply>, harmos::operations::Response<Ask>>::new(decode, encode).unwrap(),
         )
         .await
         .unwrap();
@@ -1683,8 +1775,8 @@ pub(super) fn contract_scenario() {
     for exchange in [false, true] {
         client.ready().await.unwrap();
         let values = [
-            Arc::new(InputEnvelope::<Ask, Reply>::Request(Ask {})),
-            Arc::new(InputEnvelope::Item(Reply {
+            harmos::operations::Response::new(InputEnvelope::<Ask, Reply>::Request(Ask {})),
+            harmos::operations::Response::new(InputEnvelope::Item(Reply {
                 actor: "forged".into(),
             })),
         ];
@@ -1697,7 +1789,7 @@ pub(super) fn contract_scenario() {
                 .streaming(
                     request,
                     http::uri::PathAndQuery::from_static("/fixture.Identity/Exchange"),
-                    Codec::<OutputEnvelope<Reply, Reply>, Arc<InputEnvelope<Ask, Reply>>>::new(
+                    Codec::<OutputEnvelope<Reply, Reply>, harmos::operations::Response<InputEnvelope<Ask, Reply>>>::new(
                         decode, encode,
                     )
                     .unwrap(),
@@ -1717,7 +1809,7 @@ pub(super) fn contract_scenario() {
                 .client_streaming(
                     request,
                     http::uri::PathAndQuery::from_static("/fixture.Identity/Upload"),
-                    Codec::<Reply, Arc<InputEnvelope<Ask, Reply>>>::new(decode, encode).unwrap(),
+                    Codec::<Reply, harmos::operations::Response<InputEnvelope<Ask, Reply>>>::new(decode, encode).unwrap(),
                 )
                 .await
                 .unwrap();
@@ -1840,7 +1932,8 @@ pub(super) fn contract_scenario() {
                                 .unwrap();
                         let mut client = tonic::client::Grpc::new(channel);
                         client.ready().await.unwrap();
-                        let mut request = tonic::Request::new(Arc::new(Ask {}));
+                        let mut request =
+                            tonic::Request::new(harmos::operations::Response::new(Ask {}));
                         request
                             .metadata_mut()
                             .insert("authorization", "Bearer alice".parse().unwrap());
@@ -1849,9 +1942,10 @@ pub(super) fn contract_scenario() {
                             .server_streaming(
                                 request,
                                 http::uri::PathAndQuery::from_static("/fixture.Identity/Hold"),
-                                Codec::<OutputEnvelope<Reply, Reply>, Arc<Ask>>::new(
-                                    decode, encode,
-                                )
+                                Codec::<
+                                    OutputEnvelope<Reply, Reply>,
+                                    harmos::operations::Response<Ask>,
+                                >::new(decode, encode)
                                 .unwrap(),
                             )
                             .await

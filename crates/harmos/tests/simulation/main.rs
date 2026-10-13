@@ -363,8 +363,10 @@ impl Operation for Pending {
         _context: Self::Context<'ctx>,
         _request: &mut Pending,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Infallible> {
-        std::future::pending().await
+    ) -> Result<harmos::operations::Response<()>, Infallible> {
+        let result: ::core::result::Result<(), Self::Error> =
+            async move { std::future::pending().await }.await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -397,8 +399,10 @@ impl Operation for Answer {
         _context: Self::Context<'ctx>,
         request: &mut Answering,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<usize, Infallible> {
-        Ok(request.answer)
+    ) -> Result<harmos::operations::Response<usize>, Infallible> {
+        let result: ::core::result::Result<usize, Self::Error> =
+            async move { Ok(request.answer) }.await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -431,14 +435,18 @@ impl Operation for Draw {
         _context: Self::Context<'ctx>,
         request: &mut Drawing,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<u64, Infallible> {
-        let draw = entropy();
-        request
-            .draws
-            .lock()
-            .expect("draw lock is healthy")
-            .push(draw);
-        Ok(draw)
+    ) -> Result<harmos::operations::Response<u64>, Infallible> {
+        let result: ::core::result::Result<u64, Self::Error> = async move {
+            let draw = entropy();
+            request
+                .draws
+                .lock()
+                .expect("draw lock is healthy")
+                .push(draw);
+            Ok(draw)
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -515,10 +523,14 @@ impl Operation for TimeWait {
         context: Self::Context<'ctx>,
         request: &mut TimingItsOwnWait,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Duration, Infallible> {
-        let started = context.scope().now();
-        tokio::time::sleep(Duration::from_millis(request.wait_ms)).await;
-        Ok(context.scope().now() - started)
+    ) -> Result<harmos::operations::Response<Duration>, Infallible> {
+        let result: ::core::result::Result<Duration, Self::Error> = async move {
+            let started = context.scope().now();
+            tokio::time::sleep(Duration::from_millis(request.wait_ms)).await;
+            Ok(context.scope().now() - started)
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 

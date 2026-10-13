@@ -52,8 +52,10 @@ impl Operation for Discovery {
         context: Self::Context<'ctx>,
         request: &mut OperationsRequest,
         _: &mut Self::Endpoints,
-    ) -> Result<OperationsResponse> {
-        context.operations.discover(&context.source, request)
+    ) -> Result<crate::operations::Response<OperationsResponse>> {
+        let result: ::core::result::Result<OperationsResponse, Self::Error> =
+            async move { context.operations.discover(&context.source, request) }.await;
+        result.map(::core::convert::Into::into)
     }
 }
 

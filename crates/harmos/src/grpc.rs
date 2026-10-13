@@ -60,7 +60,6 @@ pub use origin::Origin;
 use std::{
     future::Future,
     pin::Pin,
-    sync::Arc,
     task::{Context, Poll},
 };
 
@@ -79,14 +78,15 @@ use tonic::Status;
 
 /* === Type Aliases === */
 
-type Settlement<R, E> = Pin<Box<dyn Future<Output = Result<Arc<R>, E>> + Send>>;
+type Settlement<R, E> =
+    Pin<Box<dyn Future<Output = Result<crate::operations::Response<R>, E>> + Send>>;
 
 /* === Structs === */
 
 pub struct ResponseStream<O: crate::operations::OperationDeclaration, T, E = crate::Error> {
     pending: Settlement<O::Response, E>,
     items: Option<mpsc::Receiver<crate::operations::StreamItem<T>>>,
-    result: Option<Result<Arc<O::Response>, E>>,
+    result: Option<Result<crate::operations::Response<O::Response>, E>>,
 }
 
 struct Pending<O: crate::operations::OperationDeclaration> {
@@ -122,7 +122,10 @@ enum State<R> {
 /* === Implementations === */
 
 impl<O: crate::operations::OperationDeclaration, T, E: Unpin> Stream for ResponseStream<O, T, E> {
-    type Item = Result<Event<crate::operations::StreamItem<T>, Arc<O::Response>>, E>;
+    type Item = Result<
+        Event<crate::operations::StreamItem<T>, crate::operations::Response<O::Response>>,
+        E,
+    >;
 
     fn poll_next(self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let stream = self.get_mut();
@@ -313,7 +316,8 @@ where
 
 pub fn response<O: crate::operations::OperationDeclaration>(
     instance: crate::operations::OperationInstance<O>,
-) -> impl std::future::Future<Output = crate::Result<std::sync::Arc<O::Response>>> + Send {
+) -> impl std::future::Future<Output = crate::Result<crate::operations::Response<O::Response>>> + Send
+{
     let pending = Pending {
         instance,
         delivered: false,

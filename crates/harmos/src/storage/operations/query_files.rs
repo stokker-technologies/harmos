@@ -86,32 +86,36 @@ impl<C: 'static> Operation for Handler<C> {
         _: Self::Context<'a>,
         selection: &mut Selection,
         output: &mut Self::Endpoints,
-    ) -> Result<StorageCursor> {
-        selection.validate()?;
+    ) -> Result<crate::operations::Response<StorageCursor>> {
+        let result: ::core::result::Result<StorageCursor, Self::Error> = async move {
+            selection.validate()?;
 
-        let query = FileQuery {
-            scope: selection.scope.clone(),
-            item: selection.item.clone(),
-            options: selection.options()?,
-        };
-        let mut reader = self.storage.query(query).await?;
-        let boundary = reader.view().ok_or(Error::ViewExpired)?.saved()?;
-        if let Some(after) = &selection.after
-            && !boundary.covers(after)?
-        {
-            return Err(Error::InvalidInput {
-                field: "storage query",
-                reason: "start exceeds saved boundary",
-            });
-        }
-        while let Some(page) = reader.next_page().await? {
-            for file in page.iter() {
-                output
-                    .send_with(file.memory_size(), || Ok(file.clone()))
-                    .await?;
+            let query = FileQuery {
+                scope: selection.scope.clone(),
+                item: selection.item.clone(),
+                options: selection.options()?,
+            };
+            let mut reader = self.storage.query(query).await?;
+            let boundary = reader.view().ok_or(Error::ViewExpired)?.saved()?;
+            if let Some(after) = &selection.after
+                && !boundary.covers(after)?
+            {
+                return Err(Error::InvalidInput {
+                    field: "storage query",
+                    reason: "start exceeds saved boundary",
+                });
             }
+            while let Some(page) = reader.next_page().await? {
+                for file in page.iter() {
+                    output
+                        .send_with(file.memory_size(), || Ok(file.clone()))
+                        .await?;
+                }
+            }
+            Ok(boundary)
         }
-        Ok(boundary)
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 

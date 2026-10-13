@@ -211,8 +211,10 @@ impl Operation for Echoing {
         _: Self::Context<'ctx>,
         request: &mut Echo,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Echo, Self::Error> {
-        Ok(request.clone())
+    ) -> Result<harmos_sidecar::operations::Response<Echo>, Self::Error> {
+        let result: ::core::result::Result<Echo, Self::Error> =
+            async move { Ok(request.clone()) }.await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -234,32 +236,36 @@ impl Operation for Starting {
         _: Self::Context<'ctx>,
         request: &mut Start,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Self::Error> {
-        request.validate()?;
-        let mut tasks = self
-            .resources
-            .tasks
-            .lock()
-            .map_err(harmos_sidecar::Refusal::of)?;
-        if *self.resources.closing.borrow() || tasks.len() >= MAX_CASES {
-            return Err(harmos_sidecar::Refusal::of(
-                "transport fixture pump admission is closed or full",
-            ));
+    ) -> Result<harmos_sidecar::operations::Response<()>, Self::Error> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            request.validate()?;
+            let mut tasks = self
+                .resources
+                .tasks
+                .lock()
+                .map_err(harmos_sidecar::Refusal::of)?;
+            if *self.resources.closing.borrow() || tasks.len() >= MAX_CASES {
+                return Err(harmos_sidecar::Refusal::of(
+                    "transport fixture pump admission is closed or full",
+                ));
+            }
+            let host = self
+                .resources
+                .host
+                .lock()
+                .map_err(harmos_sidecar::Refusal::of)?
+                .as_ref()
+                .cloned()
+                .ok_or_else(|| {
+                    harmos_sidecar::Refusal::of("fixture generation calling context is unavailable")
+                })?;
+            let request = request.clone();
+            let closing = self.resources.closing.subscribe();
+            tasks.push_back(tokio::spawn(publish(host, request, closing)));
+            Ok(())
         }
-        let host = self
-            .resources
-            .host
-            .lock()
-            .map_err(harmos_sidecar::Refusal::of)?
-            .as_ref()
-            .cloned()
-            .ok_or_else(|| {
-                harmos_sidecar::Refusal::of("fixture generation calling context is unavailable")
-            })?;
-        let request = request.clone();
-        let closing = self.resources.closing.subscribe();
-        tasks.push_back(tokio::spawn(publish(host, request, closing)));
-        Ok(())
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 

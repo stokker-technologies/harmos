@@ -87,18 +87,22 @@ impl<const CHILD: bool> Operation for Overlay<CHILD> {
         context: Self::Context<'a>,
         _: &mut (),
         _: &mut Self::Endpoints,
-    ) -> harmos::Result<String> {
-        let actor = context.context().require::<Principal>()?.0;
-        let stage = context.context().value::<Stage>()?.unwrap();
-        if CHILD {
-            return Ok(format!("{actor}:{}", stage.id));
+    ) -> harmos::Result<harmos::operations::Response<String>> {
+        let result: ::core::result::Result<String, Self::Error> = async move {
+            let actor = context.context().require::<Principal>()?.0;
+            let stage = context.context().value::<Stage>()?.unwrap();
+            if CHILD {
+                return Ok(format!("{actor}:{}", stage.id));
+            }
+            assert_eq!(stage.id, "parent");
+            let child = context.with_value(Stage { id: "child".into() })?;
+            let stage = child.context().require::<Stage>()?;
+            assert_eq!(stage.id, "child");
+            let answer = child.call::<Overlay<true>>(()).await?;
+            Ok(format!("{actor}:{}:{answer}", "parent"))
         }
-        assert_eq!(stage.id, "parent");
-        let child = context.with_value(Stage { id: "child".into() })?;
-        let stage = child.context().require::<Stage>()?;
-        assert_eq!(stage.id, "child");
-        let answer = child.call::<Overlay<true>>(()).await?;
-        Ok(format!("{actor}:{}:{answer}", "parent"))
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -134,13 +138,17 @@ impl<const CHILD: bool> Operation for Read<CHILD> {
         context: Self::Context<'a>,
         _request: &mut (),
         _: &mut Self::Endpoints,
-    ) -> harmos::Result<String> {
-        let actor = context.context().require::<Principal>()?.0;
-        if CHILD {
-            return Ok(actor.into());
+    ) -> harmos::Result<harmos::operations::Response<String>> {
+        let result: ::core::result::Result<String, Self::Error> = async move {
+            let actor = context.context().require::<Principal>()?.0;
+            if CHILD {
+                return Ok(actor.into());
+            }
+            let child = context.call::<Declare<true>>(()).await?;
+            Ok(format!("{actor}:{child}"))
         }
-        let child = context.call::<Declare<true>>(()).await?;
-        Ok(format!("{actor}:{child}"))
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -587,16 +595,20 @@ impl Operation for Retry {
         context: Self::Context<'a>,
         _request: &mut (),
         _: &mut Self::Endpoints,
-    ) -> Result<String, Self::Error> {
-        assert_eq!(context.context().require::<Principal>().unwrap().0, "alice");
-        self.attempts += 1;
-        if self.attempts < 3 {
-            return Err(std::io::Error::other("retry fixture"));
+    ) -> Result<harmos::operations::Response<String>, Self::Error> {
+        let result: ::core::result::Result<String, Self::Error> = async move {
+            assert_eq!(context.context().require::<Principal>().unwrap().0, "alice");
+            self.attempts += 1;
+            if self.attempts < 3 {
+                return Err(std::io::Error::other("retry fixture"));
+            }
+            Ok(format!(
+                "{}:{}",
+                context.context().require::<Principal>().unwrap().0,
+                self.attempts
+            ))
         }
-        Ok(format!(
-            "{}:{}",
-            context.context().require::<Principal>().unwrap().0,
-            self.attempts
-        ))
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }

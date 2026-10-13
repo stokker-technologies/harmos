@@ -94,10 +94,14 @@ impl<C: 'static> Operation for Handler<C> {
         _: Self::Context<'a>,
         selection: &mut FileSelection,
         output: &mut Self::Endpoints,
-    ) -> Result<FileProgress> {
-        selection.maximum()?;
+    ) -> Result<crate::operations::Response<FileProgress>> {
+        let result: ::core::result::Result<FileProgress, Self::Error> = async move {
+            selection.maximum()?;
 
-        selection.transfer(&self.storage, output, false).await
+            selection.transfer(&self.storage, output, false).await
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 

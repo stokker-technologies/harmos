@@ -238,28 +238,32 @@ impl<const FIRST: bool> Operation for Hearing<FIRST> {
         _: Self::Context<'a>,
         request: &mut Delivery<WireFact>,
         _endpoints: &mut Self::Endpoints,
-    ) -> std::result::Result<(), Failed> {
-        self.wait_cleanup = FIRST && request.row().value == 0 && self.resources.block;
-        assert!(matches!(request.context(), DeliveryContext::Stream { .. }));
-        self.resources
-            .seen
-            .lock()
-            .unwrap()
-            .push((FIRST, request.row().value, request.context()));
-        self.resources.observed.notify_one();
-        if FIRST && request.row().value == 0 {
-            if self.resources.reenter {
-                self.resources.streams.publish(fact(9));
+    ) -> std::result::Result<harmos::operations::Response<()>, Failed> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            self.wait_cleanup = FIRST && request.row().value == 0 && self.resources.block;
+            assert!(matches!(request.context(), DeliveryContext::Stream { .. }));
+            self.resources.seen.lock().unwrap().push((
+                FIRST,
+                request.row().value,
+                request.context(),
+            ));
+            self.resources.observed.notify_one();
+            if FIRST && request.row().value == 0 {
+                if self.resources.reenter {
+                    self.resources.streams.publish(fact(9));
+                }
+                if self.resources.block {
+                    self.resources.started.notify_one();
+                    self.resources.resume.notified().await;
+                }
+                if self.resources.fail_attempt.load(Ordering::SeqCst) {
+                    return Err(Failed::Scripted);
+                }
             }
-            if self.resources.block {
-                self.resources.started.notify_one();
-                self.resources.resume.notified().await;
-            }
-            if self.resources.fail_attempt.load(Ordering::SeqCst) {
-                return Err(Failed::Scripted);
-            }
+            Ok(())
         }
-        Ok(())
+        .await;
+        result.map(::core::convert::Into::into)
     }
     async fn finalize(&mut self) -> std::result::Result<(), Failed> {
         self.resources.finalizations.fetch_add(1, Ordering::SeqCst);

@@ -103,7 +103,7 @@ impl<O: OperationDeclaration, I, R> Session<O, I, R> {
         (self.input, self.output, self.completion)
     }
 
-    pub async fn join(self) -> Result<Arc<O::Response>> {
+    pub async fn join(self) -> Result<crate::operations::Response<O::Response>> {
         let (input, output, completion) = self.split();
         drop(input);
         drop(output);
@@ -231,7 +231,7 @@ impl<O: OperationDeclaration> Completion<O> {
         self.instance.settle().await
     }
 
-    pub async fn join(mut self) -> Result<Arc<O::Response>> {
+    pub async fn join(mut self) -> Result<crate::operations::Response<O::Response>> {
         if !self.ends.input.load(Ordering::Acquire) || !self.ends.output.load(Ordering::Acquire) {
             return Err(Error::InvalidInput {
                 field: "operation stream completion",

@@ -78,13 +78,17 @@ impl Operation for WireClient {
         context: Self::Context<'ctx>,
         request: &mut RunRequest,
         _: &mut Self::Endpoints,
-    ) -> Result<String> {
-        let response = context
-            .call::<Run<0, 100, false>>(RunRequest {
-                value: request.value.clone(),
-            })
-            .await?;
-        Ok(response.as_ref().clone())
+    ) -> Result<harmos::operations::Response<String>> {
+        let result: ::core::result::Result<String, Self::Error> = async move {
+            let response = context
+                .call::<Run<0, 100, false>>(RunRequest {
+                    value: request.value.clone(),
+                })
+                .await?;
+            Ok(response.as_ref().clone())
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -199,14 +203,14 @@ fn contract_scenario() {
                     let mut client = tonic::client::Grpc::new(channel);
                     client.ready().await.unwrap();
                     let settings = harmos::grpc::server::Settings::default();
-                    let codec = harmos::grpc::Codec::<String, Arc<RunRequest>>::new(
-                        settings.decode,
-                        settings.encode,
-                    )
+                    let codec = harmos::grpc::Codec::<
+                        String,
+                        harmos::operations::Response<RunRequest>,
+                    >::new(settings.decode, settings.encode)
                     .unwrap();
                     let response: tonic::Response<harmos::operations::StreamItem<String>> = client
                         .unary(
-                            tonic::Request::new(Arc::new(RunRequest {
+                            tonic::Request::new(harmos::operations::Response::new(RunRequest {
                                 value: "grpc embedded provider".into(),
                             })),
                             tonic::codegen::http::uri::PathAndQuery::from_static(

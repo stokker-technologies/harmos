@@ -674,8 +674,8 @@ pub(super) fn contract_scenario() {
                     policy.queue_capacity_bytes = NonZeroUsize::new(6 * 1024 * 1024).unwrap();
                     policy.target_batch_bytes = policy.queue_capacity_bytes;
                     policy.max_batch_bytes = policy.queue_capacity_bytes;
-                    // Five collections at 48 KiB preserve this test's original transfer budget.
-                    policy.replication_limits.bytes = NonZeroUsize::new(48 * 1024).unwrap();
+                    // Reserve Finite-Schema Decoding Within The Same Shared 6 MiB Cap.
+                    policy.replication_limits.bytes = NonZeroUsize::new(16 * 1024).unwrap();
                     let first = replica(&mut targets, "first");
                     let second = replica(&mut targets, "second");
                     first.control.block_write.store(true, Ordering::SeqCst);

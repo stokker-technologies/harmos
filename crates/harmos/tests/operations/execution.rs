@@ -171,7 +171,7 @@ pub(super) fn contract_scenario() {
                         })
                         .await
                         .unwrap();
-                    assert!(Arc::ptr_eq(&first, &second));
+                    assert!(first.ptr_eq(&second));
                     assert_eq!(owner.runs.load(Ordering::SeqCst), 1);
                     assert_eq!(owner.prepared.load(Ordering::SeqCst), 2);
                     assert!(matches!(
@@ -641,14 +641,14 @@ pub(super) fn contract_scenario() {
                         .unwrap();
                     assert_eq!(first_result.value, 17);
                     assert_eq!(second_result.value, 27);
-                    assert!(!Arc::ptr_eq(&first_result, &second_result));
+                    assert!(!first_result.ptr_eq(&second_result));
                     let again = runtime
                         .operations
                         .submit_from::<Compute>("second", keyed())
                         .unwrap()
                         .await
                         .unwrap();
-                    assert!(Arc::ptr_eq(&second_result, &again));
+                    assert!(second_result.ptr_eq(&again));
                     assert_eq!(second.runs.load(Ordering::SeqCst), 1);
                     let key = Compute::key(&keyed()).unwrap();
                     assert!(matches!(
@@ -670,7 +670,7 @@ pub(super) fn contract_scenario() {
                         .unwrap()
                         .await
                         .unwrap();
-                    assert!(Arc::ptr_eq(&first_result, &unchanged));
+                    assert!(first_result.ptr_eq(&unchanged));
                     runtime
                         .operations
                         .invalidate_from::<Compute>("first", &key)
@@ -681,7 +681,7 @@ pub(super) fn contract_scenario() {
                         .unwrap()
                         .await
                         .unwrap();
-                    assert!(!Arc::ptr_eq(&first_result, &refreshed));
+                    assert!(!first_result.ptr_eq(&refreshed));
                     assert_eq!(first.runs.load(Ordering::SeqCst), 2);
                     let preserved = runtime
                         .operations
@@ -689,7 +689,7 @@ pub(super) fn contract_scenario() {
                         .unwrap()
                         .await
                         .unwrap();
-                    assert!(Arc::ptr_eq(&second_result, &preserved));
+                    assert!(second_result.ptr_eq(&preserved));
                     assert_eq!(second.runs.load(Ordering::SeqCst), 1);
                     runtime
                         .operations
@@ -703,7 +703,7 @@ pub(super) fn contract_scenario() {
                         Err(Error::NotRegistered { .. })
                     ));
                     let surviving = runtime.operations.call::<Compute>(keyed()).await.unwrap();
-                    assert!(Arc::ptr_eq(&second_result, &surviving));
+                    assert!(second_result.ptr_eq(&surviving));
                     assert_eq!(second.runs.load(Ordering::SeqCst), 1);
                     runtime.stop().await.unwrap();
                 });

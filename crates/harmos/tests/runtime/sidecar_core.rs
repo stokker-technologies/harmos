@@ -91,12 +91,16 @@ impl harmos::operations::Operation for DeadlineRead {
         context: Self::Context<'a>,
         request: &mut String,
         _: &mut Self::Endpoints,
-    ) -> harmos::Result<String> {
-        let child = context.with_value(contract::Stage {
-            id: "parent".into(),
-        })?;
-        let answer = child.call::<Inspect>(request.clone()).await?;
-        Ok((*answer).clone())
+    ) -> harmos::Result<harmos::operations::Response<String>> {
+        let result: ::core::result::Result<String, Self::Error> = async move {
+            let child = context.with_value(contract::Stage {
+                id: "parent".into(),
+            })?;
+            let answer = child.call::<Inspect>(request.clone()).await?;
+            Ok((*answer).clone())
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 

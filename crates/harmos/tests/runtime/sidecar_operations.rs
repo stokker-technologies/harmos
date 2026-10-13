@@ -255,46 +255,50 @@ impl Operation for ReadOperation {
         context: Self::Context<'ctx>,
         _request: &mut (),
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Self::Error> {
-        let initialized = self.counts.initialization_saved.lock().unwrap().take();
-        if let Some(initialized) = initialized {
-            if initialized.operation::<Refresh>(()).await.is_ok() {
-                return Err(std::io::Error::other(
-                    "initialization context remained active",
-                ));
-            }
-            self.counts.stale_refused.fetch_add(1, Ordering::SeqCst);
-        }
-        self.attempts += 1;
-        self.counts.runs.fetch_add(1, Ordering::SeqCst);
-        let tenant = context
-            .context()
-            .value::<Tenant>()
-            .map_err(std::io::Error::other)?;
-        assert!(context.context().get::<Principal>().is_none());
-        self.counts
-            .tenants
-            .lock()
-            .unwrap()
-            .push(tenant.map(|tenant| tenant.name));
-        if self.counts.call_child.load(Ordering::SeqCst) {
-            let previous = self.counts.saved.lock().unwrap().take();
-            if let Some(previous) = previous {
-                if previous.operation::<Refresh>(()).await.is_ok() {
-                    return Err(std::io::Error::other("expired attempt admitted a child"));
+    ) -> Result<harmos::operations::Response<()>, Self::Error> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            let initialized = self.counts.initialization_saved.lock().unwrap().take();
+            if let Some(initialized) = initialized {
+                if initialized.operation::<Refresh>(()).await.is_ok() {
+                    return Err(std::io::Error::other(
+                        "initialization context remained active",
+                    ));
                 }
                 self.counts.stale_refused.fetch_add(1, Ordering::SeqCst);
             }
-            *self.counts.saved.lock().unwrap() = Some(context.clone());
-            context
-                .operation::<Refresh>(())
-                .await
+            self.attempts += 1;
+            self.counts.runs.fetch_add(1, Ordering::SeqCst);
+            let tenant = context
+                .context()
+                .value::<Tenant>()
                 .map_err(std::io::Error::other)?;
+            assert!(context.context().get::<Principal>().is_none());
+            self.counts
+                .tenants
+                .lock()
+                .unwrap()
+                .push(tenant.map(|tenant| tenant.name));
+            if self.counts.call_child.load(Ordering::SeqCst) {
+                let previous = self.counts.saved.lock().unwrap().take();
+                if let Some(previous) = previous {
+                    if previous.operation::<Refresh>(()).await.is_ok() {
+                        return Err(std::io::Error::other("expired attempt admitted a child"));
+                    }
+                    self.counts.stale_refused.fetch_add(1, Ordering::SeqCst);
+                }
+                *self.counts.saved.lock().unwrap() = Some(context.clone());
+                context
+                    .operation::<Refresh>(())
+                    .await
+                    .map_err(std::io::Error::other)?;
+            }
+            if self.attempts == 1 {
+                return Err(std::io::Error::other("one transient failure"));
+            }
+            Ok(())
         }
-        if self.attempts == 1 {
-            return Err(std::io::Error::other("one transient failure"));
-        }
-        Ok(())
+        .await;
+        result.map(::core::convert::Into::into)
     }
     async fn stop(&mut self) -> Result<(), Self::Error> {
         self.counts.stopped.fetch_add(1, Ordering::SeqCst);
@@ -326,9 +330,13 @@ impl Operation for RefreshOperation {
         _: Self::Context<'ctx>,
         _request: &mut (),
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Self::Error> {
-        self.0.children.fetch_add(1, Ordering::SeqCst);
-        Ok(())
+    ) -> Result<harmos::operations::Response<()>, Self::Error> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            self.0.children.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -1284,12 +1292,14 @@ fn contract_scenario() {
                     client.ready().await.unwrap();
                     let settings = harmos::grpc::server::Settings::default();
                     // Unknown Protobuf Fields Are Legal For Unit; Postcard Unit Rejects These Bytes.
-                    let codec =
-                        harmos::grpc::Codec::<(), Arc<u32>>::new(settings.decode, settings.encode)
-                            .unwrap();
+                    let codec = harmos::grpc::Codec::<(), harmos::operations::Response<u32>>::new(
+                        settings.decode,
+                        settings.encode,
+                    )
+                    .unwrap();
                     client
                         .unary(
-                            tonic::Request::new(Arc::new(42u32)),
+                            tonic::Request::new(harmos::operations::Response::new(42u32)),
                             tonic::codegen::http::uri::PathAndQuery::from_static(
                                 "/fixture.v1.Native/Read",
                             ),

@@ -1110,6 +1110,12 @@ impl<T: fmt::Debug> fmt::Debug for QueryPage<T> {
     }
 }
 
+impl<T> std::borrow::Borrow<T> for QueryValue<T> {
+    fn borrow(&self) -> &T {
+        &self.value
+    }
+}
+
 impl<T> Deref for QueryValue<T> {
     type Target = T;
     fn deref(&self) -> &T {
@@ -1166,10 +1172,26 @@ impl<T> QueryValue<T> {
 }
 
 impl<T: MemorySize> QueryValue<T> {
-    pub fn try_into_shared(mut self) -> Result<SharedQueryValue<T>> {
+    pub fn try_into_shared(self) -> Result<SharedQueryValue<T>> {
+        Ok(SharedQueryValue {
+            owner: self.shared_owner(std::mem::size_of::<SharedQueryValue<T>>())?,
+        })
+    }
+
+    pub fn try_into_response(self) -> Result<crate::operations::Response<T>>
+    where
+        T: Send + Sync + 'static,
+    {
+        let handle = std::mem::size_of::<crate::operations::Response<T>>();
+        let handle = handle.max(std::mem::size_of::<crate::operations::StreamItem<T>>());
+        let owner = self.shared_owner(handle)?;
+        Ok(crate::operations::Response::from_owner(owner))
+    }
+
+    fn shared_owner(mut self, handle_bytes: usize) -> Result<Arc<Self>> {
         let metadata = std::mem::size_of::<MemoryReservation>()
             .checked_add(2 * std::mem::size_of::<usize>())
-            .and_then(|bytes| bytes.checked_add(std::mem::size_of::<SharedQueryValue<T>>()))
+            .and_then(|bytes| bytes.checked_add(handle_bytes))
             .ok_or_else(decoded_limit)?;
         let retained = self
             ._reservation
@@ -1179,9 +1201,7 @@ impl<T: MemorySize> QueryValue<T> {
         self._reservation
             .reserve_projection(NonZeroUsize::new(metadata).ok_or_else(decoded_limit)?)?;
         self._reservation.retain_read(retained);
-        Ok(SharedQueryValue {
-            owner: Arc::new(self),
-        })
+        Ok(Arc::new(self))
     }
 
     pub fn try_project<U: MemorySize>(

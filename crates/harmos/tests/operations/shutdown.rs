@@ -100,23 +100,27 @@ impl Operation for Wait {
         _context: Self::Context<'ctx>,
         mode: &mut Mode,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Self::Error> {
-        self.holding = matches!(mode, Mode::Hold);
-        match mode {
-            Mode::Hold => {
-                self.trace.started.notify_one();
-                self.trace.release.notified().await;
-                self.released = true;
+    ) -> Result<harmos::operations::Response<()>, Self::Error> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            self.holding = matches!(mode, Mode::Hold);
+            match mode {
+                Mode::Hold => {
+                    self.trace.started.notify_one();
+                    self.trace.release.notified().await;
+                    self.released = true;
+                }
+                Mode::Count => {
+                    self.trace.counted.fetch_add(1, Ordering::SeqCst);
+                }
+                Mode::Sleep => {
+                    self.trace.started.notify_one();
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
             }
-            Mode::Count => {
-                self.trace.counted.fetch_add(1, Ordering::SeqCst);
-            }
-            Mode::Sleep => {
-                self.trace.started.notify_one();
-                tokio::time::sleep(Duration::from_secs(1)).await;
-            }
+            Ok(())
         }
-        Ok(())
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     async fn finalize(&mut self) -> Result<(), Self::Error> {

@@ -76,8 +76,10 @@ impl<C: 'static> Operation for Handler<C> {
         _: Self::Context<'a>,
         _request: &mut QueryStorageRequest,
         _: &mut Self::Endpoints,
-    ) -> Result<StorageInfo> {
-        self.storage.info()
+    ) -> Result<crate::operations::Response<StorageInfo>> {
+        let result: ::core::result::Result<StorageInfo, Self::Error> =
+            async move { self.storage.info() }.await;
+        result.map(::core::convert::Into::into)
     }
 
     fn classify(error: &Error) -> crate::operations::Failure {

@@ -86,28 +86,32 @@ impl<C: 'static> Operation for Handler<C> {
         _: Self::Context<'a>,
         selection: &mut ObjectSelection,
         output: &mut Self::Endpoints,
-    ) -> Result<StorageCursor> {
-        selection.validate_follow()?;
+    ) -> Result<crate::operations::Response<StorageCursor>> {
+        async {
+            selection.validate_follow()?;
 
-        let query = selection.query(true)?;
-        let mut reader = self.storage.follow(query).await?;
-        let boundary = reader.accepted_boundary();
-        if let Some(after) = &selection.selection.after
-            && !boundary.covers(after)?
-        {
-            return Err(Error::InvalidInput {
-                field: "storage query",
-                reason: "start exceeds accepted boundary",
-            });
-        }
-        loop {
-            let page = reader.next_page().await?;
-            for entry in page.iter() {
-                output
-                    .send_with(entry.memory_size(), || Ok(entry.clone()))
-                    .await?;
+            let query = selection.query(true)?;
+            let mut reader = self.storage.follow(query).await?;
+            let boundary = reader.accepted_boundary();
+            if let Some(after) = &selection.selection.after
+                && !boundary.covers(after)?
+            {
+                return Err(Error::InvalidInput {
+                    field: "storage query",
+                    reason: "start exceeds accepted boundary",
+                });
+            }
+            loop {
+                let page = reader.next_page().await?;
+                for entry in page.iter() {
+                    output
+                        .send_with(entry.memory_size(), || Ok(entry.clone()))
+                        .await?;
+                }
             }
         }
+        .await
+        .map(|value: StorageCursor| value.into())
     }
 }
 

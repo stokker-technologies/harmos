@@ -131,8 +131,10 @@ impl harmos::operations::Operation for Selecting {
         _: Self::Context<'ctx>,
         request: &mut Text,
         _endpoints: &mut Self::Endpoints,
-    ) -> std::result::Result<String, Failed> {
-        Ok(format!("{}:{}", self.resources.0, request.value))
+    ) -> std::result::Result<harmos::operations::Response<String>, Failed> {
+        let result: ::core::result::Result<String, Self::Error> =
+            async move { Ok(format!("{}:{}", self.resources.0, request.value)) }.await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -223,8 +225,10 @@ impl harmos::operations::Operation for SharedCall {
         context: Self::Context<'ctx>,
         request: &mut Request,
         _endpoints: &mut Self::Endpoints,
-    ) -> std::result::Result<Response, Failed> {
-        self.owner.compute(request, &mut self.state, context).await
+    ) -> std::result::Result<harmos::operations::Response<Response>, Failed> {
+        let result: ::core::result::Result<Response, Self::Error> =
+            async move { self.owner.compute(request, &mut self.state, context).await }.await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -271,14 +275,18 @@ impl harmos::operations::Operation for Cleaning {
         _: Self::Context<'ctx>,
         request: &mut Text,
         _endpoints: &mut Self::Endpoints,
-    ) -> std::result::Result<String, Failed> {
-        self.wait_cleanup |= request.value == "block";
-        self.resources.attempted.fetch_add(1, Ordering::SeqCst);
-        if request.value == "block" {
-            self.resources.started.notify_one();
-            std::future::pending::<()>().await;
+    ) -> std::result::Result<harmos::operations::Response<String>, Failed> {
+        let result: ::core::result::Result<String, Self::Error> = async move {
+            self.wait_cleanup |= request.value == "block";
+            self.resources.attempted.fetch_add(1, Ordering::SeqCst);
+            if request.value == "block" {
+                self.resources.started.notify_one();
+                std::future::pending::<()>().await;
+            }
+            Ok(request.value.clone())
         }
-        Ok(request.value.clone())
+        .await;
+        result.map(::core::convert::Into::into)
     }
     async fn finalize(&mut self) -> std::result::Result<(), Failed> {
         self.resources.finalized.fetch_add(1, Ordering::SeqCst);
@@ -1165,8 +1173,8 @@ pub(super) fn contract_scenario() {
                     let host_response = runtime.operations.call::<Shared>(keyed()).await.unwrap();
                     let first = caller.call::<Shared>(keyed()).await.unwrap();
                     let again = caller.call::<Shared>(keyed()).await.unwrap();
-                    assert!(!Arc::ptr_eq(&host_response, &first));
-                    assert!(Arc::ptr_eq(&first, &again));
+                    assert!(!host_response.ptr_eq(&first));
+                    assert!(first.ptr_eq(&again));
                     assert_eq!(host.owner.runs.load(std::sync::atomic::Ordering::SeqCst), 2);
 
                     // Only the client generation changes; the provider binding/cache stays live.
@@ -1188,11 +1196,11 @@ pub(super) fn contract_scenario() {
                     ));
                     let replacement = runtime.operations.caller(&host.callers["client"]).unwrap();
                     let next = replacement.call::<Shared>(keyed()).await.unwrap();
-                    assert!(!Arc::ptr_eq(&first, &next));
-                    assert!(Arc::ptr_eq(
-                        &host_response,
-                        &runtime.operations.call::<Shared>(keyed()).await.unwrap()
-                    ));
+                    assert!(!first.ptr_eq(&next));
+                    assert!(
+                        host_response
+                            .ptr_eq(&runtime.operations.call::<Shared>(keyed()).await.unwrap())
+                    );
                     manager.shutdown(&mut host).await.unwrap();
                     runtime.stop().await.unwrap();
                 });
@@ -1700,8 +1708,11 @@ where
         output: channel,
         opening_timeout: std::time::Duration::from_secs(1),
     };
-    let mut codec = harmos::grpc::Codec::<Text, Arc<Text>>::new(decode, encode).unwrap();
-    let message = futures_util::stream::iter([Ok(Arc::new(Text::from("grpc")))]);
+    let mut codec =
+        harmos::grpc::Codec::<Text, harmos::operations::Response<Text>>::new(decode, encode)
+            .unwrap();
+    let message =
+        futures_util::stream::iter([Ok(harmos::operations::Response::new(Text::from("grpc")))]);
     let body = tonic::codec::EncodeBody::new_client(codec.encoder(), message, None, Some(4096));
     let request = tonic::codegen::http::Request::builder()
         .header("content-type", "application/grpc")

@@ -46,7 +46,7 @@ const DEFAULT_CACHE_CAPACITY: usize = 64;
 /* === Macros === */
 
 /* === Type Aliases === */
-type Response = Arc<dyn Any + Send + Sync>;
+type CachedResponse = harmos_contract::__private::ErasedResponse;
 
 /* === Structs === */
 #[derive(Clone)]
@@ -134,7 +134,7 @@ struct Cached {
     target: Weak<Entry>,
     key: CacheKey,
     identity: Identity,
-    response: Response,
+    response: CachedResponse,
 }
 
 /* === Enums === */
@@ -201,7 +201,7 @@ impl OperationManager {
         endpoints: P,
     ) -> Result<OperationInstance<O>> {
         self.admit::<O, P>(
-            (super::binding::Request::charged(request), endpoints),
+            (super::binding::Request::charged(request)?, endpoints),
             None,
             &[],
             &Source::Host.external()?,
@@ -758,7 +758,7 @@ impl OperationManager {
         endpoints: P,
     ) -> Result<OperationInstance<O>> {
         self.admit::<O, P>(
-            (super::binding::Request::charged(request), endpoints),
+            (super::binding::Request::charged(request)?, endpoints),
             None,
             &[],
             &Source::Host,
@@ -777,7 +777,7 @@ impl OperationManager {
     pub async fn call<O: OperationDeclaration>(
         &self,
         request: O::Request,
-    ) -> Result<Arc<O::Response>> {
+    ) -> Result<crate::operations::Response<O::Response>> {
         self.submit::<O>(request)?.await
     }
 
@@ -793,7 +793,7 @@ impl OperationManager {
         &self,
         request: O::Request,
         cause: Position,
-    ) -> Result<Arc<O::Response>> {
+    ) -> Result<crate::operations::Response<O::Response>> {
         self.submit_caused::<O>(request, cause)?.await
     }
 
@@ -1347,7 +1347,7 @@ impl OperationManager {
         entry: &Arc<Entry>,
         key: &CacheKey,
         identity: &Identity,
-    ) -> Option<Arc<O::Response>> {
+    ) -> Option<crate::operations::Response<O::Response>> {
         let mut state = self
             .registry
             .state
@@ -1364,7 +1364,7 @@ impl OperationManager {
                 })
         })?;
         let cached = state.cache.remove(index)?;
-        let response = Arc::clone(&cached.response).downcast::<O::Response>().ok();
+        let response = cached.response.clone().restore::<O::Response>();
         state.cache.push_back(cached);
         response
     }
@@ -1785,7 +1785,7 @@ impl Registry {
         entry: &Arc<Entry>,
         key: CacheKey,
         identity: Identity,
-        response: Arc<O::Response>,
+        response: crate::operations::Response<O::Response>,
     ) {
         let mut state = self
             .state
@@ -1814,7 +1814,7 @@ impl Registry {
             target: Arc::downgrade(entry),
             key,
             identity,
-            response,
+            response: response.into_erased(),
         });
         drop(state);
         drop(retired);

@@ -164,24 +164,28 @@ impl Operation for Echoing {
         _: Self::Context<'ctx>,
         request: &mut Blob,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Blob, Refusal> {
-        self.id = Some(request.id);
-        self.resources
-            .mark(&format!("echo-prepared-{}", request.id))?;
-        self.resources
-            .mark(&format!("echo-started-{}", request.id))?;
-        let _work = Work {
-            resources: &self.resources,
-            id: request.id,
-        };
-        self.run_started = true;
-        if request.id == 0 {
-            std::future::pending::<()>().await;
+    ) -> Result<harmos::operations::Response<Blob>, Refusal> {
+        let result: ::core::result::Result<Blob, Self::Error> = async move {
+            self.id = Some(request.id);
+            self.resources
+                .mark(&format!("echo-prepared-{}", request.id))?;
+            self.resources
+                .mark(&format!("echo-started-{}", request.id))?;
+            let _work = Work {
+                resources: &self.resources,
+                id: request.id,
+            };
+            self.run_started = true;
+            if request.id == 0 {
+                std::future::pending::<()>().await;
+            }
+            if request.id == u64::MAX {
+                std::process::exit(17);
+            }
+            Ok(request.clone())
         }
-        if request.id == u64::MAX {
-            std::process::exit(17);
-        }
-        Ok(request.clone())
+        .await;
+        result.map(::core::convert::Into::into)
     }
     async fn finalize(&mut self) -> Result<(), Refusal> {
         if self.id.is_none() {
@@ -225,15 +229,19 @@ impl Operation for Probing {
         _: Self::Context<'ctx>,
         request: &mut Blob,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Blob, Refusal> {
-        // Report Construction Count Without Filesystem Effects In The Constructor.
-        if request.id == u64::MAX {
-            return Ok(Blob {
-                id: self.sequence,
-                data: Vec::new(),
-            });
+    ) -> Result<harmos::operations::Response<Blob>, Refusal> {
+        let result: ::core::result::Result<Blob, Self::Error> = async move {
+            // Report Construction Count Without Filesystem Effects In The Constructor.
+            if request.id == u64::MAX {
+                return Ok(Blob {
+                    id: self.sequence,
+                    data: Vec::new(),
+                });
+            }
+            Ok(request.clone())
         }
-        Ok(request.clone())
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -257,15 +265,19 @@ impl Operation for Publishing {
         host: Self::Context<'ctx>,
         request: &mut Blob,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Blob, Refusal> {
-        self.id = Some(request.id);
-        self.resources
-            .mark(&format!("nested-prepared-{}", request.id))?;
-        host.publisher::<Process>()
-            .publish_on::<Blob>(&*request)
-            .await
-            .map_err(Refusal::of)?;
-        Ok(request.clone())
+    ) -> Result<harmos::operations::Response<Blob>, Refusal> {
+        let result: ::core::result::Result<Blob, Self::Error> = async move {
+            self.id = Some(request.id);
+            self.resources
+                .mark(&format!("nested-prepared-{}", request.id))?;
+            host.publisher::<Process>()
+                .publish_on::<Blob>(&*request)
+                .await
+                .map_err(Refusal::of)?;
+            Ok(request.clone())
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
     async fn finalize(&mut self) -> Result<(), Refusal> {
         if self.id.is_none() {

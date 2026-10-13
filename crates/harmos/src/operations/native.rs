@@ -404,53 +404,57 @@ where
         context: Self::Context<'ctx>,
         request: &mut O::Request,
         endpoints: &mut Self::Endpoints,
-    ) -> std::result::Result<O::Response, NativeError> {
-        if self.state.is_none() {
-            let native = &self.native;
+    ) -> std::result::Result<crate::operations::Response<O::Response>, NativeError> {
+        let result: ::core::result::Result<O::Response, Self::Error> = async move {
+            if self.state.is_none() {
+                let native = &self.native;
 
-            let definition = Definition::of::<O>()?;
-            native.validate_definition(&definition)?;
-            let capacity = native
-                .endpoint
-                .reserve_capacity()
-                .ok_or(NativeError::Capacity)?;
-            let payload = request.encode_to_vec();
-            let state = native.prepare_encoded(&definition, payload, Some(capacity))?;
+                let definition = Definition::of::<O>()?;
+                native.validate_definition(&definition)?;
+                let capacity = native
+                    .endpoint
+                    .reserve_capacity()
+                    .ok_or(NativeError::Capacity)?;
+                let payload = request.encode_to_vec();
+                let state = native.prepare_encoded(&definition, payload, Some(capacity))?;
 
-            self.state = Some(state);
+                self.state = Some(state);
+            }
+            let state = self.state.as_mut().expect("original remote state");
+            if !state.initialized {
+                self.native.initialize_encoded(state, &context).await?;
+                state.initialized = true;
+            }
+
+            let payload = if E::item_types() == (None, None) {
+                self.native.attempt_encoded(state, &context).await?
+            } else {
+                self.epoch =
+                    self.epoch
+                        .checked_add(1)
+                        .ok_or(super::RemoteStreamError::Protocol(
+                            "stream attempt counter exhausted",
+                        ))?;
+                let running = self
+                    .native
+                    .phase_encoded(state, &context, Phase::Stream(self.epoch));
+                let answer = super::remote::attempt(
+                    &*self.native,
+                    endpoints,
+                    state.invocation.expect("original prepared invocation"),
+                    self.epoch,
+                    &self.transferred,
+                    running,
+                )
+                .await?;
+                let payload = ready(answer)?;
+                state.acknowledged = true;
+                payload
+            };
+            O::Response::decode(payload.as_slice()).map_err(NativeError::Payload)
         }
-        let state = self.state.as_mut().expect("original remote state");
-        if !state.initialized {
-            self.native.initialize_encoded(state, &context).await?;
-            state.initialized = true;
-        }
-
-        let payload = if E::item_types() == (None, None) {
-            self.native.attempt_encoded(state, &context).await?
-        } else {
-            self.epoch = self
-                .epoch
-                .checked_add(1)
-                .ok_or(super::RemoteStreamError::Protocol(
-                    "stream attempt counter exhausted",
-                ))?;
-            let running = self
-                .native
-                .phase_encoded(state, &context, Phase::Stream(self.epoch));
-            let answer = super::remote::attempt(
-                &*self.native,
-                endpoints,
-                state.invocation.expect("original prepared invocation"),
-                self.epoch,
-                &self.transferred,
-                running,
-            )
-            .await?;
-            let payload = ready(answer)?;
-            state.acknowledged = true;
-            payload
-        };
-        O::Response::decode(payload.as_slice()).map_err(NativeError::Payload)
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     async fn finalize(&mut self) -> std::result::Result<(), NativeError> {
@@ -725,104 +729,110 @@ impl<E: super::StreamEndpoints> Operation for EncodedOperation<E> {
         context: Self::Context<'ctx>,
         request: &mut EncodedRequest,
         endpoints: &mut Self::Endpoints,
-    ) -> std::result::Result<Opaque, NativeError> {
-        if self.state.is_none() {
-            let binding = &self.binding;
+    ) -> std::result::Result<crate::operations::Response<Opaque>, NativeError> {
+        let result: ::core::result::Result<Opaque, Self::Error> = async move {
+            if self.state.is_none() {
+                let binding = &self.binding;
 
-            let capacity = match request.capacity.take() {
-                Some(capacity) => capacity,
-                None => binding.reserve()?,
-            };
-            let mut state = match &binding.selection {
-                Selection::Provided(index) => {
-                    let definition = &binding.native.endpoint.definitions()[*index];
-                    binding.native.prepare_encoded(
-                        definition,
-                        std::mem::take(&mut request.payload),
-                        Some(capacity),
-                    )
-                }
-                Selection::Sdk(definition) => {
-                    if request.grpc {
-                        return Err(NativeError::Catalog {
-                            operation: definition.id.to_string(),
-                        });
+                let capacity = match request.capacity.take() {
+                    Some(capacity) => capacity,
+                    None => binding.reserve()?,
+                };
+                let mut state = match &binding.selection {
+                    Selection::Provided(index) => {
+                        let definition = &binding.native.endpoint.definitions()[*index];
+                        binding.native.prepare_encoded(
+                            definition,
+                            std::mem::take(&mut request.payload),
+                            Some(capacity),
+                        )
                     }
-                    if !binding.native.endpoint.accepts() {
-                        return Err(NativeError::Unavailable);
-                    }
-                    let matches = binding
-                        .native
-                        .scope()
-                        .and_then(|scope| scope.lifecycle())
-                        .is_some_and(|pair| {
-                            pair.iter()
-                                .any(|descriptor| descriptor.contract().operation() == definition)
-                        });
-                    if !matches || request.payload.capacity() > harmos_sidecar::Frame::LIMIT {
-                        return Err(NativeError::Catalog {
-                            operation: definition.id.to_string(),
-                        });
-                    }
-                    let action = binding
-                        .native
-                        .scope()
-                        .and_then(|scope| scope.lifecycle())
-                        .and_then(|pair| {
-                            pair.iter()
-                                .find(|descriptor| descriptor.contract().operation() == definition)
+                    Selection::Sdk(definition) => {
+                        if request.grpc {
+                            return Err(NativeError::Catalog {
+                                operation: definition.id.to_string(),
+                            });
+                        }
+                        if !binding.native.endpoint.accepts() {
+                            return Err(NativeError::Unavailable);
+                        }
+                        let matches = binding
+                            .native
+                            .scope()
+                            .and_then(|scope| scope.lifecycle())
+                            .is_some_and(|pair| {
+                                pair.iter().any(|descriptor| {
+                                    descriptor.contract().operation() == definition
+                                })
+                            });
+                        if !matches || request.payload.capacity() > harmos_sidecar::Frame::LIMIT {
+                            return Err(NativeError::Catalog {
+                                operation: definition.id.to_string(),
+                            });
+                        }
+                        let action = binding
+                            .native
+                            .scope()
+                            .and_then(|scope| scope.lifecycle())
+                            .and_then(|pair| {
+                                pair.iter().find(|descriptor| {
+                                    descriptor.contract().operation() == definition
+                                })
+                            })
+                            .map(|descriptor| descriptor.action());
+                        Ok(NativeState {
+                            grpc: false,
+                            initialized: false,
+                            payload: Some(std::mem::take(&mut request.payload)),
+                            invocation: None,
+                            operation: definition.id.clone(),
+                            sdk: action,
+                            acknowledged: false,
+                            _capacity: Some(capacity),
                         })
-                        .map(|descriptor| descriptor.action());
-                    Ok(NativeState {
-                        grpc: false,
-                        initialized: false,
-                        payload: Some(std::mem::take(&mut request.payload)),
-                        invocation: None,
-                        operation: definition.id.clone(),
-                        sdk: action,
-                        acknowledged: false,
-                        _capacity: Some(capacity),
-                    })
-                }
-            }?;
+                    }
+                }?;
 
-            state.grpc = request.grpc;
-            self.state = Some(state);
-        }
-        let state = self.state.as_mut().expect("original remote state");
-        if !state.initialized {
-            self.binding
-                .native
-                .initialize_encoded(state, &context)
+                state.grpc = request.grpc;
+                self.state = Some(state);
+            }
+            let state = self.state.as_mut().expect("original remote state");
+            if !state.initialized {
+                self.binding
+                    .native
+                    .initialize_encoded(state, &context)
+                    .await?;
+                state.initialized = true;
+            }
+
+            let native = &self.binding.native;
+            let payload = if E::item_types() == (None, None) {
+                native.attempt_encoded(state, &context).await?
+            } else {
+                self.epoch =
+                    self.epoch
+                        .checked_add(1)
+                        .ok_or(super::RemoteStreamError::Protocol(
+                            "stream attempt counter exhausted",
+                        ))?;
+                let running = native.phase_encoded(state, &context, Phase::Stream(self.epoch));
+                let answer = super::remote::attempt(
+                    &**native,
+                    endpoints,
+                    state.invocation.expect("original prepared invocation"),
+                    self.epoch,
+                    &self.transferred,
+                    running,
+                )
                 .await?;
-            state.initialized = true;
+                let payload = ready(answer)?;
+                state.acknowledged = true;
+                payload
+            };
+            Ok(Opaque(payload))
         }
-
-        let native = &self.binding.native;
-        let payload = if E::item_types() == (None, None) {
-            native.attempt_encoded(state, &context).await?
-        } else {
-            self.epoch = self
-                .epoch
-                .checked_add(1)
-                .ok_or(super::RemoteStreamError::Protocol(
-                    "stream attempt counter exhausted",
-                ))?;
-            let running = native.phase_encoded(state, &context, Phase::Stream(self.epoch));
-            let answer = super::remote::attempt(
-                &**native,
-                endpoints,
-                state.invocation.expect("original prepared invocation"),
-                self.epoch,
-                &self.transferred,
-                running,
-            )
-            .await?;
-            let payload = ready(answer)?;
-            state.acknowledged = true;
-            payload
-        };
-        Ok(Opaque(payload))
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     async fn finalize(&mut self) -> std::result::Result<(), NativeError> {
@@ -1105,7 +1115,8 @@ pub(super) fn dispatch(
         super::wire::available(&target, &source)?;
         super::wire::budget(timeout, submitted)?;
         // No Cache Opt-In Exists For An Opaque Inspected Request.
-        let payload = Arc::try_unwrap(response)
+        let payload = response
+            .try_unwrap()
             .unwrap_or_else(|response| (*response).clone())
             .0;
         super::wire::available(&target, &source)?;

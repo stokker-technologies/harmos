@@ -48,7 +48,7 @@ pub struct OperationGeneration(u64);
 pub struct OperationInstance<O: OperationDeclaration> {
     pub(crate) id: OperationInstanceId,
     pub(super) generation: OperationGeneration,
-    pub(crate) outcome: oneshot::Receiver<Result<Arc<O::Response>>>,
+    pub(crate) outcome: oneshot::Receiver<Result<crate::operations::Response<O::Response>>>,
     pub(super) control: Arc<crate::supervision::instance::Instance>,
 }
 
@@ -116,7 +116,7 @@ impl<O: OperationDeclaration> OperationInstance<O> {
         self.control.status()
     }
 
-    pub async fn join(self) -> Result<Arc<O::Response>> {
+    pub async fn join(self) -> Result<crate::operations::Response<O::Response>> {
         self.await
     }
 
@@ -129,7 +129,7 @@ impl<O: OperationDeclaration> OperationInstance<O> {
 }
 
 impl<O: OperationDeclaration> Future for OperationInstance<O> {
-    type Output = Result<Arc<O::Response>>;
+    type Output = Result<crate::operations::Response<O::Response>>;
     fn poll(self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<Self::Output> {
         match Pin::new(&mut self.get_mut().outcome).poll(cx) {
             Poll::Ready(Ok(answer)) => Poll::Ready(answer),
@@ -240,7 +240,7 @@ impl Context<'_> {
         endpoints: P,
     ) -> Result<OperationInstance<O>> {
         self.operations.submit_scoped::<O, P>(
-            (super::binding::Request::charged(request), endpoints),
+            (super::binding::Request::charged(request)?, endpoints),
             &self.scope,
             &self.admission,
             &self.source,
@@ -266,14 +266,14 @@ impl Context<'_> {
         &self,
         request: O::Request,
         cause: Position,
-    ) -> Result<Arc<O::Response>> {
+    ) -> Result<crate::operations::Response<O::Response>> {
         self.submit_caused::<O>(request, cause)?.await
     }
 
     pub async fn call<O: OperationDeclaration>(
         &self,
         request: O::Request,
-    ) -> Result<Arc<O::Response>> {
+    ) -> Result<crate::operations::Response<O::Response>> {
         self.submit::<O>(request)?.await
     }
 }

@@ -126,17 +126,21 @@ impl Operation for Read {
         context: Self::Context<'ctx>,
         request: &mut Text,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Text, Self::Error> {
-        self.resources.events.lock().unwrap().push("run");
-        self.resources.ids.lock().unwrap().push(context.id());
-        assert_eq!(context.attempt(), self.attempts.get());
-        self.attempts.set(self.attempts.get() + 1);
-        if request.value == "retry" && self.attempts.get() == 1 {
-            return Err(std::io::Error::other("transient attempt"));
+    ) -> Result<harmos::operations::Response<Text>, Self::Error> {
+        let result: ::core::result::Result<Text, Self::Error> = async move {
+            self.resources.events.lock().unwrap().push("run");
+            self.resources.ids.lock().unwrap().push(context.id());
+            assert_eq!(context.attempt(), self.attempts.get());
+            self.attempts.set(self.attempts.get() + 1);
+            if request.value == "retry" && self.attempts.get() == 1 {
+                return Err(std::io::Error::other("transient attempt"));
+            }
+            Ok(Text {
+                value: format!("{}:{}", request.value, self.attempts.get()),
+            })
         }
-        Ok(Text {
-            value: format!("{}:{}", request.value, self.attempts.get()),
-        })
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     async fn stop(&mut self) -> Result<(), Self::Error> {
@@ -411,9 +415,12 @@ struct StreamContract;
             _: Self::Context<'ctx>,
             _request: &mut (),
             _endpoints: &mut Self::Endpoints,
-        ) -> Result<(), Self::Error> {
+        ) -> Result<harmos::operations::Response<()>, Self::Error> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
             unreachable!()
-        }
+                }.await;
+        result.map(::core::convert::Into::into)
+    }
     }
     #[harmos::catalog]
     enum Implemented {

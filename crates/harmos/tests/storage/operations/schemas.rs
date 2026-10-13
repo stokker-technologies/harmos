@@ -59,8 +59,10 @@ impl<D: harmos::operations::OperationDeclaration> harmos::operations::Operation 
         _: Self::Context<'a>,
         _: &mut D::Request,
         _: &mut Self::Endpoints,
-    ) -> harmos::Result<D::Response> {
-        unreachable!("retired contract must be rejected before execution")
+    ) -> harmos::Result<harmos::operations::Response<D::Response>> {
+        let result: ::core::result::Result<D::Response, Self::Error> =
+            async move { unreachable!("retired contract must be rejected before execution") }.await;
+        result.map(::core::convert::Into::into)
     }
 }
 

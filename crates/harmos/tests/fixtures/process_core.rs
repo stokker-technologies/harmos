@@ -140,57 +140,61 @@ impl Operation for Inspecting {
         context: Self::Context<'ctx>,
         name: &mut String,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<String, Refusal> {
-        if name == "crash" {
-            std::process::exit(75);
-        }
-        let selected = if name.starts_with("context") {
-            let parent = context
-                .context()
-                .value::<contract::Stage>()
-                .map_err(Refusal::of)?
-                .unwrap();
-            assert_eq!(parent.id, "parent");
-            context
-                .with_value(contract::Stage { id: "child".into() })
-                .map_err(Refusal::of)?
-        } else {
-            context.clone()
-        };
-        let answered = selected
-            .operation::<host::Egress>(host::EgressRequest {
-                name: if name == "context-denied" {
-                    "other".into()
-                } else if name.starts_with("context") {
-                    "vendor".into()
-                } else {
-                    name.clone()
-                },
-                method: "get".into(),
-                path: if name == "context-wait" {
-                    "/context-wait".into()
-                } else if name.starts_with("context") {
-                    "/context".into()
-                } else {
-                    "/reading".into()
-                },
-                headers: vec![],
-                body: vec![],
-            })
-            .await;
-        Ok(match answered {
-            Ok(response) if name == "context" => {
+    ) -> Result<harmos::operations::Response<String>, Refusal> {
+        let result: ::core::result::Result<String, Self::Error> = async move {
+            if name == "crash" {
+                std::process::exit(75);
+            }
+            let selected = if name.starts_with("context") {
                 let parent = context
                     .context()
                     .value::<contract::Stage>()
                     .map_err(Refusal::of)?
                     .unwrap();
-                let child = String::from_utf8(response.body).map_err(Refusal::of)?;
-                format!("{}:{child}", parent.id)
-            }
-            Ok(response) => format!("egress status {}", response.status),
-            Err(error) => error.to_string(),
-        })
+                assert_eq!(parent.id, "parent");
+                context
+                    .with_value(contract::Stage { id: "child".into() })
+                    .map_err(Refusal::of)?
+            } else {
+                context.clone()
+            };
+            let answered = selected
+                .operation::<host::Egress>(host::EgressRequest {
+                    name: if name == "context-denied" {
+                        "other".into()
+                    } else if name.starts_with("context") {
+                        "vendor".into()
+                    } else {
+                        name.clone()
+                    },
+                    method: "get".into(),
+                    path: if name == "context-wait" {
+                        "/context-wait".into()
+                    } else if name.starts_with("context") {
+                        "/context".into()
+                    } else {
+                        "/reading".into()
+                    },
+                    headers: vec![],
+                    body: vec![],
+                })
+                .await;
+            Ok(match answered {
+                Ok(response) if name == "context" => {
+                    let parent = context
+                        .context()
+                        .value::<contract::Stage>()
+                        .map_err(Refusal::of)?
+                        .unwrap();
+                    let child = String::from_utf8(response.body).map_err(Refusal::of)?;
+                    format!("{}:{child}", parent.id)
+                }
+                Ok(response) => format!("egress status {}", response.status),
+                Err(error) => error.to_string(),
+            })
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 

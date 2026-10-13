@@ -128,9 +128,13 @@ impl Operation for Probing {
         _: Self::Context<'ctx>,
         request: &mut Step,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Step, Refusal> {
-        self.resources.mark("probe-started")?;
-        Ok(request.clone())
+    ) -> Result<harmos::operations::Response<Step>, Refusal> {
+        let result: ::core::result::Result<Step, Self::Error> = async move {
+            self.resources.mark("probe-started")?;
+            Ok(request.clone())
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     async fn finalize(&mut self) -> Result<(), Refusal> {

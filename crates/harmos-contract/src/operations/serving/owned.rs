@@ -385,7 +385,7 @@ where
                     .map_err(operation_error::<T>)?;
                 #[cfg(feature = "grpc")]
                 if let Some(codec) = self.protobuf {
-                    return (codec.encode)(&response).map_err(ServingError::Codec);
+                    return (codec.encode)(&*response).map_err(ServingError::Codec);
                 }
                 Ok(response.encode_to_vec())
             })

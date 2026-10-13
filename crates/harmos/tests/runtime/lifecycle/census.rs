@@ -355,7 +355,8 @@ use std::path::{Path, PathBuf};
 // Local Imports
 
 /* === Constants === */
-const CENSUS: [&str; 26] = [
+const CENSUS: [&str; 27] = [
+    "bindings",
     "signal",
     "Plugin",
     "listeners",
@@ -396,7 +397,9 @@ const CENSUS: [&str; 26] = [
     "Protobuf",
 ];
 
-const HIDDEN: [&str; 29] = [
+const HIDDEN: [&str; 31] = [
+    "SchemaSettings",
+    "PluginSchemaMarkers",
     "prost",
     // How generated code names a type the tokens it was handed cannot spell,
     // and how a hand-written contribution names the same one.
@@ -714,7 +717,17 @@ const DOWNSTREAM: [&str; 44] = [
 
 // Reviewed Direct Dependencies Include Dev-Only Test And Benchmark Edges.
 const ALLOWANCE: [(&str, &[&str]); 17] = [
-    ("cargo-harmos", &["clap", "ctrlc", "harmos", "serde_json"]),
+    (
+        "cargo-harmos",
+        &[
+            "clap",
+            "ctrlc",
+            "harmos",
+            "semver",
+            "serde_json",
+            "thiserror",
+        ],
+    ),
     (
         "harmos",
         &[
@@ -784,6 +797,7 @@ const ALLOWANCE: [(&str, &[&str]); 17] = [
             "semver",
             "serde",
             "serde_json",
+            "sha2",
             "tempfile",
             "thiserror",
             "time",
@@ -1336,10 +1350,17 @@ fn contract_facility_gate(path: &str, attribute: &str) -> bool {
             "crates/harmos-contract/src/operations/serving/streams.rs",
             "crates/harmos-contract/src/operations/streaming.rs",
             "crates/harmos-contract/src/schema.rs",
+            "crates/harmos-contract/src/schema/graph/codec.rs",
             "crates/harmos-guest/examples/operation_component/contract.rs",
             "crates/harmos/src/operations/mod.rs",
             "crates/harmos/src/operations/native.rs",
             "crates/harmos/src/operations/registration.rs",
+        ],
+        // Shared Python Generation Selects Build-Time Export, Never Persistence.
+        "#[cfg(feature=\"bindings-python\")]" => &[
+            "crates/harmos-contract/src/lib.rs",
+            "crates/harmos-contract/src/grpc/export.rs",
+            "crates/harmos/src/lib.rs",
         ],
         "#[cfg(feature=\"reflection\")]" => &["crates/harmos-contract/src/lib.rs"],
         "#[cfg(feature=\"streaming\")]" => &[
@@ -1518,12 +1539,14 @@ fn transport_facility_gate(path: &str, attribute: &str) -> bool {
             "crates/harmos/src/operations/caller.rs",
             "crates/harmos/src/operations/context.rs",
             "crates/harmos/src/operations/manager.rs",
+            "crates/harmos/src/operations/middleware.rs",
             "crates/harmos/src/runtime.rs",
             "crates/harmos/src/runtime/lifecycle.rs",
             "crates/harmos/src/services/sidecar/carrier.rs",
         ],
         "#[cfg(not(feature=\"grpc\"))]" => &[
             "crates/harmos/src/operations/manager/discovery.rs",
+            "crates/harmos/src/operations/manager.rs",
             "tests/fixtures/grpc/build.rs",
             "crates/harmos-sidecar/src/wire.rs",
             "crates/harmos-sidecar/src/kit/plugin.rs",

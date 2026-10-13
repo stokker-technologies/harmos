@@ -113,10 +113,14 @@ impl Operation for Echo {
         _: Self::Context<'ctx>,
         request: &mut wire::Echo,
         _endpoints: &mut Self::Endpoints,
-    ) -> harmos::Result<wire::Echoed> {
-        Ok(wire::Echoed {
-            said: format!("provider:{}", request.say),
-        })
+    ) -> harmos::Result<harmos::operations::Response<wire::Echoed>> {
+        let result: ::core::result::Result<wire::Echoed, Self::Error> = async move {
+            Ok(wire::Echoed {
+                said: format!("provider:{}", request.say),
+            })
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -136,27 +140,35 @@ impl Operation for Publish {
         context: Self::Context<'ctx>,
         row: &mut harmos::operations::host::Publication,
         _endpoints: &mut Self::Endpoints,
-    ) -> harmos::Result<()> {
-        let scope = guest_scope(&context)?;
-        if row.sequence.is_some() || row.published_unix_micros.is_some() || row.context.is_some() {
-            return Err(harmos::Error::InvalidInput {
-                field: "guest publication",
-                reason: "sequence and publication metadata are host-derived",
-            });
+    ) -> harmos::Result<harmos::operations::Response<()>> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            let scope = guest_scope(&context)?;
+            if row.sequence.is_some()
+                || row.published_unix_micros.is_some()
+                || row.context.is_some()
+            {
+                return Err(harmos::Error::InvalidInput {
+                    field: "guest publication",
+                    reason: "sequence and publication metadata are host-derived",
+                });
+            }
+            let lease = scope.publication(&row.stream, row.schema)?;
+            let row = harmos::streams::PublicationRow {
+                payload: std::mem::take(&mut row.payload),
+                published_unix_micros: None,
+                context: None,
+            };
+            lease
+                .stage_derived_row(row, 0)
+                .map_err(|source| harmos::Error::OperationFailed {
+                    operation: <harmos::operations::host::Publish as OperationDeclaration>::ID
+                        .into(),
+                    source: Arc::new(source),
+                })?;
+            Ok(())
         }
-        let lease = scope.publication(&row.stream, row.schema)?;
-        let row = harmos::streams::PublicationRow {
-            payload: std::mem::take(&mut row.payload),
-            published_unix_micros: None,
-            context: None,
-        };
-        lease
-            .stage_derived_row(row, 0)
-            .map_err(|source| harmos::Error::OperationFailed {
-                operation: <harmos::operations::host::Publish as OperationDeclaration>::ID.into(),
-                source: Arc::new(source),
-            })?;
-        Ok(())
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 

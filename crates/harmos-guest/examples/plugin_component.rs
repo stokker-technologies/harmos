@@ -187,13 +187,17 @@ impl Operation for Reader {
         _: Self::Context<'ctx>,
         _request: &mut (),
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Reply, Self::Error> {
-        Ok(Reply {
-            value: format!(
-                "{}:operation-initialized:{}",
-                self.value, self.initializations
-            ),
-        })
+    ) -> Result<harmos_guest::operations::Response<Reply>, Self::Error> {
+        let result: ::core::result::Result<Reply, Self::Error> = async move {
+            Ok(Reply {
+                value: format!(
+                    "{}:operation-initialized:{}",
+                    self.value, self.initializations
+                ),
+            })
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 

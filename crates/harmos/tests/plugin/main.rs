@@ -227,8 +227,10 @@ impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> Operation
         _: Self::Context<'ctx>,
         request: &mut RunRequest,
         _endpoints: &mut Self::Endpoints,
-    ) -> std::io::Result<String> {
-        Ok(request.value.clone())
+    ) -> std::io::Result<harmos::operations::Response<String>> {
+        let result: ::core::result::Result<String, Self::Error> =
+            async move { Ok(request.value.clone()) }.await;
+        result.map(::core::convert::Into::into)
     }
 }
 

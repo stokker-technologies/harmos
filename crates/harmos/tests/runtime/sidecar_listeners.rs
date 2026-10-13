@@ -176,25 +176,29 @@ impl Operation for Observing {
         _: Self::Context<'a>,
         request: &mut Delivery<Observation>,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Refusal> {
-        assert_eq!(
-            request.context(),
-            DeliveryContext::Record {
-                position: harmos::state::Position(1)
+    ) -> Result<harmos::operations::Response<()>, Refusal> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            assert_eq!(
+                request.context(),
+                DeliveryContext::Record {
+                    position: harmos::state::Position(1)
+                }
+            );
+            self.resources.active.fetch_add(1, Ordering::SeqCst);
+            let _active = InFlight(&self.resources);
+            if request.row().value == 0 {
+                std::future::pending::<()>().await;
             }
-        );
-        self.resources.active.fetch_add(1, Ordering::SeqCst);
-        let _active = InFlight(&self.resources);
-        if request.row().value == 0 {
-            std::future::pending::<()>().await;
+            if request.row().value == 99 {
+                return Err(Refusal::of("the reaction refused"));
+            }
+            self.resources
+                .total
+                .fetch_add(request.row().value as usize, Ordering::SeqCst);
+            Ok(())
         }
-        if request.row().value == 99 {
-            return Err(Refusal::of("the reaction refused"));
-        }
-        self.resources
-            .total
-            .fetch_add(request.row().value as usize, Ordering::SeqCst);
-        Ok(())
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 

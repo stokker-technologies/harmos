@@ -17,6 +17,7 @@ pub mod host;
 mod key;
 pub mod lifecycle;
 mod policy;
+pub(crate) mod response;
 mod serving;
 #[cfg(feature = "streaming")]
 pub mod streaming;
@@ -39,6 +40,7 @@ pub use key::{CacheKey, CacheKeyError, MAX_CACHE_KEY_BYTES};
 pub use policy::{
     Backoff, Failure, Jitter, OperationPolicy, PolicyError, ReplaySafety, RetryPolicy,
 };
+pub use response::Response;
 pub use serving::{
     CHILD_METHOD, Serves, ServingError, WIRE_METHOD, WireAnswer, WireBinding, WireChildCall,
     WireCodecError, WireCommand, WireTable,

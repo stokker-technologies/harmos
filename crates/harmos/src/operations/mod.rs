@@ -71,7 +71,6 @@ pub use context::ContextMut;
 pub use grpc::GrpcBinding;
 #[cfg(feature = "grpc")]
 pub use grpc::GrpcMethod;
-pub use harmos_contract::operations::CallContext;
 #[cfg(feature = "grpc")]
 pub use harmos_contract::operations::GrpcVisitor;
 pub use harmos_contract::operations::{
@@ -83,6 +82,7 @@ pub use harmos_contract::operations::{
     WIRE_METHOD, WireAnswer, WireBinding, WireChildCall, WireCodecError, WireCommand,
     WireDeclaration, WireEndpoints, WireOperation, WireStreamLimits, WireStreams, WireTable,
 };
+pub use harmos_contract::operations::{CallContext, Response};
 pub use lane::{Capacity, Lane, LaneSet};
 #[cfg(any(
     feature = "plugin-sidecar",

@@ -113,13 +113,17 @@ impl Operation for Finishing {
         _: Self::Context<'ctx>,
         request: &mut Request,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<usize, Self::Error> {
-        self.resources.0.runs.fetch_add(1, Ordering::SeqCst);
-        self.state.ran = true;
-        if request.fail_attempt {
-            return Err(std::io::Error::other("attempt cause"));
+    ) -> Result<harmos::operations::Response<usize>, Self::Error> {
+        let result: ::core::result::Result<usize, Self::Error> = async move {
+            self.resources.0.runs.fetch_add(1, Ordering::SeqCst);
+            self.state.ran = true;
+            if request.fail_attempt {
+                return Err(std::io::Error::other("attempt cause"));
+            }
+            Ok(42)
         }
-        Ok(42)
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     async fn finalize(&mut self) -> Result<(), Self::Error> {
@@ -166,13 +170,17 @@ impl Operation for ParentCall {
         context: Self::Context<'ctx>,
         request: &mut Request,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<usize, Error> {
-        let request = Request {
-            keyed: request.keyed,
-            fail_attempt: request.fail_attempt,
-        };
-        let response = context.call::<Finish>(request).await?;
-        Ok(*response)
+    ) -> Result<harmos::operations::Response<usize>, Error> {
+        let result: ::core::result::Result<usize, Self::Error> = async move {
+            let request = Request {
+                keyed: request.keyed,
+                fail_attempt: request.fail_attempt,
+            };
+            let response = context.call::<Finish>(request).await?;
+            Ok(*response)
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 

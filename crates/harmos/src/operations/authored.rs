@@ -37,7 +37,7 @@ use crate::{Error, Result, operations::Scope};
 /* === Macros === */
 
 /* === Type Aliases === */
-type Response<T> = <<T as Operation>::Declaration as OperationDeclaration>::Response;
+type Payload<T> = <<T as Operation>::Declaration as OperationDeclaration>::Response;
 
 /* === Structs === */
 struct Physical<T: Operation> {
@@ -50,7 +50,7 @@ struct Physical<T: Operation> {
 
 struct Bound<T: Operation> {
     physical: Physical<T>,
-    cached: Option<Arc<Response<T>>>,
+    cached: Option<super::Response<Payload<T>>>,
     entry: Arc<Entry>,
     operations: OperationManager,
     id: OperationInstanceId,
@@ -109,7 +109,9 @@ impl<T: Operation> Bound<T> {
     }
 }
 
-impl<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>> Body<Arc<Response<T>>> for Bound<T> {
+impl<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>> Body<super::Response<Payload<T>>>
+    for Bound<T>
+{
     fn transferred(&self) -> bool {
         self.physical.operation.transferred()
             || super::EndpointSet::transferred(&self.physical.endpoints)
@@ -128,7 +130,7 @@ impl<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>> Body<Arc<Response<T>
         })
     }
 
-    fn run<'s>(&'s mut self, scope: Scope<'s>) -> Attempt<'s, Arc<Response<T>>> {
+    fn run<'s>(&'s mut self, scope: Scope<'s>) -> Attempt<'s, super::Response<Payload<T>>> {
         Box::pin(async move {
             let context = self.context(scope, self.attempt)?;
             if let Some(response) = &self.cached {
@@ -146,7 +148,6 @@ impl<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>> Body<Arc<Response<T>
                     .await
             })
             .await
-            .map(Arc::new)
         })
     }
 

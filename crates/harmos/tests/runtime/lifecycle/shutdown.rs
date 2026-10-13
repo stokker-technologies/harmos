@@ -110,9 +110,13 @@ impl harmos::operations::Operation for PendingCall {
         _: Self::Context<'ctx>,
         _: &mut (),
         _: &mut (),
-    ) -> Result<(), Self::Error> {
-        self.0.started.notify_one();
-        std::future::pending().await
+    ) -> Result<harmos::operations::Response<()>, Self::Error> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            self.0.started.notify_one();
+            std::future::pending().await
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     async fn finalize(&mut self) -> Result<(), Self::Error> {

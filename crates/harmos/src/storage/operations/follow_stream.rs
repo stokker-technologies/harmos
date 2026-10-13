@@ -86,39 +86,44 @@ impl<C: 'static> Operation for Handler<C> {
         _: Self::Context<'a>,
         selection: &mut DataSelection,
         output: &mut Self::Endpoints,
-    ) -> Result<StorageCursor> {
-        selection.validate()?;
-        if selection.selection.descending || selection.selection.through.is_some() {
-            return Err(Error::InvalidInput {
-                field: "storage follow",
-                reason: "following requires ascending open-ended selection",
-            });
-        }
+    ) -> Result<crate::operations::Response<StorageCursor>> {
+        async {
+            selection.validate()?;
+            if selection.selection.descending || selection.selection.through.is_some() {
+                return Err(Error::InvalidInput {
+                    field: "storage follow",
+                    reason: "following requires ascending open-ended selection",
+                });
+            }
 
-        let mut query = StreamQuery::new(selection.schema.clone(), super::data_selection::decode);
-        query.scope = selection.selection.scope.clone();
-        query.item = selection.selection.item.clone();
-        query.source_time = selection.source_time();
-        query.options = selection.selection.options()?;
-        query.stream = selection.stream.clone();
-        let mut reader = self.storage.follow(query).await?;
-        let boundary = reader.accepted_boundary();
-        if let Some(after) = &selection.selection.after
-            && !boundary.covers(after)?
-        {
-            return Err(Error::InvalidInput {
-                field: "storage query",
-                reason: "start exceeds accepted boundary",
-            });
-        }
-        loop {
-            let page = reader.next_page().await?;
-            for entry in page.iter() {
-                output
-                    .send_with(entry.memory_size(), || Ok(entry.clone()))
-                    .await?;
+            let mut query =
+                StreamQuery::new(selection.schema.clone(), super::data_selection::decode);
+            query.scope = selection.selection.scope.clone();
+            query.item = selection.selection.item.clone();
+            query.source_time = selection.source_time();
+            query.options = selection.selection.options()?;
+            query.stream = selection.stream.clone();
+            let mut reader = self.storage.follow(query).await?;
+            let boundary = reader.accepted_boundary();
+            if let Some(after) = &selection.selection.after
+                && !boundary.covers(after)?
+            {
+                return Err(Error::InvalidInput {
+                    field: "storage query",
+                    reason: "start exceeds accepted boundary",
+                });
+            }
+            loop {
+                let page = reader.next_page().await?;
+                for entry in page.iter() {
+                    output
+                        .send_with(entry.memory_size(), || Ok(entry.clone()))
+                        .await?;
+                }
             }
         }
+        .await
+        .map(|value: StorageCursor| value.into())
     }
 }
 

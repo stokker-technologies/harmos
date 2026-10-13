@@ -90,21 +90,26 @@ impl<const CHARGED: bool> Operation for Parent<CHARGED> {
         context: Self::Context<'ctx>,
         endpoints: &mut Option<Endpoints>,
         _: &mut Self::Endpoints,
-    ) -> harmos::Result<u32> {
-        let endpoints = endpoints
-            .take()
-            .expect("one transfer of original endpoints");
-        let child = if CHARGED {
-            let (requests, mut decoded) = stream::<bool>(StreamSettings {
-                items: NonZeroUsize::new(1).unwrap(),
-                bytes: NonZeroUsize::new(1).unwrap(),
-            })?;
-            requests.send_with(1, || Ok(true)).await?;
-            context.submit_charged::<Declaration<0>, _>(decoded.recv().await.unwrap(), endpoints)?
-        } else {
-            context.submit_endpoints::<Declaration<0>, _>(true, endpoints)?
-        };
-        Ok(*child.await?)
+    ) -> harmos::Result<harmos::operations::Response<u32>> {
+        let result: ::core::result::Result<u32, Self::Error> = async move {
+            let endpoints = endpoints
+                .take()
+                .expect("one transfer of original endpoints");
+            let child = if CHARGED {
+                let (requests, mut decoded) = stream::<bool>(StreamSettings {
+                    items: NonZeroUsize::new(1).unwrap(),
+                    bytes: NonZeroUsize::new(1).unwrap(),
+                })?;
+                requests.send_with(1, || Ok(true)).await?;
+                context
+                    .submit_charged::<Declaration<0>, _>(decoded.recv().await.unwrap(), endpoints)?
+            } else {
+                context.submit_endpoints::<Declaration<0>, _>(true, endpoints)?
+            };
+            Ok(*child.await?)
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -175,19 +180,23 @@ impl<const N: u8> Operation for Forward<N> {
         _: Self::Context<'ctx>,
         consume: &mut bool,
         endpoints: &mut Self::Endpoints,
-    ) -> harmos::Result<u32> {
-        if !*consume {
-            return Ok(0);
+    ) -> harmos::Result<harmos::operations::Response<u32>> {
+        let result: ::core::result::Result<u32, Self::Error> = async move {
+            if !*consume {
+                return Ok(0);
+            }
+            let (input, output) = endpoints;
+            let mut total = 0;
+            while let Some(item) = input.recv().await {
+                self.trace.sending.fetch_add(1, Ordering::SeqCst);
+                self.trace.changed.notify_one();
+                output.send_with(4, || Ok(*item + 1)).await?;
+                total += *item;
+            }
+            Ok(total)
         }
-        let (input, output) = endpoints;
-        let mut total = 0;
-        while let Some(item) = input.recv().await {
-            self.trace.sending.fetch_add(1, Ordering::SeqCst);
-            self.trace.changed.notify_one();
-            output.send_with(4, || Ok(*item + 1)).await?;
-            total += *item;
-        }
-        Ok(total)
+        .await;
+        result.map(::core::convert::Into::into)
     }
     async fn stop(&mut self) -> harmos::Result<()> {
         self.trace.stops.fetch_add(1, Ordering::SeqCst);

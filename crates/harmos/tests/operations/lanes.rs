@@ -107,14 +107,18 @@ impl Operation for Measure {
         _context: Self::Context<'ctx>,
         _request: &mut (),
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Self::Error> {
-        self.0.ran.fetch_add(1, Ordering::SeqCst);
-        let active = self.0.active.fetch_add(1, Ordering::SeqCst) + 1;
-        self.0.maximum.fetch_max(active, Ordering::SeqCst);
-        self.0.entered.send(()).await.unwrap();
-        self.0.release.acquire().await.unwrap().forget();
-        self.0.active.fetch_sub(1, Ordering::SeqCst);
-        Ok(())
+    ) -> Result<harmos::operations::Response<()>, Self::Error> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            self.0.ran.fetch_add(1, Ordering::SeqCst);
+            let active = self.0.active.fetch_add(1, Ordering::SeqCst) + 1;
+            self.0.maximum.fetch_max(active, Ordering::SeqCst);
+            self.0.entered.send(()).await.unwrap();
+            self.0.release.acquire().await.unwrap().forget();
+            self.0.active.fetch_sub(1, Ordering::SeqCst);
+            Ok(())
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 

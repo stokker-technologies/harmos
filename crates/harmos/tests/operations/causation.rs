@@ -82,13 +82,17 @@ impl Operation for Note {
         context: Self::Context<'ctx>,
         request: &mut String,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Error> {
-        context
-            .scope()
-            .records::<Bank>()
-            .publish(Noted(request.clone()))
-            .await?;
-        Ok(())
+    ) -> Result<harmos::operations::Response<()>, Error> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            context
+                .scope()
+                .records::<Bank>()
+                .publish(Noted(request.clone()))
+                .await?;
+            Ok(())
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -108,16 +112,20 @@ impl Operation for Descend {
         context: Self::Context<'ctx>,
         request: &mut String,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Error> {
-        context
-            .scope()
-            .records::<Bank>()
-            .publish(Noted(request.clone()))
-            .await?;
-        context
-            .submit::<NoteContract>(format!("{}-child", *request))?
-            .await?;
-        Ok(())
+    ) -> Result<harmos::operations::Response<()>, Error> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            context
+                .scope()
+                .records::<Bank>()
+                .publish(Noted(request.clone()))
+                .await?;
+            context
+                .submit::<NoteContract>(format!("{}-child", *request))?
+                .await?;
+            Ok(())
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -137,19 +145,23 @@ impl Operation for Family {
         context: Self::Context<'ctx>,
         request: &mut Position,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Error> {
-        context
-            .scope()
-            .records::<Bank>()
-            .publish(Noted("parent".to_owned()))
-            .await?;
-        context
-            .submit::<DescendContract>("inherited".to_owned())?
-            .await?;
-        context
-            .submit_caused::<DescendContract>("rerooted".to_owned(), *request)?
-            .await?;
-        Ok(())
+    ) -> Result<harmos::operations::Response<()>, Error> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            context
+                .scope()
+                .records::<Bank>()
+                .publish(Noted("parent".to_owned()))
+                .await?;
+            context
+                .submit::<DescendContract>("inherited".to_owned())?
+                .await?;
+            context
+                .submit_caused::<DescendContract>("rerooted".to_owned(), *request)?
+                .await?;
+            Ok(())
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 

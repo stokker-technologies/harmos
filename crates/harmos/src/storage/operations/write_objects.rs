@@ -104,12 +104,16 @@ impl<C: 'static> Operation for Handler<C> {
         _: Self::Context<'a>,
         request: &mut WriteObjectsRequest,
         _: &mut Self::Endpoints,
-    ) -> Result<WriteObjectsResponse> {
-        let objects = self
-            .storage
-            .write_objects_once(&request.mutation, &request.objects)
-            .await?;
-        Ok(WriteObjectsResponse { objects })
+    ) -> Result<crate::operations::Response<WriteObjectsResponse>> {
+        let result: ::core::result::Result<WriteObjectsResponse, Self::Error> = async move {
+            let objects = self
+                .storage
+                .write_objects_once(&request.mutation, &request.objects)
+                .await?;
+            Ok(WriteObjectsResponse { objects })
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     fn classify(error: &Error) -> crate::operations::Failure {

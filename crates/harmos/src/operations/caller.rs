@@ -219,7 +219,7 @@ impl Caller {
         endpoints: P,
     ) -> Result<super::OperationInstance<O>> {
         self.operations.submit_as::<O, P>(
-            (super::binding::Request::charged(request), endpoints),
+            (super::binding::Request::charged(request)?, endpoints),
             &Source::Plugin(self.source.clone()).external()?,
         )
     }
@@ -278,7 +278,7 @@ impl Caller {
         endpoints: P,
     ) -> Result<OperationInstance<O>> {
         self.operations.submit_as::<O, P>(
-            (super::binding::Request::charged(request), endpoints),
+            (super::binding::Request::charged(request)?, endpoints),
             &Source::Plugin(self.source.clone()),
         )
     }
@@ -286,7 +286,7 @@ impl Caller {
     pub async fn call<O: OperationDeclaration>(
         &self,
         request: O::Request,
-    ) -> Result<Arc<O::Response>> {
+    ) -> Result<crate::operations::Response<O::Response>> {
         self.submit::<O>(request)?.await
     }
 }

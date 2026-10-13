@@ -587,7 +587,7 @@ pub(super) fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    use std::{num::NonZeroUsize, sync::Arc, time::Duration};
+                    use std::{num::NonZeroUsize, time::Duration};
                     let runtime = runtime().await;
                     let mut lifecycle = Lifecycle::<Operations, _>::for_component(
                         &runtime,
@@ -621,14 +621,15 @@ pub(super) fn contract_scenario() {
                     let mut client = tonic::client::Grpc::new(channel);
                     client.ready().await.unwrap();
                     let settings = harmos::grpc::server::Settings::default();
-                    let codec = harmos::grpc::Codec::<Value, Arc<Value>>::new(
-                        settings.decode,
-                        settings.encode,
-                    )
-                    .unwrap();
+                    let codec =
+                        harmos::grpc::Codec::<Value, harmos::operations::Response<Value>>::new(
+                            settings.decode,
+                            settings.encode,
+                        )
+                        .unwrap();
                     let response = client
                         .unary(
-                            tonic::Request::new(Arc::new(Value {
+                            tonic::Request::new(harmos::operations::Response::new(Value {
                                 value: "value".into(),
                             })),
                             tonic::codegen::http::uri::PathAndQuery::from_static(

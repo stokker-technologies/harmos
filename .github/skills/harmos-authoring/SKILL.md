@@ -28,6 +28,30 @@ Use the original runtime and resource owners. Consult the relevant section only;
   work, omitting each endpoint argument when that direction is not declared;
   retain request-dependent handles on `self` for `stop()` and `finalize()`, including
   partial failures. The same request, endpoints and owner survive allowed retries.
+- The authored `Operation::run` trait returns `operations::Response<T>` for the
+  declared wire payload `T`. `#[harmos::operation]` converts an ordinary payload
+  through `Into`; an implementation may return the owned response directly.
+  Use an explicit shared declaration when the response handle is imported under
+  an alias. The wrapper adds no protobuf field or wire definition.
+- Storage producers return their admitted payload through
+  `preparation.finish(wire)?.try_into_value()?.try_into_response()?`.
+  This fallible conversion admits a conservative delivery allowance covering
+  the larger response or stream-item handle against the original read ledger
+  before creating its sole shared owner. Clones and cached responses
+  retain that same allocation and loan. Encoding releases its delivery owner;
+  the loan remains until the last cache, stream, or shared owner is dropped.
+  Never replace this path with a copied payload, a second reservation, or an
+  ambient context retention slot. `try_into_shared()` retains its existing
+  accounting for the separate shared query handle.
+- Send an admitted owned streamed payload with `output.send_owned(response).await?`.
+  This retains its original payload and loan alongside the existing channel
+  permits, with no additional payload owner allocation or wire field. Ordinary
+  `send_with` items still require only `Send`; owned items require `Send + Sync`.
+  `FileChunk::into_query_value()` retains its existing file-read reservation;
+  project the canonical frame through the admitted query-value API before
+  converting it into an owned response. `StreamItem::into_request` is fallible:
+  a borrowed owned payload cannot be moved out into a mutable request. Likewise,
+  consuming `project` refuses an owned item instead of silently copying it.
 - Declare portable child metadata through `operations::ContextValue`. Native
   `Context::with_value` consumes and derives the scoped caller; sidecar
   `Supervisor::with_value` and guest `Context::with_value` borrow and clone it.

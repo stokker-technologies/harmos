@@ -421,15 +421,19 @@ impl Operation for Hearing {
         context: Self::Context<'ctx>,
         delivery: &mut Delivery<Note>,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Self::Error> {
-        if self.resources.refuse_delivery.load(Ordering::Acquire) {
-            return Err(std::io::Error::other(
-                "this delivery is one the guest refuses",
-            ));
+    ) -> Result<harmos_guest::operations::Response<()>, Self::Error> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            if self.resources.refuse_delivery.load(Ordering::Acquire) {
+                return Err(std::io::Error::other(
+                    "this delivery is one the guest refuses",
+                ));
+            }
+            finding(context, &format!("{} {}", NOTE, delivery.row().note))
+                .await
+                .map_err(std::io::Error::other)
         }
-        finding(context, &format!("{} {}", NOTE, delivery.row().note))
-            .await
-            .map_err(std::io::Error::other)
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 

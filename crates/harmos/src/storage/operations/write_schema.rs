@@ -91,14 +91,18 @@ impl<C: 'static> Operation for Handler<C> {
         _: Self::Context<'a>,
         request: &mut WriteSchemaRequest,
         _: &mut Self::Endpoints,
-    ) -> Result<StorageCursor> {
-        self.storage
-            .write_schema_once(
-                &request.mutation,
-                &request.schema.key,
-                request.schema.graph(),
-            )
-            .await
+    ) -> Result<crate::operations::Response<StorageCursor>> {
+        let result: ::core::result::Result<StorageCursor, Self::Error> = async move {
+            self.storage
+                .write_schema_once(
+                    &request.mutation,
+                    &request.schema.key,
+                    request.schema.graph(),
+                )
+                .await
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     fn classify(error: &Error) -> crate::operations::Failure {

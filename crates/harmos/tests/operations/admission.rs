@@ -93,12 +93,16 @@ impl Operation for Hold {
         _: Self::Context<'ctx>,
         request: &mut Request,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Self::Error> {
-        request.started.notify_one();
-        if request.blocked {
-            std::future::pending::<()>().await;
+    ) -> Result<harmos::operations::Response<()>, Self::Error> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            request.started.notify_one();
+            if request.blocked {
+                std::future::pending::<()>().await;
+            }
+            Ok(())
         }
-        Ok(())
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     async fn finalize(&mut self) -> Result<(), Self::Error> {

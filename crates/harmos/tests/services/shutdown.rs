@@ -105,16 +105,20 @@ impl Operation for Ordered {
         _context: Self::Context<'ctx>,
         running: &mut bool,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Self::Error> {
-        self.running = *running;
-        if self.running {
-            self.sequence.events.lock().unwrap().push("job-start");
-            self.sequence.started.notify_one();
-            std::future::pending::<()>().await;
-        } else {
-            self.sequence.events.lock().unwrap().push("queued");
+    ) -> Result<harmos::operations::Response<()>, Self::Error> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            self.running = *running;
+            if self.running {
+                self.sequence.events.lock().unwrap().push("job-start");
+                self.sequence.started.notify_one();
+                std::future::pending::<()>().await;
+            } else {
+                self.sequence.events.lock().unwrap().push("queued");
+            }
+            Ok(())
         }
-        Ok(())
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     async fn finalize(&mut self) -> Result<(), Self::Error> {

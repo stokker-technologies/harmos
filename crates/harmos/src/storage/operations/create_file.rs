@@ -84,10 +84,14 @@ impl<C: 'static> Operation for Handler<C> {
         _: Self::Context<'a>,
         request: &mut CreateFileRequest,
         _: &mut Self::Endpoints,
-    ) -> Result<FileProducer> {
-        self.storage
-            .create_file_once(&request.mutation, &request.metadata)
-            .await
+    ) -> Result<crate::operations::Response<FileProducer>> {
+        let result: ::core::result::Result<FileProducer, Self::Error> = async move {
+            self.storage
+                .create_file_once(&request.mutation, &request.metadata)
+                .await
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     fn classify(error: &Error) -> crate::operations::Failure {

@@ -120,43 +120,47 @@ impl<C: 'static> Operation for Handler<C> {
         _: Self::Context<'a>,
         request: &mut ReadObjectsRequest,
         output: &mut Self::Endpoints,
-    ) -> Result<StorageCursor> {
-        request.selection.validate()?;
-        if let Some(fields) = &request.fields {
-            fields.validate()?;
-        }
+    ) -> Result<crate::operations::Response<StorageCursor>> {
+        let result: ::core::result::Result<StorageCursor, Self::Error> = async move {
+            request.selection.validate()?;
+            if let Some(fields) = &request.fields {
+                fields.validate()?;
+            }
 
-        let query = request.selection.query(false)?;
-        // Streaming Never Retries Automatically. Move The Original Input Plan
-        // Into Query Admission Without Allocating A Second Copy Of Predicates.
-        if let Some(fields) = request.fields.take() {
-            let mut reader = self.storage.query(query.project(fields)?).await?;
+            let query = request.selection.query(false)?;
+            // Streaming Never Retries Automatically. Move The Original Input Plan
+            // Into Query Admission Without Allocating A Second Copy Of Predicates.
+            if let Some(fields) = request.fields.take() {
+                let mut reader = self.storage.query(query.project(fields)?).await?;
+                let boundary = reader.view().ok_or(Error::ViewExpired)?.saved()?;
+                check_boundary(&request.selection, &boundary)?;
+                while let Some(page) = reader.next_page().await? {
+                    for row in page.iter() {
+                        output
+                            .send_with(ObjectResult::wrapping_memory(row), || {
+                                Ok(ObjectResult::Fields(row.clone()))
+                            })
+                            .await?;
+                    }
+                }
+                return Ok(boundary);
+            }
+            let mut reader = self.storage.query(query).await?;
             let boundary = reader.view().ok_or(Error::ViewExpired)?.saved()?;
             check_boundary(&request.selection, &boundary)?;
             while let Some(page) = reader.next_page().await? {
-                for row in page.iter() {
+                for entry in page.iter() {
                     output
-                        .send_with(ObjectResult::wrapping_memory(row), || {
-                            Ok(ObjectResult::Fields(row.clone()))
+                        .send_with(ObjectResult::wrapping_memory(entry), || {
+                            Ok(ObjectResult::Value(entry.clone()))
                         })
                         .await?;
                 }
             }
-            return Ok(boundary);
+            Ok(boundary)
         }
-        let mut reader = self.storage.query(query).await?;
-        let boundary = reader.view().ok_or(Error::ViewExpired)?.saved()?;
-        check_boundary(&request.selection, &boundary)?;
-        while let Some(page) = reader.next_page().await? {
-            for entry in page.iter() {
-                output
-                    .send_with(ObjectResult::wrapping_memory(entry), || {
-                        Ok(ObjectResult::Value(entry.clone()))
-                    })
-                    .await?;
-            }
-        }
-        Ok(boundary)
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 

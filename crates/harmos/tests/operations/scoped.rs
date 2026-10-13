@@ -107,7 +107,8 @@ impl Operation for Parent {
         context: Self::Context<'ctx>,
         mode: &mut Mode,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<usize, Error> {
+    ) -> Result<harmos::operations::Response<usize>, Error> {
+        let result: ::core::result::Result<usize, Self::Error> = async move {
         match mode {
             Mode::Leaf => Ok(7),
             Mode::HandleCycle => {
@@ -128,6 +129,8 @@ impl Operation for Parent {
                 Ok(self.trace.queued_runs.load(Ordering::SeqCst))
             }
         }
+            }.await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -147,14 +150,18 @@ impl Operation for Bound {
         _context: Self::Context<'ctx>,
         hold: &mut bool,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<usize, Self::Error> {
-        if *hold {
-            self.trace.bound_started.notify_one();
-            self.trace.release.notified().await;
-        } else {
-            self.trace.queued_runs.fetch_add(1, Ordering::SeqCst);
+    ) -> Result<harmos::operations::Response<usize>, Self::Error> {
+        let result: ::core::result::Result<usize, Self::Error> = async move {
+            if *hold {
+                self.trace.bound_started.notify_one();
+                self.trace.release.notified().await;
+            } else {
+                self.trace.queued_runs.fetch_add(1, Ordering::SeqCst);
+            }
+            Ok(7)
         }
-        Ok(7)
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -174,12 +181,16 @@ impl Operation for Free {
         _context: Self::Context<'ctx>,
         wait: &mut bool,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<usize, Self::Error> {
-        self.trace.free_started.notify_one();
-        if *wait {
-            std::future::pending::<()>().await;
+    ) -> Result<harmos::operations::Response<usize>, Self::Error> {
+        let result: ::core::result::Result<usize, Self::Error> = async move {
+            self.trace.free_started.notify_one();
+            if *wait {
+                std::future::pending::<()>().await;
+            }
+            Ok(1)
         }
-        Ok(1)
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 

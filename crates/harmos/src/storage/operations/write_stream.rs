@@ -91,11 +91,15 @@ impl<C: 'static> Operation for Handler<C> {
         _: Self::Context<'a>,
         request: &mut WriteStreamRequest,
         _: &mut Self::Endpoints,
-    ) -> Result<StorageCursor> {
-        let values = request.rows.iter().map(StreamInput::borrowed);
-        self.storage
-            .admit_stream_values(&request.mutation, values)
-            .await
+    ) -> Result<crate::operations::Response<StorageCursor>> {
+        let result: ::core::result::Result<StorageCursor, Self::Error> = async move {
+            let values = request.rows.iter().map(StreamInput::borrowed);
+            self.storage
+                .admit_stream_values(&request.mutation, values)
+                .await
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     fn classify(error: &Error) -> crate::operations::Failure {

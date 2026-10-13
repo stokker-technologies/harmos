@@ -56,9 +56,13 @@ macro_rules! serving {
                 _: Self::Context<'a>,
                 $request: &mut u32,
                 $ports: &mut Self::Endpoints,
-            ) -> Result<u32, Self::Error> {
-                self.0.runs.fetch_add(1, Ordering::SeqCst);
-                $run
+            ) -> Result<harmos::operations::Response<u32>, Self::Error> {
+                let result: ::core::result::Result<u32, Self::Error> = async move {
+                    self.0.runs.fetch_add(1, Ordering::SeqCst);
+                    $run
+                }
+                .await;
+                result.map(::core::convert::Into::into)
             }
             async fn stop(&mut self) -> Result<(), Self::Error> {
                 self.0.stopped.fetch_add(1, Ordering::SeqCst);
@@ -148,11 +152,14 @@ pub(super) fn bind(
 
 /* === Private Functions === */
 #[cfg(feature = "grpc")]
-fn opening() -> impl futures_core::Stream<Item = Arc<InputEnvelope<u32, u32>>> + Send + 'static {
+fn opening()
+-> impl futures_core::Stream<Item = harmos::operations::Response<InputEnvelope<u32, u32>>>
++ Send
++ 'static {
     futures_util::stream::iter([
-        Arc::new(InputEnvelope::Request(5)),
-        Arc::new(InputEnvelope::Item(0)),
-        Arc::new(InputEnvelope::Item(7)),
+        harmos::operations::Response::new(InputEnvelope::Request(5)),
+        harmos::operations::Response::new(InputEnvelope::Item(0)),
+        harmos::operations::Response::new(InputEnvelope::Item(7)),
     ])
 }
 
@@ -206,7 +213,7 @@ fn contract_scenario() {
                             tonic::codegen::http::uri::PathAndQuery::from_static(
                                 "/fixture.v1.Native/Upload",
                             ),
-                            Codec::<u32, Arc<InputEnvelope<u32, u32>>>::new(
+                            Codec::<u32, harmos::operations::Response<InputEnvelope<u32, u32>>>::new(
                                 operations.decode,
                                 operations.encode,
                             )
@@ -219,11 +226,11 @@ fn contract_scenario() {
                     client.ready().await.unwrap();
                     let mut download = client
                         .server_streaming(
-                            tonic::Request::new(Arc::new(5u32)),
+                            tonic::Request::new(harmos::operations::Response::new(5u32)),
                             tonic::codegen::http::uri::PathAndQuery::from_static(
                                 "/fixture.v1.Native/Download",
                             ),
-                            Codec::<OutputEnvelope<u32, u32>, Arc<u32>>::new(
+                            Codec::<OutputEnvelope<u32, u32>, harmos::operations::Response<u32>>::new(
                                 operations.decode,
                                 operations.encode,
                             )
@@ -248,7 +255,7 @@ fn contract_scenario() {
                             tonic::codegen::http::uri::PathAndQuery::from_static(
                                 "/fixture.v1.Native/Exchange",
                             ),
-                            Codec::<OutputEnvelope<u32, u32>, Arc<InputEnvelope<u32, u32>>>::new(
+                            Codec::<OutputEnvelope<u32, u32>, harmos::operations::Response<InputEnvelope<u32, u32>>>::new(
                                 operations.decode,
                                 operations.encode,
                             )

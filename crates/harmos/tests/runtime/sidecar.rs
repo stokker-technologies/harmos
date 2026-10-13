@@ -83,10 +83,14 @@ mod visibility {
             _: Self::Context<'ctx>,
             request: &mut Scale,
             _endpoints: &mut Self::Endpoints,
-        ) -> Result<Scale, Refusal> {
-            Ok(Scale {
-                value: request.value * self.resources.factor,
-            })
+        ) -> Result<harmos::operations::Response<Scale>, Refusal> {
+            let result: ::core::result::Result<Scale, Self::Error> = async move {
+                Ok(Scale {
+                    value: request.value * self.resources.factor,
+                })
+            }
+            .await;
+            result.map(::core::convert::Into::into)
         }
     }
     pub(super) struct ScalingPublicly {
@@ -107,10 +111,14 @@ mod visibility {
             _: Self::Context<'ctx>,
             _request: &mut ScalePubliclyRequest,
             _endpoints: &mut Self::Endpoints,
-        ) -> Result<Scale, Refusal> {
-            Ok(Scale {
-                value: self.resources.factor,
-            })
+        ) -> Result<harmos::operations::Response<Scale>, Refusal> {
+            let result: ::core::result::Result<Scale, Self::Error> = async move {
+                Ok(Scale {
+                    value: self.resources.factor,
+                })
+            }
+            .await;
+            result.map(::core::convert::Into::into)
         }
     }
 }
@@ -569,14 +577,18 @@ impl harmos::operations::Operation for Measuring {
         _: Self::Context<'ctx>,
         request: &mut Measure,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Measured, Refusal> {
-        let _ = &request;
-        if request.value < 0 {
-            return Err(Refusal::of("this gauge measures no negative value"));
+    ) -> Result<harmos::operations::Response<Measured>, Refusal> {
+        let result: ::core::result::Result<Measured, Self::Error> = async move {
+            let _ = &request;
+            if request.value < 0 {
+                return Err(Refusal::of("this gauge measures no negative value"));
+            }
+            Ok(Measured {
+                value: request.value * self.resources.factor,
+            })
         }
-        Ok(Measured {
-            value: request.value * self.resources.factor,
-        })
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -620,9 +632,13 @@ impl harmos::operations::Operation for Echoing {
         _: Self::Context<'ctx>,
         request: &mut String,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<String, Refusal> {
-        let _ = &request;
-        Ok(request.clone())
+    ) -> Result<harmos::operations::Response<String>, Refusal> {
+        let result: ::core::result::Result<String, Self::Error> = async move {
+            let _ = &request;
+            Ok(request.clone())
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -653,9 +669,13 @@ impl harmos::operations::Operation for Uppercasing {
         _: Self::Context<'ctx>,
         request: &mut String,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<String, Refusal> {
-        let _ = &request;
-        Ok(request.to_uppercase())
+    ) -> Result<harmos::operations::Response<String>, Refusal> {
+        let result: ::core::result::Result<String, Self::Error> = async move {
+            let _ = &request;
+            Ok(request.to_uppercase())
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -684,10 +704,14 @@ impl harmos::operations::Operation for StoppingSampling {
         _: Self::Context<'ctx>,
         request: &mut StopSamplingRequest,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<StopSamplingResponse, Refusal> {
-        let _ = &request;
-        self.resources.stopped.fetch_add(1, Ordering::SeqCst);
-        Ok(StopSamplingResponse {})
+    ) -> Result<harmos::operations::Response<StopSamplingResponse>, Refusal> {
+        let result: ::core::result::Result<StopSamplingResponse, Self::Error> = async move {
+            let _ = &request;
+            self.resources.stopped.fetch_add(1, Ordering::SeqCst);
+            Ok(StopSamplingResponse {})
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -716,11 +740,15 @@ impl harmos::operations::Operation for ReadingFactor {
         _: Self::Context<'ctx>,
         request: &mut GetFactorRequest,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Measured, Refusal> {
-        let _ = &request;
-        Ok(Measured {
-            value: self.resources.factor,
-        })
+    ) -> Result<harmos::operations::Response<Measured>, Refusal> {
+        let result: ::core::result::Result<Measured, Self::Error> = async move {
+            let _ = &request;
+            Ok(Measured {
+                value: self.resources.factor,
+            })
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -744,13 +772,17 @@ impl harmos::operations::Operation for Amplifying {
         _: Self::Context<'ctx>,
         request: &mut Amplify,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Amplified, Refusal> {
-        if request.value < 0 {
-            return Err(Refusal::of("this meter measures no negative value"));
+    ) -> Result<harmos::operations::Response<Amplified>, Refusal> {
+        let result: ::core::result::Result<Amplified, Self::Error> = async move {
+            if request.value < 0 {
+                return Err(Refusal::of("this meter measures no negative value"));
+            }
+            Ok(Amplified {
+                value: request.value * 2,
+            })
         }
-        Ok(Amplified {
-            value: request.value * 2,
-        })
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -774,11 +806,15 @@ impl harmos::operations::Operation for Emitting {
         host: Self::Context<'ctx>,
         request: &mut Emit,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Refusal> {
-        host.publisher::<Meter>()
-            .publish_on::<MeterPulse>(&support::pulse(request.value))
-            .await
-            .map_err(Refusal::of)
+    ) -> Result<harmos::operations::Response<()>, Refusal> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            host.publisher::<Meter>()
+                .publish_on::<MeterPulse>(&support::pulse(request.value))
+                .await
+                .map_err(Refusal::of)
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -802,11 +838,15 @@ impl harmos::operations::Operation for PublishingPulse {
         host: Self::Context<'ctx>,
         request: &mut PublishPulse,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Refusal> {
-        host.publisher::<Meter>()
-            .publish_on::<MeterPulse>(&support::pulse(request.sample))
-            .await
-            .map_err(Refusal::of)
+    ) -> Result<harmos::operations::Response<()>, Refusal> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            host.publisher::<Meter>()
+                .publish_on::<MeterPulse>(&support::pulse(request.sample))
+                .await
+                .map_err(Refusal::of)
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -830,10 +870,14 @@ impl harmos::operations::Operation for Collapsing {
         host: Self::Context<'ctx>,
         request: &mut Collapse,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Refusal> {
-        let _ = (&request, &host);
-        host.abandon();
-        Ok(())
+    ) -> Result<harmos::operations::Response<()>, Refusal> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            let _ = (&request, &host);
+            host.abandon();
+            Ok(())
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -857,10 +901,14 @@ impl harmos::operations::Operation for Finishing {
         host: Self::Context<'ctx>,
         request: &mut Finish,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Refusal> {
-        let _ = (&request, &host);
-        host.exiting(request.reason.clone());
-        Ok(())
+    ) -> Result<harmos::operations::Response<()>, Refusal> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            let _ = (&request, &host);
+            host.exiting(request.reason.clone());
+            Ok(())
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -884,17 +932,21 @@ impl harmos::operations::Operation for BudgetedCall {
         host: Self::Context<'ctx>,
         request: &mut BudgetedRoute,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<BudgetedReply, Refusal> {
-        let _ = (&request, &host);
-        if request.refusal_bytes > 0 {
-            return Err(Refusal::new(
-                -42,
-                "x".repeat(request.refusal_bytes as usize),
-            ));
+    ) -> Result<harmos::operations::Response<BudgetedReply>, Refusal> {
+        let result: ::core::result::Result<BudgetedReply, Self::Error> = async move {
+            let _ = (&request, &host);
+            if request.refusal_bytes > 0 {
+                return Err(Refusal::new(
+                    -42,
+                    "x".repeat(request.refusal_bytes as usize),
+                ));
+            }
+            Ok(BudgetedReply {
+                payload: vec![0; request.reply_bytes as usize],
+            })
         }
-        Ok(BudgetedReply {
-            payload: vec![0; request.reply_bytes as usize],
-        })
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -920,11 +972,15 @@ impl harmos::operations::Operation for Sampling {
         _: Self::Context<'ctx>,
         request: &mut Sample,
         _endpoints: &mut Self::Endpoints,
-    ) -> harmos::Result<()> {
-        self.resources
-            .streams
-            .publish(support::pulse(request.value));
-        Ok(())
+    ) -> harmos::Result<harmos::operations::Response<()>> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            self.resources
+                .streams
+                .publish(support::pulse(request.value));
+            Ok(())
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 

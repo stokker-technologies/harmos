@@ -1387,9 +1387,13 @@ impl harmos::operations::Operation for EmbeddedReading {
         _: Self::Context<'ctx>,
         request: &mut Echo,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Echoed, Self::Error> {
-        self.cleanup = request.say == "physical-cleanup";
-        self.resources.answer(request).await
+    ) -> Result<harmos::operations::Response<Echoed>, Self::Error> {
+        let result: ::core::result::Result<Echoed, Self::Error> = async move {
+            self.cleanup = request.say == "physical-cleanup";
+            self.resources.answer(request).await
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
     async fn finalize(&mut self) -> Result<(), Self::Error> {
         self.resources.cleanup(self.cleanup).await
@@ -1474,9 +1478,13 @@ impl harmos::operations::Operation for NativeReading {
         _: Self::Context<'ctx>,
         request: &mut Echo,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Echoed, Self::Error> {
-        self.cleanup = request.say == "physical-cleanup";
-        self.resources.0.answer(request).await
+    ) -> Result<harmos::operations::Response<Echoed>, Self::Error> {
+        let result: ::core::result::Result<Echoed, Self::Error> = async move {
+            self.cleanup = request.say == "physical-cleanup";
+            self.resources.0.answer(request).await
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
     async fn finalize(&mut self) -> Result<(), Self::Error> {
         self.resources.0.cleanup(self.cleanup).await
@@ -1501,10 +1509,14 @@ impl harmos::operations::Operation for NativeForwarding {
         host: Self::Context<'ctx>,
         request: &mut Echo,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Echoed, Self::Error> {
-        host.operation::<Echo>(request.clone())
-            .await
-            .map_err(Self::Error::of)
+    ) -> Result<harmos::operations::Response<Echoed>, Self::Error> {
+        let result: ::core::result::Result<Echoed, Self::Error> = async move {
+            host.operation::<Echo>(request.clone())
+                .await
+                .map_err(Self::Error::of)
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 struct NativeSeed {

@@ -221,58 +221,62 @@ where
         context: Self::Context<'ctx>,
         request: &mut O::Request,
         endpoints: &mut Self::Endpoints,
-    ) -> Result<O::Response, ComponentError> {
-        if self.state.is_none() {
-            let component = &self.component;
+    ) -> Result<crate::operations::Response<O::Response>, ComponentError> {
+        let result: ::core::result::Result<O::Response, Self::Error> = async move {
+            if self.state.is_none() {
+                let component = &self.component;
 
-            if !component.endpoint.accepts() {
-                return Err(ComponentError::Unavailable);
+                if !component.endpoint.accepts() {
+                    return Err(ComponentError::Unavailable);
+                }
+                let definition = Definition::of::<O>()?;
+                if !component.endpoint.definitions().contains(&definition) {
+                    return Err(ComponentError::Catalog { operation: O::ID });
+                }
+                let state = ComponentState {
+                    initialized: false,
+                    payload: Some(request.encode_to_vec()),
+                    invocation: None,
+                    operation: definition.id,
+                };
+
+                self.state = Some(state);
             }
-            let definition = Definition::of::<O>()?;
-            if !component.endpoint.definitions().contains(&definition) {
-                return Err(ComponentError::Catalog { operation: O::ID });
+            let state = self.state.as_mut().expect("original remote state");
+            if !state.initialized {
+                self.component.initialize_encoded(state, &context).await?;
+                state.initialized = true;
             }
-            let state = ComponentState {
-                initialized: false,
-                payload: Some(request.encode_to_vec()),
-                invocation: None,
-                operation: definition.id,
-            };
 
-            self.state = Some(state);
-        }
-        let state = self.state.as_mut().expect("original remote state");
-        if !state.initialized {
-            self.component.initialize_encoded(state, &context).await?;
-            state.initialized = true;
-        }
-
-        let answer = if E::item_types() == (None, None) {
-            self.component
-                .phase_encoded(state, &context, Phase::Attempt)
+            let answer = if E::item_types() == (None, None) {
+                self.component
+                    .phase_encoded(state, &context, Phase::Attempt)
+                    .await?
+            } else {
+                self.epoch =
+                    self.epoch
+                        .checked_add(1)
+                        .ok_or(super::RemoteStreamError::Protocol(
+                            "stream attempt counter exhausted",
+                        ))?;
+                let running =
+                    self.component
+                        .phase_encoded(state, &context, Phase::Stream(self.epoch));
+                super::remote::attempt(
+                    &*self.component,
+                    endpoints,
+                    state.invocation.expect("original prepared invocation"),
+                    self.epoch,
+                    &self.transferred,
+                    running,
+                )
                 .await?
-        } else {
-            self.epoch = self
-                .epoch
-                .checked_add(1)
-                .ok_or(super::RemoteStreamError::Protocol(
-                    "stream attempt counter exhausted",
-                ))?;
-            let running = self
-                .component
-                .phase_encoded(state, &context, Phase::Stream(self.epoch));
-            super::remote::attempt(
-                &*self.component,
-                endpoints,
-                state.invocation.expect("original prepared invocation"),
-                self.epoch,
-                &self.transferred,
-                running,
-            )
-            .await?
-        };
-        let payload = ready(answer)?;
-        O::Response::decode(payload.as_slice()).map_err(ComponentError::Payload)
+            };
+            let payload = ready(answer)?;
+            O::Response::decode(payload.as_slice()).map_err(ComponentError::Payload)
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     async fn finalize(&mut self) -> Result<(), ComponentError> {
@@ -523,50 +527,55 @@ impl Operation for SdkOperation {
         context: Self::Context<'ctx>,
         payload: &mut Vec<u8>,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Vec<u8>, ComponentError> {
-        if self.state.is_none() {
-            let binding = &self.binding;
+    ) -> Result<crate::operations::Response<Vec<u8>>, ComponentError> {
+        let result: ::core::result::Result<Vec<u8>, Self::Error> = async move {
+            if self.state.is_none() {
+                let binding = &self.binding;
 
-            if !binding.component.endpoint.accepts() {
-                return Err(ComponentError::Unavailable);
-            }
-            let matches = binding
-                .component
-                .scope()
-                .and_then(|scope| scope.lifecycle())
-                .is_some_and(|pair| {
-                    pair.iter()
-                        .any(|descriptor| descriptor.contract().operation() == &binding.definition)
-                });
-            if !matches {
-                return Err(ComponentError::Catalog {
-                    operation: "SDK lifecycle",
-                });
-            }
-            let state = ComponentState {
-                initialized: false,
-                payload: Some(std::mem::take(payload)),
-                invocation: None,
-                operation: binding.definition.id.clone(),
-            };
+                if !binding.component.endpoint.accepts() {
+                    return Err(ComponentError::Unavailable);
+                }
+                let matches = binding
+                    .component
+                    .scope()
+                    .and_then(|scope| scope.lifecycle())
+                    .is_some_and(|pair| {
+                        pair.iter().any(|descriptor| {
+                            descriptor.contract().operation() == &binding.definition
+                        })
+                    });
+                if !matches {
+                    return Err(ComponentError::Catalog {
+                        operation: "SDK lifecycle",
+                    });
+                }
+                let state = ComponentState {
+                    initialized: false,
+                    payload: Some(std::mem::take(payload)),
+                    invocation: None,
+                    operation: binding.definition.id.clone(),
+                };
 
-            self.state = Some(state);
-        }
-        let state = self.state.as_mut().expect("original remote state");
-        if !state.initialized {
-            self.binding
+                self.state = Some(state);
+            }
+            let state = self.state.as_mut().expect("original remote state");
+            if !state.initialized {
+                self.binding
+                    .component
+                    .initialize_encoded(state, &context)
+                    .await?;
+                state.initialized = true;
+            }
+
+            let answer = self
+                .binding
                 .component
-                .initialize_encoded(state, &context)
+                .phase_encoded(state, &context, Phase::Attempt)
                 .await?;
-            state.initialized = true;
+            ready(answer)
         }
-
-        let answer = self
-            .binding
-            .component
-            .phase_encoded(state, &context, Phase::Attempt)
-            .await?;
-        ready(answer)
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     async fn finalize(&mut self) -> Result<(), ComponentError> {
@@ -629,7 +638,7 @@ fn sdk_dispatch(
     let control = Arc::clone(&invocation.control);
     let outcome = Box::pin(async move {
         let payload = invocation.await?;
-        Arc::try_unwrap(payload).map_err(|_| Error::InvalidInput {
+        payload.try_unwrap().map_err(|_| Error::InvalidInput {
             field: "SDK response",
             reason: "uncached SDK response unexpectedly shared",
         })

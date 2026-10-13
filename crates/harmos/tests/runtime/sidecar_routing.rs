@@ -319,11 +319,15 @@ impl harmos::operations::Operation for PublishingCall {
         host: Self::Context<'ctx>,
         request: &mut PublishPulse,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Refusal> {
-        host.publisher::<Publishing>()
-            .publish_on::<MeterPulse>(&support::pulse(request.sample))
-            .await
-            .map_err(Refusal::of)
+    ) -> Result<harmos::operations::Response<()>, Refusal> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            host.publisher::<Publishing>()
+                .publish_on::<MeterPulse>(&support::pulse(request.sample))
+                .await
+                .map_err(Refusal::of)
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -463,16 +467,20 @@ impl harmos::operations::Operation for Amplifying {
         _: Self::Context<'ctx>,
         request: &mut Amplify,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Amplified, Refusal> {
-        if request.value == 0 {
-            let _drop = DroppedHandler(self.resources.dropped.clone());
-            self.resources.started.notify_one();
-            std::future::pending::<()>().await;
+    ) -> Result<harmos::operations::Response<Amplified>, Refusal> {
+        let result: ::core::result::Result<Amplified, Self::Error> = async move {
+            if request.value == 0 {
+                let _drop = DroppedHandler(self.resources.dropped.clone());
+                self.resources.started.notify_one();
+                std::future::pending::<()>().await;
+            }
+            self.resources.observed.lock().unwrap().push(request.value);
+            Ok(Amplified {
+                value: request.value * self.resources.multiplier,
+            })
         }
-        self.resources.observed.lock().unwrap().push(request.value);
-        Ok(Amplified {
-            value: request.value * self.resources.multiplier,
-        })
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -512,15 +520,19 @@ impl harmos::operations::Operation for Retrying {
         _: Self::Context<'ctx>,
         request: &mut Amplify,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Amplified, Refusal> {
-        self.resources.attempts.fetch_add(1, Ordering::SeqCst);
-        request.value += 1;
-        if request.value == 2 {
-            return Err(Refusal::of("one transient failure"));
+    ) -> Result<harmos::operations::Response<Amplified>, Refusal> {
+        let result: ::core::result::Result<Amplified, Self::Error> = async move {
+            self.resources.attempts.fetch_add(1, Ordering::SeqCst);
+            request.value += 1;
+            if request.value == 2 {
+                return Err(Refusal::of("one transient failure"));
+            }
+            Ok(Amplified {
+                value: request.value,
+            })
         }
-        Ok(Amplified {
-            value: request.value,
-        })
+        .await;
+        result.map(::core::convert::Into::into)
     }
     async fn finalize(&mut self) -> Result<(), Refusal> {
         if self.resources.fail_cleanup.load(Ordering::SeqCst) {
@@ -554,13 +566,19 @@ impl<const ALLOWED: bool> harmos::operations::Operation for Forwarding<ALLOWED> 
         host: Self::Context<'ctx>,
         request: &mut Amplify,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Amplified, Refusal> {
-        host.operation::<Amplify>(request.clone())
-            .await
-            .map_err(|error| match error {
-                harmos_sidecar::CallError::Refused { code, message } => Refusal::new(code, message),
-                error => Refusal::of(error),
-            })
+    ) -> Result<harmos::operations::Response<Amplified>, Refusal> {
+        let result: ::core::result::Result<Amplified, Self::Error> = async move {
+            host.operation::<Amplify>(request.clone())
+                .await
+                .map_err(|error| match error {
+                    harmos_sidecar::CallError::Refused { code, message } => {
+                        Refusal::new(code, message)
+                    }
+                    error => Refusal::of(error),
+                })
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 

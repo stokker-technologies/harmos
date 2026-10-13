@@ -236,8 +236,10 @@ impl Operation for ComputeCall {
         context: Self::Context<'ctx>,
         request: &mut Request,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Response, Failed> {
-        self.owner.compute(request, &mut self.state, context).await
+    ) -> Result<harmos::operations::Response<Response>, Failed> {
+        let result: ::core::result::Result<Response, Self::Error> =
+            async move { self.owner.compute(request, &mut self.state, context).await }.await;
+        result.map(::core::convert::Into::into)
     }
     fn classify(error: &Failed) -> Failure {
         Owner::classify(error)
@@ -259,13 +261,17 @@ impl Operation for SlowCall {
         _: Self::Context<'ctx>,
         request: &mut Request,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Response, Failed> {
-        self.owner.runs.fetch_add(1, Ordering::SeqCst);
-        tokio::time::sleep(Duration::from_secs(1)).await;
-        Ok(Response {
-            value: request.value,
-            attempts: 1,
-        })
+    ) -> Result<harmos::operations::Response<Response>, Failed> {
+        let result: ::core::result::Result<Response, Self::Error> = async move {
+            self.owner.runs.fetch_add(1, Ordering::SeqCst);
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            Ok(Response {
+                value: request.value,
+                attempts: 1,
+            })
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -283,12 +289,16 @@ impl Operation for ParentCall {
         context: Self::Context<'ctx>,
         request: &mut Request,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Response, Failed> {
-        let response = context.call::<Compute>(request.take()).await?;
-        Ok(Response {
-            value: response.value,
-            attempts: response.attempts,
-        })
+    ) -> Result<harmos::operations::Response<Response>, Failed> {
+        let result: ::core::result::Result<Response, Self::Error> = async move {
+            let response = context.call::<Compute>(request.take()).await?;
+            Ok(Response {
+                value: response.value,
+                attempts: response.attempts,
+            })
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 

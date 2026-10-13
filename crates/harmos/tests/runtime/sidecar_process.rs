@@ -84,24 +84,29 @@ impl Operation for CallbackPublication {
         context: Self::Context<'ctx>,
         request: &mut harmos::operations::host::Publication,
         _endpoints: &mut Self::Endpoints,
-    ) -> harmos::Result<()> {
-        self.owner.calls.fetch_add(1, Ordering::SeqCst);
-        let id = match self.owner.mode.load(Ordering::SeqCst) {
-            1 => 0,
-            2 => u64::MAX,
-            _ => request.sequence.unwrap(),
-        };
-        let echoed = context
-            .call::<Echo>(Blob {
-                id,
-                data: request.payload.clone(),
-            })
-            .await?;
-        assert_eq!(
-            echoed.data, request.payload,
-            "the original connection carried the nested response"
-        );
-        self.publication.run(context, request, _endpoints).await
+    ) -> harmos::Result<harmos::operations::Response<()>> {
+        let result: ::core::result::Result<harmos::operations::Response<()>, Self::Error> =
+            async move {
+                self.owner.calls.fetch_add(1, Ordering::SeqCst);
+                let id = match self.owner.mode.load(Ordering::SeqCst) {
+                    1 => 0,
+                    2 => u64::MAX,
+                    _ => request.sequence.unwrap(),
+                };
+                let echoed = context
+                    .call::<Echo>(Blob {
+                        id,
+                        data: request.payload.clone(),
+                    })
+                    .await?;
+                assert_eq!(
+                    echoed.data, request.payload,
+                    "the original connection carried the nested response"
+                );
+                self.publication.run(context, request, _endpoints).await
+            }
+            .await;
+        result
     }
 }
 

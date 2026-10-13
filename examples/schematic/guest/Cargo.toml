@@ -29,7 +29,7 @@ crate-type = ["cdylib", "rlib"]
 # with its plugins, never the host half that serves it.
 [dependencies]
 # Local
-harmos-guest = { workspace = true, features = ["derive", "kit", "streaming"] }
+harmos-guest = { workspace = true, features = ["derive", "grpc", "kit", "streaming"] }
 schematic-contract = { path = "../contract" }
 
 # Git

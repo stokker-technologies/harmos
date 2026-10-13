@@ -54,10 +54,14 @@ macro_rules! operation {
                 _: Self::Context<'a>,
                 request: &mut Payload,
                 endpoints: &mut Self::Endpoints,
-            ) -> harmos::Result<Payload> {
-                let $this = request;
-                let $ports = endpoints;
-                $body
+            ) -> harmos::Result<harmos::operations::Response<Payload>> {
+                let result: ::core::result::Result<Payload, Self::Error> = async move {
+                    let $this = request;
+                    let $ports = endpoints;
+                    $body
+                }
+                .await;
+                result.map(::core::convert::Into::into)
             }
             async fn finalize(&mut self) -> harmos::Result<()> {
                 self.trace.finalized.fetch_add(1, Ordering::SeqCst);
@@ -579,7 +583,9 @@ async fn failure_preserve_stream() -> Result<(), harmos_grpc_fixture::Error> {
                 assert!(matches!(event.value, Some(operations_exchange_output::Value::Item(item)) if item.value == format!("burst:{value}")));
             }
             if mode == "partial-failure" {
-                assert_eq!(output.message().await.unwrap_err().code(), tonic::Code::Internal);
+                let failure = output.message().await.unwrap_err();
+                assert_eq!(failure.code(), tonic::Code::Internal);
+                assert!(matches!(failure.message(), "operation request failed" | "operation input failed"));
                 drop(input);
                 continue;
             }

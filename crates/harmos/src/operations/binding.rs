@@ -39,7 +39,7 @@ type Prepare<O, P> = dyn Fn(
         Source,
         Origin,
         Option<OwnedSemaphorePermit>,
-    ) -> Result<Prepared<Arc<<O as OperationDeclaration>::Response>>>
+    ) -> Result<Prepared<super::Response<<O as OperationDeclaration>::Response>>>
     + Send
     + Sync;
 
@@ -69,13 +69,13 @@ impl<T> From<T> for Request<T> {
     }
 }
 impl<T> Request<T> {
-    pub(super) fn charged(item: super::StreamItem<T>) -> Self {
-        let (value, claims) = item.into_request();
-        Self {
+    pub(super) fn charged(item: super::StreamItem<T>) -> Result<Self> {
+        let (value, claims) = item.into_request()?;
+        Ok(Self {
             value,
             retention: Some(claims),
             context: Arc::new(std::sync::OnceLock::from(super::CallContext::default())),
-        }
+        })
     }
 }
 

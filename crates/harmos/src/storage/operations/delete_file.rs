@@ -95,10 +95,14 @@ impl<C: 'static> Operation for Handler<C> {
         _: Self::Context<'a>,
         request: &mut DeleteFileRequest,
         _: &mut Self::Endpoints,
-    ) -> Result<StagedFile> {
-        self.storage
-            .delete_file_once(&request.mutation, &request.file)
-            .await
+    ) -> Result<crate::operations::Response<StagedFile>> {
+        let result: ::core::result::Result<StagedFile, Self::Error> = async move {
+            self.storage
+                .delete_file_once(&request.mutation, &request.file)
+                .await
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     fn classify(error: &Error) -> crate::operations::Failure {

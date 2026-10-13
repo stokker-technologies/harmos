@@ -88,15 +88,19 @@ impl<C: 'static> Operation for Handler<C> {
         _: Self::Context<'a>,
         request: &mut AppendFileRequest,
         _: &mut Self::Endpoints,
-    ) -> Result<FileProducer> {
-        self.storage
-            .append_file_once(
-                &request.mutation,
-                &request.session,
-                request.offset,
-                &request.bytes,
-            )
-            .await
+    ) -> Result<crate::operations::Response<FileProducer>> {
+        let result: ::core::result::Result<FileProducer, Self::Error> = async move {
+            self.storage
+                .append_file_once(
+                    &request.mutation,
+                    &request.session,
+                    request.offset,
+                    &request.bytes,
+                )
+                .await
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     fn classify(error: &Error) -> crate::operations::Failure {

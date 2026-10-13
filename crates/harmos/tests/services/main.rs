@@ -95,8 +95,9 @@ impl Operation for Ping {
         _: Self::Context<'ctx>,
         _request: &mut (),
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<usize, Self::Error> {
-        Ok(42)
+    ) -> Result<harmos::operations::Response<usize>, Self::Error> {
+        let result: ::core::result::Result<usize, Self::Error> = async move { Ok(42) }.await;
+        result.map(::core::convert::Into::into)
     }
 }
 

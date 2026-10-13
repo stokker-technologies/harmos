@@ -373,7 +373,7 @@ where
     pub fn settle<O: crate::operations::OperationDeclaration>(
         &mut self,
         invocation: crate::operations::OperationInstance<O>,
-    ) -> crate::Result<Arc<O::Response>> {
+    ) -> crate::Result<crate::operations::Response<O::Response>> {
         self.executor.block_on(invocation)
     }
 

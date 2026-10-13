@@ -263,8 +263,10 @@ impl Operation for Asking {
         _: Self::Context<'ctx>,
         _request: &mut Ask,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<GetAskResponse, Refusal> {
-        std::future::pending().await
+    ) -> Result<harmos::operations::Response<GetAskResponse>, Refusal> {
+        let result: ::core::result::Result<GetAskResponse, Self::Error> =
+            async move { std::future::pending().await }.await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -284,23 +286,27 @@ impl Operation for Echoing {
         host: Self::Context<'ctx>,
         request: &mut String,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<String, Refusal> {
-        if request == "publish-foreign" {
-            // Reach The Host With A Selected Core Leaf And An Ungranted Stream.
-            host.operation::<harmos::operations::host::Publish>(
-                harmos::operations::host::Publication {
-                    stream: <linked::Foreign as harmos::StreamSpec>::ID.to_owned(),
-                    schema: <linked::Foreign as harmos::StreamSpec>::VERSION,
-                    sequence: Some(1),
-                    published_unix_micros: None,
-                    context: None,
-                    payload: harmos::Message::encode_to_vec(&linked::Foreign { value: 1 }),
-                },
-            )
-            .await
-            .map_err(Refusal::of)?;
+    ) -> Result<harmos::operations::Response<String>, Refusal> {
+        let result: ::core::result::Result<String, Self::Error> = async move {
+            if request == "publish-foreign" {
+                // Reach The Host With A Selected Core Leaf And An Ungranted Stream.
+                host.operation::<harmos::operations::host::Publish>(
+                    harmos::operations::host::Publication {
+                        stream: <linked::Foreign as harmos::StreamSpec>::ID.to_owned(),
+                        schema: <linked::Foreign as harmos::StreamSpec>::VERSION,
+                        sequence: Some(1),
+                        published_unix_micros: None,
+                        context: None,
+                        payload: harmos::Message::encode_to_vec(&linked::Foreign { value: 1 }),
+                    },
+                )
+                .await
+                .map_err(Refusal::of)?;
+            }
+            Ok(request.clone())
         }
-        Ok(request.clone())
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 

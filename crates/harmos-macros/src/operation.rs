@@ -166,6 +166,46 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
     context_lifetimes(&mut context);
     let request = borrowed(typed(&run.sig.inputs[2])?)?;
     let (response, error) = result(&run.sig.output)?;
+    // The Owner Handle Does Not Add A Wire Definition.
+    let response = if let Type::Path(path) = response {
+        let mut declared = path.path.clone();
+        let arguments = declared
+            .segments
+            .last_mut()
+            .map(|segment| std::mem::replace(&mut segment.arguments, PathArguments::None));
+        let expected: syn::Path = syn::parse_quote!(#sdk::operations::Response);
+        let normalize = |path: &syn::Path| {
+            quote!(#path)
+                .to_string()
+                .replace(' ', "")
+                .trim_start_matches("::")
+                .to_owned()
+        };
+        if normalize(&declared) == normalize(&expected) {
+            match arguments {
+                Some(PathArguments::AngleBracketed(arguments)) if arguments.args.len() == 1 => {
+                    let Some(GenericArgument::Type(payload)) = arguments.args.into_iter().next()
+                    else {
+                        return Err(Error::new_spanned(
+                            response,
+                            "response ownership requires one payload type",
+                        ));
+                    };
+                    payload
+                }
+                _ => {
+                    return Err(Error::new_spanned(
+                        response,
+                        "response ownership requires one payload type",
+                    ));
+                }
+            }
+        } else {
+            response.clone()
+        }
+    } else {
+        response.clone()
+    };
     let mut endpoints = Vec::new();
     let mut assertions = Vec::new();
     for (direction, item) in [("Input", input.as_ref()), ("Output", output.as_ref())] {
@@ -302,9 +342,9 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
                 context: Self::Context<'ctx>,
                 request: &mut <Self::Declaration as #sdk::operations::OperationDeclaration>::Request,
                 endpoints: &mut Self::Endpoints,
-            ) -> ::core::result::Result<<Self::Declaration as #sdk::operations::OperationDeclaration>::Response, Self::Error> {
+            ) -> ::core::result::Result<#sdk::operations::Response<<Self::Declaration as #sdk::operations::OperationDeclaration>::Response>, Self::Error> {
                 #(#assertions)*
-                <#owner>::run(self, context, request #endpoint_arguments).await
+                <#owner>::run(self, context, request #endpoint_arguments).await.map(::core::convert::Into::into)
             }
             #(#lifecycle)*
         }

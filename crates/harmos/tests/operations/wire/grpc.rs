@@ -112,21 +112,25 @@ impl Operation for Production {
         _: Self::Context<'a>,
         request: &mut Request,
         sender: &mut Self::Endpoints,
-    ) -> Result<u32, Self::Error> {
-        for value in 0..request.count {
-            self.trace.attempting.add_permits(1);
-            sender
-                .send_with(4, || {
-                    self.trace.items_created.fetch_add(1, Ordering::SeqCst);
-                    Ok(value)
-                })
-                .await
-                .map_err(|_| std::io::Error::other("output abandoned"))?;
+    ) -> Result<harmos::operations::Response<u32>, Self::Error> {
+        let result: ::core::result::Result<u32, Self::Error> = async move {
+            for value in 0..request.count {
+                self.trace.attempting.add_permits(1);
+                sender
+                    .send_with(4, || {
+                        self.trace.items_created.fetch_add(1, Ordering::SeqCst);
+                        Ok(value)
+                    })
+                    .await
+                    .map_err(|_| std::io::Error::other("output abandoned"))?;
+            }
+            if request.fail {
+                return Err(std::io::Error::other("failed after items"));
+            }
+            Ok(request.count)
         }
-        if request.fail {
-            return Err(std::io::Error::other("failed after items"));
-        }
-        Ok(request.count)
+        .await;
+        result.map(::core::convert::Into::into)
     }
     async fn finalize(&mut self) -> Result<(), Self::Error> {
         self.trace.finalized.fetch_add(1, Ordering::SeqCst);
@@ -169,7 +173,11 @@ async fn runtime() -> (Runtime<App>, Arc<Trace>) {
         .unwrap();
     (runtime, trace)
 }
-fn item(event: harmos::Result<Event<harmos::operations::StreamItem<u32>, Arc<u32>>>) -> u32 {
+fn item(
+    event: harmos::Result<
+        Event<harmos::operations::StreamItem<u32>, harmos::operations::Response<u32>>,
+    >,
+) -> u32 {
     match event.unwrap() {
         Event::Item(value) => *value,
         Event::Completion(_) => panic!("expected an output item"),

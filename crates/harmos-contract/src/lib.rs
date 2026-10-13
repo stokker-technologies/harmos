@@ -35,6 +35,7 @@ mod value;
 
 pub mod __private {
     pub use crate::config::SchemaSettings;
+    pub use crate::operations::response::ErasedResponse;
     pub use crate::plugin::schema_markers as PluginSchemaMarkers;
     pub extern crate serde;
     pub extern crate serde_json;

@@ -418,13 +418,17 @@ impl<P: Plugin> Operation for Initialize<P> {
         context: Self::Context<'ctx>,
         request: &mut lifecycle::InitializeRequest,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Error<P>> {
-        if self.state.is_none() {
-            self.state = Some(self.owner.prepare_initialize(request)?);
+    ) -> Result<crate::operations::Response<()>, Error<P>> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            if self.state.is_none() {
+                self.state = Some(self.owner.prepare_initialize(request)?);
+            }
+            self.owner
+                .initialize(self.state.as_mut().ok_or(Error::Phase)?, context)
+                .await
         }
-        self.owner
-            .initialize(self.state.as_mut().ok_or(Error::Phase)?, context)
-            .await
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     async fn finalize(&mut self) -> Result<(), Error<P>> {
@@ -451,21 +455,25 @@ impl<P: Plugin> Operation for Shutdown<P> {
         context: Self::Context<'ctx>,
         _request: &mut (),
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Error<P>> {
-        if self.state.is_none() {
-            self.state = Some(self.owner.prepare_shutdown()?);
+    ) -> Result<crate::operations::Response<()>, Error<P>> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            if self.state.is_none() {
+                self.state = Some(self.owner.prepare_shutdown()?);
+            }
+            let state = self.state.as_mut().ok_or(Error::Phase)?;
+            if state.work.is_none() && state.result.is_none() {
+                state.context = Some(
+                    state
+                        .generation_context
+                        .map_or_else(|| context.clone(), |token| context.with_generation(token)),
+                );
+                state.start_shutdown()?;
+            }
+            state.finish().await?;
+            state.result.as_ref().ok_or(Error::Phase)?.clone()
         }
-        let state = self.state.as_mut().ok_or(Error::Phase)?;
-        if state.work.is_none() && state.result.is_none() {
-            state.context = Some(
-                state
-                    .generation_context
-                    .map_or_else(|| context.clone(), |token| context.with_generation(token)),
-            );
-            state.start_shutdown()?;
-        }
-        state.finish().await?;
-        state.result.as_ref().ok_or(Error::Phase)?.clone()
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     async fn finalize(&mut self) -> Result<(), Error<P>> {

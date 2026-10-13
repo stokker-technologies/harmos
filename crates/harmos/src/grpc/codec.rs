@@ -18,7 +18,7 @@ pub use crate::config::EncodeSettings;
 /* === Imports === */
 
 // Standard Library Imports
-use std::{marker::PhantomData, sync::Arc};
+use std::marker::PhantomData;
 
 // Third Party Imports
 use bytes::BufMut;
@@ -75,8 +75,8 @@ impl EncodeSettings {
     }
 }
 
-impl<T: Protobuf + 'static> sealed::Encoding for Arc<T> {}
-impl<T: Protobuf + 'static> Encode for Arc<T> {
+impl<T: Protobuf + 'static> sealed::Encoding for crate::operations::Response<T> {}
+impl<T: Protobuf + 'static> Encode for crate::operations::Response<T> {
     fn wire_len(&self) -> usize {
         self.encoded_len()
     }
@@ -86,10 +86,12 @@ impl<T: Protobuf + 'static> Encode for Arc<T> {
     }
 }
 impl<I: Protobuf + 'static, R: Protobuf + 'static> sealed::Encoding
-    for Event<StreamItem<I>, Arc<R>>
+    for Event<StreamItem<I>, crate::operations::Response<R>>
 {
 }
-impl<I: Protobuf + 'static, R: Protobuf + 'static> Encode for Event<StreamItem<I>, Arc<R>> {
+impl<I: Protobuf + 'static, R: Protobuf + 'static> Encode
+    for Event<StreamItem<I>, crate::operations::Response<R>>
+{
     fn wire_len(&self) -> usize {
         let payload = match self {
             Self::Item(value) => value.encoded_len(),

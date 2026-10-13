@@ -238,6 +238,16 @@ finite schema description. Product row payload codecs are unchanged. Inline
 schema metadata is unsupported: preserve the original data and select a fresh
 storage root rather than resetting or silently converting it.
 
+Native managed calls return `operations::Response<T>`, which dereferences to the
+original declared payload. Response clones and cache entries share its owner.
+Storage producers can use
+`preparation.finish(wire)?.try_into_value()?.try_into_response()?` to retain the
+original admitted read loan through delivery and encoding. The conversion admits
+a conservative response or stream-item bookkeeping allowance on that same
+ledger; the loan is released when its last owner is dropped. Stream producers
+use `output.send_owned(response).await?` to retain the same owner through queueing
+and encoding; ordinary stream payloads keep their existing `Send` contract. Protobuf payloads and RPC paths remain unchanged.
+
 Hosts can register `operations::discovery::Discovery` in their existing operation
 manager to serve `host.operations` (unary gRPC path
 `/harmos.host.v1.Host/Operations` when `grpc` is enabled). `OperationsRequest` accepts optional `after`,

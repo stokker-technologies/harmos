@@ -109,10 +109,14 @@ impl<C: 'static> Operation for Handler<C> {
         context: Self::Context<'a>,
         request: &mut AcknowledgeRequest,
         _: &mut Self::Endpoints,
-    ) -> Result<StorageCursor> {
-        let holder = holder(&context)?;
-        self.storage
-            .acknowledge(&request.replica, &holder, &request.cursor)
+    ) -> Result<crate::operations::Response<StorageCursor>> {
+        let result: ::core::result::Result<StorageCursor, Self::Error> = async move {
+            let holder = holder(&context)?;
+            self.storage
+                .acknowledge(&request.replica, &holder, &request.cursor)
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 

@@ -95,10 +95,14 @@ impl<C: 'static> Operation for Handler<C> {
         _: Self::Context<'a>,
         request: &mut SaveRequest,
         _: &mut Self::Endpoints,
-    ) -> Result<StorageCursor> {
-        self.storage
-            .save_once(&request.mutation, &request.through)
-            .await
+    ) -> Result<crate::operations::Response<StorageCursor>> {
+        let result: ::core::result::Result<StorageCursor, Self::Error> = async move {
+            self.storage
+                .save_once(&request.mutation, &request.through)
+                .await
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     fn classify(error: &Error) -> crate::operations::Failure {

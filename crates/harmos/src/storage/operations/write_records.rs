@@ -107,22 +107,26 @@ impl<C: 'static> Operation for Handler<C> {
         _: Self::Context<'a>,
         request: &mut WriteRecordsRequest,
         _: &mut Self::Endpoints,
-    ) -> Result<StorageCursor> {
-        for record in &mut request.records {
-            match &record.source {
-                Some(source) if *source != request.source => {
-                    return Err(Error::InvalidInput {
-                        field: "storage record source",
-                        reason: "a record names a source other than the granted tag",
-                    });
+    ) -> Result<crate::operations::Response<StorageCursor>> {
+        let result: ::core::result::Result<StorageCursor, Self::Error> = async move {
+            for record in &mut request.records {
+                match &record.source {
+                    Some(source) if *source != request.source => {
+                        return Err(Error::InvalidInput {
+                            field: "storage record source",
+                            reason: "a record names a source other than the granted tag",
+                        });
+                    }
+                    _ => record.source = Some(request.source.clone()),
                 }
-                _ => record.source = Some(request.source.clone()),
             }
+            let values = request.records.iter().map(RecordInput::borrowed);
+            self.storage
+                .admit_record_values(&request.mutation, values)
+                .await
         }
-        let values = request.records.iter().map(RecordInput::borrowed);
-        self.storage
-            .admit_record_values(&request.mutation, values)
-            .await
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     fn classify(error: &Error) -> crate::operations::Failure {

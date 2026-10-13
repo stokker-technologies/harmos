@@ -107,53 +107,60 @@ impl<C: 'static> Operation for Handler<C> {
         _: Self::Context<'a>,
         request: &mut QuerySchemasRequest,
         output: &mut Self::Endpoints,
-    ) -> Result<StorageCursor> {
-        request.selection.validate()?;
-        if request.selection.scope.is_some() || request.selection.item.is_some() {
-            return Err(Error::InvalidInput {
-                field: "schema query",
-                reason: "scope and item filters do not apply to schemas",
-            });
-        }
-
-        let query = SchemaQuery {
-            schema: request.schema.clone(),
-            options: request.selection.options()?,
-        };
-        let mut reader = self.storage.query(query).await?;
-        let boundary = reader.view().ok_or(Error::ViewExpired)?.saved()?;
-        if let Some(after) = &request.selection.after
-            && !boundary.covers(after)?
-        {
-            return Err(Error::InvalidInput {
-                field: "storage query",
-                reason: "start exceeds saved boundary",
-            });
-        }
-        while let Some(page) = reader.next_page().await? {
-            for schema in page.iter() {
-                let scratch = schema
-                    .schema
-                    .validation_memory_bytes(&harmos_contract::config::SchemaSettings::default())
-                    .map_err(|_| Error::InvalidInput {
-                        field: "storage schema",
-                        reason: "invalid backend schema",
-                    })?;
-                let bytes = schema
-                    .memory_size()
-                    .saturating_add(scratch)
-                    .saturating_add(std::mem::size_of::<SchemaInfo>());
-                output
-                    .send_with(bytes, || {
-                        Ok(SchemaInfo {
-                            position: schema.position.clone(),
-                            schema: SchemaInput::new(schema.key.clone(), &schema.schema)?,
-                        })
-                    })
-                    .await?;
+    ) -> Result<crate::operations::Response<StorageCursor>> {
+        let result: ::core::result::Result<StorageCursor, Self::Error> = async move {
+            request.selection.validate()?;
+            if request.selection.scope.is_some() || request.selection.item.is_some() {
+                return Err(Error::InvalidInput {
+                    field: "schema query",
+                    reason: "scope and item filters do not apply to schemas",
+                });
             }
+
+            let query = SchemaQuery {
+                schema: request.schema.clone(),
+                options: request.selection.options()?,
+            };
+            let mut reader = self.storage.query(query).await?;
+            let boundary = reader.view().ok_or(Error::ViewExpired)?.saved()?;
+            if let Some(after) = &request.selection.after
+                && !boundary.covers(after)?
+            {
+                return Err(Error::InvalidInput {
+                    field: "storage query",
+                    reason: "start exceeds saved boundary",
+                });
+            }
+            while let Some(page) = reader.next_page().await? {
+                for schema in page.iter() {
+                    let scratch =
+                        schema
+                            .schema
+                            .validation_memory_bytes(
+                                &harmos_contract::config::SchemaSettings::default(),
+                            )
+                            .map_err(|_| Error::InvalidInput {
+                                field: "storage schema",
+                                reason: "invalid backend schema",
+                            })?;
+                    let bytes = schema
+                        .memory_size()
+                        .saturating_add(scratch)
+                        .saturating_add(std::mem::size_of::<SchemaInfo>());
+                    output
+                        .send_with(bytes, || {
+                            Ok(SchemaInfo {
+                                position: schema.position.clone(),
+                                schema: SchemaInput::new(schema.key.clone(), &schema.schema)?,
+                            })
+                        })
+                        .await?;
+                }
+            }
+            Ok(boundary)
         }
-        Ok(boundary)
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 

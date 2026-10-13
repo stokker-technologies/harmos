@@ -226,8 +226,16 @@ pub(super) fn contract_scenario() {
                             .phase(),
                         ServicePhase::Finalizing
                     );
+                    let mut lifecycle = lease.subscribe_lifecycle();
                     assert!(runtime.stop().now_or_never().is_none());
+                    // The Original Driver Continues After Its Waiter Is Dropped.
+                    // Plugin Shutdown Settles Before Application Services Are Signalled.
+                    let cancelled =
+                        observed(&mut lifecycle, |status| status.cancellation_requested()).await;
                     assert!(lease.lifecycle().cancellation_requested());
+                    assert_eq!(cancelled.phase(), ServicePhase::Finalizing);
+                    assert_eq!(cancelled.outcome(), Some(ServiceOutcome::Succeeded));
+                    assert!(cancelled.cleanup_pending());
                     assert_eq!(trace.drops.load(Ordering::SeqCst), 0);
                     trace.cleanup_release.add_permits(1);
                     runtime.stop().await.unwrap();

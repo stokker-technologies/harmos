@@ -75,10 +75,14 @@ impl<C: 'static> Operation for Handler<C> {
         _: Self::Context<'a>,
         request: &mut FileMutation,
         _: &mut Self::Endpoints,
-    ) -> Result<FileProgress> {
-        self.storage
-            .abandon_file_once(&request.mutation, &request.session)
-            .await
+    ) -> Result<crate::operations::Response<FileProgress>> {
+        let result: ::core::result::Result<FileProgress, Self::Error> = async move {
+            self.storage
+                .abandon_file_once(&request.mutation, &request.session)
+                .await
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     fn classify(error: &Error) -> crate::operations::Failure {
