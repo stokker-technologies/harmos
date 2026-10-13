@@ -204,6 +204,10 @@ package with standard protobuf messages, `.pyi` stubs, `py.typed`, canonical
 contracts and descriptors. Producer build scripts export contracts normally;
 explicit binding generation needs `protoc`, while installing the resulting
 wheel or sdist needs Python 3.13+ and its declared protobuf dependency.
+Reserved protobuf message members use a trailing underscore (`Clear → Clear_`)
+in static and dynamic classes. Original field tags, finite graph names and JSON
+names remain unchanged. Map graph fields through `DESCRIPTOR.fields_by_number[tag]`;
+collisions after escaping are rejected.
 
 ```sh
 cargo harmos sidecar build -p schematic-sidecar --json > build.json

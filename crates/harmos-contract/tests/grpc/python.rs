@@ -87,6 +87,15 @@ pub fn check() {
             python::export(&unsupported, &settings, &output, &protoc()),
             Err(python::Error::Unsupported(_))
         ));
+        let mut collision = reserved();
+        collision.definitions[0].push(Field {
+            name: Cow::Borrowed("Clear_"),
+            tag: 8,
+            cardinality: Cardinality::Variant,
+            kind: Kind::Message { definition: 1 },
+        });
+        let collision = contract(&contracts[0], "fixture.collision", "Collision", collision);
+        assert!(Artifacts::new([&collision]).is_err());
         assert!(!output.exists());
         fs::create_dir(&output).unwrap();
         fs::write(output.join("owned.txt"), "preserved").unwrap();
@@ -125,6 +134,12 @@ pub fn check() {
             "Recursive",
             recursive,
         ));
+        contracts.push(contract(
+            &template,
+            "fixture.reserved",
+            "Reserved",
+            reserved(),
+        ));
         let artifacts = Artifacts::new(&contracts).unwrap();
         let target = tempfile::tempdir().unwrap();
         let alpha = target.path().join("alpha");
@@ -158,6 +173,21 @@ pub fn check() {
 }
 
 /* === Private Functions === */
+fn reserved() -> Schema {
+    Schema {
+        root: 0,
+        definitions: vec![
+            vec![Field {
+                name: Cow::Borrowed("Clear"),
+                tag: 7,
+                cardinality: Cardinality::Variant,
+                kind: Kind::Message { definition: 1 },
+            }],
+            vec![],
+        ],
+    }
+}
+
 fn settings(module: &str) -> Settings {
     Settings {
         distribution: module.replace('_', "-"),

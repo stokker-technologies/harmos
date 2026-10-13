@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 # Third Party Imports
-from google.protobuf import descriptor_pool
+from google.protobuf import descriptor_pool, json_format
 from google.protobuf.descriptor import FieldDescriptor, Descriptor
 from google.protobuf.message import Message
 
@@ -57,7 +57,7 @@ def main() -> None:
         for value in vars(second).values()
         if isinstance(value, second.Operation)
     }
-    assert len(operations) == 6
+    assert len(operations) == 7
     assert {value.mode for value in operations} == {
         "unary",
         "client_stream",
@@ -107,6 +107,26 @@ def main() -> None:
             assert sum(map(len, schema["definitions"])) == 609
             assert operation.version == 2
             graph(operation.request.DESCRIPTOR.file.pool, schema)
+        elif operation.id == "fixture.reserved":
+            contract = json.loads(operation.contract)
+            raw = contract["schema"]["definitions"][0][0]
+            assert raw["name"] == "Clear" and raw["tag"] == 7
+            dynamic = importlib.import_module("bindings_alpha.dynamic").from_contract(
+                contract
+            )
+            for projected in (operation, dynamic):
+                field = projected.request.DESCRIPTOR.fields_by_number[7]
+                assert field.name == "Clear_" and field.json_name == "Clear"
+                value = projected.request()
+                value.Clear_.SetInParent()
+                assert value.SerializeToString() == b"\x3a\x00"
+                assert json_format.MessageToDict(value) == {"Clear": {}}
+                copy = projected.request()
+                json_format.ParseDict({"Clear": {}}, copy)
+                assert copy.SerializeToString() == value.SerializeToString()
+                assert callable(copy.Clear)
+                copy.Clear()
+                assert copy.SerializeToString() == b""
         elif operation.id == "fixture.recursive":
             descriptor = operation.request.DESCRIPTOR
             assert descriptor.fields_by_name["next"].message_type is descriptor
@@ -146,7 +166,8 @@ def graph(pool: descriptor_pool.DescriptorPool, schema: dict[str, Any]) -> None:
         descriptor = row(index)
         assert len(descriptor.fields) == len(fields)
         for field in fields:
-            actual = descriptor.fields_by_name[field["name"]]
+            actual = descriptor.fields_by_number[field["tag"]]
+            assert actual.name == field["name"] or actual.json_name == field["name"]
             assert actual.number == field["tag"]
             assert actual.is_repeated == (field["cardinality"] == "repeated")
             if field["cardinality"] in ("optional", "variant"):
@@ -166,6 +187,10 @@ def typing(target: Path, alpha: Path, beta: Path) -> None:
         "from bindings_alpha import FIXTURE_RECURSIVE, FixtureRecursiveRequest\n"
         "def next(value: FixtureRecursiveRequest) -> FixtureRecursiveRequest:\n"
         "    return FIXTURE_RECURSIVE.request(next=value)\n"
+        "from bindings_alpha import FixtureReservedRequest\n"
+        "reserved = FixtureReservedRequest()\n"
+        "reserved.Clear_.SetInParent()\n"
+        "reserved.Clear()\n"
     )
     command = [
         str(checker),
@@ -185,6 +210,8 @@ def typing(target: Path, alpha: Path, beta: Path) -> None:
     source.write_text(
         "from bindings_alpha import FIXTURE_RECURSIVE\n"
         "FIXTURE_RECURSIVE.request(next='invalid')\n"
+        "from bindings_alpha import FixtureReservedRequest\n"
+        "FixtureReservedRequest(Clear_=123)\n"
     )
     result = subprocess.run(command, env=env, capture_output=True, text=True)
     assert result.returncode != 0 and "invalid-argument-type" in result.stdout, (
@@ -259,7 +286,7 @@ sys.path[:0] = [sys.argv[1], sys.argv[2]]
 pkg = importlib.import_module('bindings_alpha')
 assert Path(pkg.__file__).is_relative_to(Path(sys.argv[1]))
 ops = [value for value in vars(pkg).values() if isinstance(value, pkg.Operation)]
-assert len(ops) == 6
+assert len(ops) == 7
 for operation in ops:
     assert operation.request is operation.response
     assert json.loads(operation.contract)['version'] == operation.version

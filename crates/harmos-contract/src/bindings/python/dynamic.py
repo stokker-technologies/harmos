@@ -35,6 +35,32 @@ __all__ = ["from_contract"]
 # === Constants === #
 
 IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z_0-9]*\Z")
+RESERVED_FIELDS = frozenset(
+    {
+        "ByteSize",
+        "Clear",
+        "ClearExtension",
+        "ClearField",
+        "CopyFrom",
+        "DESCRIPTOR",
+        "DiscardUnknownFields",
+        "Extensions",
+        "FindInitializationErrors",
+        "FromString",
+        "HasExtension",
+        "HasField",
+        "IsInitialized",
+        "ListFields",
+        "MergeFrom",
+        "MergeFromString",
+        "ParseFromString",
+        "SerializePartialToString",
+        "SerializeToString",
+        "SetInParent",
+        "UnknownFields",
+        "WhichOneof",
+    }
+)
 SCALARS = {
     "bool": pb.FieldDescriptorProto.TYPE_BOOL,
     "u32": pb.FieldDescriptorProto.TYPE_UINT32,
@@ -118,6 +144,7 @@ def from_contract(
         if not isinstance(fields, list):
             raise TypeError("schema definition must contain fields")
         names: set[str] = set()
+        projected_names: set[str] = set()
         tags: set[int] = set()
         refs: set[int] = set()
         variants = any(
@@ -126,7 +153,9 @@ def from_contract(
         )
         row = file.message_type.add(name=_row(index, root))
         all_names = {
-            str(field.get("name")) for field in fields if isinstance(field, Mapping)
+            _field_name(str(field.get("name")))
+            for field in fields
+            if isinstance(field, Mapping)
         }
         variant_name = _available("_harmos_variant", all_names)
         if variants:
@@ -159,19 +188,28 @@ def from_contract(
                 raise ValueError("invalid or duplicate protobuf tag")
             if cardinality not in ("required", "optional", "repeated", "variant"):
                 raise ValueError("invalid field cardinality")
-            work += len(name.encode("utf-8")) * 2 + len(namespace) + 32
-            admitted += 256 + len(name.encode("utf-8")) * 4
+            projected_name = _field_name(name)
+            if projected_name in projected_names:
+                raise ValueError(
+                    "protobuf field names collide after reserved-member escaping"
+                )
+            extra = len(name) + 1 if projected_name != name else 0
+            work += len(name.encode("utf-8")) * 2 + extra + len(namespace) + 32
+            admitted += 256 + (len(name.encode("utf-8")) + extra) * 4
             if work > max_work or admitted > max_bytes:
                 raise ValueError("schema projection exceeds preparation allowance")
             names.add(name)
+            projected_names.add(projected_name)
             tags.add(tag)
             target = row.field.add(
-                name=name,
+                name=projected_name,
                 number=tag,
                 label=pb.FieldDescriptorProto.LABEL_REPEATED
                 if cardinality == "repeated"
                 else pb.FieldDescriptorProto.LABEL_OPTIONAL,
             )
+            if projected_name != name:
+                target.json_name = name
             if (
                 isinstance(kind, Mapping)
                 and set(kind) == {"type"}
@@ -358,3 +396,7 @@ def _envelope(
 
 
 # === Entry Point === #
+
+
+def _field_name(name: str) -> str:
+    return f"{name}_" if name in RESERVED_FIELDS else name

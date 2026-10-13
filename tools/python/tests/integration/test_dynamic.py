@@ -44,9 +44,39 @@ class DynamicTests(unittest.TestCase):
             self._pool_isolation,
             self._graph_refusals,
             self._unary_projection,
+            self._reserved_members,
         ):
             with self.subTest(scenario=scenario.__name__):
                 scenario()
+
+    def _reserved_members(self) -> None:
+        contract = _contract()
+        fields = contract["schema"]["definitions"][1]
+        fields[0]["name"] = "Clear"
+        operation = _projector()(contract)
+        descriptor = operation.request.DESCRIPTOR.fields_by_number[fields[0]["tag"]]
+        self.assertEqual((descriptor.name, descriptor.json_name), ("Clear_", "Clear"))
+        value = operation.request(Clear_=7)
+        self.assertEqual(json_format.MessageToDict(value), {"Clear": "7"})
+        copy_value = operation.request()
+        json_format.ParseDict({"Clear": "7"}, copy_value)
+        self.assertEqual(copy_value.SerializeToString(), value.SerializeToString())
+        copy_value.Clear()
+        self.assertEqual(copy_value.SerializeToString(), b"")
+        self.assertEqual(fields[0]["name"], "Clear")
+        collision = copy.deepcopy(contract)
+        duplicate = copy.deepcopy(fields[0])
+        duplicate.update(name="Clear_", tag=77)
+        collision["schema"]["definitions"][1].append(duplicate)
+        with self.assertRaisesRegex(ValueError, "collide after"):
+            _projector()(collision)
+        module = importlib.import_module(_projector().__module__)
+        from google.protobuf.message import Message
+
+        self.assertTrue(
+            {name for name in dir(Message) if not name.startswith("_")}
+            <= module.RESERVED_FIELDS
+        )
 
     def _graph_projection(self) -> None:
         operation = _projector()(_contract())

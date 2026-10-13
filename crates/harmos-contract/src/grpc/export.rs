@@ -452,9 +452,19 @@ fn field_source(
         Type::Message => field.type_name(),
         _ => return Err(ExportError::Unsupported),
     };
+    let option = field
+        .json_name
+        .as_ref()
+        .map(|name| {
+            format!(
+                " [json_name = {}]",
+                serde_json::to_string(name).expect("JSON string")
+            )
+        })
+        .unwrap_or_default();
     writeln!(
         output,
-        "{indent}{label}{kind} {} = {};",
+        "{indent}{label}{kind} {} = {}{option};",
         field.name(),
         field.number()
     )

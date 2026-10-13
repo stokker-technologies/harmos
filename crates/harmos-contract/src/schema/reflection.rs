@@ -14,6 +14,7 @@ pub use prost_reflect::{DynamicMessage, MessageDescriptor, ReflectMessage, Value
 
 /* === Imports === */
 // Standard Library Imports
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::mem::size_of;
 
@@ -31,6 +32,30 @@ use super::{Cardinality, graph};
 use crate::config::SchemaSettings;
 
 /* === Constants === */
+const RESERVED_FIELDS: &[&str] = &[
+    "ByteSize",
+    "Clear",
+    "ClearExtension",
+    "ClearField",
+    "CopyFrom",
+    "DESCRIPTOR",
+    "DiscardUnknownFields",
+    "Extensions",
+    "FindInitializationErrors",
+    "FromString",
+    "HasExtension",
+    "HasField",
+    "IsInitialized",
+    "ListFields",
+    "MergeFrom",
+    "MergeFromString",
+    "ParseFromString",
+    "SerializePartialToString",
+    "SerializeToString",
+    "SetInParent",
+    "UnknownFields",
+    "WhichOneof",
+];
 
 /* === Macros === */
 
@@ -101,7 +126,11 @@ pub fn descriptor_root(
                 field
                     .name
                     .len()
-                    .checked_mul(2)
+                    .checked_mul(if RESERVED_FIELDS.contains(&field.name.as_ref()) {
+                        3
+                    } else {
+                        2
+                    })
                     .and_then(|bytes| bytes.checked_add(package.len()))
                     .and_then(|bytes| bytes.checked_add(32))
                     .and_then(|bytes| work.checked_add(bytes))
@@ -121,7 +150,7 @@ pub fn descriptor_root(
         .iter()
         .enumerate()
         .map(|(index, fields)| describe(fields, index, root, package))
-        .collect();
+        .collect::<Result<Vec<_>, _>>()?;
     let pool = DescriptorPool::from_file_descriptor_set(FileDescriptorSet {
         file: vec![FileDescriptorProto {
             name: Some(format!("{}/messages.proto", package.replace('.', "/"))),
@@ -153,7 +182,12 @@ fn descriptor_memory_bytes(schema: &graph::Schema, package: &str) -> Result<usiz
             let names = field
                 .name
                 .len()
-                .checked_add(package.len())
+                .checked_add(if RESERVED_FIELDS.contains(&field.name.as_ref()) {
+                    field.name.len() + 1
+                } else {
+                    0
+                })
+                .and_then(|length| length.checked_add(package.len()))
                 .and_then(|length| length.checked_add(width + 64))
                 .ok_or(graph::Error::Budget)?;
             let field = size_of::<FieldDescriptorProto>()
@@ -167,8 +201,22 @@ fn descriptor_memory_bytes(schema: &graph::Schema, package: &str) -> Result<usiz
     Ok(bytes)
 }
 
-fn describe(fields: &[graph::Field], index: usize, root: usize, package: &str) -> DescriptorProto {
-    let names: HashSet<&str> = fields.iter().map(|field| field.name.as_ref()).collect();
+fn describe(
+    fields: &[graph::Field],
+    index: usize,
+    root: usize,
+    package: &str,
+) -> Result<DescriptorProto, Error> {
+    let mut names = HashSet::new();
+    for field in fields {
+        if !names.insert(field_name(&field.name)) {
+            return Err(super::Error::Graph(graph::Error::Field {
+                field: field.name.to_string(),
+                reason: "protobuf field names collide after reserved-member escaping",
+            })
+            .into());
+        }
+    }
     let name = row_name(index, root);
     let mut row = DescriptorProto {
         name: Some(name.clone()),
@@ -222,7 +270,10 @@ fn describe(fields: &[graph::Field], index: usize, root: usize, package: &str) -
             })
         };
         row.field.push(FieldDescriptorProto {
-            name: Some(field.name.to_string()),
+            name: Some(field_name(&field.name).into_owned()),
+            json_name: RESERVED_FIELDS
+                .contains(&field.name.as_ref())
+                .then(|| field.name.to_string()),
             number: Some(field.tag as i32),
             label: Some(if field.cardinality == Cardinality::Repeated {
                 Label::Repeated
@@ -236,7 +287,15 @@ fn describe(fields: &[graph::Field], index: usize, root: usize, package: &str) -
             ..Default::default()
         });
     }
-    row
+    Ok(row)
+}
+
+fn field_name(name: &str) -> Cow<'_, str> {
+    if RESERVED_FIELDS.contains(&name) {
+        Cow::Owned(format!("{name}_"))
+    } else {
+        Cow::Borrowed(name)
+    }
 }
 
 fn row_name(definition: usize, root: usize) -> String {

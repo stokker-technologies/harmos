@@ -185,6 +185,12 @@ declare operation metadata.
   integer widths, variants, shared definitions and recursive references.
   Refuse selected non-protobuf contracts, unknown identities, naming collisions
   and unsupported compiler output. Never replace an existing package directory.
+- Protobuf reflection and static/dynamic Python classes escape reserved message
+  members with a trailing underscore (`Clear → Clear_`). Preserve authored Rust
+  variants, field tags, raw graph names and explicit original JSON names. Reject
+  collisions after escaping. Resolve graph metadata through
+  `DESCRIPTOR.fields_by_number[field["tag"]]` and use its `name` for member access;
+  never duplicate an escaping registry in consumers.
 - Generated Python packages expose `dynamic.from_contract(contract, *, max_bytes,
   max_work, max_definitions)` for live discovered contracts, including plugins
   absent from the host's compiled catalog. It returns the same `operation.Operation`
