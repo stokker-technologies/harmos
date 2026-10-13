@@ -32,7 +32,7 @@ use super::{
 use harmos::operations::{
     Backoff, Context, Failure, Jitter, Operation, OperationPolicy, RetryPolicy,
 };
-use harmos::{Error, FactSource, Position, Refusal, Runtime, SystemFact};
+use harmos::{Error, Refusal, Runtime, state::FactSource, state::Position, state::SystemFact};
 
 /* === Constants === */
 
@@ -76,9 +76,7 @@ enum Failed {
     Child(#[from] Error),
 }
 
-#[harmos::catalog]
-enum Operations {
-    #[operation(
+#[harmos::operation(
         request = Mode,
         response = usize,
         id = "outcomes.compute",
@@ -91,8 +89,9 @@ enum Operations {
             },
         },
     )]
-    ComputeContract,
-    #[operation(
+struct ComputeContract;
+
+#[harmos::operation(
         request = Mode,
         response = usize,
         id = "outcomes.parent",
@@ -102,7 +101,12 @@ enum Operations {
             retries: RetryPolicy::Never,
         },
     )]
-    ParentContract,
+struct ParentContract;
+
+#[harmos::catalog]
+enum Operations {
+    ComputeContract(ComputeContract),
+    ParentContract(ParentContract),
 }
 
 /* === Traits === */
@@ -133,16 +137,20 @@ impl Operation for Compute {
         context: Self::Context<'ctx>,
         mode: &mut Mode,
         _endpoints: &mut Self::Endpoints,
-    ) -> Exported<usize> {
-        assert_eq!(context.attempt(), self.attempts);
-        self.attempts += 1;
-        match mode {
-            Mode::Value(value) => Ok(*value),
-            Mode::Reject => Err(Failed::Instrument),
-            Mode::Wait => std::future::pending().await,
-            Mode::Retry if self.attempts < 3 => Err(Failed::Backlog),
-            Mode::Retry => Ok(self.attempts),
+    ) -> Exported<harmos::operations::Response<usize>> {
+        let result: ::core::result::Result<usize, Self::Error> = async move {
+            assert_eq!(context.attempt(), self.attempts);
+            self.attempts += 1;
+            match mode {
+                Mode::Value(value) => Ok(*value),
+                Mode::Reject => Err(Failed::Instrument),
+                Mode::Wait => std::future::pending().await,
+                Mode::Retry if self.attempts < 3 => Err(Failed::Backlog),
+                Mode::Retry => Ok(self.attempts),
+            }
         }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     fn classify(error: &Failed) -> Failure {
@@ -174,9 +182,13 @@ impl Operation for Parent {
         context: Self::Context<'ctx>,
         mode: &mut Mode,
         _endpoints: &mut Self::Endpoints,
-    ) -> Answered<usize> {
-        let answer = context.submit::<ComputeContract>(*mode)?.await?;
-        Ok(*answer)
+    ) -> Answered<harmos::operations::Response<usize>> {
+        let result: ::core::result::Result<usize, Self::Error> = async move {
+            let answer = context.submit::<ComputeContract>(*mode)?.await?;
+            Ok(*answer)
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 

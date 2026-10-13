@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-#[path = "data/codec.rs"]
 mod codec;
 
 /* === Re-Exports === */
@@ -57,7 +56,7 @@ pub struct StoredRecord<T = Vec<u8>> {
     pub scope: Option<Identifier>,
     pub item: Identifier,
     pub source: Option<Identifier>,
-    #[serde(default, with = "crate::storage_timestamp::optional")]
+    #[serde(default, with = "crate::storage::timestamp::optional")]
     pub source_time: Option<Timestamp>,
     pub payload: T,
 }
@@ -94,7 +93,7 @@ impl MemorySize for StreamInput {
             - std::mem::size_of::<Identifier>()
     }
 }
-#[cfg(feature = "runtime")]
+
 impl RecordInput {
     pub fn borrowed(&self) -> crate::storage::RecordWrite<'_> {
         crate::storage::RecordWrite {
@@ -107,7 +106,7 @@ impl RecordInput {
         }
     }
 }
-#[cfg(feature = "runtime")]
+
 impl StreamInput {
     pub fn borrowed(&self) -> crate::storage::StreamWrite<'_> {
         crate::storage::StreamWrite {

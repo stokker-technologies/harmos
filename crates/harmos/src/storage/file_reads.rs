@@ -146,10 +146,14 @@ impl StorageView {
                 rows: NonZeroUsize::new(1).unwrap(),
                 bytes: NonZeroUsize::new(encoded_size(file)?).unwrap(),
             };
-            let page = reader.next_page(limits).await?.ok_or(Error::InvalidInput {
-                field: "file reference",
-                reason: "file is not visible in this view",
-            })?;
+            let page =
+                reader
+                    .next_page_in_computation(limits)
+                    .await?
+                    .ok_or(Error::InvalidInput {
+                        field: "file reference",
+                        reason: "file is not visible in this view",
+                    })?;
             let actual = page.first().ok_or(Error::InvalidInput {
                 field: "file reference",
                 reason: "file is not visible in this view",
@@ -182,6 +186,7 @@ impl StorageFileReader {
     pub fn reference(&self) -> &FileReference {
         &self.file
     }
+
     pub fn offset(&self) -> u64 {
         self.offset
     }

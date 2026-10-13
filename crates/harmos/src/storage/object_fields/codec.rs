@@ -26,13 +26,14 @@ use crate::__private::decoding_add;
 use crate::__private::{DecodeInput, DecodeScalar, DecodeValue, decoding_vector};
 
 use crate::MessageError;
-use crate::schema::{Cardinality, Described, Field, Kind};
+use crate::schema::declaration::{Field, Kind};
+use crate::schema::{Cardinality, Described};
 #[cfg(feature = "grpc")]
-use crate::storage_codec::{Id, Unsigned};
-use crate::storage_codec::{Nested, Repeated, Value, product};
-use crate::storage_object_values::Key;
+use crate::storage::codec::{Id, Unsigned};
+use crate::storage::codec::{Nested, Repeated, Value, product};
+use crate::storage::object_values::Key;
 #[cfg(feature = "grpc")]
-use crate::storage_position::codec::{
+use crate::storage::position::codec::{
     field_len, identifier, text_field, uint_field, write_bytes, write_header,
 };
 
@@ -50,6 +51,7 @@ product!(ObjectMetadata {
 macro_rules! enumeration {
     ($codec:ident, $ty:ident, {$($variant:ident => $number:literal),+}) => {
         impl Value for $codec {
+            const NAME: &'static str = concat!(module_path!(), "::", stringify!($codec));
             fn postcard_write(value: &$ty, bytes: &mut Vec<u8>) {
                 let value: u64 = match value { $($ty::$variant => $number),+ };
                 crate::__private::PostcardValue::write(&value, bytes);
@@ -101,12 +103,15 @@ struct Bounded<T>(PhantomData<T>);
 
 /* === Implementations === */
 impl Value for FieldName {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(FieldName));
     fn postcard_write(value: &Identifier, bytes: &mut Vec<u8>) {
         crate::__private::PostcardValue::write(value, bytes);
     }
+
     fn postcard_size(value: &Identifier) -> usize {
         crate::__private::PostcardValue::size(value)
     }
+
     fn postcard_memory(input: &mut crate::__private::PostcardReader<'_>) -> Result<usize> {
         let heap = <Identifier as crate::__private::PostcardValue>::memory(input)?
             .saturating_sub(std::mem::size_of::<Identifier>());
@@ -115,6 +120,7 @@ impl Value for FieldName {
         }
         Ok(heap)
     }
+
     fn postcard_read(input: &mut crate::__private::PostcardReader<'_>) -> Result<Identifier> {
         Self::postcard_memory(&mut input.clone())?;
         <Identifier as crate::__private::PostcardValue>::read(input)
@@ -126,10 +132,12 @@ impl Value for FieldName {
     fn write(value: &Identifier, tag: u32, bytes: &mut Vec<u8>) {
         Id::write(value, tag, bytes);
     }
+
     #[cfg(feature = "grpc")]
     fn size(value: &Identifier, tag: u32) -> usize {
         Id::size(value, tag)
     }
+
     #[cfg(feature = "grpc")]
     fn memory(input: DecodeInput<'_>, tag: u32) -> Result<usize> {
         let memory = Id::memory(input, tag)?;
@@ -138,18 +146,22 @@ impl Value for FieldName {
         }
         Ok(memory)
     }
+
     #[cfg(feature = "grpc")]
     fn read(input: DecodeInput<'_>, tag: u32) -> Result<Identifier> {
         Id::read(input, tag)
     }
 }
 impl Value for FilterScalar {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(FilterScalar));
     fn postcard_write(value: &ObjectScalar, bytes: &mut Vec<u8>) {
         crate::__private::PostcardValue::write(value, bytes);
     }
+
     fn postcard_size(value: &ObjectScalar) -> usize {
         crate::__private::PostcardValue::size(value)
     }
+
     fn postcard_memory(input: &mut crate::__private::PostcardReader<'_>) -> Result<usize> {
         let heap = <ObjectScalar as crate::__private::PostcardValue>::memory(input)?
             .saturating_sub(std::mem::size_of::<ObjectScalar>());
@@ -158,6 +170,7 @@ impl Value for FilterScalar {
         }
         Ok(heap)
     }
+
     fn postcard_read(input: &mut crate::__private::PostcardReader<'_>) -> Result<ObjectScalar> {
         Self::postcard_memory(&mut input.clone())?;
         <ObjectScalar as crate::__private::PostcardValue>::read(input)
@@ -169,10 +182,12 @@ impl Value for FilterScalar {
     fn write(value: &ObjectScalar, tag: u32, bytes: &mut Vec<u8>) {
         Nested::<ObjectScalar>::write(value, tag, bytes);
     }
+
     #[cfg(feature = "grpc")]
     fn size(value: &ObjectScalar, tag: u32) -> usize {
         Nested::<ObjectScalar>::size(value, tag)
     }
+
     #[cfg(feature = "grpc")]
     fn memory(input: DecodeInput<'_>, tag: u32) -> Result<usize> {
         let memory =
@@ -185,39 +200,51 @@ impl Value for FilterScalar {
         }
         Ok(text)
     }
+
     #[cfg(feature = "grpc")]
     fn read(input: DecodeInput<'_>, tag: u32) -> Result<ObjectScalar> {
         Nested::<ObjectScalar>::read(input, tag)
     }
 }
 impl Value for Boolean {
-    crate::storage_codec::postcard_field!();
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Boolean));
+    crate::storage::codec::postcard_field!();
     type Native = bool;
     const KIND: Kind = Kind::Bool;
     #[cfg(feature = "grpc")]
     fn write(value: &bool, tag: u32, bytes: &mut Vec<u8>) {
         crate::__private::prost::encoding::bool::encode(tag, value, bytes);
     }
+
     #[cfg(feature = "grpc")]
     fn size(value: &bool, tag: u32) -> usize {
         crate::__private::prost::encoding::bool::encoded_len(tag, value)
     }
+
     #[cfg(feature = "grpc")]
     fn memory(input: DecodeInput<'_>, tag: u32) -> Result<usize> {
         Unsigned::memory(input, tag)
     }
+
     #[cfg(feature = "grpc")]
     fn read(input: DecodeInput<'_>, tag: u32) -> Result<bool> {
         Ok(Unsigned::read(input, tag)? != 0)
     }
 }
-impl<T: crate::storage_codec::Native> Value for Bounded<T> {
+impl<T: crate::storage::codec::Native> Value for Bounded<T> {
+    const NAME: &'static str = crate::schema::declaration::Name::new(
+        concat!(module_path!(), "::", stringify!(Bounded)),
+        &[T::NAME],
+    )
+    .as_str();
     fn postcard_write(value: &Vec<T>, bytes: &mut Vec<u8>) {
         crate::__private::PostcardValue::write(value, bytes);
     }
+
     fn postcard_size(value: &Vec<T>) -> usize {
         crate::__private::PostcardValue::size(value)
     }
+
     fn postcard_memory(input: &mut crate::__private::PostcardReader<'_>) -> Result<usize> {
         if input.clone().value::<usize>()? > MAX_COLUMNS {
             return Err(MessageError::borrowed("too many object query fields"));
@@ -225,6 +252,7 @@ impl<T: crate::storage_codec::Native> Value for Bounded<T> {
         Ok(<Vec<T> as crate::__private::PostcardValue>::memory(input)?
             .saturating_sub(std::mem::size_of::<Vec<T>>()))
     }
+
     fn postcard_read(input: &mut crate::__private::PostcardReader<'_>) -> Result<Vec<T>> {
         if input.clone().value::<usize>()? > MAX_COLUMNS {
             return Err(MessageError::borrowed("too many object query fields"));
@@ -239,27 +267,33 @@ impl<T: crate::storage_codec::Native> Value for Bounded<T> {
     fn write(value: &Vec<T>, tag: u32, bytes: &mut Vec<u8>) {
         Repeated::<T>::write(value, tag, bytes);
     }
+
     #[cfg(feature = "grpc")]
     fn size(value: &Vec<T>, tag: u32) -> usize {
         Repeated::<T>::size(value, tag)
     }
+
     #[cfg(feature = "grpc")]
     fn memory(input: DecodeInput<'_>, tag: u32) -> Result<usize> {
         bounded_count(input, tag)?;
         Repeated::<T>::memory(input, tag)
     }
+
     #[cfg(feature = "grpc")]
     fn read(input: DecodeInput<'_>, tag: u32) -> Result<Vec<T>> {
         Repeated::<T>::read(input, tag)
     }
 }
 impl Value for Names {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Names));
     fn postcard_write(value: &Vec<Identifier>, bytes: &mut Vec<u8>) {
         crate::__private::PostcardValue::write(value, bytes);
     }
+
     fn postcard_size(value: &Vec<Identifier>) -> usize {
         crate::__private::PostcardValue::size(value)
     }
+
     fn postcard_memory(input: &mut crate::__private::PostcardReader<'_>) -> Result<usize> {
         input.nested(|input| {
             let count: usize = input.value()?;
@@ -274,6 +308,7 @@ impl Value for Names {
             Ok(heap)
         })
     }
+
     fn postcard_read(input: &mut crate::__private::PostcardReader<'_>) -> Result<Vec<Identifier>> {
         Self::postcard_memory(&mut input.clone())?;
         <Vec<Identifier> as crate::__private::PostcardValue>::read(input)
@@ -288,12 +323,14 @@ impl Value for Names {
             Id::write(name, tag, bytes);
         }
     }
+
     #[cfg(feature = "grpc")]
     fn size(names: &Vec<Identifier>, tag: u32) -> usize {
         names.iter().fold(0usize, |size, name| {
             size.saturating_add(Id::size(name, tag))
         })
     }
+
     #[cfg(feature = "grpc")]
     fn memory(input: DecodeInput<'_>, tag: u32) -> Result<usize> {
         let count = bounded_count(input, tag)?;
@@ -310,6 +347,7 @@ impl Value for Names {
         })?;
         Ok(memory)
     }
+
     #[cfg(feature = "grpc")]
     fn read(input: DecodeInput<'_>, tag: u32) -> Result<Vec<Identifier>> {
         let mut values = decoding_vector(bounded_count(input, tag)?)?;
@@ -323,12 +361,13 @@ impl Value for Names {
     }
 }
 impl Described for ObjectScalar {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(ObjectScalar));
     const FIELDS: &'static [Field] = &[
         Field {
             name: Cow::Borrowed("null"),
             tag: 1,
             kind: Kind::Message {
-                fields: Cow::Borrowed(&[]),
+                definition: <()>::DEFINITION,
             },
             cardinality: Cardinality::Variant,
         },
@@ -336,12 +375,7 @@ impl Described for ObjectScalar {
             name: Cow::Borrowed("boolean"),
             tag: 2,
             kind: Kind::Message {
-                fields: Cow::Borrowed(&[Field {
-                    name: Cow::Borrowed("value"),
-                    tag: 1,
-                    kind: Kind::Bool,
-                    cardinality: Cardinality::Required,
-                }]),
+                definition: <bool>::DEFINITION,
             },
             cardinality: Cardinality::Variant,
         },
@@ -349,12 +383,7 @@ impl Described for ObjectScalar {
             name: Cow::Borrowed("signed"),
             tag: 3,
             kind: Kind::Message {
-                fields: Cow::Borrowed(&[Field {
-                    name: Cow::Borrowed("value"),
-                    tag: 1,
-                    kind: Kind::I64,
-                    cardinality: Cardinality::Required,
-                }]),
+                definition: <i64>::DEFINITION,
             },
             cardinality: Cardinality::Variant,
         },
@@ -362,12 +391,7 @@ impl Described for ObjectScalar {
             name: Cow::Borrowed("unsigned"),
             tag: 4,
             kind: Kind::Message {
-                fields: Cow::Borrowed(&[Field {
-                    name: Cow::Borrowed("value"),
-                    tag: 1,
-                    kind: Kind::U64,
-                    cardinality: Cardinality::Required,
-                }]),
+                definition: <u64>::DEFINITION,
             },
             cardinality: Cardinality::Variant,
         },
@@ -375,12 +399,7 @@ impl Described for ObjectScalar {
             name: Cow::Borrowed("float"),
             tag: 5,
             kind: Kind::Message {
-                fields: Cow::Borrowed(&[Field {
-                    name: Cow::Borrowed("value"),
-                    tag: 1,
-                    kind: Kind::F64,
-                    cardinality: Cardinality::Required,
-                }]),
+                definition: <f64>::DEFINITION,
             },
             cardinality: Cardinality::Variant,
         },
@@ -388,16 +407,15 @@ impl Described for ObjectScalar {
             name: Cow::Borrowed("text"),
             tag: 6,
             kind: Kind::Message {
-                fields: Cow::Borrowed(&[Field {
-                    name: Cow::Borrowed("value"),
-                    tag: 1,
-                    kind: Kind::String,
-                    cardinality: Cardinality::Required,
-                }]),
+                definition: <String>::DEFINITION,
             },
             cardinality: Cardinality::Variant,
         },
     ];
+
+    const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
+        { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
 }
 #[cfg(feature = "grpc")]
 impl ObjectScalar {
@@ -420,6 +438,7 @@ impl crate::__private::Protobuf for ObjectScalar {
         <Self as crate::__private::Protobuf>::encode_into(self, &mut bytes);
         bytes
     }
+
     fn encode_into(&self, bytes: &mut Vec<u8>) {
         use crate::__private::prost::encoding::{bool, double, int64, uint64};
         let (tag, length) = self.payload_size();
@@ -433,15 +452,19 @@ impl crate::__private::Protobuf for ObjectScalar {
             Self::Text(value) => write_bytes(1, value.as_bytes(), bytes),
         }
     }
+
     fn encoded_len(&self) -> usize {
         field_len(self.payload_size().1)
     }
+
     fn decode(bytes: &[u8]) -> Result<Self> {
         <Self as crate::__private::Protobuf>::decode_input(DecodeInput::new(bytes))
     }
+
     fn decoding_memory(bytes: &[u8]) -> Result<usize> {
         <Self as crate::__private::Protobuf>::decoding_memory_input(DecodeInput::new(bytes))
     }
+
     fn decoding_memory_input(input: DecodeInput<'_>) -> Result<usize> {
         let (tag, child) = input
             .variant(&[1, 2, 3, 4, 5, 6])?
@@ -452,6 +475,7 @@ impl crate::__private::Protobuf for ObjectScalar {
         };
         decoding_add(std::mem::size_of::<Self>(), text)
     }
+
     fn decode_input(input: DecodeInput<'_>) -> Result<Self> {
         let (tag, child) = input
             .variant(&[1, 2, 3, 4, 5, 6])?
@@ -498,6 +522,7 @@ impl crate::__private::PostcardValue for ObjectScalar {
             }
         }
     }
+
     fn size(&self) -> usize {
         1usize.saturating_add(match self {
             Self::Null => 0,
@@ -508,6 +533,7 @@ impl crate::__private::PostcardValue for ObjectScalar {
             Self::Text(value) => value.size(),
         })
     }
+
     fn memory(input: &mut crate::__private::PostcardReader<'_>) -> Result<usize> {
         input.nested(|input| {
             let heap = match input.value::<u32>()? {
@@ -534,6 +560,7 @@ impl crate::__private::PostcardValue for ObjectScalar {
             decoding_add(std::mem::size_of::<Self>(), heap)
         })
     }
+
     fn read(input: &mut crate::__private::PostcardReader<'_>) -> Result<Self> {
         input.nested(|input| {
             Ok(match input.value::<u32>()? {

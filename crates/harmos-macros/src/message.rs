@@ -118,7 +118,7 @@ pub(crate) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
         }
         let (encoding, kind, cardinality) = encoding(&field.ty, &harmos)?;
         fields.push(quote! {
-            #harmos::schema::Field {
+            #harmos::schema::graph::Field {
                 name: ::std::borrow::Cow::Borrowed(#name), tag: #number,
                 kind: #kind, cardinality: #cardinality,
             }
@@ -131,7 +131,7 @@ pub(crate) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
     let postcard = postcard::declare(&syn::Item::Struct(item.clone()), &harmos);
     let declaration = composition::declare(&mut item, &harmos, skip_debug)?;
     let name = &item.ident;
-    let fields = fields.into_iter();
+    let schema = described(name, quote!(&[#(#fields),*]), &harmos);
     let owned_fields = item.fields.iter().map(|field| {
         let name = field.ident.as_ref().expect("named field");
         quote! {
@@ -161,9 +161,7 @@ pub(crate) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
             const ROW_METADATA_JSON: &'static str = #row_metadata;
         }
 
-        impl #harmos::schema::Described for #name {
-            const FIELDS: &'static [#harmos::schema::Field] = &[#(#fields),*];
-        }
+        #schema
     })
 }
 
@@ -180,6 +178,18 @@ pub(crate) fn portable(item: &syn::Item, harmos: &HarmosPath) -> bool {
 }
 
 /* === Private Functions === */
+fn described(name: &syn::Ident, fields: TokenStream, harmos: &HarmosPath) -> TokenStream {
+    quote! {
+        impl #harmos::schema::Described for #name {
+            const NAME: &'static str = concat!(module_path!(), "::", stringify!(#name));
+            const FIELDS: &'static [#harmos::schema::graph::Field<#harmos::schema::declaration::Definition>] = #fields;
+            const MARKER: &'static [u8] = &#harmos::schema::declaration::encode::<{
+                #harmos::schema::declaration::encoded_len(Self::NAME, Self::FIELDS)
+            }>(Self::NAME, Self::FIELDS);
+        }
+    }
+}
+
 fn tag(name: &str) -> u32 {
     let hash = name.bytes().fold(2_166_136_261_u32, |hash, byte| {
         (hash ^ u32::from(byte)).wrapping_mul(16_777_619)
@@ -214,7 +224,7 @@ fn encoding(
         if name == "Vec" && inner_name.as_deref() == Some("u8") {
             return Ok((
                 quote!(bytes = "vec"),
-                quote!(#harmos::schema::Kind::Bytes),
+                quote!(#harmos::schema::graph::Kind::Bytes),
                 quote!(#harmos::schema::Cardinality::Required),
             ));
         }
@@ -224,7 +234,7 @@ fn encoding(
         let scalar = scalar(inner_name.as_deref().unwrap_or(""));
         let is_scalar = scalar.is_some();
         let (wire, kind) = scalar
-            .map(|(wire, kind)| (wire, quote!(#harmos::schema::Kind::#kind)))
+            .map(|(wire, kind)| (wire, quote!(#harmos::schema::graph::Kind::#kind)))
             .unwrap_or_else(|| (quote!(message), message_kind(inner, harmos)));
         return Ok(if name == "Option" {
             (
@@ -249,7 +259,7 @@ fn encoding(
     if let Some((wire, kind)) = scalar(&name) {
         return Ok((
             wire,
-            quote!(#harmos::schema::Kind::#kind),
+            quote!(#harmos::schema::graph::Kind::#kind),
             quote!(#harmos::schema::Cardinality::Required),
         ));
     }
@@ -279,8 +289,8 @@ fn encoding(
 }
 
 fn message_kind(ty: &Type, harmos: &HarmosPath) -> TokenStream {
-    quote!(#harmos::schema::Kind::Message {
-        fields: ::std::borrow::Cow::Borrowed(<#ty as #harmos::schema::Described>::FIELDS),
+    quote!(#harmos::schema::graph::Kind::Message {
+        definition: <#ty as #harmos::schema::Described>::DEFINITION,
     })
 }
 

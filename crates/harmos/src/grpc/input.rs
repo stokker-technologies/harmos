@@ -97,7 +97,7 @@ pub fn input<O, S>(
     instance: OperationInstance<O>,
     output: StreamOutput<O::Item>,
     incoming: S,
-) -> impl Future<Output = Result<Arc<O::Response>, InputError>> + Send
+) -> impl Future<Output = Result<crate::operations::Response<O::Response>, InputError>> + Send
 where
     O: InputDeclaration,
     O::Item: MemorySize,

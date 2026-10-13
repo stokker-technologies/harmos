@@ -69,6 +69,7 @@ impl<C> Query<C> for FrameQuery {
     fn options(&self) -> &QueryOptions {
         &self.options
     }
+
     fn preflight(&self, manager: &StorageManager<C>, _limits: QueryLimits) -> Result<()> {
         self.frame.check()?;
         if self.options.after != 0
@@ -84,6 +85,7 @@ impl<C> Query<C> for FrameQuery {
             manager.inner.primary.supports_scan_order(scan, order)
         })
     }
+
     fn open(
         self,
         view: StorageView,

@@ -32,7 +32,7 @@ use serde_json::json;
 // Local Imports
 use backend::{Data, Recovery, history};
 use harmos::storage::*;
-use harmos::{Envelope, Identifier, Runtime};
+use harmos::{Identifier, Runtime, state::Envelope};
 
 /* === Constants === */
 const PAYLOAD_BYTES: usize = 128;
@@ -95,14 +95,14 @@ impl harmos::Application for Model {
     type Resources = ();
 }
 
-impl harmos::Transaction<State> for Advance {
+impl harmos::state::Transaction<State> for Advance {
     type Error = Infallible;
 
     fn check(&self, _: &State) -> Result<(), Infallible> {
         Ok(())
     }
 
-    fn records(&self, _: &State, output: &mut harmos::Records) {
+    fn records(&self, _: &State, output: &mut harmos::state::Records) {
         output
             .push(Observed {
                 payload: self.payload.clone(),
@@ -226,7 +226,16 @@ async fn measure(mode: &str, count: usize, repetition: Option<usize>) -> Duratio
     }
     let runtime = builder.runtime_with_storage(&storage).await.unwrap();
     let schema = schema();
-    storage.write_schema(&schema, &[]).await.unwrap();
+    storage
+        .write_schema(
+            &schema,
+            &harmos::schema::graph::Schema {
+                root: 0,
+                definitions: vec![vec![]],
+            },
+        )
+        .await
+        .unwrap();
     storage.flush().await.unwrap();
     storage.flush_recovery().await.unwrap();
     data.control.write_sizes.lock().unwrap().clear();

@@ -10,12 +10,12 @@
 /* === Modules === */
 
 /* === Re-Exports === */
+pub use crate::config::StreamSettings;
 
 /* === Imports === */
 
 // Standard Library Imports
 use std::{
-    num::NonZeroUsize,
     ops::Deref,
     sync::{
         Arc,
@@ -37,11 +37,6 @@ use crate::{MemorySize, Message};
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 /* === Structs === */
-#[derive(Clone, Copy, Debug)]
-pub struct StreamSettings {
-    pub items: NonZeroUsize,
-    pub bytes: NonZeroUsize,
-}
 
 pub struct StreamOutput<T, E = Error> {
     error: std::marker::PhantomData<fn() -> E>,
@@ -57,7 +52,7 @@ pub struct StreamInput<T> {
 }
 
 pub struct StreamItem<T> {
-    value: T,
+    value: Payload<T>,
     _bytes: OwnedSemaphorePermit,
     delivery: Option<OwnedSemaphorePermit>,
 }
@@ -74,6 +69,14 @@ pub struct StreamPermit<'a, T, E = Error> {
 }
 
 /* === Enums === */
+enum Payload<T> {
+    Plain(T),
+    Owned {
+        response: super::response::ErasedResponse,
+        project: fn(&super::response::ErasedResponse) -> &T,
+    },
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("stream capacity exceeds semaphore limits")]
@@ -84,6 +87,8 @@ pub enum Error {
     Construction,
     #[error("operation stream input is closed")]
     Closed,
+    #[error("borrowed stream payload cannot be moved out of its original owner")]
+    Ownership,
     #[error("operation stream decode failed: {0}")]
     Codec(#[source] crate::MessageError),
 }
@@ -138,7 +143,10 @@ impl<T> StreamItem<T> {
         self,
         select: fn(T) -> std::result::Result<A, B>,
     ) -> Result<std::result::Result<StreamItem<A>, StreamItem<B>>> {
-        let value = select(self.value);
+        let Payload::Plain(value) = self.value else {
+            return Err(Error::Ownership);
+        };
+        let value = select(value);
         let bytes = match &value {
             Ok(value) => value.memory_size(),
             Err(value) => value.memory_size(),
@@ -153,47 +161,73 @@ impl<T> StreamItem<T> {
         }
         Ok(match value {
             Ok(value) => Ok(StreamItem {
-                value,
+                value: Payload::Plain(value),
                 _bytes: self._bytes,
                 delivery: self.delivery,
             }),
             Err(value) => Err(StreamItem {
-                value,
+                value: Payload::Plain(value),
                 _bytes: self._bytes,
                 delivery: self.delivery,
             }),
         })
     }
 
-    pub fn into_request(self) -> (T, RequestClaims) {
-        (
-            self.value,
+    pub fn into_request(self) -> Result<(T, RequestClaims)> {
+        let Payload::Plain(value) = self.value else {
+            return Err(Error::Ownership);
+        };
+        Ok((
+            value,
             RequestClaims {
                 _original: self._bytes,
                 _delivery: self.delivery,
             },
-        )
+        ))
     }
 }
 
 impl<T: MemorySize> StreamItem<T> {
     pub fn charged(value: T, bytes: OwnedSemaphorePermit) -> Result<Self> {
         let item = Self {
-            value,
+            value: Payload::Plain(value),
             _bytes: bytes,
             delivery: None,
         };
-        if item.value.memory_size() > item._bytes.num_permits() {
+        if item.memory_size() > item._bytes.num_permits() {
             return Err(Error::Construction);
         }
         Ok(item)
     }
 }
 
+impl<T: MemorySize + Send + Sync + 'static> StreamItem<T> {
+    pub fn charged_owned(value: super::Response<T>, bytes: OwnedSemaphorePermit) -> Result<Self> {
+        let retained = value
+            .memory_size()
+            .checked_add(std::mem::size_of::<Self>())
+            .ok_or(Error::Capacity)?;
+        if retained > bytes.num_permits() {
+            return Err(Error::Construction);
+        }
+        Ok(Self {
+            value: Payload::Owned {
+                response: value.into_erased(),
+                project: owned::<T>,
+            },
+            _bytes: bytes,
+            delivery: None,
+        })
+    }
+}
+
 impl<T> Deref for StreamItem<T> {
     type Target = T;
     fn deref(&self) -> &T {
-        &self.value
+        match &self.value {
+            Payload::Plain(value) => value,
+            Payload::Owned { response, project } => project(response),
+        }
     }
 }
 
@@ -218,6 +252,18 @@ impl<T> StreamInput<T> {
 impl<T, E> StreamOutput<T, E> {
     pub(crate) fn transfer_flag(&self) -> Arc<AtomicBool> {
         self.transferred.clone()
+    }
+
+    // Wire bindings construct the channel with the portable error and hand the
+    // same sender to the operation under its declared error type.
+    pub(crate) fn failing_with<F>(self) -> StreamOutput<T, F> {
+        StreamOutput {
+            error: std::marker::PhantomData,
+            sender: self.sender,
+            budget: self.budget,
+            limit: self.limit,
+            transferred: self.transferred,
+        }
     }
 }
 
@@ -286,7 +332,14 @@ impl<T: MemorySize, E: From<Error>> StreamOutput<T, E> {
             return Ok(());
         }
 
-        let permit = self.reserve(item.memory_size()).await?;
+        let bytes = item
+            .memory_size()
+            .checked_add(match &item.value {
+                Payload::Plain(_) => 0,
+                Payload::Owned { .. } => std::mem::size_of::<StreamItem<T>>(),
+            })
+            .ok_or(Error::Capacity)?;
+        let permit = self.reserve(bytes).await?;
         item.delivery = Some(permit.claim);
         self.transferred.store(true, Ordering::Release);
         permit.slot.send(item);
@@ -309,6 +362,28 @@ impl<T: MemorySize, E: From<Error>> StreamPermit<'_, T, E> {
         }
         let value = make()?;
         let item = StreamItem::charged(value, self.claim)?;
+        self.output.transferred.store(true, Ordering::Release);
+        self.slot.send(item);
+        Ok(())
+    }
+}
+
+impl<T: MemorySize + Send + Sync + 'static, E: From<Error>> StreamOutput<T, E> {
+    pub async fn send_owned(&self, value: super::Response<T>) -> Result<(), E> {
+        let bytes = value
+            .memory_size()
+            .checked_add(std::mem::size_of::<StreamItem<T>>())
+            .ok_or(Error::Capacity)?;
+        self.reserve(bytes).await?.send_owned(value)
+    }
+}
+
+impl<T: MemorySize + Send + Sync + 'static, E: From<Error>> StreamPermit<'_, T, E> {
+    pub fn send_owned(self, value: super::Response<T>) -> Result<(), E> {
+        if self.output.is_closed() {
+            return Err(closed().into());
+        }
+        let item = StreamItem::charged_owned(value, self.claim)?;
         self.output.transferred.store(true, Ordering::Release);
         self.slot.send(item);
         Ok(())
@@ -364,6 +439,12 @@ pub fn channel<T, E: From<Error>>(
 }
 
 /* === Private Functions === */
+fn owned<T: Send + Sync + 'static>(response: &super::response::ErasedResponse) -> &T {
+    response
+        .value::<T>()
+        .expect("owned stream payload retains its declared type")
+}
+
 fn closed() -> Error {
     Error::Closed
 }

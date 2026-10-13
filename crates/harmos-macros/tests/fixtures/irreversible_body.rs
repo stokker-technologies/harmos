@@ -37,7 +37,7 @@ struct SendReport;
 /* === Traits === */
 
 /* === Implementations === */
-impl harmos::Transaction<Sheet> for SendReport {
+impl harmos::state::Transaction<Sheet> for SendReport {
     type Error = ();
 
     fn check(&self, _sheet: &Sheet) -> Result<(), Self::Error> {
@@ -47,7 +47,7 @@ impl harmos::Transaction<Sheet> for SendReport {
     fn apply(&self, _sheet: &mut Sheet) {}
 }
 
-impl harmos::Invert<Sheet> for SendReport {
+impl harmos::state::Invert<Sheet> for SendReport {
     fn invert(&self, _sheet: &Sheet) -> SendReport {
         SendReport
     }

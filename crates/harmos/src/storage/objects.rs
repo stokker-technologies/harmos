@@ -24,7 +24,7 @@ use super::{
     StorageView, StoredObject,
 };
 use crate::catalog::Contains;
-use crate::object_catalog::{check_length, decode_admitted, invalid, object_key, object_schema};
+use crate::storage::catalog::{check_length, decode_admitted, invalid, object_key, object_schema};
 use crate::{Error, MemorySize, MessageError, Result};
 
 /* === Constants === */
@@ -61,18 +61,20 @@ impl<C: ObjectCatalog> ObjectGroup<'_, C> {
         if self.objects.len() == self.count {
             return Err(invalid("object group contains too many objects"));
         }
-        let scratch = crate::schema::validation_memory_bytes(T::FIELDS)
-            .map_err(|_| invalid("invalid object schema budget"))?;
-        if scratch > self.remaining_bytes() {
-            return Err(invalid("object schema scratch exceeds allowance"));
-        }
-        crate::schema::validate(T::FIELDS).map_err(|_| invalid("invalid object schema"))?;
+        let settings = self.schema_settings()?;
+        let graph = crate::schema::graph::Schema::from_declaration(T::DEFINITION, &settings)
+            .map_err(|_| invalid("invalid object schema or preparation allowance"))?;
         let (id, _) = T::definition();
-        if id.as_str().len() > self.remaining_bytes() {
+        if graph
+            .memory_size()
+            .checked_add(id.as_str().len())
+            .and_then(|bytes| bytes.checked_add(std::mem::size_of::<super::SchemaKey>()))
+            .is_none_or(|bytes| bytes > self.remaining_bytes())
+        {
             return Err(invalid("object identity exceeds allowance"));
         }
         let schema = object_schema::<T>()?;
-        let metadata = self.metadata(&schema, T::FIELDS)?;
+        let metadata = self.metadata(&schema, &graph)?;
         if metadata >= self.remaining_bytes() {
             return Err(invalid("object metadata exceeds allowance"));
         }
@@ -100,7 +102,7 @@ impl<C: ObjectCatalog> ObjectGroup<'_, C> {
                 item,
                 payload,
             },
-            T::FIELDS,
+            graph,
             metadata + key_bytes,
         )?;
         Ok(())
@@ -113,11 +115,12 @@ impl<C> ObjectGroup<'_, C> {
             return Err(invalid("object group contains too many objects"));
         }
         // Catalog Identity Construction And Verification Share The Original Claim.
-        if self.allowance - self.used < crate::object_catalog::LOOKUP_MEMORY_BYTES {
+        if self.allowance - self.used < crate::storage::catalog::LOOKUP_MEMORY_BYTES {
             return Err(invalid("object catalog lookup exceeds allowance"));
         }
         let definition = (self.manager.inner.object_definition)(&value.schema)?;
-        let metadata = self.metadata(&value.schema, definition.fields())?;
+        let graph = definition.graph(&self.schema_settings()?)?;
+        let metadata = self.metadata(&value.schema, &graph)?;
         let verification = (self.allowance - self.used)
             .checked_sub(metadata)
             .ok_or_else(|| invalid("object metadata exceeds allowance"))?;
@@ -135,32 +138,48 @@ impl<C> ObjectGroup<'_, C> {
         }
         let value = value.clone();
         let bytes = metadata + value.item.memory_size();
-        self.append(value, definition.fields(), bytes)
+        self.append(value, graph, bytes)
+    }
+
+    fn schema_settings(&self) -> Result<harmos_contract::config::SchemaSettings> {
+        let mut settings = harmos_contract::config::SchemaSettings::default();
+        settings.preparation_bytes = NonZeroUsize::new(
+            settings
+                .preparation_bytes
+                .get()
+                .min(self.allowance - self.used),
+        )
+        .ok_or_else(|| invalid("object schema preparation exceeds allowance"))?;
+        Ok(settings)
     }
 
     fn metadata(
         &self,
         schema: &super::SchemaKey,
-        fields: &[crate::schema::Field],
+        graph: &crate::schema::graph::Schema,
     ) -> Result<usize> {
-        let descriptor = StorageSchema::resident_bytes(
-            schema,
-            fields,
-            self.manager.inner.primary.history(),
-            self.manager.inner.schema_encoding,
-        )?;
+        let descriptor =
+            StorageSchema::resident_bytes(schema, graph, self.manager.inner.primary.history())?;
+        let clone = graph
+            .clone_memory_bytes()
+            .map_err(|_| invalid("object schema size overflow"))?;
+        let retained = graph
+            .memory_size()
+            .checked_sub(clone)
+            .ok_or_else(|| invalid("object schema clone exceeds retained allocation"))?;
+        let identity = self
+            .manager
+            .charge(&(schema, self.manager.inner.primary.history()), 4)?;
         descriptor
-            .checked_add(
-                self.manager
-                    .charge(&(schema, self.manager.inner.primary.history()), 4)?,
-            )
+            .checked_add(retained)
+            .and_then(|bytes| bytes.checked_add(identity))
             .ok_or_else(|| invalid("object size overflow"))
     }
 
     fn append(
         &mut self,
         value: ObjectValue,
-        fields: &[crate::schema::Field],
+        graph: crate::schema::graph::Schema,
         metadata: usize,
     ) -> Result<()> {
         let bytes = metadata
@@ -170,12 +189,8 @@ impl<C> ObjectGroup<'_, C> {
             return Err(invalid("object payload exceeds allowance"));
         }
         let sequence = self.first + (self.objects.len() * 2) as u64;
-        let descriptor = StorageSchema::new(
-            self.manager.position(sequence),
-            value.schema.clone(),
-            fields.to_vec(),
-            self.manager.inner.schema_encoding,
-        );
+        let descriptor =
+            StorageSchema::new(self.manager.position(sequence), value.schema.clone(), graph);
         let position = self.manager.position(sequence + 1);
         let version = ObjectVersionToken::new(position.clone());
         self.used += bytes;

@@ -170,7 +170,11 @@ impl Message for Payload {
 }
 
 impl harmos::schema::Described for Payload {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Payload));
     const FIELDS: &'static [harmos::schema::Field] = <Text as harmos::schema::Described>::FIELDS;
+    const MARKER: &'static [u8] = &harmos::schema::declaration::encode::<
+        { harmos::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
 }
 
 impl harmos::operations::WireOperation for Codec {
@@ -244,11 +248,15 @@ impl Operation for Coding {
         _context: Self::Context<'ctx>,
         request: &mut Payload,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Payload, Failed> {
-        self.resources.runs.fetch_add(1, Ordering::SeqCst);
-        Ok(Payload(Text {
-            value: std::mem::take(&mut request.0.value),
-        }))
+    ) -> Result<harmos::operations::Response<Payload>, Failed> {
+        let result: ::core::result::Result<Payload, Self::Error> = async move {
+            self.resources.runs.fetch_add(1, Ordering::SeqCst);
+            Ok(Payload(Text {
+                value: std::mem::take(&mut request.0.value),
+            }))
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -273,11 +281,15 @@ impl Operation for ShortCoding {
         _context: Self::Context<'ctx>,
         request: &mut Payload,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Payload, Failed> {
-        self.resources.runs.fetch_add(1, Ordering::SeqCst);
-        Ok(Payload(Text {
-            value: std::mem::take(&mut request.0.value),
-        }))
+    ) -> Result<harmos::operations::Response<Payload>, Failed> {
+        let result: ::core::result::Result<Payload, Self::Error> = async move {
+            self.resources.runs.fetch_add(1, Ordering::SeqCst);
+            Ok(Payload(Text {
+                value: std::mem::take(&mut request.0.value),
+            }))
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -334,20 +346,24 @@ impl Operation for Echoing {
         context: Self::Context<'ctx>,
         value: &mut Text,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<String, Failed> {
-        self.resources.runs.fetch_add(1, Ordering::SeqCst);
-        self.resources.seen.lock().unwrap().push(context.id());
-        self.state.attempts += 1;
-        if value.value == "retry" && self.state.attempts == 1 {
-            value.value.push_str(" retained");
-            return Err(Failed::Scripted(Failure::Transient));
+    ) -> Result<harmos::operations::Response<String>, Failed> {
+        let result: ::core::result::Result<String, Self::Error> = async move {
+            self.resources.runs.fetch_add(1, Ordering::SeqCst);
+            self.resources.seen.lock().unwrap().push(context.id());
+            self.state.attempts += 1;
+            if value.value == "retry" && self.state.attempts == 1 {
+                value.value.push_str(" retained");
+                return Err(Failed::Scripted(Failure::Transient));
+            }
+            if value.value == "block" {
+                let _joined = Joined(&self.resources.wire_joined);
+                self.resources.wire_started.notify_one();
+                std::future::pending::<()>().await;
+            }
+            Ok(format!("{}:{}", value.value, self.state.attempts))
         }
-        if value.value == "block" {
-            let _joined = Joined(&self.resources.wire_joined);
-            self.resources.wire_started.notify_one();
-            std::future::pending::<()>().await;
-        }
-        Ok(format!("{}:{}", value.value, self.state.attempts))
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     fn classify(error: &Failed) -> Failure {
@@ -378,20 +394,24 @@ impl Operation for PrivateEchoing {
         context: Self::Context<'ctx>,
         value: &mut Text,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<String, Failed> {
-        self.resources.runs.fetch_add(1, Ordering::SeqCst);
-        self.resources.seen.lock().unwrap().push(context.id());
-        self.state.attempts += 1;
-        if value.value == "retry" && self.state.attempts == 1 {
-            value.value.push_str(" retained");
-            return Err(Failed::Scripted(Failure::Transient));
+    ) -> Result<harmos::operations::Response<String>, Failed> {
+        let result: ::core::result::Result<String, Self::Error> = async move {
+            self.resources.runs.fetch_add(1, Ordering::SeqCst);
+            self.resources.seen.lock().unwrap().push(context.id());
+            self.state.attempts += 1;
+            if value.value == "retry" && self.state.attempts == 1 {
+                value.value.push_str(" retained");
+                return Err(Failed::Scripted(Failure::Transient));
+            }
+            if value.value == "block" {
+                let _joined = Joined(&self.resources.wire_joined);
+                self.resources.wire_started.notify_one();
+                std::future::pending::<()>().await;
+            }
+            Ok(format!("{}:{}", value.value, self.state.attempts))
         }
-        if value.value == "block" {
-            let _joined = Joined(&self.resources.wire_joined);
-            self.resources.wire_started.notify_one();
-            std::future::pending::<()>().await;
-        }
-        Ok(format!("{}:{}", value.value, self.state.attempts))
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -449,11 +469,15 @@ impl Operation for Nesting {
         context: Self::Context<'ctx>,
         request: &mut Text,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<String, Failed> {
-        let reply = context
-            .call_encoded(PrivateEcho::ID, request.encode_to_vec())
-            .await?;
-        Ok(String::decode(&reply).unwrap())
+    ) -> Result<harmos::operations::Response<String>, Failed> {
+        let result: ::core::result::Result<String, Self::Error> = async move {
+            let reply = context
+                .call_encoded(PrivateEcho::ID, request.encode_to_vec())
+                .await?;
+            Ok(String::decode(&reply).unwrap())
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -480,11 +504,15 @@ impl Operation for SameLaneCall {
         context: Self::Context<'ctx>,
         request: &mut Text,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<String, Failed> {
-        let reply = context
-            .call_encoded(PrivateEcho::ID, request.encode_to_vec())
-            .await?;
-        Ok(String::decode(&reply).unwrap())
+    ) -> Result<harmos::operations::Response<String>, Failed> {
+        let result: ::core::result::Result<String, Self::Error> = async move {
+            let reply = context
+                .call_encoded(PrivateEcho::ID, request.encode_to_vec())
+                .await?;
+            Ok(String::decode(&reply).unwrap())
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -508,12 +536,16 @@ impl Operation for Detaching {
         context: Self::Context<'ctx>,
         _request: &mut Text,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<String, Failed> {
-        let started = self.resources.wire_started.notified();
-        let _child =
-            context.submit_encoded(PrivateEcho::ID, Text::from("block").encode_to_vec())?;
-        started.await;
-        Ok("parent".to_owned())
+    ) -> Result<harmos::operations::Response<String>, Failed> {
+        let result: ::core::result::Result<String, Self::Error> = async move {
+            let started = self.resources.wire_started.notified();
+            let _child =
+                context.submit_encoded(PrivateEcho::ID, Text::from("block").encode_to_vec())?;
+            started.await;
+            Ok("parent".to_owned())
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 

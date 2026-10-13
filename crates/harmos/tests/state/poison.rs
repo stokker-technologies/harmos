@@ -19,7 +19,7 @@ use std::sync::atomic::Ordering;
 use support::{Change, Copied, Ledger, Mirror, Noted, alice, booted, deposit, ledger, quietly};
 // Local Imports
 use crate::support;
-use harmos::{Error, Focus, Position};
+use harmos::{Error, state::Focus, state::Position};
 
 /* === Constants === */
 

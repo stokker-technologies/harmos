@@ -58,7 +58,7 @@ const STREAMS: &[publications::Entry] = &[publications::Entry {
     id: Echoed::ID,
     schema: Echoed::VERSION,
     window: Echoed::WINDOW,
-    fields: Echoed::FIELDS,
+    row: Echoed::DEFINITION,
     metadata_json: "",
     row_metadata_json: "[]",
 }];
@@ -119,7 +119,7 @@ static LINKED_PUBLICATIONS: [&[u8]; 2] = {
         id: "foreign",
         schema: 1,
         window: 8,
-        fields: &[],
+        row: <() as harmos_contract::schema::Described>::DEFINITION,
     }];
     #[used]
     static OTHER: [u8; encoded_len("guest", "other", STREAMS)] = encode("guest", "other", STREAMS);
@@ -164,18 +164,21 @@ impl Declared for RouteComponent {
     const PROVIDES: &'static [Node<WireDeclaration>] = PROVIDED;
     const REQUIRES: &'static [Node<Requirement>] = REQUIRED;
     const STREAMS: &'static [publications::Entry] = STREAMS;
-    fn markers() -> Vec<&'static [u8]> {
-        vec![
-            &IDENTITY,
-            &CONTRACTS,
-            &PUBLICATIONS,
-            &LISTENERS,
-            &OBSERVERS,
-            LINKED_CONTRACTS[0],
-            LINKED_CONTRACTS[1],
-            LINKED_PUBLICATIONS[0],
-            LINKED_PUBLICATIONS[1],
-        ]
+    fn markers() -> Result<Vec<&'static [u8]>, harmos_contract::schema::graph::Error> {
+        harmos_contract::plugin::schema_markers::<Self>(
+            vec![
+                &IDENTITY,
+                &CONTRACTS,
+                &PUBLICATIONS,
+                &LISTENERS,
+                &OBSERVERS,
+                LINKED_CONTRACTS[0],
+                LINKED_CONTRACTS[1],
+                LINKED_PUBLICATIONS[0],
+                LINKED_PUBLICATIONS[1],
+            ],
+            &harmos_contract::config::SchemaSettings::default(),
+        )
     }
 }
 
@@ -288,115 +291,121 @@ impl Operation for Echoing {
         context: Self::Context<'ctx>,
         request: &mut Echo,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Echoed, OperationRefusal> {
-        if let Some(value) = request.say.strip_prefix("saved-publish:") {
-            let saved = self
-                .resources
-                .initialized
-                .lock()
-                .map_err(OperationRefusal::of)?
-                .clone()
-                .ok_or_else(|| OperationRefusal::of("SDK initialization context is absent"))?;
-            progress(&saved, value)
-                .await
-                .map_err(OperationRefusal::of)?;
-            return Ok(Echoed {
-                said: format!("published {value}"),
-            });
-        }
-        if let Some(value) = request.say.strip_prefix("saved-dependency:") {
-            let saved = self
-                .resources
-                .initialized
-                .lock()
-                .map_err(OperationRefusal::of)?
-                .clone()
-                .ok_or_else(|| OperationRefusal::of("SDK initialization context is absent"))?;
-            return saved
-                .operation::<ProviderEcho>(Echo { say: value.into() })
-                .await;
-        }
+    ) -> Result<harmos_guest::operations::Response<Echoed>, OperationRefusal> {
+        let result: ::core::result::Result<Echoed, Self::Error> = async move {
+            if let Some(value) = request.say.strip_prefix("saved-publish:") {
+                let saved = self
+                    .resources
+                    .initialized
+                    .lock()
+                    .map_err(OperationRefusal::of)?
+                    .clone()
+                    .ok_or_else(|| OperationRefusal::of("SDK initialization context is absent"))?;
+                progress(&saved, value)
+                    .await
+                    .map_err(OperationRefusal::of)?;
+                return Ok(Echoed {
+                    said: format!("published {value}"),
+                });
+            }
+            if let Some(value) = request.say.strip_prefix("saved-dependency:") {
+                let saved = self
+                    .resources
+                    .initialized
+                    .lock()
+                    .map_err(OperationRefusal::of)?
+                    .clone()
+                    .ok_or_else(|| OperationRefusal::of("SDK initialization context is absent"))?;
+                return saved
+                    .operation::<ProviderEcho>(Echo { say: value.into() })
+                    .await;
+            }
 
-        if let Some(say) = request.say.strip_prefix("dependency:") {
-            return context
-                .operation::<ProviderEcho>(Echo {
-                    say: say.to_owned(),
-                })
-                .await;
-        }
+            if let Some(say) = request.say.strip_prefix("dependency:") {
+                return context
+                    .operation::<ProviderEcho>(Echo {
+                        say: say.to_owned(),
+                    })
+                    .await;
+            }
 
-        if let Some(value) = request.say.strip_prefix("invoke:") {
-            let mut fields = value.splitn(3, ':');
-            let grant = fields.next().unwrap_or_default();
-            let key = fields.next().unwrap_or_default();
-            let payload = fields.next().unwrap_or_default();
-            let answered = context
-                .operation::<host::Invoke>(host::InvokeRequest {
-                    grant: grant.into(),
-                    key: key.into(),
-                    payload: payload.as_bytes().to_vec(),
-                })
-                .await;
-            return Ok(Echoed {
-                said: match answered {
-                    Ok(receipt) => format!("receipt:{}:{}", receipt.position, receipt.correlation),
-                    Err(error) => error.to_string(),
-                },
-            });
-        }
+            if let Some(value) = request.say.strip_prefix("invoke:") {
+                let mut fields = value.splitn(3, ':');
+                let grant = fields.next().unwrap_or_default();
+                let key = fields.next().unwrap_or_default();
+                let payload = fields.next().unwrap_or_default();
+                let answered = context
+                    .operation::<host::Invoke>(host::InvokeRequest {
+                        grant: grant.into(),
+                        key: key.into(),
+                        payload: payload.as_bytes().to_vec(),
+                    })
+                    .await;
+                return Ok(Echoed {
+                    said: match answered {
+                        Ok(receipt) => {
+                            format!("receipt:{}:{}", receipt.position, receipt.correlation)
+                        }
+                        Err(error) => error.to_string(),
+                    },
+                });
+            }
 
-        if let Some(name) = request.say.strip_prefix("egress:") {
-            let answered = context
-                .operation::<host::Egress>(host::EgressRequest {
-                    name: name.into(),
-                    method: "get".into(),
-                    path: "/reading".into(),
-                    headers: vec![],
-                    body: vec![],
-                })
-                .await;
-            return Ok(Echoed {
-                said: match answered {
-                    Ok(response) => format!("egress status {}", response.status),
-                    Err(error) => error.to_string(),
-                },
-            });
-        }
+            if let Some(name) = request.say.strip_prefix("egress:") {
+                let answered = context
+                    .operation::<host::Egress>(host::EgressRequest {
+                        name: name.into(),
+                        method: "get".into(),
+                        path: "/reading".into(),
+                        headers: vec![],
+                        body: vec![],
+                    })
+                    .await;
+                return Ok(Echoed {
+                    said: match answered {
+                        Ok(response) => format!("egress status {}", response.status),
+                        Err(error) => error.to_string(),
+                    },
+                });
+            }
 
-        if let Some(value) = request.say.strip_prefix("publish:") {
-            progress(context, value)
-                .await
-                .map_err(OperationRefusal::of)?;
-        }
-        if request.say == "publish-many" {
-            for index in 0..8 {
-                progress(context, &index.to_string())
+            if let Some(value) = request.say.strip_prefix("publish:") {
+                progress(context, value)
                     .await
                     .map_err(OperationRefusal::of)?;
             }
+            if request.say == "publish-many" {
+                for index in 0..8 {
+                    progress(context, &index.to_string())
+                        .await
+                        .map_err(OperationRefusal::of)?;
+                }
+            }
+            if request.say == "publish-foreign" {
+                let refused = context
+                    .operation::<host::Publish>(host::Publication {
+                        stream: "foreign".into(),
+                        schema: 1,
+                        sequence: None,
+                        published_unix_micros: None,
+                        context: None,
+                        payload: ().encode_to_vec(),
+                    })
+                    .await
+                    .expect_err("co-linked declarations grant nothing");
+                return Ok(Echoed {
+                    said: refused.to_string(),
+                });
+            }
+            if request.say == "grow" {
+                std::hint::black_box(vec![1u8; 128 * 1024 * 1024]);
+            }
+            Ok(Echoed {
+                said: format!("heard {}", request.say),
+            })
         }
-        if request.say == "publish-foreign" {
-            let refused = context
-                .operation::<host::Publish>(host::Publication {
-                    stream: "foreign".into(),
-                    schema: 1,
-                    sequence: None,
-                    published_unix_micros: None,
-                    context: None,
-                    payload: ().encode_to_vec(),
-                })
-                .await
-                .expect_err("co-linked declarations grant nothing");
-            return Ok(Echoed {
-                said: refused.to_string(),
-            });
-        }
-        if request.say == "grow" {
-            std::hint::black_box(vec![1u8; 128 * 1024 * 1024]);
-        }
-        Ok(Echoed {
-            said: format!("heard {}", request.say),
-        })
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -420,8 +429,10 @@ impl Operation for Declining {
         _context: Self::Context<'ctx>,
         _request: &mut Decline,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Echoed, OperationRefusal> {
-        Err(OperationRefusal::new(7, "the probe declines"))
+    ) -> Result<harmos_guest::operations::Response<Echoed>, OperationRefusal> {
+        let result: ::core::result::Result<Echoed, Self::Error> =
+            async move { Err(OperationRefusal::new(7, "the probe declines")) }.await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -445,12 +456,16 @@ impl Operation for Spinning {
         _context: Self::Context<'ctx>,
         _request: &mut Spin,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Echoed, OperationRefusal> {
-        let mut counted = 0u64;
-        loop {
-            counted = counted.wrapping_add(1);
-            std::hint::black_box(counted);
+    ) -> Result<harmos_guest::operations::Response<Echoed>, OperationRefusal> {
+        let result: ::core::result::Result<Echoed, Self::Error> = async move {
+            let mut counted = 0u64;
+            loop {
+                counted = counted.wrapping_add(1);
+                std::hint::black_box(counted);
+            }
         }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -474,26 +489,30 @@ impl Operation for Waiting {
         context: Self::Context<'ctx>,
         _request: &mut Wait,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Echoed, OperationRefusal> {
-        // The host answers this slowly. Nothing here burns fuel while
-        // it waits, so the bound this call blew is wall-clock alone.
-        let _ = context
-            .operation::<host::Egress>(host::EgressRequest {
-                name: "vendor".into(),
-                method: "get".into(),
-                path: "/slow".into(),
-                headers: vec![],
-                body: vec![],
+    ) -> Result<harmos_guest::operations::Response<Echoed>, OperationRefusal> {
+        let result: ::core::result::Result<Echoed, Self::Error> = async move {
+            // The host answers this slowly. Nothing here burns fuel while
+            // it waits, so the bound this call blew is wall-clock alone.
+            let _ = context
+                .operation::<host::Egress>(host::EgressRequest {
+                    name: "vendor".into(),
+                    method: "get".into(),
+                    path: "/slow".into(),
+                    headers: vec![],
+                    body: vec![],
+                })
+                .await;
+            // Resuming is where the epoch check the guest ran past is
+            // reached: a suspended guest executes no instrumented code.
+            for step in 0..4096u32 {
+                std::hint::black_box(step);
+            }
+            Ok(Echoed {
+                said: "waited".to_owned(),
             })
-            .await;
-        // Resuming is where the epoch check the guest ran past is
-        // reached: a suspended guest executes no instrumented code.
-        for step in 0..4096u32 {
-            std::hint::black_box(step);
         }
-        Ok(Echoed {
-            said: "waited".to_owned(),
-        })
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -517,8 +536,10 @@ impl Operation for Failing {
         _context: Self::Context<'ctx>,
         _request: &mut Fail,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Echoed, OperationRefusal> {
-        panic!("requested guest trap")
+    ) -> Result<harmos_guest::operations::Response<Echoed>, OperationRefusal> {
+        let result: ::core::result::Result<Echoed, Self::Error> =
+            async move { panic!("requested guest trap") }.await;
+        result.map(::core::convert::Into::into)
     }
 }
 

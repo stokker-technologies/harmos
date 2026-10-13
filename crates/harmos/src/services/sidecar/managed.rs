@@ -26,13 +26,16 @@ use super::{
     Notice, Supervised,
     physical::{Physical, Polling},
 };
-use crate::load::{
+use crate::operations::{EncodedInvocation, PluginRegistration, PluginSdkRegistration};
+use crate::plugin::{
     PluginArtifact, PluginBackend, PluginDefinition, PluginDefinitions, PluginLifecycle,
     PluginLifecycleAuthority, PluginManager, PluginTransition, Router,
 };
-use crate::operations::{EncodedInvocation, PluginRegistration, PluginSdkRegistration};
 use crate::services::Resident;
-use crate::{Application, Error, Fault, Lane, OperationManager, Result, Service};
+use crate::{
+    Application, Error, Result, operations::Lane, operations::OperationManager, services::Fault,
+    services::Service,
+};
 use harmos_sidecar::{Attach, Executable};
 
 /* === Constants === */
@@ -47,10 +50,17 @@ type NativeCatalog<L> = fn(
     NonZeroUsize,
 ) -> Result<()>;
 
+type Diagnostics<A> = fn(&Service<A>, Notice);
+
 type StreamListeners<A> =
     fn(&PluginDefinition, &mut crate::streams::PluginListenerBindings<'_, A>) -> Result<()>;
 
 /* === Structs === */
+pub(crate) struct RuntimeDriver<A: Application, L> {
+    host: Host<A, Executable, Diagnostics<A>, L>,
+    backend: PluginBackend<(), Backend<A, Executable, Diagnostics<A>>, ()>,
+}
+
 pub struct Managed<A: Application, S, H, L> {
     residents: BTreeMap<String, Supervised<A, S, H>>,
     lane: L,
@@ -64,6 +74,7 @@ pub struct Managed<A: Application, S, H, L> {
 }
 
 struct Backend<A: Application, S, H> {
+    progress: Option<crate::plugin::Lease>,
     polling: Vec<(String, Polling<A, S, H>)>,
     exit: Option<std::result::Result<(), Fault<String>>>,
     grace: std::time::Duration,
@@ -79,6 +90,7 @@ struct Backend<A: Application, S, H> {
 }
 
 struct Host<A: Application, S, H, L> {
+    progress: Option<crate::plugin::Driving>,
     residents: BTreeMap<String, Supervised<A, S, H>>,
     context: Service<A>,
     polling: Vec<(String, Polling<A, S, H>)>,
@@ -110,6 +122,114 @@ pub enum ManagedError {
 /* === Traits === */
 
 /* === Implementations === */
+impl<A, L> RuntimeDriver<A, L>
+where
+    A: Application,
+    L: Lane + Clone,
+{
+    pub(crate) fn new<C>(
+        resident: Supervised<A, Executable, Diagnostics<A>>,
+        definition: &PluginDefinition,
+        context: Service<A>,
+        lane: L,
+        capacity: NonZeroUsize,
+        encoding_memory_bytes: NonZeroUsize,
+        progress: crate::plugin::Driving,
+    ) -> Result<Self>
+    where
+        C: crate::catalog::Catalog<crate::operations::Declarations>
+            + crate::catalog::Catalog<crate::operations::NativeBindings>,
+    {
+        verify_executable_inputs(&resident.attach, definition)?;
+        let operations = context.operations().clone();
+        let mut host = Host {
+            progress: Some(progress),
+            residents: BTreeMap::from([(definition.id.clone(), resident)]),
+            context,
+            polling: Vec::new(),
+            dependencies: BTreeMap::from([(definition.id.clone(), BTreeSet::new())]),
+            operations,
+            lane,
+            capacity,
+            encoding_memory_bytes,
+            catalog: |bindings, lane, native, capacity| {
+                bindings.register_native_catalog::<C>(lane, native, capacity)
+            },
+            stream_listeners: |_, _| Ok(()),
+            verify_artifact: verify_executable_artifact,
+            exit: None,
+        };
+        let backend = host.prepare(definition)?;
+        Ok(Self { host, backend })
+    }
+
+    pub(crate) async fn start(
+        &mut self,
+        definition: &PluginDefinition,
+        router: &Router,
+        authority: &PluginLifecycleAuthority<'_>,
+    ) -> Result<()> {
+        self.host.context.provider.initialize_attempt(0);
+        if let Err(error) = self
+            .host
+            .start(definition, router, authority, &mut self.backend)
+            .await
+        {
+            return match self.host.exit.take() {
+                Some(Err(source)) => Err(Error::OperationFailed {
+                    operation: definition.id.clone(),
+                    source: Arc::new(source),
+                }),
+                Some(Ok(())) => Err(Error::NotReady {
+                    domain: "native startup exited",
+                }),
+                None => Err(error),
+            };
+        }
+        self.host
+            .context
+            .provider
+            .transition(crate::supervision::instance::Phase::Running);
+        Ok(())
+    }
+
+    pub(crate) async fn stop(
+        &mut self,
+        definition: &PluginDefinition,
+        authority: &PluginLifecycleAuthority<'_>,
+    ) -> Result<()> {
+        Host::<A, Executable, Diagnostics<A>, L>::stop(definition, authority, &mut self.backend)
+            .await?;
+        self.host
+            .context
+            .provider
+            .complete(crate::supervision::instance::Outcome::Succeeded);
+        self.host.context.provider.finished();
+        Ok(())
+    }
+
+    pub(crate) fn poll(&mut self, context: &mut std::task::Context<'_>) -> Poll<Result<()>> {
+        let PluginBackend::Sidecar(backend) = &mut self.backend else {
+            unreachable!()
+        };
+        let Some(physical) = &mut backend.physical else {
+            return Poll::Pending;
+        };
+        physical.poll(context).map(|outcome| {
+            outcome.map_err(|source| Error::OperationFailed {
+                operation: self
+                    .host
+                    .residents
+                    .keys()
+                    .next()
+                    .expect("native driver owns one plugin")
+                    .clone(),
+                source: Arc::new(source),
+            })
+        })
+    }
+}
+
 impl<A, S, H, L> Managed<A, S, H, L>
 where
     A: Application,
@@ -148,7 +268,7 @@ where
         if owners.is_empty()
             || owners
                 .values()
-                .any(|kind| *kind != crate::load::PluginKind::Sidecar)
+                .any(|kind| *kind != crate::plugin::PluginKind::Sidecar)
         {
             return Err(Error::InvalidInput {
                 field: "managed native graph",
@@ -322,6 +442,7 @@ where
         }
         let operations = context.operations().clone();
         self.host = Some(Host {
+            progress: None,
             residents: self.residents.clone(),
             context,
             polling: Vec::with_capacity(self.residents.len()),
@@ -380,6 +501,7 @@ where
             .unwrap_or(Ok(()))
             .map_err(map_fault)
     }
+
     async fn stop(&mut self) -> std::result::Result<(), ManagedError> {
         let Some(host) = &mut self.host else {
             return Ok(());
@@ -409,12 +531,14 @@ where
     fn preflight(&mut self, candidate: &PluginDefinitions) -> Result<()> {
         self.operations.validate_requirements(candidate)
     }
+
     fn prepare(
         &mut self,
         definition: &PluginDefinition,
     ) -> Result<PluginBackend<(), Self::Sidecar, ()>> {
         (self.verify_artifact)(&self.residents[&definition.id].attach, definition)?;
         Ok(PluginBackend::Sidecar(Backend {
+            progress: None,
             polling: Vec::new(),
             exit: None,
             grace: self.residents[&definition.id].grace,
@@ -432,9 +556,11 @@ where
             stream_listeners: None,
         }))
     }
+
     async fn fence(&mut self, _: PluginTransition, _: &[PluginDefinition]) -> Result<()> {
         Ok(())
     }
+
     async fn start(
         &mut self,
         definition: &PluginDefinition,
@@ -454,6 +580,16 @@ where
             .physical
             .as_mut()
             .expect("physical owner retained before await");
+        if let Some(progress) = &self.progress {
+            let polling = physical.polling();
+            backend.progress = Some(progress.retain(
+                definition.id.clone(),
+                authority.generation(),
+                move |context| {
+                    let _ = polling.poll(context);
+                },
+            ));
+        }
         self.polling
             .push((definition.id.clone(), physical.polling()));
         backend.polling = self
@@ -514,6 +650,7 @@ where
         result?;
         Ok(())
     }
+
     async fn stop(
         _: &PluginDefinition,
         authority: &PluginLifecycleAuthority<'_>,
@@ -630,6 +767,7 @@ where
         backend.sdk.take();
         backend.registration.take();
         backend.physical.take();
+        backend.progress.take();
         Ok(())
     }
 }

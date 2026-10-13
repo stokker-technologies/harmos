@@ -51,9 +51,13 @@ macro_rules! serving {
                 _: Self::Context<'a>,
                 $request: &mut u32,
                 $ports: &mut Self::Endpoints,
-            ) -> Result<u32, Self::Error> {
-                self.0.ran.fetch_add(1, Ordering::SeqCst);
-                $run
+            ) -> Result<harmos_guest::operations::Response<u32>, Self::Error> {
+                let result: ::core::result::Result<u32, Self::Error> = async move {
+                    self.0.ran.fetch_add(1, Ordering::SeqCst);
+                    $run
+                }
+                .await;
+                result.map(::core::convert::Into::into)
             }
             async fn stop(&mut self) -> Result<(), Self::Error> {
                 self.0.stopped.fetch_add(1, Ordering::SeqCst);

@@ -19,7 +19,7 @@ use std::time::Duration;
 // Third Party Imports
 use tokio::sync::{Notify, mpsc};
 // Local Imports
-use harmos::sidecar::{ActivationId, Instance, ObserverContext};
+use harmos::plugin::sidecar::{ActivationId, Instance, ObserverContext};
 
 /* === Constants === */
 
@@ -163,7 +163,7 @@ fn start(
     behavior: Behavior,
     stop_gate: Option<Arc<Notify>>,
 ) -> (
-    harmos::sidecar::ObserverTask,
+    harmos::plugin::sidecar::ObserverTask,
     mpsc::UnboundedReceiver<Event>,
 ) {
     let (events, received) = mpsc::unbounded_channel();

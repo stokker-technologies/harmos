@@ -26,7 +26,7 @@ use crate::storage::manager::{
     recovery_preparation_bytes,
 };
 use crate::storage::{ReadLimits, RecoveryPosition, StorageManager};
-use crate::{Error, Position, Result};
+use crate::{Error, Result, state::Position};
 
 /* === Constants === */
 

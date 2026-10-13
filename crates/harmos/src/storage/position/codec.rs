@@ -23,7 +23,8 @@ use super::{StorageCursor, StoreHistory};
 use crate::__private::{DecodeInput, DecodeScalar, DecodeValue, decoding_add};
 #[cfg(feature = "grpc")]
 use crate::MessageError;
-use crate::schema::{Cardinality, Described, Field, Kind};
+use crate::schema::declaration::{Field, Kind};
+use crate::schema::{Cardinality, Described};
 use crate::{Error, Identifier, MemorySize, Message, Result};
 
 /* === Constants === */
@@ -161,6 +162,7 @@ const _: () = {
 };
 
 impl Described for StoreHistory {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(StoreHistory));
     const FIELDS: &'static [Field] = &[
         Field {
             name: Cow::Borrowed("store"),
@@ -175,15 +177,20 @@ impl Described for StoreHistory {
             cardinality: Cardinality::Required,
         },
     ];
+
+    const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
+        { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
 }
 
 impl Described for StorageCursor {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(StorageCursor));
     const FIELDS: &'static [Field] = &[
         Field {
             name: Cow::Borrowed("history"),
             tag: 1,
             kind: Kind::Message {
-                fields: Cow::Borrowed(StoreHistory::FIELDS),
+                definition: StoreHistory::DEFINITION,
             },
             cardinality: Cardinality::Required,
         },
@@ -194,6 +201,10 @@ impl Described for StorageCursor {
             cardinality: Cardinality::Required,
         },
     ];
+
+    const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
+        { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
 }
 
 /* === Public Functions === */

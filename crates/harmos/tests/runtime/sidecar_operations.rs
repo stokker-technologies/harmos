@@ -28,16 +28,16 @@ use tokio::sync::Notify;
 // Local Imports
 use super::{assembly, service_status};
 use crate::support::Bank;
-use harmos::load::{
-    PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions,
-    PluginLifecycle, PluginLifecycleAuthority, PluginManager, PluginTransition, Router,
-};
 use harmos::operations::{
     Declarations, Definition, Operation, OperationDeclaration, OperationPolicy, RetryPolicy,
     Visibility,
 };
-use harmos::sidecar::{Attach, Attached, Notice, Supervised};
-use harmos::{Service, ServiceExit, ServiceStatus};
+use harmos::plugin::sidecar::{Attach, Attached, Notice, Supervised};
+use harmos::plugin::{
+    PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions,
+    PluginLifecycle, PluginLifecycleAuthority, PluginManager, PluginTransition, Router,
+};
+use harmos::{services::Service, services::ServiceExit, services::ServiceStatus};
 
 /* === Constants === */
 const CAPACITY: usize = 2;
@@ -66,7 +66,7 @@ struct Counts {
     block_initialize: AtomicBool,
     initialization_child: AtomicBool,
     initialization_entered: Notify,
-    initialization_saved: Mutex<Option<harmos::sidecar::Supervisor>>,
+    initialization_saved: Mutex<Option<harmos::plugin::sidecar::Supervisor>>,
     runs: AtomicUsize,
     finalized: AtomicUsize,
     fail_cleanup: AtomicBool,
@@ -74,7 +74,7 @@ struct Counts {
     call_child: AtomicBool,
     children: AtomicUsize,
     stale_refused: AtomicUsize,
-    saved: Mutex<Option<harmos::sidecar::Supervisor>>,
+    saved: Mutex<Option<harmos::plugin::sidecar::Supervisor>>,
     tenants: Mutex<Vec<Option<String>>>,
 }
 
@@ -132,9 +132,9 @@ struct Host<A: Attach> {
     resident: Resident<A>,
     lane: Lanes,
     capacity: std::num::NonZeroUsize,
-    supervision: harmos::ServicePolicy,
+    supervision: harmos::services::ServicePolicy,
     services: harmos::services::ServiceManager<Bank>,
-    operations: harmos::OperationManager,
+    operations: harmos::operations::OperationManager,
     retirement_gate: RetirementGate,
 }
 
@@ -219,7 +219,7 @@ impl Operation for ReadOperation {
     type Resources = Counts;
     type Error = std::io::Error;
     type Endpoints = ();
-    type Context<'a> = &'a harmos::sidecar::Supervisor;
+    type Context<'a> = &'a harmos::plugin::sidecar::Supervisor;
     fn new(counts: Arc<Counts>) -> Result<Self, Self::Error> {
         counts.prepared.fetch_add(1, Ordering::SeqCst);
         if counts.fail_prepare.load(Ordering::SeqCst) {
@@ -255,46 +255,50 @@ impl Operation for ReadOperation {
         context: Self::Context<'ctx>,
         _request: &mut (),
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Self::Error> {
-        let initialized = self.counts.initialization_saved.lock().unwrap().take();
-        if let Some(initialized) = initialized {
-            if initialized.operation::<Refresh>(()).await.is_ok() {
-                return Err(std::io::Error::other(
-                    "initialization context remained active",
-                ));
-            }
-            self.counts.stale_refused.fetch_add(1, Ordering::SeqCst);
-        }
-        self.attempts += 1;
-        self.counts.runs.fetch_add(1, Ordering::SeqCst);
-        let tenant = context
-            .context()
-            .value::<Tenant>()
-            .map_err(std::io::Error::other)?;
-        assert!(context.context().get::<Principal>().is_none());
-        self.counts
-            .tenants
-            .lock()
-            .unwrap()
-            .push(tenant.map(|tenant| tenant.name));
-        if self.counts.call_child.load(Ordering::SeqCst) {
-            let previous = self.counts.saved.lock().unwrap().take();
-            if let Some(previous) = previous {
-                if previous.operation::<Refresh>(()).await.is_ok() {
-                    return Err(std::io::Error::other("expired attempt admitted a child"));
+    ) -> Result<harmos::operations::Response<()>, Self::Error> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            let initialized = self.counts.initialization_saved.lock().unwrap().take();
+            if let Some(initialized) = initialized {
+                if initialized.operation::<Refresh>(()).await.is_ok() {
+                    return Err(std::io::Error::other(
+                        "initialization context remained active",
+                    ));
                 }
                 self.counts.stale_refused.fetch_add(1, Ordering::SeqCst);
             }
-            *self.counts.saved.lock().unwrap() = Some(context.clone());
-            context
-                .operation::<Refresh>(())
-                .await
+            self.attempts += 1;
+            self.counts.runs.fetch_add(1, Ordering::SeqCst);
+            let tenant = context
+                .context()
+                .value::<Tenant>()
                 .map_err(std::io::Error::other)?;
+            assert!(context.context().get::<Principal>().is_none());
+            self.counts
+                .tenants
+                .lock()
+                .unwrap()
+                .push(tenant.map(|tenant| tenant.name));
+            if self.counts.call_child.load(Ordering::SeqCst) {
+                let previous = self.counts.saved.lock().unwrap().take();
+                if let Some(previous) = previous {
+                    if previous.operation::<Refresh>(()).await.is_ok() {
+                        return Err(std::io::Error::other("expired attempt admitted a child"));
+                    }
+                    self.counts.stale_refused.fetch_add(1, Ordering::SeqCst);
+                }
+                *self.counts.saved.lock().unwrap() = Some(context.clone());
+                context
+                    .operation::<Refresh>(())
+                    .await
+                    .map_err(std::io::Error::other)?;
+            }
+            if self.attempts == 1 {
+                return Err(std::io::Error::other("one transient failure"));
+            }
+            Ok(())
         }
-        if self.attempts == 1 {
-            return Err(std::io::Error::other("one transient failure"));
-        }
-        Ok(())
+        .await;
+        result.map(::core::convert::Into::into)
     }
     async fn stop(&mut self) -> Result<(), Self::Error> {
         self.counts.stopped.fetch_add(1, Ordering::SeqCst);
@@ -317,7 +321,7 @@ impl Operation for RefreshOperation {
     type Resources = Counts;
     type Error = std::io::Error;
     type Endpoints = ();
-    type Context<'a> = &'a harmos::sidecar::Supervisor;
+    type Context<'a> = &'a harmos::plugin::sidecar::Supervisor;
     fn new(counts: Arc<Counts>) -> Result<Self, Self::Error> {
         Ok(Self(counts))
     }
@@ -326,9 +330,13 @@ impl Operation for RefreshOperation {
         _: Self::Context<'ctx>,
         _request: &mut (),
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Self::Error> {
-        self.0.children.fetch_add(1, Ordering::SeqCst);
-        Ok(())
+    ) -> Result<harmos::operations::Response<()>, Self::Error> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            self.0.children.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -351,7 +359,7 @@ impl harmos::operations::lifecycle::Policy for Endpoint {
 #[harmos::plugin(id = "operation-handshake", provides = Operations, requires = ())]
 impl harmos::Plugin for Endpoint {
     type Config = usize;
-    type Context = harmos::sidecar::Supervisor;
+    type Context = harmos::plugin::sidecar::Supervisor;
     type Error = std::io::Error;
     type Resources = Counts;
     fn prepare(id: usize) -> Result<Self, Self::Error> {
@@ -440,7 +448,7 @@ impl Managed<Source> {
 }
 
 impl<A: Attach> Managed<A> {
-    pub(crate) fn drop_manager(self) -> (harmos::Runtime<Bank>, harmos::load::PluginCleanup) {
+    pub(crate) fn drop_manager(self) -> (harmos::Runtime<Bank>, harmos::plugin::PluginCleanup) {
         let Self {
             runtime,
             manager,
@@ -473,7 +481,10 @@ impl<A: Attach> Managed<A> {
     ) -> Self {
         let runtime = assembly()
             .register(Lanes::catalog())
-            .operation_preparation_bytes(std::num::NonZeroUsize::new(4096).unwrap())
+            .operation_settings(harmos::operations::Settings {
+                preparation_bytes: Some(std::num::NonZeroUsize::new(4096).unwrap()),
+                ..Default::default()
+            })
             .runtime()
             .await
             .unwrap();
@@ -486,7 +497,7 @@ impl<A: Attach> Managed<A> {
             resident,
             lane,
             capacity,
-            harmos::ServicePolicy::default(),
+            harmos::services::ServicePolicy::default(),
         )
     }
     pub(crate) fn from_runtime(
@@ -495,7 +506,7 @@ impl<A: Attach> Managed<A> {
         resident: Resident<A>,
         lane: Lanes,
         capacity: std::num::NonZeroUsize,
-        supervision: harmos::ServicePolicy,
+        supervision: harmos::services::ServicePolicy,
     ) -> Self {
         let host = Host {
             ready: None,
@@ -516,7 +527,7 @@ impl<A: Attach> Managed<A> {
     pub(crate) fn resident(&self) -> &Resident<A> {
         &self.host.resident
     }
-    pub(crate) fn status(&self, id: &str) -> Option<harmos::load::PluginStatus> {
+    pub(crate) fn status(&self, id: &str) -> Option<harmos::plugin::PluginStatus> {
         self.manager.status(id)
     }
     pub(crate) fn publication(&self) -> harmos::Result<()> {
@@ -543,7 +554,7 @@ impl<A: Attach> Managed<A> {
         }
         self.runtime
             .operations
-            .register_wire_operation::<harmos::sidecar::Publish<_, _, _>>(
+            .register_wire_operation::<harmos::plugin::sidecar::Publish<_, _, _>>(
                 "native-publication-core",
                 self.host.lane,
                 Arc::new(self.host.resident.clone()),
@@ -625,7 +636,7 @@ impl<A: Attach> Managed<A> {
             .as_mut()
             .expect("the original resident was staged")
     }
-    pub(crate) fn demands(&self) -> harmos::sidecar::DemandSource {
+    pub(crate) fn demands(&self) -> harmos::plugin::sidecar::DemandSource {
         self.host.resident.demands()
     }
 }
@@ -1261,7 +1272,8 @@ fn contract_scenario() {
                         address: "127.0.0.1:0".parse().unwrap(),
                         operations: harmos::grpc::server::Settings::default(),
                         reflection: true,
-                        #[cfg(feature = "grpc-tls")]
+                        web: false,
+                        allowed_origins: Vec::new(),
                         tls: None,
                         connections: NonZeroUsize::new(4).unwrap(),
                         calls_per_connection: NonZeroUsize::new(8).unwrap(),
@@ -1280,12 +1292,14 @@ fn contract_scenario() {
                     client.ready().await.unwrap();
                     let settings = harmos::grpc::server::Settings::default();
                     // Unknown Protobuf Fields Are Legal For Unit; Postcard Unit Rejects These Bytes.
-                    let codec =
-                        harmos::grpc::Codec::<(), Arc<u32>>::new(settings.decode, settings.encode)
-                            .unwrap();
+                    let codec = harmos::grpc::Codec::<(), harmos::operations::Response<u32>>::new(
+                        settings.decode,
+                        settings.encode,
+                    )
+                    .unwrap();
                     client
                         .unary(
-                            tonic::Request::new(Arc::new(42u32)),
+                            tonic::Request::new(harmos::operations::Response::new(42u32)),
                             tonic::codegen::http::uri::PathAndQuery::from_static(
                                 "/fixture.v1.Native/Read",
                             ),

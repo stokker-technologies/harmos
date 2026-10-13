@@ -58,9 +58,7 @@ enum Lanes {
     Open,
 }
 
-#[harmos::catalog]
-enum Operations {
-    #[operation(
+#[harmos::operation(
         request = Option<Arc<Signals>>,
         response = usize,
         id = "bench.dispatch",
@@ -70,7 +68,11 @@ enum Operations {
             retries: RetryPolicy::Never,
         },
     )]
-    Dispatch,
+struct Dispatch;
+
+#[harmos::catalog]
+enum Operations {
+    Dispatch(Dispatch),
 }
 
 /* === Traits === */
@@ -92,13 +94,17 @@ impl Operation for Dispatching {
         _: Self::Context<'ctx>,
         waiting: &mut Option<Arc<Signals>>,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<usize, Self::Error> {
-        self.waiting = waiting.clone();
-        if let Some(signals) = &self.waiting {
-            signals.running.add_permits(1);
-            std::future::pending::<()>().await;
+    ) -> Result<harmos::operations::Response<usize>, Self::Error> {
+        let result: ::core::result::Result<usize, Self::Error> = async move {
+            self.waiting = waiting.clone();
+            if let Some(signals) = &self.waiting {
+                signals.running.add_permits(1);
+                std::future::pending::<()>().await;
+            }
+            Ok(42)
         }
-        Ok(42)
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     async fn stop(&mut self) -> Result<(), Self::Error> {

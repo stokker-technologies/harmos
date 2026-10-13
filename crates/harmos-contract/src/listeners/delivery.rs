@@ -22,7 +22,8 @@ use std::borrow::Cow;
 // Local Imports
 use crate::journal::Position;
 use crate::message::{PostcardReader, PostcardValue, decoding_add};
-use crate::schema::{Cardinality, Described, Field, Kind};
+use crate::schema::declaration::{self, Field, Kind};
+use crate::schema::{Cardinality, Described};
 use crate::{MemorySize, Message, MessageError};
 
 /* === Constants === */
@@ -31,12 +32,7 @@ const CONTEXT_FIELDS: &[Field] = &[
         name: Cow::Borrowed("record"),
         tag: 1,
         kind: Kind::Message {
-            fields: Cow::Borrowed(&[Field {
-                name: Cow::Borrowed("position"),
-                tag: 1,
-                kind: Kind::U64,
-                cardinality: Cardinality::Required,
-            }]),
+            definition: RecordContext::DEFINITION,
         },
         cardinality: Cardinality::Variant,
     },
@@ -44,26 +40,52 @@ const CONTEXT_FIELDS: &[Field] = &[
         name: Cow::Borrowed("stream"),
         tag: 2,
         kind: Kind::Message {
-            fields: Cow::Borrowed(&[
-                Field {
-                    name: Cow::Borrowed("sequence"),
-                    tag: 1,
-                    kind: Kind::U64,
-                    cardinality: Cardinality::Required,
-                },
-                Field {
-                    name: Cow::Borrowed("missed"),
-                    tag: 2,
-                    kind: Kind::U64,
-                    cardinality: Cardinality::Required,
-                },
-            ]),
+            definition: StreamContext::DEFINITION,
         },
         cardinality: Cardinality::Variant,
     },
 ];
 
 /* === Macros === */
+macro_rules! context_shape {
+    ($name:ident, $fields:expr) => {
+        struct $name;
+        impl Described for $name {
+            const NAME: &'static str = concat!(module_path!(), "::", stringify!($name));
+            const FIELDS: &'static [Field] = $fields;
+            const MARKER: &'static [u8] = &declaration::encode::<
+                { declaration::encoded_len(Self::NAME, Self::FIELDS) },
+            >(Self::NAME, Self::FIELDS);
+        }
+    };
+}
+context_shape!(
+    RecordContext,
+    &[Field {
+        name: Cow::Borrowed("position"),
+        tag: 1,
+        kind: Kind::U64,
+        cardinality: Cardinality::Required,
+    }]
+);
+context_shape!(
+    StreamContext,
+    &[
+        Field {
+            name: Cow::Borrowed("sequence"),
+            tag: 1,
+            kind: Kind::U64,
+            cardinality: Cardinality::Required
+        },
+        Field {
+            name: Cow::Borrowed("missed"),
+            tag: 2,
+            kind: Kind::U64,
+            cardinality: Cardinality::Required
+        },
+    ]
+);
+context_shape!(DeliveryContext, CONTEXT_FIELDS);
 
 /* === Type Aliases === */
 
@@ -208,12 +230,13 @@ impl<R: MemorySize> MemorySize for Delivery<R> {
 }
 
 impl<R: Described> Described for Delivery<R> {
+    const NAME: &'static str = declaration::Name::new("harmos::Delivery", &[R::NAME]).as_str();
     const FIELDS: &'static [Field] = &[
         Field {
             name: Cow::Borrowed("context"),
             tag: 1,
             kind: Kind::Message {
-                fields: Cow::Borrowed(CONTEXT_FIELDS),
+                definition: DeliveryContext::DEFINITION,
             },
             cardinality: Cardinality::Required,
         },
@@ -221,33 +244,48 @@ impl<R: Described> Described for Delivery<R> {
             name: Cow::Borrowed("row"),
             tag: 2,
             kind: Kind::Message {
-                fields: Cow::Borrowed(R::FIELDS),
+                definition: R::DEFINITION,
             },
             cardinality: Cardinality::Required,
         },
     ];
+    const MARKER: &'static [u8] = declaration::encode_buffer::<2048>(Self::NAME, Self::FIELDS)
+        .split_at(declaration::encoded_len(Self::NAME, Self::FIELDS))
+        .0;
 }
 
 /* === Public Functions === */
-pub(super) fn fields(row: &[Field]) -> Vec<Field> {
-    vec![
-        Field {
-            name: Cow::Borrowed("context"),
-            tag: 1,
-            kind: Kind::Message {
-                fields: Cow::Borrowed(CONTEXT_FIELDS),
-            },
-            cardinality: Cardinality::Required,
-        },
-        Field {
-            name: Cow::Borrowed("row"),
-            tag: 2,
-            kind: Kind::Message {
-                fields: Cow::Owned(row.to_vec()),
-            },
-            cardinality: Cardinality::Required,
-        },
-    ]
+pub(super) fn matches(
+    request: crate::schema::graph::View<'_>,
+    row: &crate::schema::graph::Schema,
+    settings: &crate::config::SchemaSettings,
+) -> Result<bool, crate::schema::graph::Error> {
+    let fields = request.fields();
+    if fields.len() != 2
+        || fields[0].name != "context"
+        || fields[0].tag != 1
+        || fields[1].name != "row"
+        || fields[1].tag != 2
+        || fields
+            .iter()
+            .any(|field| field.cardinality != Cardinality::Required)
+    {
+        return Ok(false);
+    }
+    let Some(context) = request.message(&fields[0])? else {
+        return Ok(false);
+    };
+    let Some(delivered) = request.message(&fields[1])? else {
+        return Ok(false);
+    };
+    let expected =
+        crate::schema::graph::Schema::from_declaration(DeliveryContext::DEFINITION, settings)?;
+    Ok(request
+        .schema()
+        .equivalent(context.index(), &expected, expected.root, settings)?
+        && request
+            .schema()
+            .equivalent(delivered.index(), row, row.root, settings)?)
 }
 
 /* === Private Functions === */

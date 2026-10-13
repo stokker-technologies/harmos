@@ -52,7 +52,20 @@ fn contract_scenario() {
                 .block_on(async {
                     let f = Fixture::new(config()).await;
                     let key = schema();
-                    assert_eq!(f.storage.write_schema(&key, &[]).await.unwrap().sequence, 1);
+                    assert_eq!(
+                        f.storage
+                            .write_schema(
+                                &key,
+                                &harmos::schema::graph::Schema {
+                                    root: 0,
+                                    definitions: vec![vec![]]
+                                }
+                            )
+                            .await
+                            .unwrap()
+                            .sequence,
+                        1
+                    );
                     let item = Identifier::new("sample").unwrap();
                     let stream = Identifier::new("voltage").unwrap();
                     assert_eq!(

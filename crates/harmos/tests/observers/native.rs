@@ -25,7 +25,7 @@ use tokio::sync::Semaphore;
 // Local Imports
 use super::{phase, runtime};
 use harmos::observers::{ObserverLifecyclePhase, ObserverPhase};
-use harmos::sidecar::{Instance, Observer, ObserverContext, ObserverExit};
+use harmos::plugin::sidecar::{Instance, Observer, ObserverContext, ObserverExit};
 
 /* === Constants === */
 

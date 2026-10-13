@@ -18,7 +18,7 @@ use std::num::NonZeroUsize;
 // Local Imports
 use super::*;
 use crate::MemorySize;
-use crate::storage_runtime::manager::{MemoryReservation, ReservationKind};
+use crate::storage::manager::{MemoryReservation, ReservationKind};
 
 /* === Constants === */
 
@@ -32,7 +32,7 @@ pub(crate) struct FileSave {
     _reservation: MemoryReservation,
 }
 
-pub(in crate::storage_runtime) struct FileSnapshot {
+pub(in crate::storage) struct FileSnapshot {
     checkpoints: Vec<FileCheckpoint>,
     receipts: Vec<super::super::MutationReceipt>,
 }
@@ -76,7 +76,7 @@ impl<C> StorageManager<C> {
         Ok(())
     }
 
-    pub(in crate::storage_runtime) async fn recover_files(&self) -> Result<()> {
+    pub(in crate::storage) async fn recover_files(&self) -> Result<()> {
         if !self.inner.primary.supports_file_sessions() {
             return Ok(());
         }
@@ -214,7 +214,7 @@ impl<C> StorageManager<C> {
         Ok(())
     }
 
-    pub(in crate::storage_runtime) fn retire_files(&self) {
+    pub(in crate::storage) fn retire_files(&self) {
         let mut state = self.inner.state.lock().unwrap();
         for file in state.files.values() {
             file.progress.lock().unwrap().closed = true;
@@ -226,7 +226,7 @@ impl<C> StorageManager<C> {
 }
 
 impl State {
-    pub(in crate::storage_runtime) fn capture_file_snapshot(
+    pub(in crate::storage) fn capture_file_snapshot(
         &mut self,
         through: Option<&StorageCursor>,
         capacity: usize,
@@ -291,7 +291,7 @@ impl State {
 }
 
 impl FileSnapshot {
-    pub(in crate::storage_runtime) async fn persist(
+    pub(in crate::storage) async fn persist(
         &self,
         inner: &Arc<super::super::manager::Inner>,
     ) -> Result<()> {

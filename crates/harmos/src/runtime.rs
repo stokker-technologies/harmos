@@ -27,17 +27,18 @@ use std::time::Duration;
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 // Local Imports
-use crate::attachments::{Attachments, Consumers, Horizon, Payload, Source, declare};
-use crate::consumer::{JournalConsumer, Series, StreamConsumer};
 use crate::evidence::{Declaration, Evidence, Vault};
 use crate::observers::ObserverManager;
 use crate::services::{Definition as ServiceDefinition, ServiceManager};
 use crate::state::dispatch::Dispatch;
 use crate::state::{Feed, Inverting, Origin, ReadRequest, Tail, Undos, replay};
+use crate::storage::attachments::{Attachments, Consumers, Horizon, Payload, Source, declare};
+use crate::storage::consumer::{JournalConsumer, Series, StreamConsumer};
 use crate::streams::{Definition, Holding, Request, StreamManager, Table, Tier};
 use crate::{
-    Application, At, CaptureLimits, Cursor, DecodeError, DefinitionId, Entry, Error,
-    JournalCapture, Kind, LaneSet, Position, Resident, ServicePolicy, StateManager,
+    Application, DefinitionId, Error, operations::LaneSet, services::Resident,
+    services::ServicePolicy, state::At, state::CaptureLimits, state::DecodeError, state::Entry,
+    state::JournalCapture, state::Kind, state::Position, state::StateManager, storage::Cursor,
 };
 
 /* === Constants === */
@@ -62,9 +63,11 @@ pub struct Inspector<A: Application> {
 
 pub struct Runtime<A: Application> {
     pub state: StateManager<A>,
-    pub records: crate::RecordManager<A>,
+    pub records: crate::records::RecordManager<A>,
     pub streams: StreamManager<A>,
-    pub operations: crate::OperationManager,
+    pub operations: crate::operations::OperationManager,
+    #[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
+    pub plugin: crate::plugin::PluginHost<A>,
     #[cfg(feature = "grpc")]
     grpc: crate::grpc::GrpcManager,
     pub services: ServiceManager<A>,
@@ -80,9 +83,11 @@ pub struct Runtime<A: Application> {
 
 pub struct Handle<A: Application> {
     pub state: StateManager<A>,
-    pub records: crate::RecordManager<A>,
+    pub records: crate::records::RecordManager<A>,
     pub streams: StreamManager<A>,
-    pub operations: crate::OperationManager,
+    pub operations: crate::operations::OperationManager,
+    #[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
+    pub plugin: crate::plugin::PluginHost<A>,
     #[cfg(feature = "grpc")]
     grpc: crate::grpc::GrpcManager,
     pub services: ServiceManager<A>,
@@ -109,9 +114,9 @@ pub struct Builder<A: Application> {
     operation_middleware: Vec<Arc<dyn crate::operations::middleware::Middleware>>,
     services: Vec<ServiceDefinition<A>>,
     evidence: Option<Declaration>,
-    #[cfg(feature = "sim")]
-    simulation: crate::sim::Configuration<A>,
-    #[cfg(feature = "sim")]
+    #[cfg(feature = "simulation")]
+    simulation: crate::simulation::Configuration<A>,
+    #[cfg(feature = "simulation")]
     live_only: Vec<&'static str>,
 }
 
@@ -195,7 +200,7 @@ enum Cause {
     Reconciliation(String),
     #[error("the evidence declarations cannot be honored: {0}")]
     Kept(String),
-    #[cfg(feature = "sim")]
+    #[cfg(feature = "simulation")]
     #[error("this build cannot be simulated after attaching {0}")]
     Simulation(String),
 }
@@ -294,6 +299,8 @@ impl<A: Application> Clone for Handle<A> {
             records: self.records.clone(),
             streams: self.streams.clone(),
             operations: self.operations.clone(),
+            #[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
+            plugin: self.plugin.clone(),
             #[cfg(feature = "grpc")]
             grpc: self.grpc.clone(),
             services: self.services.clone(),
@@ -339,9 +346,9 @@ impl<A: Application> Runtime<A> {
             operation_middleware: Vec::new(),
             services: Vec::new(),
             evidence: None,
-            #[cfg(feature = "sim")]
-            simulation: crate::sim::Configuration::new(),
-            #[cfg(feature = "sim")]
+            #[cfg(feature = "simulation")]
+            simulation: crate::simulation::Configuration::new(),
+            #[cfg(feature = "simulation")]
             live_only: Vec::new(),
         }
     }
@@ -402,6 +409,8 @@ impl<A: Application> Runtime<A> {
             records: self.records.clone(),
             streams: self.streams.clone(),
             operations: self.operations.clone(),
+            #[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
+            plugin: self.plugin.clone(),
             #[cfg(feature = "grpc")]
             grpc: self.grpc.clone(),
             services: self.services.clone(),
@@ -432,7 +441,7 @@ impl<A: Application> Registration<A> for LaneSet {
 
 impl<A: Application> Builder<A> {
     pub fn register<C: Registration<A> + 'static>(mut self, catalog: C) -> Self {
-        #[cfg(feature = "sim")]
+        #[cfg(feature = "simulation")]
         self.simulation.register(catalog.clone());
 
         match catalog.register() {
@@ -457,7 +466,7 @@ impl<A: Application> Builder<A> {
     pub fn operation<T>(
         self,
         owner: impl Into<String>,
-        lane: impl crate::Lane,
+        lane: impl crate::operations::Lane,
         resources: Arc<T::Resources>,
     ) -> Self
     where
@@ -471,7 +480,7 @@ impl<A: Application> Builder<A> {
     pub fn operations<C, R>(
         self,
         owner: impl Into<String>,
-        lane: impl crate::Lane,
+        lane: impl crate::operations::Lane,
         resources: Arc<R>,
     ) -> Self
     where
@@ -487,7 +496,7 @@ impl<A: Application> Builder<A> {
     pub fn wire_operations<C, R>(
         self,
         owner: impl Into<String>,
-        lane: impl crate::Lane,
+        lane: impl crate::operations::Lane,
         resources: Arc<R>,
     ) -> Self
     where
@@ -500,32 +509,25 @@ impl<A: Application> Builder<A> {
         self.bind_operations(binding)
     }
 
-    pub fn operation_preparation_bytes(mut self, bytes: std::num::NonZeroUsize) -> Self {
-        #[cfg(feature = "sim")]
-        self.simulation.operation_preparation_bytes(Some(bytes));
-        self.operation_settings.preparation_bytes = Some(bytes);
-        self
-    }
-
     pub fn operation_middleware(
         mut self,
         middleware: Arc<dyn crate::operations::middleware::Middleware>,
     ) -> Self {
-        #[cfg(feature = "sim")]
+        #[cfg(feature = "simulation")]
         self.simulation.operation_middleware(middleware.clone());
         self.operation_middleware.push(middleware);
         self
     }
 
     pub fn operation_settings(mut self, settings: crate::operations::Settings) -> Self {
-        #[cfg(feature = "sim")]
+        #[cfg(feature = "simulation")]
         self.simulation.operation_settings(settings);
         self.operation_settings = settings;
         self
     }
 
     pub(crate) fn bind_operations(mut self, binding: crate::operations::CatalogBinding) -> Self {
-        #[cfg(feature = "sim")]
+        #[cfg(feature = "simulation")]
         self.simulation.operations(binding.clone());
         self.operations.push(binding);
         self
@@ -547,7 +549,7 @@ impl<A: Application> Builder<A> {
     where
         R: Resident<A>,
     {
-        #[cfg(feature = "sim")]
+        #[cfg(feature = "simulation")]
         self.live_only.push("resident services");
 
         self.services
@@ -560,7 +562,7 @@ impl<A: Application> Builder<A> {
         vault: impl Vault,
         kinds: impl IntoIterator<Item = (DefinitionId, u32)>,
     ) -> Self {
-        #[cfg(feature = "sim")]
+        #[cfg(feature = "simulation")]
         self.live_only.push("an evidence vault");
 
         self.evidence = Some(Declaration::new(vault, kinds));
@@ -568,7 +570,7 @@ impl<A: Application> Builder<A> {
     }
 
     pub fn attach(mut self, consumer: impl JournalConsumer<A>) -> Self {
-        #[cfg(feature = "sim")]
+        #[cfg(feature = "simulation")]
         self.live_only.push("an attached fold");
 
         self.attachments.attach(consumer);
@@ -576,7 +578,7 @@ impl<A: Application> Builder<A> {
     }
 
     pub fn attach_streams(mut self, consumer: impl StreamConsumer<A>) -> Self {
-        #[cfg(feature = "sim")]
+        #[cfg(feature = "simulation")]
         self.live_only.push("an attached stream fold");
 
         self.attachments.attach_streams(consumer);
@@ -584,7 +586,7 @@ impl<A: Application> Builder<A> {
     }
 
     pub fn series(mut self, series: impl Series<A>) -> Self {
-        #[cfg(feature = "sim")]
+        #[cfg(feature = "simulation")]
         self.live_only.push("a series copy");
 
         self.attachments.series(series);
@@ -592,7 +594,7 @@ impl<A: Application> Builder<A> {
     }
 
     pub fn recover(mut self, source: impl Source<A>) -> Self {
-        #[cfg(feature = "sim")]
+        #[cfg(feature = "simulation")]
         self.live_only.push("a recovery source");
 
         self.attachments.recover(source);
@@ -600,7 +602,7 @@ impl<A: Application> Builder<A> {
     }
 
     pub fn snapshot(mut self, snapshot: impl JournalConsumer<A>) -> Self {
-        #[cfg(feature = "sim")]
+        #[cfg(feature = "simulation")]
         self.live_only.push("a snapshot fold");
 
         self.attachments.snapshot(snapshot);
@@ -611,8 +613,8 @@ impl<A: Application> Builder<A> {
         mut self,
         limits: CaptureLimits,
         consumer: impl JournalCapture<A>,
-    ) -> Result<Self, crate::CaptureError> {
-        #[cfg(feature = "sim")]
+    ) -> Result<Self, crate::state::CaptureError> {
+        #[cfg(feature = "simulation")]
         self.live_only.push("required capture");
 
         self.attachments.require_capture(limits, consumer)?;
@@ -630,7 +632,7 @@ impl<A: Application> Builder<A> {
         self
     }
 
-    #[cfg(feature = "sim")]
+    #[cfg(feature = "simulation")]
     pub fn simulated_service<R>(mut self, name: impl Into<String>, resident: R) -> Self
     where
         R: Resident<A> + Clone,
@@ -639,7 +641,7 @@ impl<A: Application> Builder<A> {
         self
     }
 
-    #[cfg(feature = "sim")]
+    #[cfg(feature = "simulation")]
     pub fn simulated_service_with<R>(
         mut self,
         name: impl Into<String>,
@@ -653,7 +655,7 @@ impl<A: Application> Builder<A> {
         self
     }
 
-    #[cfg(feature = "sim")]
+    #[cfg(feature = "simulation")]
     pub fn simulated_evidence(
         mut self,
         vault: impl Vault + Clone,
@@ -663,14 +665,14 @@ impl<A: Application> Builder<A> {
         self
     }
 
-    #[cfg(feature = "sim")]
+    #[cfg(feature = "simulation")]
     pub fn entropy_seed(mut self, seed: u64) -> Self {
         self.simulation.entropy_seed(seed);
         self
     }
 
-    #[cfg(feature = "sim")]
-    pub fn simulate(self) -> Result<crate::SimulatedRuntime<A>, Incompatible>
+    #[cfg(feature = "simulation")]
+    pub fn simulate(self) -> Result<crate::simulation::SimulatedRuntime<A>, Incompatible>
     where
         A::State: Clone + fmt::Debug + PartialEq,
         A::Transaction: Clone + fmt::Debug,
@@ -690,7 +692,7 @@ impl<A: Application> Builder<A> {
 
     pub fn managed_state(mut self, limits: crate::storage::ReadLimits) -> Self {
         self.managed_state = Some(limits);
-        #[cfg(feature = "sim")]
+        #[cfg(feature = "simulation")]
         self.live_only.push("managed storage recovery");
         self
     }
@@ -704,7 +706,7 @@ impl<A: Application> Builder<A> {
             limits,
             handler: Box::new(projection),
         });
-        #[cfg(feature = "sim")]
+        #[cfg(feature = "simulation")]
         self.live_only.push("managed primary record capture");
         self
     }
@@ -714,7 +716,7 @@ impl<A: Application> Builder<A> {
         A::State: serde::Serialize + serde::de::DeserializeOwned,
     {
         self.snapshots = Some(crate::state::snapshot::Snapshots::new(policy));
-        #[cfg(feature = "sim")]
+        #[cfg(feature = "simulation")]
         self.live_only.push("managed state snapshots");
         self
     }
@@ -732,7 +734,7 @@ impl<A: Application> Builder<A> {
         self.reconciliation = Some(Box::new(move |journal, storage| {
             Box::pin(reconcile(journal, storage))
         }));
-        #[cfg(feature = "sim")]
+        #[cfg(feature = "simulation")]
         self.live_only.push("saved application data reconciliation");
         self
     }
@@ -743,7 +745,7 @@ impl<A: Application> Builder<A> {
         Fut: Future<Output = std::result::Result<(), E>> + Send + 'static,
         E: std::error::Error + Send + Sync + 'static,
     {
-        #[cfg(feature = "sim")]
+        #[cfg(feature = "simulation")]
         self.simulation.initialize(timeout, initialize.clone());
         self.initializers
             .push(boot::Initializer::new(timeout, initialize));
@@ -925,10 +927,10 @@ impl<A: Application> Builder<A> {
             Arc::clone(&catalog),
             attachments.capture.take(),
             boot.storage.clone(),
-            crate::Timestamp::now,
+            crate::state::Timestamp::now,
         );
         let journal_handles = journal.handle_probe();
-        let records = crate::RecordManager::new(journal.clone());
+        let records = crate::records::RecordManager::new(journal.clone());
         boot.writer = Some(writer);
         boot.state = Some(journal.clone());
         // Evidence folds from the same replayed order the state above it
@@ -948,15 +950,14 @@ impl<A: Application> Builder<A> {
                 cause: Cause::Operations(source),
                 cleanup: None,
             })?;
-        let lanes =
-            crate::operation_runtime::lane::Lanes::freeze(lanes).map_err(Incompatible::work)?;
+        let lanes = crate::operations::lane::Lanes::freeze(lanes).map_err(Incompatible::work)?;
         let instances = crate::operations::instances::Instances::start(
             lanes,
             Box::new(journal.clone()),
             resources,
             &operation_settings,
         );
-        let operations = crate::OperationManager::new(instances, &operation_settings);
+        let operations = crate::operations::OperationManager::new(instances, &operation_settings);
         for middleware in operation_middleware {
             operations
                 .register_middleware(middleware)
@@ -1005,11 +1006,27 @@ impl<A: Application> Builder<A> {
         }));
         #[cfg(feature = "grpc")]
         let grpc = crate::grpc::GrpcManager::new(&service_manager, &operations);
+        #[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
+        let plugin = crate::plugin::PluginHost::new(
+            operations.clone(),
+            #[cfg(feature = "plugin-sidecar")]
+            crate::services::Handles {
+                state: journal.clone(),
+                records: records.clone(),
+                operations: operations.clone(),
+                streams: streams.clone(),
+                evidence: evidence.clone(),
+                observers: observers.clone(),
+            },
+        )
+        .map_err(Incompatible::work)?;
         boot.runtime = Some(Runtime {
             state: journal,
             records,
             streams,
             operations,
+            #[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
+            plugin,
             services: service_manager,
             #[cfg(feature = "grpc")]
             grpc,
@@ -1119,7 +1136,7 @@ impl Incompatible {
         }
     }
 
-    #[cfg(feature = "sim")]
+    #[cfg(feature = "simulation")]
     fn simulation(live_only: String) -> Self {
         Self {
             cause: Cause::Simulation(live_only),
@@ -1135,7 +1152,7 @@ impl Incompatible {
     }
 }
 
-#[cfg(feature = "sidecar-host")]
+#[cfg(feature = "plugin-sidecar")]
 impl From<harmos_sidecar::ExecutableError> for Incompatible {
     fn from(error: harmos_sidecar::ExecutableError) -> Self {
         Self::work(error)

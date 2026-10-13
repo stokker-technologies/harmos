@@ -18,9 +18,12 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 // Local Imports
 use super::{StreamDeclaration, digits, quoted, quoted_len, write};
+use crate::config::SchemaSettings;
+use crate::schema::declaration::{Definition, Named};
+use crate::schema::graph::Schema;
 
 /* === Constants === */
-const HEAD: &[u8] = b"\0HARMOS:ARTIFACT:V5:{\"kind\":\"publications\",\"facility\":";
+const HEAD: &[u8] = b"\0HARMOS:ARTIFACT:V6:{\"kind\":\"publications\",\"facility\":";
 const OWNER: &[u8] = b",\"owner\":";
 const STREAMS: &[u8] = b",\"streams\":[";
 const ID: &[u8] = b"{\"id\":";
@@ -28,7 +31,7 @@ const SCHEMA: &[u8] = b",\"schema\":";
 const WINDOW: &[u8] = b",\"window\":";
 const METADATA: &[u8] = b",\"metadata\":";
 const ROW_METADATA: &[u8] = b",\"row_metadata\":";
-const FIELDS: &[u8] = b",\"fields\":";
+const ROW: &[u8] = b",\"row\":";
 const TAIL: &[u8] = b"]}\0";
 const METADATA_ID: &[u8] = b"{\"identifier\":";
 const METADATA_LABEL: &[u8] = b",\"label\":";
@@ -45,7 +48,7 @@ pub struct Entry {
     pub row_metadata_json: &'static str,
     pub schema: u32,
     pub window: usize,
-    pub fields: &'static [crate::schema::Field],
+    pub row: Definition,
 }
 
 #[derive(Deserialize)]
@@ -54,6 +57,26 @@ pub struct Manifest {
     pub facility: String,
     pub owner: String,
     pub streams: Vec<StreamDeclaration>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NamedStream {
+    pub metadata: crate::Metadata,
+    #[serde(default)]
+    pub row_metadata: Vec<crate::StreamField>,
+    pub id: String,
+    pub schema: u32,
+    pub window: usize,
+    pub row: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NamedManifest {
+    pub facility: String,
+    pub owner: String,
+    pub streams: Vec<NamedStream>,
 }
 
 /* === Enums === */
@@ -116,6 +139,47 @@ pub trait StreamSpec {
 }
 
 /* === Implementations === */
+impl NamedManifest {
+    pub fn resolve(
+        self,
+        declarations: &[Named],
+        settings: &mut SchemaSettings,
+    ) -> Result<Manifest, Error> {
+        let streams = self
+            .streams
+            .into_iter()
+            .map(|stream| {
+                let row =
+                    Schema::from_named(&stream.row, declarations, settings).map_err(|source| {
+                        Error::Fields {
+                            id: stream.id.clone(),
+                            source: source.into(),
+                        }
+                    })?;
+                let row = super::retain_schema(row, settings).map_err(|source| Error::Fields {
+                    id: stream.id.clone(),
+                    source: source.into(),
+                })?;
+                let stream = StreamDeclaration {
+                    metadata: stream.metadata,
+                    row_metadata: stream.row_metadata,
+                    id: stream.id,
+                    schema: stream.schema,
+                    window: stream.window,
+                    row,
+                };
+                validate(&stream)?;
+                Ok(stream)
+            })
+            .collect::<Result<_, Error>>()?;
+        Ok(Manifest {
+            facility: self.facility,
+            owner: self.owner,
+            streams,
+        })
+    }
+}
+
 impl Entry {
     pub fn metadata(&self) -> crate::Metadata {
         if self.metadata_json.is_empty() {
@@ -143,7 +207,7 @@ impl Entry {
             row_metadata_json: S::ROW_METADATA_JSON,
             schema: S::VERSION,
             window: S::WINDOW,
-            fields: <S::Row as crate::schema::Described>::FIELDS,
+            row: <S::Row as crate::schema::Described>::DEFINITION,
         }
     }
 }
@@ -156,7 +220,7 @@ pub const fn merge<const N: usize>(named: &[Entry], sampled: &[Entry]) -> [Entry
         row_metadata_json: "[]",
         schema: 0,
         window: 0,
-        fields: &[],
+        row: Definition::of::<()>(),
     }; N];
     let mut index = 0;
     while index < named.len() {
@@ -269,7 +333,12 @@ pub fn validate_match(expected: &[Entry], actual: &[StreamDeclaration]) -> Resul
             id: entry.id.to_owned(),
             schema: entry.schema,
             window: entry.window,
-            fields: entry.fields.to_vec(),
+            row: Schema::from_declaration(entry.row, &SchemaSettings::default()).map_err(
+                |source| Error::Fields {
+                    id: entry.id.to_owned(),
+                    source: source.into(),
+                },
+            )?,
         };
         validate(&stream)?;
         if authored.insert(entry.id, stream).is_some() {
@@ -319,21 +388,27 @@ pub fn validate(stream: &StreamDeclaration) -> Result<(), Error> {
             reason: "identifier differs from stream identity".into(),
         });
     }
+    stream
+        .row
+        .prepare(&SchemaSettings::default())
+        .map_err(|source| Error::Fields {
+            id: stream.id.clone(),
+            source: source.into(),
+        })?;
     let mut described = std::collections::BTreeSet::new();
     for field in &stream.row_metadata {
         let name = field.metadata.identifier.as_str();
-        if !stream.fields.iter().any(|wire| wire.name == name) || !described.insert(name) {
+        if !stream.row.definitions[stream.row.root]
+            .iter()
+            .any(|wire| wire.name == name)
+            || !described.insert(name)
+        {
             return Err(Error::Metadata {
                 id: stream.id.clone(),
                 reason: format!("field `{name}` is unknown or described more than once"),
             });
         }
     }
-    crate::schema::validate(&stream.fields).map_err(|source| Error::Fields {
-        id: stream.id.clone(),
-        source,
-    })?;
-
     Ok(())
 }
 
@@ -352,8 +427,8 @@ pub const fn encoded_len(facility: &str, owner: &str, streams: &[Entry]) -> usiz
             + digits(streams[index].schema as u64)
             + WINDOW.len()
             + digits(streams[index].window as u64)
-            + FIELDS.len()
-            + crate::schema::encoding::encoded_len(streams[index].fields)
+            + ROW.len()
+            + quoted_len(streams[index].row.name)
             + METADATA.len()
             + metadata_len(&streams[index])
             + ROW_METADATA.len()
@@ -387,8 +462,8 @@ pub const fn encode<const N: usize>(facility: &str, owner: &str, streams: &[Entr
         super::number(&mut output, &mut cursor, streams[index].schema as u64);
         write(&mut output, &mut cursor, WINDOW);
         super::number(&mut output, &mut cursor, streams[index].window as u64);
-        write(&mut output, &mut cursor, FIELDS);
-        crate::schema::encoding::encode_into(&mut output, &mut cursor, streams[index].fields);
+        write(&mut output, &mut cursor, ROW);
+        quoted(&mut output, &mut cursor, streams[index].row.name);
         write(&mut output, &mut cursor, METADATA);
         metadata_into(&mut output, &mut cursor, &streams[index]);
         write(&mut output, &mut cursor, ROW_METADATA);

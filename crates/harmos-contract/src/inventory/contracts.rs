@@ -21,12 +21,14 @@ use serde::{Deserialize, Serialize};
 // Local Imports
 use crate::PREFIX;
 use crate::catalog::Node;
+use crate::config::SchemaSettings;
 use crate::operations::{
     Backoff, Contract, Entry, Jitter, OperationPolicy, ReplaySafety, RetryPolicy, Visibility,
     WireDeclaration, lifecycle,
 };
 use crate::plugin::{Grant, Requirement};
-use crate::schema::{Cardinality, Field, Kind};
+use crate::schema::declaration::Named;
+use crate::schema::graph::Schema;
 
 /* === Constants === */
 const ENTRY_LIMIT: usize = 4096;
@@ -77,6 +79,41 @@ struct Decoded {
     lifecycle: [lifecycle::Descriptor; 2],
 }
 
+// Inert Artifact Metadata Names Direction Roots Without Repeating Their Fields.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NamedContract {
+    pub operation: crate::operations::Definition,
+    pub version: u32,
+    pub codec: crate::operations::Codec,
+    pub request: String,
+    pub response: String,
+    #[serde(default)]
+    pub input: Option<String>,
+    #[serde(default)]
+    pub output: Option<String>,
+    #[serde(default)]
+    pub grpc: Option<crate::operations::Grpc>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NamedRequired {
+    pub contract: NamedContract,
+    #[serde(default)]
+    pub grants: Vec<Grant>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NamedManifest {
+    pub facility: String,
+    pub owner: String,
+    pub provides: Vec<NamedContract>,
+    pub requires: Vec<NamedRequired>,
+    pub lifecycle: [lifecycle::Descriptor; 2],
+}
+
 pub(crate) struct Encoder<const N: usize> {
     pub(crate) bytes: [u8; N],
     pub(crate) cursor: usize,
@@ -105,6 +142,10 @@ pub enum Error {
     LifecycleOrder,
     #[error("invalid SDK lifecycle inventory: {0}")]
     Lifecycle(#[from] lifecycle::Error),
+    #[error("invalid shared contract schema: {0}")]
+    Schema(#[from] crate::schema::graph::Error),
+    #[error("invalid resolved contract: {0}")]
+    Contract(#[from] crate::operations::ContractError),
     #[error("invalid contract inventory JSON: {0}")]
     Decode(#[from] serde_json::Error),
 }
@@ -112,6 +153,67 @@ pub enum Error {
 /* === Traits === */
 
 /* === Implementations === */
+impl NamedContract {
+    pub fn resolve(
+        self,
+        declarations: &[Named],
+        settings: &mut SchemaSettings,
+    ) -> Result<Contract, Error> {
+        let mut roots = vec![
+            ("request", self.request.as_str()),
+            ("response", self.response.as_str()),
+        ];
+        if let Some(input) = &self.input {
+            roots.push(("input", input.as_str()));
+        }
+        if let Some(output) = &self.output {
+            roots.push(("output", output.as_str()));
+        }
+        let schema = Schema::from_named_roots(&roots, declarations, settings)?;
+        let schema = super::retain_schema(schema, settings)?;
+        Ok(
+            Contract::new(self.operation, self.version, self.codec, schema)?
+                .with_grpc(self.grpc)?,
+        )
+    }
+}
+
+impl NamedManifest {
+    pub fn resolve(
+        self,
+        declarations: &[Named],
+        settings: &mut SchemaSettings,
+    ) -> Result<Manifest, Error> {
+        if self.provides.len() > ENTRY_LIMIT || self.requires.len() > ENTRY_LIMIT {
+            return Err(Error::Budget);
+        }
+        let provides = self
+            .provides
+            .into_iter()
+            .map(|contract| contract.resolve(declarations, settings))
+            .collect::<Result<_, _>>()?;
+        let requires = self
+            .requires
+            .into_iter()
+            .map(|entry| {
+                Ok(Required {
+                    contract: entry.contract.resolve(declarations, settings)?,
+                    grants: entry.grants,
+                })
+            })
+            .collect::<Result<_, Error>>()?;
+        let manifest = Manifest {
+            facility: self.facility,
+            owner: self.owner,
+            provides,
+            requires,
+            lifecycle: self.lifecycle,
+        };
+        validate(&manifest)?;
+        Ok(manifest)
+    }
+}
+
 impl TryFrom<Decoded> for Manifest {
     type Error = Error;
 
@@ -321,16 +423,16 @@ pub(crate) const fn wire<const N: usize>(out: &mut Encoder<N>, entry: &WireDecla
     out.raw(b",\"version\":");
     out.number(entry.version as u64);
     out.raw(b",\"codec\":\"postcard\",\"request\":");
-    fields(out, entry.request);
+    out.quoted(entry.request.name);
     out.raw(b",\"response\":");
-    fields(out, entry.response);
+    out.quoted(entry.response.name);
     if let Some(input) = entry.input {
         out.raw(b",\"input\":");
-        fields(out, input);
+        out.quoted(input.name);
     }
     if let Some(output) = entry.output {
         out.raw(b",\"output\":");
-        fields(out, output);
+        out.quoted(output.name);
     }
     if let Some(binding) = &entry.grpc {
         out.raw(b",\"grpc\":{\"package\":");
@@ -351,57 +453,6 @@ pub(crate) const fn wire<const N: usize>(out: &mut Encoder<N>, entry: &WireDecla
         out.raw(b"}");
     }
     out.raw(b"}");
-}
-
-pub(crate) const fn fields<const N: usize>(out: &mut Encoder<N>, schema: &[Field]) {
-    out.raw(b"[");
-    let mut index = 0;
-    while index < schema.len() {
-        if index > 0 {
-            out.raw(b",");
-        }
-        let field = &schema[index];
-        out.raw(b"{\"name\":");
-        out.quoted(match &field.name {
-            Cow::Borrowed(name) => name,
-            Cow::Owned(_) => panic!("const field names must be borrowed"),
-        });
-        out.raw(b",\"tag\":");
-        out.number(field.tag as u64);
-        out.raw(b",\"kind\":{\"type\":");
-        out.quoted(match &field.kind {
-            Kind::Bool => "bool",
-            Kind::U32 => "u32",
-            Kind::U64 => "u64",
-            Kind::I32 => "i32",
-            Kind::I64 => "i64",
-            Kind::F32 => "f32",
-            Kind::F64 => "f64",
-            Kind::String => "string",
-            Kind::Bytes => "bytes",
-            Kind::Message { .. } => "message",
-        });
-        if let Kind::Message { fields: nested } = &field.kind {
-            out.raw(b",\"fields\":");
-            fields(
-                out,
-                match nested {
-                    Cow::Borrowed(value) => value,
-                    Cow::Owned(_) => panic!("const nested fields must be borrowed"),
-                },
-            );
-        }
-        out.raw(b"},\"cardinality\":");
-        out.quoted(match field.cardinality {
-            Cardinality::Required => "required",
-            Cardinality::Optional => "optional",
-            Cardinality::Repeated => "repeated",
-            Cardinality::Variant => "variant",
-        });
-        out.raw(b"}");
-        index += 1;
-    }
-    out.raw(b"]");
 }
 
 pub(crate) const fn policy<const N: usize>(out: &mut Encoder<N>, value: OperationPolicy) {

@@ -56,6 +56,8 @@ pub(super) struct Configuration {
 struct State {
     frozen: bool,
     entries: Vec<Arc<dyn Middleware>>,
+    authorizer: Option<Arc<dyn super::authorization::Authorizer>>,
+    authorization_frozen: bool,
 }
 
 pub(super) struct Session {
@@ -80,22 +82,32 @@ impl Invocation {
     pub fn is_host_call(&self) -> bool {
         self.origin.identity == super::caller::Identity::Host
     }
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
-    pub fn caller_scope(&self) -> Option<&crate::load::PluginScope> {
+
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
+    pub fn caller_scope(&self) -> Option<&crate::plugin::PluginScope> {
         self.origin.scope.as_ref()
     }
+
     pub fn operation(&self) -> &Definition {
         &self.operation
     }
+
     pub fn id(&self) -> OperationInstanceId {
         self.id
     }
+
     pub fn generation(&self) -> OperationGeneration {
         self.generation
     }
+
     pub fn context(&self) -> &CallContext {
         &self.context
     }
+
     pub fn context_mut(&mut self) -> crate::operations::ContextMut<'_> {
         super::ContextMut::new(&mut self.context)
     }
@@ -114,6 +126,39 @@ impl Configuration {
         }
         state.entries.push(middleware);
         Ok(())
+    }
+
+    pub(super) fn register_authorizer(
+        &self,
+        authorizer: Arc<dyn super::authorization::Authorizer>,
+    ) -> Result<()> {
+        let mut state = self
+            .state
+            .lock()
+            .expect("middleware configuration lock is healthy");
+        if state.authorization_frozen {
+            return Err(Error::Closing {
+                domain: "operation authorization configuration",
+            });
+        }
+        if state.authorizer.is_some() {
+            return Err(Error::InvalidInput {
+                field: "operation authorizer",
+                reason: "authorization already has an owner",
+            });
+        }
+        state.authorizer = Some(authorizer);
+        Ok(())
+    }
+
+    #[cfg(feature = "grpc")]
+    pub(super) fn authorizer(&self) -> Option<Arc<dyn super::authorization::Authorizer>> {
+        let mut state = self
+            .state
+            .lock()
+            .expect("middleware configuration lock is healthy");
+        state.authorization_frozen = true;
+        state.authorizer.clone()
     }
 
     pub(super) fn capture(&self) -> Vec<Arc<dyn Middleware>> {

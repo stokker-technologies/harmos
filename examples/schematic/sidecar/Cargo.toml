@@ -1,0 +1,153 @@
+# ***
+#
+# Harmos
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
+# === Package ===
+
+[package]
+name = "schematic-sidecar"
+description = "Portable schematic analysis and routing"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+version.workspace = true
+
+# === Package Targets ===
+
+# === Features ===
+
+# === Dependencies ===
+
+[dependencies]
+# Local
+harmos-sidecar = { workspace = true, features = ["derive", "kit", "streaming"] }
+schematic-contract = { path = "../contract" }
+
+# Git
+
+# Error Handling
+thiserror = { workspace = true, default-features = true }
+
+# Logging
+tracing = { workspace = true, default-features = true }
+
+# Utilities
+
+# Serialization
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+tokio = { workspace = true, default-features = true, features = ["macros", "rt-multi-thread"] }
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Build Dependencies ===
+
+[build-dependencies]
+# Local
+harmos-contract = { workspace = true, features = ["reflection"] }
+schematic-contract = { path = "../contract", features = ["grpc"] }
+
+# Git
+
+# Error Handling
+
+# Logging
+
+# Utilities
+
+# Serialization
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Dev Dependencies ===
+
+[dev-dependencies]
+# Local
+schematic-guest = { path = "../guest" }
+
+# Git
+
+# Error Handling
+
+# Logging
+
+# Utilities
+
+# Serialization
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Target Dependencies ===
+
+# === Test Targets ===
+
+[[test]]
+name = "operations"
+path = "tests/operations/main.rs"
+
+# === Bench Targets ===
+
+# === Example Targets ===
+
+# === Workspace Lints ===
+
+# === Lints ===
+
+[lints]
+workspace = true
+
+# === Profiles ===
+
+# === Patches ===
+
+# === Other ===

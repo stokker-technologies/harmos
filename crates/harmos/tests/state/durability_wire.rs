@@ -13,7 +13,7 @@ use crate::scenario_runtime;
 mod other {
     use std::sync::Arc;
 
-    use harmos::{Application, DefinitionId, Kind, Payload, Recorded};
+    use harmos::{Application, DefinitionId, state::Kind, state::Recorded, storage::Payload};
     use jsonl_adapter::Wire;
     use serde::{Deserializer, Serializer};
 
@@ -99,7 +99,9 @@ mod other {
 use support::{Bank, Ledger, Noted, booted, deposit, ledger, scratch, withdraw};
 // Local Imports
 use super::support;
-use harmos::{DefinitionId, Kind, Position, Recorded, Runtime, Transaction};
+use harmos::{
+    DefinitionId, Runtime, state::Kind, state::Position, state::Recorded, state::Transaction,
+};
 use jsonl_adapter::{Jsonl, Wire};
 
 /* === Constants === */

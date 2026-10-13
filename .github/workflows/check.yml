@@ -28,24 +28,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check:
-    name: check (push, ${{ matrix.platform }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: linux
-            runner: ubuntu-24.04
-          - platform: windows
-            runner: windows-2022
-    runs-on: ${{ matrix.runner }}
+  ci_feature:
+    name: CI Feature (Push, Linux)
+    runs-on: ubuntu-24.04
     timeout-minutes: 240
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup
         with:
-          cargo-cache-role: check
-      - run: mise run check
+          profile: source
+          cache-write: 'true'
+      - name: ci:feature
+        run: mise run ci:feature

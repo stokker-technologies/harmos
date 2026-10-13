@@ -42,7 +42,7 @@ struct State {
 
 struct ControlContext {
     operations: crate::operations::OperationManager,
-    scope: crate::load::PluginScope,
+    scope: crate::plugin::PluginScope,
     caller: crate::operations::Caller,
     bindings: OnceLock<[crate::operations::PluginControl; 2]>,
 }
@@ -139,7 +139,7 @@ impl Remote {
     pub(super) fn configure(
         &self,
         operations: crate::operations::OperationManager,
-        scope: crate::load::PluginScope,
+        scope: crate::plugin::PluginScope,
         caller: crate::operations::Caller,
     ) -> crate::Result<()> {
         self.control
@@ -204,9 +204,12 @@ impl Remote {
                 domain: "observer generation context",
             })?;
         state.children.submit(|| {
-            control
-                .caller
-                .submit_observer_encoded_at(&call.operation, call.payload, submitted)
+            control.caller.submit_observer_encoded_at(
+                &call.operation,
+                call.payload,
+                submitted,
+                call.values,
+            )
         })
     }
 
@@ -297,8 +300,8 @@ impl Drop for GenerationContext {
 
 impl ObserverBackend for Backend {
     type Resources = Remote;
-    fn definition(&self) -> ObserverDefinition {
-        self.definition.clone()
+    fn definition(&self) -> crate::Result<ObserverDefinition> {
+        Ok(self.definition.clone())
     }
 
     async fn run(
@@ -571,7 +574,7 @@ impl Closing {
 pub(super) fn stage(
     manager: &ObserverManager,
     scope: &ObserverScope<Remote>,
-    plugin: Option<&crate::load::PluginScope>,
+    plugin: Option<&crate::plugin::PluginScope>,
     definitions: &[Declaration],
     publications: &[harmos_sidecar::StreamDeclaration],
 ) -> crate::Result<crate::observers::ObserverRegistration> {
@@ -596,7 +599,7 @@ pub(super) fn stage(
 pub(super) async fn demand(
     manager: ObserverManager,
     scope: ObserverScope<Remote>,
-    plugin: Option<crate::load::PluginScope>,
+    plugin: Option<crate::plugin::PluginScope>,
     definitions: Vec<Declaration>,
     mut changes: watch::Receiver<BTreeMap<String, bool>>,
     arrivals: mpsc::Sender<Arrival>,

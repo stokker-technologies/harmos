@@ -22,7 +22,7 @@ use std::time::Duration;
 use super::contract;
 use contract::{Marks, POLICY, Read, Readings, Step};
 use harmos::operations::{Operation, OperationPolicy, WireTable};
-use harmos::sidecar::{Refusal, Supervisor};
+use harmos::plugin::sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
 
@@ -122,23 +122,27 @@ impl Operation for Reading {
         _: Self::Context<'ctx>,
         request: &mut Step,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Step, Refusal> {
-        self.phase = Some(request.phase);
-        self.resources
-            .marks
-            .mark(&format!("read-prepared-{}", request.phase))?;
-        if !self.resources.initialized.load(Ordering::SeqCst) {
-            return Err(Refusal::of("the original provider has retired"));
-        }
-        self.resources
-            .marks
-            .mark(&format!("read-started-{}", request.phase))?;
-        if request.phase == 2 && self.resources.marks.root.join("hold-read-2").exists() {
-            while !self.resources.marks.root.join("release-read-2").exists() {
-                tokio::time::sleep(Duration::from_millis(5)).await;
+    ) -> Result<harmos::operations::Response<Step>, Refusal> {
+        let result: ::core::result::Result<Step, Self::Error> = async move {
+            self.phase = Some(request.phase);
+            self.resources
+                .marks
+                .mark(&format!("read-prepared-{}", request.phase))?;
+            if !self.resources.initialized.load(Ordering::SeqCst) {
+                return Err(Refusal::of("the original provider has retired"));
             }
+            self.resources
+                .marks
+                .mark(&format!("read-started-{}", request.phase))?;
+            if request.phase == 2 && self.resources.marks.root.join("hold-read-2").exists() {
+                while !self.resources.marks.root.join("release-read-2").exists() {
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+            }
+            Ok(request.clone())
         }
-        Ok(request.clone())
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     async fn finalize(&mut self) -> Result<(), Refusal> {

@@ -2,21 +2,21 @@
 
 [tools]
 taplo = "0.10.0"
-python = "3.13.15"
-uv = "0.12.17"
+python = "3.15.0"
+uv = "0.13.0"
 rust = { version = "1.99.0", profile = "minimal", components = "clippy,rustfmt,llvm-tools,rust-analyzer", targets = [
   "wasm32-unknown-unknown",
   "wasm32-wasip2",
 ] }
 
-"cargo:cargo-nextest" = "0.9.146"
+"cargo:cargo-nextest" = "0.9.148"
 "cargo:cargo-llvm-cov" = "0.9.1"
 
 # Build Tools
-sccache = "0.17.0"
+sccache = "0.18.0"
 
 # Versioning Tools
-git-cliff = "2.13.1"
+git-cliff = "2.14.2"
 
 # === === Mise Settings === === #
 
@@ -50,7 +50,7 @@ run = "{{vars.cargo_guard}}cargo clippy --locked --workspace --all-targets --all
 [tasks."lint:rust:fix"]
 description = "Lint / Rust / Fix"
 run = [
-  "{{vars.cargo_guard}}cargo clippy --workspace --all-targets --all-features --fix --allow-dirty --allow-staged --allow-no-vcs",
+  "{{vars.cargo_guard}}cargo clippy --workspace --all-targets --all-features --fix --allow-dirty --allow-staged",
 ]
 
 
@@ -75,24 +75,12 @@ run = "git-cliff --unreleased --strip all"
 
 [tasks."check:wasm"]
 description = "Check / Wasm"
-# The declaration surface both facilities name lives in `harmos-contract`, and a
-# guest author compiles it for the guest target. Checking it here is what keeps
-# that a compile-checked invariant rather than an intention: a dependency that
-# breaks wasm32 fails this task the day it is added, not the day a guest is
-# built.
-#
-# The example contract crates are here for the same reason one level up: a contract crate
-# is the contract a plugin compiles, so the boundary between it and the app crate
-# beside it is only a firewall while this task builds it for wasm32. Both are
-# named, including `minibench-contract`, whose one plugin happens to be native — the
-# claim a contract crate makes is about what it *contains*, not about which carrier
-# a product shipped first.
+# Portable Contracts And Guest SDKs Must Build Without The Host Runtime.
 run = [
   "{{vars.cargo_guard}}cargo check --locked -p harmos-contract --target wasm32-unknown-unknown",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-contract --target wasm32-wasip2",
-  "{{vars.cargo_guard}}cargo check --locked -p minischematic-contract --target wasm32-unknown-unknown",
-  "{{vars.cargo_guard}}cargo check --locked -p minibench-contract --target wasm32-unknown-unknown",
-  "{{vars.cargo_guard}}cargo check --locked -p minischematic-plugin --target wasm32-unknown-unknown",
+  "{{vars.cargo_guard}}cargo check --locked -p schematic-contract --target wasm32-unknown-unknown",
+  "{{vars.cargo_guard}}cargo check --locked -p schematic-guest --target wasm32-unknown-unknown",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-guest --example operation-component --features componentize,kit,streaming --target wasm32-unknown-unknown",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-guest --example plugin-component --features componentize,kit --target wasm32-unknown-unknown",
 ]
@@ -101,23 +89,23 @@ run = [
 description = "Check / Sidecar / Bench"
 run = "{{vars.cargo_guard}}cargo clippy --locked -p harmos-sidecar --features kit --bench transport --test transport --bin harmos-sidecar-throughput-fixture -- -D warnings"
 
-[tasks."run:minischematic"]
-description = "Run / Minischematic"
-run = "{{vars.cargo_guard}}cargo run -p minischematic-cli"
+[tasks."run:schematic"]
+description = "Run / Schematic"
+run = "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harmos_tools.examples sidecar"
 
-[tasks."run:minischematic:guest"]
-description = "Run / Minischematic / Guest"
+[tasks."run:schematic:guest"]
+description = "Run / Schematic / Guest"
 run = "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harmos_tools.examples guest"
 
-[tasks."run:minibench"]
-description = "Run / Minibench"
+[tasks."run:schematic:sidecar"]
+description = "Run / Schematic / Sidecar"
 run = "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harmos_tools.examples sidecar"
 
 # === === Tasks | Build === === #
 
 [tasks."build:workspace:release"]
 description = "Build / Release"
-run = "{{vars.cargo_guard}}cargo build --locked --workspace --all-features --release --timings"
+run = "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harmos_tools.packages build"
 
 # === === Tasks | Docs === === #
 
@@ -125,14 +113,14 @@ run = "{{vars.cargo_guard}}cargo build --locked --workspace --all-features --rel
 
 [tasks."check:examples"]
 description = "Check / Example Crate Boundaries"
-run = "{{vars.cargo_guard}}cargo check --locked -p minibench-contract -p minibench-app -p minibench-cli -p minibench-probe-sidecar -p minischematic-contract -p minischematic-app -p minischematic-cli -p minischematic-plugin -p jsonl-adapter -p standalone-sidecar --all-targets"
+run = "{{vars.cargo_guard}}cargo check --locked -p schematic-contract -p schematic-app -p schematic-cli -p schematic-guest -p schematic-sidecar -p jsonl-adapter -p harmos-observer-fixture -p harmos-lifecycle-fixture --all-targets"
 
 
 # === === Tasks | Stats === === #
 
 [tasks.stats]
 description = "Project Statistics"
-tools."aqua:boyter/scc" = "3.7.0"
+tools."aqua:boyter/scc" = "4.1.0"
 run = "scc --include-ext rs --avg-wage 100000 --cocomo-project-type semi-detached"
 
 [tasks."check:authoring"]
@@ -143,8 +131,8 @@ run = "{{vars.cargo_guard}}cargo check --locked --workspace --all-targets --all-
 description = "Check / Plugin"
 run = [
   "{{vars.cargo_guard}}cargo check --locked -p harmos --features plugin --lib",
-  "{{vars.cargo_guard}}cargo clippy --locked -p harmos --features plugin,sidecar-host,sidecar,guest-host,guest --all-targets -- -D warnings",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --features plugin --target wasm32-unknown-unknown",
+  "{{vars.cargo_guard}}cargo clippy --locked -p harmos --features plugin-sidecar,plugin-guest --all-targets -- -D warnings",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos-contract --features derive --target wasm32-unknown-unknown",
 ]
 
 [tasks."lint:authoring"]
@@ -152,19 +140,19 @@ description = "Lint / Authoring"
 run = "{{vars.cargo_guard}}cargo clippy --locked -p harmos-macros --all-targets -- -D warnings"
 
 [tasks."format:python"]
-run = "uv run --locked --project tools/python ruff format tools/python"
+run = "uv run --locked --project tools/python ruff format --config tools/python/pyproject.toml tools/python crates/harmos-contract/src/bindings/python crates/harmos-contract/tests/grpc/python.py"
 
 [tasks."format:python:check"]
-run = "uv run --locked --project tools/python ruff format --check tools/python"
+run = "uv run --locked --project tools/python ruff format --check --config tools/python/pyproject.toml tools/python crates/harmos-contract/src/bindings/python crates/harmos-contract/tests/grpc/python.py"
 
 [tasks."lint:python"]
-run = "uv run --locked --project tools/python ruff check tools/python"
+run = "uv run --locked --project tools/python ruff check --config tools/python/pyproject.toml tools/python crates/harmos-contract/src/bindings/python crates/harmos-contract/tests/grpc/python.py"
 
 [tasks."build:workspace:dev"]
 run = "{{vars.cargo_guard}}cargo build --locked --workspace --timings"
 
 [tasks."check:types:python"]
-run = "uv run --locked --project tools/python --group test ty check tools/python"
+run = "uv run --locked --project tools/python --group test ty check --project tools/python --extra-search-path crates/harmos-contract/src/bindings tools/python crates/harmos-contract/src/bindings/python"
 
 # === Tasks | Continuous Integration === #
 
@@ -212,49 +200,68 @@ run = [
 
 [tasks."check:features"]
 description = "Check / Every Facility Feature On Its Own"
-# One build per feature, each resolved alone. A `--workspace` build unifies
-# features and would quietly turn the host core back on, which is exactly the
-# claim `runtime` makes and the one thing that check could not see.
+# Resolve Every Optional Host Capability Independently.
 run = [
   "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features runtime",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features grpc",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features runtime,grpc-tls",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features sidecar",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features runtime,sidecar",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features sidecar-host",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features guest",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features guest-host",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features componentize",
   "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features plugin",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features plugin-sidecar",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features plugin-guest",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features grpc",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features signal",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features signal-fft",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features simulation",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features packaging",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features packaging-sidecar",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features packaging-guest",
+  "{{vars.cargo_guard}}cargo check --locked -p cargo-harmos --no-default-features",
+  "{{vars.cargo_guard}}cargo check --locked -p cargo-harmos --no-default-features --features sidecar",
+  "{{vars.cargo_guard}}cargo check --locked -p cargo-harmos --no-default-features --features guest",
+  "{{vars.cargo_guard}}cargo check --locked -p cargo-harmos --no-default-features --features sidecar,guest",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos-bundle",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos-contract --no-default-features",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos-guest --no-default-features --features kit,derive,streaming",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos-guest --no-default-features --features componentize",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-sidecar --no-default-features",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-sidecar --no-default-features --features transport --all-targets",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-sidecar --no-default-features --features kit --lib",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features artifact",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features signal",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features fft",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-signal --no-default-features --all-targets",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-signal --no-default-features --features fft --all-targets",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features sim",
-  # The author's own build: declarations, operations, and a runnable
-  # program against a harmos with no host core in it.
-  "{{vars.cargo_guard}}cargo check --locked -p standalone-sidecar --all-targets",
-  "{{vars.cargo_guard}}cargo check --locked -p minibench-probe-sidecar --all-targets",
 ]
 
 
-[tasks."check"]
-description = "Check"
-depends = ["sync"]
+[tasks."check:fast"]
+description = "Check Source Without Compiling Product Targets"
+# Source Jobs Install No Compiler Cache.
+env = { RUSTC_WRAPPER = "" }
+depends = ["sync:tools"]
 run = [
   { task = "format:check" },
-  { task = "lint" },
+  { task = "lint:python" },
   { task = "check:types" },
+]
+
+[tasks."check:compiled"]
+description = "Check Native And Portable Compilation Contracts"
+depends = ["sync:rust"]
+run = [
+  { task = "lint:rust" },
   # lint:rust already compiles these targets; keep distinct feature/target checks.
   { task = "check:features" },
   { task = "check:wasm" },
   { task = "check:plugin" },
 ]
+
+[tasks."check"]
+description = "Check"
+run = [{ task = "check:fast" }, { task = "check:compiled" }]
+
+[tasks."build:ci"]
+description = "Check Compiled Targets And Build Native Release Assets"
+run = [{ task = "check:compiled" }, { task = "build:release" }]
+
+[tasks."ci:feature"]
+description = "Check Feature Branch Source Without Compiling Product Targets"
+run = [{ task = "check:fast" }]
 
 
 [tasks."test:integration:rust"]
@@ -262,7 +269,7 @@ depends = ["fixtures:prepare"]
 # Bound Concurrent Guest Compilers To Avoid Oversubscribing The Host.
 env = { NEXTEST_TEST_THREADS = "4" }
 run = [
-  "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harmos_tools.evidence run integration rust --all-features",
+  "{{vars.cargo_guard}}uv run --locked --project tools/python --group test python -m harmos_tools.evidence run integration rust --all-features",
 ]
 
 
@@ -295,7 +302,6 @@ run = [{ task = "build:workspace:dev" }]
 depends = ["sync", "ci:bootstrap"]
 run = [
   { task = "build:workspace:release" },
-  "{{vars.cargo_guard}}cargo build --locked -p minischematic-plugin --release --target wasm32-unknown-unknown --timings",
   "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harmos_tools.packages stage",
 ]
 
@@ -326,7 +332,7 @@ run = "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harm
 
 [tasks."packages:development"]
 depends = ["sync"]
-description = "Verify Dated Linux Development Proof Without Release Promotion"
+description = "Verify Linux Development Proof Without Release Promotion"
 run = "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harmos_tools.packages development"
 
 [tasks."packages:export"]
@@ -361,9 +367,8 @@ run = "uv run --locked --project tools/python python -m harmos_tools.evidence ru
 
 
 [tasks."fixtures:prepare"]
-depends = [
-  "{% if env.CI | default(value='false') == 'true' %}packages:verify{% else %}build:release{% endif %}",
-]
+# Fixtures Build Their Own Inputs; Exact Release Verification Remains On Acceptance.
+depends = ["sync:tools"]
 description = "Prepare And Validate Native Fixture Artifacts"
 run = "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harmos_tools.artifacts target/fixtures/harmos"
 

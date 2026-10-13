@@ -159,9 +159,11 @@ impl BootstrapId {
     pub fn cut(&self) -> &StorageCursor {
         &self.cut
     }
+
     pub fn complete_after(&self) -> u64 {
         self.complete_after
     }
+
     pub fn retention_generation(&self) -> NonZeroU64 {
         self.retention_generation
     }
@@ -211,21 +213,27 @@ impl<'a> RetainedBatch<'a> {
     pub fn identity(&self) -> &BootstrapId {
         self.identity
     }
+
     pub fn part(&self) -> StoragePart<'a> {
         self.part
     }
+
     pub fn first_position(&self) -> &StorageCursor {
         self.first
     }
+
     pub fn last_position(&self) -> &StorageCursor {
         self.last
     }
+
     pub fn len(&self) -> usize {
         self.len
     }
+
     pub fn is_empty(&self) -> bool {
         false
     }
+
     pub fn encoded_bytes(&self) -> usize {
         self.bytes
     }
@@ -235,15 +243,19 @@ impl CollectionDigest {
     pub fn is_complete(&self) -> bool {
         self.complete
     }
+
     pub fn entries(&self) -> u64 {
         self.entries
     }
+
     pub fn encoded_bytes(&self) -> u64 {
         self.encoded_bytes
     }
+
     pub fn last_position(&self) -> u64 {
         self.last_position
     }
+
     pub fn sha256(&self) -> &[u8; 32] {
         &self.sha256
     }
@@ -266,6 +278,7 @@ impl BootstrapManifest {
     pub fn identity(&self) -> &BootstrapId {
         &self.identity
     }
+
     pub fn collection(&self, kind: ReadKind) -> &CollectionDigest {
         &self.collections[index(kind)]
     }
@@ -339,6 +352,7 @@ impl Write for HashWriter {
         self.0.update(bytes);
         Ok(bytes.len())
     }
+
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
@@ -358,7 +372,11 @@ pub(super) async fn copy(
         .bytes
         .get()
         .checked_mul(4)
-        .and_then(|bytes| bytes.checked_add(manager.inner.schema_encoding.decoding_overhead()))
+        .and_then(|bytes| {
+            bytes.checked_add(StorageSchema::decoding_memory_bytes(
+                manager.inner.settings.replication_limits.bytes.get(),
+            )?)
+        })
         .and_then(NonZeroUsize::new)
         .ok_or(invalid("bootstrap execution bound overflow"))?;
     let execution = QueryLimits {
@@ -446,10 +464,7 @@ async fn export<T: Entry>(
     if matches!(T::KIND, ReadKind::Objects | ReadKind::Files) {
         selection.history = ReadHistory::Retained;
     }
-    let limits = T::read_limits(
-        manager.inner.settings.replication_limits,
-        manager.inner.schema_encoding,
-    );
+    let limits = T::read_limits(manager.inner.settings.replication_limits);
     let batch_limits = ReadLimits {
         bytes: limits.bytes.min(manager.inner.settings.max_batch_bytes),
         ..limits

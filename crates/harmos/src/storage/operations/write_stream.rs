@@ -14,27 +14,27 @@
 /* === Imports === */
 
 // Standard Library Imports
-#[cfg(feature = "runtime")]
+
 use std::sync::Arc;
 
 // Third Party Imports
 
 // Local Imports
-#[cfg(feature = "runtime")]
+
 use crate::operations::{Context, Operation};
 use crate::operations::{OperationDeclaration, ReplaySafety, Visibility, WireOperation};
-#[cfg(feature = "runtime")]
+
 use crate::storage::StorageManager;
 use crate::storage::{MutationId, StorageCursor, StreamInput};
-#[cfg(feature = "runtime")]
+
 use crate::{Error, Result};
 
 /* === Constants === */
 
 /* === Macros === */
-crate::storage_codec::product!(WriteStreamRequest {
-    mutation: crate::storage_codec::Nested<MutationId> => 1,
-    rows: crate::storage_codec::Repeated<StreamInput> => 2,
+crate::storage::codec::product!(WriteStreamRequest {
+    mutation: crate::storage::codec::Nested<MutationId> => 1,
+    rows: crate::storage::codec::Repeated<StreamInput> => 2,
 });
 
 /* === Type Aliases === */
@@ -46,7 +46,7 @@ pub struct WriteStreamRequest {
     pub rows: Vec<StreamInput>,
 }
 pub struct WriteStream;
-#[cfg(feature = "runtime")]
+
 pub(super) struct Handler<C> {
     storage: Arc<StorageManager<C>>,
 }
@@ -75,7 +75,7 @@ impl crate::MemorySize for WriteStreamRequest {
             - std::mem::size_of::<Vec<StreamInput>>()
     }
 }
-#[cfg(feature = "runtime")]
+
 impl<C: 'static> Operation for Handler<C> {
     type Declaration = WriteStream;
     type Resources = StorageManager<C>;
@@ -85,17 +85,23 @@ impl<C: 'static> Operation for Handler<C> {
     fn new(storage: Arc<StorageManager<C>>) -> Result<Self> {
         Ok(Self { storage })
     }
+
     async fn run<'a>(
         &mut self,
         _: Self::Context<'a>,
         request: &mut WriteStreamRequest,
         _: &mut Self::Endpoints,
-    ) -> Result<StorageCursor> {
-        let values = request.rows.iter().map(StreamInput::borrowed);
-        self.storage
-            .admit_stream_values(&request.mutation, values)
-            .await
+    ) -> Result<crate::operations::Response<StorageCursor>> {
+        let result: ::core::result::Result<StorageCursor, Self::Error> = async move {
+            let values = request.rows.iter().map(StreamInput::borrowed);
+            self.storage
+                .admit_stream_values(&request.mutation, values)
+                .await
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
+
     fn classify(error: &Error) -> crate::operations::Failure {
         super::classify(error)
     }

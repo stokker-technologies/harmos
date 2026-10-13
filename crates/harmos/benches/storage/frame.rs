@@ -210,12 +210,15 @@ pub(super) async fn reuse() {
     storage
         .write_schema(
             &schema,
-            &[harmos::schema::Field {
-                name: "value".into(),
-                tag: 1,
-                kind: harmos::schema::Kind::U64,
-                cardinality: harmos::schema::Cardinality::Required,
-            }],
+            &harmos::schema::graph::Schema {
+                root: 0,
+                definitions: vec![vec![harmos::schema::graph::Field {
+                    name: "value".into(),
+                    tag: 1,
+                    kind: harmos::schema::graph::Kind::U64,
+                    cardinality: harmos::schema::Cardinality::Required,
+                }]],
+            },
         )
         .await
         .unwrap();

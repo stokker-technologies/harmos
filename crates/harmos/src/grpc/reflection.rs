@@ -29,7 +29,7 @@ use tonic_reflection::pb::v1::{
 };
 
 // Local Imports
-use crate::OperationManager;
+use crate::operations::OperationManager;
 
 /* === Constants === */
 const MAX_REQUEST_BYTES: usize = 64 * 1024;

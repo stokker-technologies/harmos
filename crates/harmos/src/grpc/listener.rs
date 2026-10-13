@@ -327,7 +327,6 @@ impl<A: Application> Resident<A> for Listener {
             .max_concurrent_streams(Some(
                 self.resources.settings.calls_per_connection.get() as u32
             ));
-        #[cfg(feature = "grpc-tls")]
         if let Some(tls) = &self.resources.settings.tls {
             server = server
                 .tls_config(tls.clone())
@@ -340,15 +339,25 @@ impl<A: Application> Resident<A> for Listener {
                 }
             }
         };
-        // gRPC-Web Translates Outside Ingress, So Authentication Sees gRPC.
-        #[cfg(feature = "grpc-web")]
-        let serving = server
-            .accept_http1(true)
-            .layer(tonic_web::GrpcWebLayer::new())
-            .serve_with_incoming_shutdown(ingress, incoming, shutdown);
-        #[cfg(not(feature = "grpc-web"))]
-        let serving = server.serve_with_incoming_shutdown(ingress, incoming, shutdown);
-        self.task = Some(tokio::spawn(async move { serving.await.map_err(failure) }));
+        // Cross-Origin Preflight Wraps gRPC-Web; Actual Calls Keep Ingress Authentication.
+        let web = self.resources.settings.web;
+        let origins = super::origin::CrossOrigin::new(&self.resources.settings.allowed_origins);
+        self.task = Some(tokio::spawn(async move {
+            if web {
+                server
+                    .accept_http1(true)
+                    .layer(tower::util::option_layer(origins))
+                    .layer(tonic_web::GrpcWebLayer::new())
+                    .serve_with_incoming_shutdown(ingress, incoming, shutdown)
+                    .await
+                    .map_err(failure)
+            } else {
+                server
+                    .serve_with_incoming_shutdown(ingress, incoming, shutdown)
+                    .await
+                    .map_err(failure)
+            }
+        }));
         *self
             .resources
             .address
@@ -418,9 +427,11 @@ impl AsyncWrite for Connection {
     ) -> Poll<std::io::Result<usize>> {
         Pin::new(&mut self.stream).poll_write(cx, bytes)
     }
+
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         Pin::new(&mut self.stream).poll_flush(cx)
     }
+
     fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         Pin::new(&mut self.stream).poll_shutdown(cx)
     }

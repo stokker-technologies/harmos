@@ -29,10 +29,17 @@ step_timeout_seconds = 600
 
 # === Conventions ===
 
+# Declaration-Only Contracts Have No Runtime Work To Trace.
+[conventions.rust]
+exclude = ["schematic-contract"]
+
 [conventions.ci.multitask]
 "test_linux" = ["packages:restore", "test", "packages:validate", "packages:export"]
 "test_windows" = ["packages:restore", "test", "packages:validate", "packages:export"]
 
+
+[barrels]
+exclude = ["crates/harmos/src/prelude.rs"]
 
 # === Templates ===
 

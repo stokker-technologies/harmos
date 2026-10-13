@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 // Local Imports
 use super::{MAX_SELECTOR_BYTES, heap, invalid};
 use crate::storage::ReadOrder;
-use crate::storage_object_fields::{
+use crate::storage::object_fields::{
     ObjectComparison, ObjectNullOrder, ObjectScalar, ObjectScalarKind,
 };
 
@@ -80,21 +80,21 @@ impl MemorySize for ObjectOrder {
 }
 
 /* === Public Functions === */
-pub(super) fn descriptor(field: &schema::Field) -> Result<ObjectColumn> {
+pub(super) fn descriptor<R>(field: &schema::graph::Field<R>) -> Result<ObjectColumn> {
     let optional = match field.cardinality {
         schema::Cardinality::Required => false,
         schema::Cardinality::Optional => true,
         _ => return Err(invalid("field is not a scalar")),
     };
-    let kind = match field.kind {
-        schema::Kind::Bool => ObjectScalarKind::Bool,
-        schema::Kind::U32 => ObjectScalarKind::U32,
-        schema::Kind::U64 => ObjectScalarKind::U64,
-        schema::Kind::I32 => ObjectScalarKind::I32,
-        schema::Kind::I64 => ObjectScalarKind::I64,
-        schema::Kind::F32 => ObjectScalarKind::F32,
-        schema::Kind::F64 => ObjectScalarKind::F64,
-        schema::Kind::String => ObjectScalarKind::String,
+    let kind = match &field.kind {
+        schema::graph::Kind::Bool => ObjectScalarKind::Bool,
+        schema::graph::Kind::U32 => ObjectScalarKind::U32,
+        schema::graph::Kind::U64 => ObjectScalarKind::U64,
+        schema::graph::Kind::I32 => ObjectScalarKind::I32,
+        schema::graph::Kind::I64 => ObjectScalarKind::I64,
+        schema::graph::Kind::F32 => ObjectScalarKind::F32,
+        schema::graph::Kind::F64 => ObjectScalarKind::F64,
+        schema::graph::Kind::String => ObjectScalarKind::String,
         _ => return Err(invalid("field is not a scalar")),
     };
     if field.name.len() > 256 {

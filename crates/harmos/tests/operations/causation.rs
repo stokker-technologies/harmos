@@ -27,7 +27,7 @@ use super::{
     support::{self, Bank, Fact, Ledger, Noted, catalog},
 };
 use harmos::operations::{Context, Operation, OperationPolicy, RetryPolicy};
-use harmos::{CausationId, Error, Position, Runtime};
+use harmos::{Error, Runtime, state::CausationId, state::Position};
 
 /* === Constants === */
 const POLICY: OperationPolicy = OperationPolicy {
@@ -46,14 +46,20 @@ struct Descend;
 struct Family;
 
 /* === Enums === */
+#[harmos::operation(request = String, response = (), id = "causation.note", policy = POLICY)]
+struct NoteContract;
+
+#[harmos::operation(request = String, response = (), id = "causation.descend", policy = POLICY)]
+struct DescendContract;
+
+#[harmos::operation(request = Position, response = (), id = "causation.family", policy = POLICY)]
+struct FamilyContract;
+
 #[harmos::catalog]
 enum Operations {
-    #[operation(request = String, response = (), id = "causation.note", policy = POLICY)]
-    NoteContract,
-    #[operation(request = String, response = (), id = "causation.descend", policy = POLICY)]
-    DescendContract,
-    #[operation(request = Position, response = (), id = "causation.family", policy = POLICY)]
-    FamilyContract,
+    NoteContract(NoteContract),
+    DescendContract(DescendContract),
+    FamilyContract(FamilyContract),
 }
 
 /* === Traits === */
@@ -76,13 +82,17 @@ impl Operation for Note {
         context: Self::Context<'ctx>,
         request: &mut String,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Error> {
-        context
-            .scope()
-            .records::<Bank>()
-            .publish(Noted(request.clone()))
-            .await?;
-        Ok(())
+    ) -> Result<harmos::operations::Response<()>, Error> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            context
+                .scope()
+                .records::<Bank>()
+                .publish(Noted(request.clone()))
+                .await?;
+            Ok(())
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -102,16 +112,20 @@ impl Operation for Descend {
         context: Self::Context<'ctx>,
         request: &mut String,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Error> {
-        context
-            .scope()
-            .records::<Bank>()
-            .publish(Noted(request.clone()))
-            .await?;
-        context
-            .submit::<NoteContract>(format!("{}-child", *request))?
-            .await?;
-        Ok(())
+    ) -> Result<harmos::operations::Response<()>, Error> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            context
+                .scope()
+                .records::<Bank>()
+                .publish(Noted(request.clone()))
+                .await?;
+            context
+                .submit::<NoteContract>(format!("{}-child", *request))?
+                .await?;
+            Ok(())
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -131,19 +145,23 @@ impl Operation for Family {
         context: Self::Context<'ctx>,
         request: &mut Position,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Error> {
-        context
-            .scope()
-            .records::<Bank>()
-            .publish(Noted("parent".to_owned()))
-            .await?;
-        context
-            .submit::<DescendContract>("inherited".to_owned())?
-            .await?;
-        context
-            .submit_caused::<DescendContract>("rerooted".to_owned(), *request)?
-            .await?;
-        Ok(())
+    ) -> Result<harmos::operations::Response<()>, Error> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            context
+                .scope()
+                .records::<Bank>()
+                .publish(Noted("parent".to_owned()))
+                .await?;
+            context
+                .submit::<DescendContract>("inherited".to_owned())?
+                .await?;
+            context
+                .submit_caused::<DescendContract>("rerooted".to_owned(), *request)?
+                .await?;
+            Ok(())
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 

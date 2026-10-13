@@ -8,9 +8,10 @@
  */
 
 /* === Modules === */
+pub(crate) mod scalar;
 
 /* === Re-Exports === */
-pub use crate::storage_scalar::{Agg, ExactNumber, ScalarKind, ScalarValue};
+pub use crate::storage::reduce::scalar::{Agg, ExactNumber, ScalarKind, ScalarValue};
 
 /* === Imports === */
 // Standard Library Imports
@@ -19,7 +20,7 @@ use std::{cmp::Ordering, num::NonZeroU128};
 // Third Party Imports
 
 // Local Imports
-use crate::storage_scalar as scalar;
+
 use crate::{Error, Result};
 
 /* === Constants === */

@@ -58,24 +58,79 @@ mod tests {
             "Checking generated payload interoperability"
         );
         macro_rules! check {
-            ($ty:ty) => {{
+            ($root:ty, $ty:ty, $field:ident) => {{
                 let value = <$ty>::decode(PAYLOAD).unwrap();
                 assert_eq!(value.value, "payload");
                 assert_eq!(value.encode_to_vec(), PAYLOAD);
+                let mut root = <$root>::default();
+                root.$field = Some(value);
+                let encoded = root.encode_to_vec();
+                let decoded = <$root>::decode(encoded.as_slice()).unwrap();
+                assert_eq!(decoded.$field.as_ref().unwrap().value, "payload");
+                assert_eq!(decoded.$field.as_ref().unwrap().encode_to_vec(), PAYLOAD);
+                assert_eq!(decoded.encode_to_vec(), encoded);
             }};
         }
-        check!(operations_messages::unary::request::Row0);
-        check!(operations_messages::unary::response::Row0);
-        check!(operations_messages::upload::request::Row0);
-        check!(operations_messages::upload::input::Row0);
-        check!(operations_messages::upload::response::Row0);
-        check!(operations_messages::download::request::Row0);
-        check!(operations_messages::download::output::Row0);
-        check!(operations_messages::download::response::Row0);
-        check!(operations_messages::exchange::request::Row0);
-        check!(operations_messages::exchange::input::Row0);
-        check!(operations_messages::exchange::output::Row0);
-        check!(operations_messages::exchange::response::Row0);
+        check!(
+            operations_messages::unary::Row0,
+            operations_messages::unary::Row1,
+            request
+        );
+        check!(
+            operations_messages::unary::Row0,
+            operations_messages::unary::Row1,
+            response
+        );
+        check!(
+            operations_messages::upload::Row0,
+            operations_messages::upload::Row1,
+            request
+        );
+        check!(
+            operations_messages::upload::Row0,
+            operations_messages::upload::Row1,
+            input
+        );
+        check!(
+            operations_messages::upload::Row0,
+            operations_messages::upload::Row1,
+            response
+        );
+        check!(
+            operations_messages::download::Row0,
+            operations_messages::download::Row1,
+            request
+        );
+        check!(
+            operations_messages::download::Row0,
+            operations_messages::download::Row1,
+            output
+        );
+        check!(
+            operations_messages::download::Row0,
+            operations_messages::download::Row1,
+            response
+        );
+        check!(
+            operations_messages::exchange::Row0,
+            operations_messages::exchange::Row1,
+            request
+        );
+        check!(
+            operations_messages::exchange::Row0,
+            operations_messages::exchange::Row1,
+            input
+        );
+        check!(
+            operations_messages::exchange::Row0,
+            operations_messages::exchange::Row1,
+            output
+        );
+        check!(
+            operations_messages::exchange::Row0,
+            operations_messages::exchange::Row1,
+            response
+        );
     }
 
     #[test]

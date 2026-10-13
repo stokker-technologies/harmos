@@ -23,7 +23,7 @@ use crate::storage::manager::{
     recovery_resident_bytes,
 };
 use crate::storage::{ReadLimits, RecordWrite, StorageCursor, StorageManager, StoredRecord};
-use crate::{Error, Position, Result};
+use crate::{Error, Result, state::Position};
 
 /* === Constants === */
 

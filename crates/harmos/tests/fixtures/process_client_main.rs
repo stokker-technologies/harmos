@@ -47,7 +47,7 @@ fn main() {
         .build()
         .unwrap();
     runtime
-        .block_on(harmos::sidecar::run_plugin::<plugin::Client>(
+        .block_on(harmos::plugin::sidecar::run_plugin::<plugin::Client>(
             NonZeroUsize::new(2).unwrap(),
         ))
         .unwrap();

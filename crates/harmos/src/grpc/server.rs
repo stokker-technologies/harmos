@@ -8,16 +8,16 @@
  */
 
 /* === Modules === */
-#[path = "concurrency.rs"]
 mod concurrency;
 
 /* === Re-Exports === */
+pub use crate::config::GrpcServerSettings as Settings;
 pub use concurrency::Calls;
 
 /* === Imports === */
 
 // Standard Library Imports
-use std::{future::Future, marker::PhantomData, pin::Pin, sync::Arc, time::Duration};
+use std::{future::Future, marker::PhantomData, pin::Pin, sync::Arc};
 
 // Third Party Imports
 use futures_core::Stream;
@@ -25,12 +25,11 @@ use futures_util::StreamExt;
 use tonic::{Request, Response, Status, Streaming, body::Body, codegen::http};
 
 // Local Imports
-use super::{Codec, DecodeSettings, EncodeSettings, Event, InputEnvelope, InputError};
+use super::{Codec, Event, InputEnvelope, InputError};
 use crate::operations::{
     InputDeclaration, OperationDeclaration, OperationInstance, OutputDeclaration, StreamItem,
-    StreamSettings,
 };
-use crate::{Error, MemorySize, OperationManager, Protobuf, Refusal};
+use crate::{Error, MemorySize, Protobuf, Refusal, operations::OperationManager};
 
 /* === Constants === */
 
@@ -38,18 +37,14 @@ use crate::{Error, MemorySize, OperationManager, Protobuf, Refusal};
 
 /* === Type Aliases === */
 pub type HttpFuture = Pin<Box<dyn Future<Output = http::Response<Body>> + Send>>;
-type Items<I, R> = Pin<Box<dyn Stream<Item = Result<Event<StreamItem<I>, Arc<R>>, Status>> + Send>>;
+type Items<I, R> = Pin<
+    Box<
+        dyn Stream<Item = Result<Event<StreamItem<I>, crate::operations::Response<R>>, Status>>
+            + Send,
+    >,
+>;
 
 /* === Structs === */
-#[derive(Clone, Copy, Debug)]
-pub struct Settings {
-    pub calls: std::num::NonZeroUsize,
-    pub decode: DecodeSettings,
-    pub encode: EncodeSettings,
-    pub input: StreamSettings,
-    pub output: StreamSettings,
-    pub opening_timeout: Duration,
-}
 
 struct Endpoint<O> {
     authority: Authority,
@@ -63,7 +58,11 @@ pub enum Authority {
     TrustedHost(OperationManager),
 
     Binding(crate::operations::GrpcBinding),
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     Plugin(crate::operations::Caller),
 }
 
@@ -80,7 +79,11 @@ impl Authority {
             Self::TrustedHost(operations) => {
                 Self::TrustedHost(operations.with_context(context.0.clone()))
             }
-            #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+            #[cfg(any(
+                feature = "plugin",
+                feature = "plugin-guest",
+                feature = "plugin-sidecar"
+            ))]
             Self::Plugin(caller) => Self::Plugin(caller.with_context(context.0.clone())),
         }
     }
@@ -92,31 +95,15 @@ impl Authority {
     ) -> crate::Result<OperationInstance<O>> {
         match self {
             Self::Binding(binding) => binding.submit::<O, P>(request, endpoints),
-            Self::TrustedHost(operations) => operations.submit_charged::<O, P>(request, endpoints),
-            #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
-            Self::Plugin(caller) => caller.submit_charged::<O, P>(request, endpoints),
-        }
-    }
-}
-
-impl Default for Settings {
-    fn default() -> Self {
-        let bytes = std::num::NonZeroUsize::new(16 * 1024 * 1024).unwrap();
-        let message = std::num::NonZeroUsize::new(4 * 1024 * 1024).unwrap();
-        let items = std::num::NonZeroUsize::new(16).unwrap();
-        Self {
-            calls: std::num::NonZeroUsize::new(64).unwrap(),
-            decode: DecodeSettings {
-                message_bytes: message,
-                retained_bytes: bytes,
-            },
-            encode: EncodeSettings {
-                message_bytes: message,
-                buffer_bytes: std::num::NonZeroUsize::new(8192).unwrap(),
-            },
-            input: StreamSettings { items, bytes },
-            output: StreamSettings { items, bytes },
-            opening_timeout: Duration::from_secs(5),
+            Self::TrustedHost(operations) => {
+                operations.submit_external_charged::<O, P>(request, endpoints)
+            }
+            #[cfg(any(
+                feature = "plugin",
+                feature = "plugin-guest",
+                feature = "plugin-sidecar"
+            ))]
+            Self::Plugin(caller) => caller.submit_external_charged::<O, P>(request, endpoints),
         }
     }
 }
@@ -147,7 +134,7 @@ where
     O::Request: Protobuf + MemorySize,
     O::Response: Protobuf,
 {
-    type Response = Arc<O::Response>;
+    type Response = crate::operations::Response<O::Response>;
     type Future = tonic::codegen::BoxFuture<Response<Self::Response>, Status>;
     fn call(&mut self, request: Request<StreamItem<O::Request>>) -> Self::Future {
         let authority = self.authority.contextual(&request);
@@ -169,7 +156,7 @@ where
     O::Response: Protobuf,
     O::Item: Protobuf + MemorySize,
 {
-    type Response = Event<StreamItem<O::Item>, Arc<O::Response>>;
+    type Response = Event<StreamItem<O::Item>, crate::operations::Response<O::Response>>;
     type ResponseStream = Items<O::Item, O::Response>;
     type Future = tonic::codegen::BoxFuture<Response<Self::ResponseStream>, Status>;
     fn call(&mut self, request: Request<StreamItem<O::Request>>) -> Self::Future {
@@ -193,7 +180,7 @@ where
     O::Response: Protobuf,
     O::Item: Protobuf + MemorySize,
 {
-    type Response = Arc<O::Response>;
+    type Response = crate::operations::Response<O::Response>;
     type Future = tonic::codegen::BoxFuture<Response<Self::Response>, Status>;
     fn call(
         &mut self,
@@ -228,7 +215,8 @@ where
     <O as InputDeclaration>::Item: Protobuf + MemorySize,
     <O as OutputDeclaration>::Item: Protobuf + MemorySize,
 {
-    type Response = Event<StreamItem<<O as OutputDeclaration>::Item>, Arc<O::Response>>;
+    type Response =
+        Event<StreamItem<<O as OutputDeclaration>::Item>, crate::operations::Response<O::Response>>;
     type ResponseStream = Items<<O as OutputDeclaration>::Item, O::Response>;
     type Future = tonic::codegen::BoxFuture<Response<Self::ResponseStream>, Status>;
     fn call(
@@ -271,11 +259,13 @@ where
         if let Err(error) = settings.validate() {
             return error.into_http();
         }
-        let codec =
-            match Codec::<O::Request, Arc<O::Response>>::new(settings.decode, settings.encode) {
-                Ok(codec) => codec,
-                Err(error) => return error.into_http(),
-            };
+        let codec = match Codec::<O::Request, crate::operations::Response<O::Response>>::new(
+            settings.decode,
+            settings.encode,
+        ) {
+            Ok(codec) => codec,
+            Err(error) => return error.into_http(),
+        };
         let call = Endpoint::<O> {
             authority,
             settings,
@@ -299,10 +289,11 @@ where
         if let Err(error) = settings.validate() {
             return error.into_http();
         }
-        let codec = match Codec::<O::Request, Event<StreamItem<O::Item>, Arc<O::Response>>>::new(
-            settings.decode,
-            settings.encode,
-        ) {
+        let codec = match Codec::<
+            O::Request,
+            Event<StreamItem<O::Item>, crate::operations::Response<O::Response>>,
+        >::new(settings.decode, settings.encode)
+        {
             Ok(codec) => codec,
             Err(error) => return error.into_http(),
         };
@@ -329,10 +320,11 @@ where
         if let Err(error) = settings.validate() {
             return error.into_http();
         }
-        let codec = match Codec::<InputEnvelope<O::Request, O::Item>, Arc<O::Response>>::new(
-            settings.decode,
-            settings.encode,
-        ) {
+        let codec = match Codec::<
+            InputEnvelope<O::Request, O::Item>,
+            crate::operations::Response<O::Response>,
+        >::new(settings.decode, settings.encode)
+        {
             Ok(codec) => codec,
             Err(error) => return error.into_http(),
         };
@@ -362,7 +354,10 @@ where
         }
         let codec = match Codec::<
             InputEnvelope<O::Request, <O as InputDeclaration>::Item>,
-            Event<StreamItem<<O as OutputDeclaration>::Item>, Arc<O::Response>>,
+            Event<
+                StreamItem<<O as OutputDeclaration>::Item>,
+                crate::operations::Response<O::Response>,
+            >,
         >::new(settings.decode, settings.encode)
         {
             Ok(codec) => codec,
@@ -379,6 +374,48 @@ where
 
 /* === Private Functions === */
 fn code(error: &Error) -> tonic::Code {
+    // Preserve Known Runtime Denials Through Authored Child Failures. Bound Wrapping.
+    let mut error = error;
+    let mut wrapped = false;
+    for _ in 0..32 {
+        match error {
+            Error::TaskFailed { source, .. } | Error::OperationFailed { source, .. } => {
+                if let Some(status) = source.downcast_ref::<Status>() {
+                    return status.code();
+                }
+                if let Some(inner) = source.downcast_ref::<Error>() {
+                    error = inner;
+                    wrapped = true;
+                } else {
+                    return tonic::Code::Internal;
+                }
+            }
+            _ => {
+                if !wrapped {
+                    return leaf_code(error);
+                }
+                // Authored Application Failures Stay Internal Unless They Carry
+                // An Explicit Status Or A Known Runtime Authority/Lifecycle Denial.
+                return match error {
+                    Error::OperationRefused(Refusal::TimedOut | Refusal::Cancelled)
+                    | Error::Unauthenticated
+                    | Error::PermissionDenied
+                    | Error::OperationUnauthorized { .. } => leaf_code(error),
+                    #[cfg(any(
+                        feature = "plugin",
+                        feature = "plugin-guest",
+                        feature = "plugin-sidecar"
+                    ))]
+                    Error::OperationCaller { .. } => leaf_code(error),
+                    _ => tonic::Code::Internal,
+                };
+            }
+        }
+    }
+    tonic::Code::Internal
+}
+
+fn leaf_code(error: &Error) -> tonic::Code {
     match error {
         Error::OperationRefused(Refusal::TimedOut) => tonic::Code::DeadlineExceeded,
         Error::OperationRefused(Refusal::Cancelled) => tonic::Code::Cancelled,
@@ -391,20 +428,58 @@ fn code(error: &Error) -> tonic::Code {
         Error::PermissionDenied | Error::OperationUnauthorized { .. } => {
             tonic::Code::PermissionDenied
         }
-        #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+        #[cfg(any(
+            feature = "plugin",
+            feature = "plugin-guest",
+            feature = "plugin-sidecar"
+        ))]
         Error::OperationCaller { .. } => tonic::Code::Unauthenticated,
-        Error::TaskFailed { source, .. } => source
-            .downcast_ref::<Status>()
-            .map_or(tonic::Code::Internal, Status::code),
         _ => tonic::Code::Internal,
     }
 }
+fn explicit_status(mut error: &Error) -> Option<&Status> {
+    for _ in 0..32 {
+        match error {
+            Error::TaskFailed { source, .. } | Error::OperationFailed { source, .. } => {
+                if let Some(status) = source.downcast_ref::<Status>() {
+                    return Some(status);
+                }
+                error = source.downcast_ref::<Error>()?;
+            }
+            _ => return None,
+        }
+    }
+    None
+}
+
 pub(super) fn status(error: Error) -> Status {
-    let mut status = Status::new(code(&error), "operation request failed");
+    let mut status = explicit_status(&error)
+        .cloned()
+        .unwrap_or_else(|| Status::new(code(&error), "operation request failed"));
     status.set_source(Arc::new(error));
     status
 }
 fn input_status(error: InputError) -> Status {
+    let explicit = match &error {
+        InputError::Operation(error) => explicit_status(error),
+        InputError::Forward { source, settlement }
+            if !settlement.as_deref().is_some_and(|error| {
+                matches!(
+                    error,
+                    Error::OperationFinalization { .. } | Error::OperationSettlement { .. }
+                )
+            }) =>
+        {
+            explicit_status(source)
+        }
+        InputError::Forward { .. } => None,
+    };
+    if let Some(explicit) = explicit {
+        let mut status = explicit.clone();
+        status.set_source(Arc::new(error));
+        return status;
+    }
+
     let code = match &error {
         InputError::Operation(error) => code(error),
         InputError::Forward { source, settlement } => {

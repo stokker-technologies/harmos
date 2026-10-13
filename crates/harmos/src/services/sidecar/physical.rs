@@ -23,7 +23,7 @@ use std::task::{Context, Poll, Wake, Waker};
 // Local Imports
 use super::{Notice, Supervised};
 use crate::services::Resident;
-use crate::{Application, Fault, Service};
+use crate::{Application, services::Fault, services::Service};
 use harmos_sidecar::Attach;
 
 /* === Constants === */
@@ -82,6 +82,7 @@ impl Signals {
             waiting.push(waker.clone());
         }
     }
+
     fn notify(&self) {
         self.revision.fetch_add(1, Ordering::AcqRel);
         let waiting = std::mem::take(
@@ -100,6 +101,7 @@ impl Wake for Signals {
     fn wake(self: Arc<Self>) {
         self.notify();
     }
+
     fn wake_by_ref(self: &Arc<Self>) {
         self.notify();
     }
@@ -406,6 +408,7 @@ where
             Poll::Pending
         }
     }
+
     pub(super) fn retry_ending(&self) {
         if let Some(original) = self.original.upgrade() {
             Physical { original }.retry_ending();
@@ -428,6 +431,7 @@ where
         }
         physical.poll_ending(context)
     }
+
     pub(super) fn same(&self, physical: &Physical<A, S, H>) -> bool {
         self.original.ptr_eq(&Arc::downgrade(&physical.original))
     }

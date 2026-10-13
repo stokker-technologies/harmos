@@ -8,12 +8,17 @@ dependencies = []
 
 [dependency-groups]
 test = [
+  "build==1.6.1",
+  "protobuf==7.36.2",
   "pytest==9.1.1",
   "pytest-benchmark==5.3.0",
   "pytest-cov==7.1.0",
   "pytest-timeout==2.4.0",
+  "setuptools==84.0.0",
+  "types-protobuf==7.35.1.20260906",
+  "wheel==0.48.0",
 ]
-dev = ["ruff==0.16.10", "ty==0.0.84"]
+dev = ["ruff==0.17.0", "ty==0.0.86"]
 
 [build-system]
 requires = ["hatchling==1.32.4"]

@@ -1,0 +1,35 @@
+name: Bug Report
+description: Report unexpected Harmos behavior with a reproducible example.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Include a minimal Rust example or repository, exact commands, and steps. For intermittent problems, describe the trigger and frequency.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include the Harmos revision/version, OS and architecture, Rust version, enabled Cargo features, and whether default features are disabled.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Relevant Context
+      description: Where relevant, describe the storage adapter and restart sequence, stream rates/buffering/gaps, or plugin backend (in-process, sidecar, or guest).
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Include relevant errors, tracing output, or a backtrace.
+      render: text

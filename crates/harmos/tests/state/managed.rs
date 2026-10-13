@@ -20,7 +20,9 @@ use crate::scenario_runtime;
 
 // Local Imports
 use crate::support::{Bank, HOUSE, alice, deposit, runtime};
-use harmos::{Application, Focus, ManagedState, Never, Position, Runtime};
+use harmos::{
+    Application, Runtime, state::Focus, state::ManagedState, state::Never, state::Position,
+};
 
 /* === Constants === */
 

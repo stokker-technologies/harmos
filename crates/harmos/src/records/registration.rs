@@ -13,13 +13,12 @@
 
 /* === Imports === */
 // Standard Library Imports
-use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 // Third Party Imports
 
 // Local Imports
-use crate::schema::{Field, Kind, Validator};
+use crate::schema::{Validator, graph::Schema};
 use crate::storage::{ErasedCatalog, SchemaKey, StorageManager};
 use crate::{Error, MemorySize, Result};
 
@@ -38,14 +37,18 @@ type Key = (String, u32);
 pub struct Definition {
     owner: String,
     schema: SchemaKey,
-    fields: Vec<Field>,
+    graph: Schema,
     validation: Validator,
 }
 
 pub(crate) struct Registry {
     pub(super) storage: Option<StorageManager<ErasedCatalog>>,
     state: Mutex<State>,
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     pub(super) listeners: Mutex<BTreeMap<String, Arc<super::listeners::Listening>>>,
 }
 
@@ -84,11 +87,13 @@ impl Definition {
     pub fn owner(&self) -> &str {
         &self.owner
     }
+
     pub fn schema(&self) -> &SchemaKey {
         &self.schema
     }
-    pub fn fields(&self) -> &[Field] {
-        &self.fields
+
+    pub fn graph(&self) -> &Schema {
+        &self.graph
     }
 
     pub fn validate(&self, payload: &[u8]) -> Result<()> {
@@ -103,7 +108,11 @@ impl Registry {
         Self {
             storage,
             state: Mutex::new(State::default()),
-            #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+            #[cfg(any(
+                feature = "plugin",
+                feature = "plugin-guest",
+                feature = "plugin-sidecar"
+            ))]
             listeners: Mutex::new(BTreeMap::new()),
         }
     }
@@ -112,7 +121,7 @@ impl Registry {
         self: &Arc<Self>,
         owner: &str,
         schema: &SchemaKey,
-        fields: &[Field],
+        graph: &Schema,
     ) -> Result<Pending> {
         schema.require_postcard()?;
         if !harmos_contract::artifact_subset(owner)
@@ -124,7 +133,13 @@ impl Registry {
                 reason: "invalid or oversized identity",
             });
         }
-        let fields_bytes = cloned_fields_bytes(fields, 0, &mut 4096)?;
+        let settings = harmos_contract::config::SchemaSettings::default();
+        graph.preparation(&settings).map_err(|_| limit())?;
+        let fields_bytes = graph
+            .clone_memory_bytes()
+            .map_err(|_| limit())?
+            .checked_sub(std::mem::size_of::<Schema>())
+            .ok_or_else(limit)?;
         {
             let state = self.state.lock().expect("record schema registry poisoned");
             if let Some((key, entry)) = state.definitions.iter().find(|((id, version), _)| {
@@ -132,7 +147,7 @@ impl Registry {
             }) {
                 if entry.ready
                     && entry.definition.owner == owner
-                    && entry.definition.fields == fields
+                    && entry.definition.graph == *graph
                 {
                     return Ok(Pending {
                         registry: Arc::clone(self),
@@ -167,12 +182,19 @@ impl Registry {
         .into_iter()
         .try_fold(0usize, usize::checked_add)
         .ok_or_else(limit)?;
-        let compilation = Validator::construction_memory_bytes(fields)
-            .map_err(|source| Error::RecordSchema { source })?;
+        let compilation =
+            Validator::construction_memory_bytes(graph, &settings).map_err(|source| {
+                Error::RecordSchema {
+                    source: crate::schema::Error::Graph(source),
+                }
+            })?;
         let construction_bytes = destination.checked_add(compilation).ok_or_else(limit)?;
         let mut construction = Construction::new(self, construction_bytes)?;
         // Compile Outside The Registry Lock Under The Original Shared Budget
-        let validation = Validator::new(fields).map_err(|source| Error::RecordSchema { source })?;
+        let validation =
+            Validator::from_schema(graph, &settings).map_err(|source| Error::RecordSchema {
+                source: crate::schema::Error::Graph(source),
+            })?;
         let bytes = destination
             .checked_add(validation.memory_size())
             .ok_or_else(limit)?;
@@ -183,7 +205,7 @@ impl Registry {
         let definition = Arc::new(Definition {
             owner: owner.to_owned(),
             schema: schema.clone(),
-            fields: fields.to_vec(),
+            graph: graph.clone(),
             validation,
         });
         let mut state = self.state.lock().expect("record schema registry poisoned");
@@ -291,6 +313,7 @@ impl Pending {
     pub(super) fn is_committed(&self) -> bool {
         self.committed
     }
+
     pub(super) fn commit(mut self) -> Arc<Definition> {
         if !self.committed {
             let mut state = self
@@ -344,38 +367,6 @@ fn limit() -> Error {
     Error::ResourceExhausted {
         resource: "record schema registry",
     }
-}
-
-fn cloned_fields_bytes(fields: &[Field], depth: usize, remaining: &mut usize) -> Result<usize> {
-    // Bound Traversal And Error Metadata Before Compiling The Schema
-    if depth > 32 || fields.len() > *remaining {
-        return Err(limit());
-    }
-    *remaining -= fields.len();
-    let mut bytes = fields
-        .len()
-        .checked_mul(std::mem::size_of::<Field>())
-        .ok_or_else(limit)?;
-    for field in fields {
-        if field.name.len() > 256 {
-            return Err(Error::InvalidInput {
-                field: "record schema field",
-                reason: "name exceeds 256 bytes",
-            });
-        }
-        let name = match &field.name {
-            Cow::Owned(value) => value.len(),
-            Cow::Borrowed(_) => 0,
-        };
-        bytes = bytes.checked_add(name).ok_or_else(limit)?;
-        if let Kind::Message { fields } = &field.kind {
-            let nested = cloned_fields_bytes(fields, depth + 1, remaining)?;
-            if matches!(fields, Cow::Owned(_)) {
-                bytes = bytes.checked_add(nested).ok_or_else(limit)?;
-            }
-        }
-    }
-    Ok(bytes)
 }
 
 /* === Tests === */

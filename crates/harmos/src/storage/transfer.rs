@@ -90,10 +90,7 @@ impl<T: Entry> Cursor<T> {
         let mut selection = ReadSelection::new(T::KIND);
 
         selection.after = after;
-        let limits = T::read_limits(
-            manager.inner.settings.replication_limits,
-            manager.inner.schema_encoding,
-        );
+        let limits = T::read_limits(manager.inner.settings.replication_limits);
         let page = manager
             .inner
             .bounded(T::fetch(

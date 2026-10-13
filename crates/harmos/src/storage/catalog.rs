@@ -24,7 +24,7 @@ use crate::{BackendFailure, Error, Identified, Identifier, MemorySize, Result, s
 /* === Constants === */
 const MAX_DEFINITIONS: usize = 4096;
 const MAX_IDENTITY_BYTES: usize = 1024;
-#[cfg(feature = "runtime")]
+
 pub(crate) const LOOKUP_MEMORY_BYTES: usize = MAX_IDENTITY_BYTES * 2;
 const VALIDATION_BYTES: usize = 8 * 1024 * 1024;
 
@@ -57,10 +57,10 @@ pub struct ObjectKey(String);
 #[derive(Clone, Copy, Debug)]
 pub struct ObjectDefinition {
     schema: fn() -> Result<SchemaKey>,
-    fields: &'static [schema::Field],
+    declaration: schema::declaration::Definition,
     retention: ObjectRetention,
     verify: fn(&ObjectValue, NonZeroUsize) -> Result<()>,
-    #[cfg(feature = "runtime")]
+
     verify_admitted: fn(&ObjectValue, NonZeroUsize, usize) -> Result<()>,
 }
 
@@ -92,7 +92,9 @@ pub enum ObjectRetention {
 }
 
 /* === Traits === */
-pub trait StoredObject: Identified + schema::Described + MemorySize + 'static {
+pub trait StoredObject:
+    Identified + schema::Described + crate::Message + MemorySize + 'static
+{
     type Key: fmt::Display + ?Sized;
 
     const RETENTION: ObjectRetention;
@@ -116,16 +118,11 @@ pub trait ObjectCatalog: Catalog<ObjectDefinitions> + Send + Sync + 'static {
         }
         let entries = Self::definitions();
         let mut visited = 0usize;
-        let mut scratch = 0usize;
-        entries.try_for_each(|entry| {
+        entries.try_for_each(|_| {
             visited += 1;
             if visited > count {
                 return Err(invalid("object catalog projection count differs"));
             }
-            scratch = scratch.max(
-                schema::validation_memory_bytes(entry.fields())
-                    .map_err(|_| invalid("invalid object schema"))?,
-            );
             Ok(())
         })?;
         if visited != count {
@@ -133,7 +130,6 @@ pub trait ObjectCatalog: Catalog<ObjectDefinitions> + Send + Sync + 'static {
         }
         let bytes = count
             .checked_mul(std::mem::size_of::<(SchemaKey, ObjectRetention)>() + MAX_IDENTITY_BYTES)
-            .and_then(|bytes| bytes.checked_add(scratch))
             .and_then(|bytes| {
                 bytes.checked_add(
                     MAX_IDENTITY_BYTES + std::mem::size_of::<Vec<(SchemaKey, ObjectRetention)>>(),
@@ -152,7 +148,15 @@ pub trait ObjectCatalog: Catalog<ObjectDefinitions> + Send + Sync + 'static {
             if key.id.as_str().len() > MAX_IDENTITY_BYTES {
                 return Err(invalid("object schema identity exceeds its byte limit"));
             }
-            schema::validate(entry.fields()).map_err(|_| invalid("invalid object schema"))?;
+            let mut settings = harmos_contract::config::SchemaSettings::default();
+            settings.preparation_bytes = NonZeroUsize::new(
+                settings
+                    .preparation_bytes
+                    .get()
+                    .min(VALIDATION_BYTES - bytes),
+            )
+            .ok_or_else(|| invalid("object schema preparation exceeds allowance"))?;
+            entry.graph(&settings)?;
             identities.push((key, entry.retention));
             Ok(())
         })?;
@@ -366,11 +370,18 @@ impl ObjectDefinition {
         (self.schema)()
     }
 
-    pub fn fields(&self) -> &'static [schema::Field] {
-        self.fields
+    pub fn declaration(&self) -> schema::declaration::Definition {
+        self.declaration
     }
 
-    #[cfg(feature = "runtime")]
+    pub fn graph(
+        &self,
+        settings: &harmos_contract::config::SchemaSettings,
+    ) -> Result<schema::graph::Schema> {
+        schema::graph::Schema::from_declaration(self.declaration, settings)
+            .map_err(|_| invalid("invalid object schema or preparation allowance"))
+    }
+
     pub(crate) fn validate_admitted(
         &self,
         value: &ObjectValue,
@@ -390,10 +401,10 @@ impl Visitor for ObjectDefinitions {
 impl<T: StoredObject> Member<T> for ObjectDefinitions {
     const ENTRY: ObjectDefinition = ObjectDefinition {
         schema: object_schema::<T>,
-        fields: T::FIELDS,
+        declaration: T::DEFINITION,
         retention: T::RETENTION,
         verify: verify::<T>,
-        #[cfg(feature = "runtime")]
+
         verify_admitted: verify_admitted::<T>,
     };
 }
@@ -412,7 +423,7 @@ impl fmt::Write for KeyMatch<'_> {
 }
 
 /* === Public Functions === */
-#[cfg(feature = "runtime")]
+
 pub(crate) fn definition<C: ObjectCatalog>(key: &SchemaKey) -> Result<ObjectDefinition> {
     let mut found = None;
     C::definitions().try_for_each(|entry| {
@@ -470,7 +481,6 @@ pub(crate) fn decode_admitted<T: StoredObject>(
     Ok(decoded)
 }
 
-#[cfg(any(feature = "runtime", test))]
 pub(super) fn verification_bytes(payload: NonZeroUsize) -> Result<usize> {
     payload
         .get()
@@ -480,7 +490,6 @@ pub(super) fn verification_bytes(payload: NonZeroUsize) -> Result<usize> {
         .ok_or_else(|| invalid("object verification size overflow"))
 }
 
-#[cfg(feature = "runtime")]
 pub(super) fn validate_transfer<C: ObjectCatalog>(
     value: &ObjectValue,
     payload: NonZeroUsize,
@@ -526,7 +535,6 @@ fn verify<T: StoredObject>(value: &ObjectValue, max_payload_bytes: NonZeroUsize)
     decode::<T>(value, max_payload_bytes).map(|_| ())
 }
 
-#[cfg(any(feature = "runtime", test))]
 fn verify_admitted<T: StoredObject>(
     value: &ObjectValue,
     payload: NonZeroUsize,
@@ -551,7 +559,6 @@ fn verify_admitted<T: StoredObject>(
     Ok(())
 }
 
-#[cfg(any(feature = "runtime", test))]
 fn verification_limit() -> Error {
     Error::ResourceExhausted {
         resource: "storage object verification",

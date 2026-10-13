@@ -75,7 +75,10 @@ pub trait Operation: Send + Sized + 'static {
         request: &mut <Self::Declaration as OperationDeclaration>::Request,
         endpoints: &mut Self::Endpoints,
     ) -> impl Future<
-        Output = Result<<Self::Declaration as OperationDeclaration>::Response, Self::Error>,
+        Output = Result<
+            super::Response<<Self::Declaration as OperationDeclaration>::Response>,
+            Self::Error,
+        >,
     > + Send;
 
     fn stop(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send {

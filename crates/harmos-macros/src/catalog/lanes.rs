@@ -50,9 +50,11 @@ enum Capacity {
 impl Declared {
     fn capacity(&self, harmos: &HarmosPath) -> TokenStream {
         match &self.capacity {
-            Capacity::Serial => quote! { #harmos::Capacity::serial() },
-            Capacity::Concurrent(width) => quote! { #harmos::Capacity::concurrent(#width) },
-            Capacity::Unbounded => quote! { #harmos::Capacity::unbounded() },
+            Capacity::Serial => quote! { #harmos::operations::Capacity::serial() },
+            Capacity::Concurrent(width) => {
+                quote! { #harmos::operations::Capacity::concurrent(#width) }
+            }
+            Capacity::Unbounded => quote! { #harmos::operations::Capacity::unbounded() },
         }
     }
 }
@@ -92,8 +94,8 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
 
         quote! {
             (
-                #harmos::Lane::name(&Self::#variant),
-                #harmos::Lane::capacity(&Self::#variant),
+                #harmos::operations::Lane::name(&Self::#variant),
+                #harmos::operations::Lane::capacity(&Self::#variant),
             )
         }
     });
@@ -115,20 +117,20 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
         }
 
         #[automatically_derived]
-        impl #harmos::Lane for #name {
+        impl #harmos::operations::Lane for #name {
             fn name(&self) -> &'static str {
                 match self { #(#names)* }
             }
 
-            fn capacity(&self) -> #harmos::Capacity {
+            fn capacity(&self) -> #harmos::operations::Capacity {
                 match self { #(#capacities)* }
             }
         }
 
         impl #name {
 
-            #visibility fn catalog() -> #harmos::LaneSet {
-                #harmos::LaneSet::declared([#(#entries),*])
+            #visibility fn catalog() -> #harmos::operations::LaneSet {
+                #harmos::operations::LaneSet::declared([#(#entries),*])
             }
         }
     })

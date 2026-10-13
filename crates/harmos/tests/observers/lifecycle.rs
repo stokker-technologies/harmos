@@ -22,7 +22,7 @@ use std::time::Duration;
 // Third Party Imports
 use tokio::sync::{Semaphore, watch};
 // Local Imports
-use harmos::sidecar::{Instance, Observer, ObserverContext, ObserverExit, ObserverStatus};
+use harmos::plugin::sidecar::{Instance, Observer, ObserverContext, ObserverExit, ObserverStatus};
 
 /* === Constants === */
 

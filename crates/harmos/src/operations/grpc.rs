@@ -69,10 +69,10 @@ impl GrpcBinding {
         endpoints: P,
     ) -> Result<OperationInstance<O>> {
         self.operations.admit_entry::<O, P>(
-            (super::binding::Request::charged(request), endpoints),
+            (super::binding::Request::charged(request)?, endpoints),
             None,
             &[],
-            &Source::Host,
+            &Source::Host.external()?,
             Submission {
                 submitted: crate::supervision::executor::now(),
                 entry: self.entry.clone(),

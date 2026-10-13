@@ -15,21 +15,21 @@
 
 // Standard Library Imports
 use std::any::TypeId;
-#[cfg(feature = "runtime")]
+
 use std::sync::Arc;
 
 // Third Party Imports
 
 // Local Imports
 use super::DataSelection;
-#[cfg(feature = "runtime")]
+
 use crate::operations::{Context, Operation, StreamOutput};
 use crate::operations::{OperationDeclaration, OutputDeclaration, Visibility, WireOperation};
-use crate::schema::{Described, Field};
+use crate::schema::Described;
 use crate::storage::{StorageCursor, StoredRow};
-#[cfg(feature = "runtime")]
+
 use crate::storage::{StorageManager, StreamQuery};
-#[cfg(feature = "runtime")]
+
 use crate::{Error, MemorySize, Result};
 
 /* === Constants === */
@@ -41,7 +41,6 @@ use crate::{Error, MemorySize, Result};
 /* === Structs === */
 pub struct FollowStream;
 
-#[cfg(feature = "runtime")]
 pub(super) struct Handler<C> {
     storage: Arc<StorageManager<C>>,
 }
@@ -68,10 +67,9 @@ impl OutputDeclaration for FollowStream {
 
 impl WireOperation for FollowStream {
     const VERSION: u32 = 1;
-    const OUTPUT: Option<&'static [Field]> = Some(StoredRow::FIELDS);
+    const OUTPUT: Option<crate::schema::declaration::Definition> = Some(StoredRow::DEFINITION);
 }
 
-#[cfg(feature = "runtime")]
 impl<C: 'static> Operation for Handler<C> {
     type Declaration = FollowStream;
     type Resources = StorageManager<C>;
@@ -88,39 +86,44 @@ impl<C: 'static> Operation for Handler<C> {
         _: Self::Context<'a>,
         selection: &mut DataSelection,
         output: &mut Self::Endpoints,
-    ) -> Result<StorageCursor> {
-        selection.validate()?;
-        if selection.selection.descending || selection.selection.through.is_some() {
-            return Err(Error::InvalidInput {
-                field: "storage follow",
-                reason: "following requires ascending open-ended selection",
-            });
-        }
+    ) -> Result<crate::operations::Response<StorageCursor>> {
+        async {
+            selection.validate()?;
+            if selection.selection.descending || selection.selection.through.is_some() {
+                return Err(Error::InvalidInput {
+                    field: "storage follow",
+                    reason: "following requires ascending open-ended selection",
+                });
+            }
 
-        let mut query = StreamQuery::new(selection.schema.clone(), super::data_selection::decode);
-        query.scope = selection.selection.scope.clone();
-        query.item = selection.selection.item.clone();
-        query.source_time = selection.source_time();
-        query.options = selection.selection.options()?;
-        query.stream = selection.stream.clone();
-        let mut reader = self.storage.follow(query).await?;
-        let boundary = reader.accepted_boundary();
-        if let Some(after) = &selection.selection.after
-            && !boundary.covers(after)?
-        {
-            return Err(Error::InvalidInput {
-                field: "storage query",
-                reason: "start exceeds accepted boundary",
-            });
-        }
-        loop {
-            let page = reader.next_page().await?;
-            for entry in page.iter() {
-                output
-                    .send_with(entry.memory_size(), || Ok(entry.clone()))
-                    .await?;
+            let mut query =
+                StreamQuery::new(selection.schema.clone(), super::data_selection::decode);
+            query.scope = selection.selection.scope.clone();
+            query.item = selection.selection.item.clone();
+            query.source_time = selection.source_time();
+            query.options = selection.selection.options()?;
+            query.stream = selection.stream.clone();
+            let mut reader = self.storage.follow(query).await?;
+            let boundary = reader.accepted_boundary();
+            if let Some(after) = &selection.selection.after
+                && !boundary.covers(after)?
+            {
+                return Err(Error::InvalidInput {
+                    field: "storage query",
+                    reason: "start exceeds accepted boundary",
+                });
+            }
+            loop {
+                let page = reader.next_page().await?;
+                for entry in page.iter() {
+                    output
+                        .send_with(entry.memory_size(), || Ok(entry.clone()))
+                        .await?;
+                }
             }
         }
+        .await
+        .map(|value: StorageCursor| value.into())
     }
 }
 

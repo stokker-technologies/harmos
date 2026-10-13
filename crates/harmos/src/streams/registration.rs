@@ -20,8 +20,8 @@ use std::sync::{Arc, Mutex, Weak};
 use super::definition::{Table, Wired};
 use super::publications::{publication_definitions, validate_existing};
 use super::{PluginStream, PublicationLease, StreamAdmissionError, StreamManager, window};
-use crate::load::PluginScope;
-use crate::{Application, Position};
+use crate::plugin::PluginScope;
+use crate::{Application, state::Position};
 use harmos_contract::StreamDeclaration;
 
 /* === Constants === */
@@ -64,11 +64,13 @@ impl<A: Application> StreamManager<A> {
         let validations = definitions
             .iter()
             .map(|definition| {
-                crate::schema::Validator::new(
+                crate::schema::Validator::from_schema(
                     definition
-                        .fields()
-                        .expect("plugin definitions own a field schema"),
+                        .schema()
+                        .expect("plugin definitions own a row schema"),
+                    &harmos_contract::config::SchemaSettings::default(),
                 )
+                .map_err(crate::schema::Error::from)
                 .map(Arc::new)
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -93,11 +95,11 @@ impl<A: Application> StreamManager<A> {
             if scope.has_committed() {
                 for definition in &definitions {
                     let previous = windows
-                        .get(&definition.id)
-                        .and_then(|revisions| revisions.get(&definition.version))
+                        .get(definition.id())
+                        .and_then(|revisions| revisions.get(&definition.version()))
                         .ok_or_else(|| StreamAdmissionError::Changed(definition.id().into()))?;
-                    if previous.definition.metadata != definition.metadata
-                        || previous.definition.row_metadata != definition.row_metadata
+                    if previous.definition.metadata() != definition.metadata()
+                        || previous.definition.row_metadata() != definition.row_metadata()
                     {
                         return Err(StreamAdmissionError::Changed(definition.id().into()));
                     }
@@ -105,10 +107,12 @@ impl<A: Application> StreamManager<A> {
             }
             let mut leases = Vec::with_capacity(definitions.len());
             for (definition, validation) in definitions.into_iter().zip(validations) {
-                let revisions = windows.entry(Arc::clone(&definition.id)).or_default();
+                let revisions = windows
+                    .entry(Arc::<str>::from(definition.id()))
+                    .or_default();
                 // One settled snapshot avoids retaining a chain of generations.
                 // Existing readers independently own their immutable descriptors.
-                let previous = revisions.get(&definition.version).map(|previous| {
+                let previous = revisions.get(&definition.version()).map(|previous| {
                     Arc::new(Wired {
                         validation: previous.validation.clone(),
                         definition: previous.definition.clone(),
@@ -121,7 +125,7 @@ impl<A: Application> StreamManager<A> {
                     || {
                         Arc::new(
                             window::Window::wired(
-                                definition.window,
+                                definition.window(),
                                 Position::ORIGIN,
                                 self.windows.sequence.clone(),
                                 self.windows.pump.clone(),
@@ -143,7 +147,7 @@ impl<A: Application> StreamManager<A> {
                         activation: Arc::downgrade(&activation),
                     }),
                 });
-                revisions.insert(wired.definition.version, wired.clone());
+                revisions.insert(wired.definition.version(), wired.clone());
                 leases.push(Arc::new(PublicationLease {
                     stream: PluginStream {
                         wired,
@@ -222,25 +226,25 @@ impl Drop for StreamRegistration {
             .expect("stream registry poisoned");
         for lease in self.leases() {
             let wired = &lease.stream.wired;
-            let Some(revisions) = windows.get_mut(&wired.definition.id) else {
+            let Some(revisions) = windows.get_mut(wired.definition.id()) else {
                 continue;
             };
             if !revisions
-                .get(&wired.definition.version)
+                .get(&wired.definition.version())
                 .is_some_and(|current| Arc::ptr_eq(current, wired))
             {
                 continue;
             }
             match &wired.staged.as_ref().expect("staged inventory").previous {
                 Some(previous) => {
-                    revisions.insert(wired.definition.version, previous.clone());
+                    revisions.insert(wired.definition.version(), previous.clone());
                 }
                 None => {
-                    revisions.remove(&wired.definition.version);
+                    revisions.remove(&wired.definition.version());
                 }
             }
             if revisions.is_empty() {
-                windows.remove(&wired.definition.id);
+                windows.remove(wired.definition.id());
             }
         }
     }

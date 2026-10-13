@@ -209,21 +209,25 @@ where
         host: Self::Context<'ctx>,
         control: &mut Control,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Refusal> {
-        let token = token(control)?;
-        let host = host.for_observer_context(token)?;
-        let mut state = self.attachment.state.lock().map_err(Refusal::of)?;
-        if state.closing {
-            return Err(Refusal::of("observer admission is closing"));
+    ) -> Result<crate::operations::Response<()>, Refusal> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            let token = token(control)?;
+            let host = host.for_observer_context(token)?;
+            let mut state = self.attachment.state.lock().map_err(Refusal::of)?;
+            if state.closing {
+                return Err(Refusal::of("observer admission is closing"));
+            }
+            validate_context(&state.contexts, control, token)?;
+            state
+                .control
+                .start(&native(control), &self.attachment.resources, &host)?;
+            state
+                .contexts
+                .insert(control.observer.clone(), (control.generation, token));
+            Ok(())
         }
-        validate_context(&state.contexts, control, token)?;
-        state
-            .control
-            .start(&native(control), &self.attachment.resources, &host)?;
-        state
-            .contexts
-            .insert(control.observer.clone(), (control.generation, token));
-        Ok(())
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -253,13 +257,17 @@ where
         _: Self::Context<'ctx>,
         control: &mut Control,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Status, Refusal> {
-        if self.work.is_none() && self.result.is_none() {
-            token(control)?;
-            let stopped = self.attachment.begin_stop(control)?;
-            self.work = Some(Box::pin(async move { status(stopped.wait().await?) }));
+    ) -> Result<crate::operations::Response<Status>, Refusal> {
+        let result: ::core::result::Result<Status, Self::Error> = async move {
+            if self.work.is_none() && self.result.is_none() {
+                token(control)?;
+                let stopped = self.attachment.begin_stop(control)?;
+                self.work = Some(Box::pin(async move { status(stopped.wait().await?) }));
+            }
+            self.settle().await
         }
-        self.settle().await
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     async fn stop(&mut self) -> Result<(), Refusal> {

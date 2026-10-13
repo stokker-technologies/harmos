@@ -17,6 +17,7 @@ pub mod host;
 mod key;
 pub mod lifecycle;
 mod policy;
+pub(crate) mod response;
 mod serving;
 #[cfg(feature = "streaming")]
 pub mod streaming;
@@ -29,7 +30,8 @@ pub use context::{
     CallContext, CallValue, ContextError, ContextValue, PORTABLE_BYTES, PORTABLE_VALUES,
 };
 pub use contract::{
-    Codec, Contract, ContractError, Contracts, WireDeclaration, WireOperation, WireVisitor,
+    AuthoredContracts, Codec, Contract, ContractError, Contracts, WireDeclaration, WireOperation,
+    WireVisitor,
 };
 pub use grpc::Grpc;
 #[cfg(feature = "grpc")]
@@ -38,6 +40,7 @@ pub use key::{CacheKey, CacheKeyError, MAX_CACHE_KEY_BYTES};
 pub use policy::{
     Backoff, Failure, Jitter, OperationPolicy, PolicyError, ReplaySafety, RetryPolicy,
 };
+pub use response::Response;
 pub use serving::{
     CHILD_METHOD, Serves, ServingError, WIRE_METHOD, WireAnswer, WireBinding, WireChildCall,
     WireCodecError, WireCommand, WireTable,

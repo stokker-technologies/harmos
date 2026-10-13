@@ -25,8 +25,8 @@ use super::{HostLanes, assembly, operations, service_status};
 use crate::core_journal::OriginalJournal;
 use crate::support::{Bank, DEPOSIT, Deposit, HOUSE};
 use harmos::operations::{OperationPolicy, RetryPolicy};
-use harmos::sidecar::{Notice, Refusal, Supervised, Supervisor};
-use harmos::{Service, ServiceStatus};
+use harmos::plugin::sidecar::{Notice, Refusal, Supervised, Supervisor};
+use harmos::{services::Service, services::ServiceStatus};
 
 /* === Constants === */
 const POLICY: OperationPolicy = OperationPolicy {
@@ -153,7 +153,10 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let runtime = assembly()
-                        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+                        .operation_settings(harmos::operations::Settings {
+                            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+                            ..Default::default()
+                        })
                         .runtime()
                         .await
                         .unwrap();
@@ -176,13 +179,13 @@ pub(super) fn contract_scenario() {
                         .register(
                             harmos::services::ServiceDefinition {
                                 id: "journal-carrier".into(),
-                                policy: harmos::ServicePolicy {
+                                policy: harmos::services::ServicePolicy {
                                     credit: 0,
                                     ..Default::default()
                                 },
                             },
                             move |_: Arc<()>| {
-                                harmos::sidecar::Managed::new(
+                                harmos::plugin::sidecar::Managed::new(
                                     resident.clone(),
                                     definition.clone(),
                                     HostLanes::Open,

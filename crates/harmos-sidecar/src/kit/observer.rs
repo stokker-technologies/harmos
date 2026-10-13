@@ -477,7 +477,7 @@ pub(super) fn validate_outputs<R, H>(
             grant.id == output.id
                 && grant.schema == output.schema
                 && grant.window == output.window
-                && grant.fields == output.fields
+                && grant.row == output.row
         }) {
             return Err(format!(
                 "observer output `{}` differs from the artifact publication grant",

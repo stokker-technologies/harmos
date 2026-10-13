@@ -42,8 +42,7 @@ use harmos::storage::{StagedFile, StorageBackends, StorageManager};
 /* === Private Functions === */
 // Copy A Crash Image Without Letting The Original Manager's Close Save Its Tail.
 fn crash_image(source: &Fixture) -> Arc<Data> {
-    let mut data = Data::new(source.data.history.clone());
-    data.schema_encoding = source.data.schema_encoding;
+    let data = Data::new(source.data.history.clone());
     let data = Arc::new(data);
     *data.saved_productions.lock().unwrap() = source.data.saved_productions.lock().unwrap().clone();
     *data.file_generations.lock().unwrap() = source.data.file_generations.lock().unwrap().clone();
@@ -630,7 +629,14 @@ pub(super) fn contract_scenario() {
                     };
                     let accepted = f
                         .storage
-                        .write_schema_once(&mutation, &key, &[])
+                        .write_schema_once(
+                            &mutation,
+                            &key,
+                            &harmos::schema::graph::Schema {
+                                root: 0,
+                                definitions: vec![vec![]],
+                            },
+                        )
                         .await
                         .unwrap();
                     f.storage.flush().await.unwrap();
@@ -638,7 +644,14 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         recovered
                             .storage
-                            .write_schema_once(&mutation, &key, &[])
+                            .write_schema_once(
+                                &mutation,
+                                &key,
+                                &harmos::schema::graph::Schema {
+                                    root: 0,
+                                    definitions: vec![vec![]]
+                                }
+                            )
                             .await
                             .unwrap(),
                         accepted

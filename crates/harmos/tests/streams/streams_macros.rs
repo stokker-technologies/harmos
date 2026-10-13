@@ -59,7 +59,7 @@ mod streams {
     #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
     pub struct Take(pub u64);
 
-    impl harmos::Track for Take {
+    impl harmos::streams::Track for Take {
         fn label(&self) -> String {
             format!("take_{}", self.0)
         }
@@ -68,7 +68,7 @@ mod streams {
     #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
     pub struct Lens(pub u64);
 
-    impl harmos::Track for Lens {
+    impl harmos::streams::Track for Lens {
         fn label(&self) -> String {
             format!("lens_{}", self.0)
         }
@@ -106,7 +106,8 @@ use std::pin::Pin;
 use serde::de::value::{Error as ValueError, U64Deserializer};
 // Local Imports
 use harmos::{
-    Application, At, Axial, Item, Position, Prefix, Runtime, Stream, Tracked, Transaction,
+    Application, Runtime, state::At, state::Position, state::Transaction, streams::Axial,
+    streams::Item, streams::Prefix, streams::Stream, streams::Tracked,
 };
 
 /* === Constants === */
@@ -154,7 +155,7 @@ impl Application for Studio {
     type Resources = ();
 }
 
-impl harmos::CatalogCodec for Change {
+impl harmos::state::CatalogCodec for Change {
     fn identify(&self) -> (harmos::DefinitionId, u32) {
         match *self {}
     }
@@ -163,7 +164,7 @@ impl harmos::CatalogCodec for Change {
     }
 }
 
-impl harmos::TransactionCatalog<State> for Change {}
+impl harmos::state::TransactionCatalog<State> for Change {}
 
 /* === Public Functions === */
 
@@ -370,17 +371,17 @@ fn contract_scenario() {
                 Some("Portable samples")
             );
 
-            #[cfg(feature = "artifact")]
-            const ENTRIES: &[harmos::artifact::inventory::publications::Entry] =
-                &[harmos::artifact::inventory::publications::Entry::of::<
+            #[cfg(feature = "plugin")]
+            const ENTRIES: &[harmos::plugin::inventory::publications::Entry] =
+                &[harmos::plugin::inventory::publications::Entry::of::<
                     PresentedSample,
                 >()];
-            #[cfg(feature = "artifact")]
+            #[cfg(feature = "plugin")]
             assert_eq!(
                 ENTRIES[0].metadata(),
                 <PresentedSample as StreamSpec>::metadata()
             );
-            #[cfg(feature = "artifact")]
+            #[cfg(feature = "plugin")]
             assert_eq!(
                 ENTRIES[0].row_metadata(),
                 <PresentedSample as StreamSpec>::row_metadata()

@@ -38,6 +38,18 @@ pub struct WireRequest { pub value: String }
 
 pub struct State;
 
+#[facade::operation(
+    harmos_path = ::facade::__harmos,
+    request = Request,
+    response = relative::Reply,
+    id = "alias.echo",
+    policy = OperationPolicy {
+        timeout: Duration::from_secs(2),
+        attempt_timeout: Duration::from_secs(1),
+        retries: RetryPolicy::Never,
+    },
+    version = 1,
+)]
 pub struct Echo;
 
 pub struct Guest;
@@ -50,18 +62,6 @@ pub enum Operations { Echo(Echo) }
 trait ProductPlugin {}
 
 /* === Implementations === */
-impl OperationDeclaration for Echo {
-    type Request = Request;
-    type Response = relative::Reply;
-    const ID: &'static str = "alias.echo";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(2),
-        attempt_timeout: Duration::from_secs(1),
-        retries: RetryPolicy::Never,
-    };
-}
-
-impl facade::__harmos::operations::WireOperation for Echo { const VERSION: u32 = 1; }
 
 impl facade::__harmos::operations::lifecycle::Policy for State {
     const INITIALIZATION_POLICY: OperationPolicy = Echo::POLICY;
@@ -73,11 +73,11 @@ impl facade::__harmos::operations::lifecycle::Policy for Guest {
     const SHUTDOWN_POLICY: OperationPolicy = Echo::POLICY;
 }
 
-#[facade::plugin(id = "alias", context = facade::__harmos::guest::Context, config = String,
+#[facade::plugin(id = "alias", context = facade::__harmos::plugin::guest::Context, config = String,
     streams(self::rows::Reading), provides = Operations, requires = (), harmos_path = ::facade::__harmos)]
 impl ProductPlugin for Guest {}
 
-#[facade::plugin(id = "alias", context = facade::__harmos::sidecar::Supervisor, config = String,
+#[facade::plugin(id = "alias", context = facade::__harmos::plugin::sidecar::Supervisor, config = String,
     restart = "never", streams(self::rows::Reading), provides = Operations, requires = (), harmos_path = ::facade::__harmos)]
 impl ProductPlugin for State {}
 

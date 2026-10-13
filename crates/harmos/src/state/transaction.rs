@@ -224,7 +224,7 @@ pub trait Undoable {
 #[diagnostic::on_unimplemented(
     message = "`{Self}` declares an inverse but never describes it",
     label = "declared without a body",
-    note = "write the body beside the change: `impl harmos::Invert<{S}> for {Self} {{ fn \
+    note = "write the body beside the change: `impl harmos::state::Invert<{S}> for {Self} {{ fn \
             invert(&self, before: &{S}) -> … }}`"
 )]
 pub trait Invert<S>: Undoable + Transaction<S> {
@@ -253,6 +253,7 @@ impl super::record::CatalogCodec for Never {
     fn identify(&self) -> (DefinitionId, u32) {
         match *self {}
     }
+
     fn encode<S: serde::Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
         match *self {}
     }

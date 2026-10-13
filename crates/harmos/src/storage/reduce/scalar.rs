@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 
 // Local Imports
 use crate::MessageError;
-use crate::storage_codec::{
+use crate::storage::codec::{
     Flag, Float, Nested, Signed as SignedInt, Text, Unsigned, Wide, WideNonZero, WideSigned, coded,
     product, variants,
 };
@@ -89,6 +89,7 @@ impl ExactNumber {
             denominator: NonZeroU128::new(denominator.get() / factor).unwrap(),
         }
     }
+
     pub fn checked_add(self, other: Self) -> Result<Self> {
         let common = gcd(self.denominator.get(), other.denominator.get());
         let a = other.denominator.get() / common;
@@ -123,6 +124,7 @@ impl ExactNumber {
             NonZeroU128::new(denominator).unwrap(),
         ))
     }
+
     pub fn divide(self, count: u128) -> Result<Self> {
         let factor = gcd(self.numerator, count);
         let denominator = self
@@ -136,6 +138,7 @@ impl ExactNumber {
             NonZeroU128::new(denominator).unwrap(),
         ))
     }
+
     fn compare(self, other: Self) -> Ordering {
         match (self.negative, other.negative) {
             (true, false) => Ordering::Less,
@@ -168,6 +171,7 @@ impl ScalarValue {
         }
         Ok(())
     }
+
     pub fn kind(&self) -> Option<ScalarKind> {
         Some(match self {
             Self::Missing | Self::Null => return None,
@@ -180,6 +184,7 @@ impl ScalarValue {
             Self::Exact(_) => ScalarKind::Exact,
         })
     }
+
     pub fn compare(&self, other: &Self) -> Result<Ordering> {
         self.check()?;
         other.check()?;

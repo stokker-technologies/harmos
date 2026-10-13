@@ -31,7 +31,7 @@ use super::scope::{Scope, ScopeCore};
 use crate::operations::{Failure, OperationPolicy, ReplaySafety};
 use crate::supervision::instance::{Instance, Outcome, Phase};
 use crate::supervision::{executor, interruptible};
-use crate::{Error, Position, Refusal, Result};
+use crate::{Error, Refusal, Result, state::Position};
 
 /* === Constants === */
 
@@ -77,19 +77,24 @@ pub(super) trait Body<O>: Send {
     fn transferred(&self) -> bool {
         false
     }
+
     fn initialize<'a>(&'a mut self, _scope: Scope<'a>) -> Attempt<'a, ()> {
         Box::pin(std::future::ready(Ok(())))
     }
+
     fn run<'a>(&'a mut self, scope: Scope<'a>) -> Attempt<'a, O>;
     fn classify(&self, _error: &Error) -> Failure {
         Failure::Permanent
     }
+
     fn cleanup_phase(&self) -> Phase {
         Phase::Finalizing
     }
+
     fn finalize(&mut self) -> Finalize<'_> {
         Box::pin(std::future::ready(Ok(())))
     }
+
     fn retain(
         self: Box<Self>,
         outcome: Option<Error>,

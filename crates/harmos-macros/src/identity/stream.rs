@@ -322,7 +322,7 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
 
             quote! {
                 #[automatically_derived]
-                impl #harmos::Tracked for #name {
+                impl #harmos::streams::Tracked for #name {
                     const TRACK: &'static [&'static str] = &[#(#named),*];
 
                     type Track = (#(#components,)*);
@@ -344,7 +344,7 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
 
             quote! {
                 #[automatically_derived]
-                impl #harmos::Axial for #name {
+                impl #harmos::streams::Axial for #name {
                     const AXIS: &'static str = #named;
 
                     fn axis(&self) -> u64 {
@@ -397,7 +397,7 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
             pub const WINDOW: usize = #window;
 
 
-            pub fn definition() -> #harmos::Definition {
+            pub fn definition() -> #harmos::streams::Definition {
                 #harmos::__private::stream_definition::<Self>(#id, #version, #window)
             }
 

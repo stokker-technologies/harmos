@@ -20,7 +20,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 // Third Party Imports
 
 // Local Imports
-use harmos::{Application, Entry, JournalConsumer, Position, Recorded};
+use harmos::{
+    Application, state::Entry, state::Position, state::Recorded, storage::JournalConsumer,
+};
 
 /* === Constants === */
 

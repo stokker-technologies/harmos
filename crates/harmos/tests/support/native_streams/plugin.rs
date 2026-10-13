@@ -26,7 +26,7 @@ use harmos::operations::{
     Operation, OperationDeclaration, OperationPolicy, RetryPolicy, Visibility, WireOperation,
     WireTable,
 };
-use harmos::sidecar::{Refusal, Supervisor};
+use harmos::plugin::sidecar::{Refusal, Supervisor};
 use harmos_contract::listeners::{Context as DeliveryContext, Delivery};
 
 /* === Constants === */
@@ -171,25 +171,30 @@ impl Operation for Consumption {
         _: Self::Context<'a>,
         row: &mut Delivery<Payload>,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Refusal> {
-        if !matches!(row.context(), DeliveryContext::Stream { .. }) {
-            return Err(Refusal::of("expected stream delivery"));
+    ) -> Result<harmos::operations::Response<()>, Refusal> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            if !matches!(row.context(), DeliveryContext::Stream { .. }) {
+                return Err(Refusal::of("expected stream delivery"));
+            }
+            let row = row.row();
+            let expected = self.state.rows.load(Ordering::SeqCst);
+            if row.sequence != expected
+                || !row.bytes.iter().all(|byte| *byte == (expected % 251) as u8)
+            {
+                return Err(Refusal::of("payload loss, reordering or corruption"));
+            }
+            self.state
+                .bytes
+                .fetch_add(row.bytes.len() as u64, Ordering::SeqCst);
+            self.state.rows.store(expected + 1, Ordering::SeqCst);
+            self.state.changed.notify_waiters();
+            if self.state.pause_after == Some(expected + 1) {
+                std::future::pending::<()>().await;
+            }
+            Ok(())
         }
-        let row = row.row();
-        let expected = self.state.rows.load(Ordering::SeqCst);
-        if row.sequence != expected || !row.bytes.iter().all(|byte| *byte == (expected % 251) as u8)
-        {
-            return Err(Refusal::of("payload loss, reordering or corruption"));
-        }
-        self.state
-            .bytes
-            .fetch_add(row.bytes.len() as u64, Ordering::SeqCst);
-        self.state.rows.store(expected + 1, Ordering::SeqCst);
-        self.state.changed.notify_waiters();
-        if self.state.pause_after == Some(expected + 1) {
-            std::future::pending::<()>().await;
-        }
-        Ok(())
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -207,19 +212,23 @@ impl Operation for Reporting {
         _: Self::Context<'a>,
         expected: &mut u64,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Acknowledged, Refusal> {
-        loop {
-            let changed = self.state.changed.notified();
-            let rows = self.state.rows.load(Ordering::SeqCst);
-            if rows >= *expected {
-                return Ok(Acknowledged {
-                    process_id: std::process::id(),
-                    rows,
-                    bytes: self.state.bytes.load(Ordering::SeqCst),
-                });
+    ) -> Result<harmos::operations::Response<Acknowledged>, Refusal> {
+        let result: ::core::result::Result<Acknowledged, Self::Error> = async move {
+            loop {
+                let changed = self.state.changed.notified();
+                let rows = self.state.rows.load(Ordering::SeqCst);
+                if rows >= *expected {
+                    return Ok(Acknowledged {
+                        process_id: std::process::id(),
+                        rows,
+                        bytes: self.state.bytes.load(Ordering::SeqCst),
+                    });
+                }
+                changed.await;
             }
-            changed.await;
         }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 

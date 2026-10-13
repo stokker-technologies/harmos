@@ -19,7 +19,7 @@ use crate::scenario_runtime;
 use support::{Bank, Change, Ledger, alice, booted, deposit, scratch};
 // Local Imports
 use super::support;
-use harmos::{Error, Focus, Origin, Position, Runtime};
+use harmos::{Error, Runtime, state::Focus, state::Origin, state::Position};
 use jsonl_adapter::Jsonl;
 
 /* === Constants === */

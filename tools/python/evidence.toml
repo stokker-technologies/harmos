@@ -1,6 +1,7 @@
 # Native Test Execution And Evidence
 
 [testing.rust]
+native_profile = "release"
 categories = ["integration"]
 
 [testing.python]

@@ -104,18 +104,22 @@ impl Operation for Read {
         _: Self::Context<'a>,
         request: &mut Request,
         _: &mut Self::Endpoints,
-    ) -> std::io::Result<u32> {
-        self.events.lock().unwrap().push("run");
-        let address = std::ptr::from_ref(request) as usize;
-        if let Some(original) = self.address {
-            assert_eq!(original, address);
+    ) -> std::io::Result<harmos::operations::Response<u32>> {
+        let result: ::core::result::Result<u32, Self::Error> = async move {
+            self.events.lock().unwrap().push("run");
+            let address = std::ptr::from_ref(request) as usize;
+            if let Some(original) = self.address {
+                assert_eq!(original, address);
+            }
+            self.address = Some(address);
+            request.value.set(request.value.get() + 1);
+            if request.value.get() == 20 {
+                return Err(std::io::Error::other("retry"));
+            }
+            Ok(request.value.get())
         }
-        self.address = Some(address);
-        request.value.set(request.value.get() + 1);
-        if request.value.get() == 20 {
-            return Err(std::io::Error::other("retry"));
-        }
-        Ok(request.value.get())
+        .await;
+        result.map(::core::convert::Into::into)
     }
     async fn stop(&mut self) -> std::io::Result<()> {
         self.events.lock().unwrap().push("stop");

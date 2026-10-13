@@ -47,9 +47,9 @@ impl<C> StorageManager<C> {
         &self,
         mutation: &MutationId,
         key: &super::SchemaKey,
-        fields: &[crate::schema::Field],
+        schema: &crate::schema::graph::Schema,
     ) -> Result<StorageCursor> {
-        self.admit_schema(key, fields, Some(mutation)).await
+        self.admit_schema(key, schema, Some(mutation)).await
     }
 
     pub async fn write_records_once(
@@ -120,24 +120,29 @@ impl<C> StorageManager<C> {
 /* === Public Functions === */
 
 /* === Private Functions === */
-// Called Only After The Original Schema Preflight Has Bounded The Field Tree.
+// Called After Shared Schema Preflight Has Bounded The Finite Definition Table.
 pub(super) fn schema_mutation<'a>(
     id: &'a MutationId,
     key: &super::SchemaKey,
-    fields: &[crate::schema::Field],
+    schema: &crate::schema::graph::Schema,
 ) -> Result<Mutation<'a>> {
     let mut hash = Sha256::new();
     part(&mut hash, b"storage.write_schema:v1");
     part(&mut hash, key.id.as_str().as_bytes());
     hash.update(key.version.get().to_le_bytes());
-    hash_fields(&mut hash, fields)?;
+    hash.update((schema.root as u64).to_le_bytes());
+    hash.update((schema.definitions.len() as u64).to_le_bytes());
+    for fields in &schema.definitions {
+        hash_fields(&mut hash, fields)?;
+    }
     Ok(Mutation {
         id,
         fingerprint: hash.finalize().into(),
     })
 }
-fn hash_fields(hash: &mut Sha256, fields: &[crate::schema::Field]) -> Result<()> {
-    use crate::schema::{Cardinality, Kind};
+fn hash_fields(hash: &mut Sha256, fields: &[crate::schema::graph::Field]) -> Result<()> {
+    use crate::schema::Cardinality;
+    use crate::schema::graph::Kind;
     hash.update((fields.len() as u64).to_le_bytes());
     for field in fields {
         if field.name.len() > crate::schema::MAX_NAME_BYTES {
@@ -166,8 +171,8 @@ fn hash_fields(hash: &mut Sha256, fields: &[crate::schema::Field]) -> Result<()>
             Kind::Bytes => 8,
             Kind::Message { .. } => 9,
         }]);
-        if let Kind::Message { fields } = &field.kind {
-            hash_fields(hash, fields)?;
+        if let Kind::Message { definition } = field.kind {
+            hash.update((definition as u64).to_le_bytes());
         }
     }
     Ok(())

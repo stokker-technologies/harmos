@@ -23,13 +23,13 @@ use super::{
     MAX_COLUMNS, ObjectBrowseRequest, ObjectBrowseResult, ObjectColumn, ObjectOrder,
     ObjectPredicate, apply_options, invalid, open_request,
 };
-use crate::object_catalog::LOOKUP_MEMORY_BYTES;
+use crate::storage::catalog::LOOKUP_MEMORY_BYTES;
+use crate::storage::manager::MemoryReservation;
+use crate::storage::query::sealed;
 use crate::storage::{
     EncodedObjectQuery, ObjectFields, Query, QueryLimits, QueryOptions, ReadHistory, ReadKind,
     ReadLimits, ReadOrder, ReadSelection, StorageManager, StorageView,
 };
-use crate::storage_runtime::manager::MemoryReservation;
-use crate::storage_runtime::query::sealed;
 use crate::{MemorySize, Result};
 
 /* === Constants === */
@@ -115,14 +115,14 @@ impl ObjectFieldsQuery {
         };
         apply_options(&mut request, &self.options);
         for field in &self.fields.projection {
-            let column = request.column(definition.fields(), field)?;
+            let column = request.column((definition.declaration().fields)(), field)?;
             if request.projection.contains(&column) {
                 return Err(invalid("duplicate projection field"));
             }
             request.projection.push(column);
         }
         for filter in &self.fields.filters {
-            let column = request.column(definition.fields(), &filter.field)?;
+            let column = request.column((definition.declaration().fields)(), &filter.field)?;
             request.predicates.push(ObjectPredicate {
                 column,
                 comparison: filter.comparison,
@@ -130,7 +130,7 @@ impl ObjectFieldsQuery {
             });
         }
         for sort in &self.fields.order {
-            let column = request.column(definition.fields(), &sort.field)?;
+            let column = request.column((definition.declaration().fields)(), &sort.field)?;
             request.order.push(ObjectOrder {
                 column,
                 direction: if sort.descending {
@@ -141,7 +141,7 @@ impl ObjectFieldsQuery {
                 nulls: sort.nulls,
             });
         }
-        request.check_schema(definition.fields())?;
+        request.check_schema((definition.declaration().fields)())?;
         if request.memory_size() > bytes {
             return Err(invalid("scalar plan exceeded its memory claim"));
         }
@@ -154,6 +154,7 @@ impl<C> Query<C> for ObjectFieldsQuery {
     fn options(&self) -> &QueryOptions {
         &self.options
     }
+
     fn preflight(&self, manager: &StorageManager<C>, limits: QueryLimits) -> Result<()> {
         let (request, _claim) = self.prepare(manager, limits)?;
         manager
@@ -161,6 +162,7 @@ impl<C> Query<C> for ObjectFieldsQuery {
             .primary
             .validate_object_browse(&request, limits)
     }
+
     fn open(
         self,
         view: StorageView,

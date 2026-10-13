@@ -28,19 +28,94 @@ use super::*;
 /* === Type Aliases === */
 
 /* === Structs === */
+#[cfg(feature = "grpc")]
+#[harmos::message]
+struct Delivery {
+    bytes: Vec<u8>,
+}
+
+struct SendOnly(Cell<u64>);
 
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
+impl harmos::MemorySize for SendOnly {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+    }
+}
 
 /* === Public Functions === */
 
 /* === Private Functions === */
+fn produced<T: harmos::MemorySize>(
+    storage: &StorageManager,
+    bytes: NonZeroUsize,
+    value: T,
+) -> QueryValue<T> {
+    let preparation = storage.prepare_read_production(bytes).unwrap();
+    let active = preparation.computation().unwrap();
+    let value = preparation.finish(value).unwrap().try_into_value().unwrap();
+    drop(active);
+    value
+}
 
 #[test]
 fn contract_scenario() {
+    {
+        scenario_runtime::check("response_metadata_refuses", || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    let probe = Fixture::new(StorageSettings::default()).await;
+                    let value = produced(&probe.storage, NonZeroUsize::new(16).unwrap(), 7_u64);
+                    let original = probe.storage.status().read_bytes;
+                    let shared = value.try_into_shared().unwrap();
+                    let shared_metadata = probe.storage.status().read_bytes - original;
+                    drop(shared);
+                    probe.finish().await;
+                    let delivery = std::mem::size_of::<harmos::operations::Response<u64>>();
+                    let delivery =
+                        delivery.max(std::mem::size_of::<harmos::operations::StreamItem<u64>>());
+                    let delivery_metadata =
+                        shared_metadata + delivery - std::mem::size_of::<SharedQueryValue<u64>>();
+                    assert!(delivery_metadata > shared_metadata);
+                    for (ceiling, accepted) in [(shared_metadata, false), (delivery_metadata, true)]
+                    {
+                        let settings = StorageSettings {
+                            query_decoded_bytes: NonZeroUsize::new(ceiling).unwrap(),
+                            query_decoded_bytes_ceiling: NonZeroUsize::new(ceiling).unwrap(),
+                            ..StorageSettings::default()
+                        };
+                        let f = Fixture::new(settings).await;
+                        let baseline = f.storage.status().read_bytes;
+                        let produce =
+                            || produced(&f.storage, NonZeroUsize::new(16).unwrap(), 7_u64);
+                        let shared = produce().try_into_shared().unwrap();
+                        assert_eq!(*shared, 7);
+                        drop(shared);
+                        assert_eq!(f.storage.status().read_bytes, baseline);
+                        let value = produce();
+                        value.check_origin(&f.storage).unwrap();
+                        let result = value.try_into_response();
+                        if accepted {
+                            let response = result.unwrap();
+                            assert_eq!(*response, 7);
+                            assert!(f.storage.status().read_bytes > baseline);
+                            drop(response);
+                        } else {
+                            assert!(matches!(result, Err(Error::ResourceExhausted { .. })));
+                        }
+                        assert_eq!(f.storage.status().read_bytes, baseline);
+                        f.finish().await;
+                    }
+                });
+        });
+    }
     {
         scenario_runtime::check("work_retains_header", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
@@ -708,3 +783,322 @@ fn contract_scenario() {
 }
 
 /* === Tests === */
+
+#[cfg(feature = "grpc")]
+#[test]
+fn response_delivery_contract() {
+    use harmos::grpc::{Codec, DecodeSettings, EncodeSettings, Event};
+    use harmos::operations::{Response, StreamItem};
+    use http_body_util::BodyExt;
+    use tonic::codec::Codec as _;
+
+    for (name, cached, refused, cancelled, completion, streamed) in [
+        (
+            "response_encoding_releases",
+            false,
+            false,
+            false,
+            false,
+            false,
+        ),
+        ("response_cache_retains", true, false, false, false, false),
+        (
+            "response_encoding_refuses",
+            false,
+            true,
+            false,
+            false,
+            false,
+        ),
+        ("response_cancel_releases", false, false, true, false, false),
+        (
+            "response_completion_releases",
+            false,
+            false,
+            false,
+            true,
+            false,
+        ),
+        (
+            "owned_stream_encoding_releases",
+            false,
+            false,
+            false,
+            false,
+            true,
+        ),
+        (
+            "owned_stream_cache_retains",
+            true,
+            false,
+            false,
+            false,
+            true,
+        ),
+        (
+            "owned_stream_encoding_refuses",
+            false,
+            true,
+            false,
+            false,
+            true,
+        ),
+        (
+            "owned_stream_cancel_releases",
+            false,
+            false,
+            true,
+            false,
+            true,
+        ),
+    ] {
+        scenario_runtime::check(name, || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    let f = Fixture::new(StorageSettings::default()).await;
+                    let baseline = f.storage.status().read_bytes;
+                    let value = produced(
+                        &f.storage,
+                        NonZeroUsize::new(1024).unwrap(),
+                        Delivery { bytes: vec![7; 64] },
+                    );
+                    value.check_origin(&f.storage).unwrap();
+                    let pointer = value.bytes.as_ptr();
+                    let response = value.try_into_response().unwrap();
+                    assert_eq!(response.bytes.as_ptr(), pointer);
+                    let retained = f.storage.status().read_bytes;
+                    let cache = cached.then(|| response.clone().into_erased());
+                    let payload = harmos::Protobuf::encode_to_vec(&*response);
+                    let limit = NonZeroUsize::new(if refused { 1 } else { 1024 }).unwrap();
+                    let decode = DecodeSettings {
+                        message_bytes: NonZeroUsize::new(1024).unwrap(),
+                        retained_bytes: NonZeroUsize::new(4096).unwrap(),
+                    };
+                    let encode = EncodeSettings {
+                        message_bytes: limit,
+                        buffer_bytes: limit,
+                    };
+                    let mut body: std::pin::Pin<
+                        Box<dyn http_body::Body<Data = bytes::Bytes, Error = tonic::Status> + Send>,
+                    > = if streamed {
+                        let (output, mut input) = harmos::operations::stream::<Delivery>(
+                            harmos::operations::StreamSettings {
+                                items: NonZeroUsize::new(1).unwrap(),
+                                bytes: NonZeroUsize::new(2048).unwrap(),
+                            },
+                        )
+                        .unwrap();
+                        output.send_owned(response).await.unwrap();
+                        assert_eq!(f.storage.status().read_bytes, retained);
+                        let item = input.recv().await.unwrap();
+                        assert_eq!(item.bytes.as_ptr(), pointer);
+                        drop((input, output));
+                        let mut codec = Codec::<
+                            Delivery,
+                            Event<StreamItem<Delivery>, Response<Delivery>>,
+                        >::new(decode, encode)
+                        .unwrap();
+                        Box::pin(tonic::codec::EncodeBody::new_client(
+                            codec.encoder(),
+                            futures_util::stream::once(async move {
+                                if cancelled {
+                                    std::future::pending::<()>().await;
+                                }
+                                Ok(Event::Item(item))
+                            }),
+                            None,
+                            None,
+                        ))
+                    } else if completion {
+                        let mut codec = Codec::<
+                            Delivery,
+                            Event<StreamItem<Delivery>, Response<Delivery>>,
+                        >::new(decode, encode)
+                        .unwrap();
+                        Box::pin(tonic::codec::EncodeBody::new_client(
+                            codec.encoder(),
+                            futures_util::stream::once(
+                                async move { Ok(Event::Completion(response)) },
+                            ),
+                            None,
+                            None,
+                        ))
+                    } else {
+                        let mut codec =
+                            Codec::<Delivery, Response<Delivery>>::new(decode, encode).unwrap();
+                        Box::pin(tonic::codec::EncodeBody::new_client(
+                            codec.encoder(),
+                            futures_util::stream::once(async move {
+                                if cancelled {
+                                    std::future::pending::<()>().await;
+                                }
+                                Ok(response)
+                            }),
+                            None,
+                            None,
+                        ))
+                    };
+                    assert_eq!(f.storage.status().read_bytes, retained);
+                    if cancelled {
+                        use futures_util::FutureExt;
+                        assert!(body.frame().now_or_never().is_none());
+                        assert_eq!(f.storage.status().read_bytes, retained);
+                    } else {
+                        let frame = body.frame().await.unwrap();
+                        if refused {
+                            let error = frame.unwrap_err();
+                            // Tonic's Framing Body Wraps Encoder Refusals As Internal.
+                            assert_eq!(error.code(), tonic::Code::Internal);
+                            assert!(
+                                error
+                                    .message()
+                                    .contains("gRPC encoded message exceeds wire ceiling")
+                            );
+                        } else {
+                            let data = frame.unwrap().into_data().unwrap();
+                            let expected = if completion || streamed {
+                                let mut bytes = vec![
+                                    if streamed { 10 } else { 18 },
+                                    u8::try_from(payload.len()).unwrap(),
+                                ];
+                                bytes.extend_from_slice(&payload);
+                                bytes
+                            } else {
+                                payload
+                            };
+                            assert_eq!(&data[5..], &expected);
+                        }
+                        assert_eq!(
+                            f.storage.status().read_bytes,
+                            if cached { retained } else { baseline }
+                        );
+                    }
+                    drop(body);
+                    assert_eq!(
+                        f.storage.status().read_bytes,
+                        if cached { retained } else { baseline }
+                    );
+                    if let Some(cache) = &cache {
+                        let restored = cache.clone().restore::<Delivery>().unwrap();
+                        assert_eq!(restored.bytes.as_ptr(), pointer);
+                    }
+                    drop(cache);
+                    assert_eq!(f.storage.status().read_bytes, baseline);
+                    f.finish().await;
+                });
+        });
+    }
+}
+
+#[test]
+fn owned_stream_admission() {
+    use futures_util::FutureExt;
+    use harmos::operations::{OutputEndpoint, StreamSettings, stream};
+
+    for (name, mode) in [
+        ("owned_stream_receiver_drop", 0),
+        ("owned_stream_closed_send", 1),
+        ("owned_stream_capacity_refusal", 2),
+        ("owned_stream_pending_cancel", 3),
+        ("owned_stream_budget_relay", 4),
+    ] {
+        scenario_runtime::check(name, || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    let f = Fixture::new(StorageSettings::default()).await;
+                    let baseline = f.storage.status().read_bytes;
+                    let produce = || {
+                        produced(&f.storage, NonZeroUsize::new(1024).unwrap(), vec![7_u8; 64])
+                            .try_into_response()
+                            .unwrap()
+                    };
+                    let response = produce();
+                    let pointer = response.as_ptr();
+                    let retained = f.storage.status().read_bytes;
+                    let settings = StreamSettings {
+                        items: NonZeroUsize::new(1).unwrap(),
+                        bytes: NonZeroUsize::new(if mode == 2 { 1 } else { 2048 }).unwrap(),
+                    };
+                    let (output, mut input) = stream::<Vec<u8>>(settings).unwrap();
+                    if mode == 1 {
+                        input.close();
+                    }
+                    let sent = output.send_owned(response).await;
+                    if mode == 1 || mode == 2 {
+                        assert!(matches!(
+                            sent,
+                            Err(Error::NotReady { .. } | Error::ResourceExhausted { .. })
+                        ));
+                        assert!(!output.transferred());
+                        assert_eq!(f.storage.status().read_bytes, baseline);
+                    } else {
+                        sent.unwrap();
+                        assert!(output.transferred());
+                        assert_eq!(f.storage.status().read_bytes, retained);
+                        if mode == 3 {
+                            let second = produce();
+                            assert!(f.storage.status().read_bytes > retained);
+                            let mut sending = Box::pin(output.send_owned(second));
+                            assert!(sending.as_mut().now_or_never().is_none());
+                            assert!(f.storage.status().read_bytes > retained);
+                            drop(sending);
+                            assert_eq!(f.storage.status().read_bytes, retained);
+                        }
+                        if mode == 4 {
+                            let item = input.recv().await.unwrap();
+                            let (relay, mut received) = stream::<Vec<u8>>(settings).unwrap();
+                            relay.send_item(item).await.unwrap();
+                            assert_eq!(f.storage.status().read_bytes, retained);
+                            let delivered = received.recv().await.unwrap();
+                            assert_eq!(delivered.as_ptr(), pointer);
+                            assert!(matches!(
+                                delivered.into_request(),
+                                Err(harmos_contract::operations::streaming::Error::Ownership)
+                            ));
+                            assert_eq!(f.storage.status().read_bytes, baseline);
+                        }
+                    }
+                    drop(input);
+                    assert_eq!(f.storage.status().read_bytes, baseline);
+                    f.finish().await;
+                });
+        });
+    }
+    scenario_runtime::check("ordinary_stream_send_only", || {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let (output, mut input) = stream::<SendOnly>(StreamSettings {
+                    items: NonZeroUsize::new(1).unwrap(),
+                    bytes: NonZeroUsize::new(64).unwrap(),
+                })
+                .unwrap();
+                let receiver = tokio::spawn(async move {
+                    input
+                        .recv()
+                        .await
+                        .unwrap()
+                        .into_request()
+                        .unwrap()
+                        .0
+                        .0
+                        .get()
+                });
+                output
+                    .send_with(std::mem::size_of::<SendOnly>(), || {
+                        Ok(SendOnly(Cell::new(7)))
+                    })
+                    .await
+                    .unwrap();
+                assert_eq!(receiver.await.unwrap(), 7);
+            });
+    });
+}

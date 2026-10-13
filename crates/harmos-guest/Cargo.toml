@@ -11,11 +11,6 @@ version = { workspace = true }
 # === Package Targets ===
 
 [[bin]]
-name = "harmos-component"
-path = "src/bin/harmos-component.rs"
-required-features = ["componentize"]
-
-[[bin]]
 name = "harmos-component-fixture"
 path = "tests/fixtures/componentizer.rs"
 required-features = ["test-component"]
@@ -36,7 +31,7 @@ streaming = ["harmos-contract/streaming", "wit-bindgen?/inter-task-wakeup"]
 # authoring at all: `Declaration::inspect` reads an already-built component's
 # custom sections, and a native host that only does that has no world to bind.
 kit = ["dep:wit-bindgen"]
-componentize = ["dep:wit-component", "harmos-contract/reflection"]
+componentize = ["dep:wit-component"]
 test-component = ["componentize", "kit"]
 
 # === Dependencies ===

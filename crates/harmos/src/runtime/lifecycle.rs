@@ -26,7 +26,7 @@ use tokio::task::JoinHandle;
 use super::{Handle, Participants, Runtime, STOP_GRACE, Stopping};
 use crate::storage::StorageManager;
 use crate::supervision::cleanup::{Cleanup, Finalize, Resource};
-use crate::{Application, Error, Position, Result};
+use crate::{Application, Error, Result, state::Position};
 
 /* === Constants === */
 
@@ -117,14 +117,23 @@ impl<A: Application> Runtime<A> {
         self.closing.store(true, Ordering::Release);
         #[cfg(feature = "grpc")]
         self.grpc.close_admission();
-        // Notify Residents Before Cancelling Their In-Flight Calls
-        self.services.close_admission();
-        self.operations.close_admission();
-        self.observers.close_admission();
-        #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+        #[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
+        self.plugin.close_admission();
+        #[cfg(not(all(feature = "plugin", not(target_arch = "wasm32"))))]
         {
-            self.records.stop_listeners();
-            self.streams.stop_listeners();
+            // Notify Residents Before Cancelling Their In-Flight Calls
+            self.services.close_admission();
+            self.operations.close_admission();
+            self.observers.close_admission();
+            #[cfg(any(
+                feature = "plugin",
+                feature = "plugin-guest",
+                feature = "plugin-sidecar"
+            ))]
+            {
+                self.records.stop_listeners();
+                self.streams.stop_listeners();
+            }
         }
         let (cleanup, completed) = {
             let mut stopping = self.stopping.lock().expect("runtime transition is healthy");
@@ -177,24 +186,57 @@ impl<A: Application> Resource for Shutdown<A> {
 impl<A: Application> Shutdown<A> {
     async fn finish(&mut self) -> Result<()> {
         if let Drain::Running(supervisor) = &mut self.state {
+            #[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
+            {
+                self.progress.send_replace("plugins");
+                self.handles.plugin.shutdown().await?;
+            }
+            self.handles.services.close_admission();
+            self.handles.operations.close_admission();
+            self.handles.observers.close_admission();
+            #[cfg(any(
+                feature = "plugin",
+                feature = "plugin-guest",
+                feature = "plugin-sidecar"
+            ))]
+            {
+                self.handles.records.stop_listeners();
+                self.handles.streams.stop_listeners();
+            }
             self.progress.send_replace("observers and listeners");
             let observers = self.handles.observers.shutdown();
-            #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+            #[cfg(any(
+                feature = "plugin",
+                feature = "plugin-guest",
+                feature = "plugin-sidecar"
+            ))]
             let (observers, records, streams) = tokio::join!(
                 observers,
                 self.handles.records.shutdown_listeners(),
                 self.handles.streams.shutdown_listeners(),
             );
-            #[cfg(not(any(feature = "load", feature = "guest-host", feature = "sidecar-host")))]
+            #[cfg(not(any(
+                feature = "plugin",
+                feature = "plugin-guest",
+                feature = "plugin-sidecar"
+            )))]
             let observers = observers.await;
             if self.handles.observers.cleanup_pending() {
                 return Err(observers.err().unwrap_or(Error::NotReady {
                     domain: "observer cleanup",
                 }));
             }
-            #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+            #[cfg(any(
+                feature = "plugin",
+                feature = "plugin-guest",
+                feature = "plugin-sidecar"
+            ))]
             records?;
-            #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+            #[cfg(any(
+                feature = "plugin",
+                feature = "plugin-guest",
+                feature = "plugin-sidecar"
+            ))]
             streams?;
             self.progress.send_replace("application services");
             let services = self.handles.services.shutdown_application().await;

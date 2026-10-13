@@ -71,7 +71,6 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
     let mut seen = std::collections::BTreeSet::new();
     let mut variants = std::collections::BTreeSet::new();
     let mut members = Vec::new();
-    let mut projections = Vec::new();
     for variant in &mut declared.variants {
         if !variants.insert(variant.ident.to_string()) {
             return Err(Error::new_spanned(
@@ -94,15 +93,11 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
             .attrs
             .iter()
             .any(|attribute| attribute.path().is_ident("operation"))
-            && !declared.generics.params.is_empty()
         {
             return Err(Error::new_spanned(
                 variant,
-                "inline operation declarations require a non-generic catalog",
+                "declare operations on structs in vertical files; catalogs only assemble types",
             ));
-        }
-        if let Some(projected) = super::operation::project(variant, &declared.vis, &sdk)? {
-            projections.push(projected);
         }
         let Fields::Unnamed(fields) = &variant.fields else {
             return Err(Error::new_spanned(
@@ -252,7 +247,6 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
     });
 
     Ok(quote! {
-        #(#projections)*
 
         // Catalog variants name types; projecting them never constructs a value.
         #[allow(dead_code, clippy::large_enum_variant, clippy::enum_variant_names)]

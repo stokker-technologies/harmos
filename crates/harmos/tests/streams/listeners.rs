@@ -22,14 +22,14 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 // Local Imports
-use harmos::load::{
-    PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions,
-    PluginEndpoint, PluginLifecycle, PluginLifecycleAuthority, PluginManager, PluginScope,
-    PluginTransition, Router,
-};
 use harmos::operations::{
     Context, Operation, OperationDeclaration, OperationPolicy, PluginRegistration, RetryPolicy,
     Visibility, WireDeclaration, WireOperation,
+};
+use harmos::plugin::{
+    PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions,
+    PluginEndpoint, PluginLifecycle, PluginLifecycleAuthority, PluginManager, PluginScope,
+    PluginTransition, Router,
 };
 use harmos::schema::{Described, Field};
 use harmos::streams::PluginListenerRegistration;
@@ -63,7 +63,7 @@ struct Model;
 struct Heard<const FIRST: bool>;
 
 struct Owner {
-    streams: harmos::StreamManager<Model>,
+    streams: harmos::streams::StreamManager<Model>,
     seen: Mutex<Seen>,
     observed: Notify,
     started: Notify,
@@ -88,12 +88,12 @@ struct Resources {
 }
 
 struct Host {
-    operations: harmos::OperationManager,
+    operations: harmos::operations::OperationManager,
     owner: Arc<Owner>,
     scope: Option<PluginScope>,
     fail_start: bool,
     managed: bool,
-    lease: Option<Arc<harmos::PublicationLease>>,
+    lease: Option<Arc<harmos::streams::PublicationLease>>,
     skip_sources: bool,
     drop_before_commit: bool,
     original_drop: Arc<AtomicUsize>,
@@ -131,7 +131,7 @@ enum Failed {
 /* === Implementations === */
 impl Fact {
     const DEFINITION: (&'static str, u32, usize) = ("listener.samples", 1, 512);
-    fn definition() -> harmos::Definition {
+    fn definition() -> harmos::streams::Definition {
         harmos::__private::stream_definition::<Self>(
             Self::DEFINITION.0,
             Self::DEFINITION.1,
@@ -159,7 +159,11 @@ impl Drop for Fact {
 }
 
 impl Described for Fact {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Fact));
     const FIELDS: &'static [Field] = WireFact::FIELDS;
+    const MARKER: &'static [u8] = &harmos::schema::declaration::encode::<
+        { harmos::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
 }
 
 impl Message for Fact {
@@ -180,7 +184,7 @@ impl Message for Fact {
 
 impl harmos::Application for Model {
     type State = ();
-    type Transaction = harmos::Never;
+    type Transaction = harmos::state::Never;
     type Record = ();
     type Streams = Rows;
     type Resources = ();
@@ -234,28 +238,32 @@ impl<const FIRST: bool> Operation for Hearing<FIRST> {
         _: Self::Context<'a>,
         request: &mut Delivery<WireFact>,
         _endpoints: &mut Self::Endpoints,
-    ) -> std::result::Result<(), Failed> {
-        self.wait_cleanup = FIRST && request.row().value == 0 && self.resources.block;
-        assert!(matches!(request.context(), DeliveryContext::Stream { .. }));
-        self.resources
-            .seen
-            .lock()
-            .unwrap()
-            .push((FIRST, request.row().value, request.context()));
-        self.resources.observed.notify_one();
-        if FIRST && request.row().value == 0 {
-            if self.resources.reenter {
-                self.resources.streams.publish(fact(9));
+    ) -> std::result::Result<harmos::operations::Response<()>, Failed> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            self.wait_cleanup = FIRST && request.row().value == 0 && self.resources.block;
+            assert!(matches!(request.context(), DeliveryContext::Stream { .. }));
+            self.resources.seen.lock().unwrap().push((
+                FIRST,
+                request.row().value,
+                request.context(),
+            ));
+            self.resources.observed.notify_one();
+            if FIRST && request.row().value == 0 {
+                if self.resources.reenter {
+                    self.resources.streams.publish(fact(9));
+                }
+                if self.resources.block {
+                    self.resources.started.notify_one();
+                    self.resources.resume.notified().await;
+                }
+                if self.resources.fail_attempt.load(Ordering::SeqCst) {
+                    return Err(Failed::Scripted);
+                }
             }
-            if self.resources.block {
-                self.resources.started.notify_one();
-                self.resources.resume.notified().await;
-            }
-            if self.resources.fail_attempt.load(Ordering::SeqCst) {
-                return Err(Failed::Scripted);
-            }
+            Ok(())
         }
-        Ok(())
+        .await;
+        result.map(::core::convert::Into::into)
     }
     async fn finalize(&mut self) -> std::result::Result<(), Failed> {
         self.resources.finalizations.fetch_add(1, Ordering::SeqCst);
@@ -424,12 +432,16 @@ fn publication() -> harmos_contract::StreamDeclaration {
         id: "listener.samples".into(),
         schema: 1,
         window: 512,
-        fields: Fact::FIELDS.to_vec(),
+        row: harmos::schema::graph::Schema::from_declaration(
+            <Fact as harmos::schema::Described>::DEFINITION,
+            &harmos::config::SchemaSettings::default(),
+        )
+        .unwrap(),
     }
 }
 
-fn publication_row(value: u32) -> harmos::PublicationRow {
-    harmos::PublicationRow {
+fn publication_row(value: u32) -> harmos::streams::PublicationRow {
+    harmos::streams::PublicationRow {
         payload: WireFact { value }.encode_to_vec(),
         published_unix_micros: None,
         context: None,
@@ -454,7 +466,11 @@ fn candidate(managed: bool) -> PluginDefinitions {
                 Source::Stream {
                     id: "listener.samples".into(),
                     schema_ordinal: 1,
-                    fields: std::borrow::Cow::Borrowed(Fact::FIELDS),
+                    row: harmos::schema::graph::Schema::from_declaration(
+                        <Fact as harmos::schema::Described>::DEFINITION,
+                        &harmos::config::SchemaSettings::default(),
+                    )
+                    .unwrap(),
                 },
                 callback,
             )
@@ -508,7 +524,10 @@ async fn setup_source(
         .register(if managed { vec![] } else { Rows::catalog() })
         .register(Lanes::catalog())
         .tail(tail)
-        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+        .operation_settings(harmos::operations::Settings {
+            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+            ..Default::default()
+        })
         .runtime()
         .await
         .unwrap();
@@ -658,7 +677,7 @@ fn contract_scenario() {
                     assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
                     assert_eq!(
                         manager.status("listener").unwrap().state,
-                        harmos::load::PluginState::Failed
+                        harmos::plugin::PluginState::Failed
                     );
                     assert!(matches!(
                         host.view
@@ -695,13 +714,16 @@ fn contract_scenario() {
                     }
                     impl harmos::observers::ObserverBackend for BlockedObserver {
                         type Resources = Gates;
-                        fn definition(&self) -> harmos::observers::ObserverDefinition {
-                            harmos::observers::ObserverDefinition {
+                        fn definition(
+                            &self,
+                        ) -> harmos::Result<harmos::observers::ObserverDefinition>
+                        {
+                            Ok(harmos::observers::ObserverDefinition {
                                 id: "blocked-cleanup".into(),
                                 interval: Duration::from_secs(10),
                                 streams: vec![],
                                 demand_keys: vec![],
-                            }
+                            })
                         }
                         async fn run(
                             &self,
@@ -1010,7 +1032,7 @@ fn contract_scenario() {
                     ));
                     assert_eq!(
                         manager.status("listener").unwrap().state,
-                        harmos::load::PluginState::Failed
+                        harmos::plugin::PluginState::Failed
                     );
                     assert_eq!(host.owner.seen.lock().unwrap().len(), 2);
                     manager.shutdown(&mut host).await.unwrap();

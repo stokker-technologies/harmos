@@ -44,6 +44,7 @@ type Child = std::pin::Pin<
 pub struct Context {
     pub(super) context: Option<[u8; 32]>,
     pub(super) generation_context: Option<[u8; 32]>,
+    pub(super) call: std::sync::Arc<crate::operations::CallContext>,
 }
 
 /* === Enums === */
@@ -56,11 +57,25 @@ impl harmos_contract::plugin::Context for Context {
         Self {
             context: self.context,
             generation_context: Some(token),
+            call: self.call.clone(),
         }
     }
 }
 
 impl Context {
+    pub fn context(&self) -> &crate::operations::CallContext {
+        &self.call
+    }
+
+    pub fn with_value<T: crate::operations::ContextValue>(
+        &self,
+        value: T,
+    ) -> Result<Self, crate::operations::ContextError> {
+        let mut child = self.clone();
+        child.call = std::sync::Arc::new(self.call.with_value(value)?);
+        Ok(child)
+    }
+
     pub(super) fn calling_context(&self) -> Result<[u8; 32], crate::OperationRefusal> {
         if self.context.is_none() && self.generation_context.is_none() {
             return Err(crate::OperationRefusal::new(
@@ -85,6 +100,7 @@ impl Context {
         let call = crate::operations::WireChildCall {
             context,
             generation_context: self.generation_context,
+            values: self.call.portable(),
             operation: O::ID.to_owned(),
             payload: request.encode_to_vec(),
         };

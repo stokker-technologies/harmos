@@ -104,7 +104,7 @@ impl<C> StorageManager<C> {
                         history: self.inner.primary.history().clone(),
                         id: metadata.id.clone(),
                     },
-                    session: Some(Session::new(self.inner.settings.file_session_timeout)),
+                    session: Some(Session::token(self.inner.settings.file_session_timeout)),
                     mutation: Some(Mutation {
                         id: mutation.clone(),
                         kind: Kind::Create,

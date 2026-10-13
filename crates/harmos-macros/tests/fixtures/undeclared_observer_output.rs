@@ -45,16 +45,16 @@ trait ProductPlugin {}
 
 /* === Implementations === */
 impl harmos::operations::lifecycle::Policy for Bridge {
-    const INITIALIZATION_POLICY: harmos::OperationPolicy = controls::POLICY;
-    const SHUTDOWN_POLICY: harmos::OperationPolicy = controls::POLICY;
+    const INITIALIZATION_POLICY: harmos::operations::OperationPolicy = controls::POLICY;
+    const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = controls::POLICY;
 }
 
 #[harmos::observer(interval_ms = 5, streams(Output))]
 impl Watch {
-    async fn observe(&mut self, _: &harmos::sidecar::ObserverContext<'_, ()>) -> Result<(), harmos::sidecar::Refusal> { Ok(()) }
+    async fn observe(&mut self, _: &harmos::plugin::sidecar::ObserverContext<'_, ()>) -> Result<(), harmos::plugin::sidecar::Refusal> { Ok(()) }
 }
 
-#[harmos::plugin(id = "missing-output", context = harmos::sidecar::Supervisor, config = (),
+#[harmos::plugin(id = "missing-output", context = harmos::plugin::sidecar::Supervisor, config = (),
     provides = controls::Operations, requires = (), observers = Observers,
     observer_controls(controls::Start, controls::Stop), restart = "never")]
 impl ProductPlugin for Bridge {}

@@ -26,8 +26,8 @@ use std::time::Duration;
 // Local Imports
 use super::{assembly, service_status, support::Bank};
 use harmos::{
-    FactSource, Fault, Position, Resident, Runtime, ServiceExit, ServicePolicy, ServiceStatus,
-    SystemFact,
+    Runtime, services::Fault, services::Resident, services::ServiceExit, services::ServicePolicy,
+    services::ServiceStatus, state::FactSource, state::Position, state::SystemFact,
 };
 
 /* === Constants === */
@@ -56,7 +56,7 @@ impl Resident<Bank> for MutableAdapter {
 
     async fn attempt(
         &mut self,
-        mut context: harmos::Service<Bank>,
+        mut context: harmos::services::Service<Bank>,
     ) -> Result<(), Fault<Self::Error>> {
         self.attempts += 1;
         let attempt = self.attempts;

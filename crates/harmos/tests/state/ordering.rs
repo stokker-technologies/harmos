@@ -21,7 +21,7 @@ use futures_core::Stream;
 use support::{Change, Deposit, deposit, runtime};
 // Local Imports
 use crate::support;
-use harmos::{Entry, Position};
+use harmos::{state::Entry, state::Position};
 
 /* === Constants === */
 

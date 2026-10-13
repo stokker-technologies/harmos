@@ -22,8 +22,9 @@ use tokio::sync::watch;
 use crate::state::{Inverting, Undos, dispatch::Dispatch, replay};
 use crate::storage::{ReadLimits, RecoveryPosition, StorageManager};
 use crate::{
-    Application, At, Entry, Envelope, Incompatible, Kind, Payload, Position, Prepared, Receipt,
-    RecordCatalog, Recorded, RequestKey, StateManager, SystemFact,
+    Application, runtime::Incompatible, state::At, state::Entry, state::Envelope, state::Kind,
+    state::Position, state::Prepared, state::Receipt, state::RecordCatalog, state::Recorded,
+    state::RequestKey, state::StateManager, state::SystemFact, storage::Payload,
 };
 
 /* === Constants === */
@@ -106,7 +107,7 @@ impl<A: Application> StateManager<A> {
                     > snapshot
                         .through
                         .sequence
-                        .saturating_mul((crate::Records::MAX_RECORDS + 1) as u64)
+                        .saturating_mul((crate::state::Records::MAX_RECORDS + 1) as u64)
             {
                 return Err(Incompatible::unreadable(
                     "invalid snapshot logical frontier",
@@ -191,7 +192,7 @@ impl Group<serde_json::Value> {
         let first = self.entries.first().ok_or_else(invalid)?;
         let last = self.entries.last().ok_or_else(invalid)?;
         if self.version != 1
-            || self.entries.len() > crate::Records::MAX_RECORDS + 1
+            || self.entries.len() > crate::state::Records::MAX_RECORDS + 1
             || before.0.checked_add(1) != Some(first.position.0)
         {
             return Err(invalid());

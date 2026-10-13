@@ -64,6 +64,8 @@ fn contract_scenario() {
             fs::create_dir_all(&output).expect("the compile-test output directory is available");
 
             for (fixture, expected) in [
+                ("operation_on_variant.rs", "catalogs only assemble types"),
+                ("operation_with_fields.rs", "non-generic unit struct"),
                 (
                     "unsafe_id.rs",
                     "a stream id must be a filesystem-safe dotted name with non-keyword ASCII segments",

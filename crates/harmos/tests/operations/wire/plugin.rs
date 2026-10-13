@@ -26,16 +26,16 @@ use super::{
     Compute, ComputeCall, Failed, Implemented, Lanes, Operations, Owner, Parent, ParentCall,
     ParentOwner, Request, Response, SlowCall, State, request, runtime,
 };
-use harmos::load::{
-    PluginArtifact, PluginBackend, PluginCaller, PluginContributions, PluginDefinition,
-    PluginDefinitions, PluginEndpoint, PluginLifecycle, PluginManager, PluginScope,
-    PluginTransition, Requirement, Router,
-};
 use harmos::operations::{
     CacheKey, Context, Failure, OperationDeclaration, OperationPolicy, PluginRegistration,
     Visibility, WireDeclaration, WireOperation,
 };
-use harmos::{Error, Message, OperationManager, Result};
+use harmos::plugin::{
+    PluginArtifact, PluginBackend, PluginCaller, PluginContributions, PluginDefinition,
+    PluginDefinitions, PluginEndpoint, PluginLifecycle, PluginManager, PluginScope,
+    PluginTransition, Requirement, Router,
+};
+use harmos::{Error, Message, Result, operations::OperationManager};
 
 /* === Constants === */
 
@@ -131,8 +131,10 @@ impl harmos::operations::Operation for Selecting {
         _: Self::Context<'ctx>,
         request: &mut Text,
         _endpoints: &mut Self::Endpoints,
-    ) -> std::result::Result<String, Failed> {
-        Ok(format!("{}:{}", self.resources.0, request.value))
+    ) -> std::result::Result<harmos::operations::Response<String>, Failed> {
+        let result: ::core::result::Result<String, Self::Error> =
+            async move { Ok(format!("{}:{}", self.resources.0, request.value)) }.await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -150,7 +152,7 @@ impl PluginLifecycle for SelectedHost {
         &mut self,
         definition: &PluginDefinition,
         router: &Router,
-        _: &harmos::load::PluginLifecycleAuthority<'_>,
+        _: &harmos::plugin::PluginLifecycleAuthority<'_>,
         backend: &mut Backends,
     ) -> Result<()> {
         let PluginBackend::Embedded(resources) = backend else {
@@ -176,7 +178,7 @@ impl PluginLifecycle for SelectedHost {
     }
     async fn stop(
         _: &PluginDefinition,
-        _: &harmos::load::PluginLifecycleAuthority<'_>,
+        _: &harmos::plugin::PluginLifecycleAuthority<'_>,
         backend: &mut Backends,
     ) -> Result<()> {
         let PluginBackend::Embedded(resources) = backend else {
@@ -223,8 +225,10 @@ impl harmos::operations::Operation for SharedCall {
         context: Self::Context<'ctx>,
         request: &mut Request,
         _endpoints: &mut Self::Endpoints,
-    ) -> std::result::Result<Response, Failed> {
-        self.owner.compute(request, &mut self.state, context).await
+    ) -> std::result::Result<harmos::operations::Response<Response>, Failed> {
+        let result: ::core::result::Result<Response, Self::Error> =
+            async move { self.owner.compute(request, &mut self.state, context).await }.await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -271,14 +275,18 @@ impl harmos::operations::Operation for Cleaning {
         _: Self::Context<'ctx>,
         request: &mut Text,
         _endpoints: &mut Self::Endpoints,
-    ) -> std::result::Result<String, Failed> {
-        self.wait_cleanup |= request.value == "block";
-        self.resources.attempted.fetch_add(1, Ordering::SeqCst);
-        if request.value == "block" {
-            self.resources.started.notify_one();
-            std::future::pending::<()>().await;
+    ) -> std::result::Result<harmos::operations::Response<String>, Failed> {
+        let result: ::core::result::Result<String, Self::Error> = async move {
+            self.wait_cleanup |= request.value == "block";
+            self.resources.attempted.fetch_add(1, Ordering::SeqCst);
+            if request.value == "block" {
+                self.resources.started.notify_one();
+                std::future::pending::<()>().await;
+            }
+            Ok(request.value.clone())
         }
-        Ok(request.value.clone())
+        .await;
+        result.map(::core::convert::Into::into)
     }
     async fn finalize(&mut self) -> std::result::Result<(), Failed> {
         self.resources.finalized.fetch_add(1, Ordering::SeqCst);
@@ -318,7 +326,7 @@ impl PluginLifecycle for Host {
         &mut self,
         definition: &PluginDefinition,
         router: &Router,
-        _authority: &harmos::load::PluginLifecycleAuthority<'_>,
+        _authority: &harmos::plugin::PluginLifecycleAuthority<'_>,
         backend: &mut Backends,
     ) -> Result<()> {
         let PluginBackend::Embedded(resources) = backend else {
@@ -388,7 +396,7 @@ impl PluginLifecycle for Host {
 
     async fn stop(
         _definition: &PluginDefinition,
-        _authority: &harmos::load::PluginLifecycleAuthority<'_>,
+        _authority: &harmos::plugin::PluginLifecycleAuthority<'_>,
         backend: &mut Backends,
     ) -> Result<()> {
         let PluginBackend::Embedded(resources) = backend else {
@@ -445,7 +453,7 @@ fn selected_candidate(provider: &str, first: bool) -> PluginDefinitions {
     PluginDefinitions::new_with_providers(
         definitions,
         [],
-        [harmos::load::OperationProvider {
+        [harmos::plugin::OperationProvider {
             consumer: "client".into(),
             operation: harmos::Identifier::new(Selected::ID).unwrap(),
             provider: provider.into(),
@@ -1165,8 +1173,8 @@ pub(super) fn contract_scenario() {
                     let host_response = runtime.operations.call::<Shared>(keyed()).await.unwrap();
                     let first = caller.call::<Shared>(keyed()).await.unwrap();
                     let again = caller.call::<Shared>(keyed()).await.unwrap();
-                    assert!(!Arc::ptr_eq(&host_response, &first));
-                    assert!(Arc::ptr_eq(&first, &again));
+                    assert!(!host_response.ptr_eq(&first));
+                    assert!(first.ptr_eq(&again));
                     assert_eq!(host.owner.runs.load(std::sync::atomic::Ordering::SeqCst), 2);
 
                     // Only the client generation changes; the provider binding/cache stays live.
@@ -1188,11 +1196,11 @@ pub(super) fn contract_scenario() {
                     ));
                     let replacement = runtime.operations.caller(&host.callers["client"]).unwrap();
                     let next = replacement.call::<Shared>(keyed()).await.unwrap();
-                    assert!(!Arc::ptr_eq(&first, &next));
-                    assert!(Arc::ptr_eq(
-                        &host_response,
-                        &runtime.operations.call::<Shared>(keyed()).await.unwrap()
-                    ));
+                    assert!(!first.ptr_eq(&next));
+                    assert!(
+                        host_response
+                            .ptr_eq(&runtime.operations.call::<Shared>(keyed()).await.unwrap())
+                    );
                     manager.shutdown(&mut host).await.unwrap();
                     runtime.stop().await.unwrap();
                 });
@@ -1433,7 +1441,7 @@ pub(super) fn contract_scenario() {
                         let harmos::Error::PluginLifecycle { source } = &error else {
                             panic!("plugin lifecycle failure is retained: {error:?}");
                         };
-                        let harmos::load::PluginFailure::Start { source, .. } = source.as_ref()
+                        let harmos::plugin::PluginFailure::Start { source, .. } = source.as_ref()
                         else {
                             panic!("initialization failure is retained: {error:?}");
                         };
@@ -1444,16 +1452,16 @@ pub(super) fn contract_scenario() {
                             assert!(
                                 matches!(
                                     source.as_ref(),
-                                    harmos::load::PluginFailure::Routing(
-                                        harmos::load::DispatchError::Unavailable
+                                    harmos::plugin::PluginFailure::Routing(
+                                        harmos::plugin::DispatchError::Unavailable
                                     )
                                 ),
                                 "dropping the original receipt closes staging: {error:?}"
                             );
                         } else {
                             assert!(
-                                matches!(source.as_ref(), harmos::load::PluginFailure::Routing(
-                harmos::load::DispatchError::IncompleteOperations { owner }
+                                matches!(source.as_ref(), harmos::plugin::PluginFailure::Routing(
+                harmos::plugin::DispatchError::IncompleteOperations { owner }
             ) if owner == "fixture"),
                                 "{error:?}"
                             );
@@ -1700,8 +1708,11 @@ where
         output: channel,
         opening_timeout: std::time::Duration::from_secs(1),
     };
-    let mut codec = harmos::grpc::Codec::<Text, Arc<Text>>::new(decode, encode).unwrap();
-    let message = futures_util::stream::iter([Ok(Arc::new(Text::from("grpc")))]);
+    let mut codec =
+        harmos::grpc::Codec::<Text, harmos::operations::Response<Text>>::new(decode, encode)
+            .unwrap();
+    let message =
+        futures_util::stream::iter([Ok(harmos::operations::Response::new(Text::from("grpc")))]);
     let body = tonic::codec::EncodeBody::new_client(codec.encoder(), message, None, Some(4096));
     let request = tonic::codegen::http::Request::builder()
         .header("content-type", "application/grpc")

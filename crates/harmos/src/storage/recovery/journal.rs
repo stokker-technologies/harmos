@@ -19,7 +19,7 @@ use super::Permit;
 use crate::state::recovery::Group;
 use crate::storage::StorageManager;
 use crate::storage::manager::encoded_size;
-use crate::{Kind, Result};
+use crate::{Result, state::Kind};
 
 /* === Constants === */
 

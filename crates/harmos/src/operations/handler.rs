@@ -28,7 +28,7 @@ use super::OperationManager;
 use super::admission::Admission;
 use super::caller::{Origin, Source};
 use crate::operations::OperationDeclaration;
-use crate::{Error, Position, Result, Scope};
+use crate::{Error, Result, operations::Scope, state::Position};
 
 /* === Constants === */
 static NEXT_INSTANCE: AtomicU64 = AtomicU64::new(1);
@@ -48,7 +48,7 @@ pub struct OperationGeneration(u64);
 pub struct OperationInstance<O: OperationDeclaration> {
     pub(crate) id: OperationInstanceId,
     pub(super) generation: OperationGeneration,
-    pub(crate) outcome: oneshot::Receiver<Result<Arc<O::Response>>>,
+    pub(crate) outcome: oneshot::Receiver<Result<crate::operations::Response<O::Response>>>,
     pub(super) control: Arc<crate::supervision::instance::Instance>,
 }
 
@@ -60,7 +60,7 @@ pub struct Context<'a> {
     pub(super) admission: Admission,
     pub(super) source: Source,
     pub(super) origin: Origin,
-    #[cfg(feature = "sidecar-host")]
+    #[cfg(feature = "plugin-sidecar")]
     pub(super) retirement: bool,
 }
 
@@ -78,6 +78,7 @@ impl OperationInstanceId {
                 resource: "operation instance identities",
             })
     }
+
     pub fn value(self) -> u64 {
         self.0
     }
@@ -92,6 +93,7 @@ impl OperationGeneration {
                 resource: "operation provider generations",
             })
     }
+
     pub fn value(self) -> u64 {
         self.0
     }
@@ -101,9 +103,11 @@ impl<O: OperationDeclaration> OperationInstance<O> {
     pub fn id(&self) -> OperationInstanceId {
         self.id
     }
+
     pub fn generation(&self) -> OperationGeneration {
         self.generation
     }
+
     pub fn cancel(&self) {
         self.control.cancel();
     }
@@ -112,7 +116,7 @@ impl<O: OperationDeclaration> OperationInstance<O> {
         self.control.status()
     }
 
-    pub async fn join(self) -> Result<Arc<O::Response>> {
+    pub async fn join(self) -> Result<crate::operations::Response<O::Response>> {
         self.await
     }
 
@@ -125,7 +129,7 @@ impl<O: OperationDeclaration> OperationInstance<O> {
 }
 
 impl<O: OperationDeclaration> Future for OperationInstance<O> {
-    type Output = Result<Arc<O::Response>>;
+    type Output = Result<crate::operations::Response<O::Response>>;
     fn poll(self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<Self::Output> {
         match Pin::new(&mut self.get_mut().outcome).poll(cx) {
             Poll::Ready(Ok(answer)) => Poll::Ready(answer),
@@ -140,12 +144,22 @@ impl Context<'_> {
         self.operations.call_context()
     }
 
+    // Derive a child caller while retaining this attempt's identity, admission,
+    // cancellation and deadline. Only the selected portable value changes.
+    pub fn with_value<T: super::ContextValue>(mut self, value: T) -> Result<Self> {
+        let context = self.context().with_value(value)?;
+        self.operations = self.operations.with_context(context);
+        Ok(self)
+    }
+
     pub fn id(&self) -> OperationInstanceId {
         self.id
     }
+
     pub fn attempt(&self) -> usize {
         self.attempt
     }
+
     pub fn scope(&self) -> &Scope<'_> {
         &self.scope
     }
@@ -154,13 +168,21 @@ impl Context<'_> {
         self.origin.identity == super::caller::Identity::Host
     }
 
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
-    pub fn caller_scope(&self) -> Option<&crate::load::PluginScope> {
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
+    pub fn caller_scope(&self) -> Option<&crate::plugin::PluginScope> {
         self.origin.scope.as_ref()
     }
 
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
-    pub(crate) fn retains_publication(&self, scope: &crate::load::PluginScope) -> bool {
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
+    pub(crate) fn retains_publication(&self, scope: &crate::plugin::PluginScope) -> bool {
         self.source.check().is_ok_and(|origin| {
             (origin.has_lifecycle_loan() || origin.observer_publication)
                 && origin
@@ -218,7 +240,7 @@ impl Context<'_> {
         endpoints: P,
     ) -> Result<OperationInstance<O>> {
         self.operations.submit_scoped::<O, P>(
-            (super::binding::Request::charged(request), endpoints),
+            (super::binding::Request::charged(request)?, endpoints),
             &self.scope,
             &self.admission,
             &self.source,
@@ -244,14 +266,14 @@ impl Context<'_> {
         &self,
         request: O::Request,
         cause: Position,
-    ) -> Result<Arc<O::Response>> {
+    ) -> Result<crate::operations::Response<O::Response>> {
         self.submit_caused::<O>(request, cause)?.await
     }
 
     pub async fn call<O: OperationDeclaration>(
         &self,
         request: O::Request,
-    ) -> Result<Arc<O::Response>> {
+    ) -> Result<crate::operations::Response<O::Response>> {
         self.submit::<O>(request)?.await
     }
 }

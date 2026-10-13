@@ -10,7 +10,7 @@
 /* === Modules === */
 use crate::scenario_runtime;
 
-#[cfg(feature = "guest")]
+#[cfg(feature = "plugin-guest")]
 mod facade {
     pub use harmos as __harmos;
 }
@@ -57,36 +57,51 @@ macro_rules! inert_plugin {
     };
 }
 
-#[cfg(feature = "sidecar")]
+#[cfg(feature = "plugin-sidecar")]
 inert_plugin!(
     Native,
     "selected-native",
-    harmos::sidecar::Supervisor,
+    harmos::plugin::sidecar::Supervisor,
     Operations
 );
 
-#[cfg(feature = "sidecar")]
-inert_plugin!(EmptyNative, "empty-native", harmos::sidecar::Supervisor, ());
-
-#[cfg(feature = "sidecar")]
+#[cfg(feature = "plugin-sidecar")]
 inert_plugin!(
-    ExplicitEmptyNative,
-    "explicit-empty-native",
-    harmos::sidecar::Supervisor,
+    EmptyNative,
+    "empty-native",
+    harmos::plugin::sidecar::Supervisor,
     ()
 );
 
-#[cfg(feature = "guest")]
-inert_plugin!(Guest, "selected-guest", harmos::guest::Context, Operations);
+#[cfg(feature = "plugin-sidecar")]
+inert_plugin!(
+    ExplicitEmptyNative,
+    "explicit-empty-native",
+    harmos::plugin::sidecar::Supervisor,
+    ()
+);
 
-#[cfg(feature = "guest")]
-inert_plugin!(EmptyGuest, "empty-guest", harmos::guest::Context, ());
+#[cfg(feature = "plugin-guest")]
+inert_plugin!(
+    Guest,
+    "selected-guest",
+    harmos::plugin::guest::Context,
+    Operations
+);
 
-#[cfg(feature = "guest")]
+#[cfg(feature = "plugin-guest")]
+inert_plugin!(
+    EmptyGuest,
+    "empty-guest",
+    harmos::plugin::guest::Context,
+    ()
+);
+
+#[cfg(feature = "plugin-guest")]
 inert_plugin!(
     ExplicitEmptyGuest,
     "explicit-empty-guest",
-    harmos::guest::Context,
+    harmos::plugin::guest::Context,
     ()
 );
 
@@ -105,22 +120,22 @@ struct Response {
     value: u32,
 }
 
-#[cfg(feature = "guest")]
+#[cfg(feature = "plugin-guest")]
 struct Guest;
 
-#[cfg(feature = "guest")]
+#[cfg(feature = "plugin-guest")]
 struct EmptyGuest;
 
-#[cfg(feature = "guest")]
+#[cfg(feature = "plugin-guest")]
 struct ExplicitEmptyGuest;
 
-#[cfg(feature = "sidecar")]
+#[cfg(feature = "plugin-sidecar")]
 struct Native;
 
-#[cfg(feature = "sidecar")]
+#[cfg(feature = "plugin-sidecar")]
 struct EmptyNative;
 
-#[cfg(feature = "sidecar")]
+#[cfg(feature = "plugin-sidecar")]
 struct ExplicitEmptyNative;
 
 /* === Enums === */
@@ -185,13 +200,13 @@ impl harmos::operations::WireOperation for Selected {
 /* === Tests === */
 
 pub(super) fn contract_scenario() {
-    #[cfg(feature = "sidecar")]
+    #[cfg(feature = "plugin-sidecar")]
     {
         scenario_runtime::check("native_inventory_contains", || {
             use harmos_contract::inventory::{Declaration, Facility};
             use harmos_contract::plugin::Declared;
 
-            let bytes = <Native as Declared>::markers().concat();
+            let bytes = <Native as Declared>::markers().unwrap().concat();
             let inspected = Declaration::inspect(&bytes, Facility::Sidecar).unwrap();
             let expected = Declarations::of::<Operations>().unwrap();
             assert_eq!(inspected.operations, expected.clone());
@@ -204,8 +219,10 @@ pub(super) fn contract_scenario() {
             assert_ne!(expected[0].id.as_str(), Unselected::ID);
 
             for bytes in [
-                <EmptyNative as Declared>::markers().concat(),
-                <ExplicitEmptyNative as Declared>::markers().concat(),
+                <EmptyNative as Declared>::markers().unwrap().concat(),
+                <ExplicitEmptyNative as Declared>::markers()
+                    .unwrap()
+                    .concat(),
             ] {
                 assert_eq!(
                     Declaration::inspect(&bytes, Facility::Sidecar)
@@ -216,13 +233,13 @@ pub(super) fn contract_scenario() {
             }
         });
     }
-    #[cfg(feature = "guest")]
+    #[cfg(feature = "plugin-guest")]
     {
         scenario_runtime::check("guest_inventory_contains", || {
             use harmos_contract::inventory::{Declaration, Facility};
             use harmos_contract::plugin::Declared;
 
-            let bytes = <Guest as Declared>::markers().concat();
+            let bytes = <Guest as Declared>::markers().unwrap().concat();
             let inspected = Declaration::inspect(&bytes, Facility::Guest).unwrap();
             let expected = Declarations::of::<Operations>().unwrap();
             assert_eq!(inspected.operations, expected.clone());
@@ -235,8 +252,10 @@ pub(super) fn contract_scenario() {
             assert_ne!(expected[0].id.as_str(), Unselected::ID);
 
             for bytes in [
-                <EmptyGuest as Declared>::markers().concat(),
-                <ExplicitEmptyGuest as Declared>::markers().concat(),
+                <EmptyGuest as Declared>::markers().unwrap().concat(),
+                <ExplicitEmptyGuest as Declared>::markers()
+                    .unwrap()
+                    .concat(),
             ] {
                 assert_eq!(
                     Declaration::inspect(&bytes, Facility::Guest)

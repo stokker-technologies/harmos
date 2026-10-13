@@ -11,7 +11,7 @@
 mod manager;
 mod supervisor;
 
-#[cfg(feature = "sidecar-host")]
+#[cfg(feature = "plugin-sidecar")]
 mod sidecar;
 
 /* === Re-Exports === */
@@ -24,10 +24,12 @@ pub use manager::{
     ServiceManager, ServiceScope, ServiceScopeId, ServiceSnapshot,
 };
 
-#[cfg(feature = "sidecar-host")]
+#[cfg(feature = "plugin-sidecar")]
 pub(crate) use sidecar::Endpoint as NativeEndpoint;
+#[cfg(feature = "plugin-sidecar")]
+pub(crate) use sidecar::RuntimeDriver;
 
-#[cfg(feature = "sidecar-host")]
+#[cfg(feature = "plugin-sidecar")]
 pub use sidecar::{
     DemandLease, DemandSource, Managed, ManagedError, Notice, Publish, SidecarError, Supervised,
 };
@@ -43,7 +45,7 @@ use tokio::sync::watch;
 // Local Imports
 use crate::observers::ObserverManager;
 use crate::supervision::executor;
-use crate::{Application, Evidence, StateManager, StreamManager};
+use crate::{Application, evidence::Evidence, state::StateManager, streams::StreamManager};
 
 /* === Constants === */
 
@@ -63,14 +65,14 @@ pub struct ServicePolicy {
 
 pub struct Service<A: Application> {
     pub(crate) state: StateManager<A>,
-    pub(crate) records: crate::RecordManager<A>,
-    pub(crate) operations: crate::OperationManager,
+    pub(crate) records: crate::records::RecordManager<A>,
+    pub(crate) operations: crate::operations::OperationManager,
     pub(crate) streams: StreamManager<A>,
     pub(crate) evidence: Evidence<A>,
     pub(crate) observers: ObserverManager,
     pub(crate) stopping: watch::Receiver<bool>,
     pub(crate) ready: watch::Sender<bool>,
-    #[cfg(feature = "sidecar-host")]
+    #[cfg(feature = "plugin-sidecar")]
     pub(crate) provider: std::sync::Arc<crate::supervision::instance::Instance>,
 }
 
@@ -140,7 +142,7 @@ impl Default for ServicePolicy {
 }
 
 impl<A: Application> Service<A> {
-    #[cfg(feature = "sidecar-host")]
+    #[cfg(feature = "plugin-sidecar")]
     pub(crate) fn shared_attempt(&self) -> Self {
         Self {
             state: self.state.clone(),
@@ -161,11 +163,11 @@ impl<A: Application> Service<A> {
         }
     }
 
-    pub fn records(&self) -> &crate::RecordManager<A> {
+    pub fn records(&self) -> &crate::records::RecordManager<A> {
         &self.records
     }
 
-    pub fn operations(&self) -> &crate::OperationManager {
+    pub fn operations(&self) -> &crate::operations::OperationManager {
         &self.operations
     }
 

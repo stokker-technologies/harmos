@@ -188,6 +188,8 @@ def prepare(root: Path) -> None:
         shutil.copy2(filename, destination)
         libraries[name] = str(destination)
 
+    artifacts.update(_tools(repository, root, target, host))
+
     # Keep Each Feature And Catalog Variant Before The Next Cargo Invocation
     for example, features, case in GUESTS:
         key = f"{example}:{features}:{case or 'default'}"
@@ -246,9 +248,10 @@ def prepare(root: Path) -> None:
         shutil.copyfile(fixture / name, source_root / "src" / name)
     shutil.copy2(repository / "Cargo.lock", source_root / "Cargo.lock")
     for version in VERSIONS:
-        manifest = (fixture / "manifest.toml").read_text(encoding="utf-8")
-        manifest = manifest.replace('"@VERSION@"', json.dumps(version)).replace(
-            '"@HARMOS_PATH@"', json.dumps(str(repository / "crates/harmos"))
+        template = (fixture / "manifest.toml").read_text(encoding="utf-8")
+        template = template.replace('"@VERSION@"', json.dumps(version))
+        manifest = template.replace('"@SDK_PACKAGE@"', '"harmos-sidecar"').replace(
+            '"@SDK_PATH@"', json.dumps(str(repository / "crates/harmos-sidecar"))
         )
         (source_root / "Cargo.toml").write_text(manifest, encoding="utf-8")
         if version == VERSIONS[0]:
@@ -267,6 +270,11 @@ def prepare(root: Path) -> None:
                     clean.extend(["--target", "wasm32-unknown-unknown"])
                 _run(source_root, clean)
         for guest, profile in BUILDS:
+            sdk = "harmos-guest" if guest else "harmos-sidecar"
+            manifest = template.replace('"@SDK_PACKAGE@"', json.dumps(sdk)).replace(
+                '"@SDK_PATH@"', json.dumps(str(repository / "crates" / sdk))
+            )
+            (source_root / "Cargo.toml").write_text(manifest, encoding="utf-8")
             command = [
                 "build",
                 "--offline",
@@ -380,6 +388,76 @@ def artifacts() -> dict[str, Path]:
 # === Private Functions === #
 
 
+def _tools(repository: Path, root: Path, target: Path, host: str) -> dict[str, str]:
+    # Preserve Each Tool Feature Selection And Its Resolved Runtime Dependencies
+    artifacts: dict[str, str] = {}
+    tool_dependencies: dict[str, list[str]] = {}
+    for variant, features in (
+        ("none", ""),
+        ("sidecar", "sidecar"),
+        ("guest", "guest"),
+        ("both", "sidecar,guest"),
+    ):
+        selection = ["-p", "cargo-harmos", "--no-default-features"]
+        if features:
+            selection.extend(["--features", features])
+        built = _run(
+            repository,
+            [
+                "build",
+                "--locked",
+                *selection,
+                "--target",
+                host,
+                "--target-dir",
+                str(target),
+                "--message-format=json",
+            ],
+            capture=True,
+        )
+        executables = [
+            message["executable"]
+            for line in built.stdout.splitlines()
+            if line.startswith("{")
+            and (message := json.loads(line)).get("reason") == "compiler-artifact"
+            and message["target"]["name"] == "cargo-harmos"
+            and message.get("executable")
+        ]
+        if len(executables) != 1:
+            raise RuntimeError(f"ambiguous cargo-harmos {variant} compiler artifact")
+        source = Path(executables[0])
+        destination = root / f"cargo-harmos-{variant}" / source.name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+        artifacts[f"cargo-harmos-{variant}"] = str(destination)
+        resolved = _run(
+            repository,
+            [
+                "tree",
+                "--locked",
+                *selection,
+                "--target",
+                host,
+                "--edges",
+                "normal",
+                "--prefix",
+                "none",
+                "--format",
+                "{p}",
+            ],
+            capture=True,
+        )
+        tool_dependencies[variant] = sorted(
+            {line.split()[0] for line in resolved.stdout.splitlines() if line.strip()}
+        )
+    dependency_record = root / "cargo-harmos-dependencies.json"
+    dependency_record.write_text(
+        json.dumps(tool_dependencies, indent=2) + "\n", encoding="utf-8"
+    )
+    artifacts["cargo-harmos-dependencies"] = str(dependency_record)
+    return artifacts
+
+
 def _catalogs(
     repository: Path, root: Path, target: Path, artifacts: dict[str, str]
 ) -> None:
@@ -390,11 +468,11 @@ def _catalogs(
         '[package]\nname = "dokime"\nversion = "0.0.0"\nedition = "2024"\n'
         "[dependencies]\nharmos = { path = "
         + json.dumps(str(repository / "crates/harmos"))
-        + ', default-features = false, features = ["derive"] }\n[workspace]\n',
+        + ", default-features = false }\n[workspace]\n",
         encoding="utf-8",
     )
     (facade / "src/lib.rs").write_text(
-        "pub mod catalog { pub use harmos::catalog::*; } pub use harmos::macros::catalog; pub use harmos as __harmos;",
+        "pub use harmos::catalog; pub use harmos as __harmos;",
         encoding="utf-8",
     )
     for package, dependency in (
@@ -406,10 +484,9 @@ def _catalogs(
         consumer = directory / f"{package}-{dependency}"
         (consumer / "src").mkdir(parents=True, exist_ok=True)
         path = facade if package == "dokime" else repository / "crates/harmos"
-        features = ', features = ["derive"]' if package == "harmos" else ""
         (consumer / "Cargo.toml").write_text(
             '[package]\nname = "catalog-consumer"\nversion = "0.0.0"\nedition = "2024"\n[dependencies]\n'
-            + f'{dependency} = {{ package = "{package}", path = {json.dumps(str(path))}, default-features = false{features} }}\n[workspace]\n',
+            + f'{dependency} = {{ package = "{package}", path = {json.dumps(str(path))}, default-features = false }}\n[workspace]\n',
             encoding="utf-8",
         )
         shutil.copy2(repository / "Cargo.lock", consumer / "Cargo.lock")

@@ -14,27 +14,27 @@
 /* === Imports === */
 
 // Standard Library Imports
-#[cfg(feature = "runtime")]
+
 use std::sync::Arc;
 
 // Third Party Imports
 
 // Local Imports
-#[cfg(feature = "runtime")]
+
 use crate::operations::{Context, Operation};
 use crate::operations::{OperationDeclaration, ReplaySafety, Visibility, WireOperation};
-#[cfg(feature = "runtime")]
+
 use crate::storage::StorageManager;
 use crate::storage::{MutationId, StagedFile};
-#[cfg(feature = "runtime")]
+
 use crate::{Error, Result};
 
 /* === Constants === */
 
 /* === Macros === */
-crate::storage_codec::product!(DeleteFileRequest {
-    mutation: crate::storage_codec::Nested<MutationId> => 1,
-    file: crate::storage_codec::Nested<StagedFile> => 2,
+crate::storage::codec::product!(DeleteFileRequest {
+    mutation: crate::storage::codec::Nested<MutationId> => 1,
+    file: crate::storage::codec::Nested<StagedFile> => 2,
 });
 
 /* === Type Aliases === */
@@ -48,7 +48,6 @@ pub struct DeleteFileRequest {
 
 pub struct DeleteFile;
 
-#[cfg(feature = "runtime")]
 pub(super) struct Handler<C> {
     storage: Arc<StorageManager<C>>,
 }
@@ -80,7 +79,6 @@ impl WireOperation for DeleteFile {
     const VERSION: u32 = 1;
 }
 
-#[cfg(feature = "runtime")]
 impl<C: 'static> Operation for Handler<C> {
     type Declaration = DeleteFile;
     type Resources = StorageManager<C>;
@@ -97,10 +95,14 @@ impl<C: 'static> Operation for Handler<C> {
         _: Self::Context<'a>,
         request: &mut DeleteFileRequest,
         _: &mut Self::Endpoints,
-    ) -> Result<StagedFile> {
-        self.storage
-            .delete_file_once(&request.mutation, &request.file)
-            .await
+    ) -> Result<crate::operations::Response<StagedFile>> {
+        let result: ::core::result::Result<StagedFile, Self::Error> = async move {
+            self.storage
+                .delete_file_once(&request.mutation, &request.file)
+                .await
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     fn classify(error: &Error) -> crate::operations::Failure {

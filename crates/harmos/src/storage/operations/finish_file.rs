@@ -14,20 +14,20 @@
 /* === Imports === */
 
 // Standard Library Imports
-#[cfg(feature = "runtime")]
+
 use std::sync::Arc;
 
 // Third Party Imports
 
 // Local Imports
 use super::FileMutation;
-#[cfg(feature = "runtime")]
+
 use crate::operations::{Context, Operation};
 use crate::operations::{OperationDeclaration, ReplaySafety, Visibility, WireOperation};
 use crate::storage::FileReference;
-#[cfg(feature = "runtime")]
+
 use crate::storage::StorageManager;
-#[cfg(feature = "runtime")]
+
 use crate::{Error, Result};
 
 /* === Constants === */
@@ -38,7 +38,7 @@ use crate::{Error, Result};
 
 /* === Structs === */
 pub struct FinishFile;
-#[cfg(feature = "runtime")]
+
 pub(super) struct Handler<C> {
     storage: Arc<StorageManager<C>>,
 }
@@ -59,7 +59,7 @@ impl OperationDeclaration for FinishFile {
 impl WireOperation for FinishFile {
     const VERSION: u32 = 1;
 }
-#[cfg(feature = "runtime")]
+
 impl<C: 'static> Operation for Handler<C> {
     type Declaration = FinishFile;
     type Resources = StorageManager<C>;
@@ -69,16 +69,22 @@ impl<C: 'static> Operation for Handler<C> {
     fn new(storage: Arc<StorageManager<C>>) -> Result<Self> {
         Ok(Self { storage })
     }
+
     async fn run<'a>(
         &mut self,
         _: Self::Context<'a>,
         request: &mut FileMutation,
         _: &mut Self::Endpoints,
-    ) -> Result<FileReference> {
-        self.storage
-            .finish_file_once(&request.mutation, &request.session)
-            .await
+    ) -> Result<crate::operations::Response<FileReference>> {
+        let result: ::core::result::Result<FileReference, Self::Error> = async move {
+            self.storage
+                .finish_file_once(&request.mutation, &request.session)
+                .await
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
+
     fn classify(error: &Error) -> crate::operations::Failure {
         super::classify(error)
     }

@@ -74,9 +74,27 @@ fn contract_scenario() {
                     let mut empty = f.storage.replay(record_query(limits())).await.unwrap();
                     assert_eq!(empty.boundary().sequence, 0);
                     assert!(positions(&mut empty).await.is_empty());
-                    f.storage.write_schema(&schema(), &[]).await.unwrap();
+                    f.storage
+                        .write_schema(
+                            &schema(),
+                            &harmos::schema::graph::Schema {
+                                root: 0,
+                                definitions: vec![vec![]],
+                            },
+                        )
+                        .await
+                        .unwrap();
                     f.storage.flush().await.unwrap();
-                    f.storage.write_schema(&schema(), &[]).await.unwrap();
+                    f.storage
+                        .write_schema(
+                            &schema(),
+                            &harmos::schema::graph::Schema {
+                                root: 0,
+                                definitions: vec![vec![]],
+                            },
+                        )
+                        .await
+                        .unwrap();
                     let mut schemas = f.storage.replay(record_query(limits())).await.unwrap();
                     assert_eq!(schemas.boundary().sequence, 2);
                     assert!(positions(&mut schemas).await.is_empty());
@@ -103,7 +121,16 @@ fn contract_scenario() {
                     write(&f.storage, "saved").await;
                     f.storage.flush().await.unwrap();
                     write(&f.storage, "unsaved").await;
-                    f.storage.write_schema(&schema(), &[]).await.unwrap();
+                    f.storage
+                        .write_schema(
+                            &schema(),
+                            &harmos::schema::graph::Schema {
+                                root: 0,
+                                definitions: vec![vec![]],
+                            },
+                        )
+                        .await
+                        .unwrap();
                     let mut replay = f.storage.replay(record_query(limits())).await.unwrap();
                     assert_eq!(replay.boundary().sequence, 3);
                     write(&f.storage, "later").await;
@@ -475,7 +502,16 @@ fn contract_scenario() {
                 .block_on(async {
                     let f = Fixture::new(config()).await;
                     let key = schema();
-                    f.storage.write_schema(&key, &[]).await.unwrap();
+                    f.storage
+                        .write_schema(
+                            &key,
+                            &harmos::schema::graph::Schema {
+                                root: 0,
+                                definitions: vec![vec![]],
+                            },
+                        )
+                        .await
+                        .unwrap();
                     let stream = Identifier::new("voltage").unwrap();
                     let item = Identifier::new("sample").unwrap();
                     f.storage

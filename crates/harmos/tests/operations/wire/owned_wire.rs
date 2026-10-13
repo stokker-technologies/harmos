@@ -60,9 +60,7 @@ struct Text {
 }
 
 /* === Enums === */
-#[harmos::catalog]
-enum Operations {
-    #[operation(
+#[harmos::operation(
         request = Text,
         response = Text,
         id = "owned-wire.read",
@@ -76,7 +74,11 @@ enum Operations {
             },
         },
     )]
-    ReadContract,
+struct ReadContract;
+
+#[harmos::catalog]
+enum Operations {
+    ReadContract(ReadContract),
 }
 
 #[harmos::catalog]
@@ -124,17 +126,21 @@ impl Operation for Read {
         context: Self::Context<'ctx>,
         request: &mut Text,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Text, Self::Error> {
-        self.resources.events.lock().unwrap().push("run");
-        self.resources.ids.lock().unwrap().push(context.id());
-        assert_eq!(context.attempt(), self.attempts.get());
-        self.attempts.set(self.attempts.get() + 1);
-        if request.value == "retry" && self.attempts.get() == 1 {
-            return Err(std::io::Error::other("transient attempt"));
+    ) -> Result<harmos::operations::Response<Text>, Self::Error> {
+        let result: ::core::result::Result<Text, Self::Error> = async move {
+            self.resources.events.lock().unwrap().push("run");
+            self.resources.ids.lock().unwrap().push(context.id());
+            assert_eq!(context.attempt(), self.attempts.get());
+            self.attempts.set(self.attempts.get() + 1);
+            if request.value == "retry" && self.attempts.get() == 1 {
+                return Err(std::io::Error::other("transient attempt"));
+            }
+            Ok(Text {
+                value: format!("{}:{}", request.value, self.attempts.get()),
+            })
         }
-        Ok(Text {
-            value: format!("{}:{}", request.value, self.attempts.get()),
-        })
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     async fn stop(&mut self) -> Result<(), Self::Error> {
@@ -167,7 +173,10 @@ impl Drop for Read {
 async fn runtime(wire: bool) -> (Runtime<App>, Arc<Resources>) {
     let runtime = Runtime::<App>::builder((), ())
         .register(Lanes::catalog())
-        .operation_preparation_bytes(std::num::NonZeroUsize::new(16 * 1024).unwrap())
+        .operation_settings(harmos::operations::Settings {
+            preparation_bytes: Some(std::num::NonZeroUsize::new(16 * 1024).unwrap()),
+            ..Default::default()
+        })
         .runtime()
         .await
         .unwrap();
@@ -199,9 +208,12 @@ pub(super) fn contract_scenario() {
                     let resources = Arc::new(Resources::default());
                     let runtime = Runtime::<App>::builder((), ())
                         .register(Lanes::catalog())
-                        .operation_preparation_bytes(
-                            std::num::NonZeroUsize::new(16 * 1024).unwrap(),
-                        )
+                        .operation_settings(harmos::operations::Settings {
+                            preparation_bytes: Some(
+                                std::num::NonZeroUsize::new(16 * 1024).unwrap(),
+                            ),
+                            ..Default::default()
+                        })
                         .wire_operations::<Authored, _>("app", Lanes::Open, Arc::clone(&resources))
                         .runtime()
                         .await
@@ -381,10 +393,12 @@ pub(super) fn contract_scenario() {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
 
-    #[harmos::catalog]
+    #[harmos::operation(request = (), response = (), input = Text, output = (), id = "owned-wire.stream", version = 1, policy = ReadContract::POLICY)]
+struct StreamContract;
+
+#[harmos::catalog]
     enum StreamContracts {
-        #[operation(request = (), response = (), input = Text, output = (), id = "owned-wire.stream", version = 1, policy = ReadContract::POLICY)]
-        StreamContract,
+        StreamContract(StreamContract),
     }
     struct Stream;
     impl Operation for Stream {
@@ -401,9 +415,12 @@ pub(super) fn contract_scenario() {
             _: Self::Context<'ctx>,
             _request: &mut (),
             _endpoints: &mut Self::Endpoints,
-        ) -> Result<(), Self::Error> {
+        ) -> Result<harmos::operations::Response<()>, Self::Error> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
             unreachable!()
-        }
+                }.await;
+        result.map(::core::convert::Into::into)
+    }
     }
     #[harmos::catalog]
     enum Implemented {
@@ -412,7 +429,7 @@ pub(super) fn contract_scenario() {
     let (runtime, resources) = runtime(false).await;
     let contracts = harmos::operations::Contracts::of::<StreamContracts>().unwrap();
     assert!(contracts[0].input().is_some());
-    assert_eq!(contracts[0].output(), Some([].as_slice()));
+    assert!(contracts[0].output().unwrap().fields().is_empty());
     assert!(matches!(
         runtime
             .operations
@@ -448,8 +465,7 @@ pub(super) fn contract_scenario() {
                             definition,
                             declaration.version(),
                             declaration.codec(),
-                            declaration.request().to_vec(),
-                            declaration.response().to_vec(),
+                            declaration.schema().clone(),
                         )
                         .unwrap();
                         runtime
@@ -510,8 +526,7 @@ pub(super) fn contract_scenario() {
                             definition,
                             declaration.version() + u32::from(!change_policy),
                             declaration.codec(),
-                            declaration.request().to_vec(),
-                            declaration.response().to_vec(),
+                            declaration.schema().clone(),
                         )
                         .unwrap();
                         assert!(

@@ -101,7 +101,7 @@ impl Service<http::Request<Body>> for Ingress {
                 .extensions()
                 .get::<tonic::transport::server::TcpConnectInfo>()
                 .and_then(|info| info.remote_addr);
-            #[cfg(feature = "grpc-tls")]
+
             let peer =
                 request
                     .extensions()
@@ -129,7 +129,7 @@ impl Service<http::Request<Body>> for Ingress {
             }
             let mut context = session.context();
             context
-                .insert(crate::operation_runtime::context::Deadline(deadline))
+                .insert(crate::operations::context::Deadline(deadline))
                 .expect("transport owns the deadline type");
             request.extensions_mut().insert(TrustedContext(context));
             let response = tokio::select! {

@@ -88,6 +88,7 @@ harmos_guest::export_plugin!(Program, capacity = 2);
 struct Program {
     owner: Arc<Owner>,
     mismatch: bool,
+    pending_shutdown: bool,
 }
 
 #[derive(Default)]
@@ -156,63 +157,100 @@ impl Operation for ReadOperation {
         context: Self::Context<'ctx>,
         value: &mut Value,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Value, Self::Error> {
-        assert!(self.initialized, "initialization precedes attempts");
-        self.value.clone_from(&value.value);
-        self.owner.ran.fetch_add(1, Ordering::SeqCst);
-        if self.value == "initialize-child" {
-            let saved = self
-                .saved
-                .as_ref()
-                .expect("original initialization context");
-            if saved
-                .operation::<Read>(Value {
-                    value: "leaf".into(),
-                })
-                .await
-                .is_ok()
-            {
-                return Err(std::io::Error::other(
-                    "initialization context remained active",
-                ));
-            }
-        }
-        self.attempts += 1;
-        if self.value == "leaf" {
-            return Ok(Value {
-                value: "leaf:1".into(),
-            });
-        }
-        if self.value == "parent" {
-            if let Some(saved) = &self.saved
-                && saved
+    ) -> Result<harmos_guest::operations::Response<Value>, Self::Error> {
+        let result: ::core::result::Result<Value, Self::Error> = async move {
+            assert!(self.initialized, "initialization precedes attempts");
+            self.value.clone_from(&value.value);
+            self.owner.ran.fetch_add(1, Ordering::SeqCst);
+            if self.value == "initialize-child" {
+                let saved = self
+                    .saved
+                    .as_ref()
+                    .expect("original initialization context");
+                if saved
                     .operation::<Read>(Value {
                         value: "leaf".into(),
                     })
                     .await
                     .is_ok()
-            {
-                return Err(std::io::Error::other("stale context was accepted"));
+                {
+                    return Err(std::io::Error::other(
+                        "initialization context remained active",
+                    ));
+                }
             }
-            let child = context
-                .operation::<Read>(Value {
-                    value: "leaf".into(),
-                })
-                .await
-                .map_err(std::io::Error::other)?;
-            if self.attempts > 1 {
+            if self.value == "context-leaf" {
+                let stage = context
+                    .context()
+                    .value::<contract::Stage>()
+                    .map_err(std::io::Error::other)?
+                    .unwrap();
+                return Ok(Value { value: stage.id });
+            }
+            if self.value == "context-parent" {
+                let parent = context
+                    .context()
+                    .value::<contract::Stage>()
+                    .map_err(std::io::Error::other)?
+                    .unwrap();
+                assert_eq!(parent.id, "parent");
+                let caller = context
+                    .with_value(contract::Stage { id: "child".into() })
+                    .map_err(std::io::Error::other)?;
+                let child = caller
+                    .operation::<Read>(Value {
+                        value: "context-leaf".into(),
+                    })
+                    .await
+                    .map_err(std::io::Error::other)?;
+                let original = context
+                    .context()
+                    .value::<contract::Stage>()
+                    .map_err(std::io::Error::other)?
+                    .unwrap();
                 return Ok(Value {
-                    value: format!("parent:2:stale:{}", child.value),
+                    value: format!("{}:{}", original.id, child.value),
                 });
             }
-            self.saved = Some(context.clone());
+            self.attempts += 1;
+            if self.value == "leaf" {
+                return Ok(Value {
+                    value: "leaf:1".into(),
+                });
+            }
+            if self.value == "parent" {
+                if let Some(saved) = &self.saved
+                    && saved
+                        .operation::<Read>(Value {
+                            value: "leaf".into(),
+                        })
+                        .await
+                        .is_ok()
+                {
+                    return Err(std::io::Error::other("stale context was accepted"));
+                }
+                let child = context
+                    .operation::<Read>(Value {
+                        value: "leaf".into(),
+                    })
+                    .await
+                    .map_err(std::io::Error::other)?;
+                if self.attempts > 1 {
+                    return Ok(Value {
+                        value: format!("parent:2:stale:{}", child.value),
+                    });
+                }
+                self.saved = Some(context.clone());
+            }
+            if self.attempts == 1 {
+                return Err(std::io::Error::other("first transient attempt"));
+            }
+            Ok(Value {
+                value: format!("{}:{}", self.value, self.attempts),
+            })
         }
-        if self.attempts == 1 {
-            return Err(std::io::Error::other("first transient attempt"));
-        }
-        Ok(Value {
-            value: format!("{}:{}", self.value, self.attempts),
-        })
+        .await;
+        result.map(::core::convert::Into::into)
     }
     async fn stop(&mut self) -> Result<(), Self::Error> {
         self.owner.stopped.fetch_add(1, Ordering::SeqCst);
@@ -247,16 +285,20 @@ impl Operation for Counting {
         _: Self::Context<'ctx>,
         _: &mut Value,
         _: &mut Self::Endpoints,
-    ) -> Result<Value, Self::Error> {
-        Ok(Value {
-            value: format!(
-                "{}:{}:{}:{}",
-                self.0.initialized.load(Ordering::SeqCst),
-                self.0.ran.load(Ordering::SeqCst),
-                self.0.stopped.load(Ordering::SeqCst),
-                self.0.finalized.load(Ordering::SeqCst)
-            ),
-        })
+    ) -> Result<harmos_guest::operations::Response<Value>, Self::Error> {
+        let result: ::core::result::Result<Value, Self::Error> = async move {
+            Ok(Value {
+                value: format!(
+                    "{}:{}:{}:{}",
+                    self.0.initialized.load(Ordering::SeqCst),
+                    self.0.ran.load(Ordering::SeqCst),
+                    self.0.stopped.load(Ordering::SeqCst),
+                    self.0.finalized.load(Ordering::SeqCst)
+                ),
+            })
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -278,8 +320,11 @@ impl Declared for Program {
     ];
     const REQUIRES: &'static [Node<harmos_contract::plugin::Requirement>] = &[];
     const STREAMS: &'static [publications::Entry] = &[];
-    fn markers() -> Vec<&'static [u8]> {
-        vec![&IDENTITY, &CONTRACTS, &PUBLICATIONS, &LISTENERS, &OBSERVERS]
+    fn markers() -> Result<Vec<&'static [u8]>, harmos_contract::schema::graph::Error> {
+        harmos_contract::plugin::schema_markers::<Self>(
+            vec![&IDENTITY, &CONTRACTS, &PUBLICATIONS, &LISTENERS, &OBSERVERS],
+            &harmos_contract::config::SchemaSettings::default(),
+        )
     }
 }
 
@@ -296,6 +341,7 @@ impl Plugin for Program {
                 ..Owner::default()
             }),
             mismatch: config == "mismatch",
+            pending_shutdown: config == "shutdown-pending",
         })
     }
     fn resources(&self) -> Arc<Owner> {
@@ -313,6 +359,9 @@ impl Plugin for Program {
         Ok(())
     }
     async fn shutdown(&mut self, _: &Context) -> Result<(), Self::Error> {
+        if self.pending_shutdown {
+            std::future::pending::<()>().await;
+        }
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Self::Error> {

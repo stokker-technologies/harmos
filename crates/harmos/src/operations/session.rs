@@ -86,12 +86,15 @@ impl<O: OperationDeclaration, I, R> Session<O, I, R> {
     pub fn id(&self) -> OperationInstanceId {
         self.completion.id()
     }
+
     pub fn generation(&self) -> OperationGeneration {
         self.completion.generation()
     }
+
     pub fn status(&self) -> OperationStatus {
         self.completion.status()
     }
+
     pub fn cancel(&self) {
         self.completion.cancel();
     }
@@ -100,7 +103,7 @@ impl<O: OperationDeclaration, I, R> Session<O, I, R> {
         (self.input, self.output, self.completion)
     }
 
-    pub async fn join(self) -> Result<Arc<O::Response>> {
+    pub async fn join(self) -> Result<crate::operations::Response<O::Response>> {
         let (input, output, completion) = self.split();
         drop(input);
         drop(output);
@@ -125,6 +128,7 @@ impl<O: OperationDeclaration, T: MemorySize, R> Session<O, SessionInput<T>, R> {
     pub async fn send(&self, item: T) -> Result<()> {
         self.input.send(item).await
     }
+
     pub async fn send_with(&self, bytes: usize, make: impl FnOnce() -> Result<T>) -> Result<()> {
         self.input.send_with(bytes, make).await
     }
@@ -145,6 +149,7 @@ impl<T: MemorySize> SessionInput<T> {
     pub async fn send(&self, item: T) -> Result<()> {
         self.send_with(item.memory_size(), || Ok(item)).await
     }
+
     pub async fn send_with(&self, bytes: usize, make: impl FnOnce() -> Result<T>) -> Result<()> {
         let sender = self.sender.as_ref().ok_or(Error::NotReady {
             domain: "operation input closed",
@@ -209,20 +214,24 @@ impl<O: OperationDeclaration> Completion<O> {
     pub fn id(&self) -> OperationInstanceId {
         self.instance.id()
     }
+
     pub fn generation(&self) -> OperationGeneration {
         self.instance.generation()
     }
+
     pub fn status(&self) -> OperationStatus {
         self.instance.status()
     }
+
     pub fn cancel(&self) {
         self.instance.cancel();
     }
+
     pub async fn settle(&self) -> Result<()> {
         self.instance.settle().await
     }
 
-    pub async fn join(mut self) -> Result<Arc<O::Response>> {
+    pub async fn join(mut self) -> Result<crate::operations::Response<O::Response>> {
         if !self.ends.input.load(Ordering::Acquire) || !self.ends.output.load(Ordering::Acquire) {
             return Err(Error::InvalidInput {
                 field: "operation stream completion",
@@ -259,6 +268,7 @@ impl OperationManager {
             self.submit_endpoints::<O, _>(request, input)
         })
     }
+
     pub fn download<O: OutputDeclaration>(
         &self,
         request: O::Request,
@@ -268,6 +278,7 @@ impl OperationManager {
             self.submit_endpoints::<O, _>(request, output)
         })
     }
+
     pub fn exchange<O: InputDeclaration + OutputDeclaration>(
         &self,
         request: O::Request,
@@ -290,6 +301,7 @@ impl super::Context<'_> {
             self.submit_endpoints::<O, _>(request, input)
         })
     }
+
     pub fn download<O: OutputDeclaration>(
         &self,
         request: O::Request,
@@ -299,6 +311,7 @@ impl super::Context<'_> {
             self.submit_endpoints::<O, _>(request, output)
         })
     }
+
     pub fn exchange<O: InputDeclaration + OutputDeclaration>(
         &self,
         request: O::Request,
@@ -311,7 +324,11 @@ impl super::Context<'_> {
     }
 }
 
-#[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
 impl super::Caller {
     pub fn upload<O: InputDeclaration>(
         &self,
@@ -322,6 +339,7 @@ impl super::Caller {
             self.submit_endpoints::<O, _>(request, input)
         })
     }
+
     pub fn download<O: OutputDeclaration>(
         &self,
         request: O::Request,
@@ -331,6 +349,7 @@ impl super::Caller {
             self.submit_endpoints::<O, _>(request, output)
         })
     }
+
     pub fn exchange<O: InputDeclaration + OutputDeclaration>(
         &self,
         request: O::Request,

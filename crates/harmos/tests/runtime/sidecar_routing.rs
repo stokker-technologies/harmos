@@ -19,11 +19,11 @@ use crate::scenario_runtime;
 
 // Local Imports
 use super::*;
-use harmos::load::{
+use harmos::operations::{Declarations, NativeError, PluginRegistration, PluginSdkRegistration};
+use harmos::plugin::{
     PluginBackend, PluginDefinition, PluginDefinitions, PluginLifecycle, PluginManager,
     PluginTransition, Requirement, Router,
 };
-use harmos::operations::{Declarations, NativeError, PluginRegistration, PluginSdkRegistration};
 
 /* === Constants === */
 static NEXT_PROVIDER_SEED: AtomicUsize = AtomicUsize::new(1);
@@ -111,9 +111,9 @@ struct Resources {
 }
 
 struct Host {
-    operations: harmos::OperationManager,
+    operations: harmos::operations::OperationManager,
     services: harmos::services::ServiceManager<Bank>,
-    streams: harmos::StreamManager<Bank>,
+    streams: harmos::streams::StreamManager<Bank>,
     // Keeps The Original Resources Alive For The Weak Configuration Seed.
     _provider: Arc<Provider>,
     seed: ProviderSeed,
@@ -319,11 +319,15 @@ impl harmos::operations::Operation for PublishingCall {
         host: Self::Context<'ctx>,
         request: &mut PublishPulse,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Refusal> {
-        host.publisher::<Publishing>()
-            .publish_on::<MeterPulse>(&support::pulse(request.sample))
-            .await
-            .map_err(Refusal::of)
+    ) -> Result<harmos::operations::Response<()>, Refusal> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            host.publisher::<Publishing>()
+                .publish_on::<MeterPulse>(&support::pulse(request.sample))
+                .await
+                .map_err(Refusal::of)
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -463,16 +467,20 @@ impl harmos::operations::Operation for Amplifying {
         _: Self::Context<'ctx>,
         request: &mut Amplify,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Amplified, Refusal> {
-        if request.value == 0 {
-            let _drop = DroppedHandler(self.resources.dropped.clone());
-            self.resources.started.notify_one();
-            std::future::pending::<()>().await;
+    ) -> Result<harmos::operations::Response<Amplified>, Refusal> {
+        let result: ::core::result::Result<Amplified, Self::Error> = async move {
+            if request.value == 0 {
+                let _drop = DroppedHandler(self.resources.dropped.clone());
+                self.resources.started.notify_one();
+                std::future::pending::<()>().await;
+            }
+            self.resources.observed.lock().unwrap().push(request.value);
+            Ok(Amplified {
+                value: request.value * self.resources.multiplier,
+            })
         }
-        self.resources.observed.lock().unwrap().push(request.value);
-        Ok(Amplified {
-            value: request.value * self.resources.multiplier,
-        })
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -512,15 +520,19 @@ impl harmos::operations::Operation for Retrying {
         _: Self::Context<'ctx>,
         request: &mut Amplify,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Amplified, Refusal> {
-        self.resources.attempts.fetch_add(1, Ordering::SeqCst);
-        request.value += 1;
-        if request.value == 2 {
-            return Err(Refusal::of("one transient failure"));
+    ) -> Result<harmos::operations::Response<Amplified>, Refusal> {
+        let result: ::core::result::Result<Amplified, Self::Error> = async move {
+            self.resources.attempts.fetch_add(1, Ordering::SeqCst);
+            request.value += 1;
+            if request.value == 2 {
+                return Err(Refusal::of("one transient failure"));
+            }
+            Ok(Amplified {
+                value: request.value,
+            })
         }
-        Ok(Amplified {
-            value: request.value,
-        })
+        .await;
+        result.map(::core::convert::Into::into)
     }
     async fn finalize(&mut self) -> Result<(), Refusal> {
         if self.resources.fail_cleanup.load(Ordering::SeqCst) {
@@ -554,13 +566,19 @@ impl<const ALLOWED: bool> harmos::operations::Operation for Forwarding<ALLOWED> 
         host: Self::Context<'ctx>,
         request: &mut Amplify,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Amplified, Refusal> {
-        host.operation::<Amplify>(request.clone())
-            .await
-            .map_err(|error| match error {
-                harmos_sidecar::CallError::Refused { code, message } => Refusal::new(code, message),
-                error => Refusal::of(error),
-            })
+    ) -> Result<harmos::operations::Response<Amplified>, Refusal> {
+        let result: ::core::result::Result<Amplified, Self::Error> = async move {
+            host.operation::<Amplify>(request.clone())
+                .await
+                .map_err(|error| match error {
+                    harmos_sidecar::CallError::Refused { code, message } => {
+                        Refusal::new(code, message)
+                    }
+                    error => Refusal::of(error),
+                })
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -718,7 +736,7 @@ impl PluginLifecycle for Host {
                 resident = resident.ingest::<MeterPulse>();
             }
             self.operations
-                .register_wire_operation::<harmos::sidecar::Publish<_, _, _>>(
+                .register_wire_operation::<harmos::plugin::sidecar::Publish<_, _, _>>(
                     "routing-publication-core",
                     HostLanes::Open,
                     Arc::new(resident.clone()),
@@ -740,7 +758,7 @@ impl PluginLifecycle for Host {
         &mut self,
         definition: &PluginDefinition,
         router: &Router,
-        authority: &harmos::load::PluginLifecycleAuthority<'_>,
+        authority: &harmos::plugin::PluginLifecycleAuthority<'_>,
         backend: &mut Backends,
     ) -> harmos::Result<()> {
         let PluginBackend::Sidecar(resources) = backend else {
@@ -909,7 +927,7 @@ impl PluginLifecycle for Host {
     }
     async fn stop(
         definition: &PluginDefinition,
-        authority: &harmos::load::PluginLifecycleAuthority<'_>,
+        authority: &harmos::plugin::PluginLifecycleAuthority<'_>,
 
         backend: &mut Backends,
     ) -> harmos::Result<()> {
@@ -1042,7 +1060,7 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let runtime = assembly()
-                        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+                        .operation_settings(harmos::operations::Settings { preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()), ..Default::default() })
                         .runtime()
                         .await
                         .unwrap();
@@ -1065,7 +1083,7 @@ pub(super) fn contract_scenario() {
                             .unwrap()
                             .unwrap();
                         assert!(
-                            matches!(row, harmos::Item::Row(row) if row.value.sample == sample)
+                            matches!(row, harmos::streams::Item::Row(row) if row.value.sample == sample)
                         );
                     }
                     let source = runtime.streams.publication("meter.pulse", 1).unwrap();
@@ -1094,7 +1112,10 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let runtime = assembly()
-                        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+                        .operation_settings(harmos::operations::Settings {
+                            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+                            ..Default::default()
+                        })
                         .runtime()
                         .await
                         .unwrap();
@@ -1205,7 +1226,10 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let notices = Arc::new(Mutex::new(Vec::new()));
                     let runtime = assembly()
-                        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+                        .operation_settings(harmos::operations::Settings {
+                            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+                            ..Default::default()
+                        })
                         .runtime()
                         .await
                         .unwrap();
@@ -1267,7 +1291,10 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let runtime = assembly()
-                        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+                        .operation_settings(harmos::operations::Settings {
+                            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+                            ..Default::default()
+                        })
                         .runtime()
                         .await
                         .unwrap();
@@ -1299,7 +1326,7 @@ pub(super) fn contract_scenario() {
             scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
 
     let runtime = assembly()
-        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+        .operation_settings(harmos::operations::Settings { preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()), ..Default::default() })
         .runtime()
         .await
         .unwrap();
@@ -1341,7 +1368,10 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let runtime = assembly()
-                        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+                        .operation_settings(harmos::operations::Settings {
+                            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+                            ..Default::default()
+                        })
                         .runtime()
                         .await
                         .unwrap();
@@ -1376,7 +1406,7 @@ pub(super) fn contract_scenario() {
             scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
 
     let runtime = assembly()
-        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+        .operation_settings(harmos::operations::Settings { preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()), ..Default::default() })
         .runtime()
         .await
         .unwrap();
@@ -1432,7 +1462,10 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let runtime = assembly()
-                        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+                        .operation_settings(harmos::operations::Settings {
+                            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+                            ..Default::default()
+                        })
                         .runtime()
                         .await
                         .unwrap();
@@ -1462,7 +1495,10 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let runtime = assembly()
-                        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+                        .operation_settings(harmos::operations::Settings {
+                            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+                            ..Default::default()
+                        })
                         .runtime()
                         .await
                         .unwrap();
@@ -1532,7 +1568,7 @@ pub(super) fn contract_scenario() {
             scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
 
     let runtime = assembly()
-        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+        .operation_settings(harmos::operations::Settings { preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()), ..Default::default() })
         .runtime()
         .await
         .unwrap();
@@ -1590,7 +1626,7 @@ pub(super) fn contract_scenario() {
             scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
 
     let runtime = assembly()
-        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+        .operation_settings(harmos::operations::Settings { preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()), ..Default::default() })
         .runtime()
         .await
         .unwrap();
@@ -1666,7 +1702,10 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let runtime = assembly()
-                        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+                        .operation_settings(harmos::operations::Settings {
+                            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+                            ..Default::default()
+                        })
                         .runtime()
                         .await
                         .unwrap();
@@ -1694,7 +1733,7 @@ pub(super) fn contract_scenario() {
             scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
 
     let runtime = assembly()
-        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+        .operation_settings(harmos::operations::Settings { preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()), ..Default::default() })
         .runtime()
         .await
         .unwrap();
@@ -1763,7 +1802,7 @@ pub(super) fn contract_scenario() {
 
     for (dynamic, canonical) in [(true, false), (true, true), (false, true)] {
         let runtime = assembly()
-            .operation_preparation_bytes(NonZeroUsize::new(256).unwrap())
+            .operation_settings(harmos::operations::Settings { preparation_bytes: Some(NonZeroUsize::new(256).unwrap()), ..Default::default() })
             .runtime()
             .await
             .unwrap();

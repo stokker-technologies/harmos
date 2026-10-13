@@ -24,7 +24,7 @@ use std::task::{Context, Poll};
 use tokio::sync::watch;
 // Local Imports
 use super::demand::Holding;
-use crate::declaration::BatchDefinition;
+use crate::streams::BatchDefinition;
 
 /* === Constants === */
 
@@ -212,7 +212,7 @@ impl State {
             definition,
             count: 0,
             missed: 0,
-            fields: vec![Accumulator::default(); definition.fields.len()],
+            fields: vec![Accumulator::default(); definition.fields().len()],
             feed: Arc::new(Feed {
                 ring: Mutex::new(Retained {
                     rows: VecDeque::with_capacity(64),
@@ -224,27 +224,30 @@ impl State {
             closed: false,
         }
     }
+
     pub(crate) fn publish(&mut self, row: &dyn Any) {
         if self.closed {
             return;
         }
         let mut fields = self.fields.iter_mut();
-        (self.definition.measure)(row, &mut |value| {
+        self.definition.measure(row, &mut |value| {
             fields
                 .next()
                 .expect("one accumulator per declared measure")
                 .push(value)
         });
         self.count += 1;
-        if self.count == self.definition.samples {
+        if self.count == self.definition.samples() {
             self.flush(false);
         }
     }
+
     pub(crate) fn miss(&mut self, count: u64) {
         if !self.closed {
             self.missed = self.missed.saturating_add(count);
         }
     }
+
     fn flush(&mut self, partial: bool) {
         let summary = Summary {
             count: self.count,
@@ -253,7 +256,7 @@ impl State {
             fields: self
                 .fields
                 .iter_mut()
-                .zip(self.definition.fields)
+                .zip(self.definition.fields())
                 .map(|(accumulator, field)| {
                     let result = accumulator.finish(field);
                     *accumulator = Accumulator::default();
@@ -272,6 +275,7 @@ impl State {
         drop(ring);
         self.feed.bell.send_replace(());
     }
+
     pub(crate) fn close(&mut self) {
         if self.closed {
             return;
@@ -314,6 +318,7 @@ impl Accumulator {
             self.squares += (abs / self.scale).powi(2);
         }
     }
+
     fn finish(&self, field: &'static str) -> Measurement {
         let variance = (self.m2 / self.count as f64).max(0.0);
         let overflow = self.count > 0

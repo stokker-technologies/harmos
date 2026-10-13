@@ -47,7 +47,50 @@ pub(crate) fn declare(attribute: TokenStream, item: TokenStream) -> TokenStream 
 }
 
 /* === Private Functions === */
+fn arguments(input: syn::parse::ParseStream<'_>) -> Result<Punctuated<Meta, Token![,]>, Error> {
+    input.parse_terminated(argument, Token![,])
+}
+
+fn argument(input: syn::parse::ParseStream<'_>) -> Result<Meta, Error> {
+    let fork = input.fork();
+    let path: syn::Path = fork.parse()?;
+    if ["request", "response", "input", "output", "declaration"]
+        .iter()
+        .any(|name| path.is_ident(name))
+    {
+        let path = input.parse()?;
+        let eq_token = input.parse()?;
+        let value: Type = input.parse()?;
+        return Ok(Meta::NameValue(syn::MetaNameValue {
+            path,
+            eq_token,
+            value: syn::Expr::Verbatim(quote!(#value)),
+        }));
+    }
+    input.parse()
+}
+
 fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Error> {
+    if let Ok(declaration) = syn::parse2::<syn::ItemStruct>(item.clone()) {
+        let arguments = arguments.parse2(attribute)?;
+        let mut sdk = None;
+        let mut metadata = Vec::new();
+        for argument in arguments {
+            if let Some(value) = path::declared(&argument) {
+                if sdk.is_some() {
+                    return Err(Error::new_spanned(
+                        argument,
+                        "operation arguments cannot repeat",
+                    ));
+                }
+                sdk = Some(value?);
+            } else {
+                metadata.push(argument);
+            }
+        }
+        let sdk = HarmosPath::resolve(sdk);
+        return crate::catalog::operation::structure(quote!(#(#metadata),*), declaration, &sdk);
+    }
     let implementation: ItemImpl = syn::parse2(item)?;
     if implementation.trait_.is_some() || implementation.unsafety.is_some() {
         return Err(Error::new_spanned(
@@ -55,7 +98,7 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
             "operation requires a safe inherent impl",
         ));
     }
-    let arguments = Punctuated::<Meta, Token![,]>::parse_terminated.parse2(attribute)?;
+    let arguments = arguments.parse2(attribute)?;
     let mut sdk = None;
     let mut declaration = None::<Type>;
     let mut input = None::<Type>;
@@ -123,6 +166,46 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
     context_lifetimes(&mut context);
     let request = borrowed(typed(&run.sig.inputs[2])?)?;
     let (response, error) = result(&run.sig.output)?;
+    // The Owner Handle Does Not Add A Wire Definition.
+    let response = if let Type::Path(path) = response {
+        let mut declared = path.path.clone();
+        let arguments = declared
+            .segments
+            .last_mut()
+            .map(|segment| std::mem::replace(&mut segment.arguments, PathArguments::None));
+        let expected: syn::Path = syn::parse_quote!(#sdk::operations::Response);
+        let normalize = |path: &syn::Path| {
+            quote!(#path)
+                .to_string()
+                .replace(' ', "")
+                .trim_start_matches("::")
+                .to_owned()
+        };
+        if normalize(&declared) == normalize(&expected) {
+            match arguments {
+                Some(PathArguments::AngleBracketed(arguments)) if arguments.args.len() == 1 => {
+                    let Some(GenericArgument::Type(payload)) = arguments.args.into_iter().next()
+                    else {
+                        return Err(Error::new_spanned(
+                            response,
+                            "response ownership requires one payload type",
+                        ));
+                    };
+                    payload
+                }
+                _ => {
+                    return Err(Error::new_spanned(
+                        response,
+                        "response ownership requires one payload type",
+                    ));
+                }
+            }
+        } else {
+            response.clone()
+        }
+    } else {
+        response.clone()
+    };
     let mut endpoints = Vec::new();
     let mut assertions = Vec::new();
     for (direction, item) in [("Input", input.as_ref()), ("Output", output.as_ref())] {
@@ -182,12 +265,9 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
             metadata.push(syn::parse_quote!(id = #id));
         }
         let visibility = &constructor.vis;
-        let mut variant: syn::Variant = syn::parse2(quote! {
-            #[operation(request = #request, response = #response, #(#metadata),*)]
-            #name
-        })?;
-        projected = crate::catalog::operation::project(&mut variant, visibility, &sdk)?
-            .expect("authored metadata");
+        let declaration = syn::parse_quote!(#visibility struct #name;);
+        let metadata = quote!(request = #request, response = #response, #(#metadata),*);
+        projected = crate::catalog::operation::structure(metadata, declaration, &sdk)?;
         syn::parse_quote!(#name)
     };
     let construct = match &constructor.sig.output {
@@ -262,9 +342,9 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
                 context: Self::Context<'ctx>,
                 request: &mut <Self::Declaration as #sdk::operations::OperationDeclaration>::Request,
                 endpoints: &mut Self::Endpoints,
-            ) -> ::core::result::Result<<Self::Declaration as #sdk::operations::OperationDeclaration>::Response, Self::Error> {
+            ) -> ::core::result::Result<#sdk::operations::Response<<Self::Declaration as #sdk::operations::OperationDeclaration>::Response>, Self::Error> {
                 #(#assertions)*
-                <#owner>::run(self, context, request #endpoint_arguments).await
+                <#owner>::run(self, context, request #endpoint_arguments).await.map(::core::convert::Into::into)
             }
             #(#lifecycle)*
         }

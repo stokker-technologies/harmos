@@ -11,11 +11,6 @@ version = { workspace = true }
 # === Package Targets ===
 
 [[bin]]
-name = "harmos-sidecar-export"
-path = "src/bin/harmos-sidecar-export.rs"
-required-features = ["packaging"]
-
-[[bin]]
 name = "harmos-sidecar-catalog-fixture"
 path = "tests/fixtures/catalog_sidecar.rs"
 required-features = ["kit"]
@@ -43,6 +38,7 @@ default = ["derive", "kit"]
 kit = ["transport", "dep:getrandom"]
 # The Shared Process Boundary Without Plugin Authoring Or Callback Runners
 transport = [
+  "dep:sha2",
   "dep:getrandom",
   "dep:libc",
   "dep:postcard",
@@ -52,7 +48,6 @@ transport = [
 ]
 
 derive = ["harmos-contract/derive"]
-packaging = ["harmos-contract/reflection"]
 # Optional Payload Codec Only; No Host Networking Or gRPC Carrier
 grpc = ["harmos-contract/grpc"]
 streaming = ["harmos-contract/streaming"]
@@ -74,6 +69,7 @@ tracing = { workspace = true, default-features = true }
 # Utilities
 getrandom = { workspace = true, features = ["std"], optional = true }
 semver = { workspace = true, default-features = true }
+sha2 = { workspace = true, default-features = true, optional = true }
 
 # Serialization
 postcard = { workspace = true, optional = true }
@@ -248,9 +244,9 @@ windows-sys = { workspace = true, default-features = true, optional = true }
 # === Test Targets ===
 
 [[test]]
-name = "packaging"
-path = "tests/packaging/main.rs"
-required-features = ["kit", "packaging"]
+name = "kit"
+path = "tests/kit/main.rs"
+required-features = ["kit"]
 
 [[test]]
 name = "attach"

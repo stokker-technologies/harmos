@@ -90,27 +90,35 @@ impl Status {
     pub fn phase(&self) -> Phase {
         self.phase
     }
+
     pub fn outcome(&self) -> Option<Outcome> {
         self.outcome
     }
+
     pub fn cancellation_requested(&self) -> bool {
         self.cancellation_requested
     }
+
     pub fn dependents(&self) -> usize {
         self.dependents
     }
+
     pub fn cleanup_pending(&self) -> bool {
         self.cleanup_pending
     }
+
     pub fn cleanup_failure(&self) -> Option<&Arc<Error>> {
         self.cleanup_failure.as_ref()
     }
+
     pub fn attempt(&self) -> usize {
         self.attempt
     }
+
     pub fn started_at(&self) -> Option<Instant> {
         self.started_at
     }
+
     pub fn settled_at(&self) -> Option<Instant> {
         self.settled_at
     }
@@ -264,7 +272,7 @@ impl Instance {
         }
     }
 
-    #[cfg(any(feature = "sidecar-host", test))]
+    #[cfg(any(feature = "plugin-sidecar", test))]
     pub(crate) fn depend_on(
         self: &Arc<Self>,
         provider: &Arc<Self>,

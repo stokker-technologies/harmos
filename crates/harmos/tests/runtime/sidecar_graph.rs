@@ -29,8 +29,8 @@ use super::{HostLanes, assembly, process_definition, service_status};
 use crate::support::Bank;
 use contract::{Marks, Probe, Step};
 use harmos::operations::OperationDeclaration;
-use harmos::sidecar::{Executable, Notice, Supervised};
-use harmos::{Message, Service, ServicePolicy, ServiceStatus};
+use harmos::plugin::sidecar::{Executable, Notice, Supervised};
+use harmos::{Message, services::Service, services::ServicePolicy, services::ServiceStatus};
 
 /* === Constants === */
 
@@ -98,7 +98,7 @@ pub(super) fn contract_scenario() {
                     let mut client_definition = process_definition(&client);
                     client_definition.configuration =
                         serde_json::to_vec(&client_root.to_str().unwrap()).unwrap();
-                    let definitions = harmos::load::PluginDefinitions::new(
+                    let definitions = harmos::plugin::PluginDefinitions::new(
                         [client_definition, provider_definition],
                         [],
                     )
@@ -121,7 +121,10 @@ pub(super) fn contract_scenario() {
                             .grace(Duration::from_millis(50))
                     });
                     let runtime = assembly()
-                        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+                        .operation_settings(harmos::operations::Settings {
+                            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+                            ..Default::default()
+                        })
                         .runtime()
                         .await
                         .unwrap();
@@ -136,7 +139,7 @@ pub(super) fn contract_scenario() {
                                 },
                             },
                             move |_: Arc<()>| {
-                                harmos::sidecar::Managed::new_executable_graph(
+                                harmos::plugin::sidecar::Managed::new_executable_graph(
                                     residents.clone(),
                                     definitions.clone(),
                                     HostLanes::Open,

@@ -59,22 +59,32 @@ fn artifact(version: &str, guest: bool, profile: &str) -> Vec<u8> {
     fs::read(build(version, guest, profile)).expect("preparation produces the artifact")
 }
 
-fn identity(bytes: &[u8], kind: &str) -> serde_json::Value {
-    let prefix = b"\0HARMOS:ARTIFACT:V5:";
+fn fragments(bytes: &[u8]) -> impl Iterator<Item = serde_json::Value> + '_ {
+    let prefix = b"\0HARMOS:ARTIFACT:V6:";
     bytes
         .windows(prefix.len())
         .enumerate()
-        .filter_map(|(index, value)| {
+        .filter_map(move |(index, value)| {
             if value != prefix {
                 return None;
             }
             let rest = &bytes[index + prefix.len()..];
             let end = rest.iter().position(|byte| *byte == 0)?;
-            let value: serde_json::Value = serde_json::from_slice(&rest[..end]).ok()?;
-            (value["kind"] == kind).then_some(value)
+            serde_json::from_slice(&rest[..end]).ok()
         })
-        .next()
+}
+
+fn identity(bytes: &[u8], kind: &str) -> serde_json::Value {
+    fragments(bytes)
+        .find(|value| value["kind"] == kind)
         .expect("the executable carries its complete identity")
+}
+
+fn schema(bytes: &[u8], name: &serde_json::Value) -> serde_json::Value {
+    assert!(name.is_string());
+    fragments(bytes)
+        .find(|value| value["kind"] == "schema" && value["name"] == *name)
+        .expect("every referenced definition has retained inert metadata")
 }
 
 fn operation_inventory(bytes: &[u8], facility: &str, owner: &str) {
@@ -119,8 +129,10 @@ fn operation_inventory(bytes: &[u8], facility: &str, owner: &str) {
     );
     assert_eq!(provides[0]["version"], 3);
     assert_eq!(provides[0]["codec"], "postcard");
-    assert_eq!(provides[0]["request"], provides[0]["response"]);
-    let fields = provides[0]["request"].as_array().unwrap();
+    let request = schema(bytes, &provides[0]["request"]);
+    let response = schema(bytes, &provides[0]["response"]);
+    assert_eq!(request["fields"], response["fields"]);
+    let fields = request["fields"].as_array().unwrap();
     assert_eq!(fields.len(), 1);
     assert_eq!(fields[0]["name"], "value");
     assert!(fields[0]["tag"].as_u64().unwrap() > 0);
@@ -180,6 +192,9 @@ fn retention(version: &str) {
         String::from_utf8_lossy(&reached.stderr)
     );
 
+    for declaration in fragments(&reached.stdout).filter(|value| value["kind"] == "schema") {
+        assert_eq!(schema(&embedded, &declaration["name"]), declaration);
+    }
     for (kind, scanned) in OWNED.iter().zip(scanned) {
         assert_eq!(
             identity(&reached.stdout, kind),
@@ -223,6 +238,13 @@ fn contract_scenario() {
                         let publications = identity(&stripped, "publications");
                         assert_eq!(publications["facility"], kind);
                         assert_eq!(publications["owner"], id);
+                        let row = schema(&stripped, &publications["streams"][0]["row"]);
+                        assert_eq!(
+                            row["fields"],
+                            serde_json::json!([
+                                {"name": "value", "tag": 39772037, "kind": {"type": "u32"}, "cardinality": "required"}
+                            ])
+                        );
                         assert_eq!(
                             publications["streams"],
                             serde_json::json!([{
@@ -232,7 +254,7 @@ fn contract_scenario() {
                                     "metadata": {"identifier": "value", "label": "Measured Value", "description": null, "tags": ["electrical"], "attributes": {"channel": {"type": "unsigned", "value": "1"}}},
                                     "role": "value", "unit": "V"
                                 }],
-                                "fields": [{"name": "value", "tag": 39772037, "kind": {"type": "u32"}, "cardinality": "required"}]
+                                "row": row["name"]
                             }])
                         );
                         let operations = identity(&stripped, "contracts");

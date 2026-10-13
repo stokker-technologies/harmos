@@ -26,8 +26,9 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 // Local Imports
 use harmos::{
-    Builder, DefinitionId, EvidenceError, EvidenceKind, Fault, Identified, Incompatible, Position,
-    Resident, Runtime, Service, Vault,
+    Builder, DefinitionId, Identified, Runtime, evidence::EvidenceError, evidence::EvidenceKind,
+    evidence::Vault, runtime::Incompatible, services::Fault, services::Resident, services::Service,
+    state::Position,
 };
 use jsonl_adapter::EvidenceDirectory;
 use support::{Bank, Copied, Ledger, Stored, catalog};

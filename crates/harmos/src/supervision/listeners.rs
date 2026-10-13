@@ -22,8 +22,8 @@ use std::task::Poll;
 use tokio::sync::{Mutex as AsyncMutex, watch};
 // Local Imports
 use super::Task;
-use crate::load::PluginScope;
 use crate::operations::EncodedInvocation;
+use crate::plugin::PluginScope;
 use crate::{Error, Result};
 
 /* === Constants === */

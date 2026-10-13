@@ -92,8 +92,14 @@ impl<C: ObjectCatalog> Data<C> {
                     field: "test frame schema",
                     reason: "selected schema absent from original saved view",
                 })?;
-            let projection =
-                ScalarProjection::new(&schema.fields, scan.columns.clone(), remaining)?;
+            let projection = ScalarProjection::new(
+                schema.schema.root().map_err(|_| Error::InvalidInput {
+                    field: "test frame schema",
+                    reason: "invalid shared root",
+                })?,
+                scan.columns.clone(),
+                remaining,
+            )?;
             let selection = &scan.selection;
             let candidates = snapshot
                 .records
@@ -213,7 +219,7 @@ impl<C: ObjectCatalog> Data<C> {
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn metadata(
+pub(super) fn metadata(
     record: &StoredRecord,
     stream: Option<&Identifier>,
     path: &ScalarPath,

@@ -26,25 +26,25 @@ use crate::{Identifier, MemorySize};
 /* === Constants === */
 
 /* === Macros === */
-crate::storage_codec::product!(MutationId {
-    window: crate::storage_codec::Id => 1,
-    key: crate::storage_codec::Id => 2,
+crate::storage::codec::product!(MutationId {
+    window: crate::storage::codec::Id => 1,
+    key: crate::storage::codec::Id => 2,
 });
-crate::storage_codec::product!(MutationWindow {
-    history: crate::storage_codec::Nested<StoreHistory> => 1,
-    id: crate::storage_codec::Id => 2,
-    expires_at: crate::storage_codec::Time => 3,
+crate::storage::codec::product!(MutationWindow {
+    history: crate::storage::codec::Nested<StoreHistory> => 1,
+    id: crate::storage::codec::Id => 2,
+    expires_at: crate::storage::codec::Time => 3,
 });
-crate::storage_codec::product!(FileProducer {
-    session: crate::storage_codec::Nested<FileSession> => 1,
-    length: crate::storage_codec::Unsigned => 2,
+crate::storage::codec::product!(FileProducer {
+    session: crate::storage::codec::Nested<FileSession> => 1,
+    length: crate::storage::codec::Unsigned => 2,
 });
 
-crate::storage_codec::product!(StorageInfo {
-    accepted: crate::storage_codec::Nested<StorageCursor> => 1,
-    saved: crate::storage_codec::Nested<StorageCursor> => 2,
-    mutations: crate::storage_codec::Optional<crate::storage_codec::Nested<MutationWindow>> => 3,
-    file_chunk_bytes: crate::storage_codec::Unsigned => 4,
+crate::storage::codec::product!(StorageInfo {
+    accepted: crate::storage::codec::Nested<StorageCursor> => 1,
+    saved: crate::storage::codec::Nested<StorageCursor> => 2,
+    mutations: crate::storage::codec::Optional<crate::storage::codec::Nested<MutationWindow>> => 3,
+    file_chunk_bytes: crate::storage::codec::Unsigned => 4,
 });
 
 /* === Type Aliases === */

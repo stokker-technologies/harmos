@@ -19,7 +19,7 @@ use tokio::sync::watch;
 // Local Imports
 use super::definition::{Table, Wired};
 use super::{ManagedPublication, StreamPublicationError};
-use crate::Position;
+use crate::state::Position;
 
 /* === Constants === */
 
@@ -157,8 +157,8 @@ impl Activation {
                 return false;
             };
             if !windows
-                .get(&wired.definition.id)
-                .and_then(|revisions| revisions.get(&wired.definition.version))
+                .get(wired.definition.id())
+                .and_then(|revisions| revisions.get(&wired.definition.version()))
                 .is_some_and(|current| Arc::ptr_eq(current, &wired))
             {
                 return false;

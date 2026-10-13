@@ -27,7 +27,9 @@ use super::{
 use harmos::state::SnapshotPolicy;
 use harmos::storage::recovery::RecoverySnapshot;
 use harmos::storage::{ReadLimits, StorageSettings};
-use harmos::{Builder, Focus, Position, PrincipalId, RequestKey, Runtime};
+use harmos::{
+    Builder, Runtime, state::Focus, state::Position, state::PrincipalId, state::RequestKey,
+};
 
 /* === Constants === */
 
@@ -109,12 +111,12 @@ impl harmos::Application for Model {
     type Resources = ();
 }
 
-impl harmos::Transaction<i64> for Add {
+impl harmos::state::Transaction<i64> for Add {
     type Error = Refusal;
     fn check(&self, _: &i64) -> Result<(), Refusal> {
         Ok(())
     }
-    fn records(&self, state: &i64, out: &mut harmos::Records) {
+    fn records(&self, state: &i64, out: &mut harmos::state::Records) {
         out.push(Seen { before: *state }).unwrap();
     }
     fn apply(&self, state: &mut i64) {
@@ -122,12 +124,12 @@ impl harmos::Transaction<i64> for Add {
     }
 }
 
-impl harmos::Transaction<i64> for OldAdd {
+impl harmos::state::Transaction<i64> for OldAdd {
     type Error = Refusal;
     fn check(&self, _: &i64) -> Result<(), Refusal> {
         panic!("replay must not check")
     }
-    fn records(&self, _: &i64, _: &mut harmos::Records) {
+    fn records(&self, _: &i64, _: &mut harmos::state::Records) {
         panic!("replay must not collect records")
     }
     fn apply(&self, state: &mut i64) {
@@ -210,7 +212,7 @@ pub(super) fn contract_scenario() {
                     let receipt = journal.commit_keyed(key.clone(), deposit(5)).await.unwrap();
                     journal.commit(deposit(6)).await.unwrap();
                     journal.undo(who.clone(), Focus::all()).await.unwrap();
-                    harmos::RecordManager::new(journal.clone())
+                    harmos::records::RecordManager::new(journal.clone())
                         .publish(Noted("tail".into()))
                         .await
                         .unwrap();

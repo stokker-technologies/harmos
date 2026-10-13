@@ -34,13 +34,13 @@ struct Occupied;
 /* === Traits === */
 
 /* === Implementations === */
-impl harmos::Resident<Bank> for Occupied {
+impl harmos::services::Resident<Bank> for Occupied {
     type Error = Error;
 
     async fn attempt(
         &mut self,
-        mut context: harmos::Service<Bank>,
-    ) -> Result<(), harmos::Fault<Error>> {
+        mut context: harmos::services::Service<Bank>,
+    ) -> Result<(), harmos::services::Fault<Error>> {
         context.until_stopping(std::future::pending::<()>()).await;
         Ok(())
     }
@@ -94,7 +94,16 @@ pub(super) fn contract_scenario() {
                     let mut targets = Vec::new();
                     let target = replica(&mut targets, "remote");
                     let f = Fixture::with_replicas(policy, targets).await;
-                    f.storage.write_schema(&schema(), &[]).await.unwrap();
+                    f.storage
+                        .write_schema(
+                            &schema(),
+                            &harmos::schema::graph::Schema {
+                                root: 0,
+                                definitions: vec![vec![]],
+                            },
+                        )
+                        .await
+                        .unwrap();
                     write(&f.storage, "record").await;
                     let key = schema();
                     let item = Identifier::new("sample").unwrap();
@@ -538,7 +547,7 @@ pub(super) fn contract_scenario() {
                         .register(
                             harmos::services::ServiceDefinition {
                                 id: name.into(),
-                                policy: harmos::ServicePolicy::default(),
+                                policy: harmos::services::ServicePolicy::default(),
                             },
                             |_: Arc<()>| Occupied,
                         )
@@ -665,8 +674,8 @@ pub(super) fn contract_scenario() {
                     policy.queue_capacity_bytes = NonZeroUsize::new(6 * 1024 * 1024).unwrap();
                     policy.target_batch_bytes = policy.queue_capacity_bytes;
                     policy.max_batch_bytes = policy.queue_capacity_bytes;
-                    // Five collections at 48 KiB preserve this test's original transfer budget.
-                    policy.replication_limits.bytes = NonZeroUsize::new(48 * 1024).unwrap();
+                    // Reserve Finite-Schema Decoding Within The Same Shared 6 MiB Cap.
+                    policy.replication_limits.bytes = NonZeroUsize::new(16 * 1024).unwrap();
                     let first = replica(&mut targets, "first");
                     let second = replica(&mut targets, "second");
                     first.control.block_write.store(true, Ordering::SeqCst);

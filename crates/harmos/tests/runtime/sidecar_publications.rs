@@ -21,7 +21,7 @@ use tokio::sync::Notify;
 // Local Imports
 use super::operations::{Lanes, Managed};
 use super::*;
-use harmos::{Batch, Cursor, StreamConsumer};
+use harmos::{storage::Batch, storage::Cursor, storage::StreamConsumer};
 use harmos_contract::plugin::Declared;
 use harmos_sidecar::{Attach, ObserverContext};
 
@@ -644,12 +644,15 @@ pub(super) async fn ready(mut ready: tokio::sync::watch::Receiver<bool>) {
 
 /* === Private Functions === */
 async fn row(
-    stream: &mut (impl futures_core::Stream<Item = harmos::Item<harmos::PublicationRow>> + Unpin),
+    stream: &mut (
+             impl futures_core::Stream<Item = harmos::streams::Item<harmos::streams::PublicationRow>>
+             + Unpin
+         ),
 ) {
     tokio::time::timeout(Duration::from_secs(2), async {
         loop {
             let item = std::future::poll_fn(|cx| Pin::new(&mut *stream).poll_next(cx)).await;
-            if matches!(item, Some(harmos::Item::Row(_))) {
+            if matches!(item, Some(harmos::streams::Item::Row(_))) {
                 return;
             }
             assert!(item.is_some(), "the observer stream must stay live");
@@ -680,7 +683,10 @@ pub(super) fn contract_scenario() {
                     let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
                         .register(catalog())
                         .register(Lanes::catalog())
-                        .operation_preparation_bytes(std::num::NonZeroUsize::new(4096).unwrap())
+                        .operation_settings(harmos::operations::Settings {
+                            preparation_bytes: Some(std::num::NonZeroUsize::new(4096).unwrap()),
+                            ..Default::default()
+                        })
                         .attach_streams(Recorder {
                             cursor: Cursor::ORIGIN,
                             rows: rows.clone(),
@@ -720,7 +726,16 @@ pub(super) fn contract_scenario() {
                         .publication("meter.pulse", 1)
                         .unwrap();
                     assert_eq!(stream.definition().owner(), Some("meter"));
-                    assert!(!stream.definition().fields().unwrap().is_empty());
+                    assert!(
+                        !stream
+                            .definition()
+                            .schema()
+                            .unwrap()
+                            .root()
+                            .unwrap()
+                            .fields()
+                            .is_empty()
+                    );
 
                     fixture.shutdown().await.unwrap();
                     assert_eq!(stream.query(..).await.unwrap().count(), 1);
@@ -912,8 +927,12 @@ pub(super) fn contract_scenario() {
                         );
                         assert_eq!(stream.definition().id(), format!("twins.{id}"));
                         assert_eq!(
-                            stream.definition().fields().unwrap(),
-                            <support::Pulse as harmos::schema::Described>::FIELDS
+                            stream.definition().schema().unwrap(),
+                            &harmos::schema::graph::Schema::from_declaration(
+                                <support::Pulse as harmos::schema::Described>::DEFINITION,
+                                &harmos::config::SchemaSettings::default()
+                            )
+                            .unwrap()
                         );
                     }
                     fixture.runtime.stop().await.unwrap();
@@ -1003,7 +1022,7 @@ pub(super) fn contract_scenario() {
                     let runtime = &fixture.runtime;
                     let left = runtime.streams.publication("twins.left", 1).unwrap();
                     let right = runtime.streams.publication("twins.right", 1).unwrap();
-                    assert_eq!(left.definition().fields(), right.definition().fields());
+                    assert_eq!(left.definition().schema(), right.definition().schema());
                     assert_eq!(counts.started[0].load(SeqCst), 0);
                     assert_eq!(counts.started[1].load(SeqCst), 0);
 
@@ -1071,7 +1090,7 @@ pub(super) fn contract_scenario() {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
 
-    use harmos::load::{PluginArtifact, PluginContributions, PluginDefinition, PluginDefinitions};
+    use harmos::plugin::{PluginArtifact, PluginContributions, PluginDefinition, PluginDefinitions};
     use std::sync::atomic::Ordering::SeqCst;
 
     for case in 0..5 {
@@ -1367,8 +1386,8 @@ pub(super) fn contract_scenario() {
                             cause.downcast_ref::<harmos::Error>()
                         {
                             cause = source.as_ref();
-                        } else if let Some(harmos::load::PluginFailure::Cleanup(failures)) =
-                            cause.downcast_ref::<harmos::load::PluginFailure>()
+                        } else if let Some(harmos::plugin::PluginFailure::Cleanup(failures)) =
+                            cause.downcast_ref::<harmos::plugin::PluginFailure>()
                         {
                             assert_eq!(failures.len(), 1);
                             cause = &failures[0].error;
@@ -1469,15 +1488,17 @@ pub(super) fn contract_scenario() {
             assert_eq!(observers.len(), 1);
             assert_eq!(observers[0].streams.len(), 2);
 
-            let empty = harmos::sidecar::inventory::Declaration::inspect(
-                &<Twins as harmos_contract::plugin::Declared>::markers().concat(),
-                harmos::sidecar::inventory::Facility::Sidecar,
+            let empty = harmos::plugin::sidecar::inventory::Declaration::inspect(
+                &<Twins as harmos_contract::plugin::Declared>::markers()
+                    .unwrap()
+                    .concat(),
+                harmos::plugin::sidecar::inventory::Facility::Sidecar,
             )
             .unwrap();
             assert!(empty.observers.is_empty());
-            let selected = harmos::sidecar::inventory::Declaration::inspect(
-                &MultiStream::markers().concat(),
-                harmos::sidecar::inventory::Facility::Sidecar,
+            let selected = harmos::plugin::sidecar::inventory::Declaration::inspect(
+                &MultiStream::markers().unwrap().concat(),
+                harmos::plugin::sidecar::inventory::Facility::Sidecar,
             )
             .unwrap();
             assert_eq!(selected.observers.len(), 1);
@@ -1486,7 +1507,7 @@ pub(super) fn contract_scenario() {
             assert_eq!(selected.observers[0].interval, observers[0].interval);
             assert_eq!(
                 selected.observers[0].activation,
-                harmos::sidecar::Activation::Demand
+                harmos::plugin::sidecar::Activation::Demand
             );
             assert_eq!(
                 selected.observers[0].streams,
@@ -1497,17 +1518,18 @@ pub(super) fn contract_scenario() {
             );
 
             let missing: Vec<_> = MultiStream::markers()
+                .unwrap()
                 .into_iter()
                 .filter(|marker| {
                     !String::from_utf8_lossy(marker).contains("\"kind\":\"observers\"")
                 })
                 .collect();
             assert!(matches!(
-                harmos::sidecar::inventory::Declaration::inspect(
+                harmos::plugin::sidecar::inventory::Declaration::inspect(
                     &missing.concat(),
-                    harmos::sidecar::inventory::Facility::Sidecar
+                    harmos::plugin::sidecar::inventory::Facility::Sidecar
                 ),
-                Err(harmos::sidecar::inventory::DeclarationError::ObserverInventory(_))
+                Err(harmos::plugin::sidecar::inventory::DeclarationError::ObserverInventory(_))
             ));
         });
     }

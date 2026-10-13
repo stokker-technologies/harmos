@@ -11,11 +11,11 @@
 #[path = "../../../../tests/support/scenarios.rs"]
 mod scenario_runtime;
 
-#[cfg(all(feature = "sidecar-host", feature = "sidecar"))]
+#[cfg(feature = "plugin-sidecar")]
 mod execution;
-#[cfg(all(feature = "sidecar-host", feature = "sidecar"))]
+#[cfg(feature = "plugin-sidecar")]
 mod lifecycle;
-#[cfg(feature = "sidecar")]
+#[cfg(feature = "plugin-sidecar")]
 mod native;
 mod registration;
 
@@ -96,13 +96,13 @@ impl Control {
 
 impl ObserverBackend for Backend {
     type Resources = Control;
-    fn definition(&self) -> ObserverDefinition {
-        ObserverDefinition {
+    fn definition(&self) -> harmos::Result<ObserverDefinition> {
+        Ok(ObserverDefinition {
             id: self.id.into(),
             interval: Duration::from_millis(5),
             streams: vec![],
             demand_keys: vec![],
-        }
+        })
     }
 
     async fn run(
@@ -145,14 +145,14 @@ impl Drop for Reentrant {
 }
 
 impl ObserverBackend for FinalPublication {
-    type Resources = harmos::StateManager<Bank>;
-    fn definition(&self) -> ObserverDefinition {
-        ObserverDefinition {
+    type Resources = harmos::state::StateManager<Bank>;
+    fn definition(&self) -> harmos::Result<ObserverDefinition> {
+        Ok(ObserverDefinition {
             id: "final".into(),
             interval: Duration::from_secs(1),
             streams: vec![],
             demand_keys: vec![],
-        }
+        })
     }
     async fn run(
         &self,
@@ -174,14 +174,14 @@ impl ObserverBackend for FinalPublication {
 
 impl ObserverBackend for ReentrantBackend {
     type Resources = ();
-    fn definition(&self) -> ObserverDefinition {
+    fn definition(&self) -> harmos::Result<ObserverDefinition> {
         let _ = self.0.manager.definitions();
-        ObserverDefinition {
+        Ok(ObserverDefinition {
             id: "retained".into(),
             interval: Duration::from_secs(1),
             streams: vec![],
             demand_keys: vec![],
-        }
+        })
     }
     async fn run(&self, _: Arc<()>, _: ObserverActivation) -> harmos::Result<()> {
         unreachable!("definition stays inert")
@@ -966,10 +966,10 @@ fn own_contract() {
 fn observer_lifecycle() {
     own_contract();
     registration::contract_scenario();
-    #[cfg(all(feature = "sidecar-host", feature = "sidecar"))]
+    #[cfg(feature = "plugin-sidecar")]
     lifecycle::contract_scenario();
-    #[cfg(all(feature = "sidecar-host", feature = "sidecar"))]
+    #[cfg(feature = "plugin-sidecar")]
     execution::contract_scenario();
-    #[cfg(feature = "sidecar")]
+    #[cfg(feature = "plugin-sidecar")]
     native::contract_scenario();
 }

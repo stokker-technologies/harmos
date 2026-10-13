@@ -108,7 +108,7 @@ fn expand(attribute: TokenStream, item: TokenStream, sort: Sort) -> Result<Token
 
             quote! {
                 #[automatically_derived]
-                impl #harmos::RecordProjection<#definition> for #name {
+                impl #harmos::state::RecordProjection<#definition> for #name {
                     fn project(&self) -> ::core::option::Option<&#definition> {
                         match self {
                             Self::#variant(record) => ::core::option::Option::Some(record),
@@ -230,7 +230,7 @@ fn crossing(
         },
     };
     let record_catalog = state.is_none().then(|| quote! {
-        impl #harmos::RecordCatalog for #name {
+        impl #harmos::state::RecordCatalog for #name {
             fn restore(id: &#harmos::DefinitionId, version: u32, payload: &#harmos::__private::serde_json::Value)
                 -> ::core::result::Result<::core::option::Option<Self>, #harmos::__private::serde_json::Error> {
                 Self::restore(id, version, payload)
@@ -240,7 +240,7 @@ fn crossing(
 
     quote! {
         #record_catalog
-        impl #harmos::CatalogCodec for #name {
+        impl #harmos::state::CatalogCodec for #name {
             fn identify(&self) -> (#harmos::DefinitionId, u32) { self.identify() }
             fn encode<S: ::serde::Serializer>(&self, serializer: S) -> ::core::result::Result<S::Ok, S::Error> { self.encode_with(serializer) }
         }
@@ -304,42 +304,42 @@ fn behavior(
     let checks = members.iter().zip(&wrap).map(|(member, wrap)| {
         let variant = &member.name;
 
-        quote!(Self::#variant(definition) => #harmos::Transaction::check(definition, state).map_err(#wrap),)
+        quote!(Self::#variant(definition) => #harmos::state::Transaction::check(definition, state).map_err(#wrap),)
     });
     let applies = members.iter().map(|member| {
         let variant = &member.name;
 
-        quote!(Self::#variant(definition) => #harmos::Transaction::apply(definition, state),)
+        quote!(Self::#variant(definition) => #harmos::state::Transaction::apply(definition, state),)
     });
 
     let records = members.iter().map(|member| {
         let variant = &member.name;
-        quote!(Self::#variant(definition) => #harmos::Transaction::records(definition, state, out),)
+        quote!(Self::#variant(definition) => #harmos::state::Transaction::records(definition, state, out),)
     });
     let inverses = inverses(name, members, state);
 
     quote! {
         #declaration
 
-        impl #harmos::TransactionCatalog<#state> for #name {
-            fn replay(&self, prepared: &#harmos::Prepared, state: &mut #state) -> ::core::result::Result<(), #harmos::DecodeError> {
-                let refusal = || #harmos::DecodeError::Malformed { id: prepared.id.clone(), version: prepared.version };
+        impl #harmos::state::TransactionCatalog<#state> for #name {
+            fn replay(&self, prepared: &#harmos::state::Prepared, state: &mut #state) -> ::core::result::Result<(), #harmos::state::DecodeError> {
+                let refusal = || #harmos::state::DecodeError::Malformed { id: prepared.id.clone(), version: prepared.version };
                 let (value, applying) = Self::restore(&prepared.id, prepared.version, &prepared.payload)
                     .map_err(|_| refusal())?.ok_or_else(refusal)?;
-                if let Some(apply) = applying { apply(state); } else { #harmos::Transaction::apply(&value, state); }
+                if let Some(apply) = applying { apply(state); } else { #harmos::state::Transaction::apply(&value, state); }
                 ::core::result::Result::Ok(())
             }
         }
 
         #[automatically_derived]
-        impl #harmos::Transaction<#state> for #name {
+        impl #harmos::state::Transaction<#state> for #name {
             type Error = #refusal;
 
             fn check(&self, state: &#state) -> ::core::result::Result<(), Self::Error> {
                 match self { #(#checks)* }
             }
 
-            fn records(&self, state: &#state, out: &mut #harmos::Records) {
+            fn records(&self, state: &#state, out: &mut #harmos::state::Records) {
                 match self { #(#records)* }
             }
 
@@ -365,7 +365,7 @@ fn aggregate(
 
         quote! {
 
-            #variant(<#definition as #harmos::Transaction<#state>>::Error)
+            #variant(<#definition as #harmos::state::Transaction<#state>>::Error)
         }
     });
     let displays = members.iter().map(|member| {
@@ -453,17 +453,17 @@ fn registration(
                     bytes: &[u8],
                 ) -> ::core::result::Result<
                     ::core::option::Option<A::Transaction>,
-                    #harmos::DecodeError,
+                    #harmos::state::DecodeError,
                 > {
                     let payload: #harmos::__private::serde_json::Value =
                         #harmos::__private::serde_json::from_slice(bytes).map_err(|_| {
-                            #harmos::DecodeError::Malformed {
+                            #harmos::state::DecodeError::Malformed {
                                 id: id.clone(),
                                 version,
                             }
                         })?;
                     let restored = #name::restore(id, version, &payload).map_err(|_| {
-                        #harmos::DecodeError::Malformed {
+                        #harmos::state::DecodeError::Malformed {
                             id: id.clone(),
                             version,
                         }
@@ -484,7 +484,7 @@ fn registration(
                     _bytes: &[u8],
                 ) -> ::core::result::Result<
                     ::core::option::Option<A::Transaction>,
-                    #harmos::DecodeError,
+                    #harmos::state::DecodeError,
                 > {
                     ::core::result::Result::Ok(::core::option::Option::None)
                 }
@@ -495,7 +495,7 @@ fn registration(
     quote! {
 
         struct #wrapper<A: #product_bound> {
-            definitions: ::std::vec::Vec<(#harmos::Kind, #harmos::DefinitionId, u32)>,
+            definitions: ::std::vec::Vec<(#harmos::state::Kind, #harmos::DefinitionId, u32)>,
             marker: ::core::marker::PhantomData<fn() -> A>,
         }
 
@@ -515,9 +515,9 @@ fn registration(
         }
 
         #[automatically_derived]
-        impl<A: #product_bound> #harmos::Registration<A> for #wrapper<A> {
-            fn register(self) -> #harmos::Catalog<A> {
-                #harmos::Catalog::Transactions {
+        impl<A: #product_bound> #harmos::runtime::Registration<A> for #wrapper<A> {
+            fn register(self) -> #harmos::runtime::Catalog<A> {
+                #harmos::runtime::Catalog::Transactions {
                     definitions: self.definitions,
                     decode: Self::__harmos_decode_transaction,
                     inverses: #derivation,
@@ -527,7 +527,7 @@ fn registration(
 
         impl #name {
 
-            #visibility fn catalog<A: #product_bound>() -> impl #harmos::Registration<A> {
+            #visibility fn catalog<A: #product_bound>() -> impl #harmos::runtime::Registration<A> {
                 let mut catalogued = ::std::vec::Vec::new();
                 #(#declared)*
 

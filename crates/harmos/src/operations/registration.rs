@@ -22,18 +22,22 @@ use super::{Binding, Implementations, WireImplementations};
 use super::{Context, OperationManager};
 use crate::catalog::{Catalog, Projection, Visitor};
 
-#[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
-use crate::load::PluginScope;
 #[cfg(any(
-    feature = "sidecar-host",
-    all(feature = "guest-host", not(target_arch = "wasm32"))
+    feature = "plugin-sidecar",
+    all(feature = "plugin-guest", not(target_arch = "wasm32"))
 ))]
 use crate::operations::Declarations;
 use crate::operations::{
     AuthoredDeclarations, Definition, OperationDeclaration, WireDeclaration, WireOperation,
 };
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
+use crate::plugin::PluginScope;
 use crate::schema::Described;
-use crate::{Error, Lane, Message, Result};
+use crate::{Error, Message, Result, operations::Lane};
 
 /* === Constants === */
 
@@ -61,13 +65,21 @@ pub(crate) struct CatalogBinding {
 pub struct Bindings<'a> {
     pub(super) operations: &'a OperationManager,
     owner: &'a str,
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     pub(super) scope: Option<&'a PluginScope>,
     pub(super) entries: Vec<Arc<Entry>>,
 }
 
 #[must_use = "retain plugin operation registration until shutdown settles its invocations"]
-#[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
 pub struct PluginRegistration {
     scope: Arc<PluginScope>,
     operations: OperationManager,
@@ -211,7 +223,11 @@ impl OperationManager {
         let mut bindings = Bindings {
             operations: self,
             owner: &owner,
-            #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+            #[cfg(any(
+                feature = "plugin",
+                feature = "plugin-guest",
+                feature = "plugin-sidecar"
+            ))]
             scope: None,
             entries: Vec::new(),
         };
@@ -219,7 +235,11 @@ impl OperationManager {
         self.reserve(&bindings.entries)
     }
 
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     pub fn stage_plugin(
         &self,
         scope: &PluginScope,
@@ -251,7 +271,7 @@ impl OperationManager {
                 .filter_map(|entry| entry.contract.as_ref()),
         )?;
         self.reserve(&bindings.entries)?;
-        #[cfg(feature = "sidecar-host")]
+        #[cfg(feature = "plugin-sidecar")]
         for entry in &bindings.entries {
             if let Some(native) = &entry.native
                 && let Err(error) = native.capture_observer_controls()
@@ -374,12 +394,16 @@ impl Bindings<'_> {
             resources,
             definition,
             projected.as_ref().and_then(|wire| wire.dispatch),
-            #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+            #[cfg(any(
+                feature = "plugin",
+                feature = "plugin-guest",
+                feature = "plugin-sidecar"
+            ))]
             self.scope.cloned(),
         )?;
         if let Some(projected) = projected {
             let original = Arc::get_mut(&mut entry).expect("new owned entry has one owner");
-            #[cfg(feature = "sidecar-host")]
+            #[cfg(feature = "plugin-sidecar")]
             {
                 original.observer_stop = self
                     .scope
@@ -464,10 +488,26 @@ impl Bindings<'_> {
         if definition != *contract.operation()
             || declared.version() != contract.version()
             || declared.codec() != contract.codec()
-            || declared.request() != contract.request()
-            || declared.response() != contract.response()
-            || declared.input() != contract.input()
-            || declared.output() != contract.output()
+            || ![
+                (Some(declared.request()), Some(contract.request())),
+                (Some(declared.response()), Some(contract.response())),
+                (declared.input(), contract.input()),
+                (declared.output(), contract.output()),
+            ]
+            .into_iter()
+            .all(|(left, right)| match (left, right) {
+                (None, None) => true,
+                (Some(left), Some(right)) => left
+                    .schema()
+                    .equivalent(
+                        left.index(),
+                        right.schema(),
+                        right.index(),
+                        &harmos_contract::config::SchemaSettings::default(),
+                    )
+                    .unwrap_or(false),
+                _ => false,
+            })
             || declared.grpc() != contract.grpc()
         {
             return Err(Error::InvalidInput {
@@ -488,11 +528,15 @@ impl Bindings<'_> {
             resources,
             contract.operation().clone(),
             projected.dispatch,
-            #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+            #[cfg(any(
+                feature = "plugin",
+                feature = "plugin-guest",
+                feature = "plugin-sidecar"
+            ))]
             self.scope.cloned(),
         )?;
         let original = Arc::get_mut(&mut entry).expect("new owned entry has one owner");
-        #[cfg(feature = "sidecar-host")]
+        #[cfg(feature = "plugin-sidecar")]
         {
             original.observer_stop = self
                 .scope
@@ -509,8 +553,8 @@ impl Bindings<'_> {
     }
 
     #[cfg(any(
-        feature = "sidecar-host",
-        all(feature = "guest-host", not(target_arch = "wasm32"))
+        feature = "plugin-sidecar",
+        all(feature = "plugin-guest", not(target_arch = "wasm32"))
     ))]
     pub(super) fn project<C, V, H>(&mut self, lane: impl Lane, handler: Arc<H>) -> Result<()>
     where
@@ -522,8 +566,8 @@ impl Bindings<'_> {
     }
 
     #[cfg(any(
-        feature = "sidecar-host",
-        all(feature = "guest-host", not(target_arch = "wasm32"))
+        feature = "plugin-sidecar",
+        all(feature = "plugin-guest", not(target_arch = "wasm32"))
     ))]
     fn project_at<C, V, H>(&mut self, lane: &'static str, handler: Arc<H>) -> Result<()>
     where
@@ -578,7 +622,11 @@ impl Bindings<'_> {
     }
 }
 
-#[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
 impl PluginRegistration {
     pub async fn shutdown(&mut self) -> Result<()> {
         self.scope.unbind_operations();
@@ -589,7 +637,11 @@ impl PluginRegistration {
     }
 }
 
-#[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
 impl Drop for PluginRegistration {
     fn drop(&mut self) {
         self.scope.close_staging();

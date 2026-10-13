@@ -35,8 +35,8 @@ use crate::Identifier;
 pub(super) trait Entry: Clone + Serialize + Send + Sync + 'static {
     const KIND: ReadKind;
     fn pending(operation: &Operation) -> &[Self];
-    fn read_limits(limits: ReadLimits, encoding: SchemaEncoding) -> ReadLimits {
-        if Self::KIND == ReadKind::Schemas && encoding == SchemaEncoding::GraphV1 {
+    fn read_limits(limits: ReadLimits) -> ReadLimits {
+        if Self::KIND == ReadKind::Schemas {
             ReadLimits {
                 rows: std::num::NonZeroUsize::MIN,
                 ..limits
@@ -45,17 +45,19 @@ pub(super) trait Entry: Clone + Serialize + Send + Sync + 'static {
             limits
         }
     }
-    fn decoding_overhead(encoding: SchemaEncoding) -> usize {
+
+    fn decoding_overhead(limits: ReadLimits) -> Option<usize> {
         if Self::KIND == ReadKind::Schemas {
-            encoding.decoding_overhead()
+            StorageSchema::decoding_memory_bytes(limits.bytes.get())
         } else {
-            0
+            Some(0)
         }
     }
 
     fn validate(&self, _: &super::manager::Inner, _: ReadLimits) -> crate::Result<()> {
         Ok(())
     }
+
     fn validate_read(
         &self,
         inner: &super::manager::Inner,
@@ -63,6 +65,7 @@ pub(super) trait Entry: Clone + Serialize + Send + Sync + 'static {
     ) -> crate::Result<()> {
         self.validate(inner, limits)
     }
+
     fn position(&self) -> &StorageCursor;
     fn part(entries: &[Self]) -> StoragePart<'_>;
     fn matches(&self, selection: &ReadSelection) -> bool;
@@ -91,6 +94,7 @@ impl Entry for ObjectEntry {
     fn position(&self) -> &StorageCursor {
         &self.position
     }
+
     fn matches(&self, selection: &ReadSelection) -> bool {
         selection
             .schema
@@ -101,14 +105,17 @@ impl Entry for ObjectEntry {
                 .as_ref()
                 .is_none_or(|key| key == &self.value.item)
     }
+
     fn validate(&self, inner: &super::manager::Inner, limits: ReadLimits) -> crate::Result<()> {
         self.version.check_position(&self.position)?;
         (inner.validate_object)(&self.value, limits.bytes)
     }
+
     fn validate_read(&self, _: &super::manager::Inner, _: ReadLimits) -> crate::Result<()> {
         // Typed Reads Verify Payload And Key Under Their Original Output Preclaim.
         self.version.check_position(&self.position)
     }
+
     fn fetch<'a>(
         backend: &'a dyn super::backend::ErasedBackend,
         view: &'a ReadView,
@@ -135,6 +142,7 @@ impl Entry for StoredRecord {
     fn position(&self) -> &StorageCursor {
         &self.position
     }
+
     fn matches(&self, selection: &ReadSelection) -> bool {
         selection
             .schema
@@ -147,6 +155,7 @@ impl Entry for StoredRecord {
             && optional(&selection.scope, self.scope.as_ref())
             && optional(&selection.item, Some(&self.item))
     }
+
     fn fetch<'a>(
         backend: &'a dyn super::backend::ErasedBackend,
         view: &'a ReadView,
@@ -173,9 +182,11 @@ impl Entry for StoredRow {
     fn position(&self) -> &StorageCursor {
         &self.record.position
     }
+
     fn matches(&self, selection: &ReadSelection) -> bool {
         self.record.matches(selection) && optional(&selection.stream, Some(&self.stream))
     }
+
     fn fetch<'a>(
         backend: &'a dyn super::backend::ErasedBackend,
         view: &'a ReadView,
@@ -188,22 +199,20 @@ impl Entry for StoredRow {
 }
 
 impl Entry for StorageSchema {
-    fn validate(&self, inner: &super::manager::Inner, limits: ReadLimits) -> crate::Result<()> {
-        if self.encoding() != SchemaEncoding::Inline && self.encoding() != inner.schema_encoding {
-            return Err(crate::Error::InvalidInput {
+    fn validate(&self, _: &super::manager::Inner, limits: ReadLimits) -> crate::Result<()> {
+        self.schema
+            .prepare(&harmos_contract::config::SchemaSettings::default())
+            .map_err(|_| crate::Error::InvalidInput {
                 field: "storage schema",
-                reason: "backend returned an unsupported schema encoding",
-            });
-        }
-        crate::schema::validate(&self.fields).map_err(|_| crate::Error::InvalidInput {
-            field: "storage schema",
-            reason: "invalid stored fields",
-        })?;
+                reason: "invalid stored shared schema",
+            })?;
         let bound = limits
             .bytes
             .get()
             .checked_mul(4)
-            .and_then(|bytes| bytes.checked_add(inner.schema_encoding.decoding_overhead()))
+            .and_then(|bytes| {
+                bytes.checked_add(StorageSchema::decoding_memory_bytes(limits.bytes.get())?)
+            })
             .ok_or(crate::Error::InvalidInput {
                 field: "storage schema",
                 reason: "decoded size overflow",
@@ -216,6 +225,7 @@ impl Entry for StorageSchema {
         }
         Ok(())
     }
+
     fn part(entries: &[Self]) -> StoragePart<'_> {
         StoragePart::Schemas(entries)
     }
@@ -231,10 +241,12 @@ impl Entry for StorageSchema {
     fn position(&self) -> &StorageCursor {
         &self.position
     }
+
     fn matches(&self, selection: &ReadSelection) -> bool {
         selection.schema.as_ref().is_none_or(|key| key == &self.key)
             && optional(&selection.item, Some(&self.key.id))
     }
+
     fn fetch<'a>(
         backend: &'a dyn super::backend::ErasedBackend,
         view: &'a ReadView,
@@ -261,10 +273,12 @@ impl Entry for FileReference {
     fn position(&self) -> &StorageCursor {
         &self.position
     }
+
     fn matches(&self, selection: &ReadSelection) -> bool {
         optional(&selection.scope, self.metadata.scope.as_ref())
             && optional(&selection.item, Some(&self.metadata.id))
     }
+
     fn fetch<'a>(
         backend: &'a dyn super::backend::ErasedBackend,
         view: &'a ReadView,

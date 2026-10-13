@@ -95,12 +95,12 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
 
         impl #name {
 
-            #visibility fn catalog() -> ::std::vec::Vec<#harmos::Definition> {
+            #visibility fn catalog() -> ::std::vec::Vec<#harmos::streams::Definition> {
                 ::std::vec![#(#registrations),*]
             }
 
 
-            #visibility fn definition(id: &str) -> ::core::option::Option<#harmos::Definition> {
+            #visibility fn definition(id: &str) -> ::core::option::Option<#harmos::streams::Definition> {
                 #(#dispatch)*
 
                 ::core::option::Option::None

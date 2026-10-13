@@ -40,6 +40,7 @@ pub(crate) struct Children {
 pub(crate) struct ChildRequest {
     pub(crate) operation: String,
     pub(crate) payload: Vec<u8>,
+    pub(crate) values: Vec<super::CallValue>,
     pub(crate) submitted: tokio::time::Instant,
     pub(crate) answer: oneshot::Sender<Result<EncodedInvocation, Error>>,
 }
@@ -64,6 +65,7 @@ impl Children {
         let request = ChildRequest {
             operation: call.operation,
             payload: call.payload,
+            values: call.values,
             submitted,
             answer,
         };
@@ -121,7 +123,7 @@ impl Drop for Child {
 }
 
 /* === Public Functions === */
-#[cfg(any(feature = "sidecar-host", feature = "guest-host"))]
+#[cfg(any(feature = "plugin-sidecar", feature = "plugin-guest"))]
 pub(crate) async fn lifecycle(
     invocation: EncodedInvocation,
     mut cancelled: oneshot::Receiver<()>,

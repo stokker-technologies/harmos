@@ -29,7 +29,7 @@ use super::{
     Aggregate, Aggregated, Axial, Batched, Batches, BeneathWindow, Bucket, Definition, Demand,
     Holding, Item, Prefix, Stream, Table, Tier, Tracked, Wired, demand, window,
 };
-use crate::{Application, At, Batch, Cursor, Position};
+use crate::{Application, state::At, state::Position, storage::Batch, storage::Cursor};
 
 /* === Constants === */
 
@@ -137,7 +137,7 @@ impl<A: Application> StreamManager<A> {
         self.stream::<S>().window.publish(at, Arc::new(row));
     }
 
-    #[cfg(feature = "sidecar-host")]
+    #[cfg(feature = "plugin-sidecar")]
     pub(crate) fn miss<S: Stream<A>>(&self, count: u64) {
         self.stream::<S>().window.miss(count);
     }
@@ -227,7 +227,8 @@ impl<A: Application> StreamManager<A> {
         self.windows
             .wired(S::ID, S::VERSION)
             .filter(|wired| {
-                wired.definition.row == TypeId::of::<S>() && wired.definition.version == S::VERSION
+                wired.definition.row() == TypeId::of::<S>()
+                    && wired.definition.version() == S::VERSION
             })
             .unwrap_or_else(|| {
                 panic!(

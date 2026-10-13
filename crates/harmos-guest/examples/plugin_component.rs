@@ -103,8 +103,11 @@ impl Declared for Program {
     const PROVIDES: &'static [Node<WireDeclaration>] = PROVIDED;
     const REQUIRES: &'static [Node<harmos_contract::plugin::Requirement>] = &[];
     const STREAMS: &'static [publications::Entry] = &[];
-    fn markers() -> Vec<&'static [u8]> {
-        vec![&IDENTITY, &CONTRACTS, &PUBLICATIONS, &OBSERVERS]
+    fn markers() -> Result<Vec<&'static [u8]>, harmos_contract::schema::graph::Error> {
+        harmos_contract::plugin::schema_markers::<Self>(
+            vec![&IDENTITY, &CONTRACTS, &PUBLICATIONS, &OBSERVERS],
+            &harmos_contract::config::SchemaSettings::default(),
+        )
     }
 }
 
@@ -184,13 +187,17 @@ impl Operation for Reader {
         _: Self::Context<'ctx>,
         _request: &mut (),
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Reply, Self::Error> {
-        Ok(Reply {
-            value: format!(
-                "{}:operation-initialized:{}",
-                self.value, self.initializations
-            ),
-        })
+    ) -> Result<harmos_guest::operations::Response<Reply>, Self::Error> {
+        let result: ::core::result::Result<Reply, Self::Error> = async move {
+            Ok(Reply {
+                value: format!(
+                    "{}:operation-initialized:{}",
+                    self.value, self.initializations
+                ),
+            })
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 

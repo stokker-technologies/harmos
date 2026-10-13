@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 use super::manager::{ENTRY_OVERHEAD, MemoryReservation};
 use super::*;
 use crate::catalog::Contains;
-use crate::object_catalog::{decode_admitted, object_key, object_schema};
+use crate::storage::catalog::{decode_admitted, object_key, object_schema};
 use crate::{Error, Identifier, MemorySize, Result};
 
 /* === Constants === */
@@ -67,6 +67,7 @@ pub struct QueryOptions {
 
 pub struct RecordQuery<T> {
     pub schema: SchemaKey,
+    pub filter: Option<RecordFilter>,
     pub source_time: Option<SourceTimeRange>,
     pub scope: Option<Identifier>,
     pub item: Option<Identifier>,
@@ -225,6 +226,7 @@ impl<T> RecordQuery<T> {
     ) -> Self {
         Self {
             schema,
+            filter: None,
             source_time: None,
             decode: Box::new(decode),
             scope: None,
@@ -307,6 +309,12 @@ impl<C, T: MemorySize + 'static> FollowQuery<C> for RecordQuery<T> {
         manager: &StorageManager<C>,
         replay: bool,
     ) -> Result<super::follow::QueryFollower<Self::Raw, Self::Value>> {
+        if self.filter.is_some() {
+            return Err(Error::InvalidInput {
+                field: "record filter",
+                reason: "payload filters require saved-query paging",
+            });
+        }
         let started = tokio::time::Instant::now();
         let execution = manager.query_execution(&self.options)?;
         let page = manager.query_page(&self.options)?;
@@ -399,6 +407,22 @@ impl<C, T: MemorySize + 'static> Query<C> for RecordQuery<T> {
     fn options(&self) -> &QueryOptions {
         &self.options
     }
+
+    fn preflight(&self, manager: &StorageManager<C>, limits: QueryLimits) -> Result<()> {
+        if let Some(filter) = &self.filter {
+            filter.check()?;
+            let _reservation = manager.reserve_read_now(filter.memory_size(), 1)?;
+            let mut selection = self.options.selection(ReadKind::Records);
+            selection.schema = Some(self.schema.clone());
+            selection.record_filter = Some(filter.clone());
+            manager
+                .inner
+                .primary
+                .validate_record_filter(&selection, limits)?;
+        }
+        Ok(())
+    }
+
     fn open(
         self,
         view: StorageView,
@@ -416,6 +440,7 @@ impl<C, T: MemorySize + 'static> Query<C> for RecordQuery<T> {
         selection.source_time = self.source_time;
         selection.scope = self.scope;
         selection.item = self.item;
+        selection.record_filter = self.filter;
         let decode = self.decode;
         computation.finish(QueryResult {
             retained_view: None,
@@ -433,6 +458,7 @@ impl<C, T: MemorySize + 'static> Query<C> for StreamQuery<T> {
     fn options(&self) -> &QueryOptions {
         &self.options
     }
+
     fn open(
         self,
         view: StorageView,
@@ -551,6 +577,7 @@ impl<C> Query<C> for SchemaQuery {
     fn options(&self) -> &QueryOptions {
         &self.options
     }
+
     fn open(
         self,
         view: StorageView,
@@ -581,6 +608,7 @@ impl<C> Query<C> for FileQuery {
     fn options(&self) -> &QueryOptions {
         &self.options
     }
+
     fn open(
         self,
         view: StorageView,
@@ -613,12 +641,14 @@ impl<C: ObjectCatalog + Contains<T>, T: StoredObject> Query<C> for ObjectQuery<'
     fn options(&self) -> &QueryOptions {
         &self.options
     }
+
     fn preflight(&self, manager: &StorageManager<C>, _limits: QueryLimits) -> Result<()> {
         manager
             .inner
             .primary
             .validate_object_versions(self.versions)
     }
+
     fn open(
         self,
         view: StorageView,
@@ -1080,6 +1110,12 @@ impl<T: fmt::Debug> fmt::Debug for QueryPage<T> {
     }
 }
 
+impl<T> std::borrow::Borrow<T> for QueryValue<T> {
+    fn borrow(&self) -> &T {
+        &self.value
+    }
+}
+
 impl<T> Deref for QueryValue<T> {
     type Target = T;
     fn deref(&self) -> &T {
@@ -1136,10 +1172,26 @@ impl<T> QueryValue<T> {
 }
 
 impl<T: MemorySize> QueryValue<T> {
-    pub fn try_into_shared(mut self) -> Result<SharedQueryValue<T>> {
+    pub fn try_into_shared(self) -> Result<SharedQueryValue<T>> {
+        Ok(SharedQueryValue {
+            owner: self.shared_owner(std::mem::size_of::<SharedQueryValue<T>>())?,
+        })
+    }
+
+    pub fn try_into_response(self) -> Result<crate::operations::Response<T>>
+    where
+        T: Send + Sync + 'static,
+    {
+        let handle = std::mem::size_of::<crate::operations::Response<T>>();
+        let handle = handle.max(std::mem::size_of::<crate::operations::StreamItem<T>>());
+        let owner = self.shared_owner(handle)?;
+        Ok(crate::operations::Response::from_owner(owner))
+    }
+
+    fn shared_owner(mut self, handle_bytes: usize) -> Result<Arc<Self>> {
         let metadata = std::mem::size_of::<MemoryReservation>()
             .checked_add(2 * std::mem::size_of::<usize>())
-            .and_then(|bytes| bytes.checked_add(std::mem::size_of::<SharedQueryValue<T>>()))
+            .and_then(|bytes| bytes.checked_add(handle_bytes))
             .ok_or_else(decoded_limit)?;
         let retained = self
             ._reservation
@@ -1149,9 +1201,7 @@ impl<T: MemorySize> QueryValue<T> {
         self._reservation
             .reserve_projection(NonZeroUsize::new(metadata).ok_or_else(decoded_limit)?)?;
         self._reservation.retain_read(retained);
-        Ok(SharedQueryValue {
-            owner: Arc::new(self),
-        })
+        Ok(Arc::new(self))
     }
 
     pub fn try_project<U: MemorySize>(

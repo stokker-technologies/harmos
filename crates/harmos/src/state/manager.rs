@@ -45,8 +45,9 @@ pub(crate) struct TrackedState<A: Application> {
     pub(super) poisoned: AtomicBool,
     pub(crate) sealing: watch::Sender<bool>,
     pub(super) capture_failed: Arc<AtomicBool>,
-    pub(super) capture_progress: Option<watch::Receiver<Result<Position, crate::CaptureError>>>,
-    pub(super) catalog: Arc<dispatch::Dispatch<A, crate::Payload<A>>>,
+    pub(super) capture_progress:
+        Option<watch::Receiver<Result<Position, crate::state::CaptureError>>>,
+    pub(super) catalog: Arc<dispatch::Dispatch<A, crate::storage::Payload<A>>>,
     pub(super) reads: Reads<A>,
     pub(super) record_preparation: Arc<tokio::sync::Semaphore>,
     pub(super) clock: fn() -> super::Timestamp,
@@ -116,7 +117,7 @@ impl<A: Application> StateManager<A> {
         requests: usize,
         tail: Tail<A>,
         durability: Option<watch::Receiver<Position>>,
-        catalog: Arc<dispatch::Dispatch<A, crate::Payload<A>>>,
+        catalog: Arc<dispatch::Dispatch<A, crate::storage::Payload<A>>>,
         capture: Option<capture::Declaration<A>>,
         storage: Option<crate::storage::StorageManager<crate::storage::ErasedCatalog>>,
         clock: fn() -> super::Timestamp,
@@ -188,7 +189,7 @@ impl<A: Application> StateManager<A> {
     pub(crate) fn record_resources(
         &self,
     ) -> (
-        Arc<dispatch::Dispatch<A, crate::Payload<A>>>,
+        Arc<dispatch::Dispatch<A, crate::storage::Payload<A>>>,
         Arc<tokio::sync::Semaphore>,
     ) {
         (
@@ -404,7 +405,10 @@ impl<A: Application> StateManager<A> {
         }
     }
 
-    pub async fn wait_until_captured(&self, through: Position) -> Result<(), crate::CaptureError> {
+    pub async fn wait_until_captured(
+        &self,
+        through: Position,
+    ) -> Result<(), crate::state::CaptureError> {
         let Some(mut progress) = self.tracked.capture_progress.clone() else {
             return Ok(());
         };
@@ -413,14 +417,14 @@ impl<A: Application> StateManager<A> {
                 return Ok(());
             }
             if progress.changed().await.is_err() {
-                return Err(crate::CaptureError::Failed);
+                return Err(crate::state::CaptureError::Failed);
             }
         }
     }
 
-    pub fn capture_status(&self) -> Result<(), crate::CaptureError> {
+    pub fn capture_status(&self) -> Result<(), crate::state::CaptureError> {
         if self.tracked.capture_failed.load(Ordering::Acquire) {
-            Err(crate::CaptureError::Failed)
+            Err(crate::state::CaptureError::Failed)
         } else {
             Ok(())
         }
@@ -463,7 +467,11 @@ impl<A: Application> StateManager<A> {
 }
 
 impl<A: Application> Feed<A> {
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     pub(crate) async fn shared_page(
         &self,
         after: Position,

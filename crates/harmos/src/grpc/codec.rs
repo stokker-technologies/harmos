@@ -13,11 +13,12 @@ mod sealed {
 }
 
 /* === Re-Exports === */
+pub use crate::config::EncodeSettings;
 
 /* === Imports === */
 
 // Standard Library Imports
-use std::{marker::PhantomData, num::NonZeroUsize, sync::Arc};
+use std::marker::PhantomData;
 
 // Third Party Imports
 use bytes::BufMut;
@@ -38,11 +39,6 @@ use crate::{MemorySize, Protobuf, operations::StreamItem};
 /* === Type Aliases === */
 
 /* === Structs === */
-#[derive(Clone, Copy, Debug)]
-pub struct EncodeSettings {
-    pub message_bytes: NonZeroUsize,
-    pub buffer_bytes: NonZeroUsize,
-}
 
 pub struct Codec<D, E> {
     decoder: Decoder<D>,
@@ -79,20 +75,23 @@ impl EncodeSettings {
     }
 }
 
-impl<T: Protobuf + 'static> sealed::Encoding for Arc<T> {}
-impl<T: Protobuf + 'static> Encode for Arc<T> {
+impl<T: Protobuf + 'static> sealed::Encoding for crate::operations::Response<T> {}
+impl<T: Protobuf + 'static> Encode for crate::operations::Response<T> {
     fn wire_len(&self) -> usize {
         self.encoded_len()
     }
+
     fn write(&self, bytes: &mut Vec<u8>) {
         self.encode_into(bytes);
     }
 }
 impl<I: Protobuf + 'static, R: Protobuf + 'static> sealed::Encoding
-    for Event<StreamItem<I>, Arc<R>>
+    for Event<StreamItem<I>, crate::operations::Response<R>>
 {
 }
-impl<I: Protobuf + 'static, R: Protobuf + 'static> Encode for Event<StreamItem<I>, Arc<R>> {
+impl<I: Protobuf + 'static, R: Protobuf + 'static> Encode
+    for Event<StreamItem<I>, crate::operations::Response<R>>
+{
     fn wire_len(&self) -> usize {
         let payload = match self {
             Self::Item(value) => value.encoded_len(),
@@ -100,6 +99,7 @@ impl<I: Protobuf + 'static, R: Protobuf + 'static> Encode for Event<StreamItem<I
         };
         size(payload)
     }
+
     fn write(&self, bytes: &mut Vec<u8>) {
         match self {
             Self::Item(value) => encode(1, &**value, bytes),
@@ -138,6 +138,7 @@ impl<D: Protobuf + MemorySize + 'static, E: Encode> tonic::codec::Codec for Code
             response: PhantomData,
         }
     }
+
     fn decoder(&mut self) -> Self::Decoder {
         self.decoder.fork()
     }
@@ -172,6 +173,7 @@ impl<E: Encode> tonic::codec::Encoder for Encoder<E> {
         destination.put_slice(self.message(&item)?);
         Ok(())
     }
+
     fn buffer_settings(&self) -> BufferSettings {
         // Flush Each Protobuf Instead Of Accumulating An Unbounded Ready Batch.
         BufferSettings::new(self.settings.buffer_bytes.get(), 1)

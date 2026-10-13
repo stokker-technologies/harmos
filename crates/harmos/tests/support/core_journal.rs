@@ -20,7 +20,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 // Local Imports
 use crate::support::{Bank, DEPOSIT};
 use harmos::operations::{Context, Operation, host};
-use harmos::{PrincipalId, RequestKey, StateManager};
+use harmos::{state::PrincipalId, state::RequestKey, state::StateManager};
 
 /* === Constants === */
 
@@ -71,48 +71,52 @@ impl Operation for Invoke {
         context: Self::Context<'ctx>,
         request: &mut host::InvokeRequest,
         _endpoints: &mut Self::Endpoints,
-    ) -> harmos::Result<host::Receipt> {
-        self.resources.handled.fetch_add(1, Ordering::SeqCst);
-        let scope = context.caller_scope().ok_or(harmos::Error::InvalidInput {
-            field: "journal caller",
-            reason: "original generation is required",
-        })?;
-        if request.grant != DEPOSIT.1 {
-            return Err(harmos::Error::OperationUnauthorized {
-                caller: scope.owner().into(),
-                owner: "bank-journal".into(),
-                operation: request.grant.clone(),
-            });
+    ) -> harmos::Result<harmos::operations::Response<host::Receipt>> {
+        let result: ::core::result::Result<host::Receipt, Self::Error> = async move {
+            self.resources.handled.fetch_add(1, Ordering::SeqCst);
+            let scope = context.caller_scope().ok_or(harmos::Error::InvalidInput {
+                field: "journal caller",
+                reason: "original generation is required",
+            })?;
+            if request.grant != DEPOSIT.1 {
+                return Err(harmos::Error::OperationUnauthorized {
+                    caller: scope.owner().into(),
+                    owner: "bank-journal".into(),
+                    operation: request.grant.clone(),
+                });
+            }
+            // The Application Owns Its Exact Transaction Version And Original StateManager.
+            let journal = self
+                .resources
+                .state
+                .as_principal(PrincipalId::new(format!("guest:{}", scope.owner())));
+            let transaction = journal
+                .decode_transaction(
+                    &harmos::DefinitionId::new(DEPOSIT.1),
+                    DEPOSIT.2,
+                    &request.payload,
+                )
+                .map_err(|source| harmos::Error::OperationFailed {
+                    operation: "host.invoke".into(),
+                    source: Arc::new(source),
+                })?;
+            let receipt = journal
+                .commit_keyed(
+                    RequestKey::new(std::mem::take(&mut request.key)),
+                    transaction,
+                )
+                .await
+                .map_err(|source| harmos::Error::OperationFailed {
+                    operation: "host.invoke".into(),
+                    source: Arc::new(source),
+                })?;
+            Ok(host::Receipt {
+                position: receipt.position.0,
+                correlation: receipt.correlation.0.0,
+            })
         }
-        // The Application Owns Its Exact Transaction Version And Original StateManager.
-        let journal = self
-            .resources
-            .state
-            .as_principal(PrincipalId::new(format!("guest:{}", scope.owner())));
-        let transaction = journal
-            .decode_transaction(
-                &harmos::DefinitionId::new(DEPOSIT.1),
-                DEPOSIT.2,
-                &request.payload,
-            )
-            .map_err(|source| harmos::Error::OperationFailed {
-                operation: "host.invoke".into(),
-                source: Arc::new(source),
-            })?;
-        let receipt = journal
-            .commit_keyed(
-                RequestKey::new(std::mem::take(&mut request.key)),
-                transaction,
-            )
-            .await
-            .map_err(|source| harmos::Error::OperationFailed {
-                operation: "host.invoke".into(),
-                source: Arc::new(source),
-            })?;
-        Ok(host::Receipt {
-            position: receipt.position.0,
-            correlation: receipt.correlation.0.0,
-        })
+        .await;
+        result.map(::core::convert::Into::into)
     }
     async fn finalize(&mut self) -> harmos::Result<()> {
         self.resources.finalized.fetch_add(1, Ordering::SeqCst);

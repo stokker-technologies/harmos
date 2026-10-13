@@ -112,9 +112,10 @@ pub(crate) enum ReadRequest<A: Application> {
 
 /* === Traits === */
 pub(crate) trait ReplayPayload<A: Application>: Sized {
-    fn prepared(&self) -> Option<crate::Prepared> {
+    fn prepared(&self) -> Option<crate::state::Prepared> {
         None
     }
+
     fn forward(&self) -> Option<Arc<A::Transaction>>;
     fn restore(
         envelope: Envelope<Self>,

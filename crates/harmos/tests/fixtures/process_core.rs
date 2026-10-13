@@ -24,7 +24,7 @@ use std::sync::Arc;
 // Local Imports
 use contract::{Inspect, POLICY, Queries};
 use harmos::operations::{Operation, OperationPolicy, WireTable, host};
-use harmos::sidecar::{Refusal, Supervisor};
+use harmos::plugin::sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
 
@@ -79,9 +79,26 @@ impl harmos::Plugin for Process {
     fn prepare(root: String) -> Result<Self, Refusal> {
         let resources = Arc::new(Resources { root: root.into() });
         resources.mark("prepared")?;
+        if let Ok(failures) = std::env::var("HARMOS_TEST_CORE_CRASH_STARTS") {
+            let failures: usize = failures.parse().map_err(Refusal::of)?;
+            resources.mark("attempts")?;
+            let attempts = std::fs::read_to_string(resources.root.join("attempts"))
+                .map_err(Refusal::of)?
+                .lines()
+                .count();
+            if attempts <= failures {
+                std::process::exit(75);
+            }
+        }
         Ok(Self { resources })
     }
     async fn initialize(&mut self, _: &Supervisor) -> Result<(), Refusal> {
+        if self.resources.root.join("hold-initialize").exists() {
+            self.resources.mark("initializing")?;
+            while self.resources.root.join("hold-initialize").exists() {
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        }
         self.resources.mark("initialized")
     }
     fn resources(&self) -> Arc<Resources> {
@@ -94,7 +111,13 @@ impl harmos::Plugin for Process {
         table.bind_operation::<Inspecting>(self.resources())
     }
     async fn shutdown(&mut self, _: &Supervisor) -> Result<(), Refusal> {
-        self.resources.mark("shutdown")
+        self.resources.mark("shutdown")?;
+        if std::env::var("HARMOS_TEST_CORE_FAIL_SHUTDOWN").as_deref() == Ok("1") {
+            return Err(Refusal::of(std::io::Error::other(
+                "controlled shutdown failure",
+            )));
+        }
+        Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Refusal> {
         self.resources.mark("cleaned")
@@ -117,20 +140,61 @@ impl Operation for Inspecting {
         context: Self::Context<'ctx>,
         name: &mut String,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<String, Refusal> {
-        let answered = context
-            .operation::<host::Egress>(host::EgressRequest {
-                name: name.clone(),
-                method: "get".into(),
-                path: "/reading".into(),
-                headers: vec![],
-                body: vec![],
+    ) -> Result<harmos::operations::Response<String>, Refusal> {
+        let result: ::core::result::Result<String, Self::Error> = async move {
+            if name == "crash" {
+                std::process::exit(75);
+            }
+            let selected = if name.starts_with("context") {
+                let parent = context
+                    .context()
+                    .value::<contract::Stage>()
+                    .map_err(Refusal::of)?
+                    .unwrap();
+                assert_eq!(parent.id, "parent");
+                context
+                    .with_value(contract::Stage { id: "child".into() })
+                    .map_err(Refusal::of)?
+            } else {
+                context.clone()
+            };
+            let answered = selected
+                .operation::<host::Egress>(host::EgressRequest {
+                    name: if name == "context-denied" {
+                        "other".into()
+                    } else if name.starts_with("context") {
+                        "vendor".into()
+                    } else {
+                        name.clone()
+                    },
+                    method: "get".into(),
+                    path: if name == "context-wait" {
+                        "/context-wait".into()
+                    } else if name.starts_with("context") {
+                        "/context".into()
+                    } else {
+                        "/reading".into()
+                    },
+                    headers: vec![],
+                    body: vec![],
+                })
+                .await;
+            Ok(match answered {
+                Ok(response) if name == "context" => {
+                    let parent = context
+                        .context()
+                        .value::<contract::Stage>()
+                        .map_err(Refusal::of)?
+                        .unwrap();
+                    let child = String::from_utf8(response.body).map_err(Refusal::of)?;
+                    format!("{}:{child}", parent.id)
+                }
+                Ok(response) => format!("egress status {}", response.status),
+                Err(error) => error.to_string(),
             })
-            .await;
-        Ok(match answered {
-            Ok(response) => format!("egress status {}", response.status),
-            Err(error) => error.to_string(),
-        })
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -143,7 +207,7 @@ fn main() {
         .build()
         .unwrap();
     runtime
-        .block_on(harmos::sidecar::run_plugin::<Process>(
+        .block_on(harmos::plugin::sidecar::run_plugin::<Process>(
             NonZeroUsize::new(2).unwrap(),
         ))
         .unwrap();

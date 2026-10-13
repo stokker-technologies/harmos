@@ -31,7 +31,7 @@ use serde::{Deserialize, Serialize};
 use super::{Failure, WireAnswer, WireChildCall, WireCommand};
 
 /* === Constants === */
-const VERSION: u8 = 4;
+const VERSION: u8 = 5;
 pub(super) const LIMIT: usize = 16 * 1024 * 1024;
 
 /* === Macros === */
@@ -61,7 +61,7 @@ pub enum WireCodecError {
     Encoding(#[from] postcard::Error),
 }
 
-// Variant Order Is Part Of Version 4. Borrowed Fields Validate Before Allocation.
+// Variant Order Is Part Of Version 5. Borrowed Fields Validate Before Allocation.
 // As In The Transport Experiment, Payloads Use Postcard Byte Strings, Not Sequences.
 #[derive(Serialize, Deserialize)]
 enum Envelope<'a> {
@@ -95,6 +95,8 @@ enum Envelope<'a> {
     Child {
         context: [u8; 32],
         generation_context: Option<[u8; 32]>,
+        #[serde(borrow)]
+        values: Vec<Value<'a>>,
         operation: &'a str,
         #[serde(borrow, with = "payload")]
         payload: &'a [u8],
@@ -343,9 +345,11 @@ impl WireAnswer {
 
 impl WireChildCall {
     pub fn encode(&self) -> Result<Vec<u8>, WireCodecError> {
+        check_values(&self.values)?;
         encode(Envelope::Child {
             context: self.context,
             generation_context: self.generation_context,
+            values: borrowed(&self.values),
             operation: &self.operation,
             payload: &self.payload,
         })
@@ -355,6 +359,7 @@ impl WireChildCall {
         let Envelope::Child {
             context,
             generation_context,
+            values,
             operation,
             payload,
         } = decode(bytes)?
@@ -364,6 +369,7 @@ impl WireChildCall {
         Ok(Self {
             context,
             generation_context,
+            values: owned(values)?,
             operation: operation.to_owned(),
             payload: payload.to_vec(),
         })
@@ -373,6 +379,25 @@ impl WireChildCall {
 /* === Public Functions === */
 
 /* === Private Functions === */
+fn check_values(values: &[super::super::CallValue]) -> Result<(), WireCodecError> {
+    let bytes = values
+        .iter()
+        .map(|value| value.key.len().saturating_add(value.payload.len()))
+        .fold(0usize, usize::saturating_add);
+    if values.len() > super::super::PORTABLE_VALUES || bytes > super::super::PORTABLE_BYTES {
+        return Err(WireCodecError::Oversized);
+    }
+    for (index, value) in values.iter().enumerate() {
+        if values[..index]
+            .iter()
+            .any(|previous| previous.key == value.key)
+        {
+            return Err(WireCodecError::Kind);
+        }
+    }
+    Ok(())
+}
+
 fn borrowed(values: &[super::super::CallValue]) -> Vec<Value<'_>> {
     values
         .iter()

@@ -40,7 +40,7 @@ pub(crate) struct Endpoint {
     capacity: Mutex<Option<(NonZeroUsize, Arc<Semaphore>)>>,
     operations: Vec<Definition>,
     contracts: Vec<Contract>,
-    plugin: Option<crate::load::PluginScope>,
+    plugin: Option<crate::plugin::PluginScope>,
     observers: Option<Weak<super::observers::Remote>>,
     observer_outcome: Option<Arc<Mutex<Option<Arc<crate::Error>>>>>,
     accepting: AtomicBool,
@@ -60,7 +60,7 @@ impl Endpoint {
         operations: &[Definition],
         contracts: &[Contract],
         ended: watch::Receiver<bool>,
-        plugin: Option<crate::load::PluginScope>,
+        plugin: Option<crate::plugin::PluginScope>,
     ) -> Self {
         Self {
             provider: None,
@@ -187,13 +187,13 @@ impl Endpoint {
         &self.contracts
     }
 
-    pub(crate) fn scope(&self) -> Option<&crate::load::PluginScope> {
+    pub(crate) fn scope(&self) -> Option<&crate::plugin::PluginScope> {
         self.plugin.as_ref()
     }
 
     pub(super) async fn publish(
         &self,
-        scope: &crate::load::PluginScope,
+        scope: &crate::plugin::PluginScope,
         request: &mut crate::operations::host::Publication,
         context: &crate::operations::Context<'_>,
     ) -> crate::Result<()> {
@@ -232,7 +232,7 @@ impl Endpoint {
                     field: "native publication",
                     reason: "the producer sequence must strictly advance",
                 })?;
-            let row = crate::PublicationRow {
+            let row = crate::streams::PublicationRow {
                 payload: std::mem::take(&mut request.payload),
                 published_unix_micros: request.published_unix_micros,
                 context: request.context.take(),

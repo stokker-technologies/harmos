@@ -83,9 +83,7 @@ enum Mode {
     PanicRun,
 }
 
-#[harmos::catalog]
-enum Operations {
-    #[operation(
+#[harmos::operation(
         request = Mode,
         response = Answer,
         id = "authored.read",
@@ -100,7 +98,11 @@ enum Operations {
         replay = ReplaySafety::Idempotent,
         key = cache_key,
     )]
-    ReadContract,
+struct ReadContract;
+
+#[harmos::catalog]
+enum Operations {
+    ReadContract(ReadContract),
 }
 
 /* === Traits === */
@@ -144,21 +146,25 @@ impl Operation for Read {
         context: Self::Context<'ctx>,
         mode: &mut Mode,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Answer, Self::Error> {
-        self.trace.ran.fetch_add(1, Ordering::SeqCst);
-        self.trace.ids.lock().unwrap().push(context.id());
-        assert_eq!(context.attempt(), self.attempts);
-        self.attempts += 1;
-        self.phase.set(2);
-        self.trace.running.notify_one();
-        match mode {
-            Mode::Retry if self.attempts == 1 => {
-                Err(std::io::Error::other("transient run failure"))
+    ) -> Result<harmos::operations::Response<Answer>, Self::Error> {
+        let result: ::core::result::Result<Answer, Self::Error> = async move {
+            self.trace.ran.fetch_add(1, Ordering::SeqCst);
+            self.trace.ids.lock().unwrap().push(context.id());
+            assert_eq!(context.attempt(), self.attempts);
+            self.attempts += 1;
+            self.phase.set(2);
+            self.trace.running.notify_one();
+            match mode {
+                Mode::Retry if self.attempts == 1 => {
+                    Err(std::io::Error::other("transient run failure"))
+                }
+                Mode::WaitRun => std::future::pending().await,
+                Mode::PanicRun => panic!("authored run panicked"),
+                _ => Ok(Answer(42)),
             }
-            Mode::WaitRun => std::future::pending().await,
-            Mode::PanicRun => panic!("authored run panicked"),
-            _ => Ok(Answer(42)),
         }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     async fn stop(&mut self) -> Result<(), Self::Error> {
@@ -830,6 +836,79 @@ mod listed {
         }
     }
 
+    struct InferredOwned(Arc<u32>);
+
+    #[harmos::operation(id = "authored.inferred_owned", version = 1, policy = POLICY)]
+    impl InferredOwned {
+        fn new(owner: Arc<u32>) -> Self {
+            Self(owner)
+        }
+        async fn run(
+            &mut self,
+            _: Context<'_>,
+            _: &u32,
+        ) -> Result<harmos::operations::Response<u32>, harmos::Error> {
+            Ok(harmos::operations::Response::from_owner(self.0.clone()))
+        }
+    }
+
+    struct DeclaredOwned(Arc<u32>);
+
+    #[harmos::operation(declaration = DoublingDeclaration)]
+    impl DeclaredOwned {
+        fn new(owner: Arc<u32>) -> Self {
+            Self(owner)
+        }
+        async fn run(
+            &mut self,
+            _: Context<'_>,
+            _: &u32,
+        ) -> Result<harmos::operations::Response<u32>, harmos::Error> {
+            Ok(harmos::operations::Response::from_owner(self.0.clone()))
+        }
+    }
+
+    struct BorrowOwner {
+        value: u32,
+        borrowed: std::sync::atomic::AtomicUsize,
+        ran: std::sync::atomic::AtomicUsize,
+        operations: std::sync::Weak<harmos::operations::OperationManager>,
+    }
+
+    impl std::borrow::Borrow<u32> for BorrowOwner {
+        fn borrow(&self) -> &u32 {
+            self.borrowed
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.operations
+                .upgrade()
+                .unwrap()
+                .definition("authored.cached_owner")
+                .unwrap();
+            &self.value
+        }
+    }
+
+    struct CachedOwner(Arc<BorrowOwner>);
+
+    fn owner_key(request: &u32) -> Option<harmos::operations::CacheKey> {
+        Some(harmos::operations::CacheKey::new(request.to_le_bytes().to_vec()).unwrap())
+    }
+
+    #[harmos::operation(id = "authored.cached_owner", version = 1, policy = POLICY, key = owner_key)]
+    impl CachedOwner {
+        fn new(owner: Arc<BorrowOwner>) -> Self {
+            Self(owner)
+        }
+        async fn run(
+            &mut self,
+            _: Context<'_>,
+            _: &u32,
+        ) -> Result<harmos::operations::Response<u32>, harmos::Error> {
+            self.0.ran.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(harmos::operations::Response::from_owner(self.0.clone()))
+        }
+    }
+
     #[harmos::catalog]
     pub enum Listing {
         Doubling(Doubling),
@@ -842,6 +921,97 @@ mod listed {
 
     #[test]
     fn contract_scenario() {
+        super::scenario_runtime::check("cache_restoration_never_borrows", || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    let runtime = crate::fixture::runtime().await;
+                    let observed = Arc::new(runtime.operations.clone());
+                    let owner = Arc::new(BorrowOwner {
+                        value: 7,
+                        borrowed: std::sync::atomic::AtomicUsize::new(0),
+                        ran: std::sync::atomic::AtomicUsize::new(0),
+                        operations: Arc::downgrade(&observed),
+                    });
+                    runtime
+                        .operations
+                        .register_operation::<CachedOwner>(
+                            "owner",
+                            crate::fixture::Lanes::Open,
+                            owner.clone(),
+                        )
+                        .unwrap();
+                    let first = runtime
+                        .operations
+                        .call::<CachedOwnerDeclaration>(0)
+                        .await
+                        .unwrap();
+                    let cached = runtime
+                        .operations
+                        .call::<CachedOwnerDeclaration>(0)
+                        .await
+                        .unwrap();
+                    assert!(first.ptr_eq(&cached));
+                    assert_eq!(owner.ran.load(std::sync::atomic::Ordering::SeqCst), 1);
+                    assert_eq!(owner.borrowed.load(std::sync::atomic::Ordering::SeqCst), 0);
+                    let erased = cached.clone().into_erased();
+                    assert!(erased.clone().restore::<String>().is_none());
+                    let restored = erased.restore::<u32>().unwrap();
+                    assert_eq!(owner.borrowed.load(std::sync::atomic::Ordering::SeqCst), 0);
+                    assert_eq!(*restored, 7);
+                    assert_eq!(owner.borrowed.load(std::sync::atomic::Ordering::SeqCst), 1);
+                    drop((first, cached, restored));
+                    runtime.stop().await.unwrap();
+                });
+        });
+        super::scenario_runtime::check("owned_macro_retains_payload", || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    let runtime = crate::fixture::runtime().await;
+                    let original = Arc::new(7_u32);
+                    runtime
+                        .operations
+                        .register_operation::<InferredOwned>(
+                            "owner",
+                            crate::fixture::Lanes::Open,
+                            original.clone(),
+                        )
+                        .unwrap();
+                    runtime
+                        .operations
+                        .register_operation::<DeclaredOwned>(
+                            "owner",
+                            crate::fixture::Lanes::Open,
+                            original.clone(),
+                        )
+                        .unwrap();
+                    let inferred = runtime
+                        .operations
+                        .call::<InferredOwnedDeclaration>(0)
+                        .await
+                        .unwrap();
+                    let declared = runtime
+                        .operations
+                        .call::<DoublingDeclaration>(0)
+                        .await
+                        .unwrap();
+                    assert_eq!(*inferred, 7_u32);
+                    assert_eq!(*declared, 7_u32);
+                    assert!(std::ptr::eq(inferred.as_ref(), original.as_ref()));
+                    assert!(inferred.ptr_eq(&declared));
+                    drop((inferred, declared));
+                    runtime.stop().await.unwrap();
+                    let recovered = harmos::operations::Response::from_owner(original)
+                        .try_unwrap()
+                        .unwrap();
+                    assert_eq!(recovered, 7);
+                });
+        });
         {
             super::scenario_runtime::check("catalogs_project_declarations", || {
                 let projected = Declarations::of::<Listing>().unwrap();

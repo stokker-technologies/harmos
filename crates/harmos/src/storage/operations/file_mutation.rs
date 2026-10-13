@@ -22,9 +22,9 @@
 /* === Constants === */
 
 /* === Macros === */
-crate::storage_codec::product!(FileMutation {
-    mutation: crate::storage_codec::Nested<crate::storage::MutationId> => 1,
-    session: crate::storage_codec::Nested<crate::storage::FileSession> => 2,
+crate::storage::codec::product!(FileMutation {
+    mutation: crate::storage::codec::Nested<crate::storage::MutationId> => 1,
+    session: crate::storage::codec::Nested<crate::storage::FileSession> => 2,
 });
 
 /* === Type Aliases === */

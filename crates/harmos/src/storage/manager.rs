@@ -27,12 +27,12 @@ use super::receipts::{MutationValue, ReceiptState};
 use super::recovery::{RecoveryBackend, RecoveryEntry, RecoveryPage, RecoverySnapshot};
 use super::worker::Worker;
 use super::{
-    ReadLimits, RecoveryPosition, SchemaEncoding, SchemaKey, StorageBackends, StorageCursor,
-    StorageFuture, StorageSchema, StorageSettings, StoredRecord, StoredRow,
+    ReadLimits, RecoveryPosition, SchemaKey, StorageBackends, StorageCursor, StorageFuture,
+    StorageSchema, StorageSettings, StoredRecord, StoredRow,
 };
 use crate::services::{ServiceLease, ServiceManager};
 use crate::supervision::executor;
-use crate::{Application, Error, Identifier, Result, Timestamp};
+use crate::{Application, Error, Identifier, Result, state::Timestamp};
 
 /* === Constants === */
 const WORKER_NAME: &str = "harmos-storage";
@@ -85,11 +85,11 @@ pub struct StorageManager<C = ()> {
 
 pub(super) struct Inner {
     pub(super) settings: StorageSettings,
-    pub(super) schema_encoding: SchemaEncoding,
     pub(super) primary: Arc<dyn super::backend::ErasedBackend>,
     pub(super) recovery: Arc<dyn RecoveryBackend>,
     pub(super) has_objects: bool,
-    pub(super) object_definition: fn(&SchemaKey) -> Result<crate::object_catalog::ObjectDefinition>,
+    pub(super) object_definition:
+        fn(&SchemaKey) -> Result<crate::storage::catalog::ObjectDefinition>,
     pub(super) validate_object: fn(&super::ObjectValue, std::num::NonZeroUsize) -> Result<()>,
     pub(super) replicas: Vec<Arc<super::replication::Replica>>,
     pub(super) receipts: super::replication::Receipts,
@@ -120,7 +120,7 @@ pub(super) struct State {
     pub(super) reserved: usize,
     pub(super) reserved_batches: usize,
     pub(super) journal_limit: usize,
-    pub(super) journal_saved: Option<watch::Sender<crate::Position>>,
+    pub(super) journal_saved: Option<watch::Sender<crate::state::Position>>,
     pub(super) status: StorageStatus,
     pub(super) ready: bool,
     service_owner: Option<Arc<()>>,
@@ -159,7 +159,7 @@ pub(super) struct Target {
 }
 
 pub(super) struct Pending {
-    pub(super) journal: Option<crate::Position>,
+    pub(super) journal: Option<crate::state::Position>,
     pub(super) index: u64,
     pub(super) bytes: usize,
     pub(super) operation: Operation,
@@ -241,16 +241,6 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
             recovery,
             replicas: targets,
         } = backends;
-        let schema_encoding = primary.schema_encoding();
-        if targets
-            .iter()
-            .any(|target| target.backend.schema_encoding() != schema_encoding)
-        {
-            return Err(Error::InvalidInput {
-                field: "storage schema encoding",
-                reason: "primary and replicas must select the same encoding",
-            });
-        }
         primary.history().check(recovery.history())?;
         let (replicas, replica_base_bytes) =
             super::replication::configure(&settings, &primary, &targets)?;
@@ -268,12 +258,11 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
             catalog: PhantomData,
             inner: Arc::new(Inner {
                 settings,
-                schema_encoding,
                 primary: super::backend::erase(primary),
                 recovery,
-                validate_object: crate::object_catalog::validate_transfer::<C>,
+                validate_object: crate::storage::catalog::validate_transfer::<C>,
                 has_objects: C::definition_count() != 0,
-                object_definition: crate::object_catalog::definition::<C>,
+                object_definition: crate::storage::catalog::definition::<C>,
                 replicas,
                 receipts: super::replication::Receipts::default(),
                 state: Mutex::new(State {
@@ -357,7 +346,7 @@ impl<C> StorageManager<C> {
         }
         let primary = services.activate_internal(
             WORKER_NAME.to_owned(),
-            crate::ServicePolicy::default(),
+            crate::services::ServicePolicy::default(),
             Worker(self.erased()),
         )?;
         state.ready = true;
@@ -371,7 +360,7 @@ impl<C> StorageManager<C> {
             replica.started();
             match services.activate_internal(
                 name.clone(),
-                crate::ServicePolicy::default(),
+                crate::services::ServicePolicy::default(),
                 super::replication::Worker {
                     manager: self.erased(),
                     replica: replica.clone(),
@@ -477,24 +466,25 @@ impl<C> StorageManager<C> {
     pub async fn write_schema(
         &self,
         key: &SchemaKey,
-        fields: &[crate::schema::Field],
+        schema: &crate::schema::graph::Schema,
     ) -> Result<StorageCursor> {
-        self.admit_schema(key, fields, None).await
+        self.admit_schema(key, schema, None).await
     }
 
     pub(super) async fn admit_schema(
         &self,
         key: &SchemaKey,
-        fields: &[crate::schema::Field],
+        schema: &crate::schema::graph::Schema,
         mutation: Option<&crate::storage::MutationId>,
     ) -> Result<StorageCursor> {
-        let scratch =
-            crate::schema::validation_memory_bytes(fields).map_err(|_| Error::InvalidInput {
+        let scratch = schema
+            .validation_memory_bytes(&harmos_contract::config::SchemaSettings::default())
+            .map_err(|_| Error::InvalidInput {
                 field: "storage schema",
                 reason: "invalid message field budget",
             })?;
         let mutation = mutation
-            .map(|id| super::admissions::schema_mutation(id, key, fields))
+            .map(|id| super::admissions::schema_mutation(id, key, schema))
             .transpose()?;
         // Replay Completed Admission Before Scratch Pressure Or Later I/O Errors.
         // Admission Rechecks The Same Ledger After Every Suspension.
@@ -513,24 +503,20 @@ impl<C> StorageManager<C> {
             }
         }
         let scratch = self.reserve_scratch(scratch).await?;
-        crate::schema::validate(fields).map_err(|_| Error::InvalidInput {
-            field: "storage schema",
-            reason: "invalid message fields",
-        })?;
+        schema
+            .prepare(&harmos_contract::config::SchemaSettings::default())
+            .map_err(|_| Error::InvalidInput {
+                field: "storage schema",
+                reason: "invalid message fields",
+            })?;
         drop(scratch);
-        let bytes = StorageSchema::resident_bytes(
-            key,
-            fields,
-            self.inner.primary.history(),
-            self.inner.schema_encoding,
-        )?;
+        let bytes = StorageSchema::resident_bytes(key, schema, self.inner.primary.history())?;
         let sequence = self
             .admit_mutation(Domain::Data, bytes, 1, mutation, |sequence| {
                 Ok(Operation::Schema(StorageSchema::new(
                     self.position(sequence),
                     key.clone(),
-                    fields.to_vec(),
-                    self.inner.schema_encoding,
+                    schema.clone(),
                 )))
             })
             .await?;
@@ -1423,6 +1409,7 @@ impl Write for Counter {
             .ok_or_else(|| io::Error::other("encoded size overflow"))?;
         Ok(bytes.len())
     }
+
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }

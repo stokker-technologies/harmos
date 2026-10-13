@@ -10,21 +10,21 @@
 /* === Modules === */
 mod manager;
 
-#[cfg(feature = "sidecar")]
+#[cfg(feature = "plugin-sidecar")]
 mod native;
 
 /* === Re-Exports === */
 pub use crate::supervision::instance::{
     Outcome as ObserverOutcome, Phase as ObserverLifecyclePhase, Status as ObserverLifecycle,
 };
-#[cfg(feature = "sidecar-host")]
+#[cfg(feature = "plugin-sidecar")]
 pub(crate) use manager::ObserverRetirement;
 pub use manager::{
     ObserverActivation, ObserverInstance, ObserverLease, ObserverManager, ObserverRegistration,
     ObserverScope,
 };
 
-#[cfg(any(feature = "sidecar", feature = "sidecar-host"))]
+#[cfg(feature = "plugin-sidecar")]
 pub(crate) use manager::ChildSettlement;
 
 /* === Imports === */
@@ -84,7 +84,7 @@ pub enum ObserverPhase {
 /* === Traits === */
 pub trait ObserverBackend: Send + Sync + 'static {
     type Resources: Send + Sync + 'static;
-    fn definition(&self) -> ObserverDefinition;
+    fn definition(&self) -> crate::Result<ObserverDefinition>;
     fn run(
         &self,
         resources: Arc<Self::Resources>,

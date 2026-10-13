@@ -12,6 +12,7 @@
 mod scenario_runtime;
 
 mod allocation;
+mod graph;
 mod host;
 mod native;
 
@@ -158,22 +159,35 @@ enum SingleVariant {
 
 /* === Private Functions === */
 fn protobuf_fields(
-    fields: &[harmos_contract::schema::Field],
-) -> Vec<harmos_contract::schema::Field> {
-    let mut fields = fields.to_vec();
-    for field in &mut fields {
-        if let harmos_contract::schema::Kind::Message { fields } = &mut field.kind {
-            *fields = protobuf_fields(fields).into();
-        }
+    definition: harmos_contract::schema::declaration::Definition,
+) -> harmos_contract::schema::graph::Schema {
+    let mut schema = harmos_contract::schema::graph::Schema::from_declaration(
+        definition,
+        &harmos_contract::config::SchemaSettings::default(),
+    )
+    .unwrap();
+    for fields in &mut schema.definitions {
+        fields.sort_by_key(|field| field.tag);
     }
-    fields.sort_by_key(|field| field.tag);
-    fields
+    schema
+}
+
+#[cfg(feature = "reflection")]
+fn schema_descriptor(
+    definition: harmos_contract::schema::declaration::Definition,
+) -> harmos_contract::schema::reflection::MessageDescriptor {
+    let settings = harmos_contract::config::SchemaSettings::default();
+    let graph =
+        harmos_contract::schema::graph::Schema::from_declaration(definition, &settings).unwrap();
+    harmos_contract::schema::reflection::descriptor_schema(&graph, "harmos.stream", &settings)
+        .unwrap()
 }
 
 /* === Tests === */
 
 #[test]
 fn contract_scenario() {
+    graph::check();
     {
         scenario_runtime::check("names_never_shadow", || {
             let value = DecoderNames {
@@ -286,11 +300,18 @@ fn contract_scenario() {
     }
     {
         scenario_runtime::check("schemas_preserve_wire", || {
-            use harmos_contract::schema::{Cardinality, Described, Field, Kind};
+            use harmos_contract::schema::{Cardinality, Described, Kind};
             assert_ne!(Original::FIELDS, Reordered::FIELDS);
-            assert_eq!(
-                protobuf_fields(Original::FIELDS),
-                protobuf_fields(Reordered::FIELDS)
+            let left = protobuf_fields(Original::DEFINITION);
+            let right = protobuf_fields(Reordered::DEFINITION);
+            assert!(
+                left.equivalent(
+                    left.root,
+                    &right,
+                    right.root,
+                    &harmos_contract::config::SchemaSettings::default()
+                )
+                .unwrap()
             );
             let value = Original::FIELDS
                 .iter()
@@ -313,14 +334,21 @@ fn contract_scenario() {
                     .find(|field| field.name == name)
                     .unwrap();
                 assert_eq!(field.cardinality, cardinality);
-                let Kind::Message { fields } = &field.kind else {
+                let Kind::Message { definition } = &field.kind else {
                     panic!("nested message descriptor")
                 };
-                assert_eq!(fields.as_ref(), Original::FIELDS);
+                assert_eq!((definition.identity)(), std::any::TypeId::of::<Original>());
+                assert_eq!((definition.fields)(), Original::FIELDS);
             }
-            let encoded = serde_json::to_vec(Nested::FIELDS).unwrap();
-            let owned: Vec<Field> = serde_json::from_slice(&encoded).unwrap();
-            assert_eq!(owned, Nested::FIELDS);
+            let graph = harmos_contract::schema::graph::Schema::from_declaration(
+                Nested::DEFINITION,
+                &harmos_contract::config::SchemaSettings::default(),
+            )
+            .unwrap();
+            let encoded = serde_json::to_vec(&graph).unwrap();
+            let owned: harmos_contract::schema::graph::Schema =
+                serde_json::from_slice(&encoded).unwrap();
+            assert_eq!(owned, graph);
         });
     }
     {
@@ -421,16 +449,27 @@ fn contract_scenario() {
             };
             assert_eq!(Choices::decode(&nested.encode_to_vec()).unwrap(), nested);
             assert_ne!(Choice::FIELDS, ReorderedChoice::FIELDS);
-            assert_eq!(
-                protobuf_fields(Choice::FIELDS),
-                protobuf_fields(ReorderedChoice::FIELDS)
+            let left = protobuf_fields(Choice::DEFINITION);
+            let right = protobuf_fields(ReorderedChoice::DEFINITION);
+            assert!(
+                left.equivalent(
+                    left.root,
+                    &right,
+                    right.root,
+                    &harmos_contract::config::SchemaSettings::default()
+                )
+                .unwrap()
             );
             assert!(
                 Choice::FIELDS
                     .iter()
                     .all(|field| field.cardinality == Cardinality::Variant)
             );
-            harmos_contract::schema::validate(Choice::FIELDS).unwrap();
+            harmos_contract::schema::graph::Schema::from_declaration(
+                Choice::DEFINITION,
+                &harmos_contract::config::SchemaSettings::default(),
+            )
+            .unwrap();
             assert_eq!(Choice::decode(&[]).unwrap(), Choice::Empty);
             assert_eq!(
                 ExplicitDefault::decode(&[]).unwrap(),
@@ -462,9 +501,10 @@ fn contract_scenario() {
                 .iter()
                 .find(|field| field.name == "Text")
                 .unwrap();
-            let Kind::Message { fields } = &variant.kind else {
+            let Kind::Message { definition } = &variant.kind else {
                 panic!("variant payload");
             };
+            let fields = (definition.fields)();
             let mut wrong_type = Vec::new();
             prost::encoding::uint64::encode(fields[0].tag, &7, &mut wrong_type);
             let mut bytes = Vec::new();
@@ -494,11 +534,8 @@ fn contract_scenario() {
     #[cfg(feature = "reflection")]
     {
         scenario_runtime::check("enums_use_oneof", || {
-            use harmos_contract::schema::{
-                Described,
-                reflection::{DynamicMessage, descriptor},
-            };
-            let schema = descriptor(Choice::FIELDS).unwrap();
+            use harmos_contract::schema::{Described, reflection::DynamicMessage};
+            let schema = schema_descriptor(Choice::DEFINITION);
             assert_eq!(schema.oneofs().count(), 1);
             let value = Choice::Text("reflected".into());
             let reflected =
@@ -510,14 +547,11 @@ fn contract_scenario() {
     #[cfg(feature = "reflection")]
     {
         scenario_runtime::check("composites_match_canonical", || {
-            use harmos_contract::schema::{
-                Described,
-                reflection::{DynamicMessage, descriptor},
-            };
+            use harmos_contract::schema::{Described, reflection::DynamicMessage};
             fn canonical<T: Protobuf + Described>(value: &T) {
                 let encoded = Protobuf::encode_to_vec(value);
                 let reflected =
-                    DynamicMessage::decode(descriptor(T::FIELDS).unwrap(), encoded.as_slice())
+                    DynamicMessage::decode(schema_descriptor(T::DEFINITION), encoded.as_slice())
                         .unwrap();
                 assert_eq!(encoded, prost::Message::encode_to_vec(&reflected));
                 assert_eq!(encoded.len(), Protobuf::encoded_len(value));
@@ -555,9 +589,10 @@ fn contract_scenario() {
                 .iter()
                 .find(|field| field.name == "Pair")
                 .unwrap();
-            let Kind::Message { fields } = &variant.kind else {
+            let Kind::Message { definition } = &variant.kind else {
                 unreachable!()
             };
+            let fields = (definition.fields)();
             let mut wire = Vec::new();
             for (name, text) in [("left", "first"), ("right", "second")] {
                 let field = fields.iter().find(|field| field.name == name).unwrap();
@@ -599,9 +634,25 @@ fn contract_scenario() {
                 optional: Some(Choice::Empty),
                 history: vec![Choice::Empty],
             };
-            let validator = ProtobufValidator::new(Choices::FIELDS).unwrap();
+            let validator = ProtobufValidator::from_schema(
+                &harmos_contract::schema::graph::Schema::from_declaration(
+                    Choices::DEFINITION,
+                    &harmos_contract::config::SchemaSettings::default(),
+                )
+                .unwrap(),
+                &harmos_contract::config::SchemaSettings::default(),
+            )
+            .unwrap();
             validator.validate(&value.encode_to_vec()).unwrap();
-            let validator = ProtobufValidator::new(Choice::FIELDS).unwrap();
+            let validator = ProtobufValidator::from_schema(
+                &harmos_contract::schema::graph::Schema::from_declaration(
+                    Choice::DEFINITION,
+                    &harmos_contract::config::SchemaSettings::default(),
+                )
+                .unwrap(),
+                &harmos_contract::config::SchemaSettings::default(),
+            )
+            .unwrap();
             validator
                 .validate(&Choice::Text("checked".into()).encode_to_vec())
                 .unwrap();

@@ -8,8 +8,6 @@
  */
 
 /* === Modules === */
-#[path = "schema_input/fields.rs"]
-mod fields;
 
 /* === Re-Exports === */
 
@@ -20,15 +18,15 @@ mod fields;
 // Third Party Imports
 
 // Local Imports
-use crate::schema::Field;
+use crate::schema::graph::Schema;
+use crate::storage::codec::{Nested, product};
 use crate::storage::{SchemaKey, StorageCursor};
-use crate::storage_codec::{Nested, product};
 use crate::{Error, MemorySize, Result};
 
 /* === Constants === */
 
 /* === Macros === */
-product!(SchemaInput { key: Nested<SchemaKey> => 1, fields: fields::Fields => 2 });
+product!(SchemaInput { key: Nested<SchemaKey> => 1, graph: Nested<Schema> => 2 });
 product!(SchemaInfo { position: Nested<StorageCursor> => 1, schema: Nested<SchemaInput> => 2 });
 
 /* === Type Aliases === */
@@ -37,7 +35,7 @@ product!(SchemaInfo { position: Nested<StorageCursor> => 1, schema: Nested<Schem
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SchemaInput {
     pub key: SchemaKey,
-    fields: Vec<Field>,
+    graph: Schema,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -52,24 +50,30 @@ pub struct SchemaInfo {
 
 /* === Implementations === */
 impl SchemaInput {
-    pub fn new(key: SchemaKey, fields: &[Field]) -> Result<Self> {
-        crate::schema::validate(fields).map_err(|_| Error::InvalidInput {
-            field: "storage schema",
-            reason: "invalid message fields",
-        })?;
+    pub fn new(key: SchemaKey, graph: &Schema) -> Result<Self> {
+        graph
+            .prepare(&harmos_contract::config::SchemaSettings::default())
+            .map_err(|_| Error::InvalidInput {
+                field: "storage schema",
+                reason: "invalid finite schema graph",
+            })?;
         Ok(Self {
             key,
-            fields: fields.to_vec(),
+            graph: graph.clone(),
         })
     }
-    pub fn fields(&self) -> &[Field] {
-        &self.fields
+
+    pub fn graph(&self) -> &Schema {
+        &self.graph
     }
 }
 impl MemorySize for SchemaInput {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>() + self.key.memory_size() - std::mem::size_of::<SchemaKey>()
-            + fields::resident(&self.fields)
+            + self
+                .graph
+                .memory_size()
+                .saturating_sub(std::mem::size_of::<Schema>())
     }
 }
 impl MemorySize for SchemaInfo {

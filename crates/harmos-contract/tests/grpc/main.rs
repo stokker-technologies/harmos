@@ -8,6 +8,8 @@
  */
 
 /* === Modules === */
+#[cfg(feature = "bindings-python")]
+mod python;
 #[path = "../../../../tests/support/scenarios.rs"]
 mod scenario_runtime;
 
@@ -55,16 +57,24 @@ struct Payload {
     optional: Option<u32>,
     values: Vec<i64>,
 }
+#[harmos_macros::operation(request = Payload, response = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Read"))]
+struct Read;
+
+#[harmos_macros::operation(request = Payload, response = Payload, input = Payload, output = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Exchange"))]
+struct Exchange;
+
+#[harmos_macros::operation(request = Payload, response = Payload, input = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Upload"))]
+struct Upload;
+
+#[harmos_macros::operation(request = Payload, response = Payload, output = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Download"))]
+struct Download;
+
 #[harmos_macros::catalog(harmos_path = ::harmos_contract)]
 enum Routes {
-    #[operation(request = Payload, response = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Read"))]
-    Read,
-    #[operation(request = Payload, response = Payload, input = Payload, output = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Exchange"))]
-    Exchange,
-    #[operation(request = Payload, response = Payload, input = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Upload"))]
-    Upload,
-    #[operation(request = Payload, response = Payload, output = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Download"))]
-    Download,
+    Read(Read),
+    Exchange(Exchange),
+    Upload(Upload),
+    Download(Download),
 }
 #[harmos_contract::message(harmos_path = ::harmos_contract)]
 #[derive(Clone, PartialEq)]
@@ -76,10 +86,12 @@ struct Annotated {
     values: Vec<harmos_contract::Value>,
 }
 
+#[harmos_macros::operation(request = Annotated, response = Annotated, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Portable", method = "Annotate"))]
+struct Annotate;
+
 #[harmos_macros::catalog(harmos_path = ::harmos_contract)]
 enum Portable {
-    #[operation(request = Annotated, response = Annotated, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Portable", method = "Annotate"))]
-    Annotate,
+    Annotate(Annotate),
 }
 
 fn annotated() -> Annotated {
@@ -104,6 +116,8 @@ fn annotated() -> Annotated {
 
 #[test]
 fn contract_scenario() {
+    #[cfg(feature = "bindings-python")]
+    python::check();
     {
         scenario_runtime::check("portable_messages_cross", || {
             use harmos_contract::{Message, Protobuf};
@@ -165,6 +179,66 @@ fn contract_scenario() {
                 .is_none()
             );
             assert!(artifacts.export(target.path(), "../escape").is_err());
+        });
+    }
+    {
+        scenario_runtime::check("independent_schema_catalogs", || {
+            let target = tempfile::tempdir().unwrap();
+            let first = target.path().join("producer-a");
+            let second = target.path().join("producer-b");
+            let routes = Artifacts::new(&Contracts::of::<Routes>().unwrap()).unwrap();
+            let portable = Artifacts::new(&Contracts::of::<Portable>().unwrap()).unwrap();
+            let native = routes.export(&first, "native").unwrap();
+            let guest = portable.export(&first, "portable").unwrap();
+            let peer = portable.export(&second, "portable").unwrap();
+            let snapshot = std::fs::read(guest.join("descriptors.bin")).unwrap();
+            assert_eq!(
+                snapshot,
+                std::fs::read(peer.join("descriptors.bin")).unwrap()
+            );
+            for name in portable.files().keys() {
+                assert_eq!(
+                    std::fs::read(guest.join(name)).unwrap(),
+                    std::fs::read(peer.join(name)).unwrap()
+                );
+            }
+            // Repeated And Reduced Exports Affect Only Their Selected Producer And Catalog.
+            let repeated = portable.export(&first, "portable").unwrap();
+            assert_eq!(
+                std::fs::read(repeated.join("descriptors.bin")).unwrap(),
+                snapshot
+            );
+            Artifacts::new(std::iter::empty())
+                .unwrap()
+                .export(&first, "native")
+                .unwrap();
+            assert_eq!(
+                std::fs::read(guest.join("descriptors.bin")).unwrap(),
+                snapshot
+            );
+            assert_eq!(
+                std::fs::read(peer.join("descriptors.bin")).unwrap(),
+                snapshot
+            );
+            assert!(
+                DescriptorPool::decode(
+                    std::fs::read(native.join("descriptors.bin"))
+                        .unwrap()
+                        .as_slice()
+                )
+                .unwrap()
+                .services()
+                .next()
+                .is_none()
+            );
+            let manifest = std::fs::read_to_string(guest.join("manifest.txt")).unwrap();
+            assert!(manifest.starts_with("descriptors.bin\n"));
+            assert!(
+                portable
+                    .files()
+                    .keys()
+                    .all(|name| manifest.lines().any(|line| line == name))
+            );
         });
     }
     {

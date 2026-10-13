@@ -25,9 +25,9 @@ use tokio::sync::watch;
 // Local Imports
 use super::window::{ListenerCandidate, Row};
 use super::{Holding, ManagedPublication, Stream, StreamManager, Table, Wired};
-use crate::load::PluginScope;
 use crate::operations::{EncodedInvocation, OperationManager, PluginCallback};
-use crate::schema::{Described, Field};
+use crate::plugin::PluginScope;
+use crate::schema::{Described, graph::Schema};
 use crate::supervision::{Listener, ListenerDelivery};
 use crate::{Application, Error, Message, MessageError, Result};
 use harmos_contract::listeners::{Context, Delivery, Source};
@@ -149,8 +149,8 @@ impl<A: Application> StreamManager<A> {
             .iter()
             .map(|source| {
                 (
-                    Arc::clone(&source.wired.definition.id),
-                    source.wired.definition.version,
+                    Arc::<str>::from(source.wired.definition.id()),
+                    source.wired.definition.version(),
                     Arc::clone(&source.frontier),
                 )
             })
@@ -255,13 +255,20 @@ impl<A: Application> StreamManager<A> {
 impl<A: Application> PluginListenerBindings<'_, A> {
     pub fn stream<S: Stream<A> + Message + Described>(&mut self, after: u64) -> Result<()> {
         let wired = self.source(S::ID, S::VERSION)?;
-        if wired.definition.row != TypeId::of::<S>() || wired.definition.owner().is_some() {
+        if wired.definition.row() != TypeId::of::<S>() || wired.definition.owner().is_some() {
             return Err(Error::InvalidInput {
                 field: "native listener stream",
                 reason: "source differs from the compiled native catalog member",
             });
         }
-        self.bind(wired, S::FIELDS, after, submit_native::<S>)
+        let graph = Schema::from_declaration(
+            S::DEFINITION,
+            &harmos_contract::config::SchemaSettings::default(),
+        )
+        .map_err(|source| Error::RecordSchema {
+            source: source.into(),
+        })?;
+        self.bind(wired, &graph, after, submit_native::<S>)
     }
 
     pub fn publication(&mut self, id: &str, schema_ordinal: u32, after: u64) -> Result<()> {
@@ -272,11 +279,11 @@ impl<A: Application> PluginListenerBindings<'_, A> {
                 reason: "source has no original validated generation owner",
             });
         }
-        let fields = wired.definition.fields().ok_or(Error::InvalidInput {
+        let graph = wired.definition.schema().ok_or(Error::InvalidInput {
             field: "managed listener stream",
             reason: "source has no admitted row schema",
         })?;
-        self.bind(Arc::clone(&wired), fields, after, submit_publication)
+        self.bind(Arc::clone(&wired), graph, after, submit_publication)
     }
 
     fn source(&self, id: &str, version: u32) -> Result<Arc<Wired>> {
@@ -322,7 +329,7 @@ impl<A: Application> PluginListenerBindings<'_, A> {
     fn bind(
         &mut self,
         wired: Arc<Wired>,
-        fields: &[Field],
+        graph: &Schema,
         after: u64,
         submit: Submit,
     ) -> Result<()> {
@@ -353,23 +360,22 @@ impl<A: Application> PluginListenerBindings<'_, A> {
             else {
                 continue;
             };
-            if id.as_ref() != wired.definition.id() || *schema_ordinal != wired.definition.version {
+            if id.as_ref() != wired.definition.id() || *schema_ordinal != wired.definition.version()
+            {
                 continue;
             }
-            let expected = harmos_contract::listeners::Definition::new(
-                listener.id().clone(),
-                Source::Stream {
-                    id: wired.definition.id().to_owned().into(),
-                    schema_ordinal: wired.definition.version,
-                    fields: std::borrow::Cow::Owned(fields.to_vec()),
-                },
-                listener.callback().clone(),
-            )
-            .map_err(|source| Error::OperationFailed {
-                operation: listener.callback().operation().id.to_string(),
-                source: Arc::new(source),
-            })?;
-            if expected != *listener {
+            let source_graph = listener.source().schema();
+            if !graph
+                .equivalent(
+                    graph.root,
+                    source_graph,
+                    source_graph.root,
+                    &harmos_contract::config::SchemaSettings::default(),
+                )
+                .map_err(|source| Error::RecordSchema {
+                    source: source.into(),
+                })?
+            {
                 return Err(Error::InvalidInput {
                     field: "listener stream source",
                     reason: "row schema differs from the frozen declaration",
@@ -474,12 +480,15 @@ impl Message for Payload<'_> {
     fn encode_to_vec(&self) -> Vec<u8> {
         self.0.to_vec()
     }
+
     fn encode_into(&self, bytes: &mut Vec<u8>) {
         bytes.extend_from_slice(self.0);
     }
+
     fn encoded_len(&self) -> usize {
         self.0.len()
     }
+
     fn decode(_: &[u8]) -> std::result::Result<Self, MessageError> {
         Err(MessageError::new(
             "borrowed source payload is never decoded",

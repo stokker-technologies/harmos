@@ -48,7 +48,7 @@ pub struct StorageView {
     lease: Arc<Lease>,
 }
 
-pub(crate) struct StorageReader<T> {
+pub struct StorageReader<T> {
     view: Option<StorageView>,
     selection: ReadSelection,
     cursor: Option<ReadCursor>,
@@ -56,7 +56,7 @@ pub(crate) struct StorageReader<T> {
     fetch: Fetch<T>,
 }
 
-pub(crate) struct StoragePage<T> {
+pub struct StoragePage<T> {
     entries: Vec<T>,
     reservation: MemoryReservation,
 }
@@ -351,13 +351,16 @@ impl StorageView {
             reason: "original view has no bounded computation profile",
         })
     }
+
     pub(super) fn manager(&self) -> &StorageManager<super::manager::ErasedCatalog> {
         &self.lease.manager
     }
+
     pub fn accepted(&self) -> Result<StorageCursor> {
         let (_pin, view) = self.pin()?;
         Ok(view.accepted().clone())
     }
+
     pub fn saved(&self) -> Result<StorageCursor> {
         let (_pin, view) = self.pin()?;
         Ok(view.saved().clone())
@@ -369,15 +372,17 @@ impl StorageView {
     ) -> Result<StorageReader<ObjectEntry>> {
         self.reader::<ObjectEntry>(selection)
     }
-    pub(super) fn read_records(
-        &self,
-        selection: ReadSelection,
-    ) -> Result<StorageReader<StoredRecord>> {
+
+    // Open Original Raw Saved Paging Under This View And Its Execution Limits.
+    // ReadSelection::through Selects A Fixed Cut Within The Original Snapshot.
+    pub fn read_records(&self, selection: ReadSelection) -> Result<StorageReader<StoredRecord>> {
         self.reader::<StoredRecord>(selection)
     }
+
     pub(super) fn read_stream(&self, selection: ReadSelection) -> Result<StorageReader<StoredRow>> {
         self.reader::<StoredRow>(selection)
     }
+
     pub fn execution_limits(&self) -> Result<Option<QueryLimits>> {
         let state = self.lease.manager.inner.state.lock().unwrap();
         let view = state.views.get(&self.lease.id).ok_or(Error::ViewExpired)?;
@@ -536,6 +541,16 @@ impl StorageView {
     pub(super) fn reader<T: Entry>(&self, selection: ReadSelection) -> Result<StorageReader<T>> {
         let (_, view) = self.pin()?;
         view.check_kind(T::KIND, &selection, None)?;
+        if selection.record_filter.is_some() {
+            let limits = view.execution_limits().ok_or(Error::InvalidInput {
+                field: "record filter",
+                reason: "requires bounded saved-query limits",
+            })?;
+            self.manager()
+                .inner
+                .primary
+                .validate_record_filter(&selection, limits)?;
+        }
         if T::KIND == ReadKind::Objects {
             self.manager()
                 .inner
@@ -550,6 +565,7 @@ impl StorageView {
             fetch: fetch::<T>,
         })
     }
+
     pub(super) fn activity(&self) -> Result<Activity> {
         let inner = &self.lease.manager.inner;
         let mut state = inner.state.lock().unwrap();
@@ -618,10 +634,43 @@ impl<T> StorageReader<T> {
     }
 
     pub async fn next_page(&mut self, limits: ReadLimits) -> Result<Option<StoragePage<T>>> {
-        self.next_page_reserved(limits, |entries, reservation| {
-            Ok(StoragePage::new(entries, reservation))
-        })
-        .await
+        let Some(view) = self.view.clone() else {
+            return Ok(None);
+        };
+        let result = view
+            .compute(self.stage_page_reserved(limits, |entries, reservation| {
+                Ok(StoragePage::new(entries, reservation))
+            }))
+            .await;
+        let page = match result {
+            Ok(page) => page,
+            Err(error) => {
+                self.staged_cursor = None;
+                return Err(error);
+            }
+        };
+        let Some((entries, empty)) = page else {
+            return Ok(None);
+        };
+        self.commit_staged_page();
+        if empty { Ok(None) } else { Ok(Some(entries)) }
+    }
+
+    // The Internal Caller Already Owns The Original View Computation.
+    pub(super) async fn next_page_in_computation(
+        &mut self,
+        limits: ReadLimits,
+    ) -> Result<Option<StoragePage<T>>> {
+        let Some((entries, empty)) = self
+            .stage_page_reserved(limits, |entries, reservation| {
+                Ok(StoragePage::new(entries, reservation))
+            })
+            .await?
+        else {
+            return Ok(None);
+        };
+        self.commit_staged_page();
+        if empty { Ok(None) } else { Ok(Some(entries)) }
     }
 
     pub(super) async fn stage_page_mapped<U>(
@@ -645,18 +694,6 @@ impl<T> StorageReader<T> {
         if self.cursor.is_none() {
             self.view = None;
         }
-    }
-
-    async fn next_page_reserved<U>(
-        &mut self,
-        limits: ReadLimits,
-        map: impl FnOnce(Vec<T>, MemoryReservation) -> Result<U>,
-    ) -> Result<Option<U>> {
-        let Some((entries, empty)) = self.stage_page_reserved(limits, map).await? else {
-            return Ok(None);
-        };
-        self.commit_staged_page();
-        if empty { Ok(None) } else { Ok(Some(entries)) }
     }
 
     async fn stage_page_reserved<U>(
@@ -739,9 +776,11 @@ impl StorageViewComputation {
     pub fn deadline(&self) -> tokio::time::Instant {
         self.owner.started + self.owner.timeout
     }
+
     pub(super) fn timeout(&self) -> Duration {
         self.owner.timeout
     }
+
     pub(super) fn finish<T>(&self, value: T) -> Result<T> {
         self.check()?;
         Ok(value)
@@ -890,6 +929,7 @@ impl State {
                 .map(|held| held.bytes)
                 .sum::<usize>();
     }
+
     pub(super) fn view_action(&mut self, allow_release: bool) -> Option<ViewAction> {
         self.collect();
         for (&id, view) in &mut self.views {
@@ -904,6 +944,7 @@ impl State {
         }
         None
     }
+
     pub(super) fn opened(
         &mut self,
         id: u64,
@@ -947,6 +988,7 @@ impl State {
         }
         self.collect();
     }
+
     pub(super) fn view_deadline(&self) -> Option<tokio::time::Instant> {
         self.views
             .values()
@@ -973,7 +1015,7 @@ fn fetch<'a, T: Entry>(
     Box::pin(async move {
         let _activity = owned.activity()?;
         let manager = &owned.lease.manager;
-        let limits = T::read_limits(limits, manager.inner.schema_encoding);
+        let limits = T::read_limits(limits);
         let _lifecycle = manager.inner.lifecycle.lock().await;
         // Reserve the bounded backend page and cursor/filter metadata before I/O.
         // Identifiers are unbounded; fixed per-row overhead cannot cover them.
@@ -990,9 +1032,7 @@ fn fetch<'a, T: Entry>(
                 .bytes
                 .get()
                 .checked_mul(4)
-                .and_then(|bytes| {
-                    bytes.checked_add(T::decoding_overhead(manager.inner.schema_encoding))
-                })
+                .and_then(|bytes| bytes.checked_add(T::decoding_overhead(limits)?))
                 .ok_or(Error::InvalidInput {
                     field: "read page",
                     reason: "schema decode bound overflow",

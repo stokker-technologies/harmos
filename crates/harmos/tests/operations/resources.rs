@@ -27,7 +27,7 @@ use std::time::Duration;
 // Local Imports
 use super::{Lanes, app::App};
 use harmos::operations::{Context, Operation, OperationPolicy, RetryPolicy};
-use harmos::{Error, Position, Runtime};
+use harmos::{Error, Runtime, state::Position};
 
 /* === Constants === */
 
@@ -48,9 +48,7 @@ struct Read {
 }
 
 /* === Enums === */
-#[harmos::catalog]
-enum Operations {
-    #[operation(
+#[harmos::operation(
         request = bool,
         response = (String, usize),
         id = "resources.read",
@@ -60,7 +58,11 @@ enum Operations {
             retries: RetryPolicy::Never,
         },
     )]
-    ReadContract,
+struct ReadContract;
+
+#[harmos::catalog]
+enum Operations {
+    ReadContract(ReadContract),
 }
 
 /* === Traits === */
@@ -92,14 +94,18 @@ impl Operation for Read {
         context: Self::Context<'ctx>,
         nested: &mut bool,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(String, usize), Error> {
-        let seen = self.resources.reads.fetch_add(1, Ordering::SeqCst);
-        if *nested {
-            let child = context.submit::<ReadContract>(false)?.await?;
-            assert_eq!(child.0, self.resources.device);
-            assert_eq!(child.1, seen + 1);
+    ) -> Result<harmos::operations::Response<(String, usize)>, Error> {
+        let result: ::core::result::Result<(String, usize), Self::Error> = async move {
+            let seen = self.resources.reads.fetch_add(1, Ordering::SeqCst);
+            if *nested {
+                let child = context.submit::<ReadContract>(false)?.await?;
+                assert_eq!(child.0, self.resources.device);
+                assert_eq!(child.1, seen + 1);
+            }
+            Ok((self.resources.device.clone(), seen))
         }
-        Ok((self.resources.device.clone(), seen))
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     async fn finalize(&mut self) -> Result<(), Error> {

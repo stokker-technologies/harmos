@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-#[path = "object_fields/codec.rs"]
 mod codec;
 
 /* === Re-Exports === */

@@ -20,7 +20,8 @@ use time::OffsetDateTime;
 // Local Imports
 use super::Value;
 use crate::message::{PostcardReader as Reader, PostcardValue, decoding_add, decoding_multiply};
-use crate::schema::{Cardinality, Described, Field, Kind};
+use crate::schema::declaration::{Definition, Field, Kind};
+use crate::schema::{Cardinality, Described};
 use crate::{MessageError, btree_map_memory};
 
 /* === Constants === */
@@ -37,110 +38,156 @@ const DATETIME: u32 = 6;
 const ARRAY: u32 = 7;
 const OBJECT: u32 = 8;
 
-pub(crate) const TIMESTAMP_FIELDS: &[Field] = &[
-    field("seconds", 1, Kind::I64, Cardinality::Required),
-    field("nanos", 2, Kind::U32, Cardinality::Required),
-];
-
-pub(crate) const VALUE_FIELDS: &[Field] = LEVEL_4;
-pub(crate) const ENTRY_FIELDS: &[Field] = ENTRY_4;
+pub(crate) const TIMESTAMP_DEFINITION: Definition = Timestamp::DEFINITION;
+pub(crate) const VALUE_FIELDS: &[Field] = Value4::FIELDS;
+pub(crate) const ENTRY_DEFINITION: Definition = Entry4::DEFINITION;
 
 /* === Macros === */
-macro_rules! level {
-    ($level:ident, $entry:ident, $array:ident, $object:ident, $inner:ident) => {
-        const $array: &[Field] = &[field("items", 1, message($inner), Cardinality::Repeated)];
-        const $entry: &[Field] = &[
-            field("key", 1, Kind::String, Cardinality::Required),
-            field("value", 2, message($inner), Cardinality::Required),
-        ];
-        const $object: &[Field] = &[field("entries", 1, message($entry), Cardinality::Repeated)];
-        const $level: &[Field] = &[
-            field("null", 1, message(&[]), Cardinality::Variant),
-            field(
-                "bool",
-                2,
-                message(<bool as Described>::FIELDS),
-                Cardinality::Variant,
-            ),
-            field(
-                "integer",
-                3,
-                message(<i64 as Described>::FIELDS),
-                Cardinality::Variant,
-            ),
-            field(
-                "unsigned",
-                4,
-                message(<u64 as Described>::FIELDS),
-                Cardinality::Variant,
-            ),
-            field(
-                "number",
-                5,
-                message(<f64 as Described>::FIELDS),
-                Cardinality::Variant,
-            ),
-            field(
-                "text",
-                6,
-                message(<String as Described>::FIELDS),
-                Cardinality::Variant,
-            ),
-            field(
-                "datetime",
-                7,
-                message(TIMESTAMP_FIELDS),
-                Cardinality::Variant,
-            ),
-            field("array", 8, message($array), Cardinality::Variant),
-            field("object", 9, message($object), Cardinality::Variant),
-        ];
+macro_rules! shape {
+    ($name:ident, $fields:expr) => {
+        pub(crate) struct $name;
+        impl Described for $name {
+            const NAME: &'static str = concat!(module_path!(), "::", stringify!($name));
+            const FIELDS: &'static [Field] = $fields;
+            const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
+                { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+            >(Self::NAME, Self::FIELDS);
+        }
     };
 }
 
-const LEVEL_0: &[Field] = &[
-    field("null", 1, message(&[]), Cardinality::Variant),
-    field(
-        "bool",
-        2,
-        message(<bool as Described>::FIELDS),
-        Cardinality::Variant,
-    ),
-    field(
-        "integer",
-        3,
-        message(<i64 as Described>::FIELDS),
-        Cardinality::Variant,
-    ),
-    field(
-        "unsigned",
-        4,
-        message(<u64 as Described>::FIELDS),
-        Cardinality::Variant,
-    ),
-    field(
-        "number",
-        5,
-        message(<f64 as Described>::FIELDS),
-        Cardinality::Variant,
-    ),
-    field(
-        "text",
-        6,
-        message(<String as Described>::FIELDS),
-        Cardinality::Variant,
-    ),
-    field(
-        "datetime",
-        7,
-        message(TIMESTAMP_FIELDS),
-        Cardinality::Variant,
-    ),
-];
-level!(LEVEL_1, ENTRY_1, ARRAY_1, OBJECT_1, LEVEL_0);
-level!(LEVEL_2, ENTRY_2, ARRAY_2, OBJECT_2, LEVEL_1);
-level!(LEVEL_3, ENTRY_3, ARRAY_3, OBJECT_3, LEVEL_2);
-level!(LEVEL_4, ENTRY_4, ARRAY_4, OBJECT_4, LEVEL_3);
+macro_rules! level {
+    ($level:ident, $entry:ident, $array:ident, $object:ident, $inner:ident) => {
+        shape!(
+            $array,
+            &[field(
+                "items",
+                1,
+                message($inner::DEFINITION),
+                Cardinality::Repeated
+            )]
+        );
+        shape!(
+            $entry,
+            &[
+                field("key", 1, Kind::String, Cardinality::Required),
+                field(
+                    "value",
+                    2,
+                    message($inner::DEFINITION),
+                    Cardinality::Required
+                ),
+            ]
+        );
+        shape!(
+            $object,
+            &[field(
+                "entries",
+                1,
+                message($entry::DEFINITION),
+                Cardinality::Repeated
+            )]
+        );
+        shape!(
+            $level,
+            &[
+                field("null", 1, message(<()>::DEFINITION), Cardinality::Variant),
+                field("bool", 2, message(<bool>::DEFINITION), Cardinality::Variant),
+                field(
+                    "integer",
+                    3,
+                    message(<i64>::DEFINITION),
+                    Cardinality::Variant
+                ),
+                field(
+                    "unsigned",
+                    4,
+                    message(<u64>::DEFINITION),
+                    Cardinality::Variant
+                ),
+                field(
+                    "number",
+                    5,
+                    message(<f64>::DEFINITION),
+                    Cardinality::Variant
+                ),
+                field("text", 6, message(String::DEFINITION), Cardinality::Variant),
+                field(
+                    "datetime",
+                    7,
+                    message(Timestamp::DEFINITION),
+                    Cardinality::Variant
+                ),
+                field(
+                    "array",
+                    8,
+                    message($array::DEFINITION),
+                    Cardinality::Variant
+                ),
+                field(
+                    "object",
+                    9,
+                    message($object::DEFINITION),
+                    Cardinality::Variant
+                ),
+            ]
+        );
+    };
+}
+
+shape!(
+    Timestamp,
+    &[
+        field("seconds", 1, Kind::I64, Cardinality::Required),
+        field("nanos", 2, Kind::U32, Cardinality::Required),
+    ]
+);
+shape!(
+    Value0,
+    &[
+        field("null", 1, message(<()>::DEFINITION), Cardinality::Variant),
+        field(
+            "bool",
+            2,
+            message(<bool as Described>::DEFINITION),
+            Cardinality::Variant,
+        ),
+        field(
+            "integer",
+            3,
+            message(<i64 as Described>::DEFINITION),
+            Cardinality::Variant,
+        ),
+        field(
+            "unsigned",
+            4,
+            message(<u64 as Described>::DEFINITION),
+            Cardinality::Variant,
+        ),
+        field(
+            "number",
+            5,
+            message(<f64 as Described>::DEFINITION),
+            Cardinality::Variant,
+        ),
+        field(
+            "text",
+            6,
+            message(<String as Described>::DEFINITION),
+            Cardinality::Variant,
+        ),
+        field(
+            "datetime",
+            7,
+            message(Timestamp::DEFINITION),
+            Cardinality::Variant,
+        ),
+    ]
+);
+level!(Value1, Entry1, Array1, Object1, Value0);
+level!(Value2, Entry2, Array2, Object2, Value1);
+level!(Value3, Entry3, Array3, Object3, Value2);
+level!(Value4, Entry4, Array4, Object4, Value3);
 
 /* === Type Aliases === */
 
@@ -152,7 +199,11 @@ level!(LEVEL_4, ENTRY_4, ARRAY_4, OBJECT_4, LEVEL_3);
 
 /* === Implementations === */
 impl Described for Value {
+    const NAME: &'static str = "harmos::Value";
     const FIELDS: &'static [Field] = VALUE_FIELDS;
+    const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
+        { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
 }
 
 impl PostcardValue for Value {
@@ -625,10 +676,8 @@ const fn field(name: &'static str, tag: u32, kind: Kind, cardinality: Cardinalit
     }
 }
 
-const fn message(fields: &'static [Field]) -> Kind {
-    Kind::Message {
-        fields: Cow::Borrowed(fields),
-    }
+const fn message(definition: Definition) -> Kind {
+    Kind::Message { definition }
 }
 
 fn variant(value: &Value) -> u32 {

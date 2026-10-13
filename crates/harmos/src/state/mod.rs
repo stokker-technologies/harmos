@@ -23,6 +23,7 @@ mod writer;
 
 /* === Re-Exports === */
 pub use crate::error::Error;
+pub use capture::{CaptureError, CaptureLimits, JournalCapture};
 pub use entry::{
     At, CausationId, CorrelationId, Entry, Link, Metadata, Position, PrincipalId, Receipt,
     RequestKey, Timestamp,

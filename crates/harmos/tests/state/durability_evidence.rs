@@ -18,7 +18,7 @@ use std::path::PathBuf;
 // Third Party Imports
 
 // Local Imports
-use harmos::Vault;
+use harmos::evidence::Vault;
 use jsonl_adapter::EvidenceDirectory;
 
 /* === Constants === */

@@ -23,31 +23,32 @@ use super::{FileMetadata, FileReference};
 use crate::__private::DecodeInput;
 use crate::__private::decoding_add;
 
-use crate::schema::{Cardinality, Described, Field, Kind};
+use crate::schema::declaration::{Field, Kind};
+use crate::schema::{Cardinality, Described};
 use crate::storage::StorageCursor;
 #[cfg(feature = "grpc")]
-use crate::storage_position::codec::{
+use crate::storage::position::codec::{
     bytes_field, field_len, identifier, text_field, uint_field, write_bytes, write_cursor,
     write_header,
 };
-use crate::storage_position::codec::{decode_bounded, encode_bounded};
+use crate::storage::position::codec::{decode_bounded, encode_bounded};
 use crate::{Error, MessageError, Result};
 
 /* === Constants === */
 
 /* === Macros === */
-crate::storage_codec::product!(super::FileSession {
-    history: crate::storage_codec::Nested<crate::storage::StoreHistory> => 1,
-    id: crate::storage_codec::Id => 2,
-    generation: crate::storage_codec::Unsigned => 3,
+crate::storage::codec::product!(super::FileSession {
+    history: crate::storage::codec::Nested<crate::storage::StoreHistory> => 1,
+    id: crate::storage::codec::Id => 2,
+    generation: crate::storage::codec::Unsigned => 3,
 });
 
-crate::storage_codec::product!(super::StagedFile {
-    history: crate::storage_codec::Nested<crate::storage::StoreHistory> => 1,
-    id: crate::storage_codec::Id => 2,
+crate::storage::codec::product!(super::StagedFile {
+    history: crate::storage::codec::Nested<crate::storage::StoreHistory> => 1,
+    id: crate::storage::codec::Id => 2,
 });
-crate::storage_codec::product!(super::FileProgress {
-    length: crate::storage_codec::Unsigned => 1,
+crate::storage::codec::product!(super::FileProgress {
+    length: crate::storage::codec::Unsigned => 1,
     phase: Phase => 2,
 });
 
@@ -62,7 +63,8 @@ struct Phase;
 /* === Traits === */
 
 /* === Implementations === */
-impl crate::storage_codec::Value for Phase {
+impl crate::storage::codec::Value for Phase {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Phase));
     fn postcard_write(value: &Self::Native, bytes: &mut Vec<u8>) {
         crate::__private::PostcardValue::write(
             &match value {
@@ -73,15 +75,18 @@ impl crate::storage_codec::Value for Phase {
             bytes,
         );
     }
+
     fn postcard_size(_: &Self::Native) -> usize {
         1
     }
+
     fn postcard_memory(
         input: &mut crate::__private::PostcardReader<'_>,
     ) -> std::result::Result<usize, MessageError> {
         Self::postcard_read(input)?;
         Ok(0)
     }
+
     fn postcard_read(
         input: &mut crate::__private::PostcardReader<'_>,
     ) -> std::result::Result<Self::Native, MessageError> {
@@ -99,15 +104,18 @@ impl crate::storage_codec::Value for Phase {
     fn write(value: &Self::Native, tag: u32, bytes: &mut Vec<u8>) {
         crate::__private::prost::encoding::uint64::encode(tag, &(*value as u64), bytes);
     }
+
     #[cfg(feature = "grpc")]
     fn size(value: &Self::Native, tag: u32) -> usize {
         crate::__private::prost::encoding::uint64::encoded_len(tag, &(*value as u64))
     }
+
     #[cfg(feature = "grpc")]
     fn memory(input: DecodeInput<'_>, tag: u32) -> std::result::Result<usize, MessageError> {
         Self::read(input, tag)?;
         Ok(0)
     }
+
     #[cfg(feature = "grpc")]
     fn read(input: DecodeInput<'_>, tag: u32) -> std::result::Result<Self::Native, MessageError> {
         match uint_field(input, tag)?.unwrap_or(0) {
@@ -303,6 +311,7 @@ impl crate::__private::PostcardValue for FileMetadata {
             write_hash(value, bytes);
         }
     }
+
     fn size(&self) -> usize {
         self.id
             .size()
@@ -311,6 +320,7 @@ impl crate::__private::PostcardValue for FileMetadata {
             .saturating_add(self.expected_length.size())
             .saturating_add(1 + usize::from(self.expected_sha256.is_some()) * 33)
     }
+
     fn memory(
         input: &mut crate::__private::PostcardReader<'_>,
     ) -> std::result::Result<usize, MessageError> {
@@ -332,6 +342,7 @@ impl crate::__private::PostcardValue for FileMetadata {
             )
         })
     }
+
     fn read(
         input: &mut crate::__private::PostcardReader<'_>,
     ) -> std::result::Result<Self, MessageError> {
@@ -358,6 +369,7 @@ impl crate::__private::PostcardValue for FileReference {
         self.length.write(bytes);
         write_hash(&self.sha256, bytes);
     }
+
     fn size(&self) -> usize {
         self.position
             .size()
@@ -365,6 +377,7 @@ impl crate::__private::PostcardValue for FileReference {
             .saturating_add(self.length.size())
             .saturating_add(33)
     }
+
     fn memory(
         input: &mut crate::__private::PostcardReader<'_>,
     ) -> std::result::Result<usize, MessageError> {
@@ -381,6 +394,7 @@ impl crate::__private::PostcardValue for FileReference {
             )
         })
     }
+
     fn read(
         input: &mut crate::__private::PostcardReader<'_>,
     ) -> std::result::Result<Self, MessageError> {
@@ -412,6 +426,7 @@ fn read_hash(
 }
 
 impl Described for FileMetadata {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(FileMetadata));
     const FIELDS: &'static [Field] = &[
         Field {
             name: Cow::Borrowed("id"),
@@ -444,15 +459,20 @@ impl Described for FileMetadata {
             cardinality: Cardinality::Optional,
         },
     ];
+
+    const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
+        { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
 }
 
 impl Described for FileReference {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(FileReference));
     const FIELDS: &'static [Field] = &[
         Field {
             name: Cow::Borrowed("position"),
             tag: 1,
             kind: Kind::Message {
-                fields: Cow::Borrowed(StorageCursor::FIELDS),
+                definition: StorageCursor::DEFINITION,
             },
             cardinality: Cardinality::Required,
         },
@@ -460,7 +480,7 @@ impl Described for FileReference {
             name: Cow::Borrowed("metadata"),
             tag: 2,
             kind: Kind::Message {
-                fields: Cow::Borrowed(FileMetadata::FIELDS),
+                definition: FileMetadata::DEFINITION,
             },
             cardinality: Cardinality::Required,
         },
@@ -477,6 +497,10 @@ impl Described for FileReference {
             cardinality: Cardinality::Required,
         },
     ];
+
+    const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
+        { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
 }
 
 /* === Public Functions === */

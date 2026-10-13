@@ -72,7 +72,7 @@ impl Pool {
 
     pub(super) fn retain(
         &self,
-        definition: &crate::Definition,
+        definition: &crate::streams::Definition,
         generation: Option<u64>,
         row: PublicationRow,
         wire_sequence: u64,
@@ -106,9 +106,9 @@ impl Pool {
             .try_acquire_many_owned(bytes as u32)
             .map_err(|_| StreamPublicationError::Capacity)?;
         Ok(ManagedPublication(Arc::new(Owned {
-            stream: definition.id.clone(),
-            owner: definition.owner.clone().expect("plugin publication owner"),
-            schema: definition.version,
+            stream: Arc::<str>::from(definition.id()),
+            owner: Arc::from(definition.owner().expect("plugin publication owner")),
+            schema: definition.version(),
             generation,
             wire_sequence,
             logical_sequence: OnceLock::new(),
@@ -124,15 +124,19 @@ impl ManagedPublication {
     pub fn stream(&self) -> &str {
         &self.0.stream
     }
+
     pub fn owner(&self) -> &str {
         &self.0.owner
     }
+
     pub fn schema(&self) -> u32 {
         self.0.schema
     }
+
     pub fn generation(&self) -> Option<u64> {
         self.0.generation
     }
+
     pub fn sequence(&self) -> u64 {
         *self
             .0
@@ -140,30 +144,38 @@ impl ManagedPublication {
             .get()
             .expect("committed publication")
     }
+
     pub(super) fn assign_sequence(&self, sequence: u64) {
         self.0
             .logical_sequence
             .set(sequence)
             .expect("one original publication append");
     }
+
     pub(super) fn reclaimable_bytes(&self) -> Option<usize> {
         (Arc::strong_count(&self.0) == 1).then(|| self.0._bytes.num_permits())
     }
+
     pub fn wire_sequence(&self) -> u64 {
         self.0.wire_sequence
     }
+
     pub fn missed(&self) -> u64 {
         self.0.missed
     }
+
     pub fn payload(&self) -> &[u8] {
         &self.0.row.payload
     }
+
     pub fn published_unix_micros(&self) -> Option<i64> {
         self.0.row.published_unix_micros
     }
+
     pub fn context(&self) -> Option<&str> {
         self.0.row.context.as_deref()
     }
+
     pub(super) fn row(&self) -> &PublicationRow {
         &self.0.row
     }

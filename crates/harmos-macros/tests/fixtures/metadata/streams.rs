@@ -7,7 +7,6 @@
  * ***
  */
 
-
 /* === Modules === */
 
 /* === Re-Exports === */
@@ -26,7 +25,12 @@
 /* === Type Aliases === */
 
 /* === Structs === */
-#[harmos::stream(description = "A portable reading", id = "reading", label = "Reading", window = 7)]
+#[harmos::stream(
+    description = "A portable reading",
+    id = "reading",
+    label = "Reading",
+    window = 7
+)]
 pub struct Reading {
     #[row(label = "Measured Value", role = value, unit = "V", tags("electrical"), attributes(channel = 1))]
     pub value: u32,
@@ -34,7 +38,9 @@ pub struct Reading {
 
 #[harmos::stream(id = "ungranted", window = 11)]
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
-pub struct Ungranted { pub value: u32 }
+pub struct Ungranted {
+    pub value: u32,
+}
 
 /* === Enums === */
 

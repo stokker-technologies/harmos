@@ -56,9 +56,9 @@ def versions(text: str, name: str) -> list[str]:
     return [found.group(1)] if found else []
 
 
-def run(directory: Path, verb: str) -> None:
+def run(directory: Path, verb: str, *, value: str | None = None) -> None:
     settings = _policy.policy(directory, "version")
-    target = settings.get("value")
+    target = value or settings.get("value")
     if not isinstance(target, str) or re.fullmatch(VERSION, target) is None:
         raise _policy.ToolError("version.value must declare a semantic version")
     paths = settings.get("files", ["Cargo.toml"])

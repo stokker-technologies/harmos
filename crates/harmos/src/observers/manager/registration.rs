@@ -52,16 +52,24 @@ impl ObserverManager {
         self.reserve(
             scope,
             backends,
-            #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+            #[cfg(any(
+                feature = "plugin",
+                feature = "plugin-guest",
+                feature = "plugin-sidecar"
+            ))]
             None,
         )
     }
 
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     pub fn stage_plugin<B: ObserverBackend>(
         &self,
         scope: &ObserverScope<B::Resources>,
-        plugin: &crate::load::PluginScope,
+        plugin: &crate::plugin::PluginScope,
         backends: impl IntoIterator<Item = B>,
     ) -> Result<ObserverRegistration> {
         self.reserve(scope, backends, Some(plugin.clone()))
@@ -71,11 +79,19 @@ impl ObserverManager {
         &self,
         scope: &ObserverScope<B::Resources>,
         backends: impl IntoIterator<Item = B>,
-        #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
-        plugin: Option<crate::load::PluginScope>,
+        #[cfg(any(
+            feature = "plugin",
+            feature = "plugin-guest",
+            feature = "plugin-sidecar"
+        ))]
+        plugin: Option<crate::plugin::PluginScope>,
     ) -> Result<ObserverRegistration> {
         self.check_scope(&scope.scope)?;
-        #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+        #[cfg(any(
+            feature = "plugin",
+            feature = "plugin-guest",
+            feature = "plugin-sidecar"
+        ))]
         if plugin.as_ref().is_some_and(|scope| scope.is_closed()) {
             return Err(Error::Closing {
                 domain: "plugin scope",
@@ -85,7 +101,7 @@ impl ObserverManager {
         let mut entries = Vec::new();
         let mut ids = BTreeSet::new();
         for backend in backends {
-            let definition = backend.definition();
+            let definition = backend.definition()?;
             validate(&definition)?;
             if !ids.insert(definition.id.clone()) {
                 return Err(Error::AlreadyRegistered {
@@ -99,7 +115,11 @@ impl ObserverManager {
                 closing: AtomicBool::new(false),
                 scope: Some(scope.id()),
                 published: published.clone(),
-                #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+                #[cfg(any(
+                    feature = "plugin",
+                    feature = "plugin-guest",
+                    feature = "plugin-sidecar"
+                ))]
                 plugin: plugin.clone(),
             }));
         }
@@ -151,7 +171,11 @@ impl ObserverRegistration {
             });
         }
         for entry in &self.entries {
-            #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+            #[cfg(any(
+                feature = "plugin",
+                feature = "plugin-guest",
+                feature = "plugin-sidecar"
+            ))]
             if entry.plugin.as_ref().is_some_and(|scope| scope.is_closed()) {
                 return Err(Error::Closing {
                     domain: "plugin scope",

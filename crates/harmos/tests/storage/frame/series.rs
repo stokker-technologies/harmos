@@ -43,13 +43,22 @@ use harmos::{Message, Result};
 
 /* === Private Functions === */
 async fn seed(f: &Fixture, count: u64) {
-    let field = harmos::schema::Field {
+    let field = harmos::schema::graph::Field {
         name: "value".into(),
         tag: 1,
-        kind: harmos::schema::Kind::U64,
+        kind: harmos::schema::graph::Kind::U64,
         cardinality: harmos::schema::Cardinality::Required,
     };
-    f.storage.write_schema(&schema(), &[field]).await.unwrap();
+    f.storage
+        .write_schema(
+            &schema(),
+            &harmos::schema::graph::Schema {
+                root: 0,
+                definitions: vec![vec![field]],
+            },
+        )
+        .await
+        .unwrap();
     for index in 0..count {
         let payload = index.encode_to_vec();
         f.storage
@@ -222,7 +231,7 @@ fn contract_scenario() {
                 });
         });
     }
-    #[cfg(feature = "fft")]
+    #[cfg(feature = "signal-fft")]
     {
         scenario_runtime::check("axis_refuses_unsupported", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
@@ -331,7 +340,7 @@ fn contract_scenario() {
 });
         });
     }
-    #[cfg(feature = "fft")]
+    #[cfg(feature = "signal-fft")]
     {
         scenario_runtime::check("fft_refuses_non", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();

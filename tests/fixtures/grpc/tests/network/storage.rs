@@ -214,7 +214,7 @@ async fn storage_uses_data() {
             through: through.clone(),
         };
         let encoded = harmos::Protobuf::encode_to_vec(&save);
-        let request = storage_messages::save::request::Row0::decode(encoded.as_slice()).unwrap();
+        let request = storage_messages::save::Row1::decode(encoded.as_slice()).unwrap();
         let saved = client
             .save(request)
             .await
@@ -226,8 +226,7 @@ async fn storage_uses_data() {
         let local = runtime.operations.call::<Save>(save).await.unwrap();
         assert_eq!(*local, saved);
         let encoded = harmos::Protobuf::encode_to_vec(&Selection::default());
-        let query =
-            storage_messages::query_files::request::Row0::decode(encoded.as_slice()).unwrap();
+        let query = storage_messages::query_files::Row1::decode(encoded.as_slice()).unwrap();
         let mut stream = client.query_files(query).await.unwrap().into_inner();
         let item = stream.message().await.unwrap().unwrap().value.unwrap();
         let storage_query_files_output::Value::Item(item) = item else {
@@ -250,10 +249,10 @@ async fn storage_uses_data() {
             stream: None,
             source_start: Some(std::time::UNIX_EPOCH - Duration::from_secs(1)),
             source_end: Some(std::time::UNIX_EPOCH),
+            record_filter: None,
         };
         let encoded = harmos::Protobuf::encode_to_vec(&selection);
-        let query =
-            storage_messages::read_records::request::Row0::decode(encoded.as_slice()).unwrap();
+        let query = storage_messages::read_records::Row1::decode(encoded.as_slice()).unwrap();
         let mut records = client.read_records(query).await.unwrap().into_inner();
         let storage_read_records_output::Value::Item(record) =
             records.message().await.unwrap().unwrap().value.unwrap()
@@ -278,8 +277,7 @@ async fn storage_uses_data() {
             saved
         );
         assert!(records.message().await.unwrap().is_none());
-        let query =
-            storage_messages::query_stream::request::Row0::decode(encoded.as_slice()).unwrap();
+        let query = storage_messages::query_stream::Row1::decode(encoded.as_slice()).unwrap();
         let mut rows = client.query_stream(query).await.unwrap().into_inner();
         let storage_query_stream_output::Value::Item(row) =
             rows.message().await.unwrap().unwrap().value.unwrap()
@@ -302,7 +300,7 @@ async fn storage_uses_data() {
             saved
         );
         assert!(rows.message().await.unwrap().is_none());
-        let query = storage_messages::follow::request::Row0::decode(encoded.as_slice()).unwrap();
+        let query = storage_messages::follow::Row1::decode(encoded.as_slice()).unwrap();
         let mut following = client.follow(query).await.unwrap().into_inner();
         let storage_follow_output::Value::Item(boundaries) =
             following.message().await.unwrap().unwrap().value.unwrap()
@@ -342,8 +340,7 @@ async fn storage_uses_data() {
         assert_eq!(next.item, live);
         assert_eq!(next.position, position);
         drop(following);
-        let query =
-            storage_messages::follow_stream::request::Row0::decode(encoded.as_slice()).unwrap();
+        let query = storage_messages::follow_stream::Row1::decode(encoded.as_slice()).unwrap();
         let mut following_rows = client.follow_stream(query).await.unwrap().into_inner();
         let storage_follow_stream_output::Value::Item(first) = following_rows
             .message()
@@ -408,7 +405,7 @@ async fn storage_uses_data() {
         use harmos::storage::operations::FileMutation;
         use harmos::storage::{FileProducer, MutationId, StorageInfo};
         let info = client
-            .query_storage(storage_messages::query_storage::request::Row0::default())
+            .query_storage(storage_messages::query_storage::Row1::default())
             .await
             .unwrap()
             .into_inner();
@@ -422,8 +419,7 @@ async fn storage_uses_data() {
             session: producer.session().unwrap().clone(),
         };
         let encoded = harmos::Protobuf::encode_to_vec(&request);
-        let wire =
-            storage_messages::resume_file::request::Row0::decode(encoded.as_slice()).unwrap();
+        let wire = storage_messages::resume_file::Row1::decode(encoded.as_slice()).unwrap();
         let resumed = client.resume_file(wire.clone()).await.unwrap().into_inner();
         let resumed = <FileProducer as harmos::Protobuf>::decode(&resumed.encode_to_vec()).unwrap();
         assert_eq!(resumed.session.generation, 2);
@@ -445,8 +441,7 @@ async fn storage_uses_data() {
             chunk_bytes: 2,
         };
         let encoded = harmos::Protobuf::encode_to_vec(&selection);
-        let query =
-            storage_messages::read_files::request::Row0::decode(encoded.as_slice()).unwrap();
+        let query = storage_messages::read_files::Row1::decode(encoded.as_slice()).unwrap();
         let mut reading = client.read_files(query).await.unwrap().into_inner();
         let mut prefix = Vec::new();
         loop {
@@ -472,8 +467,7 @@ async fn storage_uses_data() {
         assert!(reading.message().await.unwrap().is_none());
         selection.offset = 3;
         let encoded = harmos::Protobuf::encode_to_vec(&selection);
-        let query =
-            storage_messages::follow_file::request::Row0::decode(encoded.as_slice()).unwrap();
+        let query = storage_messages::follow_file::Row1::decode(encoded.as_slice()).unwrap();
         let mut following_file = client.follow_file(query).await.unwrap().into_inner();
         producer.write_all(b"new").await.unwrap();
         let mut suffix = Vec::new();
@@ -526,8 +520,7 @@ async fn storage_uses_data() {
                 },
             };
             let encoded = harmos::Protobuf::encode_to_vec(&create);
-            let wire =
-                storage_messages::create_file::request::Row0::decode(encoded.as_slice()).unwrap();
+            let wire = storage_messages::create_file::Row1::decode(encoded.as_slice()).unwrap();
             let created = client.create_file(wire).await.unwrap().into_inner();
             let created =
                 <FileProducer as harmos::Protobuf>::decode(&created.encode_to_vec()).unwrap();
@@ -538,8 +531,7 @@ async fn storage_uses_data() {
                 bytes: b"payload".to_vec(),
             };
             let encoded = harmos::Protobuf::encode_to_vec(&append);
-            let wire =
-                storage_messages::append_file::request::Row0::decode(encoded.as_slice()).unwrap();
+            let wire = storage_messages::append_file::Row1::decode(encoded.as_slice()).unwrap();
             for _ in 0..2 {
                 let appended = client.append_file(wire.clone()).await.unwrap().into_inner();
                 let appended =
@@ -553,8 +545,7 @@ async fn storage_uses_data() {
             };
             let encoded = harmos::Protobuf::encode_to_vec(&end);
             if finish {
-                let wire = storage_messages::finish_file::request::Row0::decode(encoded.as_slice())
-                    .unwrap();
+                let wire = storage_messages::finish_file::Row1::decode(encoded.as_slice()).unwrap();
                 let result = client.finish_file(wire.clone()).await.unwrap().into_inner();
                 let reference =
                     <FileReference as harmos::Protobuf>::decode(&result.encode_to_vec()).unwrap();
@@ -567,8 +558,7 @@ async fn storage_uses_data() {
                 );
             } else {
                 let wire =
-                    storage_messages::abandon_file::request::Row0::decode(encoded.as_slice())
-                        .unwrap();
+                    storage_messages::abandon_file::Row1::decode(encoded.as_slice()).unwrap();
                 let result = client.abandon_file(wire).await.unwrap().into_inner();
                 let progress =
                     <FileProgress as harmos::Protobuf>::decode(&result.encode_to_vec()).unwrap();
@@ -597,8 +587,7 @@ async fn storage_uses_data() {
                 file: staged.clone(),
             };
             let encoded = harmos::Protobuf::encode_to_vec(&deletion);
-            let wire =
-                storage_messages::delete_file::request::Row0::decode(encoded.as_slice()).unwrap();
+            let wire = storage_messages::delete_file::Row1::decode(encoded.as_slice()).unwrap();
             let result = client.delete_file(wire.clone()).await.unwrap().into_inner();
             assert_eq!(
                 <StagedFile as harmos::Protobuf>::decode(&result.encode_to_vec()).unwrap(),
@@ -627,8 +616,7 @@ async fn storage_uses_data() {
             source: source.clone(),
         };
         let encoded = harmos::Protobuf::encode_to_vec(&request);
-        let wire =
-            storage_messages::write_records::request::Row0::decode(encoded.as_slice()).unwrap();
+        let wire = storage_messages::write_records::Row1::decode(encoded.as_slice()).unwrap();
         let response = client
             .write_records(wire.clone())
             .await
@@ -651,8 +639,7 @@ async fn storage_uses_data() {
             }],
         };
         let encoded = harmos::Protobuf::encode_to_vec(&request);
-        let wire =
-            storage_messages::write_stream::request::Row0::decode(encoded.as_slice()).unwrap();
+        let wire = storage_messages::write_stream::Row1::decode(encoded.as_slice()).unwrap();
         let response = client.write_stream(wire).await.unwrap().into_inner();
         let stream_position =
             <StorageCursor as harmos::Protobuf>::decode(&response.encode_to_vec()).unwrap();
@@ -665,20 +652,23 @@ async fn storage_uses_data() {
                 id: Identifier::new("remote-schema").unwrap(),
                 version: NonZeroU32::MIN,
             },
-            &[harmos::schema::Field {
-                name: "nested".into(),
-                tag: 1,
-                cardinality: harmos::schema::Cardinality::Repeated,
-                kind: harmos::schema::Kind::Message {
-                    fields: vec![harmos::schema::Field {
+            &harmos::schema::graph::Schema {
+                root: 0,
+                definitions: vec![
+                    vec![harmos::schema::graph::Field {
+                        name: "nested".into(),
+                        tag: 1,
+                        cardinality: harmos::schema::Cardinality::Repeated,
+                        kind: harmos::schema::graph::Kind::Message { definition: 1 },
+                    }],
+                    vec![harmos::schema::graph::Field {
                         name: "value".into(),
                         tag: 7,
                         cardinality: harmos::schema::Cardinality::Optional,
-                        kind: harmos::schema::Kind::String,
-                    }]
-                    .into(),
-                },
-            }],
+                        kind: harmos::schema::graph::Kind::String,
+                    }],
+                ],
+            },
         )
         .unwrap();
         let request = WriteSchemaRequest {
@@ -686,8 +676,7 @@ async fn storage_uses_data() {
             schema: logical.clone(),
         };
         let encoded = harmos::Protobuf::encode_to_vec(&request);
-        let wire =
-            storage_messages::write_schema::request::Row0::decode(encoded.as_slice()).unwrap();
+        let wire = storage_messages::write_schema::Row1::decode(encoded.as_slice()).unwrap();
         let response = client
             .write_schema(wire.clone())
             .await
@@ -711,8 +700,7 @@ async fn storage_uses_data() {
             },
         };
         let encoded = harmos::Protobuf::encode_to_vec(&query);
-        let wire =
-            storage_messages::query_schemas::request::Row0::decode(encoded.as_slice()).unwrap();
+        let wire = storage_messages::query_schemas::Row1::decode(encoded.as_slice()).unwrap();
         let mut schemas = client.query_schemas(wire).await.unwrap().into_inner();
         let storage_query_schemas_output::Value::Item(item) =
             schemas.message().await.unwrap().unwrap().value.unwrap()
@@ -752,8 +740,7 @@ async fn storage_uses_data() {
             objects: vec![value],
         };
         let encoded = harmos::Protobuf::encode_to_vec(&request);
-        let wire =
-            storage_messages::write_objects::request::Row0::decode(encoded.as_slice()).unwrap();
+        let wire = storage_messages::write_objects::Row1::decode(encoded.as_slice()).unwrap();
         let response = client
             .write_objects(wire.clone())
             .await
@@ -791,7 +778,7 @@ async fn storage_uses_data() {
         };
         let mut selection = ObjectSelection::default();
         selection.selection.page_rows = 1;
-        let wire = storage_messages::read_objects::request::Row0::decode(
+        let wire = storage_messages::read_objects::Row1::decode(
             harmos::Protobuf::encode_to_vec(&ReadObjectsRequest {
                 selection: selection.clone(),
                 fields: None,
@@ -840,7 +827,7 @@ async fn storage_uses_data() {
                 ..Default::default()
             }),
         };
-        let wire = storage_messages::read_objects::request::Row0::decode(
+        let wire = storage_messages::read_objects::Row1::decode(
             harmos::Protobuf::encode_to_vec(&projected).as_slice(),
         )
         .unwrap();
@@ -862,7 +849,7 @@ async fn storage_uses_data() {
 
         selection.versions = harmos::storage::ObjectVersions::Revisions;
         selection.selection.after = Some(native.position);
-        let wire = storage_messages::follow_objects::request::Row0::decode(
+        let wire = storage_messages::follow_objects::Row1::decode(
             harmos::Protobuf::encode_to_vec(&selection).as_slice(),
         )
         .unwrap();

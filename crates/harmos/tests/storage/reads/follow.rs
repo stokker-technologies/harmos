@@ -331,7 +331,16 @@ fn contract_scenario() {
                     query.options.after = 1;
                     query.item = Some(Identifier::new("wanted").unwrap());
                     let mut reader = f.storage.follow(query).await.unwrap();
-                    f.storage.write_schema(&schema(), &[]).await.unwrap();
+                    f.storage
+                        .write_schema(
+                            &schema(),
+                            &harmos::schema::graph::Schema {
+                                root: 0,
+                                definitions: vec![vec![]],
+                            },
+                        )
+                        .await
+                        .unwrap();
                     write(&f.storage, "skip").await;
                     write(&f.storage, "wanted").await;
                     assert_eq!(page(&mut reader).await, [4]);
@@ -433,7 +442,16 @@ fn contract_scenario() {
                     let mut streams = f.storage.follow(stream_query(limits())).await.unwrap();
                     let mut files = f.storage.follow(file_query(limits())).await.unwrap();
                     let key = schema();
-                    f.storage.write_schema(&key, &[]).await.unwrap();
+                    f.storage
+                        .write_schema(
+                            &key,
+                            &harmos::schema::graph::Schema {
+                                root: 0,
+                                definitions: vec![vec![]],
+                            },
+                        )
+                        .await
+                        .unwrap();
                     assert_eq!(schemas.next_page().await.unwrap()[0].key, key);
                     let stream = Identifier::new("voltage").unwrap();
                     let item = Identifier::new("sample").unwrap();

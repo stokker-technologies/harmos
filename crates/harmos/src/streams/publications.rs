@@ -23,7 +23,7 @@ use tokio::sync::watch;
 // Local Imports
 use super::definition::Windows;
 use super::{Demand, Holding, Item, Query, StreamManager, Tier, Wired, window};
-use crate::{Application, Definition, Position};
+use crate::{Application, state::Position, streams::Definition};
 use harmos_contract::inventory::publications;
 use harmos_contract::{StreamDeclaration, artifact_subset};
 
@@ -141,11 +141,13 @@ impl<A: Application> StreamManager<A> {
         let validations = definitions
             .iter()
             .map(|definition| {
-                crate::schema::Validator::new(
+                crate::schema::Validator::from_schema(
                     definition
-                        .fields()
-                        .expect("plugin definitions own a field schema"),
+                        .schema()
+                        .expect("plugin definitions own a row schema"),
+                    &harmos_contract::config::SchemaSettings::default(),
                 )
+                .map_err(crate::schema::Error::from)
                 .map(Arc::new)
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -188,39 +190,41 @@ impl<A: Application> StreamManager<A> {
         for ((definition, floor), validation) in
             definitions.into_iter().zip(floors).zip(validations)
         {
-            let revisions = windows.entry(Arc::clone(&definition.id)).or_default();
+            let revisions = windows
+                .entry(Arc::<str>::from(definition.id()))
+                .or_default();
             // A presentation-only edit keeps the wire revision and retained rows.
             // Existing readers keep their immutable descriptor; new discovery sees
             // the replacement's authored metadata.
-            if let Some(previous) = revisions.get(&definition.version)
+            if let Some(previous) = revisions.get(&definition.version())
                 && (previous.is_staged()
-                    || previous.definition.metadata != definition.metadata
-                    || previous.definition.row_metadata != definition.row_metadata)
+                    || previous.definition.metadata() != definition.metadata()
+                    || previous.definition.row_metadata() != definition.row_metadata())
             {
                 revisions.insert(
-                    definition.version,
+                    definition.version(),
                     Arc::new(Wired {
                         validation: Some(Arc::clone(&validation)),
                         window: Arc::clone(&previous.window),
                         definition: definition.clone(),
                         publisher: Mutex::new(Weak::new()),
                         #[cfg(any(
-                            feature = "load",
-                            feature = "guest-host",
-                            feature = "sidecar-host"
+                            feature = "plugin",
+                            feature = "plugin-guest",
+                            feature = "plugin-sidecar"
                         ))]
                         staged: None,
                     }),
                 );
             }
             let wired = revisions
-                .entry(definition.version)
+                .entry(definition.version())
                 .or_insert_with(|| {
                     let wired = Arc::new(Wired {
                         validation: Some(Arc::clone(&validation)),
                         window: Arc::new(
                             window::Window::wired(
-                                definition.window,
+                                definition.window(),
                                 floor,
                                 Arc::clone(&self.windows.sequence),
                                 self.windows.pump.clone(),
@@ -230,9 +234,9 @@ impl<A: Application> StreamManager<A> {
                         definition,
                         publisher: Mutex::new(Weak::new()),
                         #[cfg(any(
-                            feature = "load",
-                            feature = "guest-host",
-                            feature = "sidecar-host"
+                            feature = "plugin",
+                            feature = "plugin-guest",
+                            feature = "plugin-sidecar"
                         ))]
                         staged: None,
                     });
@@ -316,7 +320,11 @@ impl PublicationLease {
         self.admit(row, Some(wire_sequence), missed)
     }
 
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     pub fn stage_row(
         &self,
         row: PublicationRow,
@@ -326,7 +334,11 @@ impl PublicationLease {
         self.stage_sequence(row, Some(wire_sequence), missed, None)
     }
 
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     pub fn stage_derived_row(
         &self,
         row: PublicationRow,
@@ -335,7 +347,7 @@ impl PublicationLease {
         self.stage_sequence(row, None, missed, None)
     }
 
-    #[cfg(feature = "sidecar-host")]
+    #[cfg(feature = "plugin-sidecar")]
     pub(crate) fn stage_row_in(
         &self,
         context: &crate::operations::Context<'_>,
@@ -346,7 +358,11 @@ impl PublicationLease {
         self.stage_sequence(row, Some(wire_sequence), missed, Some(context))
     }
 
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     fn stage_sequence(
         &self,
         row: PublicationRow,
@@ -407,7 +423,11 @@ impl PublicationLease {
             .write()
             .expect("stream visibility poisoned");
         let result = {
-            #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+            #[cfg(any(
+                feature = "plugin",
+                feature = "plugin-guest",
+                feature = "plugin-sidecar"
+            ))]
             if let Some(staged) = &self.stream.wired.staged {
                 staged.scope.prepare_publication(|ready| {
                     if !ready {
@@ -418,7 +438,11 @@ impl PublicationLease {
             } else {
                 self.admit_locked(row, sequence, missed, true)
             }
-            #[cfg(not(any(feature = "load", feature = "guest-host", feature = "sidecar-host")))]
+            #[cfg(not(any(
+                feature = "plugin",
+                feature = "plugin-guest",
+                feature = "plugin-sidecar"
+            )))]
             {
                 self.admit_locked(row, sequence, missed, true)
             }
@@ -463,7 +487,11 @@ impl PublicationLease {
             .expect("compiled plugin schema")
             .validate(&row.payload)?;
         let generation = {
-            #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+            #[cfg(any(
+                feature = "plugin",
+                feature = "plugin-guest",
+                feature = "plugin-sidecar"
+            ))]
             {
                 self.stream
                     .wired
@@ -471,7 +499,11 @@ impl PublicationLease {
                     .as_ref()
                     .map(|staged| staged.scope.generation().get())
             }
-            #[cfg(not(any(feature = "load", feature = "guest-host", feature = "sidecar-host")))]
+            #[cfg(not(any(
+                feature = "plugin",
+                feature = "plugin-guest",
+                feature = "plugin-sidecar"
+            )))]
             {
                 None
             }
@@ -507,7 +539,11 @@ impl PublicationLease {
     }
 
     pub fn revoke(&self) {
-        #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+        #[cfg(any(
+            feature = "plugin",
+            feature = "plugin-guest",
+            feature = "plugin-sidecar"
+        ))]
         if let Some(staged) = &self.stream.wired.staged {
             staged.scope.unbind_streams();
         }
@@ -564,11 +600,19 @@ impl PluginStream {
 
 impl Wired {
     fn is_staged(&self) -> bool {
-        #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+        #[cfg(any(
+            feature = "plugin",
+            feature = "plugin-guest",
+            feature = "plugin-sidecar"
+        ))]
         {
             self.staged.is_some()
         }
-        #[cfg(not(any(feature = "load", feature = "guest-host", feature = "sidecar-host")))]
+        #[cfg(not(any(
+            feature = "plugin",
+            feature = "plugin-guest",
+            feature = "plugin-sidecar"
+        )))]
         {
             false
         }
@@ -594,15 +638,14 @@ pub(super) fn publication_definitions(
             if !ids.insert(declaration.id.clone()) {
                 return Err(publications::Error::DuplicateStream { id: declaration.id }.into());
             }
-            let mut definition = Definition::declared::<PublicationRow>(
+            let definition = Definition::declared::<PublicationRow>(
                 declaration.id,
                 declaration.schema,
                 declaration.window,
             );
-            definition.metadata = declaration.metadata;
-            definition.row_metadata = declaration.row_metadata;
-            definition.owner = Some(owner.into());
-            definition.fields = Some(declaration.fields.into());
+            let definition = definition
+                .presentation(declaration.metadata, declaration.row_metadata)
+                .publication(owner, declaration.row);
             Ok(definition)
         })
         .collect()
@@ -614,7 +657,7 @@ pub(super) fn validate_existing(
     require_unoccupied: bool,
 ) -> Result<(), StreamAdmissionError> {
     for definition in definitions {
-        let Some(revisions) = windows.get(&definition.id) else {
+        let Some(revisions) = windows.get(definition.id()) else {
             continue;
         };
         if revisions
@@ -625,20 +668,24 @@ pub(super) fn validate_existing(
         }
         if revisions
             .values()
-            .any(|wired| wired.definition.owner != definition.owner)
+            .any(|wired| wired.definition.owner() != definition.owner())
         {
             return Err(StreamAdmissionError::Changed(definition.id().into()));
         }
-        let Some(wired) = revisions.get(&definition.version) else {
+        let Some(wired) = revisions.get(&definition.version()) else {
             continue;
         };
-        if wired.definition.owner != definition.owner
-            || wired.definition.fields != definition.fields
-            || wired.definition.window != definition.window
+        if wired.definition.owner() != definition.owner()
+            || wired.definition.schema() != definition.schema()
+            || wired.definition.window() != definition.window()
         {
             return Err(StreamAdmissionError::Changed(definition.id().into()));
         }
-        #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+        #[cfg(any(
+            feature = "plugin",
+            feature = "plugin-guest",
+            feature = "plugin-sidecar"
+        ))]
         if require_unoccupied
             && wired
                 .staged

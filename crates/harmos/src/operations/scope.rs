@@ -63,7 +63,11 @@ impl<'a> Scope<'a> {
         Self { core }
     }
 
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     pub(crate) fn original_control(&self) -> Weak<Instance> {
         self.core.parent.clone()
     }
@@ -113,11 +117,11 @@ impl<'a> Scope<'a> {
         self.core.instances.resources_of::<A>()
     }
 
-    pub fn records<A: crate::Application>(&self) -> crate::RecordManager<A> {
-        crate::RecordManager::new(self.state::<A>())
+    pub fn records<A: crate::Application>(&self) -> crate::records::RecordManager<A> {
+        crate::records::RecordManager::new(self.state::<A>())
     }
 
-    pub fn state<A: crate::Application>(&self) -> crate::StateManager<A> {
+    pub fn state<A: crate::Application>(&self) -> crate::state::StateManager<A> {
         let journal = self.core.instances.state_of::<A>();
         match self.core.cause {
             Some(cause) => journal.caused_by(cause),

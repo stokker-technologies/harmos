@@ -15,21 +15,21 @@
 
 // Standard Library Imports
 use std::any::TypeId;
-#[cfg(feature = "runtime")]
+
 use std::sync::Arc;
 
 // Third Party Imports
 
 // Local Imports
 use super::ObjectSelection;
-#[cfg(feature = "runtime")]
+
 use crate::operations::{Context, Operation, StreamOutput};
 use crate::operations::{OperationDeclaration, OutputDeclaration, Visibility, WireOperation};
-use crate::schema::{Described, Field};
-#[cfg(feature = "runtime")]
+use crate::schema::Described;
+
 use crate::storage::StorageManager;
 use crate::storage::{ObjectEntry, StorageCursor};
-#[cfg(feature = "runtime")]
+
 use crate::{Error, MemorySize, Result};
 
 /* === Constants === */
@@ -41,7 +41,6 @@ use crate::{Error, MemorySize, Result};
 /* === Structs === */
 pub struct FollowObjects;
 
-#[cfg(feature = "runtime")]
 pub(super) struct Handler<C> {
     storage: Arc<StorageManager<C>>,
 }
@@ -68,10 +67,9 @@ impl OutputDeclaration for FollowObjects {
 
 impl WireOperation for FollowObjects {
     const VERSION: u32 = 1;
-    const OUTPUT: Option<&'static [Field]> = Some(ObjectEntry::FIELDS);
+    const OUTPUT: Option<crate::schema::declaration::Definition> = Some(ObjectEntry::DEFINITION);
 }
 
-#[cfg(feature = "runtime")]
 impl<C: 'static> Operation for Handler<C> {
     type Declaration = FollowObjects;
     type Resources = StorageManager<C>;
@@ -88,28 +86,32 @@ impl<C: 'static> Operation for Handler<C> {
         _: Self::Context<'a>,
         selection: &mut ObjectSelection,
         output: &mut Self::Endpoints,
-    ) -> Result<StorageCursor> {
-        selection.validate_follow()?;
+    ) -> Result<crate::operations::Response<StorageCursor>> {
+        async {
+            selection.validate_follow()?;
 
-        let query = selection.query(true)?;
-        let mut reader = self.storage.follow(query).await?;
-        let boundary = reader.accepted_boundary();
-        if let Some(after) = &selection.selection.after
-            && !boundary.covers(after)?
-        {
-            return Err(Error::InvalidInput {
-                field: "storage query",
-                reason: "start exceeds accepted boundary",
-            });
-        }
-        loop {
-            let page = reader.next_page().await?;
-            for entry in page.iter() {
-                output
-                    .send_with(entry.memory_size(), || Ok(entry.clone()))
-                    .await?;
+            let query = selection.query(true)?;
+            let mut reader = self.storage.follow(query).await?;
+            let boundary = reader.accepted_boundary();
+            if let Some(after) = &selection.selection.after
+                && !boundary.covers(after)?
+            {
+                return Err(Error::InvalidInput {
+                    field: "storage query",
+                    reason: "start exceeds accepted boundary",
+                });
+            }
+            loop {
+                let page = reader.next_page().await?;
+                for entry in page.iter() {
+                    output
+                        .send_with(entry.memory_size(), || Ok(entry.clone()))
+                        .await?;
+                }
             }
         }
+        .await
+        .map(|value: StorageCursor| value.into())
     }
 }
 

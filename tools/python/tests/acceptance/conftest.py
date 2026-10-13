@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 # Local Imports
-from harmos_tools.packages import verify
+from harmos_tools.packages import restore, verify
 
 # Type Checking Imports
 
@@ -37,6 +37,7 @@ ROOT = Path(__file__).resolve().parents[4]
 
 @pytest.fixture(scope="session")
 def native_examples() -> dict[str, Path]:
+    restore(ROOT)
     return verify(ROOT)
 
 

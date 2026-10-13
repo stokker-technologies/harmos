@@ -14,31 +14,31 @@
 /* === Imports === */
 
 // Standard Library Imports
-#[cfg(feature = "runtime")]
+
 use std::sync::Arc;
 
 // Third Party Imports
 
 // Local Imports
-#[cfg(feature = "runtime")]
+
 use crate::operations::{Context, Operation};
 use crate::operations::{OperationDeclaration, ReplaySafety, Visibility, WireOperation};
-#[cfg(feature = "runtime")]
+
 use crate::storage::StorageManager;
 use crate::storage::{MutationId, ObjectReceipt, ObjectValue};
-#[cfg(feature = "runtime")]
+
 use crate::{Error, Result};
 
 /* === Constants === */
 
 /* === Macros === */
-crate::storage_codec::product!(WriteObjectsRequest {
-    mutation: crate::storage_codec::Nested<MutationId> => 1,
-    objects: crate::storage_codec::Repeated<ObjectValue> => 2,
+crate::storage::codec::product!(WriteObjectsRequest {
+    mutation: crate::storage::codec::Nested<MutationId> => 1,
+    objects: crate::storage::codec::Repeated<ObjectValue> => 2,
 });
 
-crate::storage_codec::product!(WriteObjectsResponse {
-    objects: crate::storage_codec::Repeated<ObjectReceipt> => 1,
+crate::storage::codec::product!(WriteObjectsResponse {
+    objects: crate::storage::codec::Repeated<ObjectReceipt> => 1,
 });
 
 /* === Type Aliases === */
@@ -54,7 +54,7 @@ pub struct WriteObjectsResponse {
     pub objects: Vec<ObjectReceipt>,
 }
 pub struct WriteObjects;
-#[cfg(feature = "runtime")]
+
 pub(super) struct Handler<C> {
     storage: Arc<StorageManager<C>>,
 }
@@ -88,7 +88,7 @@ impl crate::MemorySize for WriteObjectsRequest {
             - std::mem::size_of::<Vec<ObjectValue>>()
     }
 }
-#[cfg(feature = "runtime")]
+
 impl<C: 'static> Operation for Handler<C> {
     type Declaration = WriteObjects;
     type Resources = StorageManager<C>;
@@ -98,18 +98,24 @@ impl<C: 'static> Operation for Handler<C> {
     fn new(storage: Arc<StorageManager<C>>) -> Result<Self> {
         Ok(Self { storage })
     }
+
     async fn run<'a>(
         &mut self,
         _: Self::Context<'a>,
         request: &mut WriteObjectsRequest,
         _: &mut Self::Endpoints,
-    ) -> Result<WriteObjectsResponse> {
-        let objects = self
-            .storage
-            .write_objects_once(&request.mutation, &request.objects)
-            .await?;
-        Ok(WriteObjectsResponse { objects })
+    ) -> Result<crate::operations::Response<WriteObjectsResponse>> {
+        let result: ::core::result::Result<WriteObjectsResponse, Self::Error> = async move {
+            let objects = self
+                .storage
+                .write_objects_once(&request.mutation, &request.objects)
+                .await?;
+            Ok(WriteObjectsResponse { objects })
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
+
     fn classify(error: &Error) -> crate::operations::Failure {
         super::classify(error)
     }

@@ -130,8 +130,12 @@ struct Registration {
     closing: AtomicBool,
     scope: Option<ObserverScopeId>,
     published: Arc<AtomicBool>,
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
-    plugin: Option<crate::load::PluginScope>,
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
+    plugin: Option<crate::plugin::PluginScope>,
 }
 
 struct Instance {
@@ -173,7 +177,11 @@ impl Registration {
         if !self.published.load(Ordering::Acquire) {
             return false;
         }
-        #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+        #[cfg(any(
+            feature = "plugin",
+            feature = "plugin-guest",
+            feature = "plugin-sidecar"
+        ))]
         if self.plugin.as_ref().is_some_and(|scope| !scope.is_ready()) {
             return false;
         }
@@ -183,23 +191,26 @@ impl Registration {
 
 impl ObserverManager {
     pub(crate) fn new() -> Self {
+        let registry = Registry {
+            closed: false,
+            retired_failure: None,
+            next: 0,
+            definitions: BTreeMap::new(),
+            scopes: BTreeMap::new(),
+            instances: BTreeMap::new(),
+        };
+        let (statuses, _) = watch::channel(BTreeMap::new());
+        let owner = Owner {
+            registry: Mutex::new(registry),
+            statuses,
+        };
         Self {
-            inner: Arc::new(Owner {
-                registry: Mutex::new(Registry {
-                    closed: false,
-                    retired_failure: None,
-                    next: 0,
-                    definitions: BTreeMap::new(),
-                    scopes: BTreeMap::new(),
-                    instances: BTreeMap::new(),
-                }),
-                statuses: watch::channel(BTreeMap::new()).0,
-            }),
+            inner: Arc::new(owner),
         }
     }
 
     pub fn register<B: ObserverBackend>(&self, backend: B) -> Result<()> {
-        let definition = backend.definition();
+        let definition = backend.definition()?;
         validate(&definition)?;
         let registration = Arc::new(Registration {
             definition,
@@ -207,7 +218,11 @@ impl ObserverManager {
             closing: AtomicBool::new(false),
             scope: None,
             published: Arc::new(AtomicBool::new(true)),
-            #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+            #[cfg(any(
+                feature = "plugin",
+                feature = "plugin-guest",
+                feature = "plugin-sidecar"
+            ))]
             plugin: None,
         });
         let mut registry = self
@@ -757,7 +772,7 @@ impl Registry {
 }
 
 impl ChildSettlement {
-    #[cfg(any(feature = "sidecar", feature = "sidecar-host"))]
+    #[cfg(feature = "plugin-sidecar")]
     pub(crate) async fn cleanup<F: std::future::Future>(
         &self,
         status: &mut tokio::sync::watch::Receiver<harmos_contract::observers::State>,
@@ -780,7 +795,7 @@ impl ChildSettlement {
         }
     }
 
-    #[cfg(any(feature = "sidecar", feature = "sidecar-host"))]
+    #[cfg(feature = "plugin-sidecar")]
     pub(crate) fn cleanup_phase(&self, status: harmos_contract::observers::State) {
         use harmos_contract::observers::{Exit, State};
         use supervision::instance::Phase;
@@ -796,7 +811,7 @@ impl ChildSettlement {
         self.lifecycle.transition(phase);
     }
 
-    #[cfg(feature = "sidecar-host")]
+    #[cfg(feature = "plugin-sidecar")]
     pub(crate) async fn settle_controls(&self) -> Result<()> {
         let pending = self.pending.lock().unwrap().clone();
         for control in pending {
@@ -808,7 +823,7 @@ impl ChildSettlement {
         Ok(())
     }
 
-    #[cfg(feature = "sidecar-host")]
+    #[cfg(feature = "plugin-sidecar")]
     pub(crate) fn submit(
         &self,
         submit: impl FnOnce() -> Result<crate::operations::EncodedInvocation>,
@@ -816,7 +831,7 @@ impl ChildSettlement {
         self.submit_control(false, submit)
     }
 
-    #[cfg(feature = "sidecar-host")]
+    #[cfg(feature = "plugin-sidecar")]
     pub(crate) fn submit_control(
         &self,
         retirement: bool,
@@ -1056,6 +1071,7 @@ impl ObserverLease {
     pub fn key(&self) -> &ObserverKey {
         &self.key
     }
+
     pub fn id(&self) -> ObserverInstanceId {
         self.instance_id
     }
@@ -1090,7 +1106,7 @@ impl Drop for ObserverLease {
 }
 
 impl ObserverActivation {
-    #[cfg(any(feature = "sidecar", feature = "sidecar-host"))]
+    #[cfg(feature = "plugin-sidecar")]
     pub(crate) fn retain<R: supervision::cleanup::Resource>(
         &self,
         resource: R,
@@ -1100,12 +1116,12 @@ impl ObserverActivation {
         self.children.lifecycle.retain(resource, failure);
     }
 
-    #[cfg(feature = "sidecar-host")]
+    #[cfg(feature = "plugin-sidecar")]
     pub(crate) fn depend_on(&self, provider: &Arc<supervision::instance::Instance>) -> Result<()> {
         self.children.lifecycle.depend_on(provider, false)
     }
 
-    #[cfg(any(feature = "sidecar", feature = "sidecar-host"))]
+    #[cfg(feature = "plugin-sidecar")]
     pub(crate) fn child_settlement(&self) -> Arc<ChildSettlement> {
         Arc::clone(&self.children)
     }
@@ -1113,6 +1129,7 @@ impl ObserverActivation {
     pub fn key(&self) -> &ObserverKey {
         &self.key
     }
+
     pub fn id(&self) -> ObserverInstanceId {
         self.children.instance_id
     }

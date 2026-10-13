@@ -114,6 +114,7 @@ impl Frame {
         let child = WireChildCall {
             context: [u8::MAX; 32],
             generation_context: Some([u8::MAX; 32]),
+            values: Vec::new(),
             operation: O::ID.to_owned(),
             payload: Vec::new(),
         };

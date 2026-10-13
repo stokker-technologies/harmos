@@ -9,25 +9,26 @@
 
 /* === Modules === */
 #[path = "../support/core_egress.rs"]
-#[cfg(all(feature = "sidecar-host", feature = "sidecar", feature = "guest"))]
+#[cfg(all(feature = "plugin-sidecar", feature = "plugin-guest"))]
 mod core_egress;
+#[path = "../../../harmos-guest/examples/operation_component/contract.rs"]
+#[cfg(all(feature = "plugin-sidecar", feature = "plugin-guest"))]
+mod operation_component_contract;
+#[path = "../support/process_core_contract.rs"]
+#[cfg(all(feature = "plugin-sidecar", feature = "plugin-guest"))]
+mod process_core_contract;
 #[path = "../../../../tests/support/scenarios.rs"]
 mod scenario_runtime;
 
 #[path = "../support/core_journal.rs"]
-#[cfg(all(feature = "sidecar-host", feature = "sidecar", feature = "guest"))]
+#[cfg(all(feature = "plugin-sidecar", feature = "plugin-guest"))]
 mod core_journal;
 
 #[path = "../support/mod.rs"]
 mod support;
 
 #[path = "guest.rs"]
-#[cfg(all(
-    feature = "guest-host",
-    feature = "guest",
-    feature = "sidecar-host",
-    feature = "sidecar"
-))]
+#[cfg(all(feature = "plugin-guest", feature = "plugin-sidecar"))]
 mod guest;
 
 #[path = "plugin.rs"]
@@ -35,19 +36,19 @@ mod guest;
 mod plugin;
 
 #[path = "sidecar.rs"]
-#[cfg(all(feature = "sidecar-host", feature = "sidecar", feature = "guest"))]
+#[cfg(all(feature = "plugin-sidecar", feature = "plugin-guest"))]
 mod sidecar;
 
-#[cfg(all(feature = "sidecar-host", feature = "sidecar"))]
+#[cfg(feature = "plugin-sidecar")]
 mod observer_capabilities;
 
-#[cfg(all(feature = "sidecar-host", feature = "sidecar", feature = "guest"))]
+#[cfg(all(feature = "plugin-sidecar", feature = "plugin-guest"))]
 mod observer_demand;
 
-#[cfg(all(feature = "sidecar-host", feature = "sidecar", feature = "guest"))]
+#[cfg(all(feature = "plugin-sidecar", feature = "plugin-guest"))]
 mod observer_hosts;
 
-#[cfg(all(feature = "sidecar-host", feature = "sidecar"))]
+#[cfg(feature = "plugin-sidecar")]
 mod stream_consumption;
 
 /* === Re-Exports === */
@@ -81,10 +82,10 @@ mod stream_consumption;
 
 #[test]
 fn observer_binding() {
-    #[cfg(all(feature = "sidecar-host", feature = "sidecar"))]
+    #[cfg(feature = "plugin-sidecar")]
     observer_capabilities::contract_scenario();
-    #[cfg(all(feature = "sidecar-host", feature = "sidecar", feature = "guest"))]
+    #[cfg(all(feature = "plugin-sidecar", feature = "plugin-guest"))]
     observer_demand::contract_scenario();
-    #[cfg(all(feature = "sidecar-host", feature = "sidecar", feature = "guest"))]
+    #[cfg(all(feature = "plugin-sidecar", feature = "plugin-guest"))]
     observer_hosts::contract_scenario();
 }

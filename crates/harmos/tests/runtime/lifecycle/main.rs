@@ -52,13 +52,14 @@ const STOP_GRACE: Duration = Duration::from_millis(100);
 use std::sync::atomic::Ordering;
 
 use harmos::state::{Focus, Link, PrincipalId, Timestamp};
-use harmos::{Catalog, Registration};
 use harmos::{
-    CorrelationId, DefinitionId, Entry, Envelope, Error, JournalConsumer, Kind, Recorded,
+    DefinitionId, Error, state::CorrelationId, state::Entry, state::Envelope, state::Kind,
+    state::Recorded, storage::JournalConsumer,
 };
-use harmos::{DecodeError, Position, Runtime};
-use harmos::{Incompatible, Payload};
-use harmos::{Recovery, Source};
+use harmos::{Runtime, state::DecodeError, state::Position};
+use harmos::{runtime::Catalog, runtime::Registration};
+use harmos::{runtime::Incompatible, storage::Payload};
+use harmos::{storage::Recovery, storage::Source};
 use mirror::Mirror;
 use probe::{Change, EXPORTED, Editor, Note, RENAME, Sheet, inverses, named, rename};
 use std::sync::Arc;

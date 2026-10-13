@@ -224,26 +224,30 @@ impl<O: OperationDeclaration<Request = Request, Response = usize>> Operation for
         context: Self::Context<'ctx>,
         request: &mut Request,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<usize, Self::Error> {
-        self.state.attempt += 1;
-        self.resources.0.attempts.fetch_add(1, Ordering::SeqCst);
-        self.resources
-            .0
-            .times
-            .lock()
-            .unwrap()
-            .push(context.scope().now());
-        self.resources.0.started.notify_one();
-        match &mut request.behavior {
-            Behavior::Fail { remaining, kind } if *remaining > 0 => {
-                *remaining -= 1;
-                return Err(std::io::Error::new(*kind, "retained attempt failure"));
+    ) -> Result<harmos::operations::Response<usize>, Self::Error> {
+        let result: ::core::result::Result<usize, Self::Error> = async move {
+            self.state.attempt += 1;
+            self.resources.0.attempts.fetch_add(1, Ordering::SeqCst);
+            self.resources
+                .0
+                .times
+                .lock()
+                .unwrap()
+                .push(context.scope().now());
+            self.resources.0.started.notify_one();
+            match &mut request.behavior {
+                Behavior::Fail { remaining, kind } if *remaining > 0 => {
+                    *remaining -= 1;
+                    return Err(std::io::Error::new(*kind, "retained attempt failure"));
+                }
+                Behavior::Pending => std::future::pending::<()>().await,
+                Behavior::Gate(gate) => gate.notified().await,
+                _ => {}
             }
-            Behavior::Pending => std::future::pending::<()>().await,
-            Behavior::Gate(gate) => gate.notified().await,
-            _ => {}
+            Ok(self.state.attempt)
         }
-        Ok(self.state.attempt)
+        .await;
+        result.map(::core::convert::Into::into)
     }
     fn classify(error: &Self::Error) -> Failure {
         match error.kind() {

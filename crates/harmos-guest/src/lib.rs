@@ -21,14 +21,14 @@ pub use error::{Error, Result};
 pub use harmos_contract::operations::{
     CacheKey, OperationDeclaration, OperationPolicy, RetryPolicy,
 };
-pub use harmos_contract::{catalog, operations};
+pub use harmos_contract::{catalog, listeners, operations};
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "componentize"))]
 pub use component::componentize;
 pub use harmos_contract::inventory;
 pub use harmos_contract::{
-    ConfigError, Plugin, Registrar, Registration, RegistrationError, StreamSpec, encode_config,
-    reserved, validate_config,
+    ConfigError, Plugin, Refusal, Registrar, Registration, RegistrationError, StreamSpec,
+    encode_config, reserved, validate_config,
 };
 
 #[cfg(feature = "kit")]
@@ -36,10 +36,15 @@ pub use kit::{Context, OperationRefusal, PublishError, Publisher, UNKNOWN, UNREA
 
 pub use harmos_contract::__private;
 
+pub use harmos_contract::plugin;
 pub use harmos_contract::schema;
+pub use harmos_contract::streams;
+pub use harmos_contract::{
+    Axial, Batched, Definition, Metadata, Prefix, StreamField, Track, Tracked,
+};
 pub use harmos_contract::{MemorySize, Message, MessageError, RowMetadata, Storable};
 #[cfg(feature = "derive")]
-pub use harmos_contract::{message, operation};
+pub use harmos_contract::{listener, message, operation, stream};
 
 /* === Imports === */
 // Standard Library Imports
@@ -61,6 +66,10 @@ pub use harmos_contract::{message, operation};
 /* === Traits === */
 
 /* === Implementations === */
+#[cfg(feature = "kit")]
+impl harmos_contract::__private::CarrierContext for Context {
+    const FACILITY: &'static str = "guest";
+}
 
 /* === Public Functions === */
 

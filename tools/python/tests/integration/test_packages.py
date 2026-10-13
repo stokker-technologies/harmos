@@ -215,6 +215,178 @@ class PackageTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "Apache license"):
                 packages.verify(root)
 
+    def test_archive_roundtrip(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            original = Path(directory) / "original"
+            self._repository(original)
+            self._package(original)
+            root = packages.location(original)
+            manifest = json.loads((root / "reports/build.json").read_text())
+            tool = manifest["containers"]["tool"]
+            expected = set(tool["members"].values())
+            archive = root / tool["path"]
+            if archive.suffix == ".zip":
+                with zipfile.ZipFile(archive) as files:
+                    self.assertEqual(set(files.namelist()), expected)
+            else:
+                with packages.tarfile.open(archive, "r:gz") as files:
+                    self.assertEqual(set(files.getnames()), expected)
+            self.assertEqual(len(expected), 3)
+            examples = root / manifest["containers"]["examples"]["path"]
+            with zipfile.ZipFile(examples) as files:
+                self.assertIn("reports/build.json", files.namelist())
+                self.assertIn(packages.PLUGINS["schematic-tools"], files.namelist())
+                self.assertFalse(
+                    any(
+                        "fixture" in name or name.endswith(".core.wasm")
+                        for name in files.namelist()
+                    )
+                )
+            packages.export(original)
+            envelope = original / "dist" / f"harmos-ci-{packages.platform()}.zip"
+            immutable = envelope.read_bytes()
+            with zipfile.ZipFile(envelope) as files:
+                self.assertFalse(
+                    any(
+                        name.endswith("schematic-guest.wasm")
+                        for name in files.namelist()
+                    )
+                )
+                self.assertFalse(any("/cli/" in name for name in files.namelist()))
+                self.assertIn(f"{packages.platform()}/{tool['path']}", files.namelist())
+            relocated = Path(directory) / "relocated"
+            shutil.copytree(original, relocated, ignore=shutil.ignore_patterns("dist"))
+            (relocated / "dist").mkdir()
+            shutil.copy2(envelope, relocated / "dist" / envelope.name)
+            with patch(
+                "harmos_tools.packages.subprocess.run", wraps=subprocess.run
+            ) as run:
+                packages.restore(relocated)
+                self.assertFalse(
+                    any("build" in call.args[0] for call in run.call_args_list)
+                )
+            restored = packages.location(relocated)
+            self.assertEqual(
+                (restored / tool["path"]).read_bytes(), archive.read_bytes()
+            )
+            self.assertEqual(
+                (restored / manifest["containers"]["examples"]["path"]).read_bytes(),
+                examples.read_bytes(),
+            )
+            reports = original / ".stkr/tests"
+            reports.mkdir(parents=True)
+            (reports / "failure.log").write_text("retained failure")
+            packages.export(original)
+            self.assertEqual(envelope.read_bytes(), immutable)
+            with zipfile.ZipFile(
+                original / "dist" / f"harmos-tests-{packages.platform()}.zip"
+            ) as files:
+                self.assertIn("tests/failure.log", files.namelist())
+                self.assertFalse(
+                    any(
+                        name.startswith(("archives/", "examples/", "cli/", "fixtures/"))
+                        for name in files.namelist()
+                    )
+                )
+
+    def test_archive_substitution(self) -> None:
+        for damage in ("member", "symlink"):
+            with (
+                self.subTest(damage=damage),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                if damage == "symlink" and os.name == "nt":
+                    continue
+                root = Path(directory) / "repository"
+                self._repository(root)
+                self._package(root)
+                package = packages.location(root)
+                if damage == "symlink":
+                    packages.export(root)
+                    shutil.rmtree(package)
+                    outside = Path(directory) / "outside"
+                    outside.mkdir()
+                    marker = outside / "valuable"
+                    marker.write_bytes(b"preserved")
+                    package.symlink_to(outside, target_is_directory=True)
+                    with self.assertRaisesRegex(RuntimeError, "symlink"):
+                        packages.restore(root)
+                    self.assertEqual(set(outside.iterdir()), {marker})
+                    self.assertEqual(marker.read_bytes(), b"preserved")
+                    continue
+                report = package / "reports/build.json"
+                manifest = json.loads(report.read_text())
+                container = manifest["containers"]["tool"]
+                executable = next(
+                    name
+                    for name in container["members"]
+                    if name.startswith("cli/cargo-harmos")
+                )
+                original = (package / executable).read_bytes()
+                member = container["members"][executable]
+                archive = package / container["path"]
+                rewritten = io.BytesIO()
+                if archive.suffix == ".zip":
+                    with (
+                        zipfile.ZipFile(archive) as source,
+                        zipfile.ZipFile(rewritten, "w") as output,
+                    ):
+                        for entry in source.infolist():
+                            content = (
+                                b"corrupt executable"
+                                if entry.filename == member
+                                else source.read(entry)
+                            )
+                            output.writestr(entry, content)
+                else:
+                    with (
+                        packages.tarfile.open(archive, "r:gz") as source,
+                        packages.tarfile.open(fileobj=rewritten, mode="w:gz") as output,
+                    ):
+                        for entry in source.getmembers():
+                            extracted = source.extractfile(entry)
+                            assert extracted is not None
+                            with extracted:
+                                content = (
+                                    b"corrupt executable"
+                                    if entry.name == member
+                                    else extracted.read()
+                                )
+                            entry.size = len(content)
+                            output.addfile(entry, io.BytesIO(content))
+                archive.write_bytes(rewritten.getvalue())
+                container["sha256"] = packages._digest(archive)
+                report.write_text(json.dumps(manifest))
+                with self.assertRaisesRegex(RuntimeError, "member differs"):
+                    packages.restore(root)
+                self.assertEqual((package / executable).read_bytes(), original)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._repository(root)
+            self._package(root)
+            package = packages.location(root)
+            report = package / "reports/build.json"
+            manifest = json.loads(report.read_text())
+            container = manifest["containers"]["examples"]
+            archive = package / container["path"]
+            original = archive.read_bytes()
+            # An Extra Entry Is Refused Even If Its Outer Digest Was Restamped.
+            with zipfile.ZipFile(archive, "a") as files:
+                files.writestr("unrelated-payload", b"extra")
+            container["sha256"] = packages._digest(archive)
+            report.write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(RuntimeError, "unexpected members"):
+                packages.verify(root)
+            archive.write_bytes(original)
+            container["sha256"] = packages._digest(archive)
+            # Invented Schema Members Cannot Introduce Traversal Destinations.
+            container["members"]["../outside"] = "unrelated-payload"
+            report.write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(RuntimeError, "unrelated payloads"):
+                packages.restore(root)
+            self.assertFalse((package.parent / "outside").exists())
+
     def test_failure_export(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -230,11 +402,13 @@ class PackageTests(unittest.TestCase):
             (diagnostics / "failure.log").write_text("native failure output")
             packages.export(root)
             with zipfile.ZipFile(
-                root / "dist" / f"harmos-{packages.platform()}.zip"
+                root / "dist" / f"harmos-tests-{packages.platform()}.zip"
             ) as archive:
-                self.assertEqual(
-                    archive.read("LICENSE-APACHE"),
-                    (root / "LICENSE-APACHE").read_bytes(),
+                self.assertFalse(
+                    any(
+                        name.startswith(("archives/", "examples/", "cli/"))
+                        for name in archive.namelist()
+                    )
                 )
                 self.assertIn("tests/tests-integration-rust.xml", archive.namelist())
                 self.assertIn(
@@ -290,7 +464,6 @@ class PackageTests(unittest.TestCase):
             with self.assertRaises(FileNotFoundError):
                 packages.validate(root)
             self.assertFalse(record.exists())
-
             for entry in original["tests"].values():
                 entry["coverage"] = False
             manifest.write_text(json.dumps(original))
@@ -322,15 +495,15 @@ class PackageTests(unittest.TestCase):
             self._package(original)
             packages.validate(original)
             packages.export(original)
-            downloadable = original / "dist" / f"harmos-{packages.platform()}.zip"
+            downloadable = original / "dist" / f"harmos-ci-{packages.platform()}.zip"
             immutable = downloadable.read_bytes()
             container = io.BytesIO()
             with zipfile.ZipFile(container, "w") as archive:
-                for path in (original / "dist").rglob("*"):
-                    if path.is_file():
-                        archive.write(
-                            path, path.relative_to(original / "dist").as_posix()
-                        )
+                report = original / "dist" / f"harmos-tests-{packages.platform()}.zip"
+                archive.write(report, report.name)
+            build_container = io.BytesIO()
+            with zipfile.ZipFile(build_container, "w") as archive:
+                archive.write(downloadable, downloadable.name)
             proposed = Path(directory) / "proposed"
             shutil.copytree(
                 original, proposed, ignore=shutil.ignore_patterns("dist", ".stkr")
@@ -365,12 +538,12 @@ class PackageTests(unittest.TestCase):
                     else (88 if system == packages.platform() else 89)
                     if phase == "build:release"
                     else index + 1,
-                    "name": f"{'Build Release' if phase == 'build:release' else phase} ({system})",
+                    "name": f"{phase} ({system if phase == 'test' else system.title()})",
                     "conclusion": "success",
                 }
                 for index, (phase, system) in enumerate(
                     (phase, system)
-                    for phase in ("check", "Build Release", "test")
+                    for phase in ("Check Fast", "Build CI", "test")
                     for system in ("linux", "windows")
                 )
             ]
@@ -381,6 +554,13 @@ class PackageTests(unittest.TestCase):
                 "workflow_run": {"id": 42, "head_sha": revision},
                 "digest": "sha256:"
                 + packages.hashlib.sha256(container.getvalue()).hexdigest(),
+            }
+
+            build_artifact = artifact | {
+                "id": 124,
+                "name": f"harmos-build-{packages.platform()}-1",
+                "digest": "sha256:"
+                + packages.hashlib.sha256(build_container.getvalue()).hexdigest(),
             }
 
             def provider(endpoint):
@@ -394,7 +574,7 @@ class PackageTests(unittest.TestCase):
                         ]
                     }
                 if "/artifacts?" in endpoint:
-                    return {"artifacts": [artifact]}
+                    return {"artifacts": [artifact, build_artifact]}
                 return pipeline
 
             with (
@@ -406,7 +586,9 @@ class PackageTests(unittest.TestCase):
                 patch(
                     "harmos_tools.packages.urlopen",
                     side_effect=lambda *args, **kwargs: io.BytesIO(
-                        container.getvalue()
+                        build_container.getvalue()
+                        if "/124/" in args[0].full_url
+                        else container.getvalue()
                     ),
                 ),
             ):
@@ -445,7 +627,7 @@ class PackageTests(unittest.TestCase):
                         self.assertEqual(proof["purpose"], "development-validation")
                         self.assertEqual(proof["platforms"], ["linux"])
                         self.assertEqual(proof["proof"]["revision"], revision)
-                        self.assertEqual(len(proof["proof"]["artifacts"]), 1)
+                        self.assertEqual(len(proof["proof"]["artifacts"]), 2)
                         self.assertFalse(
                             any("windows" in name for name in proof["proof"]["jobs"])
                         )
@@ -516,9 +698,16 @@ class PackageTests(unittest.TestCase):
                             "sha256:"
                             + packages.hashlib.sha256(corrupt.getvalue()).hexdigest()
                         )
+                        corrupt_bytes = corrupt.getvalue()
                         with patch(
                             "harmos_tools.packages.urlopen",
-                            return_value=io.BytesIO(corrupt.getvalue()),
+                            side_effect=lambda request, corrupt_bytes=corrupt_bytes, **kwargs: (
+                                io.BytesIO(
+                                    build_container.getvalue()
+                                    if "/124/" in request.full_url
+                                    else corrupt_bytes
+                                )
+                            ),
                         ):
                             with self.assertRaisesRegex(RuntimeError, "unsafe"):
                                 packages.reuse(proposed)
@@ -582,13 +771,16 @@ class PackageTests(unittest.TestCase):
     def _repository(root: Path) -> None:
         root.mkdir(parents=True, exist_ok=True)
         subprocess.run(
-            ["git", "init", "--quiet", str(root)],
+            ["git", "init", "--initial-branch=dev", "--quiet", str(root)],
             check=True,
             env=packages._git_environment(),
         )
         (root / ".gitignore").write_text("dist/\n.stkr/\ntarget/\n.tmp/\n")
         (root / "input.txt").write_text("product source")
         (root / "LICENSE-APACHE").write_text("Apache License Fixture")
+        (root / "README.md").write_text("# Test Product")
+        (root / "examples/schematic").mkdir(parents=True)
+        (root / "examples/schematic/README.md").write_text("# Test Example")
         subprocess.run(
             ["git", "add", "."], cwd=root, check=True, env=packages._git_environment()
         )
@@ -614,16 +806,29 @@ class PackageTests(unittest.TestCase):
     @staticmethod
     def _package(root: Path) -> None:
         destination = packages.location(root)
-        suffix = ".exe" if packages.platform() == "windows" else ""
-        artifacts = {
-            name: f"cli/{name}{suffix}" for name in packages.BINARIES
-        } | packages.PLUGINS
+        artifacts = packages.artifact_paths()
         destination.mkdir(parents=True, exist_ok=True)
         shutil.copy2(root / "LICENSE-APACHE", destination / "LICENSE-APACHE")
         for relative in artifacts.values():
             path = destination / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"release asset")
+        schemas = {}
+        for producer in packages.SCHEMA_PRODUCERS:
+            directory = destination / f"examples/schematic/grpc/{producer}/operations"
+            directory.mkdir(parents=True, exist_ok=True)
+            for name, content in {
+                "descriptors.bin": b"descriptor",
+                "schematic/v1/Schematic.proto": b'syntax = "proto3";',
+                "manifest.txt": b"descriptors.bin\ncontracts.json\nschematic/v1/Schematic.proto\n",
+                "contracts.json": b'{"schema":1,"contracts":[]}',
+            }.items():
+                path = directory / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(content)
+                schemas[path.relative_to(destination).as_posix()] = packages._digest(
+                    path
+                )
         report = destination / "reports/build.json"
         report.parent.mkdir(parents=True, exist_ok=True)
         report.write_text(
@@ -631,14 +836,19 @@ class PackageTests(unittest.TestCase):
                 {
                     "schema": 2,
                     "platform": packages.platform(),
+                    "version": "0.2.0",
+                    "target": "x86_64-pc-windows-msvc"
+                    if packages.platform() == "windows"
+                    else "x86_64-unknown-linux-gnu",
                     "revision": packages._output(root, ["git", "rev-parse", "HEAD"]),
                     "built_unix_seconds": 1,
                     "run": "42",
                     "attempt": "1",
-                    "job": f"build_release_{packages.platform()}",
+                    "job": f"build_ci_{packages.platform()}",
                     "source": packages.source(root),
                     "inputs": packages.release.inputs(root),
                     "artifacts": artifacts,
+                    "schemas": schemas,
                     "versions": {
                         name: packages._output(root, command)
                         for name, command in packages.VERSION_COMMANDS.items()
@@ -650,6 +860,7 @@ class PackageTests(unittest.TestCase):
                 }
             )
         )
+        packages.archive_payloads(root, destination)
 
 
 # === Public Functions === #

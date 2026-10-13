@@ -25,10 +25,10 @@ use std::time::Duration;
 use sha2::{Digest, Sha256};
 
 // Local Imports
-use harmos::load::{PluginArtifact, PluginContributions, PluginDefinition};
 use harmos::operations::OperationDeclaration;
-use harmos::sidecar::{Attach, Executable, Notice, Supervised};
-use harmos::{Message, Runtime, Service, ServiceStatus};
+use harmos::plugin::sidecar::{Attach, Executable, Notice, Supervised};
+use harmos::plugin::{PluginArtifact, PluginContributions, PluginDefinition};
+use harmos::{Message, Runtime, services::Service, services::ServiceStatus};
 use plugin::{Progress, Receiver};
 
 /* === Constants === */
@@ -36,7 +36,7 @@ use plugin::{Progress, Receiver};
 
 /* === Type Aliases === */
 type Resident<T> = Supervised<Model, T, fn(&Service<Model>, Notice)>;
-type Managed<T> = harmos::sidecar::Managed<Model, T, fn(&Service<Model>, Notice), Lanes>;
+type Managed<T> = harmos::plugin::sidecar::Managed<Model, T, fn(&Service<Model>, Notice), Lanes>;
 type Constructor<T> = fn(
     Resident<T>,
     PluginDefinition,
@@ -70,7 +70,7 @@ pub enum Lanes {
 /* === Implementations === */
 impl harmos::Application for Model {
     type State = ();
-    type Transaction = harmos::Never;
+    type Transaction = harmos::state::Never;
     type Record = ();
     type Streams = Streams;
     type Resources = ();
@@ -86,7 +86,7 @@ impl Fixture {
                 revision: "stream-consumption".into(),
             },
             "1.0.0".parse().unwrap(),
-            harmos::sidecar::Managed::new,
+            harmos::plugin::sidecar::Managed::new,
             None,
         )
         .await
@@ -111,7 +111,7 @@ impl Fixture {
             source,
             artifact,
             version,
-            harmos::sidecar::Managed::new_executable,
+            harmos::plugin::sidecar::Managed::new_executable,
             pause_after,
         )
         .await
@@ -147,7 +147,10 @@ impl Fixture {
         let runtime = Runtime::<Model>::builder((), ())
             .register(Streams::catalog())
             .register(Lanes::catalog())
-            .operation_preparation_bytes(NonZeroUsize::new(32 * 1024 * 1024).unwrap())
+            .operation_settings(harmos::operations::Settings {
+                preparation_bytes: Some(NonZeroUsize::new(32 * 1024 * 1024).unwrap()),
+                ..Default::default()
+            })
             .runtime()
             .await
             .unwrap();
@@ -156,7 +159,7 @@ impl Fixture {
             .register(
                 harmos::services::ServiceDefinition {
                     id: "consumer".into(),
-                    policy: harmos::ServicePolicy {
+                    policy: harmos::services::ServicePolicy {
                         credit: 0,
                         ..Default::default()
                     },

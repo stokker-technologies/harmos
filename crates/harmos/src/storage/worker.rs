@@ -27,7 +27,10 @@ use super::staging::{FileAction, FileCompleted};
 use super::views::ViewAction;
 use super::{RecoveryPosition, StorageManager, StoragePart};
 use crate::supervision::executor;
-use crate::{Application, BackendFailure, Error, Fault, Resident, Result, Service};
+use crate::{
+    Application, BackendFailure, Error, Result, services::Fault, services::Resident,
+    services::Service,
+};
 
 /* === Constants === */
 
@@ -259,9 +262,12 @@ impl<A: Application> Resident<A> for Worker {
                                     state.objects_pruned = through.sequence;
                                 }
                             }
-                            (Action::File(action), Completed::File(result)) => {
-                                state.file_completed(action, result)
-                            }
+                            (Action::File(action), Completed::File(result)) => state
+                                .file_completed(
+                                    action,
+                                    result,
+                                    inner.settings.file_session_timeout,
+                                ),
                             (Action::View(ViewAction::Release(..)), Completed::Released(id)) => {
                                 state.views.remove(&id);
                                 state.snapshot_released();

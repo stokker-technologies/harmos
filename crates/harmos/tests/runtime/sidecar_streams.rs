@@ -28,8 +28,9 @@ use super::{Counts, Read};
 use super::{Lanes, Managed, source};
 #[cfg(feature = "grpc")]
 use harmos::grpc::{Codec, InputEnvelope, OutputEnvelope};
-use harmos::operations::{Operation, StreamSettings, WireStreamLimits, WireTable};
-use harmos_contract::operations::streaming::{StreamInput, StreamOutput};
+use harmos::operations::{
+    Operation, StreamInput, StreamOutput, StreamSettings, WireStreamLimits, WireTable,
+};
 
 /* === Constants === */
 
@@ -42,7 +43,7 @@ macro_rules! serving {
             type Resources = Counts;
             type Error = harmos::Error;
             type Endpoints = $endpoints;
-            type Context<'a> = &'a harmos::sidecar::Supervisor;
+            type Context<'a> = &'a harmos::plugin::sidecar::Supervisor;
             fn new(counts: Arc<Counts>) -> Result<Self, Self::Error> {
                 counts.prepared.fetch_add(1, Ordering::SeqCst);
                 Ok(Self(counts))
@@ -56,9 +57,13 @@ macro_rules! serving {
                 _: Self::Context<'a>,
                 $request: &mut u32,
                 $ports: &mut Self::Endpoints,
-            ) -> Result<u32, Self::Error> {
-                self.0.runs.fetch_add(1, Ordering::SeqCst);
-                $run
+            ) -> Result<harmos::operations::Response<u32>, Self::Error> {
+                let result: ::core::result::Result<u32, Self::Error> = async move {
+                    self.0.runs.fetch_add(1, Ordering::SeqCst);
+                    $run
+                }
+                .await;
+                result.map(::core::convert::Into::into)
             }
             async fn stop(&mut self) -> Result<(), Self::Error> {
                 self.0.stopped.fetch_add(1, Ordering::SeqCst);
@@ -77,17 +82,32 @@ macro_rules! serving {
 /* === Structs === */
 
 /* === Enums === */
+#[harmos::operation(request = u32, response = u32, input = u32, policy = Read::POLICY, version = 1,
+        grpc(package = "fixture.v1", service = "Native", method = "Upload"))]
+pub(super) struct Upload;
+
+#[harmos::operation(request = u32, response = u32, output = u32, policy = Read::POLICY, version = 1,
+        grpc(package = "fixture.v1", service = "Native", method = "Download"))]
+pub(super) struct Download;
+
+#[harmos::operation(request = u32, response = u32, input = u32, output = u32, policy = Read::POLICY, version = 1,
+        grpc(package = "fixture.v1", service = "Native", method = "Exchange"))]
+pub(super) struct Exchange;
+
 #[harmos::catalog]
 pub(super) enum Operations {
-    #[operation(request = u32, response = u32, input = u32, policy = Read::POLICY, version = 1,
-        grpc(package = "fixture.v1", service = "Native", method = "Upload"))]
-    Upload,
-    #[operation(request = u32, response = u32, output = u32, policy = Read::POLICY, version = 1,
-        grpc(package = "fixture.v1", service = "Native", method = "Download"))]
-    Download,
-    #[operation(request = u32, response = u32, input = u32, output = u32, policy = Read::POLICY, version = 1,
-        grpc(package = "fixture.v1", service = "Native", method = "Exchange"))]
-    Exchange,
+    Upload(Upload),
+    Download(Download),
+    Exchange(Exchange),
+}
+
+// Runtime-error endpoints bind through the same catalog projection as
+// `bind_operations`, which is the authored sidecar route.
+#[harmos::catalog]
+enum Implemented {
+    Upload(Uploading),
+    Download(Downloading),
+    Exchange(Exchanging),
 }
 
 /* === Traits === */
@@ -124,7 +144,7 @@ serving!(
 
 /* === Public Functions === */
 pub(super) fn bind(
-    table: &mut WireTable<harmos::sidecar::Supervisor>,
+    table: &mut WireTable<harmos::plugin::sidecar::Supervisor>,
     counts: Arc<Counts>,
 ) -> Result<(), harmos::operations::ServingError> {
     let direction = StreamSettings {
@@ -135,18 +155,19 @@ pub(super) fn bind(
         input: direction,
         output: direction,
     };
-    table.bind_streaming_operation::<Uploading>(counts.clone(), limits)?;
-    table.bind_streaming_operation::<Downloading>(counts.clone(), limits)?;
-    table.bind_streaming_operation::<Exchanging>(counts, limits)
+    table.bind_streaming_operations::<Implemented, _>(counts, limits)
 }
 
 /* === Private Functions === */
 #[cfg(feature = "grpc")]
-fn opening() -> impl futures_core::Stream<Item = Arc<InputEnvelope<u32, u32>>> + Send + 'static {
+fn opening()
+-> impl futures_core::Stream<Item = harmos::operations::Response<InputEnvelope<u32, u32>>>
++ Send
++ 'static {
     futures_util::stream::iter([
-        Arc::new(InputEnvelope::Request(5)),
-        Arc::new(InputEnvelope::Item(0)),
-        Arc::new(InputEnvelope::Item(7)),
+        harmos::operations::Response::new(InputEnvelope::Request(5)),
+        harmos::operations::Response::new(InputEnvelope::Item(0)),
+        harmos::operations::Response::new(InputEnvelope::Item(7)),
     ])
 }
 
@@ -175,7 +196,8 @@ fn contract_scenario() {
                             address: "127.0.0.1:0".parse().unwrap(),
                             operations,
                             reflection: true,
-                            #[cfg(feature = "grpc-tls")]
+                            web: false,
+                            allowed_origins: Vec::new(),
                             tls: None,
                             connections: NonZeroUsize::new(4).unwrap(),
                             calls_per_connection: NonZeroUsize::new(8).unwrap(),
@@ -199,7 +221,7 @@ fn contract_scenario() {
                             tonic::codegen::http::uri::PathAndQuery::from_static(
                                 "/fixture.v1.Native/Upload",
                             ),
-                            Codec::<u32, Arc<InputEnvelope<u32, u32>>>::new(
+                            Codec::<u32, harmos::operations::Response<InputEnvelope<u32, u32>>>::new(
                                 operations.decode,
                                 operations.encode,
                             )
@@ -212,11 +234,11 @@ fn contract_scenario() {
                     client.ready().await.unwrap();
                     let mut download = client
                         .server_streaming(
-                            tonic::Request::new(Arc::new(5u32)),
+                            tonic::Request::new(harmos::operations::Response::new(5u32)),
                             tonic::codegen::http::uri::PathAndQuery::from_static(
                                 "/fixture.v1.Native/Download",
                             ),
-                            Codec::<OutputEnvelope<u32, u32>, Arc<u32>>::new(
+                            Codec::<OutputEnvelope<u32, u32>, harmos::operations::Response<u32>>::new(
                                 operations.decode,
                                 operations.encode,
                             )
@@ -241,7 +263,7 @@ fn contract_scenario() {
                             tonic::codegen::http::uri::PathAndQuery::from_static(
                                 "/fixture.v1.Native/Exchange",
                             ),
-                            Codec::<OutputEnvelope<u32, u32>, Arc<InputEnvelope<u32, u32>>>::new(
+                            Codec::<OutputEnvelope<u32, u32>, harmos::operations::Response<InputEnvelope<u32, u32>>>::new(
                                 operations.decode,
                                 operations.encode,
                             )

@@ -313,8 +313,7 @@ fn own_contract() {
                 [2, 1]
             );
             assert!(
-                definitions.as_ref()[0]
-                    .fields()
+                (definitions.as_ref()[0].declaration().fields)()
                     .iter()
                     .any(|field| field.name == "status")
             );

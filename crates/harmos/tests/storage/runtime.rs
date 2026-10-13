@@ -23,7 +23,10 @@ use super::{
     Bank, Data, Fixture, Ledger, Recovery, Runtime, StorageBackends, StorageManager, catalog,
     config, history, write,
 };
-use harmos::{Entry, Error, Fault, JournalConsumer, Position, Recorded, Service, ServicePolicy};
+use harmos::{
+    Error, services::Fault, services::Service, services::ServicePolicy, state::Entry,
+    state::Position, state::Recorded, storage::JournalConsumer,
+};
 
 /* === Constants === */
 

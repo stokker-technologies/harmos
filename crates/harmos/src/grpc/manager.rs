@@ -10,6 +10,7 @@
 /* === Modules === */
 
 /* === Re-Exports === */
+pub use crate::config::GrpcSettings as Settings;
 
 /* === Imports === */
 
@@ -18,9 +19,7 @@ use std::{
     collections::BTreeSet,
     convert::Infallible,
     net::SocketAddr,
-    num::NonZeroUsize,
     sync::{Arc, Mutex},
-    time::Duration,
 };
 
 // Third Party Imports
@@ -45,7 +44,7 @@ use crate::{Application, Error, Result};
 pub struct GrpcManager {
     state: Arc<Mutex<State>>,
     host: Arc<dyn listener::Host>,
-    operations: crate::OperationManager,
+    operations: crate::operations::OperationManager,
 }
 
 #[must_use = "dropping the attachment detaches the listener"]
@@ -54,19 +53,6 @@ pub struct Attached {
     generation: u64,
     address: SocketAddr,
     detached: bool,
-}
-
-#[derive(Clone, Debug)]
-pub struct Settings {
-    pub address: SocketAddr,
-    pub operations: super::server::Settings,
-    pub reflection: bool,
-    #[cfg(feature = "grpc-tls")]
-    pub tls: Option<tonic::transport::ServerTlsConfig>,
-    pub connections: NonZeroUsize,
-    pub calls_per_connection: NonZeroUsize,
-    pub request_timeout: Duration,
-    pub shutdown_timeout: Duration,
 }
 
 struct State {
@@ -84,7 +70,7 @@ struct State {
 impl GrpcManager {
     pub(crate) fn new<A: Application>(
         services: &crate::services::ServiceManager<A>,
-        operations: &crate::OperationManager,
+        operations: &crate::operations::OperationManager,
     ) -> Self {
         Self {
             state: Arc::new(Mutex::new(State {
@@ -233,24 +219,14 @@ impl Drop for Attached {
     }
 }
 
-impl Default for Settings {
-    fn default() -> Self {
-        Self {
-            address: ([127, 0, 0, 1], 0).into(),
-            operations: super::server::Settings::default(),
-            reflection: false,
-            #[cfg(feature = "grpc-tls")]
-            tls: None,
-            connections: NonZeroUsize::new(64).unwrap(),
-            calls_per_connection: NonZeroUsize::new(32).unwrap(),
-            request_timeout: Duration::from_secs(60),
-            shutdown_timeout: Duration::from_secs(10),
-        }
-    }
-}
-
 impl Settings {
     fn validate(&self) -> Result<()> {
+        if !self.web && !self.allowed_origins.is_empty() {
+            return Err(Error::InvalidInput {
+                field: "gRPC allowed origins",
+                reason: "cross-origin access requires gRPC-Web to be enabled",
+            });
+        }
         if self.request_timeout.is_zero()
             || self.shutdown_timeout.is_zero()
             || tokio::time::Instant::now()

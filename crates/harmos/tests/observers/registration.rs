@@ -254,33 +254,35 @@ pub(super) fn contract_scenario() {
                         .register(catalog())
                         .service(
                             "observer-owner",
-                            move |mut context: harmos::Service<Bank>| {
+                            move |mut context: harmos::services::Service<Bank>| {
                                 let control = resident_control.clone();
                                 let opened = opened.clone();
                                 async move {
                                     let manager = context.observers().clone();
                                     let scope = manager.scope(control).map_err(|error| {
-                                        harmos::Fault::Application(error.to_string())
+                                        harmos::services::Fault::Application(error.to_string())
                                     })?;
                                     manager
                                         .stage(&scope, [backend("service.watch")])
                                         .and_then(|candidate| candidate.commit())
                                         .map_err(|error| {
-                                            harmos::Fault::Application(error.to_string())
+                                            harmos::services::Fault::Application(error.to_string())
                                         })?;
-                                    let lease =
-                                        manager.activate("service.watch", &scope).await.map_err(
-                                            |error| harmos::Fault::Application(error.to_string()),
-                                        )?;
+                                    let lease = manager
+                                        .activate("service.watch", &scope)
+                                        .await
+                                        .map_err(|error| {
+                                            harmos::services::Fault::Application(error.to_string())
+                                        })?;
                                     opened.send((scope.clone(), lease.id())).unwrap();
                                     context.stopping().await;
                                     manager.stop_scope(&scope).await.map_err(|error| {
-                                        harmos::Fault::Application(error.to_string())
+                                        harmos::services::Fault::Application(error.to_string())
                                     })?;
                                     lease.release().await.map_err(|error| {
-                                        harmos::Fault::Application(error.to_string())
+                                        harmos::services::Fault::Application(error.to_string())
                                     })?;
-                                    Ok::<(), harmos::Fault<String>>(())
+                                    Ok::<(), harmos::services::Fault<String>>(())
                                 }
                             },
                         )
@@ -311,7 +313,7 @@ pub(super) fn contract_scenario() {
                             .services
                             .status(&harmos::services::ServiceKey::root("observer-owner"))
                             .map(|item| item.status),
-                        Some(harmos::ServiceStatus::Stopped)
+                        Some(harmos::services::ServiceStatus::Stopped)
                     );
                 });
         });

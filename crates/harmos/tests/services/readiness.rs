@@ -21,7 +21,10 @@ use std::time::Duration;
 use tokio::sync::{Notify, mpsc};
 // Local Imports
 use super::{Bank, assembly, service_status, support};
-use harmos::{Fault, Service, ServiceExit, ServicePolicy, ServiceStatus};
+use harmos::{
+    services::Fault, services::Service, services::ServiceExit, services::ServicePolicy,
+    services::ServiceStatus,
+};
 
 /* === Constants === */
 
@@ -388,7 +391,7 @@ pub(super) fn contract_scenario() {
                                 policy: ServicePolicy::default(),
                             },
                             |_: Arc<()>| {
-                                |context: harmos::Service<Bank>| async move {
+                                |context: harmos::services::Service<Bank>| async move {
                                     let mut context = context;
                                     context.ready();
                                     context.stopping().await;
@@ -442,10 +445,13 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let runtime = assembly()
                         .register(support::streams())
-                        .service("source", |context: harmos::Service<Bank>| async move {
-                            context.streams().publish(support::pulse(7));
-                            Ok::<(), Fault<&'static str>>(())
-                        })
+                        .service(
+                            "source",
+                            |context: harmos::services::Service<Bank>| async move {
+                                context.streams().publish(support::pulse(7));
+                                Ok::<(), Fault<&'static str>>(())
+                            },
+                        )
                         .runtime()
                         .await
                         .expect("the stream-producing service boots");

@@ -18,7 +18,9 @@ use crate::scenario_runtime;
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 // Local Imports
-use harmos::{DecodeError, Error, Position, PrincipalId, Recorded, Runtime};
+use harmos::{
+    Error, Runtime, state::DecodeError, state::Position, state::PrincipalId, state::Recorded,
+};
 
 /* === Constants === */
 
@@ -45,7 +47,7 @@ enum Records {
 /* === Implementations === */
 impl harmos::Application for Model {
     type State = ();
-    type Transaction = harmos::Never;
+    type Transaction = harmos::state::Never;
     type Record = Records;
     type Streams = ();
     type Resources = ();
@@ -112,7 +114,7 @@ pub(super) fn contract_scenario() {
                     );
                     assert_eq!(
                         entries[1].metadata.causation,
-                        Some(harmos::CausationId(first.position))
+                        Some(harmos::state::CausationId(first.position))
                     );
                     runtime.stop().await.unwrap();
                 });
@@ -144,10 +146,18 @@ pub(super) fn contract_scenario() {
                     };
                     let definition = runtime
                         .records
-                        .register("plugin", &schema, Message::FIELDS)
+                        .register(
+                            "plugin",
+                            &schema,
+                            &harmos::schema::graph::Schema::from_declaration(
+                                Message::DEFINITION,
+                                &harmos::config::SchemaSettings::default(),
+                            )
+                            .unwrap(),
+                        )
                         .await
                         .unwrap();
-                    let producer = harmos::RecordManager::new(
+                    let producer = harmos::records::RecordManager::new(
                         runtime.state.as_principal(PrincipalId::new("editor")),
                     );
                     assert!(Arc::ptr_eq(
@@ -157,7 +167,15 @@ pub(super) fn contract_scenario() {
                     assert!(Arc::ptr_eq(
                         &definition,
                         &producer
-                            .register("plugin", &schema, Message::FIELDS)
+                            .register(
+                                "plugin",
+                                &schema,
+                                &harmos::schema::graph::Schema::from_declaration(
+                                    Message::DEFINITION,
+                                    &harmos::config::SchemaSettings::default()
+                                )
+                                .unwrap()
+                            )
                             .await
                             .unwrap()
                     ));
@@ -173,11 +191,31 @@ pub(super) fn contract_scenario() {
                     ));
                     assert!(
                         producer
-                            .register("other", &schema, Message::FIELDS)
+                            .register(
+                                "other",
+                                &schema,
+                                &harmos::schema::graph::Schema::from_declaration(
+                                    Message::DEFINITION,
+                                    &harmos::config::SchemaSettings::default()
+                                )
+                                .unwrap()
+                            )
                             .await
                             .is_err()
                     );
-                    assert!(producer.register("plugin", &schema, &[]).await.is_err());
+                    assert!(
+                        producer
+                            .register(
+                                "plugin",
+                                &schema,
+                                &harmos::schema::graph::Schema {
+                                    root: 0,
+                                    definitions: vec![vec![]]
+                                }
+                            )
+                            .await
+                            .is_err()
+                    );
                     assert_eq!(producer.definitions().len(), 1);
                     assert_eq!(runtime.state.applied(), Position::ORIGIN);
                     drop(producer);

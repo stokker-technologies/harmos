@@ -10,7 +10,7 @@
 /* === Modules === */
 
 /* === Re-Exports === */
-pub use crate::storage_reads::{
+pub use crate::storage::read_selection::{
     ReadHistory, ReadKind, ReadLimits, ReadOrder, ReadSelection, SourceTimeRange,
 };
 
@@ -48,7 +48,7 @@ pub struct ReadView {
     computation: Option<super::views::ComputationLink>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ReadCursor {
     view: Identifier,
@@ -147,6 +147,18 @@ impl ReadView {
     }
 
     pub fn check(&self, selection: &ReadSelection, cursor: Option<&ReadCursor>) -> Result<()> {
+        if let Some(filter) = &selection.record_filter {
+            if selection.kind != ReadKind::Records
+                || selection.schema.is_none()
+                || self.execution.is_none()
+            {
+                return Err(Error::InvalidInput {
+                    field: "record filter",
+                    reason: "requires a selected record schema and bounded saved query",
+                });
+            }
+            filter.check()?;
+        }
         if selection.object_versions == ObjectVersions::Latest && self.execution.is_none() {
             return Err(Error::InvalidInput {
                 field: "object query",

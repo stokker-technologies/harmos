@@ -30,8 +30,8 @@ use super::{HostLanes, assembly, process_definition, service_status};
 use crate::support::Bank;
 use contract::{Blob, Echo, Nested, Operations, Probe};
 use harmos::operations::{Context, Operation};
-use harmos::sidecar::{Executable, Notice, Supervised};
-use harmos::{Runtime, Service, ServicePolicy, ServiceStatus};
+use harmos::plugin::sidecar::{Executable, Notice, Supervised};
+use harmos::{Runtime, services::Service, services::ServicePolicy, services::ServiceStatus};
 
 /* === Constants === */
 const CAPACITY: usize = 2;
@@ -40,7 +40,8 @@ const CAPACITY: usize = 2;
 
 /* === Type Aliases === */
 type Resident = Supervised<Bank, Executable, fn(&Service<Bank>, Notice)>;
-type PublicationCall = harmos::sidecar::Publish<Bank, Executable, fn(&Service<Bank>, Notice)>;
+type PublicationCall =
+    harmos::plugin::sidecar::Publish<Bank, Executable, fn(&Service<Bank>, Notice)>;
 
 /* === Structs === */
 struct Callback {
@@ -75,7 +76,7 @@ impl Operation for CallbackPublication {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
     fn new(owner: Arc<Callback>) -> harmos::Result<Self> {
-        let publication = harmos::sidecar::Publish::new(Arc::clone(&owner.resident))?;
+        let publication = harmos::plugin::sidecar::Publish::new(Arc::clone(&owner.resident))?;
         Ok(Self { owner, publication })
     }
     async fn run<'ctx>(
@@ -83,24 +84,29 @@ impl Operation for CallbackPublication {
         context: Self::Context<'ctx>,
         request: &mut harmos::operations::host::Publication,
         _endpoints: &mut Self::Endpoints,
-    ) -> harmos::Result<()> {
-        self.owner.calls.fetch_add(1, Ordering::SeqCst);
-        let id = match self.owner.mode.load(Ordering::SeqCst) {
-            1 => 0,
-            2 => u64::MAX,
-            _ => request.sequence.unwrap(),
-        };
-        let echoed = context
-            .call::<Echo>(Blob {
-                id,
-                data: request.payload.clone(),
-            })
-            .await?;
-        assert_eq!(
-            echoed.data, request.payload,
-            "the original connection carried the nested response"
-        );
-        self.publication.run(context, request, _endpoints).await
+    ) -> harmos::Result<harmos::operations::Response<()>> {
+        let result: ::core::result::Result<harmos::operations::Response<()>, Self::Error> =
+            async move {
+                self.owner.calls.fetch_add(1, Ordering::SeqCst);
+                let id = match self.owner.mode.load(Ordering::SeqCst) {
+                    1 => 0,
+                    2 => u64::MAX,
+                    _ => request.sequence.unwrap(),
+                };
+                let echoed = context
+                    .call::<Echo>(Blob {
+                        id,
+                        data: request.payload.clone(),
+                    })
+                    .await?;
+                assert_eq!(
+                    echoed.data, request.payload,
+                    "the original connection carried the nested response"
+                );
+                self.publication.run(context, request, _endpoints).await
+            }
+            .await;
+        result
     }
 }
 
@@ -112,9 +118,12 @@ impl Fixture {
         definition.configuration = serde_json::to_vec(root.path().to_str().unwrap()).unwrap();
         let resident = Supervised::new(source, notices as fn(&Service<Bank>, Notice));
         let runtime = assembly()
-            .operation_preparation_bytes(
-                NonZeroUsize::new(harmos_sidecar::Frame::LIMIT * 4).unwrap(),
-            )
+            .operation_settings(harmos::operations::Settings {
+                preparation_bytes: Some(
+                    NonZeroUsize::new(harmos_sidecar::Frame::LIMIT * 4).unwrap(),
+                ),
+                ..Default::default()
+            })
             .runtime()
             .await
             .unwrap();
@@ -143,7 +152,7 @@ impl Fixture {
                     },
                 },
                 move |_: Arc<()>| {
-                    harmos::sidecar::Managed::new_executable_catalog::<Operations>(
+                    harmos::plugin::sidecar::Managed::new_executable_catalog::<Operations>(
                         resident.clone(),
                         definition.clone(),
                         HostLanes::Open,
@@ -465,13 +474,13 @@ fn contract_scenario() {
                         });
                     let calls = resident.clone();
                     let runtime = assembly()
-                        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+                        .operation_settings(harmos::operations::Settings { preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()), ..Default::default() })
                         .runtime()
                         .await
                         .unwrap();
                     runtime
                         .operations
-                        .register_wire_operation::<harmos::sidecar::Publish<_, _, _>>(
+                        .register_wire_operation::<harmos::plugin::sidecar::Publish<_, _, _>>(
                             "shutdown-core",
                             HostLanes::Open,
                             Arc::new(resident.clone()),
@@ -488,7 +497,7 @@ fn contract_scenario() {
                                 },
                             },
                             move |_: Arc<()>| {
-                                harmos::sidecar::Managed::new_executable_catalog::<Operations>(
+                                harmos::plugin::sidecar::Managed::new_executable_catalog::<Operations>(
                                     resident.clone(),
                                     definition.clone(),
                                     HostLanes::Open,

@@ -15,6 +15,7 @@ runs it without the Hub:
     python -m <package>.evidence run <unit|integration|acceptance|system> <language> \
         [--coverage] [--configuration <name>]
     python -m <package>.evidence bench <rust|python>
+    python -m <package>.evidence collect <native-evidence-directory> ...
 
 Native output stays under `target/validation/`; the latest run of each kind is written
 atomically to `.stkr/tests/`.
@@ -110,6 +111,7 @@ RUST_KEYS = {
     "exclude",
     "configurations",
     "coverage_host_only",
+    "native_profile",
 }
 
 # Named configurations may narrow a run; the base selection never filters.
@@ -166,6 +168,7 @@ class RustSelection:
     packages: tuple[str, ...] = ()
     exclude: tuple[str, ...] = ()
     coverage_host_only: bool = False
+    native_profile: str = "release"
     targets: tuple[str, ...] = ()
     filter: str | None = None
 
@@ -556,7 +559,7 @@ def narrowed(expression: str, selection: RustSelection) -> str:
 
 def cargo_selection(selection: RustSelection) -> list[str]:
     """Locked Cargo package and feature arguments of one selection."""
-    arguments = ["--locked"]
+    arguments = ["--locked", "--cargo-profile", selection.native_profile]
     if selection.packages:
         for package in selection.packages:
             arguments += ["--package", package]
@@ -705,7 +708,7 @@ def normalize_python_paths(
             raise EvidenceError("Python coverage class has no filename")
         filename = filename.replace("\\", "/")
         matches = [
-            relative
+            (suffix, relative)
             for suffix, relative in authored
             if filename in (relative, suffix)
             or any(
@@ -713,12 +716,17 @@ def normalize_python_paths(
                 for source in reported
             )
         ]
+        if matches:
+            specificity = max(len(suffix.split("/")) for suffix, _ in matches)
+            matches = [
+                match for match in matches if len(match[0].split("/")) == specificity
+            ]
         if len(matches) != 1:
             raise EvidenceError(
                 f"Python coverage source {filename} does not resolve uniquely to declared "
                 "authored sources"
             )
-        node.set("filename", matches[0])
+        node.set("filename", matches[0][1])
     for node in report.iter("source"):
         node.text = root.replace("\\", "/")
     return _document(report)
@@ -1096,6 +1104,17 @@ def run(
                         coverage,
                         records,
                     )
+            elif coverage and language == "python":
+                with Lock(_state(root) / "coverage-python.lock", wait_seconds=30):
+                    _run_selections(
+                        root,
+                        policy,
+                        raw,
+                        selected,
+                        (category, language),
+                        coverage,
+                        records,
+                    )
             else:
                 _run_selections(
                     root, policy, raw, selected, (category, language), coverage, records
@@ -1219,6 +1238,169 @@ def revision(root: Path) -> str | None:
     return text.strip() if text else None
 
 
+def collect(
+    root: Path,
+    directories: Sequence[Path],
+    all_features: bool = False,
+    coverage_required: bool = False,
+) -> None:
+    """Collect disjoint complete native lanes before final artifact validation."""
+    root = root.resolve()
+    policy = parse_policy(_config(root))
+    revision_value = revision(root)
+    host = {"os": _platform(), "arch": _architecture()}
+    if (
+        revision_value is None
+        or not directories
+        or _query(root, ["git", "status", "--porcelain", "--untracked-files=normal"])
+        != ""
+    ):
+        raise EvidenceError(
+            "evidence collection requires a committed revision and inputs"
+        )
+    tests: dict[str, Record] = {}
+    coverage: dict[str, str] = {}
+    files: dict[str, str] = {}
+    for directory in directories:
+        directory = directory if directory.is_absolute() else root / directory
+        if ".." in directory.parts or not directory.is_relative_to(root):
+            raise EvidenceError("collected evidence must be inside the project")
+        _real_directories(
+            root,
+            directory.relative_to(root).as_posix(),
+            "evidence input must be a real directory",
+        )
+        manifest_path = directory / "latest.json"
+        if manifest_path.is_symlink() or not manifest_path.is_file():
+            raise EvidenceError("collected evidence requires a regular manifest")
+        try:
+            manifest = json.loads(_read(manifest_path, "lane manifest"))
+        except ValueError as error:
+            raise EvidenceError(f"invalid collected evidence: {error}") from error
+        if (
+            not isinstance(manifest, dict)
+            or manifest.get("schema_version") != 1
+            or manifest.get("host") != host
+        ):
+            raise EvidenceError("collected evidence schema or native host differs")
+        entries = manifest.get("tests")
+        owners = manifest.get("coverage", {})
+        if not isinstance(entries, dict) or not entries or not isinstance(owners, dict):
+            raise EvidenceError("collected evidence has no complete test lane")
+        for key, entry in entries.items():
+            if not isinstance(entry, dict):
+                raise EvidenceError("invalid collected test entry")
+            category, language = entry.get("category"), entry.get("language")
+            if (
+                category not in CATEGORIES
+                or language not in LANGUAGES
+                or key != f"{category}-{language}"
+                or key in tests
+            ):
+                raise EvidenceError("invalid or duplicate collected category")
+            if (
+                entry.get("revision"),
+                entry.get("platform"),
+                entry.get("architecture"),
+            ) != (revision_value, host["os"], host["arch"]):
+                raise EvidenceError("collected evidence revision or platform differs")
+            if (
+                entry.get("outcome") != "passed"
+                or entry.get("requested_configuration") is not None
+            ):
+                raise EvidenceError("collected evidence is failing or focused")
+            if (
+                coverage_required
+                and language not in SCRIPT_LANGUAGES
+                and entry.get("coverage") is not True
+            ):
+                raise EvidenceError("collected evidence lacks required coverage")
+            selected = selections(policy, category, language)
+            configurations = entry.get("configurations")
+            if (
+                not selected
+                or not isinstance(configurations, list)
+                or not all(isinstance(item, dict) for item in configurations)
+                or [item.get("configuration") for item in configurations]
+                != [item.name for item in selected]
+            ):
+                raise EvidenceError("collected evidence configuration set differs")
+            for configuration, record in zip(selected, configurations, strict=True):
+                selection = configuration.selection
+                if (
+                    all_features
+                    and language == "rust"
+                    and configuration.name == "default"
+                ):
+                    selection = replace(selection, all_features=True)
+                expected = json.loads(json.dumps(asdict(selection)))
+                if (
+                    record.get("success") is not True
+                    or record.get("selection") != expected
+                ):
+                    raise EvidenceError(
+                        "collected evidence selection is incomplete or differs"
+                    )
+            name = f"tests-{key}.xml"
+            path = directory / name
+            if path.is_symlink() or not path.is_file():
+                raise EvidenceError("collected JUnit must be a regular file")
+            text = _read(path, "collected JUnit")
+            summary = summarize(text, category, bool(entry.get("coverage")))
+            if summary["failed"]:
+                raise EvidenceError("collected JUnit contains failing tests")
+            files[name] = text
+            tests[key] = entry
+        measured = {
+            entry["language"]
+            for entry in entries.values()
+            if entry.get("coverage") is True
+        }
+        if measured != set(owners):
+            raise EvidenceError("collected coverage owner is missing or unexpected")
+        for language, category in owners.items():
+            if (
+                language not in LANGUAGES
+                or language in coverage
+                or f"{category}-{language}" not in entries
+                or entries[f"{category}-{language}"].get("coverage") is not True
+            ):
+                raise EvidenceError("conflicting or invalid collected coverage owner")
+            name = f"coverage-{language}.xml"
+            path = directory / name
+            if path.is_symlink() or not path.is_file():
+                raise EvidenceError("collected coverage must be a regular file")
+            text = _read(path, "collected coverage")
+            validate_coverage(text)
+            files[name] = text
+            coverage[language] = category
+    with Lock(_state(root) / "evidence.lock", wait_seconds=30):
+        # Input Validation Completes Before Any Existing Evidence Is Replaced.
+        if any(_state(root).glob("testing-*.lock")):
+            raise EvidenceError("cannot collect evidence while a test runner is active")
+        for category in CATEGORIES:
+            for language in LANGUAGES:
+                _retract(root, f"tests-{category}-{language}.xml")
+        for language in LANGUAGES:
+            _retract(root, f"coverage-{language}.xml")
+        for name, text in files.items():
+            _publish(root, name, text)
+        _publish(
+            root,
+            "latest.json",
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "host": host,
+                    "tests": tests,
+                    "coverage": coverage,
+                },
+                indent=2,
+            ),
+        )
+        _publish_tests(root)
+
+
 def main(arguments: Sequence[str] | None = None) -> int:
     """Command line entry point; failures exit nonzero after publishing evidence."""
     parser = argparse.ArgumentParser(
@@ -1250,6 +1432,12 @@ def main(arguments: Sequence[str] | None = None) -> int:
         "bench", help="run every benchmark of one language"
     )
     benchmarks.add_argument("language", choices=("rust", "python"))
+    collected = commands.add_parser(
+        "collect", help="collect disjoint complete native evidence lanes"
+    )
+    collected.add_argument("directories", type=Path, nargs="+")
+    collected.add_argument("--all-features", action="store_true")
+    collected.add_argument("--coverage", action="store_true")
     options = parser.parse_args(arguments)
     root = (options.root or _project_root(Path.cwd())).resolve()
     try:
@@ -1270,6 +1458,13 @@ def main(arguments: Sequence[str] | None = None) -> int:
                 or options.no_default_features
                 or options.features
                 else None,
+            )
+        elif options.command == "collect":
+            collect(
+                root,
+                options.directories,
+                options.all_features,
+                options.coverage or os.environ.get(COVERAGE_VARIABLE) == "1",
             )
         else:
             bench(root, options.language)
@@ -1344,6 +1539,10 @@ def _rust_selection(table: dict[str, Any], host_only: bool) -> RustSelection:
         packages=_strings(table, "packages", ()),
         exclude=_strings(table, "exclude", ()),
         coverage_host_only=host_only,
+        native_profile=(
+            _native_profile(table.get("native_profile"), "testing.rust.native_profile")
+            or "release"
+        ),
     )
     if (selection.packages and selection.exclude) or any(
         not name.strip() for name in (*selection.packages, *selection.exclude)
@@ -1424,7 +1623,21 @@ def _name(table: dict[str, Any], names: set[str]) -> str:
     return name
 
 
-def _native_profile(profile: object) -> str | None:
+def _profiles(target: Path) -> dict[Path, tuple[int, int]]:
+    """Snapshot real nonempty native measurements under the coverage lease."""
+    profiles = {}
+    for path in target.glob("*.profraw"):
+        if path.is_symlink() or not path.is_file():
+            continue
+        measured = path.stat()
+        if measured.st_size:
+            profiles[path] = (measured.st_mtime_ns, measured.st_size)
+    return profiles
+
+
+def _native_profile(
+    profile: object, label: str = "testing.python.native_profile"
+) -> str | None:
     if profile is None:
         return None
     name = profile.lower() if isinstance(profile, str) else ""
@@ -1437,9 +1650,7 @@ def _native_profile(profile: object) -> str | None:
         or name.startswith("cargo")
         or _device(name)
     ):
-        raise EvidenceError(
-            "testing.python.native_profile must be a nonempty portable Cargo profile name"
-        )
+        raise EvidenceError(f"{label} must be a nonempty portable Cargo profile name")
     return profile
 
 
@@ -1820,6 +2031,13 @@ def _clear_tests(root: Path, policy: Policy, key: str, language: str) -> None:
         )
     }
     configured.add(key)
+    # A Concurrent Run Retains Its Evidence Even If Policy Changed Since It Started.
+    configured.update(
+        f"{category}-{candidate}"
+        for candidate in LANGUAGES
+        for category in CATEGORIES
+        if (root / STATE / f"testing-{category}-{candidate}.lock").exists()
+    )
     for candidate in LANGUAGES:
         for category in CATEGORIES:
             retained = f"{category}-{candidate}"
@@ -1833,7 +2051,7 @@ def _clear_tests(root: Path, policy: Policy, key: str, language: str) -> None:
     coverage = manifest.get("coverage", {})
     coverage = coverage if isinstance(coverage, dict) else {}
     for candidate, owner in list(coverage.items()):
-        if candidate == language or f"{owner}-{candidate}" not in configured:
+        if f"{owner}-{candidate}" == key or f"{owner}-{candidate}" not in configured:
             coverage.pop(candidate)
             _retract(root, f"coverage-{candidate}.xml")
     manifest["tests"] = tests
@@ -2053,13 +2271,28 @@ def _rust(
     mode: tuple[str, bool],
     record: Record,
 ) -> None:
+    from . import test_archive
+
     category, coverage = mode
+    archive = test_archive.consume(root, selection, coverage)
+    archived = (
+        ["--archive-file", str(archive), "--workspace-remap", str(root)]
+        if archive is not None
+        else []
+    )
+    report_archive = (
+        ["--nextest-archive-file", str(archive)] if archive is not None else []
+    )
     environment = dict(os.environ)
     if coverage:
         target = root / "target/validation/cargo/coverage"
         environment["CARGO_TARGET_DIR"] = str(target)
         environment["CARGO_LLVM_COV_TARGET_DIR"] = str(target)
         environment["CARGO_LLVM_COV_BUILD_DIR"] = str(target)
+        if archive is not None:
+            # Keep Archive Objects Available For LLVM Reports After Nextest Exits.
+            target.mkdir(parents=True, exist_ok=True)
+            archived.extend(["--extract-to", str(target), "--extract-overwrite"])
     metadata = {} if category == "unit" else _metadata(root)
     selected = narrowed(rust_filter(metadata, category, selection), selection)
     native = output / "nextest.toml"
@@ -2071,13 +2304,12 @@ def _rust(
     host_only = ["--coverage-host-only"] if selection.coverage_host_only else []
     runner = (
         ["cargo", "llvm-cov", "nextest", "--no-report", *host_only]
-        if coverage
+        if coverage and archive is None
         else ["cargo", "nextest", "run"]
     )
     units = ["--lib", "--bins"] if category == "unit" else []
     runner += [
-        *cargo_selection(selection),
-        *units,
+        *(archived or [*cargo_selection(selection), *units]),
         "--config-file",
         str(native),
         "--profile",
@@ -2093,8 +2325,7 @@ def _rust(
         "list",
         "--message-format",
         "json",
-        *cargo_selection(selection),
-        *units,
+        *(archived or [*cargo_selection(selection), *units]),
         "-E",
         selected,
     ]
@@ -2123,7 +2354,21 @@ def _rust(
         raise EvidenceError(
             "compiled test inventory failed: " + listed.stderr.decode(errors="replace")
         )
-    passed = _execute(runner, root, environment=environment)
+    profiles = _profiles(root / "target/validation/cargo/coverage") if coverage else {}
+    passed = _execute(
+        runner,
+        root,
+        environment=inventory_environment
+        if archive is not None and coverage
+        else environment,
+    )
+    if coverage and not any(
+        measurement != profiles.get(path)
+        for path, measurement in _profiles(
+            root / "target/validation/cargo/coverage"
+        ).items()
+    ):
+        raise EvidenceError("coverage tests produced no fresh profile measurements")
     # Reporting is attempted even when the test command fails.
     report_errors = []
     if coverage:
@@ -2134,6 +2379,7 @@ def _rust(
                     "cargo",
                     "llvm-cov",
                     "report",
+                    *report_archive,
                     "--cobertura",
                     "--ignore-filename-regex",
                     "(/tests/|/benches/|/fixtures/)",
@@ -2152,6 +2398,7 @@ def _rust(
                     "cargo",
                     "llvm-cov",
                     "report",
+                    *report_archive,
                     "--html",
                     "--output-dir",
                     str(output / "html"),
@@ -2195,7 +2442,7 @@ def _rust(
     )
     docs: object = True
     if doc_packages:
-        arguments = ["--locked"]
+        arguments = ["--locked", "--profile", selection.native_profile]
         for package in doc_packages:
             arguments += ["--package", package]
         if selection.all_features:

@@ -20,12 +20,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::watch;
 // Local Imports
 use super::{RecordManager, Registry};
-use crate::load::PluginScope;
 use crate::operations::{EncodedInvocation, OperationManager, PluginCallback};
+use crate::plugin::PluginScope;
 use crate::schema::Described;
 use crate::supervision::{Listener, ListenerDelivery};
 use crate::{
-    Application, CatalogCodec, Error, Message, Position, Record, RecordProjection, Recorded, Result,
+    Application, Error, Message, Result, state::CatalogCodec, state::Position, state::Record,
+    state::RecordProjection, state::Recorded,
 };
 use harmos_contract::listeners::{Context, Delivery, Source};
 
@@ -250,20 +251,25 @@ impl<A: Application> PluginListenerBindings<'_, A> {
             if source.as_ref() != id.as_str() || *revision != version {
                 continue;
             }
-            let expected = harmos_contract::listeners::Definition::new(
-                listener.id().clone(),
-                Source::Record {
-                    id: id.as_str().to_owned().into(),
-                    version,
-                    fields: std::borrow::Cow::Borrowed(R::FIELDS),
-                },
-                listener.callback().clone(),
+            let graph = crate::schema::graph::Schema::from_declaration(
+                R::DEFINITION,
+                &harmos_contract::config::SchemaSettings::default(),
             )
-            .map_err(|source| Error::OperationFailed {
-                operation: listener.callback().operation().id.to_string(),
-                source: Arc::new(source),
+            .map_err(|source| Error::RecordSchema {
+                source: source.into(),
             })?;
-            if expected != *listener {
+            let source_graph = listener.source().schema();
+            if !graph
+                .equivalent(
+                    graph.root,
+                    source_graph,
+                    source_graph.root,
+                    &harmos_contract::config::SchemaSettings::default(),
+                )
+                .map_err(|source| Error::RecordSchema {
+                    source: source.into(),
+                })?
+            {
                 return Err(Error::InvalidInput {
                     field: "record listener source",
                     reason: "native row schema differs from the frozen declaration",
@@ -398,7 +404,7 @@ where
 }
 
 async fn deliver<A: Application>(
-    journal: crate::StateManager<A>,
+    journal: crate::state::StateManager<A>,
     scope: &PluginScope,
     entries: Vec<Binding<A>>,
     delivery: &ListenerDelivery,

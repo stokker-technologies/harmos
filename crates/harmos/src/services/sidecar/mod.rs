@@ -16,6 +16,7 @@ mod physical;
 
 /* === Re-Exports === */
 pub(crate) use connection::Endpoint;
+pub(crate) use managed::RuntimeDriver;
 pub use managed::{Managed, ManagedError};
 
 /* === Imports === */
@@ -34,7 +35,7 @@ use super::{Fault, Resident, Service};
 use crate::operations::children::{CHILD_REQUESTS, Children};
 use crate::streams::{Demand, StreamManager};
 use crate::supervision::executor;
-use crate::{Application, ManagedPublication, Stream};
+use crate::{Application, streams::ManagedPublication, streams::Stream};
 use carrier::{Receiver as CarrierReceiver, Sender as CarrierSender};
 use harmos_contract::Message;
 use harmos_sidecar::{Attach, Attached, Frame, Registration, UNKNOWN};
@@ -50,8 +51,12 @@ const ARRIVALS: usize = 64;
 type Ingest<A> =
     Arc<dyn Fn(&Service<A>, &ManagedPublication) -> Result<(), String> + Send + Sync + 'static>;
 
-type Delivery =
-    Pin<Box<dyn Future<Output = Result<ManagedPublication, crate::StreamPublicationError>> + Send>>;
+type Delivery = Pin<
+    Box<
+        dyn Future<Output = Result<ManagedPublication, crate::streams::StreamPublicationError>>
+            + Send,
+    >,
+>;
 
 /* === Structs === */
 #[derive(Clone)]
@@ -83,7 +88,7 @@ pub struct Supervised<A: Application, S, H> {
     grace: Duration,
     calls: Arc<Calls>,
     registrations: tokio::sync::watch::Sender<Option<Vec<Registration>>>,
-    routing: Option<crate::load::Router>,
+    routing: Option<crate::plugin::Router>,
     manager_owned_stop: bool,
     cleanup: tokio::sync::Mutex<Option<Cleanup>>,
 }
@@ -106,7 +111,7 @@ struct Request {
 
 #[derive(Clone, Copy)]
 struct Settling<'a> {
-    admitted: &'a BTreeMap<String, Arc<crate::PublicationLease>>,
+    admitted: &'a BTreeMap<String, Arc<crate::streams::PublicationLease>>,
     demand_keys: &'a BTreeMap<String, tokio::sync::watch::Sender<usize>>,
     handshake: Duration,
     manager_owned_stop: bool,
@@ -127,9 +132,9 @@ struct RoutedTask {
 }
 
 struct Cleanup {
-    instance: Option<crate::load::PluginEndpoint>,
-    registration: Option<crate::StreamRegistration>,
-    admitted: BTreeMap<String, Arc<crate::PublicationLease>>,
+    instance: Option<crate::plugin::PluginEndpoint>,
+    registration: Option<crate::streams::StreamRegistration>,
+    admitted: BTreeMap<String, Arc<crate::streams::PublicationLease>>,
     session: Option<observers::Session>,
     readers: Vec<Reader>,
     failed_readers: Vec<Reader>,
@@ -163,7 +168,7 @@ struct Exchange<'a, A: Application, H> {
     observers: &'a [harmos_sidecar::inventory::observers::Declaration],
     operations: &'a [crate::operations::Definition],
     caller: Option<crate::operations::Caller>,
-    plugin: Option<crate::load::PluginScope>,
+    plugin: Option<crate::plugin::PluginScope>,
     returns: mpsc::Sender<(Frame, Arc<()>)>,
     returned: mpsc::Receiver<(Frame, Arc<()>)>,
     routed_tasks: &'a mut BTreeMap<u64, RoutedTask>,
@@ -191,7 +196,7 @@ pub enum SidecarError {
 }
 
 enum Arrival {
-    Publication(crate::StagedPublication),
+    Publication(crate::streams::StagedPublication),
     Frame(Frame),
     Binary(harmos_sidecar::transport::Received),
     Reply(Frame, Arc<()>),
@@ -205,7 +210,7 @@ enum Step {
     Arrived(Arrival),
     Requested(Request),
     Cancelled(u64),
-    Published(Result<ManagedPublication, crate::StreamPublicationError>),
+    Published(Result<ManagedPublication, crate::streams::StreamPublicationError>),
     Stopping,
 }
 
@@ -311,7 +316,7 @@ impl<A: Application, S: Attach, H> Supervised<A, S, H> {
         }
     }
 
-    pub fn routed(mut self, router: &crate::load::Router) -> Self {
+    pub fn routed(mut self, router: &crate::plugin::Router) -> Self {
         self.routing = Some(router.clone());
         self
     }
@@ -469,12 +474,16 @@ where
         context: Self::Context<'ctx>,
         request: &mut crate::operations::host::Publication,
         _endpoints: &mut Self::Endpoints,
-    ) -> crate::Result<()> {
-        let scope = context.caller_scope().ok_or(crate::Error::InvalidInput {
-            field: "native publication",
-            reason: "the original plugin caller is required",
-        })?;
-        self.endpoint.publish(scope, request, &context).await
+    ) -> crate::Result<crate::operations::Response<()>> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            let scope = context.caller_scope().ok_or(crate::Error::InvalidInput {
+                field: "native publication",
+                reason: "the original plugin caller is required",
+            })?;
+            self.endpoint.publish(scope, request, &context).await
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -604,7 +613,7 @@ where
             .get_mut()
             .as_mut()
             .expect("the attempt owns its cleanup");
-        let admitted: BTreeMap<String, Arc<crate::PublicationLease>> =
+        let admitted: BTreeMap<String, Arc<crate::streams::PublicationLease>> =
             executor::timeout(self.handshake, async {
                 let scope = plugin
                     .as_ref()
@@ -778,7 +787,7 @@ impl Calls {
         operations: &[crate::operations::Definition],
         contracts: &[crate::operations::Contract],
         ended: tokio::sync::watch::Receiver<bool>,
-        plugin: Option<(crate::load::PluginScope, Arc<observers::Remote>)>,
+        plugin: Option<(crate::plugin::PluginScope, Arc<observers::Remote>)>,
     ) -> Arc<Endpoint> {
         let scope = plugin.as_ref().map(|(scope, _)| scope.clone());
         let endpoint = Endpoint::new(live, arrivals, operations, contracts, ended, scope);
@@ -998,7 +1007,7 @@ where
             };
             match step {
                 Step::Stopping => return true,
-                Step::Published(Err(crate::StreamPublicationError::Revoked))
+                Step::Published(Err(crate::streams::StreamPublicationError::Revoked))
                     if plugin.is_closed() && !plugin.has_committed() =>
                 {
                     // Aborted Staging Discards Rows Without Ending SDK Cleanup.
@@ -1214,7 +1223,7 @@ where
                         .find(|scope| scope.context == call.context)
                         .cloned();
                     let admission = if self.routed_tasks.len() >= CHILD_REQUESTS {
-                        Err(crate::load::DispatchError::Busy.into_refusal())
+                        Err(crate::plugin::DispatchError::Busy.into_refusal())
                     } else if let Some(scope) = scope {
                         Ok(Some(scope))
                     } else {
@@ -1260,6 +1269,7 @@ where
                                                     &call.operation,
                                                     call.payload,
                                                     submitted,
+                                                    call.values,
                                                 )
                                             })
                                     } else {
@@ -1331,7 +1341,7 @@ where
                         );
                 }
                 let refusal = if self.routed_tasks.len() >= CHILD_REQUESTS {
-                    crate::load::DispatchError::Busy.into_refusal()
+                    crate::plugin::DispatchError::Busy.into_refusal()
                 } else if let Some(caller) = &self.caller {
                     match caller.submit_encoded(&method, params) {
                         Ok(invocation) => {

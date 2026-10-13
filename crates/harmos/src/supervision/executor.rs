@@ -40,33 +40,36 @@ where
     F: Future + Send + 'static,
     F::Output: Send + 'static,
 {
-    #[cfg(feature = "sim")]
+    #[cfg(feature = "simulation")]
     {
-        crate::sim::executor::task(future)
+        crate::simulation::executor::task(future)
     }
-    #[cfg(not(feature = "sim"))]
+
+    #[cfg(not(feature = "simulation"))]
     {
         tokio::spawn(future)
     }
 }
 
 pub(crate) fn now() -> tokio::time::Instant {
-    #[cfg(feature = "sim")]
+    #[cfg(feature = "simulation")]
     {
-        crate::sim::executor::now()
+        crate::simulation::executor::now()
     }
-    #[cfg(not(feature = "sim"))]
+
+    #[cfg(not(feature = "simulation"))]
     {
         tokio::time::Instant::now()
     }
 }
 
 pub(crate) async fn sleep(duration: Duration) {
-    #[cfg(feature = "sim")]
+    #[cfg(feature = "simulation")]
     {
-        crate::sim::executor::sleep(duration).await;
+        crate::simulation::executor::sleep(duration).await;
     }
-    #[cfg(not(feature = "sim"))]
+
+    #[cfg(not(feature = "simulation"))]
     {
         tokio::time::sleep(duration).await;
     }
@@ -76,11 +79,12 @@ pub(crate) async fn timeout<F>(duration: Duration, future: F) -> Result<F::Outpu
 where
     F: Future,
 {
-    #[cfg(feature = "sim")]
+    #[cfg(feature = "simulation")]
     {
-        crate::sim::executor::timeout(duration, future).await
+        crate::simulation::executor::timeout(duration, future).await
     }
-    #[cfg(not(feature = "sim"))]
+
+    #[cfg(not(feature = "simulation"))]
     {
         tokio::time::timeout(duration, future).await
     }

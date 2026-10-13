@@ -18,6 +18,7 @@ mod session;
 // Standard Library Imports
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 // Third Party Imports
 use sha2::{Digest, Sha256};
 // Local Imports
@@ -218,8 +219,7 @@ impl<C> StorageManager<C> {
                         FileState {
                             metadata: Arc::new(metadata),
                             staging,
-                            session: resumable
-                                .then(|| Session::new(self.inner.settings.file_session_timeout)),
+                            session: resumable.then(Session::new),
                             extra: None,
                             mutation: None,
                             progress: progress.clone(),
@@ -646,6 +646,7 @@ impl FileState {
             phase: FilePhase::Producing,
         }))
     }
+
     pub(super) fn bytes(&self) -> usize {
         self.base_bytes
             + self
@@ -657,6 +658,7 @@ impl FileState {
                 _ => 0,
             }
     }
+
     pub(super) fn pending_batch(&self) -> bool {
         self.command.is_some()
     }
@@ -782,16 +784,18 @@ impl State {
         }
     }
 
-    pub(super) fn file_completed(&mut self, action: FileAction, completed: FileCompleted) {
+    pub(super) fn file_completed(
+        &mut self,
+        action: FileAction,
+        completed: FileCompleted,
+        session_timeout: Duration,
+    ) {
         let id = action.id();
         let Some(file) = self.files.get_mut(&id) else {
             return;
         };
         file.in_flight = false;
         file.retrying = false;
-        if let Some(session) = &mut file.session {
-            session.touch();
-        }
         if let Some(session) = &file.session {
             match &completed {
                 FileCompleted::Finished(_) => {
@@ -804,6 +808,11 @@ impl State {
             }
         }
         let mutation = file.mutation.take();
+        if mutation.is_some()
+            && let Some(session) = &mut file.session
+        {
+            session.renew(session_timeout);
+        }
         let outcome = mutation.as_ref().map(|mutation| {
             use mutations::Kind;
             match (&completed, mutation.kind) {
@@ -857,7 +866,7 @@ impl State {
             FileCompleted::Resumed(generation) => {
                 file.command = None;
                 let session = file.session.as_mut().expect("owned producer resume");
-                session.resumed(generation);
+                session.resumed(generation, session_timeout, mutation.is_none());
                 progress.generation = generation;
                 tracing::info!(file = %file.staging.id, generation, offset = file.length, reason = "producer resumed", "file production resumed with durable fencing");
             }

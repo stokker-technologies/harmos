@@ -22,7 +22,9 @@ use std::sync::{Arc, Mutex};
 use support::{Bank, Bonus, Fact, Ledger, Noted, booted, deposit, ledger, scratch};
 // Local Imports
 use super::support;
-use harmos::{Entry, JournalConsumer, Origin, Position, Recorded};
+use harmos::{
+    state::Entry, state::Origin, state::Position, state::Recorded, storage::JournalConsumer,
+};
 use jsonl_adapter::Jsonl;
 
 /* === Constants === */

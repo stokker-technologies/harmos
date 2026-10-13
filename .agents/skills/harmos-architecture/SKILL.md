@@ -5,7 +5,7 @@ description: Design Harmos application boundaries, operation ownership, resource
 
 # Harmos Architecture
 
-Project contracts take precedence over generic architecture defaults. Read current source for exact signatures; do not load restricted docs implicitly.
+Project contracts take precedence over generic architecture defaults. Read current source for exact signatures.
 
 ## Application And Contract Layout
 
@@ -36,6 +36,9 @@ Project contracts take precedence over generic architecture defaults. Read curre
 - Name domain catalogs by their role: `Operations`, `Observers`, `Services`,
   `Listeners`, `Streams`, `Records`, `Transactions`, and `Lanes`. Generic typed
   catalogs may use the application's own domain vocabulary.
+- Declare each operation on its owning unit struct in a vertical leaf file.
+  Catalog entries reference the leaf type; never attach operation metadata to
+  enum entries.
 - Assemble each catalog once and compose it directly. Avoid parallel aliases and
   catalog-wrapper functions. Use `()` for an absent generic catalog.
 - Place managers inside their domains, such as `services/manager.rs` and
@@ -44,14 +47,50 @@ Project contracts take precedence over generic architecture defaults. Read curre
 - Keep listener delivery within stream/record ownership; no separate
   `ListenerManager`. Keep shared supervision private rather than duplicating
   service and observer lifecycle engines.
+- Standard embedded, native and guest hosts use `Runtime.plugin` and
+  `Handle.plugin`, the same `PluginHost` allocation. Registration is inert;
+  explicit initialization activates the dependency graph. Runtime shutdown
+  retires plugins while their operation/state infrastructure remains available.
+  Rust-only embedded catalogs use `register_embedded` / `reload_embedded`;
+  portable embedded catalogs use `register_embedded_wire` /
+  `reload_embedded_wire`, projecting original contracts from resource-bound
+  handlers through `AuthoredContracts`. Both use that same lifecycle/registry;
+  neither requires a separate SDK host or changes original caller authority.
+  Keep custom `PluginLifecycle` drivers behind the lower-level `PluginManager`
+  extension rather than requiring them in ordinary applications.
 - Plugin-specific public types carry the `Plugin` prefix. Manager operations use
   `harmos::Result` and `harmos::Error`, not separate per-manager error facades.
 
 
+## Features And Imports
+
+The host runtime, managed state, streams, and authoring are unconditional.
+Features select optional facilities: `plugin`, `plugin-sidecar`, `plugin-guest`,
+`grpc`, `signal`, `signal-fft`, `simulation`, and host-independent `packaging`. Sidecar and guest hosting imply
+`plugin`; FFT implies `signal`. TLS and Web behavior is configured through the
+single gRPC manager's settings.
+
+Portable contracts and plugin SDKs are deliberate exceptions to facade-only
+consumption: shared contracts depend on `harmos-contract`, guests on
+`harmos-guest`, and native plugins on `harmos-sidecar`. They must not import the
+host library merely to author declarations. `harmos-bundle` owns standalone
+bundle packaging; the facade re-exports it as `harmos::packaging::bundle`
+without execution backends, and as `harmos::plugin::bundle` for hosts.
+
+Each configurable crate owns externally supplied settings and their defaults in
+root `src/config.rs`. Internal state and live resources remain with their domains.
+Composition supplies each manager only its relevant settings; plugin activation
+configuration follows the same root ownership. Domain re-exports may name the
+same settings type, but never define a second copy or a second default.
+
+`harmos::prelude` is a bounded authoring convenience for application entry points,
+common operation/transaction traits, and macros. Domain modules retain canonical
+ownership. Do not expand the prelude into an automatic manager/type inventory.
+
 ## Simulation Surface
 
 Keep the shared builder at `harmos::Builder`. Supporting simulation names belong
-under `harmos::sim`; do not expose internal reboot factories or restore obsolete
+under `harmos::simulation`; do not expose internal reboot factories or restore obsolete
 runtime aliases in consumer APIs.
 
 For concrete plugin and transport authoring, use `harmos-authoring`.

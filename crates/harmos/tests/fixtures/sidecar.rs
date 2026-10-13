@@ -39,18 +39,19 @@ pub mod linked {
         const VERSION: u32 = 1;
     }
     impl harmos::operations::lifecycle::Policy for LinkedGuest {
-        const INITIALIZATION_POLICY: harmos::OperationPolicy = harmos::OperationPolicy {
-            timeout: std::time::Duration::from_secs(2),
-            attempt_timeout: std::time::Duration::from_secs(2),
-            retries: harmos::RetryPolicy::Never,
-        };
-        const SHUTDOWN_POLICY: harmos::OperationPolicy = Self::INITIALIZATION_POLICY;
+        const INITIALIZATION_POLICY: harmos::operations::OperationPolicy =
+            harmos::operations::OperationPolicy {
+                timeout: std::time::Duration::from_secs(2),
+                attempt_timeout: std::time::Duration::from_secs(2),
+                retries: harmos::operations::RetryPolicy::Never,
+            };
+        const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
     }
     #[harmos::plugin(id = "meter", provides = Operations, requires = (), streams(Foreign))]
     impl harmos::Plugin for LinkedGuest {
         type Config = String;
         type Error = std::convert::Infallible;
-        type Context = harmos::guest::Context;
+        type Context = harmos::plugin::guest::Context;
         type Resources = ();
         fn prepare(_: String) -> Result<Self, Self::Error> {
             Ok(Self {
@@ -91,7 +92,7 @@ use std::time::Duration;
 use harmos::operations::{
     Operation, OperationDeclaration, OperationPolicy, RetryPolicy, WireTable,
 };
-use harmos::sidecar::{Refusal, Supervisor};
+use harmos::plugin::sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
 
@@ -262,8 +263,10 @@ impl Operation for Asking {
         _: Self::Context<'ctx>,
         _request: &mut Ask,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<GetAskResponse, Refusal> {
-        std::future::pending().await
+    ) -> Result<harmos::operations::Response<GetAskResponse>, Refusal> {
+        let result: ::core::result::Result<GetAskResponse, Self::Error> =
+            async move { std::future::pending().await }.await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -283,23 +286,27 @@ impl Operation for Echoing {
         host: Self::Context<'ctx>,
         request: &mut String,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<String, Refusal> {
-        if request == "publish-foreign" {
-            // Reach The Host With A Selected Core Leaf And An Ungranted Stream.
-            host.operation::<harmos::operations::host::Publish>(
-                harmos::operations::host::Publication {
-                    stream: <linked::Foreign as harmos::StreamSpec>::ID.to_owned(),
-                    schema: <linked::Foreign as harmos::StreamSpec>::VERSION,
-                    sequence: Some(1),
-                    published_unix_micros: None,
-                    context: None,
-                    payload: harmos::Message::encode_to_vec(&linked::Foreign { value: 1 }),
-                },
-            )
-            .await
-            .map_err(Refusal::of)?;
+    ) -> Result<harmos::operations::Response<String>, Refusal> {
+        let result: ::core::result::Result<String, Self::Error> = async move {
+            if request == "publish-foreign" {
+                // Reach The Host With A Selected Core Leaf And An Ungranted Stream.
+                host.operation::<harmos::operations::host::Publish>(
+                    harmos::operations::host::Publication {
+                        stream: <linked::Foreign as harmos::StreamSpec>::ID.to_owned(),
+                        schema: <linked::Foreign as harmos::StreamSpec>::VERSION,
+                        sequence: Some(1),
+                        published_unix_micros: None,
+                        context: None,
+                        payload: harmos::Message::encode_to_vec(&linked::Foreign { value: 1 }),
+                    },
+                )
+                .await
+                .map_err(Refusal::of)?;
+            }
+            Ok(request.clone())
         }
-        Ok(request.clone())
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -311,10 +318,12 @@ fn main() {
     // executable reads, and `#[used]` reaches the compiler rather than the
     // linker: an MSVC link dropped all three of its fragments, leaving the
     // executable inspectable as a sidecar and not as the guest it also
-    // declares. `harmos::guest::export_plugin!` roots them from a component's first
-    // export the same way `harmos::sidecar::run_plugin` roots the native ones; a
+    // declares. `harmos::plugin::guest::export_plugin!` roots them from a component's first
+    // export the same way `harmos::plugin::sidecar::run_plugin` roots the native ones; a
     // native binary reaches no such export, so it states the reference here.
-    std::hint::black_box(<linked::LinkedGuest as harmos_contract::plugin::Declared>::markers());
+    std::hint::black_box(
+        <linked::LinkedGuest as harmos_contract::plugin::Declared>::markers().unwrap(),
+    );
 
     if std::env::var("HARMOS_TEST_SIDECAR").as_deref() == Ok("silent") {
         std::thread::sleep(Duration::from_secs(30));
@@ -326,7 +335,7 @@ fn main() {
         .build()
         .expect("the fixture runtime builds");
     runtime
-        .block_on(harmos::sidecar::run_plugin::<Stubborn>(
+        .block_on(harmos::plugin::sidecar::run_plugin::<Stubborn>(
             NonZeroUsize::new(8).unwrap(),
         ))
         .expect("the fixture serves its gRPC boundary");

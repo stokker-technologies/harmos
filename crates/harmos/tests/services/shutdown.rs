@@ -25,7 +25,10 @@ use super::{
     support::{Bank, Noted},
 };
 use harmos::operations::{Context, Operation, OperationPolicy, RetryPolicy};
-use harmos::{Error, Fault, Position, Refusal, ServiceExit, ServicePolicy, ServiceStatus};
+use harmos::{
+    Error, Refusal, services::Fault, services::ServiceExit, services::ServicePolicy,
+    services::ServiceStatus, state::Position,
+};
 
 /* === Constants === */
 
@@ -63,9 +66,7 @@ struct PhysicalStop(Arc<Cleanup>);
 struct StopWait(Arc<Cleanup>);
 
 /* === Enums === */
-#[harmos::catalog]
-enum Operations {
-    #[operation(
+#[harmos::operation(
         request = bool,
         response = (),
         id = "shutdown.ordered",
@@ -75,7 +76,11 @@ enum Operations {
             retries: RetryPolicy::Never,
         },
     )]
-    OrderedContract,
+struct OrderedContract;
+
+#[harmos::catalog]
+enum Operations {
+    OrderedContract(OrderedContract),
 }
 
 /* === Traits === */
@@ -100,16 +105,20 @@ impl Operation for Ordered {
         _context: Self::Context<'ctx>,
         running: &mut bool,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Self::Error> {
-        self.running = *running;
-        if self.running {
-            self.sequence.events.lock().unwrap().push("job-start");
-            self.sequence.started.notify_one();
-            std::future::pending::<()>().await;
-        } else {
-            self.sequence.events.lock().unwrap().push("queued");
+    ) -> Result<harmos::operations::Response<()>, Self::Error> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            self.running = *running;
+            if self.running {
+                self.sequence.events.lock().unwrap().push("job-start");
+                self.sequence.started.notify_one();
+                std::future::pending::<()>().await;
+            } else {
+                self.sequence.events.lock().unwrap().push("queued");
+            }
+            Ok(())
         }
-        Ok(())
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     async fn finalize(&mut self) -> Result<(), Self::Error> {
@@ -125,7 +134,7 @@ impl harmos::services::Resident<super::Bank> for Owned {
 
     async fn attempt(
         &mut self,
-        mut context: harmos::Service<super::Bank>,
+        mut context: harmos::services::Service<super::Bank>,
     ) -> Result<(), Fault<Self::Error>> {
         context.ready();
         self.0.running.notify_one();
@@ -149,7 +158,7 @@ impl harmos::services::Resident<Bank> for PhysicalStop {
 
     async fn attempt(
         &mut self,
-        mut context: harmos::Service<Bank>,
+        mut context: harmos::services::Service<Bank>,
     ) -> Result<(), Fault<Self::Error>> {
         context.ready();
         self.0.running.notify_one();
@@ -210,13 +219,16 @@ pub(super) fn contract_scenario() {
                     struct Blocked;
                     impl harmos::observers::ObserverBackend for Blocked {
                         type Resources = Cleanup;
-                        fn definition(&self) -> harmos::observers::ObserverDefinition {
-                            harmos::observers::ObserverDefinition {
+                        fn definition(
+                            &self,
+                        ) -> harmos::Result<harmos::observers::ObserverDefinition>
+                        {
+                            Ok(harmos::observers::ObserverDefinition {
                                 id: "blocked-observer".into(),
                                 interval: Duration::from_secs(10),
                                 streams: vec![],
                                 demand_keys: vec![],
-                            }
+                            })
                         }
                         async fn run(
                             &self,
@@ -505,7 +517,7 @@ pub(super) fn contract_scenario() {
                             {
                                 let entered = entered.clone();
                                 let cleaned = cleaned.clone();
-                                move |mut context: harmos::Service<super::Bank>| {
+                                move |mut context: harmos::services::Service<super::Bank>| {
                                     let entered = entered.clone();
                                     let cleaned = cleaned.clone();
                                     async move {
@@ -568,7 +580,7 @@ pub(super) fn contract_scenario() {
                                     let entered = entered.clone();
                                     let stopping = stopping.clone();
                                     let dropped = dropped.clone();
-                                    move |mut context: harmos::Service<super::Bank>| {
+                                    move |mut context: harmos::services::Service<super::Bank>| {
                                         let entered = entered.clone();
                                         let stopping = stopping.clone();
                                         let dropped = dropped.clone();
@@ -637,18 +649,21 @@ pub(super) fn contract_scenario() {
                     });
                     let runtime = assembly()
                         .operation::<Ordered>("app", Lanes::Serial, sequence)
-                        .service("resident", move |mut context: harmos::Service<Bank>| {
-                            let events = Arc::clone(&service_events);
-                            async move {
-                                context.ready();
-                                assert!(context.rest(Duration::from_secs(60)).await);
-                                events
-                                    .lock()
-                                    .expect("event lock is healthy")
-                                    .push("service");
-                                Ok::<(), Fault<&'static str>>(())
-                            }
-                        })
+                        .service(
+                            "resident",
+                            move |mut context: harmos::services::Service<Bank>| {
+                                let events = Arc::clone(&service_events);
+                                async move {
+                                    context.ready();
+                                    assert!(context.rest(Duration::from_secs(60)).await);
+                                    events
+                                        .lock()
+                                        .expect("event lock is healthy")
+                                        .push("service");
+                                    Ok::<(), Fault<&'static str>>(())
+                                }
+                            },
+                        )
                         .runtime()
                         .await
                         .expect("the work declarations are valid");

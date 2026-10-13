@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+mod discovery;
 
 /* === Re-Exports === */
 
@@ -28,12 +29,16 @@ use super::caller::{Identity, Origin, Source};
 use super::{Context, OperationGeneration, OperationInstance, OperationInstanceId};
 
 use super::instances::Instances;
-#[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
-use crate::load::PluginScope;
 use crate::operations::{CacheKey, Definition, OperationDeclaration};
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
+use crate::plugin::PluginScope;
 use crate::supervision::executor;
 use crate::supervision::instance::Instance;
-use crate::{Error, Identifier, Lane, Position, Result, Scope};
+use crate::{Error, Identifier, Result, operations::Lane, operations::Scope, state::Position};
 
 /* === Constants === */
 const DEFAULT_CACHE_CAPACITY: usize = 64;
@@ -41,7 +46,7 @@ const DEFAULT_CACHE_CAPACITY: usize = 64;
 /* === Macros === */
 
 /* === Type Aliases === */
-type Response = Arc<dyn Any + Send + Sync>;
+type CachedResponse = harmos_contract::__private::ErasedResponse;
 
 /* === Structs === */
 #[derive(Clone)]
@@ -58,7 +63,11 @@ pub(crate) struct Registry {
     state: Mutex<State>,
 }
 
-#[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
 pub(crate) struct GenerationCommit<'a> {
     _state: std::sync::MutexGuard<'a, State>,
 }
@@ -66,7 +75,11 @@ pub(crate) struct GenerationCommit<'a> {
 struct State {
     closing: bool,
     entries: BTreeMap<String, BTreeMap<String, Arc<Entry>>>,
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     staging: Vec<std::sync::Weak<PluginScope>>,
     #[cfg(feature = "grpc")]
     grpc: BTreeMap<String, Weak<Entry>>,
@@ -89,16 +102,24 @@ pub(super) struct Entry {
     retirement: AtomicU8,
     pending: Mutex<BTreeMap<OperationInstanceId, Arc<Instance>>>,
     binding: Arc<dyn Any + Send + Sync>,
-    #[cfg(feature = "sidecar-host")]
+    #[cfg(feature = "plugin-sidecar")]
     pub(super) native_binding: Option<Arc<dyn Any + Send + Sync>>,
     pub(super) wire: Option<super::wire::Dispatch>,
-    #[cfg(feature = "sidecar-host")]
+    #[cfg(feature = "plugin-sidecar")]
     pub(super) native: Option<Arc<super::native::Binding>>,
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     plugin: Option<PluginScope>,
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     pub(super) sdk: Option<harmos_contract::operations::lifecycle::Action>,
-    #[cfg(feature = "sidecar-host")]
+    #[cfg(feature = "plugin-sidecar")]
     pub(super) observer_stop: bool,
 }
 
@@ -113,7 +134,7 @@ struct Cached {
     target: Weak<Entry>,
     key: CacheKey,
     identity: Identity,
-    response: Response,
+    response: CachedResponse,
 }
 
 /* === Enums === */
@@ -143,9 +164,9 @@ impl OperationManager {
                     closing: false,
                     entries: BTreeMap::new(),
                     #[cfg(any(
-                        feature = "load",
-                        feature = "guest-host",
-                        feature = "sidecar-host"
+                        feature = "plugin",
+                        feature = "plugin-guest",
+                        feature = "plugin-sidecar"
                     ))]
                     staging: Vec::new(),
                     #[cfg(feature = "grpc")]
@@ -164,6 +185,71 @@ impl OperationManager {
         middleware: Arc<dyn super::middleware::Middleware>,
     ) -> Result<()> {
         self.registry.middleware.register(middleware)
+    }
+
+    pub fn register_authorizer(
+        &self,
+        authorizer: Arc<dyn super::authorization::Authorizer>,
+    ) -> Result<()> {
+        self.registry.middleware.register_authorizer(authorizer)
+    }
+
+    #[cfg(feature = "grpc")]
+    pub(crate) fn submit_external_charged<O: OperationDeclaration, P: Send + 'static>(
+        &self,
+        request: super::StreamItem<O::Request>,
+        endpoints: P,
+    ) -> Result<OperationInstance<O>> {
+        self.admit::<O, P>(
+            (super::binding::Request::charged(request)?, endpoints),
+            None,
+            &[],
+            &Source::Host.external()?,
+            None,
+        )
+    }
+
+    pub(super) fn required_external(
+        &self,
+        entry: &Entry,
+        origin: &Origin,
+    ) -> Result<Option<harmos_contract::inventory::contracts::Required>> {
+        #[cfg(feature = "grpc")]
+        if matches!(origin.identity, super::caller::Identity::External(_)) {
+            let Some(authorizer) = self.registry.middleware.authorizer() else {
+                // Preserve Existing Explicit Anonymous Routes When No Policy Is Configured.
+                return Ok(None);
+            };
+            let denied = || Error::OperationUnauthorized {
+                caller: "external".to_owned(),
+                owner: entry.owner.to_string(),
+                operation: entry.id().to_owned(),
+            };
+            let contract = entry.contract.as_ref().ok_or_else(denied)?;
+            let selected = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                authorizer.required(
+                    self.call_context(),
+                    super::authorization::Provider {
+                        owner: &entry.owner,
+                        generation: entry.generation,
+                        definition: &entry.definition,
+                        contract,
+                    },
+                )
+            }))
+            .map_err(|_| Error::InvalidInput {
+                field: "operation authorizer",
+                reason: "authorization callback panicked",
+            })??
+            .ok_or_else(denied)?;
+            if !contract.compatible(&selected.contract) {
+                return Err(denied());
+            }
+            return Ok(Some(selected));
+        }
+        #[cfg(not(feature = "grpc"))]
+        let _ = (entry, origin);
+        Ok(None)
     }
 
     pub fn with_context(&self, context: super::CallContext) -> Self {
@@ -289,7 +375,11 @@ impl OperationManager {
         resources: Arc<T::Resources>,
         definition: Definition,
         wire: Option<super::wire::Dispatch>,
-        #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+        #[cfg(any(
+            feature = "plugin",
+            feature = "plugin-guest",
+            feature = "plugin-sidecar"
+        ))]
         plugin: Option<PluginScope>,
     ) -> Result<Arc<Entry>>
     where
@@ -311,7 +401,11 @@ impl OperationManager {
             binding,
             definition,
             wire,
-            #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+            #[cfg(any(
+                feature = "plugin",
+                feature = "plugin-guest",
+                feature = "plugin-sidecar"
+            ))]
             plugin,
         )
     }
@@ -323,7 +417,11 @@ impl OperationManager {
         binding: Typed<O, P>,
         definition: Definition,
         wire: Option<super::wire::Dispatch>,
-        #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+        #[cfg(any(
+            feature = "plugin",
+            feature = "plugin-guest",
+            feature = "plugin-sidecar"
+        ))]
         plugin: Option<PluginScope>,
     ) -> Result<Arc<Entry>> {
         let owner =
@@ -351,22 +449,37 @@ impl OperationManager {
             retirement: AtomicU8::new(Retirement::Retained as u8),
             pending: Mutex::new(BTreeMap::new()),
             binding: Arc::new(binding),
-            #[cfg(feature = "sidecar-host")]
+            #[cfg(feature = "plugin-sidecar")]
             native_binding: None,
             wire,
-            #[cfg(feature = "sidecar-host")]
+            #[cfg(feature = "plugin-sidecar")]
             native: None,
-            #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+            #[cfg(any(
+                feature = "plugin",
+                feature = "plugin-guest",
+                feature = "plugin-sidecar"
+            ))]
             plugin,
-            #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+            #[cfg(any(
+                feature = "plugin",
+                feature = "plugin-guest",
+                feature = "plugin-sidecar"
+            ))]
             sdk: None,
-            #[cfg(feature = "sidecar-host")]
+            #[cfg(feature = "plugin-sidecar")]
             observer_stop: false,
         }))
     }
 
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
-    pub fn validate_requirements(&self, candidate: &crate::load::PluginDefinitions) -> Result<()> {
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
+    pub fn validate_requirements(
+        &self,
+        candidate: &crate::plugin::PluginDefinitions,
+    ) -> Result<()> {
         let state = self
             .registry
             .state
@@ -428,7 +541,11 @@ impl OperationManager {
                     name: entry.id().to_owned(),
                 })
             } else {
-                #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+                #[cfg(any(
+                    feature = "plugin",
+                    feature = "plugin-guest",
+                    feature = "plugin-sidecar"
+                ))]
                 let gate = entries
                     .iter()
                     .find_map(|entry| entry.plugin.as_ref())
@@ -447,9 +564,9 @@ impl OperationManager {
                         }
                     });
                 #[cfg(not(any(
-                    feature = "load",
-                    feature = "guest-host",
-                    feature = "sidecar-host"
+                    feature = "plugin",
+                    feature = "plugin-guest",
+                    feature = "plugin-sidecar"
                 )))]
                 let gate: Result<()> = Ok(());
                 #[cfg(feature = "grpc")]
@@ -641,7 +758,7 @@ impl OperationManager {
         endpoints: P,
     ) -> Result<OperationInstance<O>> {
         self.admit::<O, P>(
-            (super::binding::Request::charged(request), endpoints),
+            (super::binding::Request::charged(request)?, endpoints),
             None,
             &[],
             &Source::Host,
@@ -660,7 +777,7 @@ impl OperationManager {
     pub async fn call<O: OperationDeclaration>(
         &self,
         request: O::Request,
-    ) -> Result<Arc<O::Response>> {
+    ) -> Result<crate::operations::Response<O::Response>> {
         self.submit::<O>(request)?.await
     }
 
@@ -676,11 +793,15 @@ impl OperationManager {
         &self,
         request: O::Request,
         cause: Position,
-    ) -> Result<Arc<O::Response>> {
+    ) -> Result<crate::operations::Response<O::Response>> {
         self.submit_caused::<O>(request, cause)?.await
     }
 
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     pub(super) fn submit_as<O: OperationDeclaration, P: Send + 'static>(
         &self,
         input: (super::binding::Request<O::Request>, P),
@@ -767,9 +888,23 @@ impl OperationManager {
         }
         entry.available_to(&origin)?;
         entry.authorize(&origin)?;
-        entry.authorize_grant(O::grant(&request.value), &origin)?;
+        let grant = O::grant(&request.value);
+        entry.authorize_grant(grant.clone(), &origin)?;
+        let required = self.required_external(&entry, &origin)?;
+        if let Some(required) = required.as_ref()
+            && grant.as_ref().is_some_and(|grant| !required.grants(grant))
+        {
+            return Err(Error::OperationUnauthorized {
+                caller: "external".to_owned(),
+                owner: entry.owner.to_string(),
+                operation: entry.id().to_owned(),
+            });
+        }
+        // Authoring Callbacks Run Outside Registry/Pending Locks. Recheck The Provider.
+        source.check()?;
+        entry.available_to(&origin)?;
         let binding = Arc::clone(&entry.binding).downcast::<Typed<O, P>>();
-        #[cfg(feature = "sidecar-host")]
+        #[cfg(feature = "plugin-sidecar")]
         let binding = binding.or_else(|original| {
             entry
                 .native_binding
@@ -790,7 +925,11 @@ impl OperationManager {
             .expect("operation settlement lock is healthy");
         source.check()?;
         entry.available_to(&origin)?;
-        #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+        #[cfg(any(
+            feature = "plugin",
+            feature = "plugin-guest",
+            feature = "plugin-sidecar"
+        ))]
         if entry.sdk.is_some() && pending.values().any(|control| !control.is_settled()) {
             return Err(Error::ResourceExhausted {
                 resource: "SDK physical settlement",
@@ -890,7 +1029,11 @@ impl OperationManager {
     }
 
     pub(super) fn entry_as(&self, id: &str, _origin: &Origin) -> Result<Arc<Entry>> {
-        #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+        #[cfg(any(
+            feature = "plugin",
+            feature = "plugin-guest",
+            feature = "plugin-sidecar"
+        ))]
         if let Some(scope) = &_origin.scope {
             if let Some(required) = Identifier::new(id)
                 .ok()
@@ -955,7 +1098,11 @@ impl OperationManager {
         }
         let entry = Some(state.select(id, owner)?)
             .filter(|entry| {
-                #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+                #[cfg(any(
+                    feature = "plugin",
+                    feature = "plugin-guest",
+                    feature = "plugin-sidecar"
+                ))]
                 if entry.sdk.is_some() {
                     return false;
                 }
@@ -986,7 +1133,11 @@ impl OperationManager {
                 .expect("operation registry lock is healthy");
             Arc::clone(state.select(id, owner)?)
         };
-        #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+        #[cfg(any(
+            feature = "plugin",
+            feature = "plugin-guest",
+            feature = "plugin-sidecar"
+        ))]
         if let Some(scope) = &entry.plugin {
             // Notify the staging gate before revocation, outside registry guards.
             scope.unbind_operations();
@@ -1039,7 +1190,11 @@ impl OperationManager {
         Ok(())
     }
 
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     pub(super) fn fence(&self, entries: &[Arc<Entry>], abandoned: bool) {
         let retired = {
             let mut state = self
@@ -1075,7 +1230,11 @@ impl OperationManager {
         drop(retired);
     }
 
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     pub(super) fn remove_settled(&self, entries: &[Arc<Entry>]) {
         let mut state = self
             .registry
@@ -1094,14 +1253,22 @@ impl OperationManager {
         // The caller owns every entry until after this guard is released.
     }
 
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     pub(super) async fn settle_entries(&self, entries: &[Arc<Entry>]) -> Result<()> {
         self.settle_owned_entries(entries).await?;
         self.remove_settled(entries);
         Ok(())
     }
 
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     pub(super) async fn settle_owned_entries(&self, entries: &[Arc<Entry>]) -> Result<()> {
         for entry in entries {
             settle(entry).await?;
@@ -1116,6 +1283,7 @@ impl OperationManager {
             .expect("operation registry lock is healthy")
             .cache_capacity
     }
+
     pub fn set_cache_capacity(&self, capacity: usize) {
         let retired = {
             let mut state = self
@@ -1179,7 +1347,7 @@ impl OperationManager {
         entry: &Arc<Entry>,
         key: &CacheKey,
         identity: &Identity,
-    ) -> Option<Arc<O::Response>> {
+    ) -> Option<crate::operations::Response<O::Response>> {
         let mut state = self
             .registry
             .state
@@ -1196,12 +1364,16 @@ impl OperationManager {
                 })
         })?;
         let cached = state.cache.remove(index)?;
-        let response = Arc::clone(&cached.response).downcast::<O::Response>().ok();
+        let response = cached.response.clone().restore::<O::Response>();
         state.cache.push_back(cached);
         response
     }
 
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     pub(super) fn track_staging(&self, scope: &Arc<PluginScope>) -> Result<()> {
         let mut state = self
             .registry
@@ -1219,7 +1391,11 @@ impl OperationManager {
         Ok(())
     }
 
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     pub(super) fn validate_staging(&self, entries: &[Arc<Entry>]) -> Result<()> {
         let state = self
             .registry
@@ -1261,7 +1437,11 @@ impl OperationManager {
         }
         state.closing = true;
         let retired = std::mem::take(&mut state.cache);
-        #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+        #[cfg(any(
+            feature = "plugin",
+            feature = "plugin-guest",
+            feature = "plugin-sidecar"
+        ))]
         let staging: Vec<_> = state
             .staging
             .iter()
@@ -1285,9 +1465,17 @@ impl OperationManager {
                     .store(Retirement::Runtime as u8, Ordering::Release);
             }
             entry.active.store(false, Ordering::Release);
-            #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+            #[cfg(any(
+                feature = "plugin",
+                feature = "plugin-guest",
+                feature = "plugin-sidecar"
+            ))]
             let ordinary = entry.sdk.is_none();
-            #[cfg(not(any(feature = "load", feature = "guest-host", feature = "sidecar-host")))]
+            #[cfg(not(any(
+                feature = "plugin",
+                feature = "plugin-guest",
+                feature = "plugin-sidecar"
+            )))]
             let ordinary = true;
             if _retain_shutdown && ordinary {
                 for control in _pending.values() {
@@ -1297,7 +1485,11 @@ impl OperationManager {
         }
         drop(state);
         drop(retired);
-        #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+        #[cfg(any(
+            feature = "plugin",
+            feature = "plugin-guest",
+            feature = "plugin-sidecar"
+        ))]
         for scope in staging {
             scope.close_staging();
         }
@@ -1343,7 +1535,11 @@ impl Entry {
     }
 
     fn lifecycle_control(&self) -> bool {
-        #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+        #[cfg(any(
+            feature = "plugin",
+            feature = "plugin-guest",
+            feature = "plugin-sidecar"
+        ))]
         if self.sdk.is_some() {
             return true;
         }
@@ -1351,11 +1547,15 @@ impl Entry {
     }
 
     pub(super) fn retirement_control(&self) -> bool {
-        #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+        #[cfg(any(
+            feature = "plugin",
+            feature = "plugin-guest",
+            feature = "plugin-sidecar"
+        ))]
         if self.sdk == Some(harmos_contract::operations::lifecycle::Action::Shutdown) {
             return true;
         }
-        #[cfg(feature = "sidecar-host")]
+        #[cfg(feature = "plugin-sidecar")]
         if self.observer_stop
             && self
                 .plugin
@@ -1368,7 +1568,11 @@ impl Entry {
     }
 
     pub(super) fn available_to(&self, origin: &Origin) -> Result<()> {
-        #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+        #[cfg(any(
+            feature = "plugin",
+            feature = "plugin-guest",
+            feature = "plugin-sidecar"
+        ))]
         if origin.has_lifecycle_loan() {
             return self.available_for_lifecycle();
         }
@@ -1376,7 +1580,11 @@ impl Entry {
         self.available()
     }
 
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     pub(super) fn admitted_shutdown(&self, control: &Arc<Instance>) -> bool {
         self.sdk == Some(harmos_contract::operations::lifecycle::Action::Shutdown)
             && self.active.load(Ordering::Acquire)
@@ -1389,7 +1597,11 @@ impl Entry {
                 .any(|original| Arc::ptr_eq(original, control))
     }
 
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     pub(super) fn available_for_lifecycle(&self) -> Result<()> {
         if self.sdk.is_some() || self.active.load(Ordering::Acquire) {
             return self.available();
@@ -1412,20 +1624,24 @@ impl Entry {
     }
 
     pub(super) fn available(&self) -> Result<()> {
-        #[cfg(feature = "sidecar-host")]
+        #[cfg(feature = "plugin-sidecar")]
         let observer_cleanup = self.observer_stop
             && self
                 .plugin
                 .as_ref()
                 .is_some_and(|scope| scope.has_committed());
-        #[cfg(not(feature = "sidecar-host"))]
+        #[cfg(not(feature = "plugin-sidecar"))]
         let observer_cleanup = false;
         if !self.active.load(Ordering::Acquire) && !observer_cleanup {
             return Err(Error::Closing {
                 domain: "operation",
             });
         }
-        #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+        #[cfg(any(
+            feature = "plugin",
+            feature = "plugin-guest",
+            feature = "plugin-sidecar"
+        ))]
         if let Some(scope) = &self.plugin {
             if let Some(action) = self.sdk {
                 use harmos_contract::operations::lifecycle::Action;
@@ -1454,7 +1670,11 @@ impl Entry {
         Ok(())
     }
 
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     pub(super) fn plugin(&self) -> Option<&PluginScope> {
         self.plugin.as_ref()
     }
@@ -1464,7 +1684,11 @@ impl Entry {
         _grant: Option<harmos_contract::plugin::Grant>,
         _origin: &Origin,
     ) -> Result<()> {
-        #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+        #[cfg(any(
+            feature = "plugin",
+            feature = "plugin-guest",
+            feature = "plugin-sidecar"
+        ))]
         if let Some(caller) = &_origin.scope
             && caller.owner() != self.owner.as_str()
             && !grant_allowed(caller.requirement(&self.definition.id), _grant.as_ref())
@@ -1479,7 +1703,11 @@ impl Entry {
     }
 
     pub(super) fn authorize(&self, _origin: &Origin) -> Result<()> {
-        #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+        #[cfg(any(
+            feature = "plugin",
+            feature = "plugin-guest",
+            feature = "plugin-sidecar"
+        ))]
         if let Some(caller) = &_origin.scope {
             if self.sdk.is_some() {
                 return Err(Error::OperationUnauthorized {
@@ -1534,7 +1762,11 @@ impl Entry {
 }
 
 impl Registry {
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     pub(crate) fn generation_commit(&self) -> Result<GenerationCommit<'_>> {
         let state = self
             .state
@@ -1553,7 +1785,7 @@ impl Registry {
         entry: &Arc<Entry>,
         key: CacheKey,
         identity: Identity,
-        response: Arc<O::Response>,
+        response: crate::operations::Response<O::Response>,
     ) {
         let mut state = self
             .state
@@ -1582,7 +1814,7 @@ impl Registry {
             target: Arc::downgrade(entry),
             key,
             identity,
-            response,
+            response: response.into_erased(),
         });
         drop(state);
         drop(retired);
@@ -1594,7 +1826,11 @@ impl State {
         self.entries.get(id)?.get(owner)
     }
 
-    #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
     fn host_provider(
         &self,
         id: &str,
@@ -1678,20 +1914,32 @@ impl State {
     }
 
     fn definitions(&self) -> Vec<Definition> {
-        #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+        #[cfg(any(
+            feature = "plugin",
+            feature = "plugin-guest",
+            feature = "plugin-sidecar"
+        ))]
         let mut ready = BTreeMap::new();
         self.entries
             .values()
             .flat_map(|providers| providers.values())
             .filter(|entry| {
-                #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+                #[cfg(any(
+                    feature = "plugin",
+                    feature = "plugin-guest",
+                    feature = "plugin-sidecar"
+                ))]
                 if entry.sdk.is_some() {
                     return false;
                 }
                 if !entry.active.load(Ordering::Acquire) {
                     return false;
                 }
-                #[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+                #[cfg(any(
+                    feature = "plugin",
+                    feature = "plugin-guest",
+                    feature = "plugin-sidecar"
+                ))]
                 if let Some(scope) = &entry.plugin {
                     return *ready
                         .entry(scope.generation())
@@ -1731,7 +1979,11 @@ impl State {
 /* === Public Functions === */
 
 /* === Private Functions === */
-#[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
 fn grant_allowed(
     required: Option<&harmos_contract::inventory::contracts::Required>,
     grant: Option<&harmos_contract::plugin::Grant>,

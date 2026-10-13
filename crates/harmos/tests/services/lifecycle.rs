@@ -30,7 +30,9 @@ use super::app::App;
 use harmos::services::{
     ServiceDefinition, ServiceKey, ServiceLease, ServiceLifecycle, ServiceOutcome, ServicePhase,
 };
-use harmos::{Fault, Resident, Runtime, Service, ServicePolicy};
+use harmos::{
+    Runtime, services::Fault, services::Resident, services::Service, services::ServicePolicy,
+};
 
 /* === Constants === */
 
@@ -224,8 +226,16 @@ pub(super) fn contract_scenario() {
                             .phase(),
                         ServicePhase::Finalizing
                     );
+                    let mut lifecycle = lease.subscribe_lifecycle();
                     assert!(runtime.stop().now_or_never().is_none());
+                    // The Original Driver Continues After Its Waiter Is Dropped.
+                    // Plugin Shutdown Settles Before Application Services Are Signalled.
+                    let cancelled =
+                        observed(&mut lifecycle, |status| status.cancellation_requested()).await;
                     assert!(lease.lifecycle().cancellation_requested());
+                    assert_eq!(cancelled.phase(), ServicePhase::Finalizing);
+                    assert_eq!(cancelled.outcome(), Some(ServiceOutcome::Succeeded));
+                    assert!(cancelled.cleanup_pending());
                     assert_eq!(trace.drops.load(Ordering::SeqCst), 0);
                     trace.cleanup_release.add_permits(1);
                     runtime.stop().await.unwrap();
@@ -321,7 +331,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(trace.attempts.load(Ordering::SeqCst), 2);
                     assert!(matches!(
                         runtime.services.status(lease.key()).unwrap().status,
-                        harmos::ServiceStatus::Running { credit: 2 }
+                        harmos::services::ServiceStatus::Running { credit: 2 }
                     ));
                     // Cancellation Must Not Wait For The Pending 250 ms Health Refill.
                     tokio::time::timeout(Duration::from_millis(50), runtime.stop())

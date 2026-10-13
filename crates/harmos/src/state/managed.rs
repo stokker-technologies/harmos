@@ -42,6 +42,7 @@ impl<A: Application> ManagedState<A> {
     pub(super) fn new(tracked: Arc<TrackedState<A>>) -> Self {
         Self { tracked }
     }
+
     pub async fn read<R>(&self, read: impl FnOnce(&A::State) -> R) -> Result<At<R>, Error> {
         if self.tracked.poisoned() {
             return Err(self.tracked.unavailable());

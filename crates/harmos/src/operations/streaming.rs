@@ -47,6 +47,10 @@ impl From<portable::Error> for Error {
             portable::Error::Closed => Self::NotReady {
                 domain: "operation stream input",
             },
+            portable::Error::Ownership => Self::InvalidInput {
+                field: "operation stream payload",
+                reason: "original owned payload cannot be moved into a request",
+            },
             portable::Error::Codec(source) => Self::TaskFailed {
                 domain: "operation stream decode",
                 source: Arc::new(source),

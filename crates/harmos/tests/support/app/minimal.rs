@@ -19,7 +19,7 @@ use std::marker::PhantomData;
 // Third Party Imports
 
 // Local Imports
-use harmos::{Application, Never};
+use harmos::{Application, state::Never};
 
 /* === Constants === */
 

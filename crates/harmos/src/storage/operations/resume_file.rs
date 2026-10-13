@@ -14,20 +14,20 @@
 /* === Imports === */
 
 // Standard Library Imports
-#[cfg(feature = "runtime")]
+
 use std::sync::Arc;
 
 // Third Party Imports
 
 // Local Imports
 use super::FileMutation;
-#[cfg(feature = "runtime")]
+
 use crate::operations::{Context, Operation};
 use crate::operations::{OperationDeclaration, ReplaySafety, Visibility, WireOperation};
 use crate::storage::FileProducer;
-#[cfg(feature = "runtime")]
+
 use crate::storage::StorageManager;
-#[cfg(feature = "runtime")]
+
 use crate::{Error, Result};
 
 /* === Constants === */
@@ -37,7 +37,7 @@ use crate::{Error, Result};
 
 /* === Structs === */
 pub struct ResumeFile;
-#[cfg(feature = "runtime")]
+
 pub(super) struct Handler<C> {
     storage: Arc<StorageManager<C>>,
 }
@@ -58,7 +58,7 @@ impl OperationDeclaration for ResumeFile {
 impl WireOperation for ResumeFile {
     const VERSION: u32 = 1;
 }
-#[cfg(feature = "runtime")]
+
 impl<C: 'static> Operation for Handler<C> {
     type Declaration = ResumeFile;
     type Resources = StorageManager<C>;
@@ -68,16 +68,22 @@ impl<C: 'static> Operation for Handler<C> {
     fn new(storage: Arc<StorageManager<C>>) -> Result<Self> {
         Ok(Self { storage })
     }
+
     async fn run<'a>(
         &mut self,
         _: Self::Context<'a>,
         request: &mut FileMutation,
         _: &mut Self::Endpoints,
-    ) -> Result<FileProducer> {
-        self.storage
-            .resume_file_once(&request.mutation, &request.session)
-            .await
+    ) -> Result<crate::operations::Response<FileProducer>> {
+        let result: ::core::result::Result<FileProducer, Self::Error> = async move {
+            self.storage
+                .resume_file_once(&request.mutation, &request.session)
+                .await
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
+
     fn classify(error: &Error) -> crate::operations::Failure {
         super::classify(error)
     }

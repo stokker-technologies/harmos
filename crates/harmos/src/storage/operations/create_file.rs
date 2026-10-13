@@ -14,27 +14,27 @@
 /* === Imports === */
 
 // Standard Library Imports
-#[cfg(feature = "runtime")]
+
 use std::sync::Arc;
 
 // Third Party Imports
 
 // Local Imports
-#[cfg(feature = "runtime")]
+
 use crate::operations::{Context, Operation};
 use crate::operations::{OperationDeclaration, ReplaySafety, Visibility, WireOperation};
 use crate::storage::FileProducer;
-#[cfg(feature = "runtime")]
+
 use crate::storage::StorageManager;
-#[cfg(feature = "runtime")]
+
 use crate::{Error, Result};
 
 /* === Constants === */
 
 /* === Macros === */
-crate::storage_codec::product!(CreateFileRequest {
-    mutation: crate::storage_codec::Nested<crate::storage::MutationId> => 1,
-    metadata: crate::storage_codec::Nested<crate::storage::FileMetadata> => 2,
+crate::storage::codec::product!(CreateFileRequest {
+    mutation: crate::storage::codec::Nested<crate::storage::MutationId> => 1,
+    metadata: crate::storage::codec::Nested<crate::storage::FileMetadata> => 2,
 });
 
 /* === Type Aliases === */
@@ -47,7 +47,7 @@ pub struct CreateFileRequest {
 }
 
 pub struct CreateFile;
-#[cfg(feature = "runtime")]
+
 pub(super) struct Handler<C> {
     storage: Arc<StorageManager<C>>,
 }
@@ -68,7 +68,7 @@ impl OperationDeclaration for CreateFile {
 impl WireOperation for CreateFile {
     const VERSION: u32 = 1;
 }
-#[cfg(feature = "runtime")]
+
 impl<C: 'static> Operation for Handler<C> {
     type Declaration = CreateFile;
     type Resources = StorageManager<C>;
@@ -78,16 +78,22 @@ impl<C: 'static> Operation for Handler<C> {
     fn new(storage: Arc<StorageManager<C>>) -> Result<Self> {
         Ok(Self { storage })
     }
+
     async fn run<'a>(
         &mut self,
         _: Self::Context<'a>,
         request: &mut CreateFileRequest,
         _: &mut Self::Endpoints,
-    ) -> Result<FileProducer> {
-        self.storage
-            .create_file_once(&request.mutation, &request.metadata)
-            .await
+    ) -> Result<crate::operations::Response<FileProducer>> {
+        let result: ::core::result::Result<FileProducer, Self::Error> = async move {
+            self.storage
+                .create_file_once(&request.mutation, &request.metadata)
+                .await
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
+
     fn classify(error: &Error) -> crate::operations::Failure {
         super::classify(error)
     }

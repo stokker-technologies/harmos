@@ -18,7 +18,7 @@
 // Third Party Imports
 
 // Local Imports
-use harmos::{Application, Never, StreamManager};
+use harmos::{Application, state::Never, streams::StreamManager};
 
 /* === Constants === */
 

@@ -9,17 +9,30 @@
 
 /* === Modules === */
 mod admissions;
+pub(crate) mod attachments;
 mod backend;
 mod batch;
 mod batching;
 mod bootstrap;
 mod browse;
 pub(crate) mod capture;
-mod config;
+pub(crate) mod catalog;
+pub(crate) mod codec;
+pub(crate) mod consumer;
+pub(crate) mod data;
 mod deletion;
 mod file_checkpoint;
 mod file_follow;
 mod file_reads;
+pub(crate) mod files;
+pub(crate) mod mutations;
+pub(crate) mod object_fields;
+pub(crate) mod object_values;
+pub mod operations;
+pub(crate) mod position;
+pub(crate) mod read_selection;
+pub(crate) mod schema_input;
+pub(crate) mod timestamp;
 
 mod follow;
 pub mod frame;
@@ -31,6 +44,7 @@ mod query;
 mod queue;
 mod reads;
 mod receipts;
+mod record_filter;
 pub mod recovery;
 pub mod reduce;
 mod replication;
@@ -45,24 +59,29 @@ mod worker;
 mod writes;
 
 #[cfg(feature = "signal")]
-#[path = "../series/mod.rs"]
 pub mod series;
 
 /* === Re-Exports === */
-use crate::object_catalog::{ObjectCatalog, ObjectValue, SchemaKey, StoredObject};
-use crate::storage_data::{StoredRecord, StoredRow};
-use crate::storage_files::{
+pub use crate::config::StorageSettings;
+pub use crate::storage::catalog::{
+    ObjectCatalog, ObjectDefinition, ObjectDefinitions, ObjectKey, ObjectRetention, ObjectValue,
+    PayloadEncoding, SchemaKey, StoredObject,
+};
+pub use crate::storage::data::{RecordInput, StoredRecord, StoredRow, StreamInput};
+pub use crate::storage::files::{
     FileMetadata, FilePhase, FileProgress, FileReference, FileSession, StagedFile,
 };
-use crate::storage_mutations::{FileProducer, MutationId, MutationWindow};
-use crate::storage_object_fields::{
-    ObjectComparison, ObjectMetadata, ObjectNullOrder, ObjectScalar,
+pub use crate::storage::mutations::{FileProducer, MutationId, MutationWindow, StorageInfo};
+pub use crate::storage::object_fields::{
+    ObjectComparison, ObjectFields, ObjectFilter, ObjectMetadata, ObjectNullOrder, ObjectScalar,
+    ObjectScalarKind, ObjectSort,
 };
-use crate::storage_object_values::{
+pub use crate::storage::object_values::{
     ObjectEntry, ObjectPoint, ObjectReceipt, ObjectRevision, ObjectVersion, ObjectVersionToken,
     ObjectVersions,
 };
-use crate::storage_position::{RecoveryPosition, StorageCursor, StoreHistory};
+pub use crate::storage::position::{RecoveryPosition, StorageCursor, StoreHistory};
+pub use attachments::{Horizon, Payload, Recovery, Source};
 pub use backend::{StorageBackend, StorageBackends, StorageFuture};
 pub use batch::{StorageBatch, StorageEntry, StoragePart};
 pub use bootstrap::{
@@ -74,7 +93,7 @@ pub use browse::{
     ObjectBrowseResult, ObjectColumn, ObjectFieldsQuery, ObjectOrder, ObjectPredicate,
 };
 pub use capture::{ProjectedRecords, RecordProjection};
-pub use config::StorageSettings;
+pub use consumer::{Batch, Cursor, JournalConsumer, Series, StreamConsumer};
 pub use file_checkpoint::FileCheckpoint;
 pub use file_follow::FileFollower;
 pub use file_reads::{FileChunk, StorageFileReader};
@@ -96,12 +115,12 @@ pub use reads::{
     ReadSelection, ReadView, SourceTimeRange,
 };
 pub use receipts::{MutationReceipt, MutationValue};
+pub use record_filter::{RecordClause, RecordFilter};
 pub use replication::{ReplicaHolder, ReplicaReceipt, ReplicaStatus, ReplicaTarget};
-pub use schema::SchemaEncoding;
+pub use schema_input::{SchemaInfo, SchemaInput};
 pub use staging::StorageFile;
 pub(crate) use staging::checkpoint::FileSave;
-pub(crate) use views::{StoragePage, StorageReader};
-pub use views::{StorageView, StorageViewComputation};
+pub use views::{StoragePage, StorageReader, StorageView, StorageViewComputation};
 pub use work::{StorageReadWork, StorageReadWorkPreparation};
 pub use writes::StorageSchema;
 

@@ -51,7 +51,7 @@ const STREAMS: &[publications::Entry] = &[
         id: Progress::ID,
         schema: Progress::VERSION,
         window: Progress::WINDOW,
-        fields: Progress::FIELDS,
+        row: Progress::DEFINITION,
         metadata_json: "",
         row_metadata_json: "[]",
     },
@@ -59,7 +59,7 @@ const STREAMS: &[publications::Entry] = &[
         id: Metrics::ID,
         schema: Metrics::VERSION,
         window: Metrics::WINDOW,
-        fields: Metrics::FIELDS,
+        row: Metrics::DEFINITION,
         metadata_json: "",
         row_metadata_json: "[]",
     },
@@ -67,10 +67,10 @@ const STREAMS: &[publications::Entry] = &[
 const LISTENERS: &[Node<harmos_contract::listeners::Entry>] =
     &[Node::Leaf(harmos_contract::listeners::Entry {
         id: "fixture.notes",
-        source: harmos_contract::listeners::Source::Record {
-            id: Cow::Borrowed(NOTE),
+        source: harmos_contract::listeners::SourceDeclaration::Record {
+            id: NOTE,
             version: 1,
-            fields: Cow::Borrowed(Note::FIELDS),
+            row: Note::DEFINITION,
         },
         callback: WireDeclaration::of::<Heard>(),
     })];
@@ -395,8 +395,11 @@ impl Declared for TestComponent {
     const REQUIRES: &'static [Node<Requirement>] = REQUIRED;
     const LISTENERS: &'static [Node<harmos_contract::listeners::Entry>] = LISTENERS;
     const STREAMS: &'static [publications::Entry] = STREAMS;
-    fn markers() -> Vec<&'static [u8]> {
-        vec![&IDENTITY, &CONTRACTS, &PUBLICATIONS, &AUDIENCE, &OBSERVERS]
+    fn markers() -> Result<Vec<&'static [u8]>, harmos_contract::schema::graph::Error> {
+        harmos_contract::plugin::schema_markers::<Self>(
+            vec![&IDENTITY, &CONTRACTS, &PUBLICATIONS, &AUDIENCE, &OBSERVERS],
+            &harmos_contract::config::SchemaSettings::default(),
+        )
     }
 }
 
@@ -418,15 +421,19 @@ impl Operation for Hearing {
         context: Self::Context<'ctx>,
         delivery: &mut Delivery<Note>,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Self::Error> {
-        if self.resources.refuse_delivery.load(Ordering::Acquire) {
-            return Err(std::io::Error::other(
-                "this delivery is one the guest refuses",
-            ));
+    ) -> Result<harmos_guest::operations::Response<()>, Self::Error> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            if self.resources.refuse_delivery.load(Ordering::Acquire) {
+                return Err(std::io::Error::other(
+                    "this delivery is one the guest refuses",
+                ));
+            }
+            finding(context, &format!("{} {}", NOTE, delivery.row().note))
+                .await
+                .map_err(std::io::Error::other)
         }
-        finding(context, &format!("{} {}", NOTE, delivery.row().note))
-            .await
-            .map_err(std::io::Error::other)
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 

@@ -153,7 +153,16 @@ fn contract_scenario() {
                     let item = Identifier::new("item").unwrap();
                     let scope = Identifier::new("selected").unwrap();
                     let stream = Identifier::new("voltage").unwrap();
-                    f.storage.write_schema(&key, &[]).await.unwrap();
+                    f.storage
+                        .write_schema(
+                            &key,
+                            &harmos::schema::graph::Schema {
+                                root: 0,
+                                definitions: vec![vec![]],
+                            },
+                        )
+                        .await
+                        .unwrap();
                     let mut input = record(&key, &item, &[1]);
                     input.scope = Some(&scope);
                     f.storage.write_records(&[input]).await.unwrap();
@@ -1125,12 +1134,33 @@ fn contract_scenario() {
                         })
                         .unwrap();
                     assert_eq!(&*projected, &[1]);
+                    projected.check_origin(&f.storage).unwrap();
+                    let pointer = projected.as_ptr();
+                    let original_charge = f.storage.status().read_bytes;
+                    let response = projected.try_into_response().unwrap();
+                    let response = response
+                        .try_unwrap()
+                        .expect_err("projected loan cannot be detached");
+                    assert_eq!(response.as_ptr(), pointer);
+                    let charged = f.storage.status().read_bytes;
+                    assert!(charged >= original_charge + std::mem::size_of_val(&response));
+                    let cached = response.clone().into_erased();
+                    assert_eq!(f.storage.status().read_bytes, charged);
+                    assert!(cached.clone().restore::<String>().is_none());
+                    let restored = cached.clone().restore::<Vec<u64>>().unwrap();
+                    assert!(response.ptr_eq(&restored));
+                    assert_eq!(restored.as_ptr(), pointer);
                     drop(reader);
                     wait_release(&f, 1).await;
                     let storage = f.storage.clone();
                     f.finish().await;
-                    assert!(storage.status().read_bytes > 0);
-                    drop(projected);
+                    let charged = storage.status().read_bytes;
+                    assert!(charged > 0);
+                    drop(response);
+                    assert_eq!(storage.status().read_bytes, charged);
+                    drop(restored);
+                    assert_eq!(storage.status().read_bytes, charged);
+                    drop(cached);
                     assert_eq!(storage.status().read_bytes, 0);
                 });
         });

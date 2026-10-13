@@ -28,6 +28,10 @@ use harmos_contract::operations::{
 /* === Type Aliases === */
 
 /* === Structs === */
+#[harmos_guest::message(harmos_path = ::harmos_guest)]
+pub struct Stage {
+    pub id: String,
+}
 pub struct Read;
 
 pub struct Counts;
@@ -38,22 +42,34 @@ pub struct Value {
 }
 
 /* === Enums === */
+#[cfg_attr(feature = "grpc", harmos_guest::operation(request = u32, response = u32, input = u32, policy = Read::POLICY, version = 1,
+        grpc(package = "fixture.v1", service = "Guest", method = "Upload")))]
+#[cfg_attr(not(feature = "grpc"), harmos_guest::operation(request = u32, response = u32, input = u32, policy = Read::POLICY, version = 1))]
+pub struct Upload;
+
+#[cfg_attr(feature = "grpc", harmos_guest::operation(request = u32, response = u32, output = u32, policy = Read::POLICY, version = 1,
+        grpc(package = "fixture.v1", service = "Guest", method = "Download")))]
+#[cfg_attr(not(feature = "grpc"), harmos_guest::operation(request = u32, response = u32, output = u32, policy = Read::POLICY, version = 1))]
+pub struct Download;
+
+#[cfg_attr(feature = "grpc", harmos_guest::operation(request = u32, response = u32, input = u32, output = u32, policy = Read::POLICY, version = 1,
+        grpc(package = "fixture.v1", service = "Guest", method = "Exchange")))]
+#[cfg_attr(not(feature = "grpc"), harmos_guest::operation(request = u32, response = u32, input = u32, output = u32, policy = Read::POLICY, version = 1))]
+pub struct Exchange;
+
 #[harmos_guest::catalog(harmos_path = ::harmos_guest)]
 pub enum Streaming {
-    #[operation(request = u32, response = u32, input = u32, policy = Read::POLICY, version = 1,
-        grpc(package = "fixture.v1", service = "Guest", method = "Upload"))]
-    Upload,
-    #[operation(request = u32, response = u32, output = u32, policy = Read::POLICY, version = 1,
-        grpc(package = "fixture.v1", service = "Guest", method = "Download"))]
-    Download,
-    #[operation(request = u32, response = u32, input = u32, output = u32, policy = Read::POLICY, version = 1,
-        grpc(package = "fixture.v1", service = "Guest", method = "Exchange"))]
-    Exchange,
+    Upload(Upload),
+    Download(Download),
+    Exchange(Exchange),
 }
 
 /* === Traits === */
 
 /* === Implementations === */
+impl harmos_guest::operations::ContextValue for Stage {
+    const KEY: &'static str = "fixture.stage";
+}
 impl WireOperation for Read {
     const VERSION: u32 = 1;
     #[cfg(feature = "grpc")]

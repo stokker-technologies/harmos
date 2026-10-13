@@ -16,22 +16,23 @@
 // Standard Library Imports
 use std::any::TypeId;
 use std::borrow::Cow;
-#[cfg(feature = "runtime")]
+
 use std::sync::Arc;
 
 // Third Party Imports
 
 // Local Imports
 use super::DataSelection;
-#[cfg(feature = "runtime")]
+
 use crate::operations::{Context, Operation, StreamOutput};
 use crate::operations::{Grpc, OperationDeclaration, OutputDeclaration, Visibility, WireOperation};
-use crate::schema::{Cardinality, Described, Field, Kind};
-#[cfg(feature = "runtime")]
+use crate::schema::declaration::{Field, Kind};
+use crate::schema::{Cardinality, Described};
+
+use crate::storage::codec::{Nested, product};
 use crate::storage::{RecordQuery, StorageManager};
 use crate::storage::{StorageCursor, StoredRecord};
-use crate::storage_codec::{Nested, product};
-#[cfg(feature = "runtime")]
+
 use crate::{Error, Result};
 use crate::{MemorySize, MessageError};
 use harmos_contract::plugin::Grant;
@@ -51,7 +52,6 @@ pub struct FollowBoundaries {
     pub accepted: StorageCursor,
 }
 
-#[cfg(feature = "runtime")]
 pub(super) struct Handler<C> {
     storage: Arc<StorageManager<C>>,
 }
@@ -102,13 +102,14 @@ impl MemorySize for Followed {
 }
 
 impl Described for Followed {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Followed));
     const FIELDS: &'static [Field] = &[
         Field {
             name: Cow::Borrowed("boundaries"),
             tag: 1,
             cardinality: Cardinality::Variant,
             kind: Kind::Message {
-                fields: Cow::Borrowed(FollowBoundaries::FIELDS),
+                definition: FollowBoundaries::DEFINITION,
             },
         },
         Field {
@@ -116,10 +117,14 @@ impl Described for Followed {
             tag: 2,
             cardinality: Cardinality::Variant,
             kind: Kind::Message {
-                fields: Cow::Borrowed(StoredRecord::FIELDS),
+                definition: StoredRecord::DEFINITION,
             },
         },
     ];
+
+    const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
+        { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
 }
 
 impl crate::__private::PostcardValue for Followed {
@@ -135,12 +140,14 @@ impl crate::__private::PostcardValue for Followed {
             }
         }
     }
+
     fn size(&self) -> usize {
         1usize.saturating_add(match self {
             Self::Boundaries(value) => value.size(),
             Self::Record(value) => value.size(),
         })
     }
+
     fn memory(
         input: &mut crate::__private::PostcardReader<'_>,
     ) -> std::result::Result<usize, MessageError> {
@@ -155,6 +162,7 @@ impl crate::__private::PostcardValue for Followed {
             crate::__private::decoding_add(std::mem::size_of::<Self>(), heap)
         })
     }
+
     fn read(
         input: &mut crate::__private::PostcardReader<'_>,
     ) -> std::result::Result<Self, MessageError> {
@@ -176,14 +184,14 @@ crate::with_protobuf! {
             bytes
         }
         fn encode_into(&self, bytes: &mut Vec<u8>) {
-            use crate::storage_codec::Value;
+            use crate::storage::codec::Value;
             match self {
                 Self::Boundaries(value) => Nested::<FollowBoundaries>::write(value, 1, bytes),
                 Self::Record(value) => Nested::<StoredRecord>::write(value, 2, bytes),
             }
         }
         fn encoded_len(&self) -> usize {
-            use crate::storage_codec::Value;
+            use crate::storage::codec::Value;
             match self {
                 Self::Boundaries(value) => Nested::<FollowBoundaries>::size(value, 1),
                 Self::Record(value) => Nested::<StoredRecord>::size(value, 2),
@@ -234,6 +242,7 @@ impl OperationDeclaration for Follow {
     fn endpoint_types() -> (Option<TypeId>, Option<TypeId>) {
         (None, Some(TypeId::of::<Followed>()))
     }
+
     fn grant(selection: &DataSelection) -> Option<Grant> {
         Some(super::survey(&selection.schema.id))
     }
@@ -245,7 +254,7 @@ impl OutputDeclaration for Follow {
 
 impl WireOperation for Follow {
     const VERSION: u32 = 1;
-    const OUTPUT: Option<&'static [Field]> = Some(Followed::FIELDS);
+    const OUTPUT: Option<crate::schema::declaration::Definition> = Some(Followed::DEFINITION);
     const GRPC: Option<Grpc> = Some(super::grpc("Follow"));
     crate::with_protobuf! {
         fn visit_grpc<V: crate::operations::GrpcVisitor>(visitor: V) -> Option<V::Entry> {
@@ -254,7 +263,6 @@ impl WireOperation for Follow {
     }
 }
 
-#[cfg(feature = "runtime")]
 impl<C: 'static> Operation for Handler<C> {
     type Declaration = Follow;
     type Resources = StorageManager<C>;
@@ -271,57 +279,61 @@ impl<C: 'static> Operation for Handler<C> {
         _: Self::Context<'a>,
         selection: &mut DataSelection,
         output: &mut Self::Endpoints,
-    ) -> Result<StorageCursor> {
-        selection.validate()?;
-        if selection.selection.descending || selection.selection.through.is_some() {
-            return Err(Error::InvalidInput {
-                field: "storage follow",
-                reason: "following requires ascending open-ended selection",
-            });
-        }
-        if selection.stream.is_some() {
-            return Err(Error::InvalidInput {
-                field: "storage record query",
-                reason: "stream selectors require FollowStream",
-            });
-        }
+    ) -> Result<crate::operations::Response<StorageCursor>> {
+        async {
+            selection.validate()?;
+            if selection.selection.descending || selection.selection.through.is_some() {
+                return Err(Error::InvalidInput {
+                    field: "storage follow",
+                    reason: "following requires ascending open-ended selection",
+                });
+            }
+            if selection.stream.is_some() {
+                return Err(Error::InvalidInput {
+                    field: "storage record query",
+                    reason: "stream selectors require FollowStream",
+                });
+            }
 
-        let mut query = RecordQuery::new(selection.schema.clone(), super::data_selection::decode);
-        query.scope = selection.selection.scope.clone();
-        query.item = selection.selection.item.clone();
-        query.source_time = selection.source_time();
-        query.options = selection.selection.options()?;
-        let mut reader = self.storage.follow(query).await?;
-        let boundaries = FollowBoundaries {
-            saved: reader.saved_boundary().clone(),
-            accepted: reader.accepted_boundary().clone(),
-        };
-        if let Some(after) = &selection.selection.after
-            && !boundaries.accepted.covers(after)?
-        {
-            return Err(Error::InvalidInput {
-                field: "storage query",
-                reason: "start exceeds accepted boundary",
-            });
-        }
-        let first = Followed::Boundaries(boundaries);
-        output
-            .send_with(first.memory_size(), || Ok(first.clone()))
-            .await?;
-        loop {
-            let page = reader.next_page().await?;
-            for entry in page.iter() {
-                let wrapped = Followed::wrapping_memory(entry.memory_size());
-                output
-                    .send_with(wrapped, || Ok(Followed::Record(entry.clone())))
-                    .await?;
+            let mut query =
+                RecordQuery::new(selection.schema.clone(), super::data_selection::decode);
+            query.scope = selection.selection.scope.clone();
+            query.item = selection.selection.item.clone();
+            query.source_time = selection.source_time();
+            query.options = selection.selection.options()?;
+            let mut reader = self.storage.follow(query).await?;
+            let boundaries = FollowBoundaries {
+                saved: reader.saved_boundary().clone(),
+                accepted: reader.accepted_boundary().clone(),
+            };
+            if let Some(after) = &selection.selection.after
+                && !boundaries.accepted.covers(after)?
+            {
+                return Err(Error::InvalidInput {
+                    field: "storage query",
+                    reason: "start exceeds accepted boundary",
+                });
+            }
+            let first = Followed::Boundaries(boundaries);
+            output
+                .send_with(first.memory_size(), || Ok(first.clone()))
+                .await?;
+            loop {
+                let page = reader.next_page().await?;
+                for entry in page.iter() {
+                    let wrapped = Followed::wrapping_memory(entry.memory_size());
+                    output
+                        .send_with(wrapped, || Ok(Followed::Record(entry.clone())))
+                        .await?;
+                }
             }
         }
+        .await
+        .map(|value: StorageCursor| value.into())
     }
 }
 
 impl Followed {
-    #[cfg(feature = "runtime")]
     fn wrapping_memory(record: usize) -> usize {
         std::mem::size_of::<Self>()
             .saturating_add(record.saturating_sub(std::mem::size_of::<StoredRecord>()))

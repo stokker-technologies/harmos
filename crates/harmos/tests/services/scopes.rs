@@ -24,7 +24,9 @@ use tokio::sync::Notify;
 // Local Imports
 use super::{Bank, assembly};
 use harmos::services::{ServiceDefinition, ServiceManager};
-use harmos::{Error, Fault, Service, ServicePolicy, ServiceStatus};
+use harmos::{
+    Error, services::Fault, services::Service, services::ServicePolicy, services::ServiceStatus,
+};
 
 /* === Constants === */
 
@@ -574,7 +576,7 @@ pub(super) fn contract_scenario() {
                     assert!(matches!(
                         runtime.services.status(lease.key()).unwrap().status,
                         ServiceStatus::Inactive {
-                            cause: harmos::ServiceExit::Panicked,
+                            cause: harmos::services::ServiceExit::Panicked,
                             ..
                         }
                     ));

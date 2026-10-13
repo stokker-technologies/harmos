@@ -38,16 +38,24 @@ pub struct Payload {
 }
 
 /* === Enums === */
+#[harmos::operation(request = Payload, response = Payload, id = "unary", version = 1, policy = POLICY, grpc(package = "fixture.v1", service = "Operations", method = "Unary"))]
+pub struct Unary;
+
+#[harmos::operation(request = Payload, response = Payload, input = Payload, id = "upload", version = 1, policy = POLICY, grpc(package = "fixture.v1", service = "Operations", method = "Upload"))]
+pub struct Upload;
+
+#[harmos::operation(request = Payload, response = Payload, output = Payload, id = "download", version = 1, policy = POLICY, grpc(package = "fixture.v1", service = "Operations", method = "Download"))]
+pub struct Download;
+
+#[harmos::operation(request = Payload, response = Payload, input = Payload, output = Payload, id = "exchange", version = 1, policy = POLICY, grpc(package = "fixture.v1", service = "Operations", method = "Exchange"))]
+pub struct Exchange;
+
 #[harmos::catalog]
 pub enum Operations {
-    #[operation(request = Payload, response = Payload, id = "unary", version = 1, policy = POLICY, grpc(package = "fixture.v1", service = "Operations", method = "Unary"))]
-    Unary,
-    #[operation(request = Payload, response = Payload, input = Payload, id = "upload", version = 1, policy = POLICY, grpc(package = "fixture.v1", service = "Operations", method = "Upload"))]
-    Upload,
-    #[operation(request = Payload, response = Payload, output = Payload, id = "download", version = 1, policy = POLICY, grpc(package = "fixture.v1", service = "Operations", method = "Download"))]
-    Download,
-    #[operation(request = Payload, response = Payload, input = Payload, output = Payload, id = "exchange", version = 1, policy = POLICY, grpc(package = "fixture.v1", service = "Operations", method = "Exchange"))]
-    Exchange,
+    Unary(Unary),
+    Upload(Upload),
+    Download(Download),
+    Exchange(Exchange),
 }
 
 /* === Traits === */

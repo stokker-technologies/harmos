@@ -25,7 +25,7 @@ use std::time::Duration;
 // Local Imports
 use super::{Data, Recovery, config, history, record, schema, schema_query};
 use harmos::storage::*;
-use harmos::{Envelope, Error, Identifier, Position, Runtime};
+use harmos::{Error, Identifier, Runtime, state::Envelope, state::Position};
 
 /* === Constants === */
 
@@ -90,12 +90,12 @@ impl harmos::Application for Model {
     type Resources = ();
 }
 
-impl harmos::Transaction<u64> for Advance {
+impl harmos::state::Transaction<u64> for Advance {
     type Error = Refusal;
     fn check(&self, _: &u64) -> Result<(), Refusal> {
         Ok(())
     }
-    fn records(&self, state: &u64, out: &mut harmos::Records) {
+    fn records(&self, state: &u64, out: &mut harmos::state::Records) {
         out.push(Observed { before: *state }).unwrap();
     }
     fn apply(&self, state: &mut u64) {
@@ -195,7 +195,16 @@ impl Store {
             .unwrap()
     }
     async fn ready(&self, storage: &StorageManager) {
-        storage.write_schema(&schema(), &[]).await.unwrap();
+        storage
+            .write_schema(
+                &schema(),
+                &harmos::schema::graph::Schema {
+                    root: 0,
+                    definitions: vec![vec![]],
+                },
+            )
+            .await
+            .unwrap();
         storage.flush().await.unwrap();
     }
 }
@@ -572,23 +581,34 @@ fn contract_scenario() {
                             },
                         )
                         .reconcile(|_, storage| async move {
-                            storage.write_schema(&schema(), &[]).await?;
+                            storage
+                                .write_schema(
+                                    &schema(),
+                                    &harmos::schema::graph::Schema {
+                                        root: 0,
+                                        definitions: vec![vec![]],
+                                    },
+                                )
+                                .await?;
                             Ok(())
                         })
-                        .service("producer", move |context: harmos::Service<Model>| {
-                            let check = check.clone();
-                            let notify = notify.clone();
-                            async move {
-                                assert_eq!(check.status().saved.sequence, 1);
-                                context
-                                    .records()
-                                    .publish(Observed { before: 0 })
-                                    .await
-                                    .unwrap();
-                                notify.notify_one();
-                                Ok::<(), harmos::Fault<String>>(())
-                            }
-                        })
+                        .service(
+                            "producer",
+                            move |context: harmos::services::Service<Model>| {
+                                let check = check.clone();
+                                let notify = notify.clone();
+                                async move {
+                                    assert_eq!(check.status().saved.sequence, 1);
+                                    context
+                                        .records()
+                                        .publish(Observed { before: 0 })
+                                        .await
+                                        .unwrap();
+                                    notify.notify_one();
+                                    Ok::<(), harmos::services::Fault<String>>(())
+                                }
+                            },
+                        )
                         .runtime_with_storage(&storage)
                         .await
                         .unwrap();
@@ -1060,13 +1080,29 @@ fn contract_scenario() {
                     let key = schema();
                     let definition = runtime
                         .records
-                        .register("plugin", &key, Message::FIELDS)
+                        .register(
+                            "plugin",
+                            &key,
+                            &harmos::schema::graph::Schema::from_declaration(
+                                Message::DEFINITION,
+                                &harmos::config::SchemaSettings::default(),
+                            )
+                            .unwrap(),
+                        )
                         .await
                         .unwrap();
                     runtime
                         .records
                         .clone()
-                        .register("plugin", &key, Message::FIELDS)
+                        .register(
+                            "plugin",
+                            &key,
+                            &harmos::schema::graph::Schema::from_declaration(
+                                Message::DEFINITION,
+                                &harmos::config::SchemaSettings::default(),
+                            )
+                            .unwrap(),
+                        )
                         .await
                         .unwrap();
                     assert_eq!(runtime.state.applied(), Position::ORIGIN);
@@ -1077,15 +1113,18 @@ fn contract_scenario() {
                     let page = reader.next_page().await.unwrap().unwrap();
                     assert_eq!(page.len(), 1);
                     assert_eq!(page[0].key, key);
-                    assert_eq!(page[0].fields, definition.fields());
+                    assert_eq!(page[0].schema, *definition.graph());
                     let payload = harmos::Message::encode_to_vec(&Message {
                         value: "retained".into(),
                     });
                     drop(definition);
-                    Validator::new(&page[0].fields)
-                        .unwrap()
-                        .validate(&payload)
-                        .unwrap();
+                    Validator::from_schema(
+                        &page[0].schema,
+                        &harmos::config::SchemaSettings::default(),
+                    )
+                    .unwrap()
+                    .validate(&payload)
+                    .unwrap();
                     assert!(reader.next_page().await.unwrap().is_none());
                     drop(reader);
                     runtime.stop().await.unwrap();

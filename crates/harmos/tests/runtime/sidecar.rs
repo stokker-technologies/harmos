@@ -83,10 +83,14 @@ mod visibility {
             _: Self::Context<'ctx>,
             request: &mut Scale,
             _endpoints: &mut Self::Endpoints,
-        ) -> Result<Scale, Refusal> {
-            Ok(Scale {
-                value: request.value * self.resources.factor,
-            })
+        ) -> Result<harmos::operations::Response<Scale>, Refusal> {
+            let result: ::core::result::Result<Scale, Self::Error> = async move {
+                Ok(Scale {
+                    value: request.value * self.resources.factor,
+                })
+            }
+            .await;
+            result.map(::core::convert::Into::into)
         }
     }
     pub(super) struct ScalingPublicly {
@@ -107,10 +111,14 @@ mod visibility {
             _: Self::Context<'ctx>,
             _request: &mut ScalePubliclyRequest,
             _endpoints: &mut Self::Endpoints,
-        ) -> Result<Scale, Refusal> {
-            Ok(Scale {
-                value: self.resources.factor,
-            })
+        ) -> Result<harmos::operations::Response<Scale>, Refusal> {
+            let result: ::core::result::Result<Scale, Self::Error> = async move {
+                Ok(Scale {
+                    value: self.resources.factor,
+                })
+            }
+            .await;
+            result.map(::core::convert::Into::into)
         }
     }
 }
@@ -133,10 +141,11 @@ use harmos::Message;
 use harmos::operations::{
     OperationDeclaration, OperationPolicy, RetryPolicy, Visibility, WireTable,
 };
-use harmos::sidecar::inventory::{Declaration, Facility};
-use harmos::sidecar::{Executable, Frame, Notice, SidecarError, Supervised};
+use harmos::plugin::sidecar::inventory::{Declaration, Facility};
+use harmos::plugin::sidecar::{Executable, Frame, Notice, SidecarError, Supervised};
 use harmos::{
-    FactSource, Position, Runtime, Service, ServiceExit, ServicePolicy, ServiceStatus, SystemFact,
+    Runtime, services::Service, services::ServiceExit, services::ServicePolicy,
+    services::ServiceStatus, state::FactSource, state::Position, state::SystemFact,
 };
 use harmos_sidecar::{Attach, Refusal, Supervisor};
 
@@ -217,7 +226,7 @@ struct BudgetedReply {
 struct MeterPulse;
 
 struct SampleProjection {
-    streams: harmos::StreamManager<Bank>,
+    streams: harmos::streams::StreamManager<Bank>,
 }
 
 struct Joinable {
@@ -568,14 +577,18 @@ impl harmos::operations::Operation for Measuring {
         _: Self::Context<'ctx>,
         request: &mut Measure,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Measured, Refusal> {
-        let _ = &request;
-        if request.value < 0 {
-            return Err(Refusal::of("this gauge measures no negative value"));
+    ) -> Result<harmos::operations::Response<Measured>, Refusal> {
+        let result: ::core::result::Result<Measured, Self::Error> = async move {
+            let _ = &request;
+            if request.value < 0 {
+                return Err(Refusal::of("this gauge measures no negative value"));
+            }
+            Ok(Measured {
+                value: request.value * self.resources.factor,
+            })
         }
-        Ok(Measured {
-            value: request.value * self.resources.factor,
-        })
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -619,9 +632,13 @@ impl harmos::operations::Operation for Echoing {
         _: Self::Context<'ctx>,
         request: &mut String,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<String, Refusal> {
-        let _ = &request;
-        Ok(request.clone())
+    ) -> Result<harmos::operations::Response<String>, Refusal> {
+        let result: ::core::result::Result<String, Self::Error> = async move {
+            let _ = &request;
+            Ok(request.clone())
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -652,9 +669,13 @@ impl harmos::operations::Operation for Uppercasing {
         _: Self::Context<'ctx>,
         request: &mut String,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<String, Refusal> {
-        let _ = &request;
-        Ok(request.to_uppercase())
+    ) -> Result<harmos::operations::Response<String>, Refusal> {
+        let result: ::core::result::Result<String, Self::Error> = async move {
+            let _ = &request;
+            Ok(request.to_uppercase())
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -683,10 +704,14 @@ impl harmos::operations::Operation for StoppingSampling {
         _: Self::Context<'ctx>,
         request: &mut StopSamplingRequest,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<StopSamplingResponse, Refusal> {
-        let _ = &request;
-        self.resources.stopped.fetch_add(1, Ordering::SeqCst);
-        Ok(StopSamplingResponse {})
+    ) -> Result<harmos::operations::Response<StopSamplingResponse>, Refusal> {
+        let result: ::core::result::Result<StopSamplingResponse, Self::Error> = async move {
+            let _ = &request;
+            self.resources.stopped.fetch_add(1, Ordering::SeqCst);
+            Ok(StopSamplingResponse {})
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -715,11 +740,15 @@ impl harmos::operations::Operation for ReadingFactor {
         _: Self::Context<'ctx>,
         request: &mut GetFactorRequest,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Measured, Refusal> {
-        let _ = &request;
-        Ok(Measured {
-            value: self.resources.factor,
-        })
+    ) -> Result<harmos::operations::Response<Measured>, Refusal> {
+        let result: ::core::result::Result<Measured, Self::Error> = async move {
+            let _ = &request;
+            Ok(Measured {
+                value: self.resources.factor,
+            })
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -743,13 +772,17 @@ impl harmos::operations::Operation for Amplifying {
         _: Self::Context<'ctx>,
         request: &mut Amplify,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<Amplified, Refusal> {
-        if request.value < 0 {
-            return Err(Refusal::of("this meter measures no negative value"));
+    ) -> Result<harmos::operations::Response<Amplified>, Refusal> {
+        let result: ::core::result::Result<Amplified, Self::Error> = async move {
+            if request.value < 0 {
+                return Err(Refusal::of("this meter measures no negative value"));
+            }
+            Ok(Amplified {
+                value: request.value * 2,
+            })
         }
-        Ok(Amplified {
-            value: request.value * 2,
-        })
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -773,11 +806,15 @@ impl harmos::operations::Operation for Emitting {
         host: Self::Context<'ctx>,
         request: &mut Emit,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Refusal> {
-        host.publisher::<Meter>()
-            .publish_on::<MeterPulse>(&support::pulse(request.value))
-            .await
-            .map_err(Refusal::of)
+    ) -> Result<harmos::operations::Response<()>, Refusal> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            host.publisher::<Meter>()
+                .publish_on::<MeterPulse>(&support::pulse(request.value))
+                .await
+                .map_err(Refusal::of)
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -801,11 +838,15 @@ impl harmos::operations::Operation for PublishingPulse {
         host: Self::Context<'ctx>,
         request: &mut PublishPulse,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Refusal> {
-        host.publisher::<Meter>()
-            .publish_on::<MeterPulse>(&support::pulse(request.sample))
-            .await
-            .map_err(Refusal::of)
+    ) -> Result<harmos::operations::Response<()>, Refusal> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            host.publisher::<Meter>()
+                .publish_on::<MeterPulse>(&support::pulse(request.sample))
+                .await
+                .map_err(Refusal::of)
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -829,10 +870,14 @@ impl harmos::operations::Operation for Collapsing {
         host: Self::Context<'ctx>,
         request: &mut Collapse,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Refusal> {
-        let _ = (&request, &host);
-        host.abandon();
-        Ok(())
+    ) -> Result<harmos::operations::Response<()>, Refusal> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            let _ = (&request, &host);
+            host.abandon();
+            Ok(())
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -856,10 +901,14 @@ impl harmos::operations::Operation for Finishing {
         host: Self::Context<'ctx>,
         request: &mut Finish,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(), Refusal> {
-        let _ = (&request, &host);
-        host.exiting(request.reason.clone());
-        Ok(())
+    ) -> Result<harmos::operations::Response<()>, Refusal> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            let _ = (&request, &host);
+            host.exiting(request.reason.clone());
+            Ok(())
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -883,17 +932,21 @@ impl harmos::operations::Operation for BudgetedCall {
         host: Self::Context<'ctx>,
         request: &mut BudgetedRoute,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<BudgetedReply, Refusal> {
-        let _ = (&request, &host);
-        if request.refusal_bytes > 0 {
-            return Err(Refusal::new(
-                -42,
-                "x".repeat(request.refusal_bytes as usize),
-            ));
+    ) -> Result<harmos::operations::Response<BudgetedReply>, Refusal> {
+        let result: ::core::result::Result<BudgetedReply, Self::Error> = async move {
+            let _ = (&request, &host);
+            if request.refusal_bytes > 0 {
+                return Err(Refusal::new(
+                    -42,
+                    "x".repeat(request.refusal_bytes as usize),
+                ));
+            }
+            Ok(BudgetedReply {
+                payload: vec![0; request.reply_bytes as usize],
+            })
         }
-        Ok(BudgetedReply {
-            payload: vec![0; request.reply_bytes as usize],
-        })
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -919,11 +972,15 @@ impl harmos::operations::Operation for Sampling {
         _: Self::Context<'ctx>,
         request: &mut Sample,
         _endpoints: &mut Self::Endpoints,
-    ) -> harmos::Result<()> {
-        self.resources
-            .streams
-            .publish(support::pulse(request.value));
-        Ok(())
+    ) -> harmos::Result<harmos::operations::Response<()>> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            self.resources
+                .streams
+                .publish(support::pulse(request.value));
+            Ok(())
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -1189,13 +1246,16 @@ fn own_contract() {
                     };
                     let runtime = assembly()
                         .register(operations::Lanes::catalog())
-                        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+                        .operation_settings(harmos::operations::Settings {
+                            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+                            ..Default::default()
+                        })
                         .runtime()
                         .await
                         .unwrap();
                     runtime
                         .operations
-                        .register_wire_operation::<harmos::sidecar::Publish<_, _, _>>(
+                        .register_wire_operation::<harmos::plugin::sidecar::Publish<_, _, _>>(
                             "meter-publication-core",
                             operations::Lanes::NativeOpen,
                             Arc::new(calls.clone()),
@@ -1220,7 +1280,7 @@ fn own_contract() {
                                 policy,
                             },
                             move |_: Arc<()>| {
-                                harmos::sidecar::Managed::new(
+                                harmos::plugin::sidecar::Managed::new(
                                     resident.clone(),
                                     definition.clone(),
                                     operations::Lanes::NativeOpen,
@@ -1395,13 +1455,16 @@ fn own_contract() {
                         (|_: &Service<Bank>, _: Notice| {}) as fn(&Service<Bank>, Notice),
                     );
                     let runtime = assembly()
-                        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+                        .operation_settings(harmos::operations::Settings {
+                            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+                            ..Default::default()
+                        })
                         .runtime()
                         .await
                         .unwrap();
                     runtime
                         .operations
-                        .register_wire_operation::<harmos::sidecar::Publish<_, _, _>>(
+                        .register_wire_operation::<harmos::plugin::sidecar::Publish<_, _, _>>(
                             "meter-publication-core",
                             HostLanes::Open,
                             Arc::new(resident.clone()),
@@ -1415,7 +1478,7 @@ fn own_contract() {
                                 policy: ServicePolicy::default(),
                             },
                             move |_: Arc<()>| {
-                                harmos::sidecar::Managed::new(
+                                harmos::plugin::sidecar::Managed::new(
                                     resident.clone(),
                                     definition.clone(),
                                     HostLanes::Open,
@@ -1602,7 +1665,7 @@ fn own_contract() {
     let mismatch = source.clone().argument("unexpected");
     let notice = (|_: &Service<Bank>, _: Notice| {}) as fn(&Service<Bank>, Notice);
     assert!(matches!(
-        harmos::sidecar::Managed::new_executable(
+        harmos::plugin::sidecar::Managed::new_executable(
             Supervised::new(mismatch, notice),
             definition.clone(),
             HostLanes::Open,
@@ -1616,7 +1679,7 @@ fn own_contract() {
     ));
 
     let resident = Supervised::new(source, notice);
-    let managed = harmos::sidecar::Managed::new_executable(
+    let managed = harmos::plugin::sidecar::Managed::new_executable(
         resident.clone(),
         definition,
         HostLanes::Open,
@@ -1626,13 +1689,13 @@ fn own_contract() {
     .unwrap();
     std::fs::write(&path, b"changed after inspection").unwrap();
     let runtime = assembly()
-        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+        .operation_settings(harmos::operations::Settings { preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()), ..Default::default() })
         .runtime()
         .await
         .unwrap();
     runtime
         .operations
-        .register_wire_operation::<harmos::sidecar::Publish<_, _, _>>(
+        .register_wire_operation::<harmos::plugin::sidecar::Publish<_, _, _>>(
             "process-publication-core",
             HostLanes::Open,
             Arc::new(resident),
@@ -1787,13 +1850,13 @@ fn own_contract() {
                     else {
                         panic!("the service retains its cleanup error: {error:?}");
                     };
-                    let Some(harmos::Fault::Application(harmos::sidecar::ManagedError::Lifecycle(
+                    let Some(harmos::services::Fault::Application(harmos::plugin::sidecar::ManagedError::Lifecycle(
                         harmos::Error::PluginLifecycle { source },
-                    ))) = source.downcast_ref::<harmos::Fault<harmos::sidecar::ManagedError>>()
+                    ))) = source.downcast_ref::<harmos::services::Fault<harmos::plugin::sidecar::ManagedError>>()
                     else {
                         panic!("the cleanup retains its lifecycle error: {error:?}");
                     };
-                    let harmos::load::PluginFailure::Cleanup(failures) = source.as_ref() else {
+                    let harmos::plugin::PluginFailure::Cleanup(failures) = source.as_ref() else {
                         panic!("the original cleanup failure is retained: {error:?}");
                     };
                     assert_eq!(failures.len(), 1);
@@ -2133,7 +2196,7 @@ fn own_contract() {
             id: <MeterPulse as harmos::StreamSpec>::ID.into(),
             schema: support::Pulse::VERSION + 1,
             window: support::Pulse::WINDOW,
-            fields: <support::Pulse as harmos::schema::Described>::FIELDS.to_vec(),
+            row: harmos::schema::graph::Schema::from_declaration(<support::Pulse as harmos::schema::Described>::DEFINITION, &harmos::config::SchemaSettings::default()).unwrap(),
         }],
     ] {
         let mut peer = meter(Arc::new(AtomicUsize::new(0)));
@@ -2356,9 +2419,9 @@ fn own_contract() {
                 declared.operations[1].description,
                 "Answers with what it was handed, publishing first when asked to."
             );
-            let guest = harmos::guest::inventory::Declaration::inspect(
+            let guest = harmos::plugin::guest::inventory::Declaration::inspect(
                 &bytes,
-                harmos::guest::inventory::Facility::Guest,
+                harmos::plugin::guest::inventory::Facility::Guest,
             )
             .expect("the co-linked guest is independently inspectable");
             assert_eq!(guest.id, "meter");
@@ -2389,10 +2452,10 @@ fn own_contract() {
     }
 }
 
-fn process_definition(source: &Executable) -> harmos::load::PluginDefinition {
+fn process_definition(source: &Executable) -> harmos::plugin::PluginDefinition {
     let mut definition = operations::definition(source, b"{}".to_vec());
     definition.version = source.declaration().version.clone();
-    definition.artifact = harmos::load::PluginArtifact::Sidecar {
+    definition.artifact = harmos::plugin::PluginArtifact::Sidecar {
         path: source.path().to_path_buf(),
         sha256: Sha256::digest(std::fs::read(source.path()).unwrap()).into(),
         arguments: source.arguments().to_vec(),
@@ -2404,7 +2467,7 @@ fn process_definition(source: &Executable) -> harmos::load::PluginDefinition {
 
 async fn process_runtime<H>(
     resident: Supervised<Bank, Executable, H>,
-    definition: harmos::load::PluginDefinition,
+    definition: harmos::plugin::PluginDefinition,
     policy: ServicePolicy,
 ) -> (Runtime<Bank>, harmos::services::ServiceLease<Bank>)
 where
@@ -2423,13 +2486,16 @@ where
             .any(|required| required.contract == selected)
     );
     let runtime = assembly()
-        .operation_preparation_bytes(NonZeroUsize::new(4096).unwrap())
+        .operation_settings(harmos::operations::Settings {
+            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+            ..Default::default()
+        })
         .runtime()
         .await
         .unwrap();
     runtime
         .operations
-        .register_wire_operation::<harmos::sidecar::Publish<_, _, _>>(
+        .register_wire_operation::<harmos::plugin::sidecar::Publish<_, _, _>>(
             "process-publication-core",
             HostLanes::Open,
             Arc::new(resident.clone()),
@@ -2444,7 +2510,7 @@ where
                 policy,
             },
             move |_: Arc<()>| {
-                harmos::sidecar::Managed::new_executable(
+                harmos::plugin::sidecar::Managed::new_executable(
                     resident.clone(),
                     definition.clone(),
                     HostLanes::Open,

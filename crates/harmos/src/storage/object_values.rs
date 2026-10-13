@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-#[path = "object_values/codec.rs"]
 mod codec;
 
 /* === Re-Exports === */
@@ -29,11 +28,12 @@ use crate::__private::{DecodeInput, decoding_add};
 use crate::Identifier;
 #[cfg(feature = "grpc")]
 use crate::MessageError;
-use crate::object_catalog::invalid;
-use crate::schema::{Cardinality, Described, Field, Kind};
-use crate::storage::{ObjectKey, ObjectValue, StorageCursor, StoreHistory};
+use crate::schema::declaration::{Field, Kind};
+use crate::schema::{Cardinality, Described};
+use crate::storage::catalog::invalid;
 #[cfg(feature = "grpc")]
-use crate::storage_position::codec::{identifier, text_field, uint_field};
+use crate::storage::position::codec::{identifier, text_field, uint_field};
+use crate::storage::{ObjectKey, ObjectValue, StorageCursor, StoreHistory};
 use crate::{MemorySize, Message, Result};
 
 /* === Constants === */
@@ -184,7 +184,6 @@ impl ObjectVersionToken {
         Ok(token)
     }
 
-    #[cfg(any(feature = "runtime", test))]
     pub(crate) fn new(position: StorageCursor) -> Self {
         Self {
             history: position.history,
@@ -217,7 +216,7 @@ impl crate::__private::Protobuf for ObjectVersionToken {
     }
 
     fn encode_into(&self, bytes: &mut Vec<u8>) {
-        use crate::storage_position::codec::write_bytes;
+        use crate::storage::position::codec::write_bytes;
         write_bytes(1, self.history.store.as_str().as_bytes(), bytes);
         write_bytes(2, self.history.epoch.as_str().as_bytes(), bytes);
         crate::__private::prost::encoding::uint64::encode(3, &self.revision.get(), bytes);
@@ -270,6 +269,7 @@ impl crate::__private::Protobuf for ObjectVersionToken {
 }
 
 impl Described for ObjectVersionToken {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(ObjectVersionToken));
     const FIELDS: &'static [Field] = &[
         Field {
             name: Cow::Borrowed("store"),
@@ -290,6 +290,10 @@ impl Described for ObjectVersionToken {
             cardinality: Cardinality::Required,
         },
     ];
+
+    const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
+        { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
 }
 
 /* === Public Functions === */

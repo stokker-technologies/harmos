@@ -14,10 +14,12 @@
 /* === Imports === */
 // Standard Library Imports
 use std::str::Utf8Error;
+use std::sync::Arc;
 // Third Party Imports
 use prost::encoding::{WireType, decode_key, decode_varint};
 // Local Imports
-use super::{Cardinality, Field, Kind};
+use super::{Cardinality, graph};
+use crate::config::SchemaSettings;
 
 /* === Constants === */
 const DEPTH: usize = 32;
@@ -27,9 +29,10 @@ const DEPTH: usize = 32;
 /* === Type Aliases === */
 
 /* === Structs === */
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Validator {
-    fields: Box<[Checked]>,
+    root: usize,
+    definitions: Arc<[Box<[Checked]>]>,
 }
 
 #[derive(Debug)]
@@ -47,7 +50,7 @@ enum Wire {
     Bits64,
     String,
     Bytes,
-    Message(Validator),
+    Message(usize),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -66,50 +69,100 @@ pub enum PayloadError {
 
 /* === Implementations === */
 impl Validator {
-    pub fn new(fields: &[Field]) -> Result<Self, super::Error> {
-        super::validate(fields)?;
-        Ok(Self::compile(fields))
+    // Reuse The Checked Definitions For Another Root Without Recompiling Them.
+    pub fn at(&self, root: usize) -> Result<Self, graph::Error> {
+        if root >= self.definitions.len() {
+            return Err(graph::Error::Reference { definition: root });
+        }
+        Ok(Self {
+            root,
+            definitions: Arc::clone(&self.definitions),
+        })
     }
-    pub fn construction_memory_bytes(fields: &[Field]) -> Result<usize, super::Error> {
-        let validation = super::validation_memory_bytes(fields)?;
-        let compiled = compilation_bytes(fields)?;
-        validation.checked_add(compiled).ok_or(super::Error::Budget)
+    pub fn construction_memory_bytes(
+        schema: &graph::Schema,
+        settings: &SchemaSettings,
+    ) -> Result<usize, graph::Error> {
+        schema
+            .preparation(settings)?
+            .bytes
+            .checked_add(schema.definitions.iter().try_fold(
+                std::mem::size_of::<Self>(),
+                |bytes, fields| {
+                    fields
+                        .len()
+                        .checked_mul(std::mem::size_of::<Checked>())
+                        .and_then(|size| size.checked_add(std::mem::size_of::<Box<[Checked]>>()))
+                        .and_then(|size| bytes.checked_add(size))
+                        .ok_or(graph::Error::Budget)
+                },
+            )?)
+            .and_then(|bytes| bytes.checked_add(2 * std::mem::size_of::<usize>()))
+            .and_then(|bytes| {
+                schema
+                    .definitions
+                    .len()
+                    .checked_mul(std::mem::size_of::<Box<[Checked]>>())
+                    .and_then(|temporary| bytes.checked_add(temporary))
+            })
+            .ok_or(graph::Error::Budget)
     }
     pub fn validate(&self, bytes: &[u8]) -> Result<(), PayloadError> {
-        self.read(bytes, 0)
+        self.read(self.root, bytes, 0)
     }
-    fn compile(fields: &[Field]) -> Self {
-        let mut compiled = Vec::with_capacity(fields.len());
-        for field in fields {
-            compiled.push(Checked {
-                tag: field.tag,
-                repeated: field.cardinality == Cardinality::Repeated,
-                kind: match &field.kind {
-                    Kind::Bool | Kind::U32 | Kind::U64 | Kind::I32 | Kind::I64 => Wire::Varint,
-                    Kind::F32 => Wire::Bits32,
-                    Kind::F64 => Wire::Bits64,
-                    Kind::String => Wire::String,
-                    Kind::Bytes => Wire::Bytes,
-                    Kind::Message { fields } => Wire::Message(Self::compile(fields)),
-                },
-            });
+    pub fn from_schema(
+        schema: &graph::Schema,
+        settings: &SchemaSettings,
+    ) -> Result<Self, graph::Error> {
+        schema.prepare(settings)?;
+        if Self::construction_memory_bytes(schema, settings)? > settings.preparation_bytes.get() {
+            return Err(graph::Error::Budget);
         }
-        compiled.sort_unstable_by_key(|field| field.tag);
-        Self {
-            fields: compiled.into_boxed_slice(),
-        }
+        let definitions = schema
+            .definitions
+            .iter()
+            .map(|fields| {
+                let mut compiled = fields
+                    .iter()
+                    .map(|field| Checked {
+                        tag: field.tag,
+                        repeated: field.cardinality == Cardinality::Repeated,
+                        kind: match field.kind {
+                            graph::Kind::Bool
+                            | graph::Kind::U32
+                            | graph::Kind::U64
+                            | graph::Kind::I32
+                            | graph::Kind::I64 => Wire::Varint,
+                            graph::Kind::F32 => Wire::Bits32,
+                            graph::Kind::F64 => Wire::Bits64,
+                            graph::Kind::String => Wire::String,
+                            graph::Kind::Bytes => Wire::Bytes,
+                            graph::Kind::Message { definition } => Wire::Message(definition),
+                        },
+                    })
+                    .collect::<Vec<_>>();
+                compiled.sort_unstable_by_key(|field| field.tag);
+                compiled.into_boxed_slice()
+            })
+            .collect::<Box<[_]>>();
+        Ok(Self {
+            root: schema.root,
+            definitions: definitions.into(),
+        })
     }
-    fn read(&self, mut bytes: &[u8], depth: usize) -> Result<(), PayloadError> {
+    fn read(&self, definition: usize, mut bytes: &[u8], depth: usize) -> Result<(), PayloadError> {
         if depth > DEPTH {
             return Err(PayloadError::Depth);
         }
         while !bytes.is_empty() {
             let (tag, wire) = decode_key(&mut bytes)?;
-            let Ok(index) = self.fields.binary_search_by_key(&tag, |field| field.tag) else {
+            let Ok(index) =
+                self.definitions[definition].binary_search_by_key(&tag, |field| field.tag)
+            else {
                 skip(tag, wire, &mut bytes, depth)?;
                 continue;
             };
-            let field = &self.fields[index];
+            let field = &self.definitions[definition][index];
             if field.repeated
                 && wire == WireType::LengthDelimited
                 && matches!(field.kind, Wire::Varint | Wire::Bits32 | Wire::Bits64)
@@ -120,7 +173,7 @@ impl Validator {
                 }
                 continue;
             }
-            field.kind.read(wire, &mut bytes, depth)?;
+            field.kind.read(self, wire, &mut bytes, depth)?;
         }
         Ok(())
     }
@@ -128,22 +181,14 @@ impl Validator {
 
 impl crate::MemorySize for Validator {
     fn memory_size(&self) -> usize {
-        let mut bytes = std::mem::size_of::<Self>().saturating_add(
-            self.fields
-                .len()
-                .saturating_mul(std::mem::size_of::<Checked>()),
-        );
-        for field in &self.fields {
-            if let Wire::Message(schema) = &field.kind {
-                let owned = schema.memory_size();
-                if owned == usize::MAX {
-                    return usize::MAX;
-                }
-                bytes =
-                    bytes.saturating_add(owned.saturating_sub(std::mem::size_of::<Validator>()));
-            }
-        }
-        bytes
+        self.definitions.iter().fold(
+            std::mem::size_of::<Self>().saturating_add(2 * std::mem::size_of::<usize>()),
+            |bytes, fields| {
+                bytes
+                    .saturating_add(std::mem::size_of::<Box<[Checked]>>())
+                    .saturating_add(fields.len().saturating_mul(std::mem::size_of::<Checked>()))
+            },
+        )
     }
 }
 
@@ -163,7 +208,13 @@ impl Wire {
         }
         Ok(())
     }
-    fn read(&self, wire: WireType, bytes: &mut &[u8], depth: usize) -> Result<(), PayloadError> {
+    fn read(
+        &self,
+        schema: &Validator,
+        wire: WireType,
+        bytes: &mut &[u8],
+        depth: usize,
+    ) -> Result<(), PayloadError> {
         let expected = match self {
             Self::Varint => WireType::Varint,
             Self::Bits32 => WireType::ThirtyTwoBit,
@@ -183,7 +234,7 @@ impl Wire {
             Self::Bytes => {
                 delimited(bytes)?;
             }
-            Self::Message(schema) => schema.read(delimited(bytes)?, depth + 1)?,
+            Self::Message(definition) => schema.read(*definition, delimited(bytes)?, depth + 1)?,
         }
         Ok(())
     }
@@ -243,24 +294,6 @@ fn skip(tag: u32, wire: WireType, bytes: &mut &[u8], depth: usize) -> Result<(),
 }
 
 // Called Only After The Shared Structural Budget Has Passed
-fn compilation_bytes(fields: &[Field]) -> Result<usize, super::Error> {
-    let mut bytes = fields
-        .len()
-        .checked_mul(std::mem::size_of::<Checked>())
-        .and_then(|bytes| bytes.checked_add(std::mem::size_of::<Validator>()))
-        .and_then(|bytes| bytes.checked_add(std::mem::size_of::<Vec<Checked>>()))
-        .ok_or(super::Error::Budget)?;
-    for field in fields {
-        if let Kind::Message { fields } = &field.kind {
-            let nested = compilation_bytes(fields)?;
-            // The nested Validator pointer is already inline in Checked.
-            bytes = bytes
-                .checked_add(nested - std::mem::size_of::<Validator>())
-                .ok_or(super::Error::Budget)?;
-        }
-    }
-    Ok(bytes)
-}
 
 fn malformed(message: &'static str) -> PayloadError {
     PayloadError::Malformed(message)

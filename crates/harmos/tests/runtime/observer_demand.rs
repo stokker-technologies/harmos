@@ -28,7 +28,7 @@ use harmos::observers::ObserverPhase;
 use harmos::operations::{
     OperationDeclaration, OperationPolicy, RetryPolicy, Visibility, WireOperation,
 };
-use harmos::sidecar::{
+use harmos::plugin::sidecar::{
     Attach, DemandKey, ObserverAttachment, ObserverContext, PublicationError, PublishError,
     Publisher, Supervisor,
 };
@@ -153,7 +153,7 @@ impl harmos::Plugin for Producer {
     type Config = usize;
     type Resources = Resources;
     type Context = Supervisor;
-    type Error = harmos::sidecar::Refusal;
+    type Error = harmos::plugin::sidecar::Refusal;
     fn prepare(id: usize) -> Result<Self, Self::Error> {
         let counts = SEEDS
             .lock()
@@ -161,7 +161,7 @@ impl harmos::Plugin for Producer {
             .remove(&id)
             .and_then(|counts| counts.upgrade())
             .ok_or_else(|| {
-                harmos::sidecar::Refusal::of("original fixture resources unavailable")
+                harmos::plugin::sidecar::Refusal::of("original fixture resources unavailable")
             })?;
         counts.prepared.fetch_add(1, SeqCst);
         let resources = Arc::new(Resources { counts });
@@ -404,7 +404,7 @@ pub(super) fn contract_scenario() {
             assert!(SEEDS.lock().unwrap().contains_key(&seed.id));
             assert_eq!(counts.prepared.load(SeqCst), 0);
             let observers = declaration.observers();
-            harmos::sidecar::inventory::observers::validate(
+            harmos::plugin::sidecar::inventory::observers::validate(
                 &observers,
                 &declaration.publications(),
             )

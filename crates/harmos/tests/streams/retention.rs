@@ -22,8 +22,8 @@ use support::{Bank, Change, Ledger, booted, catalog, deposit};
 // Local Imports
 use crate::support;
 use harmos::{
-    Entry, Error, Horizon, Incompatible, JournalConsumer, Position, Recorded, Recovery, Runtime,
-    Source,
+    Error, Runtime, runtime::Incompatible, state::Entry, state::Position, state::Recorded,
+    storage::Horizon, storage::JournalConsumer, storage::Recovery, storage::Source,
 };
 use jsonl_adapter::Snapshot;
 

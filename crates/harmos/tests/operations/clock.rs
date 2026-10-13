@@ -37,9 +37,7 @@ use harmos::operations::{Context, Operation, OperationPolicy, RetryPolicy};
 struct Measure;
 
 /* === Enums === */
-#[harmos::catalog]
-enum Operations {
-    #[operation(
+#[harmos::operation(
         request = Duration,
         response = (Duration, Duration),
         id = "clock.measure",
@@ -49,7 +47,11 @@ enum Operations {
             retries: RetryPolicy::Never,
         },
     )]
-    MeasureContract,
+struct MeasureContract;
+
+#[harmos::catalog]
+enum Operations {
+    MeasureContract(MeasureContract),
 }
 
 /* === Traits === */
@@ -71,12 +73,16 @@ impl Operation for Measure {
         context: Self::Context<'ctx>,
         wait: &mut Duration,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<(Duration, Duration), Self::Error> {
-        let scope = context.scope();
-        let scoped = scope.now();
-        let wall = Instant::now();
-        tokio::time::sleep(*wait).await;
-        Ok((scope.now() - scoped, wall.elapsed()))
+    ) -> Result<harmos::operations::Response<(Duration, Duration)>, Self::Error> {
+        let result: ::core::result::Result<(Duration, Duration), Self::Error> = async move {
+            let scope = context.scope();
+            let scoped = scope.now();
+            let wall = Instant::now();
+            tokio::time::sleep(*wait).await;
+            Ok((scope.now() - scoped, wall.elapsed()))
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 

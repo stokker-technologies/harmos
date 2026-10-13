@@ -41,9 +41,7 @@ grpc = [
 [dependencies]
 # Local
 harmos = { path = "../../../crates/harmos", default-features = false, features = [
-  "runtime",
   "grpc",
-  "derive",
 ], optional = true }
 
 # Git
@@ -92,7 +90,6 @@ tonic-prost = { workspace = true, default-features = true, optional = true }
 # Local
 harmos = { path = "../../../crates/harmos", default-features = false, features = [
   "grpc",
-  "derive",
 ], optional = true }
 
 # Git

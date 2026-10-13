@@ -82,7 +82,12 @@ def command(value: object, name: str) -> list[str]:
 
 def execute(directory: Path, arguments: Sequence[str], *, capture: bool = False) -> str:
     result = subprocess.run(
-        list(arguments), cwd=directory, check=False, text=True, capture_output=capture
+        list(arguments),
+        cwd=directory,
+        check=False,
+        text=True,
+        encoding="utf-8",
+        capture_output=capture,
     )
     if result.returncode:
         raise ToolError(

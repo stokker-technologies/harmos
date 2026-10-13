@@ -20,7 +20,7 @@ use std::collections::BTreeSet;
 use heck::ToSnakeCase;
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Error, Expr, Fields, Type, Variant, Visibility};
+use syn::{Attribute, Error, Expr, Fields, ItemStruct, Type};
 
 // Local Imports
 use crate::path::HarmosPath;
@@ -40,36 +40,18 @@ use crate::path::HarmosPath;
 /* === Implementations === */
 
 /* === Public Functions === */
-pub(crate) fn project(
-    variant: &mut Variant,
-    visibility: &Visibility,
+pub(crate) fn structure(
+    attribute: TokenStream,
+    item: ItemStruct,
     sdk: &HarmosPath,
-) -> Result<Option<TokenStream>, Error> {
-    let attributes: Vec<_> = variant
-        .attrs
-        .iter()
-        .filter(|attribute| attribute.path().is_ident("operation"))
-        .collect();
-    let Some(attribute) = attributes.first() else {
-        return Ok(None);
-    };
-    if attributes.len() != 1 {
+) -> Result<TokenStream, Error> {
+    if !matches!(item.fields, Fields::Unit) || !item.generics.params.is_empty() {
         return Err(Error::new_spanned(
-            variant,
-            "declare operation metadata once",
+            &item,
+            "an operation declaration requires a non-generic unit struct",
         ));
     }
-    if !matches!(variant.fields, Fields::Unit)
-        || variant
-            .attrs
-            .iter()
-            .any(|attribute| attribute.path().is_ident("nested"))
-    {
-        return Err(Error::new_spanned(
-            variant,
-            "operation metadata requires a non-nested unit variant",
-        ));
-    }
+    let attribute: Attribute = syn::parse_quote!(#[operation(#attribute)]);
     let mut seen = BTreeSet::new();
     let mut request = None::<Type>;
     let mut response = None::<Type>;
@@ -115,18 +97,22 @@ pub(crate) fn project(
         }
         Ok(())
     })?;
-    let missing =
-        || Error::new_spanned(attribute, "operation requires request, response and policy");
+    let missing = || {
+        Error::new_spanned(
+            &attribute,
+            "operation requires request, response and policy",
+        )
+    };
     let request = request.ok_or_else(missing)?;
     let response = response.ok_or_else(missing)?;
-    let derived_id = variant
+    let derived_id = item
         .ident
         .to_string()
         .trim_start_matches("r#")
         .to_snake_case();
     let id = id.unwrap_or_else(|| syn::parse_quote!(#derived_id));
     let policy = policy.ok_or_else(missing)?;
-    let name = &variant.ident;
+    let name = &item.ident;
     let key = key.map(|key| {
         quote! {
             fn key(request: &Self::Request) -> Option<#sdk::operations::CacheKey> {
@@ -154,7 +140,7 @@ pub(crate) fn project(
     );
     if grpc.is_some() && version.is_none() {
         return Err(Error::new_spanned(
-            attribute,
+            &attribute,
             "grpc requires an explicit wire version",
         ));
     }
@@ -183,13 +169,13 @@ pub(crate) fn project(
     });
     let wire = version.map(|version| {
         let input_schema = input.as_ref().map(|_| quote! {
-            const INPUT: Option<&'static [#sdk::schema::Field]> = Some(
-                <<Self as #sdk::operations::InputDeclaration>::Item as #sdk::schema::Described>::FIELDS
+            const INPUT: Option<#sdk::schema::declaration::Definition> = Some(
+                <<Self as #sdk::operations::InputDeclaration>::Item as #sdk::schema::Described>::DEFINITION
             );
         });
         let output_schema = output.as_ref().map(|_| quote! {
-            const OUTPUT: Option<&'static [#sdk::schema::Field]> = Some(
-                <<Self as #sdk::operations::OutputDeclaration>::Item as #sdk::schema::Described>::FIELDS
+            const OUTPUT: Option<#sdk::schema::declaration::Definition> = Some(
+                <<Self as #sdk::operations::OutputDeclaration>::Item as #sdk::schema::Described>::DEFINITION
             );
         });
         quote! {
@@ -201,14 +187,8 @@ pub(crate) fn project(
             }
         }
     });
-    let documentation: Vec<_> = variant
-        .attrs
-        .iter()
-        .filter(|attribute| attribute.path().is_ident("doc"))
-        .collect();
     let projected = quote! {
-        #(#documentation)*
-        #visibility struct #name;
+        #item
         impl #sdk::operations::OperationDeclaration for #name {
             type Request = #request;
             type Response = #response;
@@ -225,12 +205,7 @@ pub(crate) fn project(
         #output_declaration
         #wire
     };
-    let member: Variant = syn::parse_quote!(#name(#name));
-    variant.fields = member.fields;
-    variant
-        .attrs
-        .retain(|attribute| !attribute.path().is_ident("operation"));
-    Ok(Some(projected))
+    Ok(projected)
 }
 
 /* === Private Functions === */

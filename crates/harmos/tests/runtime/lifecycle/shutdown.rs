@@ -42,7 +42,7 @@ use crate::scenario_runtime;
 
 use super::*;
 use crate::probe::{Editor, Sheet};
-use harmos::{Entry, JournalConsumer, Recorded};
+use harmos::{state::Entry, state::Recorded, storage::JournalConsumer};
 use std::sync::atomic::AtomicUsize;
 use tokio::sync::Notify;
 
@@ -71,9 +71,7 @@ struct Cancellation {
 
 struct PendingCall(Arc<Cancellation>);
 
-#[harmos::catalog]
-enum Operations {
-    #[operation(
+#[harmos::operation(
         request = (),
         response = (),
         id = "shutdown.pending",
@@ -83,7 +81,11 @@ enum Operations {
             retries: harmos::operations::RetryPolicy::Never,
         },
     )]
-    PendingContract,
+struct PendingContract;
+
+#[harmos::catalog]
+enum Operations {
+    PendingContract(PendingContract),
 }
 
 #[harmos::lanes]
@@ -108,9 +110,13 @@ impl harmos::operations::Operation for PendingCall {
         _: Self::Context<'ctx>,
         _: &mut (),
         _: &mut (),
-    ) -> Result<(), Self::Error> {
-        self.0.started.notify_one();
-        std::future::pending().await
+    ) -> Result<harmos::operations::Response<()>, Self::Error> {
+        let result: ::core::result::Result<(), Self::Error> = async move {
+            self.0.started.notify_one();
+            std::future::pending().await
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     async fn finalize(&mut self) -> Result<(), Self::Error> {
@@ -120,7 +126,7 @@ impl harmos::operations::Operation for PendingCall {
 }
 
 struct StopNotification {
-    operations: harmos::OperationManager,
+    operations: harmos::operations::OperationManager,
     operation: harmos::operations::OperationInstanceId,
     cancelled: Arc<std::sync::OnceLock<bool>>,
 }
@@ -162,13 +168,13 @@ fn contract_scenario() {
                         .register(
                             harmos::services::ServiceDefinition {
                                 id: "caller".into(),
-                                policy: harmos::ServicePolicy::default(),
+                                policy: harmos::services::ServicePolicy::default(),
                             },
                             |_: Arc<()>| {
-                                |mut context: harmos::Service<Editor>| async move {
+                                |mut context: harmos::services::Service<Editor>| async move {
                                     context.ready();
                                     context.stopping().await;
-                                    Ok::<(), harmos::Fault<std::convert::Infallible>>(())
+                                    Ok::<(), harmos::services::Fault<std::convert::Infallible>>(())
                                 }
                             },
                         )

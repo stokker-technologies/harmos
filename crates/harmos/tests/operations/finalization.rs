@@ -113,13 +113,17 @@ impl Operation for Finishing {
         _: Self::Context<'ctx>,
         request: &mut Request,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<usize, Self::Error> {
-        self.resources.0.runs.fetch_add(1, Ordering::SeqCst);
-        self.state.ran = true;
-        if request.fail_attempt {
-            return Err(std::io::Error::other("attempt cause"));
+    ) -> Result<harmos::operations::Response<usize>, Self::Error> {
+        let result: ::core::result::Result<usize, Self::Error> = async move {
+            self.resources.0.runs.fetch_add(1, Ordering::SeqCst);
+            self.state.ran = true;
+            if request.fail_attempt {
+                return Err(std::io::Error::other("attempt cause"));
+            }
+            Ok(42)
         }
-        Ok(42)
+        .await;
+        result.map(::core::convert::Into::into)
     }
 
     async fn finalize(&mut self) -> Result<(), Self::Error> {
@@ -166,13 +170,17 @@ impl Operation for ParentCall {
         context: Self::Context<'ctx>,
         request: &mut Request,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<usize, Error> {
-        let request = Request {
-            keyed: request.keyed,
-            fail_attempt: request.fail_attempt,
-        };
-        let response = context.call::<Finish>(request).await?;
-        Ok(*response)
+    ) -> Result<harmos::operations::Response<usize>, Error> {
+        let result: ::core::result::Result<usize, Self::Error> = async move {
+            let request = Request {
+                keyed: request.keyed,
+                fail_attempt: request.fail_attempt,
+            };
+            let response = context.call::<Finish>(request).await?;
+            Ok(*response)
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
 }
 
@@ -594,7 +602,7 @@ pub(super) fn contract_scenario() {
                             ..
                         }
                     ));
-                    assert_eq!(cleanup.status(), harmos::BootstrapStatus::Failed);
+                    assert_eq!(cleanup.status(), harmos::runtime::BootstrapStatus::Failed);
                     assert!(cleanup.failure().is_some());
                     assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
 
@@ -618,7 +626,7 @@ pub(super) fn contract_scenario() {
         .await
         .unwrap();
                     }
-                    assert_eq!(cleanup.status(), harmos::BootstrapStatus::Cleaning);
+                    assert_eq!(cleanup.status(), harmos::runtime::BootstrapStatus::Cleaning);
                     assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
                     counters.block.store(false, Ordering::SeqCst);
                     counters.release.notify_one();
@@ -626,7 +634,7 @@ pub(super) fn contract_scenario() {
                         .await
                         .unwrap()
                         .unwrap();
-                    assert_eq!(cleanup.status(), harmos::BootstrapStatus::Settled);
+                    assert_eq!(cleanup.status(), harmos::runtime::BootstrapStatus::Settled);
                     assert!(cleanup.failure().is_none());
                     assert_eq!(counters.runs.load(Ordering::SeqCst), 1);
                     assert_eq!(counters.dropped.load(Ordering::SeqCst), 1);
@@ -648,10 +656,10 @@ pub(super) fn contract_scenario() {
                     .register(super::support::catalog())
                     .runtime();
                     let cleanup = opening.cleanup();
-                    assert_eq!(cleanup.status(), harmos::BootstrapStatus::Starting);
+                    assert_eq!(cleanup.status(), harmos::runtime::BootstrapStatus::Starting);
                     drop(opening);
                     cleanup.wait().await.unwrap();
-                    assert_eq!(cleanup.status(), harmos::BootstrapStatus::Settled);
+                    assert_eq!(cleanup.status(), harmos::runtime::BootstrapStatus::Settled);
                 });
         });
     }

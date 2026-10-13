@@ -27,7 +27,7 @@ use super::manager::{Entry, Submission};
 use super::{OperationInstanceId, OperationManager};
 use crate::operations::OperationDeclaration;
 use crate::supervision::executor;
-use crate::{Error, Message, Refusal, Result, Scope};
+use crate::{Error, Message, Refusal, Result, operations::Scope};
 
 /* === Constants === */
 
@@ -47,11 +47,15 @@ pub(super) type Dispatch = fn(
 pub(super) struct EncodedInput {
     pub(super) payload: Vec<u8>,
     pub(super) preparation: Option<OwnedSemaphorePermit>,
-    #[cfg(feature = "sidecar-host")]
+    #[cfg(feature = "plugin-sidecar")]
     pub(super) native_capacity: Option<OwnedSemaphorePermit>,
 }
 
-#[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
 #[derive(Clone)]
 pub struct PluginCallback {
     operations: OperationManager,
@@ -59,7 +63,7 @@ pub struct PluginCallback {
     contract: crate::operations::Contract,
 }
 
-#[cfg(feature = "sidecar-host")]
+#[cfg(feature = "plugin-sidecar")]
 #[derive(Clone)]
 pub(crate) struct PluginControl(PluginCallback);
 
@@ -92,12 +96,15 @@ impl EncodedInvocation {
     pub fn cancel(&self) {
         self.control.cancel();
     }
+
     pub fn status(&self) -> super::OperationStatus {
         self.control.status()
     }
+
     pub async fn join(self) -> Result<Vec<u8>> {
         self.await
     }
+
     pub async fn settle(&self) -> Result<()> {
         self.control
             .settle()
@@ -162,19 +169,23 @@ impl OperationManager {
             EncodedInput {
                 payload,
                 preparation: None,
-                #[cfg(feature = "sidecar-host")]
+                #[cfg(feature = "plugin-sidecar")]
                 native_capacity: None,
             },
         )
     }
 }
 
-#[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
 impl OperationManager {
-    #[cfg(feature = "sidecar-host")]
+    #[cfg(feature = "plugin-sidecar")]
     pub(crate) fn capture_host_control(
         &self,
-        scope: &crate::load::PluginScope,
+        scope: &crate::plugin::PluginScope,
         contract: &crate::operations::Contract,
     ) -> Result<PluginControl> {
         if contract.operation().visibility != crate::operations::Visibility::Host
@@ -190,7 +201,7 @@ impl OperationManager {
 
     pub fn capture_callback(
         &self,
-        scope: &crate::load::PluginScope,
+        scope: &crate::plugin::PluginScope,
         contract: &crate::operations::Contract,
     ) -> Result<PluginCallback> {
         if scope.is_closed() {
@@ -213,7 +224,11 @@ impl OperationManager {
     }
 }
 
-#[cfg(any(feature = "load", feature = "guest-host", feature = "sidecar-host"))]
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
 impl PluginCallback {
     pub(super) fn from_entry(
         operations: OperationManager,
@@ -268,7 +283,7 @@ impl PluginCallback {
         let timeout = self.entry.declared().policy.timeout;
         budget(timeout, submitted)?;
         let preparation = self.operations.claim_preparation(encoding_memory_bytes)?;
-        #[cfg(feature = "sidecar-host")]
+        #[cfg(feature = "plugin-sidecar")]
         let native_capacity = self
             .entry
             .native
@@ -288,7 +303,7 @@ impl PluginCallback {
                 resource: "callback encoding claim",
             });
         }
-        #[cfg(feature = "sidecar-host")]
+        #[cfg(feature = "plugin-sidecar")]
         if native_capacity.is_some() && payload.capacity() > harmos_sidecar::Frame::LIMIT {
             return Err(Error::ResourceExhausted {
                 resource: "native callback frame",
@@ -314,14 +329,14 @@ impl PluginCallback {
             EncodedInput {
                 payload,
                 preparation: Some(preparation),
-                #[cfg(feature = "sidecar-host")]
+                #[cfg(feature = "plugin-sidecar")]
                 native_capacity,
             },
         )
     }
 }
 
-#[cfg(feature = "sidecar-host")]
+#[cfg(feature = "plugin-sidecar")]
 impl PluginControl {
     pub(crate) fn submit_with(
         &self,
@@ -332,16 +347,18 @@ impl PluginControl {
     }
 }
 
-#[cfg(any(feature = "sidecar-host", feature = "guest-host"))]
+#[cfg(any(feature = "plugin-sidecar", feature = "plugin-guest"))]
 impl super::Caller {
-    #[cfg(feature = "sidecar-host")]
+    #[cfg(feature = "plugin-sidecar")]
     pub(crate) fn submit_observer_encoded_at(
         &self,
         operation: &str,
         payload: Vec<u8>,
         submitted: tokio::time::Instant,
+        values: Vec<super::CallValue>,
     ) -> Result<EncodedInvocation> {
-        self.operations.submit_encoded_at_as(
+        let context = self.operations.call_context().with_values(values)?;
+        self.operations.with_context(context).submit_encoded_at_as(
             operation,
             payload,
             Source::Observer(self.source.clone()),
@@ -355,8 +372,10 @@ impl super::Caller {
         operation: &str,
         payload: Vec<u8>,
         submitted: tokio::time::Instant,
+        values: Vec<super::CallValue>,
     ) -> Result<EncodedInvocation> {
-        self.operations.submit_encoded_at_as(
+        let context = self.operations.call_context().with_values(values)?;
+        self.operations.with_context(context).submit_encoded_at_as(
             operation,
             payload,
             Source::Plugin(self.source.clone()),
@@ -380,16 +399,18 @@ impl super::Context<'_> {
     }
 
     #[cfg(any(
-        feature = "sidecar-host",
-        all(feature = "guest-host", not(target_arch = "wasm32"))
+        feature = "plugin-sidecar",
+        all(feature = "plugin-guest", not(target_arch = "wasm32"))
     ))]
     pub(crate) fn submit_encoded_at(
         &self,
         operation: &str,
         payload: Vec<u8>,
         submitted: tokio::time::Instant,
+        values: Vec<super::CallValue>,
     ) -> Result<EncodedInvocation> {
-        self.operations.submit_encoded_at_as(
+        let context = self.operations.call_context().with_values(values)?;
+        self.operations.with_context(context).submit_encoded_at_as(
             operation,
             payload,
             self.source.clone(),

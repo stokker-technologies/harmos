@@ -14,29 +14,29 @@
 /* === Imports === */
 
 // Standard Library Imports
-#[cfg(feature = "runtime")]
+
 use std::sync::Arc;
 
 // Third Party Imports
 
 // Local Imports
-#[cfg(feature = "runtime")]
+
 use crate::operations::{Context, Operation};
 use crate::operations::{OperationDeclaration, ReplaySafety, Visibility, WireOperation};
 use crate::storage::FileProducer;
-#[cfg(feature = "runtime")]
+
 use crate::storage::StorageManager;
-#[cfg(feature = "runtime")]
+
 use crate::{Error, Result};
 
 /* === Constants === */
 
 /* === Macros === */
-crate::storage_codec::product!(AppendFileRequest {
-    mutation: crate::storage_codec::Nested<crate::storage::MutationId> => 1,
-    session: crate::storage_codec::Nested<crate::storage::FileSession> => 2,
-    offset: crate::storage_codec::Unsigned => 3,
-    bytes: crate::storage_codec::Bytes => 4,
+crate::storage::codec::product!(AppendFileRequest {
+    mutation: crate::storage::codec::Nested<crate::storage::MutationId> => 1,
+    session: crate::storage::codec::Nested<crate::storage::FileSession> => 2,
+    offset: crate::storage::codec::Unsigned => 3,
+    bytes: crate::storage::codec::Bytes => 4,
 });
 
 /* === Type Aliases === */
@@ -51,7 +51,7 @@ pub struct AppendFileRequest {
 }
 
 pub struct AppendFile;
-#[cfg(feature = "runtime")]
+
 pub(super) struct Handler<C> {
     storage: Arc<StorageManager<C>>,
 }
@@ -72,7 +72,7 @@ impl OperationDeclaration for AppendFile {
 impl WireOperation for AppendFile {
     const VERSION: u32 = 1;
 }
-#[cfg(feature = "runtime")]
+
 impl<C: 'static> Operation for Handler<C> {
     type Declaration = AppendFile;
     type Resources = StorageManager<C>;
@@ -82,21 +82,27 @@ impl<C: 'static> Operation for Handler<C> {
     fn new(storage: Arc<StorageManager<C>>) -> Result<Self> {
         Ok(Self { storage })
     }
+
     async fn run<'a>(
         &mut self,
         _: Self::Context<'a>,
         request: &mut AppendFileRequest,
         _: &mut Self::Endpoints,
-    ) -> Result<FileProducer> {
-        self.storage
-            .append_file_once(
-                &request.mutation,
-                &request.session,
-                request.offset,
-                &request.bytes,
-            )
-            .await
+    ) -> Result<crate::operations::Response<FileProducer>> {
+        let result: ::core::result::Result<FileProducer, Self::Error> = async move {
+            self.storage
+                .append_file_once(
+                    &request.mutation,
+                    &request.session,
+                    request.offset,
+                    &request.bytes,
+                )
+                .await
+        }
+        .await;
+        result.map(::core::convert::Into::into)
     }
+
     fn classify(error: &Error) -> crate::operations::Failure {
         super::classify(error)
     }

@@ -44,7 +44,7 @@ def main() -> None:
         "-p",
         "harmos",
         "--features",
-        "sim,sidecar-host,sidecar,load",
+        "simulation,plugin-sidecar",
         "--test",
         "sim",
         "sim_ac001_double_run_identity",

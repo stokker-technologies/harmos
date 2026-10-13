@@ -14,30 +14,30 @@
 /* === Imports === */
 
 // Standard Library Imports
-#[cfg(feature = "runtime")]
+
 use std::sync::Arc;
 
 // Third Party Imports
 
 // Local Imports
 use crate::Identifier;
-#[cfg(feature = "runtime")]
+
 use crate::operations::{Context, Operation};
 use crate::operations::{Grpc, OperationDeclaration, ReplaySafety, Visibility, WireOperation};
-#[cfg(feature = "runtime")]
+
 use crate::storage::StorageManager;
 use crate::storage::{MutationId, RecordInput, StorageCursor};
-#[cfg(feature = "runtime")]
+
 use crate::{Error, Result};
 use harmos_contract::plugin::Grant;
 
 /* === Constants === */
 
 /* === Macros === */
-crate::storage_codec::product!(WriteRecordsRequest {
-    mutation: crate::storage_codec::Nested<MutationId> => 1,
-    records: crate::storage_codec::Repeated<RecordInput> => 2,
-    source: crate::storage_codec::Id => 3,
+crate::storage::codec::product!(WriteRecordsRequest {
+    mutation: crate::storage::codec::Nested<MutationId> => 1,
+    records: crate::storage::codec::Repeated<RecordInput> => 2,
+    source: crate::storage::codec::Id => 3,
 });
 
 /* === Type Aliases === */
@@ -51,7 +51,7 @@ pub struct WriteRecordsRequest {
 }
 
 pub struct WriteRecords;
-#[cfg(feature = "runtime")]
+
 pub(super) struct Handler<C> {
     storage: Arc<StorageManager<C>>,
 }
@@ -91,7 +91,7 @@ impl crate::MemorySize for WriteRecordsRequest {
             - std::mem::size_of::<Identifier>()
     }
 }
-#[cfg(feature = "runtime")]
+
 impl<C: 'static> Operation for Handler<C> {
     type Declaration = WriteRecords;
     type Resources = StorageManager<C>;
@@ -101,28 +101,34 @@ impl<C: 'static> Operation for Handler<C> {
     fn new(storage: Arc<StorageManager<C>>) -> Result<Self> {
         Ok(Self { storage })
     }
+
     async fn run<'a>(
         &mut self,
         _: Self::Context<'a>,
         request: &mut WriteRecordsRequest,
         _: &mut Self::Endpoints,
-    ) -> Result<StorageCursor> {
-        for record in &mut request.records {
-            match &record.source {
-                Some(source) if *source != request.source => {
-                    return Err(Error::InvalidInput {
-                        field: "storage record source",
-                        reason: "a record names a source other than the granted tag",
-                    });
+    ) -> Result<crate::operations::Response<StorageCursor>> {
+        let result: ::core::result::Result<StorageCursor, Self::Error> = async move {
+            for record in &mut request.records {
+                match &record.source {
+                    Some(source) if *source != request.source => {
+                        return Err(Error::InvalidInput {
+                            field: "storage record source",
+                            reason: "a record names a source other than the granted tag",
+                        });
+                    }
+                    _ => record.source = Some(request.source.clone()),
                 }
-                _ => record.source = Some(request.source.clone()),
             }
+            let values = request.records.iter().map(RecordInput::borrowed);
+            self.storage
+                .admit_record_values(&request.mutation, values)
+                .await
         }
-        let values = request.records.iter().map(RecordInput::borrowed);
-        self.storage
-            .admit_record_values(&request.mutation, values)
-            .await
+        .await;
+        result.map(::core::convert::Into::into)
     }
+
     fn classify(error: &Error) -> crate::operations::Failure {
         super::classify(error)
     }
