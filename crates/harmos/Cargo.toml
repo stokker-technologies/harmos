@@ -136,7 +136,7 @@ semver = { workspace = true, default-features = true, optional = true }
 sha2 = { workspace = true, default-features = true }
 
 # Serialization
-prost-reflect = { workspace = true, optional = true }
+prost-reflect = { workspace = true, optional = true, features = ["serde"] }
 serde = { workspace = true, default-features = true }
 serde_json = { workspace = true, default-features = true, features = ["raw_value"] }
 

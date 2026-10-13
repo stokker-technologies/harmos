@@ -427,7 +427,7 @@ impl<T> StorageFollower<T> {
                 let timeout = computation
                     .as_ref()
                     .map_or(timeout, |active| active.timeout().min(timeout));
-                let page = tokio::time::timeout(timeout, history.next_page(limits))
+                let page = tokio::time::timeout(timeout, history.next_page_in_computation(limits))
                     .await
                     .map_err(|_| super::query::execution_timeout())??;
                 if let Some(active) = computation {
@@ -436,9 +436,10 @@ impl<T> StorageFollower<T> {
                     page
                 }
             } else if let Some(view) = history.view().cloned() {
-                view.compute(history.next_page(limits)).await?
+                view.compute(history.next_page_in_computation(limits))
+                    .await?
             } else {
-                history.next_page(limits).await?
+                history.next_page_in_computation(limits).await?
             };
             self.lease.check()?;
             if let Some(page) = page {

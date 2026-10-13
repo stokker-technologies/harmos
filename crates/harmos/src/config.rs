@@ -97,6 +97,8 @@ pub struct StorageSettings {
     pub mutation_memory_bytes: NonZeroUsize,
     pub mutation_retention: Duration,
     pub file_chunk_bytes: NonZeroUsize,
+    // Resume Retention For Disconnected/Recovered Producers And Inactivity
+    // Retention For Token-Only Producers Without A Retained Native Handle.
     pub file_session_timeout: Duration,
     pub view_idle_timeout: Duration,
     pub snapshot_bytes: NonZeroUsize,

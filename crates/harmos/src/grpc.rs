@@ -10,6 +10,7 @@
 /* === Modules === */
 
 pub mod authentication;
+pub mod dynamic;
 
 mod codec;
 

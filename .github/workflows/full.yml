@@ -155,16 +155,18 @@ jobs:
           path: dist
           merge-multiple: true
       - name: test
+        id: test
         run: |
           mise run packages:restore
           mise run test
           mise run packages:validate
       - name: packages:export
-        if: always()
+        id: export
+        if: always() && steps.test.outcome != 'skipped'
         run: mise run packages:export
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         id: upload
-        if: always()
+        if: always() && steps.export.outcome == 'success'
         with:
           name: harmos-test-linux-${{ github.run_attempt }}
           path: dist/harmos-tests-linux.zip
@@ -264,6 +266,7 @@ jobs:
           path: dist
           merge-multiple: true
       - name: test
+        id: test
         run: |
           mise run packages:restore
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -272,11 +275,12 @@ jobs:
           mise run packages:validate
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: packages:export
-        if: always()
+        id: export
+        if: always() && steps.test.outcome != 'skipped'
         run: mise run packages:export
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         id: upload
-        if: always()
+        if: always() && steps.export.outcome == 'success'
         with:
           name: harmos-test-windows-${{ github.run_attempt }}
           path: dist/harmos-tests-windows.zip

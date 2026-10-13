@@ -161,6 +161,13 @@ fn own_contract() {
                     let mut file = f.storage.produce_file(metadata("expired")).await.unwrap();
                     file.write_all(b"partial").await.unwrap();
                     let token = file.session().unwrap().clone();
+                    tokio::time::advance(Duration::from_secs(61)).await;
+                    for _ in 0..10 {
+                        tokio::task::yield_now().await;
+                    }
+                    assert!(f.data.abandoned_files.lock().unwrap().is_empty());
+                    file.write_all(b" after idle").await.unwrap();
+                    assert_eq!(file.session().unwrap(), &token);
                     drop(file);
                     tokio::time::advance(Duration::from_secs(59)).await;
                     assert!(f.data.abandoned_files.lock().unwrap().is_empty());
@@ -172,12 +179,49 @@ fn own_contract() {
                         tokio::task::yield_now().await;
                     }
                     assert!(f.data.abandoned_files.lock().unwrap().contains("expired"));
-                    assert_eq!(f.data.staged.lock().unwrap()["expired"].1, b"partial");
+                    assert_eq!(
+                        f.data.staged.lock().unwrap()["expired"].1,
+                        b"partial after idle"
+                    );
                     assert!(f.storage.resume_file(&token).await.is_err());
                     assert_eq!(f.storage.cursor_accepted().sequence, 0);
+                    let unadopted = f.storage.produce_file(metadata("unadopted")).await.unwrap();
+                    let mut unadopted_token = unadopted.session().unwrap().clone();
+                    f.data.control.block_fence.store(true, Ordering::SeqCst);
+                    {
+                        let resume = f.storage.resume_file(&unadopted_token);
+                        tokio::pin!(resume);
+                        tokio::select! {
+                            biased;
+                            _ = &mut resume => panic!("expected blocked resume"),
+                            _ = f.data.control.fence_entered.notified() => {}
+                        }
+                    }
+                    f.data.control.block_fence.store(false, Ordering::SeqCst);
+                    f.data.control.fence_release.notify_one();
+                    for _ in 0..100 {
+                        if f.data.file_generations.lock().unwrap().get("unadopted") == Some(&2) {
+                            break;
+                        }
+                        tokio::task::yield_now().await;
+                    }
+                    assert_eq!(
+                        f.data.file_generations.lock().unwrap().get("unadopted"),
+                        Some(&2)
+                    );
+                    for _ in 0..10 {
+                        tokio::task::yield_now().await;
+                    }
+                    unadopted_token.generation = 2;
+                    tokio::time::advance(Duration::from_secs(61)).await;
+                    assert!(f.storage.resume_file(&unadopted_token).await.is_err());
+                    drop(unadopted);
                     let data = f.data.clone();
                     f.finish().await;
-                    assert_eq!(data.staged.lock().unwrap()["expired"].1, b"partial");
+                    assert_eq!(
+                        data.staged.lock().unwrap()["expired"].1,
+                        b"partial after idle"
+                    );
                 });
         });
     }
@@ -426,10 +470,11 @@ fn own_contract() {
                     let f = Fixture::new(settings).await;
                     let mut producer = f.storage.produce_file(metadata("late")).await.unwrap();
                     let token = producer.session().unwrap().clone();
-                    tokio::time::advance(Duration::from_secs(2)).await;
-                    assert!(producer.write_all(b"too late").await.is_err());
+                    producer.write_all(b"retained").await.unwrap();
                     drop(producer);
+                    tokio::time::advance(Duration::from_secs(2)).await;
                     assert!(f.storage.resume_file(&token).await.is_err());
+                    assert_eq!(f.data.staged.lock().unwrap()["late"].1, b"retained");
                     f.finish().await;
                     assert_eq!(
                         harmos::storage::StorageSettings::default().file_session_timeout,

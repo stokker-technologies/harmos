@@ -152,7 +152,7 @@ run = "uv run --locked --project tools/python ruff check --config tools/python/p
 run = "{{vars.cargo_guard}}cargo build --locked --workspace --timings"
 
 [tasks."check:types:python"]
-run = "uv run --locked --project tools/python --group test ty check tools/python crates/harmos-contract/src/bindings/python"
+run = "uv run --locked --project tools/python --group test ty check --project tools/python --extra-search-path crates/harmos-contract/src/bindings tools/python crates/harmos-contract/src/bindings/python"
 
 # === Tasks | Continuous Integration === #
 
@@ -260,12 +260,8 @@ description = "Check Compiled Targets And Build Native Release Assets"
 run = [{ task = "check:compiled" }, { task = "build:release" }]
 
 [tasks."ci:feature"]
-description = "Validate Feature Branch Source And Integration Behavior"
-run = [
-  { task = "check:fast" },
-  { task = "check:compiled" },
-  { task = "test:integration" },
-]
+description = "Check Feature Branch Source Without Compiling Product Targets"
+run = [{ task = "check:fast" }]
 
 
 [tasks."test:integration:rust"]

@@ -262,9 +262,12 @@ impl<A: Application> Resident<A> for Worker {
                                     state.objects_pruned = through.sequence;
                                 }
                             }
-                            (Action::File(action), Completed::File(result)) => {
-                                state.file_completed(action, result)
-                            }
+                            (Action::File(action), Completed::File(result)) => state
+                                .file_completed(
+                                    action,
+                                    result,
+                                    inner.settings.file_session_timeout,
+                                ),
                             (Action::View(ViewAction::Release(..)), Completed::Released(id)) => {
                                 state.views.remove(&id);
                                 state.snapshot_released();

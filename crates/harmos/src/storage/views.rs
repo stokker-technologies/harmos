@@ -48,7 +48,7 @@ pub struct StorageView {
     lease: Arc<Lease>,
 }
 
-pub(crate) struct StorageReader<T> {
+pub struct StorageReader<T> {
     view: Option<StorageView>,
     selection: ReadSelection,
     cursor: Option<ReadCursor>,
@@ -56,7 +56,7 @@ pub(crate) struct StorageReader<T> {
     fetch: Fetch<T>,
 }
 
-pub(crate) struct StoragePage<T> {
+pub struct StoragePage<T> {
     entries: Vec<T>,
     reservation: MemoryReservation,
 }
@@ -373,10 +373,9 @@ impl StorageView {
         self.reader::<ObjectEntry>(selection)
     }
 
-    pub(super) fn read_records(
-        &self,
-        selection: ReadSelection,
-    ) -> Result<StorageReader<StoredRecord>> {
+    // Open Original Raw Saved Paging Under This View And Its Execution Limits.
+    // ReadSelection::through Selects A Fixed Cut Within The Original Snapshot.
+    pub fn read_records(&self, selection: ReadSelection) -> Result<StorageReader<StoredRecord>> {
         self.reader::<StoredRecord>(selection)
     }
 
@@ -635,10 +634,43 @@ impl<T> StorageReader<T> {
     }
 
     pub async fn next_page(&mut self, limits: ReadLimits) -> Result<Option<StoragePage<T>>> {
-        self.next_page_reserved(limits, |entries, reservation| {
-            Ok(StoragePage::new(entries, reservation))
-        })
-        .await
+        let Some(view) = self.view.clone() else {
+            return Ok(None);
+        };
+        let result = view
+            .compute(self.stage_page_reserved(limits, |entries, reservation| {
+                Ok(StoragePage::new(entries, reservation))
+            }))
+            .await;
+        let page = match result {
+            Ok(page) => page,
+            Err(error) => {
+                self.staged_cursor = None;
+                return Err(error);
+            }
+        };
+        let Some((entries, empty)) = page else {
+            return Ok(None);
+        };
+        self.commit_staged_page();
+        if empty { Ok(None) } else { Ok(Some(entries)) }
+    }
+
+    // The Internal Caller Already Owns The Original View Computation.
+    pub(super) async fn next_page_in_computation(
+        &mut self,
+        limits: ReadLimits,
+    ) -> Result<Option<StoragePage<T>>> {
+        let Some((entries, empty)) = self
+            .stage_page_reserved(limits, |entries, reservation| {
+                Ok(StoragePage::new(entries, reservation))
+            })
+            .await?
+        else {
+            return Ok(None);
+        };
+        self.commit_staged_page();
+        if empty { Ok(None) } else { Ok(Some(entries)) }
     }
 
     pub(super) async fn stage_page_mapped<U>(
@@ -662,18 +694,6 @@ impl<T> StorageReader<T> {
         if self.cursor.is_none() {
             self.view = None;
         }
-    }
-
-    async fn next_page_reserved<U>(
-        &mut self,
-        limits: ReadLimits,
-        map: impl FnOnce(Vec<T>, MemoryReservation) -> Result<U>,
-    ) -> Result<Option<U>> {
-        let Some((entries, empty)) = self.stage_page_reserved(limits, map).await? else {
-            return Ok(None);
-        };
-        self.commit_staged_page();
-        if empty { Ok(None) } else { Ok(Some(entries)) }
     }
 
     async fn stage_page_reserved<U>(

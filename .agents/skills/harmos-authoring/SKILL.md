@@ -137,6 +137,15 @@ declare operation metadata.
   children/retries with a distinct per-ingress cache identity; they are not
   trusted internal host calls. Portable metadata cannot mint that authority.
 
+- Dynamic Rust clients use `grpc::dynamic::Operation::new(&contract, message_bytes)`
+  for a discovered canonical contract. Its `request` and `input` methods accept
+  standard protobuf JSON, and its operation-bound `codec` handles all four RPC
+  modes. Output events distinguish streamed items from the declared final response.
+  The client owns its connection, authentication, metadata and cancellation; the
+  codec reuses canonical descriptors and finite graph validators. Wire and JSON
+  bytes are bounded separately by the supplied ceiling; this is not a retained
+  allocation ledger. Rediscovery owns provider identity and generation freshness.
+
 - Normal operation registration automatically publishes declared gRPC methods
   when their provider is ready. Removing the `grpc(...)` declaration removes that
   exposure; do not add a second exposure catalog or flag.
@@ -175,6 +184,13 @@ declare operation metadata.
   integer widths, variants, shared definitions and recursive references.
   Refuse selected non-protobuf contracts, unknown identities, naming collisions
   and unsupported compiler output. Never replace an existing package directory.
+- Generated Python packages expose `dynamic.from_contract(contract, *, max_bytes,
+  max_work, max_definitions)` for live discovered contracts, including plugins
+  absent from the host's compiled catalog. It returns the same `operation.Operation`
+  descriptor with private standard protobuf classes. Row references, optional
+  presence, variants, primitive widths and RPC envelopes follow canonical reflection.
+  Consumers retain their own invoker, TLS, principal, metadata and lifecycle owners.
+
 - Each generated producer package owns its descriptor pool. Standard protobuf
   `message_factory` creates its classes without process-global symbol
   registration; separate producer classes remain distinct even when protobuf
@@ -211,15 +227,30 @@ declare operation metadata.
   the consumer. The original saved view, schema validation and query budgets
   remain authoritative; frame filters do not create a new storage owner.
 - Raw saved paging uses `RecordQuery::filter: Option<RecordFilter>` and Core
-  `DataSelection::record_filter`. `RecordFilter` declares 1..64 scalar columns
-  and at most 64 predicates over `Expr::Col`; membership remains capped at 64.
-  Backends implement `StorageBackend::validate_record_filter`, validate selected
-  schema paths, and apply predicates under the existing read cut, continuation,
-  memory and time bounds. Typed output retains its original decoded allowance.
-  The default backend capability
-  refuses filtered queries. Keep envelope process scope separate from nested
-  product ownership. Direct follow/replay rejects filters; poll saved history
-  with an explicit cut when the consumer needs filtered watching.
+  `DataSelection::record_filter`. `RecordFilter { columns, clauses }` shares
+  1..64 scalar columns across `RecordClause { predicates }` alternatives.
+  Clauses combine with OR, predicates within each with AND. Clauses must be
+  nonempty; the complete filter admits at most 64 predicates over `Expr::Col`.
+  Membership remains capped at 64 values. Backends implement
+  `StorageBackend::validate_record_filter`, validate selected schema paths, and
+  apply the shared `RecordFilter::matches` contract under the existing cut,
+  continuation, memory and time bounds. Typed output retains its original
+  decoded allowance; unsupported backends refuse filters.
+- Original raw paging uses a bounded `StorageManager::view_with_limits`, then
+  `StorageView::read_records(ReadSelection)` and
+  `StorageReader::next_page(ReadLimits)`. Specify `ReadSelection::through` for a
+  fixed cut. Pages retain the original storage reservation, view and cursor;
+  do not union independent readers or copy their budget authority. Keep envelope
+  process scope separate from nested product ownership. Direct follow/replay
+  rejects filters; poll saved history with an explicit cut for filtered watching.
+- A connected `StorageFile` retains production during idle periods. The original
+  resident service owns that handle independently of viewers. Drop or pending
+  write cancellation starts `file_session_timeout`; recovered disconnected
+  sessions have the same resume window. Resume fences the old producer and
+  clears its deadline only when a native handle adopts the result. Token-only
+  mutation producers retain bounded inactivity expiry; cancelled, unadopted
+  native resumes retain the disconnected window. Finish, abort, shutdown and existing resource budgets
+  remain authoritative; do not add heartbeat writes or viewer-owned producers.
 
 ## Canonical Guest And Sidecar Layout
 

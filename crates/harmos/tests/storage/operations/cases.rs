@@ -181,17 +181,22 @@ fn own_contract() {
                                 kind: ScalarKind::Text,
                             },
                         ],
-                        predicates: vec![
-                            Predicate::In {
-                                expr: Expr::Col(0),
-                                values: vec![ScalarValue::Unsigned(2), ScalarValue::Unsigned(4)],
-                            },
-                            Predicate::Compare {
-                                expr: Expr::Col(1),
-                                compare: Compare::Eq,
-                                value: ScalarValue::Text("chosen".into()),
-                            },
-                        ],
+                        clauses: vec![harmos::storage::RecordClause {
+                            predicates: vec![
+                                Predicate::In {
+                                    expr: Expr::Col(0),
+                                    values: vec![
+                                        ScalarValue::Unsigned(2),
+                                        ScalarValue::Unsigned(4),
+                                    ],
+                                },
+                                Predicate::Compare {
+                                    expr: Expr::Col(1),
+                                    compare: Compare::Eq,
+                                    value: ScalarValue::Text("chosen".into()),
+                                },
+                            ],
+                        }],
                     }),
                 };
                 assert_eq!(

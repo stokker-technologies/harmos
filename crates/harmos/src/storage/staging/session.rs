@@ -28,8 +28,7 @@ use super::*;
 pub(super) struct Session {
     pub(super) generation: u64,
     disconnected: bool,
-    deadline: tokio::time::Instant,
-    timeout: Duration,
+    deadline: Option<tokio::time::Instant>,
     pub(super) reason: &'static str,
 }
 
@@ -39,13 +38,19 @@ pub(super) struct Session {
 
 /* === Implementations === */
 impl Session {
-    pub(super) fn new(timeout: Duration) -> Self {
+    pub(super) fn new() -> Self {
         Self {
             generation: 1,
             disconnected: false,
-            deadline: executor::now() + timeout,
-            timeout,
+            deadline: None,
             reason: "producer abandoned",
+        }
+    }
+
+    pub(super) fn token(timeout: Duration) -> Self {
+        Self {
+            deadline: Some(executor::now() + timeout),
+            ..Self::new()
         }
     }
 
@@ -53,24 +58,32 @@ impl Session {
         Self {
             generation,
             disconnected: true,
-            ..Self::new(timeout)
+            deadline: Some(executor::now() + timeout),
+            ..Self::new()
         }
     }
 
-    pub(super) fn resumed(&mut self, generation: u64) {
+    pub(super) fn resumed(&mut self, generation: u64, timeout: Duration, disconnected: bool) {
         self.generation = generation;
-        self.disconnected = false;
-        self.touch();
+        self.disconnected = disconnected;
+        self.deadline = Some(executor::now() + timeout);
     }
 
-    pub(super) fn touch(&mut self) {
-        self.deadline = executor::now() + self.timeout;
+    pub(super) fn connect(&mut self) {
+        self.disconnected = false;
+        self.deadline = None;
+    }
+
+    pub(super) fn renew(&mut self, timeout: Duration) {
+        if !self.disconnected && self.deadline.is_some() {
+            self.deadline = Some(executor::now() + timeout);
+        }
     }
 
     pub(super) fn disconnect(&mut self, file: &StagedFile, offset: u64, timeout: Duration) {
-        if !self.disconnected && self.deadline > executor::now() {
+        if !self.disconnected {
             self.disconnected = true;
-            self.deadline = executor::now() + timeout;
+            self.deadline = Some(executor::now() + timeout);
             tracing::warn!(file = %file.id, generation = self.generation, offset, reason = "producer disconnected", "file production retained for resume");
         }
     }
@@ -126,6 +139,7 @@ impl<C> StorageManager<C> {
                     reason: "private staging is not resumable",
                 })?;
                 if claimed && session.generation == next && !file.abandoned {
+                    session.connect();
                     let mut token = token.clone();
                     token.generation = next;
                     Some(StorageFile {
@@ -204,8 +218,10 @@ impl FileState {
             (Some(session), Some(token))
                 if session.generation == token.generation
                     && !session.disconnected
-                    && !self.abandoned
-                    && session.deadline > executor::now() =>
+                    && session
+                        .deadline
+                        .is_none_or(|deadline| deadline > executor::now())
+                    && !self.abandoned =>
             {
                 Ok(())
             }
@@ -230,15 +246,19 @@ impl State {
             let Some(session) = &mut file.session else {
                 continue;
             };
-            if session.deadline <= now
+            if session.deadline.is_some_and(|deadline| deadline <= now)
                 && !file.in_flight
                 && !file.abandoned
                 && !matches!(file.command, Some(Command::Finish { .. }))
             {
                 file.abandoned = true;
-                session.reason = "producer inactivity timeout";
+                session.reason = if session.disconnected {
+                    "disconnected producer resume timeout"
+                } else {
+                    "token producer inactivity timeout"
+                };
                 file.progress.lock().unwrap().closed = true;
-                tracing::error!(file = %file.staging.id, generation = session.generation, offset = file.length, reason = "producer inactivity timeout", "file production abandoned; partial bytes retained");
+                tracing::error!(file = %file.staging.id, generation = session.generation, offset = file.length, reason = session.reason, "file production abandoned; partial bytes retained");
             }
         }
     }
@@ -254,7 +274,7 @@ impl State {
                     && !file.in_flight
                     && !matches!(file.command, Some(Command::Finish { .. }))
             })
-            .filter_map(|file| file.session.as_ref().map(|session| session.deadline))
+            .filter_map(|file| file.session.as_ref().and_then(|session| session.deadline))
             .min()
     }
 }

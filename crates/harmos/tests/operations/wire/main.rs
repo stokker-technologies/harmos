@@ -26,6 +26,8 @@ use fixture::*;
 mod artifact;
 #[path = "authored.rs"]
 mod authored;
+#[cfg(feature = "grpc")]
+mod dynamic;
 #[path = "endpoints.rs"]
 mod endpoints;
 #[cfg(feature = "grpc")]
@@ -115,4 +117,6 @@ fn grpc_calls() {
     grpc::contract_scenario();
     #[cfg(feature = "grpc")]
     grpc_manager::contract_scenario();
+    #[cfg(feature = "grpc")]
+    dynamic::contract_scenario();
 }

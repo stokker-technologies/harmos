@@ -280,12 +280,38 @@ alternatives; an empty set matches nothing. Presence excludes missing and null
 values, so nested ownership fields can be required without admitting unscoped
 records. Queries keep the original saved cut and declared memory limits.
 
-Raw saved record paging accepts the same scalar predicates through
-`RecordQuery::filter` and `storage::operations::DataSelection::record_filter`.
-Supporting backends validate the selected schema and apply predicates within the
-original cut, continuation and query limits. Keep envelope process scope separate
-from nested payload ownership. Filtered queries require saved paging; direct
-follow and replay reject them.
+Raw saved record paging accepts bounded disjunction through
+`RecordQuery::filter` and `storage::operations::DataSelection::record_filter`:
+
+```rust
+RecordFilter {
+    columns,
+    clauses: vec![
+        RecordClause { predicates: execution_owner },
+        RecordClause { predicates: subscribed_items },
+    ],
+}
+```
+
+Clauses combine with OR and their predicates with AND. A filter has 1..64 scalar
+columns and 1..64 total predicates in nonempty clauses; membership remains
+capped at 64 values. Supporting backends validate the selected schema and apply
+predicates within the original cut, continuation and query limits. For original
+raw pages, acquire `StorageManager::view_with_limits` and call
+`StorageView::read_records` with `ReadSelection::through`; its `StorageReader`
+returns budget-owned `StoragePage<StoredRecord>` values. Keep envelope process
+scope separate from nested payload ownership. Filtered queries require saved
+paging; direct follow and replay reject them.
+
+A retained, connected `StorageFile` stays live during idle periods under its
+original producer owner. Dropping the producer or cancelling its pending write
+starts the configured `file_session_timeout` resume window (60 seconds by
+default); recovered sessions have the same bounded window. Token-only mutation
+producers retain bounded inactivity expiry because no native handle owns their
+lifetime. An unadopted native resume remains disconnected. Resume fences the old
+producer and clears the disconnected deadline. Finish, abort and storage shutdown
+still retire production; existing file-count and memory budgets remain enforced.
+A viewer owns its subscription, while the original service owns production.
 
 Operations derive child context with `Context::with_value` for a declared
 `ContextValue`; sidecar `Supervisor` and guest `Context` expose the same method.
@@ -390,6 +416,11 @@ authoritative repository and native CI; GitLab retains a one-way mirror.
 Follow [issues](https://github.com/stokker-technologies/harmos/issues)
 for development discussions and [the changelog](CHANGELOG.md) for recorded changes.
 
+Dynamic clients consume discovered canonical contracts through
+`harmos::grpc::dynamic::Operation` or a generated Python package's
+`dynamic.from_contract`. Both project the same finite graph and streaming envelopes.
+The consuming application owns authentication, connections, metadata and cancellation.
+
 ## Development Setup
 
 Use the setup commands in [Quick Start](#quick-start), then choose a task:
@@ -423,8 +454,9 @@ The native validation pipeline runs source checks first, then compiled checks an
 release builds on the same runner. Local `mise run check` retains both check groups.
 Native Rust integration tests use the release profile without instrumentation.
 Coverage is an optional diagnostic through `STKR_COVERAGE=1 mise run test`; it
-preserves the ordinary test selection. Feature pushes run Linux integration
-tests and retain diagnostics. The full-validation gate requires both native
+preserves the ordinary test selection. Feature pushes run source checks through
+`mise run ci:feature`. Compiled checks and full correctness tests run in the
+approved native validation workflow. The full-validation gate requires both native
 platforms; the temporary dev gate verifies Linux independently. Dev pushes may
 use the restricted local Linux runner; other refs use hosted runners.
 

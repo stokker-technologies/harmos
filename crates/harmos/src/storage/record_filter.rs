@@ -31,12 +31,19 @@ use crate::{MemorySize, Result, schema};
 
 /* === Structs === */
 // Bounded scalar predicates for saved record queries. Columns identify payload
-// or envelope fields; separate predicates combine with AND. Backends validate
+// or envelope fields; clauses combine with OR, predicates within each with AND.
+// Backends validate
 // the selected schema before applying predicates under the original read cut.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RecordFilter {
     pub columns: Vec<ScalarField>,
+    pub clauses: Vec<RecordClause>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RecordClause {
     pub predicates: Vec<Predicate>,
 }
 
@@ -49,16 +56,24 @@ impl RecordFilter {
     pub fn check(&self) -> Result<()> {
         if self.columns.is_empty()
             || self.columns.len() > MAX_WIDTH
-            || self.predicates.len() > MAX_WIDTH
+            || self.clauses.is_empty()
+            || self.clauses.len() > MAX_WIDTH
+            || self
+                .clauses
+                .iter()
+                .any(|clause| clause.predicates.is_empty())
+            || self.clauses.iter().fold(0usize, |count, clause| {
+                count.saturating_add(clause.predicates.len())
+            }) > MAX_WIDTH
         {
             return Err(invalid(
-                "record filter requires 1..64 columns and at most 64 predicates",
+                "record filter requires 1..64 columns and 1..64 total predicates in nonempty clauses",
             ));
         }
         for column in &self.columns {
             column.check()?;
         }
-        for predicate in &self.predicates {
+        for predicate in self.clauses.iter().flat_map(|clause| &clause.predicates) {
             let Expr::Col(index) = *predicate.expr() else {
                 return Err(invalid("record filters require original columns"));
             };
@@ -93,27 +108,43 @@ impl RecordFilter {
                 return Err(invalid("record projection differs from declared type"));
             }
         }
-        for predicate in &self.predicates {
-            let Expr::Col(index) = *predicate.expr() else {
-                unreachable!("checked original column")
-            };
-            if !satisfies(&values[index], predicate)? {
-                return Ok(false);
+        for clause in &self.clauses {
+            let mut matched = true;
+            for predicate in &clause.predicates {
+                let Expr::Col(index) = *predicate.expr() else {
+                    unreachable!("checked original column")
+                };
+                if !satisfies(&values[index], predicate)? {
+                    matched = false;
+                    break;
+                }
+            }
+            if matched {
+                return Ok(true);
             }
         }
-        Ok(true)
+        Ok(false)
     }
 }
 impl MemorySize for RecordFilter {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
             .saturating_add(heap(&self.columns))
-            .saturating_add(heap(&self.predicates))
+            .saturating_add(heap(&self.clauses))
     }
 }
 product!(RecordFilter {
     columns: Repeated<ScalarField> => 1,
-    predicates: Repeated<Predicate> => 2,
+    clauses: Repeated<RecordClause> => 2,
+});
+
+impl MemorySize for RecordClause {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>().saturating_add(heap(&self.predicates))
+    }
+}
+product!(RecordClause {
+    predicates: Repeated<Predicate> => 1,
 });
 
 /* === Public Functions === */

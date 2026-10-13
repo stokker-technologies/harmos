@@ -205,26 +205,28 @@ fn contract_scenario() {
                             kind: ScalarKind::Text,
                         },
                     ],
-                    predicates: vec![
-                        Predicate::In {
-                            expr: Expr::Col(0),
-                            values: vec![ScalarValue::Unsigned(2), ScalarValue::Unsigned(4)],
-                        },
-                        Predicate::Compare {
-                            expr: Expr::Col(1),
-                            compare: Compare::Eq,
-                            value: ScalarValue::Text("a".into()),
-                        },
-                        Predicate::Exists {
-                            expr: Expr::Col(2),
-                            present: true,
-                        },
-                        Predicate::Compare {
-                            expr: Expr::Col(2),
-                            compare: Compare::Eq,
-                            value: ScalarValue::Text("one".into()),
-                        },
-                    ],
+                    clauses: vec![harmos::storage::RecordClause {
+                        predicates: vec![
+                            Predicate::In {
+                                expr: Expr::Col(0),
+                                values: vec![ScalarValue::Unsigned(2), ScalarValue::Unsigned(4)],
+                            },
+                            Predicate::Compare {
+                                expr: Expr::Col(1),
+                                compare: Compare::Eq,
+                                value: ScalarValue::Text("a".into()),
+                            },
+                            Predicate::Exists {
+                                expr: Expr::Col(2),
+                                present: true,
+                            },
+                            Predicate::Compare {
+                                expr: Expr::Col(2),
+                                compare: Compare::Eq,
+                                value: ScalarValue::Text("one".into()),
+                            },
+                        ],
+                    }],
                 };
                 assert_eq!(
                     harmos::storage::RecordFilter::decode(&filter.encode_to_vec()).unwrap(),
@@ -266,6 +268,7 @@ fn contract_scenario() {
                     items.push(page[0].item.to_string());
                 }
                 assert_eq!(items, ["raw0", "raw2"]);
+                drop(reader);
                 let mut descending = make(filter.clone());
                 descending.options.order = ReadOrder::Descending;
                 descending.options.through = Some(saved.sequence);
@@ -275,6 +278,111 @@ fn contract_scenario() {
                     items.push(page[0].item.to_string());
                 }
                 assert_eq!(items, ["raw2", "raw0"]);
+                drop(reader);
+                let mut union = filter.clone();
+                union.columns.push(ScalarField {
+                    path: ScalarPath::Item,
+                    kind: ScalarKind::Text,
+                });
+                union.clauses.push(harmos::storage::RecordClause {
+                    predicates: vec![Predicate::In {
+                        expr: Expr::Col(3),
+                        values: vec![
+                            ScalarValue::Text("raw0".into()),
+                            ScalarValue::Text("raw1".into()),
+                            ScalarValue::Text("raw4".into()),
+                        ],
+                    }],
+                });
+                assert_eq!(
+                    harmos::storage::RecordFilter::decode(&union.encode_to_vec()).unwrap(),
+                    union,
+                );
+                let view = f.storage.view_with_limits(f.execution).await.unwrap();
+                for (order, expected) in [
+                    (ReadOrder::Ascending, ["raw0", "raw1", "raw2"]),
+                    (ReadOrder::Descending, ["raw2", "raw1", "raw0"]),
+                ] {
+                    let mut selection =
+                        harmos::storage::ReadSelection::new(harmos::storage::ReadKind::Records);
+                    selection.schema = Some(schema());
+                    selection.scope = Some(epoch.clone());
+                    selection.through = Some(saved.sequence);
+                    selection.order = order;
+                    selection.record_filter = Some(union.clone());
+                    let mut reader = view.read_records(selection).unwrap();
+                    let mut items = Vec::new();
+                    while let Some(page) = reader
+                        .next_page(ReadLimits {
+                            rows: NonZeroUsize::MIN,
+                            bytes: NonZeroUsize::new(4096).unwrap(),
+                        })
+                        .await
+                        .unwrap()
+                    {
+                        assert_eq!(page.len(), 1);
+                        items.push(page[0].item.to_string());
+                    }
+                    assert_eq!(items, expected);
+                }
+                drop(view);
+                let timed = QueryLimits {
+                    timeout: Duration::from_millis(50),
+                    ..f.execution
+                };
+                let timed_view = f.storage.view_with_limits(timed).await.unwrap();
+                let mut timed_selection =
+                    harmos::storage::ReadSelection::new(harmos::storage::ReadKind::Records);
+                timed_selection.schema = Some(schema());
+                timed_selection.through = Some(saved.sequence);
+                timed_selection.record_filter = Some(union.clone());
+                let mut timed_reader = timed_view.read_records(timed_selection).unwrap();
+                let limits = ReadLimits {
+                    rows: NonZeroUsize::MIN,
+                    bytes: NonZeroUsize::new(4096).unwrap(),
+                };
+                f.data.control.block_read.store(true, Ordering::SeqCst);
+                assert!(timed_reader.next_page(limits).await.is_err());
+                f.data.control.block_read.store(false, Ordering::SeqCst);
+                assert!(timed_reader.next_page(limits).await.is_err());
+                drop(timed_reader);
+                drop(timed_view);
+                let mut invalid = union.clone();
+                invalid.clauses.clear();
+                assert!(invalid.check().is_err());
+                invalid
+                    .clauses
+                    .push(harmos::storage::RecordClause { predicates: vec![] });
+                assert!(invalid.check().is_err());
+                invalid.clauses = vec![harmos::storage::RecordClause {
+                    predicates: vec![
+                        Predicate::Exists {
+                            expr: Expr::Col(0),
+                            present: true
+                        };
+                        65
+                    ],
+                }];
+                assert!(invalid.check().is_err());
+                invalid.clauses = vec![
+                    harmos::storage::RecordClause {
+                        predicates: vec![
+                            Predicate::Exists {
+                                expr: Expr::Col(0),
+                                present: true
+                            };
+                            33
+                        ],
+                    };
+                    2
+                ];
+                assert!(invalid.check().is_err());
+                invalid = union;
+                invalid.clauses[1].predicates.push(Predicate::Exists {
+                    expr: Expr::Col(99),
+                    present: true,
+                });
+                assert!(invalid.check().is_err());
                 let mut bounded = make(filter.clone());
                 bounded.options.decoded_bytes = Some(NonZeroUsize::MIN);
                 let mut reader = f.storage.query(bounded).await.unwrap();
@@ -298,7 +406,7 @@ fn contract_scenario() {
                     .refuse_record_filters
                     .store(false, Ordering::SeqCst);
                 let mut invalid = filter.clone();
-                invalid.predicates.push(Predicate::In {
+                invalid.clauses[0].predicates.push(Predicate::In {
                     expr: Expr::Col(0),
                     values: vec![ScalarValue::Unsigned(2); 65],
                 });

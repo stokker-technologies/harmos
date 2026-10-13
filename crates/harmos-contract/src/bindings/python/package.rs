@@ -110,6 +110,7 @@ pub(super) fn export(
     let runtime = isolate(&source, &settings.module)?;
     fs::write(wire.join("_pool.py"), include_str!("pool.py"))?;
     fs::write(module.join("operation.py"), include_str!("operation.py"))?;
+    fs::write(module.join("dynamic.py"), include_str!("dynamic.py"))?;
     fs::write(module.join("py.typed"), "")?;
     fs::write(module.join("contracts.json"), artifacts.contracts())?;
     fs::write(module.join("descriptors.bin"), artifacts.descriptors())?;

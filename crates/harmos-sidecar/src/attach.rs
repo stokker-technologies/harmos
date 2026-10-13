@@ -95,7 +95,7 @@ pub enum ExecutableError {
     Declaration {
         path: PathBuf,
         #[source]
-        source: DeclarationError,
+        source: Box<DeclarationError>,
     },
 }
 
@@ -305,7 +305,7 @@ impl Executable {
         let declaration = Declaration::inspect(&bytes, Facility::Sidecar).map_err(|source| {
             ExecutableError::Declaration {
                 path: program.clone(),
-                source,
+                source: Box::new(source),
             }
         })?;
         Ok(Self {

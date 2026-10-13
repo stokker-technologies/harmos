@@ -193,6 +193,11 @@ pub(super) fn contract_scenario() {
                         3
                     );
                     assert!(f.storage.resume_file_once(&id, &token).await.is_err());
+                    tokio::time::advance(Duration::from_secs(61)).await;
+                    for _ in 0..10 {
+                        tokio::task::yield_now().await;
+                    }
+                    assert!(f.data.abandoned_files.lock().unwrap().contains("expiry"));
                     f.finish().await;
                 });
         });

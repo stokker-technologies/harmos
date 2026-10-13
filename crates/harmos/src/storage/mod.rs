@@ -115,13 +115,12 @@ pub use reads::{
     ReadSelection, ReadView, SourceTimeRange,
 };
 pub use receipts::{MutationReceipt, MutationValue};
-pub use record_filter::RecordFilter;
+pub use record_filter::{RecordClause, RecordFilter};
 pub use replication::{ReplicaHolder, ReplicaReceipt, ReplicaStatus, ReplicaTarget};
 pub use schema_input::{SchemaInfo, SchemaInput};
 pub use staging::StorageFile;
 pub(crate) use staging::checkpoint::FileSave;
-pub(crate) use views::{StoragePage, StorageReader};
-pub use views::{StorageView, StorageViewComputation};
+pub use views::{StoragePage, StorageReader, StorageView, StorageViewComputation};
 pub use work::{StorageReadWork, StorageReadWorkPreparation};
 pub use writes::StorageSchema;
 
