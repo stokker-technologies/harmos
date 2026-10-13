@@ -60,13 +60,13 @@ impl<A: Application> RecordManager<A> {
         &self,
         owner: &str,
         schema: &SchemaKey,
-        fields: &[crate::schema::Field],
+        graph: &crate::schema::graph::Schema,
     ) -> Result<Arc<Definition>> {
         let _preparation = Arc::clone(&self.preparing)
             .acquire_owned()
             .await
             .expect("record preparation admission remains owned by the original state");
-        let pending = self.schemas.reserve(owner, schema, fields)?;
+        let pending = self.schemas.reserve(owner, schema, graph)?;
         let id = crate::DefinitionId::new(schema.id.as_str());
         if !matches!(
             self.catalog.has_record(&id, schema.version.get()),
@@ -81,7 +81,7 @@ impl<A: Application> RecordManager<A> {
             && let Some(storage) = &self.schemas.storage
         {
             storage
-                .write_schema(pending.definition.schema(), pending.definition.fields())
+                .write_schema(pending.definition.schema(), pending.definition.graph())
                 .await?;
         }
         Ok(pending.commit())

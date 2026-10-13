@@ -77,7 +77,16 @@ impl Store {
     async fn seed(&self) {
         let storage = self.manager();
         let runtime = builder().runtime_with_storage(&storage).await.unwrap();
-        storage.write_schema(&schema(), &[]).await.unwrap();
+        storage
+            .write_schema(
+                &schema(),
+                &harmos::schema::graph::Schema {
+                    root: 0,
+                    definitions: vec![vec![]],
+                },
+            )
+            .await
+            .unwrap();
         storage
             .write_records(&[record(
                 &schema(),

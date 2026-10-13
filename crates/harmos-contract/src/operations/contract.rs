@@ -19,7 +19,10 @@ use serde::{Deserialize, Serialize};
 // Local Imports
 use super::{Definition, Entry, OperationDeclaration};
 use crate::catalog::{Catalog, Member, Projection, Visitor};
-use crate::schema::{self, Described, Field};
+use crate::config::SchemaSettings;
+use crate::schema::declaration::Definition as SchemaDefinition;
+use crate::schema::graph::{Kind, Schema, View};
+use crate::schema::{self, Described};
 
 /* === Constants === */
 
@@ -34,12 +37,7 @@ pub struct Contract {
     operation: Definition,
     version: u32,
     codec: Codec,
-    request: Vec<Field>,
-    response: Vec<Field>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    input: Option<Vec<Field>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    output: Option<Vec<Field>>,
+    schema: Schema,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     grpc: Option<super::Grpc>,
 }
@@ -50,12 +48,7 @@ struct DecodedContract {
     operation: Definition,
     version: u32,
     codec: Codec,
-    request: Vec<Field>,
-    response: Vec<Field>,
-    #[serde(default)]
-    input: Option<Vec<Field>>,
-    #[serde(default)]
-    output: Option<Vec<Field>>,
+    schema: Schema,
     #[serde(default)]
     grpc: Option<super::Grpc>,
 }
@@ -63,14 +56,17 @@ struct DecodedContract {
 pub struct WireDeclaration {
     pub operation: Entry,
     pub version: u32,
-    pub request: &'static [Field],
-    pub response: &'static [Field],
-    pub input: Option<&'static [Field]>,
-    pub output: Option<&'static [Field]>,
+    pub request: SchemaDefinition,
+    pub response: SchemaDefinition,
+    pub input: Option<SchemaDefinition>,
+    pub output: Option<SchemaDefinition>,
     pub grpc: Option<super::Grpc>,
 }
 
 pub struct Contracts;
+
+// Wire Contracts Projected From Resource-Bound Operation Handlers.
+pub struct AuthoredContracts;
 
 /* === Enums === */
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -106,8 +102,8 @@ pub trait WireOperation: OperationDeclaration {
         None
     }
 
-    const INPUT: Option<&'static [Field]> = None;
-    const OUTPUT: Option<&'static [Field]> = None;
+    const INPUT: Option<SchemaDefinition> = None;
+    const OUTPUT: Option<SchemaDefinition> = None;
 }
 
 pub trait WireVisitor: Sized {
@@ -169,8 +165,8 @@ impl WireDeclaration {
         Self {
             operation: Entry::of::<O>(),
             version: O::VERSION,
-            request: O::Request::FIELDS,
-            response: O::Response::FIELDS,
+            request: O::Request::DEFINITION,
+            response: O::Response::DEFINITION,
             input: O::INPUT,
             output: O::OUTPUT,
             grpc: O::GRPC,
@@ -184,32 +180,23 @@ impl WireDeclaration {
                 id: operation.id.to_string(),
             });
         }
-        // Preflight Borrowed Schemas Before Cloning Their Owned Representation
-        for (direction, fields) in [
-            ("request", Some(self.request)),
-            ("response", Some(self.response)),
-            ("input", self.input),
-            ("output", self.output),
-        ] {
-            let Some(fields) = fields else { continue };
-            schema::validate(fields).map_err(|source| ContractError::Schema {
-                id: operation.id.to_string(),
-                direction,
-                source,
-            })?;
+        let mut roots = vec![("request", self.request), ("response", self.response)];
+        if let Some(input) = self.input {
+            roots.push(("input", input));
         }
-        Contract::new(
-            operation,
-            self.version,
-            Codec::Postcard,
-            self.request.to_vec(),
-            self.response.to_vec(),
-        )?
-        .with_streams(
-            self.input.map(<[Field]>::to_vec),
-            self.output.map(<[Field]>::to_vec),
-        )?
-        .with_grpc(self.grpc.clone())
+        if let Some(output) = self.output {
+            roots.push(("output", output));
+        }
+        let schema =
+            Schema::from_declarations(&roots, &SchemaSettings::default()).map_err(|source| {
+                ContractError::Schema {
+                    id: operation.id.to_string(),
+                    direction: "contract",
+                    source: source.into(),
+                }
+            })?;
+        Contract::new(operation, self.version, Codec::Postcard, schema)?
+            .with_grpc(self.grpc.clone())
     }
 }
 
@@ -218,44 +205,58 @@ impl Contract {
         operation: Definition,
         version: u32,
         codec: Codec,
-        request: Vec<Field>,
-        response: Vec<Field>,
+        schema: Schema,
     ) -> Result<Self, ContractError> {
         operation.validate()?;
-        Self::canonical(operation, version, codec, request, response)
+        Self::canonical(operation, version, codec, schema)
     }
 
     fn canonical(
         operation: Definition,
         version: u32,
         codec: Codec,
-        request: Vec<Field>,
-        response: Vec<Field>,
+        schema: Schema,
     ) -> Result<Self, ContractError> {
         if version == 0 {
             return Err(ContractError::Version {
                 id: operation.id.to_string(),
             });
         }
-        for (direction, fields) in [
-            ("request", request.as_slice()),
-            ("response", response.as_slice()),
-        ] {
-            schema::validate(fields).map_err(|source| ContractError::Schema {
-                id: operation.id.to_string(),
-                direction,
-                source,
-            })?;
+        let invalid = |source: schema::graph::Error| ContractError::Schema {
+            id: operation.id.to_string(),
+            direction: "contract",
+            source: source.into(),
+        };
+        schema
+            .prepare(&SchemaSettings::default())
+            .map_err(invalid)?;
+        let directions = schema.root().map_err(invalid)?;
+        let fields = directions.fields();
+        let valid = (2..=4).contains(&fields.len())
+            && fields[0].name == "request"
+            && fields[1].name == "response"
+            && fields.iter().enumerate().all(|(index, field)| {
+                field.tag == (index + 1) as u32
+                    && field.cardinality == schema::Cardinality::Required
+                    && matches!(field.kind, Kind::Message { .. })
+            })
+            && fields
+                .get(2)
+                .is_none_or(|field| field.name == "input" || field.name == "output")
+            && fields
+                .get(3)
+                .is_none_or(|field| fields[2].name == "input" && field.name == "output");
+        if !valid {
+            return Err(invalid(schema::graph::Error::Field {
+                field: "contract directions".into(),
+                reason: "expected request, response, and optional input/output roots",
+            }));
         }
-
         Ok(Self {
             operation,
             version,
             codec,
-            request,
-            response,
-            input: None,
-            output: None,
+            schema,
             grpc: None,
         })
     }
@@ -272,25 +273,6 @@ impl Contract {
         Ok(self)
     }
 
-    pub fn with_streams(
-        mut self,
-        mut input: Option<Vec<Field>>,
-        mut output: Option<Vec<Field>>,
-    ) -> Result<Self, ContractError> {
-        for (direction, fields) in [("input", &mut input), ("output", &mut output)] {
-            if let Some(fields) = fields {
-                schema::validate(fields).map_err(|source| ContractError::Schema {
-                    id: self.operation.id.to_string(),
-                    direction,
-                    source,
-                })?;
-            }
-        }
-        self.input = input;
-        self.output = output;
-        Ok(self)
-    }
-
     // Only The Closed SDK Action Can Construct Reserved Metadata
     pub(super) fn lifecycle(
         action: super::lifecycle::Action,
@@ -298,8 +280,8 @@ impl Contract {
     ) -> Result<Self, ContractError> {
         use super::lifecycle::{Action, InitializeRequest};
         let (id, request) = match action {
-            Action::Initialize => ("harmos.initialize", InitializeRequest::FIELDS.to_vec()),
-            Action::Shutdown => ("harmos.shutdown", Vec::new()),
+            Action::Initialize => ("harmos.initialize", InitializeRequest::DEFINITION),
+            Action::Shutdown => ("harmos.shutdown", <()>::DEFINITION),
         };
         policy.validate().map_err(crate::Error::from)?;
         let operation = Definition {
@@ -309,7 +291,16 @@ impl Contract {
             visibility: super::Visibility::Private,
             replay: super::ReplaySafety::Unknown,
         };
-        Self::canonical(operation, 1, Codec::Postcard, request, Vec::new())
+        let schema = Schema::from_declarations(
+            &[("request", request), ("response", <()>::DEFINITION)],
+            &SchemaSettings::default(),
+        )
+        .map_err(|source| ContractError::Schema {
+            id: operation.id.to_string(),
+            direction: "contract",
+            source: source.into(),
+        })?;
+        Self::canonical(operation, 1, Codec::Postcard, schema)
     }
 
     pub fn operation(&self) -> &Definition {
@@ -324,30 +315,61 @@ impl Contract {
         self.codec
     }
 
-    pub fn request(&self) -> &[Field] {
-        &self.request
+    pub fn schema(&self) -> &Schema {
+        &self.schema
     }
 
-    pub fn response(&self) -> &[Field] {
-        &self.response
+    pub fn request(&self) -> View<'_> {
+        self.direction("request").expect("validated request root")
     }
 
-    pub fn input(&self) -> Option<&[Field]> {
-        self.input.as_deref()
+    pub fn response(&self) -> View<'_> {
+        self.direction("response").expect("validated response root")
     }
 
-    pub fn output(&self) -> Option<&[Field]> {
-        self.output.as_deref()
+    pub fn input(&self) -> Option<View<'_>> {
+        self.direction("input")
+    }
+
+    pub fn output(&self) -> Option<View<'_>> {
+        self.direction("output")
     }
 
     pub fn compatible(&self, requirement: &Self) -> bool {
         self.operation.id == requirement.operation.id
             && self.version == requirement.version
             && self.codec == requirement.codec
-            && self.request == requirement.request
-            && self.response == requirement.response
-            && self.input == requirement.input
-            && self.output == requirement.output
+            && ["request", "response", "input", "output"]
+                .into_iter()
+                .all(
+                    |name| match (self.direction(name), requirement.direction(name)) {
+                        (None, None) => true,
+                        (Some(left), Some(right)) => self
+                            .schema
+                            .equivalent(
+                                left.index(),
+                                &requirement.schema,
+                                right.index(),
+                                &SchemaSettings::default(),
+                            )
+                            .unwrap_or(false),
+                        _ => false,
+                    },
+                )
+    }
+
+    fn direction(&self, name: &str) -> Option<View<'_>> {
+        let field = self.schema.definitions[self.schema.root]
+            .iter()
+            .find(|field| field.name == name)?;
+        let Kind::Message { definition } = field.kind else {
+            unreachable!("validated contract direction");
+        };
+        Some(
+            self.schema
+                .view(definition)
+                .expect("validated direction reference"),
+        )
     }
 }
 
@@ -359,10 +381,8 @@ impl TryFrom<DecodedContract> for Contract {
             decoded.operation,
             decoded.version,
             decoded.codec,
-            decoded.request,
-            decoded.response,
+            decoded.schema,
         )?
-        .with_streams(decoded.input, decoded.output)?
         .with_grpc(decoded.grpc)
     }
 }
@@ -379,6 +399,26 @@ where
     <M::Declaration as OperationDeclaration>::Response: Described,
 {
     const ENTRY: WireDeclaration = WireDeclaration::of::<M::Declaration>();
+}
+
+impl Visitor for AuthoredContracts {
+    type Entry = WireDeclaration;
+}
+
+impl<T> Member<T> for AuthoredContracts
+where
+    T: super::Operation,
+    T::Declaration: WireOperation,
+    <T::Declaration as OperationDeclaration>::Request: Described,
+    <T::Declaration as OperationDeclaration>::Response: Described,
+{
+    const ENTRY: WireDeclaration = WireDeclaration::of::<T::Declaration>();
+}
+
+impl AuthoredContracts {
+    pub fn of<C: Catalog<Self>>() -> Result<Vec<Contract>, ContractError> {
+        Contracts::from_projection(&C::ENTRIES)
+    }
 }
 
 impl Contracts {

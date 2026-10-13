@@ -29,6 +29,7 @@ use wasmtime::{Config, Engine as WasmEngine, Store, StoreLimits, StoreLimitsBuil
 
 // Local Imports
 use super::Registration;
+use crate::config::PluginGuestSettings;
 use crate::{Application, Runtime, streams::StreamManager};
 use harmos_contract::inventory::{Declaration, DeclarationError, Facility};
 
@@ -52,6 +53,7 @@ pub struct Host<A: Application> {
     streams: StreamManager<A>,
     operations: crate::operations::OperationManager,
     max_component: usize,
+    limits: StoreLimits,
     fuel: u64,
 }
 
@@ -64,6 +66,7 @@ pub struct Loaded<A: Application> {
     operations: crate::operations::OperationManager,
     epochs: Arc<Epochs>,
     fuel: u64,
+    limits: StoreLimits,
 }
 
 pub struct Registered<A: Application> {
@@ -163,6 +166,25 @@ impl Epochs {
 
 impl<A: Application> Host<A> {
     pub fn new(runtime: &Runtime<A>) -> Result<Self, Error> {
+        Self::with_settings(runtime, PluginGuestSettings::default())
+    }
+
+    pub fn with_settings(
+        runtime: &Runtime<A>,
+        settings: PluginGuestSettings,
+    ) -> Result<Self, Error> {
+        Self::from_parts(
+            runtime.streams.clone(),
+            runtime.operations.clone(),
+            settings,
+        )
+    }
+
+    pub(crate) fn from_parts(
+        streams: StreamManager<A>,
+        operations: crate::operations::OperationManager,
+        settings: PluginGuestSettings,
+    ) -> Result<Self, Error> {
         let mut config = Config::new();
         // Fuel bounds computation and the epoch bounds time, and neither
         // answers the other's question: a guest suspended inside a host
@@ -182,10 +204,11 @@ impl<A: Application> Host<A> {
         Ok(Self {
             engine,
             epochs,
-            streams: runtime.streams.clone(),
-            operations: runtime.operations.clone(),
-            max_component: 64 * 1024 * 1024,
-            fuel: 10_000_000,
+            streams,
+            operations,
+            max_component: settings.component_bytes.get(),
+            fuel: settings.fuel.get(),
+            limits: store_limits(settings),
         })
     }
 
@@ -296,11 +319,31 @@ impl<A: Application> Host<A> {
             operations: self.operations.clone(),
             epochs: Arc::clone(&self.epochs),
             fuel: self.fuel,
+            limits: self.limits.clone(),
         })
     }
 }
 
 impl<A: Application> Loaded<A> {
+    pub(crate) fn duplicate(&self) -> Result<Self, Error> {
+        let component = self.component.clone();
+        let sdk = sdk::PluginIndices::new(&component).map_err(|source| Error::Component {
+            id: self.declaration.id.clone(),
+            message: source.to_string(),
+        })?;
+        Ok(Self {
+            sha256: self.sha256,
+            declaration: self.declaration.clone(),
+            component,
+            sdk,
+            streams: self.streams.clone(),
+            operations: self.operations.clone(),
+            epochs: self.epochs.clone(),
+            fuel: self.fuel,
+            limits: self.limits.clone(),
+        })
+    }
+
     pub fn sha256(&self) -> [u8; 32] {
         self.sha256
     }
@@ -340,7 +383,7 @@ impl<A: Application> Loaded<A> {
             children: Arc::new(Mutex::new(BTreeMap::new())),
             session: None,
             active: false,
-            limits: limits.unwrap_or_else(store_limits),
+            limits: limits.unwrap_or(self.limits),
         };
         let mut store = Store::new(self.component.engine(), bridge);
         store.limiter(|bridge| &mut bridge.limits);
@@ -481,13 +524,13 @@ impl<A: Application> Bridge<A> {
 /* === Public Functions === */
 
 /* === Private Functions === */
-pub(super) fn store_limits() -> StoreLimits {
+pub(super) fn store_limits(settings: PluginGuestSettings) -> StoreLimits {
     StoreLimitsBuilder::new()
-        .memory_size(64 * 1024 * 1024)
-        .memories(1)
-        .table_elements(65_536)
-        .tables(8)
-        .instances(8)
+        .memory_size(settings.memory_bytes.get())
+        .memories(settings.memories.get())
+        .table_elements(settings.table_elements.get())
+        .tables(settings.tables.get())
+        .instances(settings.instances.get())
         .trap_on_grow_failure(true)
         .build()
 }

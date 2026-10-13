@@ -6,6 +6,11 @@ on:
   push:
     branches: [dev, main]
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      windows-only:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -27,12 +32,14 @@ env:
   GIT_CONFIG_VALUE_0: 'true'
 
 concurrency:
-  group: full-${{ github.event.pull_request.number || github.ref }}
+  group: full-${{ inputs.windows-only && 'advisory-windows' || 'native' }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   route:
     name: check:merge-route
+    outputs:
+      fast: ${{ steps.policy.outputs.fast }}
     runs-on: ubuntu-24.04
     steps:
       - name: Verify Main Promotion Route
@@ -47,10 +54,20 @@ jobs:
             [[ "$SOURCE" =~ ^release/(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           fi
 
-  check_linux:
-    name: check (linux)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - id: policy
+        env:
+          PYTHONPATH: tools/python/src
+        run: python -m harmos_tools.packages policy
+
+  check_fast_linux:
+    name: Check Fast (Linux)
+    if: ${{ !inputs.windows-only }}
     needs: route
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.ref == 'refs/heads/dev' && github.event_name == 'push' && fromJSON('["stokker-local-linux-x64"]') || fromJSON('["ubuntu-24.04"]') }}
     timeout-minutes: 240
     environment: ${{ github.event_name == 'pull_request' && 'full-validation' || '' }}
     steps:
@@ -61,15 +78,15 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: ./.github/actions/setup
         with:
-          cargo-cache-role: check
-      - name: check
-        run: mise run check
+          profile: source
+      - name: check:fast
+        run: mise run check:fast
 
-  build_release_linux:
-    name: Build Release (linux)
-    runs-on: ubuntu-24.04
+  build_ci_linux:
+    name: Build CI (Linux)
+    runs-on: ${{ github.ref == 'refs/heads/dev' && github.event_name == 'push' && fromJSON('["stokker-local-linux-x64"]') || fromJSON('["ubuntu-24.04"]') }}
     timeout-minutes: 240
-    needs: [route, check_linux]
+    needs: [route, check_fast_linux]
     outputs:
       artifact: ${{ steps.upload.outputs.artifact-id }}
     steps:
@@ -79,32 +96,50 @@ jobs:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: ./.github/actions/setup
+        id: setup
         with:
           cargo-cache-role: release
-      - name: build:release
-        run: mise run build:release
+          cache-write: 'true'
+      - name: build:ci
+        run: mise run build:ci
+      - name: Save Cargo Compilation
+        if: success()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.setup.outputs.compiler-cache-paths }}
+          key: ${{ steps.setup.outputs.compiler-cache-key }}
+      - name: Save Dependency Downloads
+        if: success() && steps.setup.outputs.downloads-cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .cache/cargo/registry/index
+            .cache/cargo/registry/cache
+            .cache/cargo/git/db
+            .cache/uv
+          key: ${{ steps.setup.outputs.downloads-cache-key }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         id: upload
         if: success()
         with:
           name: harmos-build-linux-${{ github.run_attempt }}
-          path: dist/
+          path: dist/harmos-ci-linux.zip
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
 
   test_linux:
     name: test (linux)
-    if: always()
-    runs-on: ubuntu-24.04
+    if: always() && !inputs.windows-only
+    runs-on: ${{ github.ref == 'refs/heads/dev' && github.event_name == 'push' && fromJSON('["stokker-local-linux-x64"]') || fromJSON('["ubuntu-24.04"]') }}
     timeout-minutes: 240
-    needs: build_release_linux
+    needs: build_ci_linux
     steps:
       - name: Require Matching Release Build
         shell: bash
         env:
-          BUILD_RESULT: ${{ needs.build_release_linux.result }}
-          BUILD_ARTIFACT: ${{ needs.build_release_linux.outputs.artifact }}
+          BUILD_RESULT: ${{ needs.build_ci_linux.result }}
+          BUILD_ARTIFACT: ${{ needs.build_ci_linux.outputs.artifact }}
         run: test "$BUILD_RESULT" = success && test -n "$BUILD_ARTIFACT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -113,15 +148,13 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: ./.github/actions/setup
         with:
-          cargo-cache-role: coverage
+          cargo-cache-role: release
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          artifact-ids: ${{ needs.build_release_linux.outputs.artifact }}
+          artifact-ids: ${{ needs.build_ci_linux.outputs.artifact }}
           path: dist
           merge-multiple: true
       - name: test
-        env:
-          STKR_COVERAGE: '1'
         run: |
           mise run packages:restore
           mise run test
@@ -134,13 +167,14 @@ jobs:
         if: always()
         with:
           name: harmos-test-linux-${{ github.run_attempt }}
-          path: dist/
+          path: dist/harmos-tests-linux.zip
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
 
-  check_windows:
-    name: check (windows)
+  check_fast_windows:
+    name: Check Fast (Windows)
+    if: ${{ inputs.windows-only && needs.route.outputs.fast == 'true' || !inputs.windows-only && needs.route.outputs.fast != 'true' }}
     needs: route
     runs-on: windows-2022
     timeout-minutes: 240
@@ -153,15 +187,15 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: ./.github/actions/setup
         with:
-          cargo-cache-role: check
-      - name: check
-        run: mise run check
+          profile: source
+      - name: check:fast
+        run: mise run check:fast
 
-  build_release_windows:
-    name: Build Release (windows)
+  build_ci_windows:
+    name: Build CI (Windows)
     runs-on: windows-2022
     timeout-minutes: 240
-    needs: [route, check_windows]
+    needs: [route, check_fast_windows]
     outputs:
       artifact: ${{ steps.upload.outputs.artifact-id }}
     steps:
@@ -171,32 +205,50 @@ jobs:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: ./.github/actions/setup
+        id: setup
         with:
           cargo-cache-role: release
-      - name: build:release
-        run: mise run build:release
+          cache-write: 'true'
+      - name: build:ci
+        run: mise run build:ci
+      - name: Save Cargo Compilation
+        if: success()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.setup.outputs.compiler-cache-paths }}
+          key: ${{ steps.setup.outputs.compiler-cache-key }}
+      - name: Save Dependency Downloads
+        if: success() && steps.setup.outputs.downloads-cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .cache/cargo/registry/index
+            .cache/cargo/registry/cache
+            .cache/cargo/git/db
+            .cache/uv
+          key: ${{ steps.setup.outputs.downloads-cache-key }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         id: upload
         if: success()
         with:
           name: harmos-build-windows-${{ github.run_attempt }}
-          path: dist/
+          path: dist/harmos-ci-windows.zip
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
 
   test_windows:
     name: test (windows)
-    if: always()
+    if: always() && (inputs.windows-only && needs.route.outputs.fast == 'true' || !inputs.windows-only && needs.route.outputs.fast != 'true')
     runs-on: windows-2022
     timeout-minutes: 240
-    needs: build_release_windows
+    needs: [route, build_ci_windows]
     steps:
       - name: Require Matching Release Build
         shell: bash
         env:
-          BUILD_RESULT: ${{ needs.build_release_windows.result }}
-          BUILD_ARTIFACT: ${{ needs.build_release_windows.outputs.artifact }}
+          BUILD_RESULT: ${{ needs.build_ci_windows.result }}
+          BUILD_ARTIFACT: ${{ needs.build_ci_windows.outputs.artifact }}
         run: test "$BUILD_RESULT" = success && test -n "$BUILD_ARTIFACT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -205,15 +257,13 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: ./.github/actions/setup
         with:
-          cargo-cache-role: coverage
+          cargo-cache-role: release
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          artifact-ids: ${{ needs.build_release_windows.outputs.artifact }}
+          artifact-ids: ${{ needs.build_ci_windows.outputs.artifact }}
           path: dist
           merge-multiple: true
       - name: test
-        env:
-          STKR_COVERAGE: '1'
         run: |
           mise run packages:restore
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -229,14 +279,46 @@ jobs:
         if: always()
         with:
           name: harmos-test-windows-${{ github.run_attempt }}
-          path: dist/
+          path: dist/harmos-tests-windows.zip
           include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
+  packages_development:
+    name: Packages Development
+    if: always() && !inputs.windows-only && (github.event_name == 'pull_request' && github.base_ref == 'dev' || github.event_name == 'push' && github.ref == 'refs/heads/dev')
+    needs: [route, test_linux]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Require Fresh Linux Validation
+        env:
+          ROUTE: ${{ needs.route.result }}
+          LINUX: ${{ needs.test_linux.result }}
+        run: test "$ROUTE" = success && test "$LINUX" = success
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: ./.github/actions/setup
+        with:
+          cargo-cache-role: none
+      - name: packages:development
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HARMOS_VALIDATION_RUN_ID: ${{ github.run_id }}
+        run: mise run packages:development
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: harmos-development-${{ github.run_attempt }}
+          path: dist/development.json
           if-no-files-found: error
           retention-days: 14
 
   promote:
     name: packages:promote
-    if: always()
+    if: always() && !inputs.windows-only && needs.route.outputs.fast != 'true'
     needs: [route, test_linux, test_windows]
     runs-on: ubuntu-24.04
     steps:

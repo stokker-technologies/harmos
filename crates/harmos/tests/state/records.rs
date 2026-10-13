@@ -146,7 +146,15 @@ pub(super) fn contract_scenario() {
                     };
                     let definition = runtime
                         .records
-                        .register("plugin", &schema, Message::FIELDS)
+                        .register(
+                            "plugin",
+                            &schema,
+                            &harmos::schema::graph::Schema::from_declaration(
+                                Message::DEFINITION,
+                                &harmos::config::SchemaSettings::default(),
+                            )
+                            .unwrap(),
+                        )
                         .await
                         .unwrap();
                     let producer = harmos::records::RecordManager::new(
@@ -159,7 +167,15 @@ pub(super) fn contract_scenario() {
                     assert!(Arc::ptr_eq(
                         &definition,
                         &producer
-                            .register("plugin", &schema, Message::FIELDS)
+                            .register(
+                                "plugin",
+                                &schema,
+                                &harmos::schema::graph::Schema::from_declaration(
+                                    Message::DEFINITION,
+                                    &harmos::config::SchemaSettings::default()
+                                )
+                                .unwrap()
+                            )
                             .await
                             .unwrap()
                     ));
@@ -175,7 +191,15 @@ pub(super) fn contract_scenario() {
                     ));
                     assert!(
                         producer
-                            .register("other", &schema, Message::FIELDS)
+                            .register(
+                                "other",
+                                &schema,
+                                &harmos::schema::graph::Schema::from_declaration(
+                                    Message::DEFINITION,
+                                    &harmos::config::SchemaSettings::default()
+                                )
+                                .unwrap()
+                            )
                             .await
                             .is_err()
                     );

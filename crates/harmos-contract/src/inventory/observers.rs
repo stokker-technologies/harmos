@@ -21,8 +21,11 @@ use serde::{Deserialize, Serialize};
 use super::contracts::{self, Encoder};
 use super::{StreamDeclaration, publications};
 use crate::catalog::Node;
+use crate::config::SchemaSettings;
 use crate::operations::{Contract, Visibility, WireDeclaration};
 use crate::schema::Described;
+use crate::schema::declaration::Named;
+use crate::schema::graph::Schema;
 
 /* === Constants === */
 
@@ -71,6 +74,16 @@ pub struct Manifest {
     pub observer_controls: Option<[Contract; 2]>,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NamedManifest {
+    pub facility: String,
+    pub owner: String,
+    pub observers: Vec<Declaration>,
+    #[serde(default)]
+    pub observer_controls: Option<[contracts::NamedContract; 2]>,
+}
+
 /* === Enums === */
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -82,6 +95,10 @@ pub enum Activation {
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error(transparent)]
+    Contract(#[from] contracts::Error),
+    #[error(transparent)]
+    Schema(#[from] crate::schema::graph::Error),
     #[error("invalid observer control inventory: {0}")]
     Controls(&'static str),
     #[error("the artifact carries no complete {facility} observer inventory for `{owner}`")]
@@ -105,6 +122,28 @@ impl crate::catalog::Visitor for Descriptors {
 
 impl<S: Declared> crate::catalog::Member<S> for Descriptors {
     const ENTRY: Entry = S::ENTRY;
+}
+
+impl NamedManifest {
+    pub fn resolve(
+        self,
+        declarations: &[Named],
+        settings: &mut SchemaSettings,
+    ) -> Result<Manifest, Error> {
+        let observer_controls = match self.observer_controls {
+            Some([start, stop]) => Some([
+                start.resolve(declarations, settings)?,
+                stop.resolve(declarations, settings)?,
+            ]),
+            None => None,
+        };
+        Ok(Manifest {
+            facility: self.facility,
+            owner: self.owner,
+            observers: self.observers,
+            observer_controls,
+        })
+    }
 }
 
 impl Entry {
@@ -266,14 +305,27 @@ pub fn validate_controls(
                 "each control is an exact Host member of provides",
             ));
         }
-        if contract.request() != crate::observers::Control::FIELDS
-            || contract.response()
-                != if index == 0 {
-                    <()>::FIELDS
-                } else {
-                    crate::observers::Status::FIELDS
-                }
-        {
+        let settings = SchemaSettings::default();
+        let request = Schema::from_declaration(crate::observers::Control::DEFINITION, &settings)?;
+        let response = Schema::from_declaration(
+            if index == 0 {
+                <()>::DEFINITION
+            } else {
+                crate::observers::Status::DEFINITION
+            },
+            &settings,
+        )?;
+        if !contract.schema().equivalent(
+            contract.request().index(),
+            &request,
+            request.root,
+            &settings,
+        )? || !contract.schema().equivalent(
+            contract.response().index(),
+            &response,
+            response.root,
+            &settings,
+        )? {
             return Err(Error::Controls(
                 "control request or response schema differs",
             ));
@@ -309,7 +361,7 @@ const fn encoded<const N: usize>(facility: &str, owner: &str, entries: &[Entry])
         bytes: [0; N],
         cursor: 0,
     };
-    out.raw(b"\0HARMOS:ARTIFACT:V5:{\"kind\":\"observers\",\"facility\":");
+    out.raw(b"\0HARMOS:ARTIFACT:V6:{\"kind\":\"observers\",\"facility\":");
     out.quoted(facility);
     out.raw(b",\"owner\":");
     out.quoted(owner);
@@ -371,7 +423,7 @@ const fn encoded_tree<const N: usize>(
         bytes: [0; N],
         cursor: 0,
     };
-    out.raw(b"\0HARMOS:ARTIFACT:V5:{\"kind\":\"observers\",\"facility\":");
+    out.raw(b"\0HARMOS:ARTIFACT:V6:{\"kind\":\"observers\",\"facility\":");
     out.quoted(facility);
     out.raw(b",\"owner\":");
     out.quoted(owner);

@@ -8,10 +8,13 @@
  */
 
 /* === Modules === */
+pub mod config;
 mod error;
 #[cfg(feature = "grpc")]
 pub mod grpc;
 mod identity;
+#[cfg(all(feature = "packaging", not(target_arch = "wasm32")))]
+pub mod packaging;
 pub mod prelude;
 pub mod storage;
 
@@ -42,6 +45,8 @@ pub mod observers;
 mod supervision;
 
 pub mod __private {
+    pub use harmos_contract::config::SchemaSettings;
+    pub use harmos_contract::plugin::schema_markers as PluginSchemaMarkers;
     pub extern crate serde;
     pub extern crate serde_json;
     pub use crate::with_protobuf;
@@ -91,6 +96,8 @@ pub use harmos_signal as signal;
 /* === Re-Exports === */
 pub use application::Application;
 pub use error::{BackendFailure, Error};
+#[cfg(feature = "bindings-python")]
+pub use harmos_contract::bindings;
 pub use identity::{DefinitionId, Identified};
 pub use operations::refusal::Refusal;
 pub use runtime::{Builder, Runtime};

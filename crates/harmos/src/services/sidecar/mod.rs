@@ -16,6 +16,7 @@ mod physical;
 
 /* === Re-Exports === */
 pub(crate) use connection::Endpoint;
+pub(crate) use managed::RuntimeDriver;
 pub use managed::{Managed, ManagedError};
 
 /* === Imports === */
@@ -1264,6 +1265,7 @@ where
                                                     &call.operation,
                                                     call.payload,
                                                     submitted,
+                                                    call.values,
                                                 )
                                             })
                                     } else {

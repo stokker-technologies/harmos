@@ -250,6 +250,7 @@ async fn storage_uses_data() {
             stream: None,
             source_start: Some(std::time::UNIX_EPOCH - Duration::from_secs(1)),
             source_end: Some(std::time::UNIX_EPOCH),
+            record_filter: None,
         };
         let encoded = harmos::Protobuf::encode_to_vec(&selection);
         let query =

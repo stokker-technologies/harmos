@@ -94,7 +94,16 @@ pub(super) fn contract_scenario() {
                     let mut targets = Vec::new();
                     let target = replica(&mut targets, "remote");
                     let f = Fixture::with_replicas(policy, targets).await;
-                    f.storage.write_schema(&schema(), &[]).await.unwrap();
+                    f.storage
+                        .write_schema(
+                            &schema(),
+                            &harmos::schema::graph::Schema {
+                                root: 0,
+                                definitions: vec![vec![]],
+                            },
+                        )
+                        .await
+                        .unwrap();
                     write(&f.storage, "record").await;
                     let key = schema();
                     let item = Identifier::new("sample").unwrap();

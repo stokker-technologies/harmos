@@ -21,10 +21,13 @@ use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 // Local Imports
 use crate::catalog::{Catalog, Projection, Visitor};
+use crate::config::SchemaSettings;
 use crate::operations::{
     Contract, ContractError, ReplaySafety, RetryPolicy, Visibility, WireDeclaration,
 };
-use crate::schema::{self, Field};
+use crate::schema::declaration::Definition as SchemaDefinition;
+use crate::schema::graph::Schema;
+use crate::schema::{self};
 use crate::{Identifier, IdentifierError};
 
 /* === Constants === */
@@ -37,7 +40,7 @@ const MAX_LISTENERS: usize = 4096;
 /* === Structs === */
 pub struct Entry {
     pub id: &'static str,
-    pub source: Source,
+    pub source: SourceDeclaration,
     pub callback: WireDeclaration,
 }
 
@@ -66,12 +69,25 @@ pub enum Source {
     Record {
         id: Cow<'static, str>,
         version: u32,
-        fields: Cow<'static, [Field]>,
+        row: Schema,
     },
     Stream {
         id: Cow<'static, str>,
         schema_ordinal: u32,
-        fields: Cow<'static, [Field]>,
+        row: Schema,
+    },
+}
+
+pub enum SourceDeclaration {
+    Record {
+        id: &'static str,
+        version: u32,
+        row: SchemaDefinition,
+    },
+    Stream {
+        id: &'static str,
+        schema_ordinal: u32,
+        row: SchemaDefinition,
     },
 }
 
@@ -105,9 +121,9 @@ impl Source {
         }
     }
 
-    pub fn fields(&self) -> &[Field] {
+    pub fn schema(&self) -> &Schema {
         match self {
-            Self::Record { fields, .. } | Self::Stream { fields, .. } => fields,
+            Self::Record { row, .. } | Self::Stream { row, .. } => row,
         }
     }
 
@@ -141,17 +157,46 @@ impl Source {
             }
             _ => {}
         }
-        schema::validate(self.fields())?;
+        self.schema()
+            .prepare(&SchemaSettings::default())
+            .map_err(schema::Error::from)?;
         Ok(())
+    }
+}
+
+impl SourceDeclaration {
+    pub fn row(&self) -> SchemaDefinition {
+        match self {
+            Self::Record { row, .. } | Self::Stream { row, .. } => *row,
+        }
+    }
+
+    pub fn source(&self) -> Result<Source, Error> {
+        let row = Schema::from_declaration(self.row(), &SchemaSettings::default())
+            .map_err(schema::Error::from)?;
+        Ok(match self {
+            Self::Record { id, version, .. } => Source::Record {
+                id: Cow::Borrowed(id),
+                version: *version,
+                row,
+            },
+            Self::Stream {
+                id, schema_ordinal, ..
+            } => Source::Stream {
+                id: Cow::Borrowed(id),
+                schema_ordinal: *schema_ordinal,
+                row,
+            },
+        })
     }
 }
 
 impl Entry {
     pub fn definition(&self) -> Result<Definition, Error> {
         let id = Identifier::new(self.id)?;
-        self.source.validate()?;
+        let source = self.source.source()?;
         let callback = self.callback.contract()?;
-        Definition::new(id, self.source.clone(), callback)
+        Definition::new(id, source, callback)
     }
 }
 
@@ -167,8 +212,13 @@ impl Definition {
                 reason: "callbacks must be Shared, Never retry, and Unknown replay safety",
             });
         }
-        let request = delivery::fields(source.fields());
-        if callback.request() != request || !callback.response().is_empty() {
+        let matches = delivery::matches(
+            callback.request(),
+            source.schema(),
+            &SchemaSettings::default(),
+        )
+        .map_err(schema::Error::from)?;
+        if !matches || !callback.response().fields().is_empty() {
             return Err(Error::Callback {
                 reason: "callback request must be exactly Delivery<Row> for this source, with a unit response",
             });

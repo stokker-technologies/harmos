@@ -9,8 +9,10 @@
 
 /* === Modules === */
 mod answer;
+#[cfg(feature = "bindings-python")]
+pub mod bindings;
 pub mod catalog;
-mod config;
+pub mod config;
 mod error;
 #[cfg(feature = "reflection")]
 pub mod grpc;
@@ -32,6 +34,8 @@ pub mod streams;
 mod value;
 
 pub mod __private {
+    pub use crate::config::SchemaSettings;
+    pub use crate::plugin::schema_markers as PluginSchemaMarkers;
     pub extern crate serde;
     pub extern crate serde_json;
     pub use crate::streams::{BatchDefinition, StreamCatalog, StreamRow};

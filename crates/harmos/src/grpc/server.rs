@@ -11,12 +11,13 @@
 mod concurrency;
 
 /* === Re-Exports === */
+pub use crate::config::GrpcServerSettings as Settings;
 pub use concurrency::Calls;
 
 /* === Imports === */
 
 // Standard Library Imports
-use std::{future::Future, marker::PhantomData, pin::Pin, sync::Arc, time::Duration};
+use std::{future::Future, marker::PhantomData, pin::Pin, sync::Arc};
 
 // Third Party Imports
 use futures_core::Stream;
@@ -24,10 +25,9 @@ use futures_util::StreamExt;
 use tonic::{Request, Response, Status, Streaming, body::Body, codegen::http};
 
 // Local Imports
-use super::{Codec, DecodeSettings, EncodeSettings, Event, InputEnvelope, InputError};
+use super::{Codec, Event, InputEnvelope, InputError};
 use crate::operations::{
     InputDeclaration, OperationDeclaration, OperationInstance, OutputDeclaration, StreamItem,
-    StreamSettings,
 };
 use crate::{Error, MemorySize, Protobuf, Refusal, operations::OperationManager};
 
@@ -40,15 +40,6 @@ pub type HttpFuture = Pin<Box<dyn Future<Output = http::Response<Body>> + Send>>
 type Items<I, R> = Pin<Box<dyn Stream<Item = Result<Event<StreamItem<I>, Arc<R>>, Status>> + Send>>;
 
 /* === Structs === */
-#[derive(Clone, Copy, Debug)]
-pub struct Settings {
-    pub calls: std::num::NonZeroUsize,
-    pub decode: DecodeSettings,
-    pub encode: EncodeSettings,
-    pub input: StreamSettings,
-    pub output: StreamSettings,
-    pub opening_timeout: Duration,
-}
 
 struct Endpoint<O> {
     authority: Authority,
@@ -106,28 +97,6 @@ impl Authority {
                 feature = "plugin-sidecar"
             ))]
             Self::Plugin(caller) => caller.submit_charged::<O, P>(request, endpoints),
-        }
-    }
-}
-
-impl Default for Settings {
-    fn default() -> Self {
-        let bytes = std::num::NonZeroUsize::new(16 * 1024 * 1024).unwrap();
-        let message = std::num::NonZeroUsize::new(4 * 1024 * 1024).unwrap();
-        let items = std::num::NonZeroUsize::new(16).unwrap();
-        Self {
-            calls: std::num::NonZeroUsize::new(64).unwrap(),
-            decode: DecodeSettings {
-                message_bytes: message,
-                retained_bytes: bytes,
-            },
-            encode: EncodeSettings {
-                message_bytes: message,
-                buffer_bytes: std::num::NonZeroUsize::new(8192).unwrap(),
-            },
-            input: StreamSettings { items, bytes },
-            output: StreamSettings { items, bytes },
-            opening_timeout: Duration::from_secs(5),
         }
     }
 }
@@ -408,14 +377,20 @@ fn code(error: &Error) -> tonic::Code {
             feature = "plugin-sidecar"
         ))]
         Error::OperationCaller { .. } => tonic::Code::Unauthenticated,
-        Error::TaskFailed { source, .. } => source
+        Error::TaskFailed { source, .. } | Error::OperationFailed { source, .. } => source
             .downcast_ref::<Status>()
             .map_or(tonic::Code::Internal, Status::code),
         _ => tonic::Code::Internal,
     }
 }
 pub(super) fn status(error: Error) -> Status {
-    let mut status = Status::new(code(&error), "operation request failed");
+    let message = match &error {
+        Error::OperationFailed { source, .. } => source
+            .downcast_ref::<Status>()
+            .map_or("operation request failed", Status::message),
+        _ => "operation request failed",
+    };
+    let mut status = Status::new(code(&error), message);
     status.set_source(Arc::new(error));
     status
 }
@@ -435,7 +410,16 @@ fn input_status(error: InputError) -> Status {
             }
         }
     };
-    let mut status = Status::new(code, "operation input failed");
+    let message = match &error {
+        InputError::Operation(error) => match error.as_ref() {
+            Error::OperationFailed { source, .. } => source
+                .downcast_ref::<Status>()
+                .map_or("operation input failed", Status::message),
+            _ => "operation input failed",
+        },
+        InputError::Forward { .. } => "operation input failed",
+    };
+    let mut status = Status::new(code, message);
     status.set_source(Arc::new(error));
     status
 }

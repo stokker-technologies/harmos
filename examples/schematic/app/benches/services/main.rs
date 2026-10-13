@@ -53,15 +53,14 @@ fn benchmarks(criterion: &mut Criterion) {
         .expect("run mise bench to prepare the guest artifact");
     let module = std::fs::read(path).unwrap();
     let component = harmos_guest::componentize(&module).unwrap();
-    let (runtime, mut manager, mut lifecycle) = executor.block_on(async {
+    let runtime = executor.block_on(async {
         let runtime = app::builder(Schematic::default(), ())
             .runtime()
             .await
             .unwrap();
         let loaded = guest::load(&runtime, &component).unwrap();
-        let (mut manager, mut lifecycle) = guest::lifecycle(&runtime, loaded).await.unwrap();
-        manager.initialize(&mut lifecycle).await.unwrap();
-        (runtime, manager, lifecycle)
+        guest::start(&runtime, loaded).await.unwrap();
+        runtime
     });
     let mut group = criterion.benchmark_group("host_guest_operation");
     group.sample_size(10);
@@ -95,9 +94,6 @@ fn benchmarks(criterion: &mut Criterion) {
     }
     group.finish();
     executor.block_on(async {
-        manager.shutdown(&mut lifecycle).await.unwrap();
-        drop(manager);
-        drop(lifecycle);
         runtime.stop().await.unwrap();
     });
 }

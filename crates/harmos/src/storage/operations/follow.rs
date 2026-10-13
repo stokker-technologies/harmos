@@ -26,7 +26,8 @@ use super::DataSelection;
 
 use crate::operations::{Context, Operation, StreamOutput};
 use crate::operations::{Grpc, OperationDeclaration, OutputDeclaration, Visibility, WireOperation};
-use crate::schema::{Cardinality, Described, Field, Kind};
+use crate::schema::declaration::{Field, Kind};
+use crate::schema::{Cardinality, Described};
 
 use crate::storage::codec::{Nested, product};
 use crate::storage::{RecordQuery, StorageManager};
@@ -101,13 +102,14 @@ impl MemorySize for Followed {
 }
 
 impl Described for Followed {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Followed));
     const FIELDS: &'static [Field] = &[
         Field {
             name: Cow::Borrowed("boundaries"),
             tag: 1,
             cardinality: Cardinality::Variant,
             kind: Kind::Message {
-                fields: Cow::Borrowed(FollowBoundaries::FIELDS),
+                definition: FollowBoundaries::DEFINITION,
             },
         },
         Field {
@@ -115,10 +117,14 @@ impl Described for Followed {
             tag: 2,
             cardinality: Cardinality::Variant,
             kind: Kind::Message {
-                fields: Cow::Borrowed(StoredRecord::FIELDS),
+                definition: StoredRecord::DEFINITION,
             },
         },
     ];
+
+    const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
+        { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
 }
 
 impl crate::__private::PostcardValue for Followed {
@@ -248,7 +254,7 @@ impl OutputDeclaration for Follow {
 
 impl WireOperation for Follow {
     const VERSION: u32 = 1;
-    const OUTPUT: Option<&'static [Field]> = Some(Followed::FIELDS);
+    const OUTPUT: Option<crate::schema::declaration::Definition> = Some(Followed::DEFINITION);
     const GRPC: Option<Grpc> = Some(super::grpc("Follow"));
     crate::with_protobuf! {
         fn visit_grpc<V: crate::operations::GrpcVisitor>(visitor: V) -> Option<V::Entry> {

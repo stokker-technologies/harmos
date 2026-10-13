@@ -182,6 +182,7 @@ fn contract_scenario() {
                             operations,
                             reflection: true,
                             web: false,
+                            allowed_origins: Vec::new(),
                             tls: None,
                             connections: NonZeroUsize::new(4).unwrap(),
                             calls_per_connection: NonZeroUsize::new(8).unwrap(),

@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+mod host;
 
 #[cfg(feature = "plugin-guest")]
 pub mod guest;
@@ -38,6 +39,9 @@ pub use harmos_contract::{
     ConfigError, Refusal, Registrar, Registration, RegistrationError, StreamDeclaration,
     decode_config, encode_config, inventory, validate_config,
 };
+pub use host::PluginHost;
+#[cfg(feature = "plugin-sidecar")]
+pub(crate) use host::{Driving, Lease};
 pub use manager::{
     PluginCleanup, PluginCleanupFailure, PluginCleanupStatus, PluginFailure, PluginInstance,
     PluginLifecycle, PluginLifecycleAuthority, PluginLifecyclePhase, PluginManager,
@@ -45,7 +49,7 @@ pub use manager::{
 };
 pub use router::{DispatchError, PluginCaller, PluginEndpoint, Router};
 pub use scope::PluginScope;
-pub use status::{PluginGeneration, PluginState, PluginStatus};
+pub use status::{PluginFailureClass, PluginGeneration, PluginState, PluginStatus};
 
 /* === Imports === */
 // Standard Library Imports

@@ -8,6 +8,9 @@
  */
 
 /* === Modules === */
+#[allow(dead_code)]
+#[path = "process_core_contract.rs"]
+mod context_contract;
 
 /* === Re-Exports === */
 
@@ -92,14 +95,28 @@ impl Operation for Egress {
                 reason: "request differs from its exact selected bounded endpoint",
             });
         }
+        let body = if request.path.starts_with("/context") {
+            assert_eq!(*context.context().require::<u64>()?, 73);
+            let stage = context
+                .context()
+                .value::<context_contract::Stage>()?
+                .unwrap();
+            assert_eq!(stage.id, "child");
+            stage.id.into_bytes()
+        } else {
+            Vec::new()
+        };
         self.resources.calls.fetch_add(1, Ordering::SeqCst);
+        if request.path == "/context-wait" {
+            std::future::pending::<()>().await;
+        }
         if !self.resources.answering.is_zero() {
             tokio::time::sleep(self.resources.answering).await;
         }
         Ok(host::Fetched {
             status: 200,
             headers: vec![],
-            body: vec![],
+            body,
         })
     }
 }

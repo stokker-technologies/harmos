@@ -44,7 +44,7 @@ pub struct PluginNative<P> {
 /* === Implementations === */
 impl<P: Plugin<Context = Supervisor> + Declared> PluginNative<P> {
     pub fn new(capacity: NonZeroUsize) -> std::io::Result<Self> {
-        let markers = std::hint::black_box(P::markers());
+        let markers = std::hint::black_box(P::markers().map_err(std::io::Error::other)?);
         let declaration = Declaration::inspect(&markers.concat(), Facility::Sidecar)
             .map_err(std::io::Error::other)?;
         harmos_contract::inventory::publications::validate_match(P::STREAMS, &declaration.streams)
@@ -178,7 +178,7 @@ pub async fn run_plugin<P>(capacity: NonZeroUsize) -> std::io::Result<()>
 where
     P: Plugin<Context = Supervisor> + Declared,
 {
-    std::hint::black_box(P::markers());
+    std::hint::black_box(P::markers().map_err(std::io::Error::other)?);
     if catalog::requested(std::env::args_os().skip(1)) {
         let bytes = catalog::encode::<P>()?;
         let mut stdout = tokio::io::stdout();

@@ -98,6 +98,17 @@ impl<A: Application> Serving<A> {
         Ok(crate::operations::Component::new(endpoint))
     }
 
+    pub(crate) fn exit(
+        &self,
+    ) -> Result<impl Future<Output = Result<(), Error>> + Send + 'static, Error> {
+        let endpoint = self
+            .session
+            .as_ref()
+            .ok_or(DispatchError::Unavailable)?
+            .endpoint();
+        Ok(async move { endpoint.settle().await })
+    }
+
     pub async fn finalize(&mut self, within: Duration) -> crate::Result<()> {
         let cleanup = match self.finalization.take() {
             None => {

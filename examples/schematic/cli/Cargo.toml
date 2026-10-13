@@ -1,3 +1,11 @@
+# ***
+#
+# Harmos
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
 # === Package ===
 
 [package]
@@ -57,6 +65,39 @@ tokio = { workspace = true, default-features = true, features = [
 # Testing
 
 # === Build Dependencies ===
+
+[build-dependencies]
+# Local
+harmos-contract = { workspace = true, features = ["reflection"] }
+schematic-contract = { path = "../contract", features = ["grpc"] }
+
+# Git
+
+# Error Handling
+
+# Logging
+
+# Utilities
+
+# Serialization
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
 
 # === Dev Dependencies ===
 

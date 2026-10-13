@@ -25,7 +25,7 @@ use super::DataSelection;
 
 use crate::operations::{Context, Operation, StreamOutput};
 use crate::operations::{Grpc, OperationDeclaration, OutputDeclaration, Visibility, WireOperation};
-use crate::schema::{Described, Field};
+use crate::schema::Described;
 
 use crate::storage::{RecordQuery, StorageManager};
 use crate::storage::{StorageCursor, StoredRecord};
@@ -78,7 +78,7 @@ impl WireOperation for ReadRecords {
             Some(visitor.download::<Self>())
         }
     }
-    const OUTPUT: Option<&'static [Field]> = Some(StoredRecord::FIELDS);
+    const OUTPUT: Option<crate::schema::declaration::Definition> = Some(StoredRecord::DEFINITION);
 }
 
 impl<C: 'static> Operation for Handler<C> {
@@ -107,6 +107,7 @@ impl<C: 'static> Operation for Handler<C> {
         }
 
         let mut query = RecordQuery::new(selection.schema.clone(), super::data_selection::decode);
+        query.filter = selection.record_filter.clone();
         query.scope = selection.selection.scope.clone();
         query.item = selection.selection.item.clone();
         query.source_time = selection.source_time();

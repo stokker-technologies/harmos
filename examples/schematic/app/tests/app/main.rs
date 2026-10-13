@@ -28,7 +28,7 @@ use harmos::{
     state::StateManager, streams::Item,
 };
 use schematic_app::app::{self, Runtime, SchematicEditor};
-use schematic_app::config::Config;
+use schematic_app::config::Settings;
 use schematic_app::document::Document;
 use schematic_app::error::LaunchError;
 use schematic_app::records::{ExportCompleted, ExportFormat, Records};
@@ -678,8 +678,8 @@ async fn opened(document: &Path) -> Runtime {
         .expect("the sidecar belongs to this artifact and replays")
 }
 
-fn config(document: &Path) -> Config {
-    Config::new(document.with_file_name("recordings"))
+fn config(document: &Path) -> Settings {
+    Settings::new(document.with_file_name("recordings"))
 }
 
 async fn memory_only(origin: Schematic) -> Result<Runtime, LaunchError> {
@@ -689,7 +689,7 @@ async fn memory_only(origin: Schematic) -> Result<Runtime, LaunchError> {
 async fn recording(origin: Schematic, directory: &Path) -> Result<Runtime, LaunchError> {
     let assembly = app::builder(origin, ());
 
-    Ok(storage::recordings(assembly, &Config::new(directory))?
+    Ok(storage::recordings(assembly, &Settings::new(directory))?
         .runtime()
         .await?)
 }

@@ -80,7 +80,9 @@ pub async fn registrations(bytes: &[u8]) -> Result<Vec<Registration>, Error> {
         )?;
         let guest = host
             .load(bytes)?
-            .register_with_limits(Some(super::host::store_limits()))
+            .register_with_limits(Some(super::host::store_limits(
+                crate::config::PluginGuestSettings::default(),
+            )))
             .await?;
         let entries = guest.registrations();
         let mut namespaces = BTreeSet::new();

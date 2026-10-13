@@ -63,6 +63,8 @@ pub struct WireChildCall {
     pub context: [u8; 32],
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub generation_context: Option<[u8; 32]>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub values: Vec<super::CallValue>,
     pub operation: String,
     pub payload: Vec<u8>,
 }

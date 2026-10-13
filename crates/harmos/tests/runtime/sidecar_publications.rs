@@ -726,7 +726,16 @@ pub(super) fn contract_scenario() {
                         .publication("meter.pulse", 1)
                         .unwrap();
                     assert_eq!(stream.definition().owner(), Some("meter"));
-                    assert!(!stream.definition().fields().unwrap().is_empty());
+                    assert!(
+                        !stream
+                            .definition()
+                            .schema()
+                            .unwrap()
+                            .root()
+                            .unwrap()
+                            .fields()
+                            .is_empty()
+                    );
 
                     fixture.shutdown().await.unwrap();
                     assert_eq!(stream.query(..).await.unwrap().count(), 1);
@@ -918,8 +927,12 @@ pub(super) fn contract_scenario() {
                         );
                         assert_eq!(stream.definition().id(), format!("twins.{id}"));
                         assert_eq!(
-                            stream.definition().fields().unwrap(),
-                            <support::Pulse as harmos::schema::Described>::FIELDS
+                            stream.definition().schema().unwrap(),
+                            &harmos::schema::graph::Schema::from_declaration(
+                                <support::Pulse as harmos::schema::Described>::DEFINITION,
+                                &harmos::config::SchemaSettings::default()
+                            )
+                            .unwrap()
                         );
                     }
                     fixture.runtime.stop().await.unwrap();
@@ -1009,7 +1022,7 @@ pub(super) fn contract_scenario() {
                     let runtime = &fixture.runtime;
                     let left = runtime.streams.publication("twins.left", 1).unwrap();
                     let right = runtime.streams.publication("twins.right", 1).unwrap();
-                    assert_eq!(left.definition().fields(), right.definition().fields());
+                    assert_eq!(left.definition().schema(), right.definition().schema());
                     assert_eq!(counts.started[0].load(SeqCst), 0);
                     assert_eq!(counts.started[1].load(SeqCst), 0);
 
@@ -1476,13 +1489,15 @@ pub(super) fn contract_scenario() {
             assert_eq!(observers[0].streams.len(), 2);
 
             let empty = harmos::plugin::sidecar::inventory::Declaration::inspect(
-                &<Twins as harmos_contract::plugin::Declared>::markers().concat(),
+                &<Twins as harmos_contract::plugin::Declared>::markers()
+                    .unwrap()
+                    .concat(),
                 harmos::plugin::sidecar::inventory::Facility::Sidecar,
             )
             .unwrap();
             assert!(empty.observers.is_empty());
             let selected = harmos::plugin::sidecar::inventory::Declaration::inspect(
-                &MultiStream::markers().concat(),
+                &MultiStream::markers().unwrap().concat(),
                 harmos::plugin::sidecar::inventory::Facility::Sidecar,
             )
             .unwrap();
@@ -1503,6 +1518,7 @@ pub(super) fn contract_scenario() {
             );
 
             let missing: Vec<_> = MultiStream::markers()
+                .unwrap()
                 .into_iter()
                 .filter(|marker| {
                     !String::from_utf8_lossy(marker).contains("\"kind\":\"observers\"")

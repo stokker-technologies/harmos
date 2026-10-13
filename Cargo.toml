@@ -79,6 +79,7 @@ wit-component = { version = "=0.261.0", default-features = false }
 clap = { version = "4", default-features = false }
 
 # Filesystem
+notify = { version = "8.2.0", default-features = false }
 tar = { version = "0.4.46", default-features = false }
 tempfile = { version = "3", default-features = false }
 
@@ -90,6 +91,8 @@ quote = { version = "1", default-features = false }
 syn = { version = "3", default-features = false, features = ["full"] }
 
 # Concurrency
+ctrlc = { version = "3.5.2", default-features = false }
+process-wrap = { version = "10.0.1", default-features = false }
 
 # Async
 futures-core = { version = "0.3", default-features = false }
@@ -107,6 +110,7 @@ tonic-prost-build = { version = "0.14.6", default-features = false }
 tonic-reflection = { version = "0.14.6", default-features = false }
 tonic-web = { version = "0.14.6", default-features = false }
 tower = { version = "0.5", default-features = false, features = ["util"] }
+tower-http = { version = "0.7", default-features = false, features = ["cors"] }
 
 # Storage
 

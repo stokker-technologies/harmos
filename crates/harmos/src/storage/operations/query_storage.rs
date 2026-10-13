@@ -91,7 +91,12 @@ impl crate::MemorySize for QueryStorageRequest {
     }
 }
 impl crate::schema::Described for QueryStorageRequest {
-    const FIELDS: &'static [crate::schema::Field] = &[];
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(QueryStorageRequest));
+    const FIELDS: &'static [crate::schema::declaration::Field] = &[];
+
+    const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
+        { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
 }
 harmos_contract::postcard_product!(QueryStorageRequest {});
 

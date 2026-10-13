@@ -219,7 +219,16 @@ async fn count_retained(storage: &StorageManager<RetainedObjects>) -> usize {
 async fn retained_source() -> (Fixture, StorageCursor) {
     let f = Fixture::new(false).await;
     let key = super::super::schema();
-    f.storage.write_schema(&key, &[]).await.unwrap();
+    f.storage
+        .write_schema(
+            &key,
+            &harmos::schema::graph::Schema {
+                root: 0,
+                definitions: vec![vec![]],
+            },
+        )
+        .await
+        .unwrap();
     write(&f.storage, "retained-record").await;
     let item = Identifier::new("sample").unwrap();
     let stream = Identifier::new("signal").unwrap();

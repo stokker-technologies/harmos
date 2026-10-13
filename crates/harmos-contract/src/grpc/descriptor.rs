@@ -28,8 +28,9 @@ use prost_reflect::{
 };
 
 // Local Imports
+use crate::config::SchemaSettings;
 use crate::operations::Contract;
-use crate::schema::{Field, reflection};
+use crate::schema::reflection;
 
 /* === Constants === */
 
@@ -117,21 +118,29 @@ pub fn descriptor(
     };
     for (method, contract) in methods {
         let namespace = format!("{package}.{name}Messages.{method}");
-        let request = payload(
-            contract.request(),
-            &format!("{namespace}.request"),
-            &mut file,
-            &mut files,
+        let root = reflection::descriptor_schema(
+            contract.schema(),
+            &namespace,
+            &SchemaSettings::default(),
         )?;
-        let response = payload(
-            contract.response(),
-            &format!("{namespace}.response"),
-            &mut file,
-            &mut files,
-        )?;
+        let messages = root.parent_file_descriptor_proto().clone();
+        file.dependency
+            .push(messages.name.clone().expect("projected file is named"));
+        files.push(messages);
+        let direction = |name: &str| {
+            let field = root
+                .get_field_by_name(name)
+                .expect("validated contract direction");
+            let prost_reflect::Kind::Message(message) = field.kind() else {
+                unreachable!("contract directions are message references");
+            };
+            format!(".{}", message.full_name())
+        };
+        let request = direction("request");
+        let response = direction("response");
         let input = match contract.input() {
-            Some(fields) => {
-                let item = payload(fields, &format!("{namespace}.input"), &mut file, &mut files)?;
+            Some(_) => {
+                let item = direction("input");
                 envelope(
                     &mut file,
                     &format!("{name}{method}Input"),
@@ -141,13 +150,8 @@ pub fn descriptor(
             None => request,
         };
         let output = match contract.output() {
-            Some(fields) => {
-                let item = payload(
-                    fields,
-                    &format!("{namespace}.output"),
-                    &mut file,
-                    &mut files,
-                )?;
+            Some(_) => {
+                let item = direction("output");
                 envelope(
                     &mut file,
                     &format!("{name}{method}Output"),
@@ -180,21 +184,6 @@ fn identifier(value: &str) -> bool {
         .next()
         .is_some_and(|first| first.is_ascii_alphabetic() || first == b'_')
         && bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
-}
-
-fn payload(
-    fields: &[Field],
-    package: &str,
-    service: &mut FileDescriptorProto,
-    files: &mut Vec<FileDescriptorProto>,
-) -> Result<String, DescriptorError> {
-    let message = reflection::descriptor_in(fields, package)?;
-    let file = message.parent_file_descriptor_proto().clone();
-    service
-        .dependency
-        .push(file.name.clone().expect("projected file is named"));
-    files.push(file);
-    Ok(format!(".{}", message.full_name()))
 }
 
 fn envelope(

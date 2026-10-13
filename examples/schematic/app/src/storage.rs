@@ -19,7 +19,7 @@ use std::io;
 
 // Local Imports
 use crate::app::SchematicEditor;
-use crate::config::Config;
+use crate::config::Settings;
 use crate::streams::NetVoltage;
 use harmos::Builder;
 use jsonl_adapter::{Jsonl, JsonlStreams};
@@ -41,7 +41,7 @@ use jsonl_adapter::{Jsonl, JsonlStreams};
 /* === Public Functions === */
 pub fn recordings(
     assembly: Builder<SchematicEditor>,
-    config: &Config,
+    config: &Settings,
 ) -> Result<Builder<SchematicEditor>, io::Error> {
     let recordings = JsonlStreams::<SchematicEditor>::open(config.recordings())?;
     let recordings = recordings.select::<NetVoltage>();
@@ -51,7 +51,7 @@ pub fn recordings(
 pub fn attach(
     assembly: Builder<SchematicEditor>,
     recovery: Jsonl<SchematicEditor>,
-    config: &Config,
+    config: &Settings,
 ) -> Result<Builder<SchematicEditor>, io::Error> {
     let recovery = recovery.syncing_every(config.journal_sync_entries.get());
     let assembly = assembly.recover(recovery);

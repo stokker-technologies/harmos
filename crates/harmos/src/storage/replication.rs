@@ -289,11 +289,7 @@ impl<C> StorageManager<C> {
     }
 
     pub(super) async fn reserve_replication(&self, replica: &Replica) -> Result<MemoryReservation> {
-        let bytes = transfer_bytes(
-            &self.inner.settings,
-            self.inner.schema_encoding,
-            self.inner.has_objects,
-        )?;
+        let bytes = transfer_bytes(&self.inner.settings, self.inner.has_objects)?;
         let mut changed = self.inner.changed.subscribe();
         loop {
             replica.check_copying()?;
@@ -564,13 +560,9 @@ pub(super) fn configure<C: ObjectCatalog>(
     if targets.is_empty() {
         return Ok((Vec::new(), 0));
     }
-    if transfer_bytes(
-        settings,
-        primary.schema_encoding(),
-        C::definition_count() != 0,
-    )?
-    .checked_mul(targets.len())
-    .is_none_or(|bytes| bytes > settings.queue_capacity_bytes.get() / 2)
+    if transfer_bytes(settings, C::definition_count() != 0)?
+        .checked_mul(targets.len())
+        .is_none_or(|bytes| bytes > settings.queue_capacity_bytes.get() / 2)
     {
         return Err(invalid(
             "all replica transfer bounds must fit half the shared memory budget",
@@ -724,11 +716,7 @@ pub(super) async fn cleanup(
 }
 
 /* === Private Functions === */
-fn transfer_bytes(
-    settings: &StorageSettings,
-    encoding: super::SchemaEncoding,
-    objects: bool,
-) -> Result<usize> {
+fn transfer_bytes(settings: &StorageSettings, objects: bool) -> Result<usize> {
     // Five Pages, One Temporary Native Verification, And File Copy State.
     settings
         .replication_limits
@@ -755,7 +743,11 @@ fn transfer_bytes(
             }
         })
         .and_then(|n| n.checked_add(settings.file_chunk_bytes.get()))
-        .and_then(|n| n.checked_add(encoding.decoding_overhead()))
+        .and_then(|n| {
+            n.checked_add(super::schema::decoding_overhead(
+                settings.replication_limits.bytes.get(),
+            )?)
+        })
         .ok_or(invalid("transfer bounds overflow"))
 }
 

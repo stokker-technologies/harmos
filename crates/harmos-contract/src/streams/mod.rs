@@ -76,7 +76,7 @@ pub struct Definition {
     row: TypeId,
     batch: Option<BatchDefinition>,
     owner: Option<Arc<str>>,
-    fields: Option<Arc<[crate::schema::Field]>>,
+    schema: Option<Arc<crate::schema::graph::Schema>>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -156,10 +156,10 @@ impl Definition {
     pub fn publication(
         mut self,
         owner: impl Into<Arc<str>>,
-        fields: impl Into<Arc<[crate::schema::Field]>>,
+        schema: impl Into<Arc<crate::schema::graph::Schema>>,
     ) -> Self {
         self.owner = Some(owner.into());
-        self.fields = Some(fields.into());
+        self.schema = Some(schema.into());
         self
     }
 
@@ -178,7 +178,7 @@ impl Definition {
             row: TypeId::of::<S>(),
             batch: None,
             owner: None,
-            fields: None,
+            schema: None,
         }
     }
 
@@ -213,8 +213,8 @@ impl Definition {
         self.owner.as_deref()
     }
 
-    pub fn fields(&self) -> Option<&[crate::schema::Field]> {
-        self.fields.as_deref()
+    pub fn schema(&self) -> Option<&crate::schema::graph::Schema> {
+        self.schema.as_deref()
     }
 
     pub fn version(&self) -> u32 {

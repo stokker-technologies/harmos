@@ -42,6 +42,7 @@ pub struct Response {
     policy = crate::operations::POLICY,
     visibility = harmos_contract::operations::Visibility::Shared,
     version = 1,
+    grpc(package = "schematic.v1", service = "Schematic", method = "ListDirectories"),
 )]
 pub struct ListDirectories;
 

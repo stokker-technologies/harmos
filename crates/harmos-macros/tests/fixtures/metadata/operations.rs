@@ -7,7 +7,6 @@
  * ***
  */
 
-
 /* === Modules === */
 
 /* === Re-Exports === */
@@ -21,7 +20,9 @@ use std::time::Duration;
 
 /* === Constants === */
 pub const SDK_POLICY: harmos::operations::OperationPolicy = harmos::operations::OperationPolicy {
-    timeout: Duration::from_secs(2), attempt_timeout: Duration::from_secs(1), retries: harmos::operations::RetryPolicy::Never,
+    timeout: Duration::from_secs(2),
+    attempt_timeout: Duration::from_secs(1),
+    retries: harmos::operations::RetryPolicy::Never,
 };
 
 /* === Macros === */
@@ -91,12 +92,17 @@ impl harmos::operations::OperationDeclaration for Unselected {
     type Request = Request;
     type Response = Response;
     const ID: &'static str = "unselected.read";
-    const POLICY: harmos::operations::OperationPolicy = <Selected as harmos::operations::OperationDeclaration>::POLICY;
+    const POLICY: harmos::operations::OperationPolicy =
+        <Selected as harmos::operations::OperationDeclaration>::POLICY;
 }
 
-impl harmos::operations::WireOperation for Selected { const VERSION: u32 = 3; }
+impl harmos::operations::WireOperation for Selected {
+    const VERSION: u32 = 3;
+}
 
-impl harmos::operations::WireOperation for Unselected { const VERSION: u32 = 1; }
+impl harmos::operations::WireOperation for Unselected {
+    const VERSION: u32 = 1;
+}
 
 #[cfg(feature = "native")]
 impl harmos::operations::OperationDeclaration for Start {
@@ -108,7 +114,9 @@ impl harmos::operations::OperationDeclaration for Start {
 }
 
 #[cfg(feature = "native")]
-impl harmos::operations::WireOperation for Start { const VERSION: u32 = 1; }
+impl harmos::operations::WireOperation for Start {
+    const VERSION: u32 = 1;
+}
 
 #[cfg(feature = "native")]
 impl harmos::operations::OperationDeclaration for Stop {
@@ -120,7 +128,9 @@ impl harmos::operations::OperationDeclaration for Stop {
 }
 
 #[cfg(feature = "native")]
-impl harmos::operations::WireOperation for Stop { const VERSION: u32 = 1; }
+impl harmos::operations::WireOperation for Stop {
+    const VERSION: u32 = 1;
+}
 
 /* === Public Functions === */
 

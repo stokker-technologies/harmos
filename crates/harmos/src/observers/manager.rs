@@ -210,7 +210,7 @@ impl ObserverManager {
     }
 
     pub fn register<B: ObserverBackend>(&self, backend: B) -> Result<()> {
-        let definition = backend.definition();
+        let definition = backend.definition()?;
         validate(&definition)?;
         let registration = Arc::new(Registration {
             definition,

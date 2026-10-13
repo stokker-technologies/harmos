@@ -458,8 +458,7 @@ struct StreamContract;
                             definition,
                             declaration.version(),
                             declaration.codec(),
-                            declaration.request().to_vec(),
-                            declaration.response().to_vec(),
+                            declaration.schema().clone(),
                         )
                         .unwrap();
                         runtime
@@ -520,8 +519,7 @@ struct StreamContract;
                             definition,
                             declaration.version() + u32::from(!change_policy),
                             declaration.codec(),
-                            declaration.request().to_vec(),
-                            declaration.response().to_vec(),
+                            declaration.schema().clone(),
                         )
                         .unwrap();
                         assert!(

@@ -13,9 +13,8 @@
 # Standard Library Imports
 import argparse
 import json
-import os
 import subprocess
-from pathlib import Path
+import sys
 
 # Third Party Imports
 
@@ -38,103 +37,49 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("example", choices=["guest", "sidecar"])
     args = parser.parse_args()
-    metadata = subprocess.run(
+    result = subprocess.run(
         [
             "cargo",
-            "metadata",
+            "run",
             "--locked",
-            "--offline",
-            "--no-deps",
-            "--format-version",
-            "1",
+            "-p",
+            "cargo-harmos",
+            "--",
+            args.example,
+            "build",
+            "-p",
+            f"schematic-{args.example}",
+            "--json",
         ],
-        check=True,
+        check=False,
         capture_output=True,
         text=True,
     )
-    target = Path(json.loads(metadata.stdout)["target_directory"])
-
-    if args.example == "guest":
-        subprocess.run(
-            [
-                "cargo",
-                "build",
-                "--locked",
-                "-p",
-                "schematic-guest",
-                "--target",
-                "wasm32-unknown-unknown",
-            ],
-            check=True,
+    sys.stderr.write(result.stderr)
+    result.check_returncode()
+    prepared = json.loads(result.stdout)
+    artifacts = [
+        artifact["path"]
+        for artifact in prepared["artifacts"]
+        if artifact["producer"] == f"schematic-{args.example}"
+    ]
+    if len(artifacts) != 1:
+        raise RuntimeError(
+            "schematic build did not select exactly one prepared artifact"
         )
-        (target / "artifacts").mkdir(parents=True, exist_ok=True)
-        subprocess.run(
-            [
-                "cargo",
-                "run",
-                "--locked",
-                "-p",
-                "harmos-guest",
-                "--features",
-                "componentize",
-                "--bin",
-                "harmos-component",
-                "--",
-                str(target / "wasm32-unknown-unknown/debug/schematic_guest.wasm"),
-                str(target / "artifacts/schematic-tools.wasm"),
-            ],
-            check=True,
-        )
-        subprocess.run(
-            [
-                "cargo",
-                "run",
-                "--locked",
-                "-p",
-                "schematic-cli",
-                "--",
-                "--guest",
-                str(target / "artifacts/schematic-tools.wasm"),
-            ],
-            check=True,
-        )
-    else:
-        subprocess.run(
-            ["cargo", "build", "--locked", "-p", "schematic-sidecar"], check=True
-        )
-        suffix = ".exe" if os.name == "nt" else ""
-        subprocess.run(
-            [
-                "cargo",
-                "run",
-                "--locked",
-                "-p",
-                "harmos-sidecar",
-                "--no-default-features",
-                "--features",
-                "packaging",
-                "--bin",
-                "harmos-sidecar-export",
-                "--",
-                str(target / f"debug/schematic-sidecar{suffix}"),
-                "examples/schematic/sidecar/Cargo.toml",
-                "schematic-sidecar",
-            ],
-            check=True,
-        )
-        subprocess.run(
-            [
-                "cargo",
-                "run",
-                "--locked",
-                "-p",
-                "schematic-cli",
-                "--",
-                "--sidecar",
-                str(target / f"debug/schematic-sidecar{suffix}"),
-            ],
-            check=True,
-        )
+    subprocess.run(
+        [
+            "cargo",
+            "run",
+            "--locked",
+            "-p",
+            "schematic-cli",
+            "--",
+            f"--{args.example}",
+            artifacts[0],
+        ],
+        check=True,
+    )
 
 
 # === Private Functions === #

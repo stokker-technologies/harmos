@@ -103,8 +103,11 @@ impl Declared for Program {
     const PROVIDES: &'static [Node<WireDeclaration>] = PROVIDED;
     const REQUIRES: &'static [Node<harmos_contract::plugin::Requirement>] = &[];
     const STREAMS: &'static [publications::Entry] = &[];
-    fn markers() -> Vec<&'static [u8]> {
-        vec![&IDENTITY, &CONTRACTS, &PUBLICATIONS, &OBSERVERS]
+    fn markers() -> Result<Vec<&'static [u8]>, harmos_contract::schema::graph::Error> {
+        harmos_contract::plugin::schema_markers::<Self>(
+            vec![&IDENTITY, &CONTRACTS, &PUBLICATIONS, &OBSERVERS],
+            &harmos_contract::config::SchemaSettings::default(),
+        )
     }
 }
 

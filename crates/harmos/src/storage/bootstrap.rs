@@ -372,7 +372,11 @@ pub(super) async fn copy(
         .bytes
         .get()
         .checked_mul(4)
-        .and_then(|bytes| bytes.checked_add(manager.inner.schema_encoding.decoding_overhead()))
+        .and_then(|bytes| {
+            bytes.checked_add(super::schema::decoding_overhead(
+                manager.inner.settings.replication_limits.bytes.get(),
+            )?)
+        })
         .and_then(NonZeroUsize::new)
         .ok_or(invalid("bootstrap execution bound overflow"))?;
     let execution = QueryLimits {
@@ -460,10 +464,7 @@ async fn export<T: Entry>(
     if matches!(T::KIND, ReadKind::Objects | ReadKind::Files) {
         selection.history = ReadHistory::Retained;
     }
-    let limits = T::read_limits(
-        manager.inner.settings.replication_limits,
-        manager.inner.schema_encoding,
-    );
+    let limits = T::read_limits(manager.inner.settings.replication_limits);
     let batch_limits = ReadLimits {
         bytes: limits.bytes.min(manager.inner.settings.max_batch_bytes),
         ..limits

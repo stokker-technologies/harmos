@@ -165,7 +165,11 @@ impl MemorySize for Native {
 }
 
 impl Described for Native {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Native));
     const FIELDS: &'static [harmos_contract::schema::Field] = Wire::FIELDS;
+    const MARKER: &'static [u8] = &harmos_contract::schema::declaration::encode::<
+        { harmos_contract::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
 }
 
 /* === Public Functions === */
@@ -319,7 +323,27 @@ fn contract_scenario() {
             let redacted = RedactedChoice::decode(&bytes).unwrap();
             assert_eq!(format!("{redacted:?}"), "RedactedChoice([REDACTED])");
             assert_eq!(redacted.encode_to_vec(), bytes);
-            assert_eq!(RedactedChoice::FIELDS, Choice::FIELDS);
+            let settings = harmos_contract::config::SchemaSettings::default();
+            let redacted_schema = harmos_contract::schema::graph::Schema::from_declaration(
+                RedactedChoice::DEFINITION,
+                &settings,
+            )
+            .unwrap();
+            let original_schema = harmos_contract::schema::graph::Schema::from_declaration(
+                Choice::DEFINITION,
+                &settings,
+            )
+            .unwrap();
+            assert!(
+                redacted_schema
+                    .equivalent(
+                        redacted_schema.root,
+                        &original_schema,
+                        original_schema.root,
+                        &settings
+                    )
+                    .unwrap()
+            );
             assert!(redacted.memory_size() <= RedactedChoice::decoding_memory(&bytes).unwrap());
         });
     }

@@ -153,6 +153,8 @@ are always available. Optional facilities are disabled by default.
 | `signal` | Signal-processing kernels. |
 | `signal-fft` | FFT support; includes `signal`. |
 | `simulation` | Deterministic runtime simulation. |
+| `packaging` | Cargo build discovery, inert inspection, bundle construction, and Wasm componentization without hosting engines. |
+| `bindings-python` | Shared producer-owned Python binding generation; also available through `harmos-contract`. |
 
 Portable declarations use `harmos-contract`. Plugin authors use the dedicated
 `harmos-sidecar` or `harmos-guest` SDK, without importing the host runtime:
@@ -162,9 +164,172 @@ Portable declarations use `harmos-contract`. Plugin authors use the dedicated
 harmos-guest = { git = "https://github.com/stokker-technologies/harmos", rev = "<tested-commit>", features = ["kit", "streaming"] }
 ```
 
-`harmos-guest/componentize` packages Wasm components. `harmos-bundle` packages
-plugin bundles without a host runtime. Host consumers reach bundle support at
-`harmos::plugin::bundle`.
+Tooling consumers use `harmos::packaging` with the `packaging` feature. It reuses
+`harmos-bundle` and guest componentization without enabling Wasmtime or native
+process hosting. Host consumers also reach bundle support at `harmos::plugin::bundle`.
+
+```sh
+cargo run --locked -p cargo-harmos -- harmos sidecar build -p schematic-sidecar --json
+cargo run --locked -p cargo-harmos -- harmos guest build -p schematic-guest --json
+cargo run --locked -p cargo-harmos -- harmos inspect target/debug/schematic-sidecar --json
+```
+
+Install the native GitHub Release archive for your Rust target triple by
+extracting its `cargo-harmos-<version>-<target>/` directory and placing
+`cargo-harmos` (`cargo-harmos.exe` on Windows) on `PATH`. Run `cargo harmos --help`
+to check installation. Releases contain the tool, README and Apache license;
+examples and test reports are downloadable CI artifacts. Cargo registry
+publication is deferred.
+
+`cargo harmos sidecar build` prepares native plugins; `cargo harmos guest build`
+drives the selected Wasm build and converts guest core modules
+into inspected `.component.wasm` files beside the selected module, and reports
+exact artifact and schema paths. It keeps generated components separate from
+Cargo's original modules. Each backend's `dev` command watches sources and local
+Cargo dependencies, coalesces changes and rebuilds serially. Failed builds keep
+the last usable package until preparation succeeds. Generated output directories
+are excluded; Ctrl+C stops watching and settles the active Cargo process tree.
+`dev --json` emits `started`, `built` and `failed` records with attempt numbers.
+`inspect` reads metadata without executing the plugin;
+`--json` provides machine-readable output. Producer build scripts
+export known catalogs to their own `OUT_DIR/grpc/<catalog>/`; build output reports
+those exact directories. Schematic bundles use package `schematic.v1` and service
+`Schematic`. Schema generation does not start a gRPC server. Applications configure
+and start their runtime transport separately; dynamic plugins appear in runtime
+reflection when their operations become ready.
+
+`harmos-contract`'s `bindings-python` feature exposes the shared
+`bindings::python::export` generator. It emits a producer-owned `src/` Python
+package with standard protobuf messages, `.pyi` stubs, `py.typed`, canonical
+contracts and descriptors. Producer build scripts export contracts normally;
+explicit binding generation needs `protoc`, while installing the resulting
+wheel or sdist needs Python 3.13+ and its declared protobuf dependency.
+
+```sh
+cargo harmos sidecar build -p schematic-sidecar --json > build.json
+cargo harmos bindings python --build-json build.json \
+  --producer schematic-sidecar --catalog operations \
+  --distribution schematic-bindings --module schematic_bindings \
+  --package-version 0.2.0 --description "Schematic Operation Bindings" \
+  --license Apache-2.0 --output generated/schematic-bindings
+python -m pip install ./generated/schematic-bindings
+```
+
+The generator selects that exact producer/catalog receipt, or accepts an exact
+`--export` directory. `--operation` narrows the export by operation identity;
+selected contracts without protobuf bindings and generated name collisions
+fail explicitly. It creates a new output directory and preserves existing
+outputs. Each package owns a private descriptor pool, so separate producers can
+reuse protobuf names without sharing message-class identity.
+
+Generated `Operation` descriptors expose identity, semantic version, typed
+request/response and stream-item classes, RPC envelopes and path, and the
+canonical contract fingerprint. Structural `Invoker` and `ResponseStream`
+interfaces let a consumer supply its transport; output streams retain the
+operation's declared final response. Connections, cancellation and operation
+registration remain with that consumer.
+
+Message descriptions use finite shared definitions and references, including
+recursive shapes. `config::SchemaSettings` bounds schema preparation memory and
+work separately from payload limits. Artifact metadata uses revision 6; rebuild
+hosts and SDK consumers together. Stored schema metadata uses `graph_v1`;
+`storage.write_schema` and `storage.query_schemas` use semantic version 2 for the
+finite schema description. Product row payload codecs are unchanged. Inline
+schema metadata is unsupported: preserve the original data and select a fresh
+storage root rather than resetting or silently converting it.
+
+Hosts can register `operations::discovery::Discovery` in their existing operation
+manager to serve `host.operations` (unary gRPC path
+`/harmos.host.v1.Host/Operations` when `grpc` is enabled). `OperationsRequest` accepts optional `after`,
+`rows` and `bytes`; defaults are 64 rows and 64 KiB, with maxima of 256 rows and
+4 MiB. `OperationsResponse::catalog` is a UTF-8 JSON array of
+`host::DiscoveredOperation`, containing original contracts, provider owners and
+generations, selected grants and current gRPC availability. The `next` cursor
+continues a bounded page. Discovery applies original readiness and caller
+visibility/dependency rules; `conditional_access` means invocation still checks
+request-specific grants and middleware. Re-discover after provider reload or
+runtime restart; pages do not promise a frozen registry snapshot.
+
+For browser gRPC-Web clients, enable `GrpcSettings::web` and list exact
+`grpc::Origin` values in `allowed_origins`. Configured origins receive preflight
+and response headers; other origins are refused. Authentication still applies
+to actual calls. An empty origin list emits no CORS headers.
+
+Saved-view frame queries combine `Predicate::Compare`, `Predicate::In` and
+`Predicate::Exists` filters with AND. Membership accepts at most 64 scalar
+alternatives; an empty set matches nothing. Presence excludes missing and null
+values, so nested ownership fields can be required without admitting unscoped
+records. Queries keep the original saved cut and declared memory limits.
+
+Raw saved record paging accepts the same scalar predicates through
+`RecordQuery::filter` and `storage::operations::DataSelection::record_filter`.
+Supporting backends validate the selected schema and apply predicates within the
+original cut, continuation and query limits. Keep envelope process scope separate
+from nested payload ownership. Filtered queries require saved paging; direct
+follow and replay reject them.
+
+Operations derive child context with `Context::with_value` for a declared
+`ContextValue`; sidecar `Supervisor` and guest `Context` expose the same method.
+The child keeps the original caller, grants, cancellation and deadline while
+receiving the selected portable value. Read portable values with
+`CallContext::value`; overlays retain the 64-value, 64 KiB context budget.
+
+Externally supplied settings and defaults live in each configurable crate's root
+`config.rs`. Composition passes each owner its relevant settings rather than
+retaining global configuration in every manager.
+
+Host runtimes expose one shared `runtime.plugin` owner; `runtime.handle().plugin`
+clones that same owner. Embedded, guest and native registration is inert. Explicit
+`initialize()` starts the dependency graph, and runtime shutdown retires plugins
+before closing their operation/state infrastructure. The schematic example uses
+this owner for both plugin backends.
+
+```rust,ignore
+use harmos::config::{PluginRestartSettings, PluginSidecarSettings};
+
+let settings = PluginSidecarSettings {
+    plugin: harmos::config::PluginSettings {
+        restart: PluginRestartSettings {
+            retries: 2,
+            ..Default::default()
+        },
+        ..Default::default()
+    },
+    ..Default::default()
+};
+runtime.plugin.register_sidecar::<Operations>(executable, settings, lane).await?;
+runtime.plugin.initialize().await?;
+```
+
+Automatic restarts default to zero. A configured allowance applies to each
+explicit activation cycle, including crashes after readiness; successful startup
+does not replenish it. Status retains the lifetime startup count, last failure
+class, retry deadline and cleanup state, including stopping while the original
+retirement owner is still settling. Invalid configuration/contracts are terminal. Explicit stop cancels restarts for the plugin and its dependents;
+failed cleanup prevents a fresh physical attempt. Plugin restart never replays
+uncertain operation calls or streaming transfers. Guest `shutdown_timeout` bounds
+the complete stop wait, including SDK settlement, authored shutdown and physical
+finalization. A timeout retains the same invocation and cleanup owners; retrying
+stop resumes settlement without launching another plugin attempt. `reload(id)`
+restarts a frozen definition and its active dependents; `reload_sidecar`, `reload_guest` and
+`reload_embedded` accept replacement inputs through the same validation and
+retirement owner. Caller abandonment, explicit stop and runtime shutdown interrupt
+reload initialization and fence each new generation; cleanup retains ownership
+until settlement. A committed replacement remains the source for later explicit
+activation. `remove(id)` requires registered dependents to be removed first.
+
+Rust-only embedded catalogs use `register_embedded` and `reload_embedded`.
+`register_embedded_wire` and `reload_embedded_wire` additionally project the
+handler catalog through `AuthoredContracts`, register its portable codecs and
+expose declared gRPC methods when enabled. Exact requirements and grants apply
+through the same dependency graph and admission owner; no SDK host is needed.
+Native SDK callers can require those embedded contracts through
+`PluginSettings::requires`. Reloading their provider also restarts active
+dependents; unrelated guest generations remain running.
+Encoded calls require an explicit `operations::Settings::preparation_bytes`
+budget.
+
+`PluginManager` remains the lower-level extension for applications supplying their own backend lifecycle.
 
 Operation metadata belongs on its owning struct in a vertical file; catalogs
 assemble those types. `harmos::prelude::*` provides a bounded set of common
@@ -218,13 +383,32 @@ mise run test                   # Run the test suite
 mise run bench                  # Record benchmark results
 ```
 
-Every new commit SHA runs fresh Linux and Windows checks, release builds, and
-covered tests, including squash, merge, and history-reset commits with identical
-trees. PR full validation requires approval; integration into `dev` and `main`
+Every proposed integration SHA runs fresh checks, release builds and full tests,
+including squash, merge and history-reset commits with identical trees. `dev`
+requires Linux validation and its separate `development.json` artifact proof.
+Windows runs independently with visible outcomes and remains advisory for `dev`
+until its requirement is explicitly restored. `main` and releases always require
+both Linux and Windows. PR full validation requires approval; integration into `dev` and `main`
 starts automatic validation of the resulting SHA. Caches accelerate those builds.
+Installed tools, dependency downloads and profile-specific compiler outputs use
+separate caches. Preparation jobs save them; test consumers restore them.
+Cargo verifies restored compilation inputs, and package hashes and provenance
+remain independently verified.
 `mise run packages:reuse` retrieves successful artifacts only for the current SHA,
 with matching inputs and intact hashes; it never rebuilds or changes provenance.
 Use `HARMOS_VALIDATION_RUN_ID` to select an explicit same-SHA Actions run.
+The native validation pipeline runs source checks first, then compiled checks and
+release builds on the same runner. Local `mise run check` retains both check groups.
+Native Rust integration tests use the release profile without instrumentation.
+Coverage is an optional diagnostic through `STKR_COVERAGE=1 mise run test`; it
+preserves the ordinary test selection. Feature pushes run Linux integration
+tests and retain diagnostics. The full-validation gate requires both native
+platforms; the temporary dev gate verifies Linux independently. Dev pushes may
+use the restricted local Linux runner; other refs use hosted runners.
+
+Package restoration verifies transferred bytes in a temporary directory before
+replacing the staged package. Failed verification preserves existing payloads;
+symlink destinations are refused.
 
 Task PRs squash into `dev`. Stable `release/<version>` branches start from `dev`
 and merge into `main` preserving ancestry, then incorporate their history into

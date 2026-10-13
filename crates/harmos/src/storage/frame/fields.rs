@@ -42,7 +42,7 @@ pub struct ScalarProjection {
 /* === Implementations === */
 impl ScalarProjection {
     pub fn new(
-        schema: &[schema::Field],
+        schema: schema::graph::View<'_>,
         fields: Vec<ScalarField>,
         memory_bytes: NonZeroUsize,
     ) -> Result<Self> {
@@ -52,7 +52,12 @@ impl ScalarProjection {
         for field in &fields {
             field.check_schema(schema)?;
         }
-        let construction = schema::Validator::construction_memory_bytes(schema)
+        let settings = harmos_contract::config::SchemaSettings {
+            preparation_bytes: memory_bytes
+                .min(harmos_contract::config::SchemaSettings::default().preparation_bytes),
+            ..harmos_contract::config::SchemaSettings::default()
+        };
+        let construction = schema::Validator::construction_memory_bytes(schema.schema(), &settings)
             .map_err(|_| invalid("invalid projection schema"))?;
         if construction
             .saturating_add(fields.memory_size())
@@ -61,8 +66,9 @@ impl ScalarProjection {
         {
             return Err(invalid("projection construction exceeds memory"));
         }
-        let validator =
-            schema::Validator::new(schema).map_err(|_| invalid("invalid projection schema"))?;
+        let validator = schema::Validator::from_schema(schema.schema(), &settings)
+            .and_then(|validator| validator.at(schema.index()))
+            .map_err(|_| invalid("invalid projection schema"))?;
         Ok(Self { validator, fields })
     }
 

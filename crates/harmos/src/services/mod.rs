@@ -26,6 +26,8 @@ pub use manager::{
 
 #[cfg(feature = "plugin-sidecar")]
 pub(crate) use sidecar::Endpoint as NativeEndpoint;
+#[cfg(feature = "plugin-sidecar")]
+pub(crate) use sidecar::RuntimeDriver;
 
 #[cfg(feature = "plugin-sidecar")]
 pub use sidecar::{

@@ -41,8 +41,8 @@ use std::time::Duration;
 
 /* === Constants === */
 // Handwritten Identity Exercises Inspection Of Independently Authored Bytes
-const DECLARATION: &[u8; 155] = b"\0HARMOS:ARTIFACT:V5:{\"kind\":\"plugin\",\"facility\":\"sidecar\",\"id\":\"attach-fixture\",\"version\":\"0.2.0\",\"description\":\"Checks native attachment.\",\"config\":\"()\"}\0";
-const RESTART: &[u8; 180] = b"\0HARMOS:ARTIFACT:V5:{\"kind\":\"restart\",\"facility\":\"sidecar\",\"owner\":\"attach-fixture\",\"policy\":{\"credit\":0,\"sustained_health_ms\":30000,\"backoff_base_ms\":250,\"backoff_cap_ms\":10000}}\0";
+const DECLARATION: &[u8; 155] = b"\0HARMOS:ARTIFACT:V6:{\"kind\":\"plugin\",\"facility\":\"sidecar\",\"id\":\"attach-fixture\",\"version\":\"0.2.0\",\"description\":\"Checks native attachment.\",\"config\":\"()\"}\0";
+const RESTART: &[u8; 180] = b"\0HARMOS:ARTIFACT:V6:{\"kind\":\"restart\",\"facility\":\"sidecar\",\"owner\":\"attach-fixture\",\"policy\":{\"credit\":0,\"sustained_health_ms\":30000,\"backoff_base_ms\":250,\"backoff_cap_ms\":10000}}\0";
 
 #[used]
 static HARMOS_DECLARATION: [u8; DECLARATION.len()] = *DECLARATION;

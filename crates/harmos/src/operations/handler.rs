@@ -144,6 +144,14 @@ impl Context<'_> {
         self.operations.call_context()
     }
 
+    // Derive a child caller while retaining this attempt's identity, admission,
+    // cancellation and deadline. Only the selected portable value changes.
+    pub fn with_value<T: super::ContextValue>(mut self, value: T) -> Result<Self> {
+        let context = self.context().with_value(value)?;
+        self.operations = self.operations.with_context(context);
+        Ok(self)
+    }
+
     pub fn id(&self) -> OperationInstanceId {
         self.id
     }

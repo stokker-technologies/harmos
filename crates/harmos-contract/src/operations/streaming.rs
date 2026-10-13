@@ -10,12 +10,12 @@
 /* === Modules === */
 
 /* === Re-Exports === */
+pub use crate::config::StreamSettings;
 
 /* === Imports === */
 
 // Standard Library Imports
 use std::{
-    num::NonZeroUsize,
     ops::Deref,
     sync::{
         Arc,
@@ -37,11 +37,6 @@ use crate::{MemorySize, Message};
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 /* === Structs === */
-#[derive(Clone, Copy, Debug)]
-pub struct StreamSettings {
-    pub items: NonZeroUsize,
-    pub bytes: NonZeroUsize,
-}
 
 pub struct StreamOutput<T, E = Error> {
     error: std::marker::PhantomData<fn() -> E>,

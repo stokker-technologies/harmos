@@ -510,7 +510,17 @@ pub(super) fn contract_scenario() {
                     manager.initialize(&mut lifecycle).await.unwrap();
                     let stream = runtime.streams.publication("progress", 1).unwrap();
                     assert_eq!(stream.definition().owner(), Some("route-guest"));
-                    assert_eq!(stream.definition().fields().unwrap()[0].name, "said");
+                    assert_eq!(
+                        stream
+                            .definition()
+                            .schema()
+                            .unwrap()
+                            .root()
+                            .unwrap()
+                            .fields()[0]
+                            .name,
+                        "said"
+                    );
                     runtime
                         .operations
                         .call::<wire::Echo>(wire::Echo {

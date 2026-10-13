@@ -57,9 +57,10 @@ pub(crate) struct Key;
 
 /* === Implementations === */
 impl Value for Key {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Key));
     crate::storage::codec::postcard_field!();
     type Native = ObjectKey;
-    const KIND: crate::schema::Kind = crate::schema::Kind::String;
+    const KIND: crate::schema::declaration::Kind = crate::schema::declaration::Kind::String;
     #[cfg(feature = "grpc")]
     fn write(value: &ObjectKey, tag: u32, bytes: &mut Vec<u8>) {
         write_bytes(tag, value.as_str().as_bytes(), bytes);

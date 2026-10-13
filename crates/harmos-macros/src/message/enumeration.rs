@@ -91,7 +91,7 @@ pub(super) fn expand(
                 ),
             ));
         }
-        let payload = format_ident!("Payload{index}");
+        let payload = format_ident!("{name}Payload{index}");
         let mut declarations = Vec::new();
         let mut bindings = Vec::new();
         let mut members = Vec::new();
@@ -191,9 +191,9 @@ pub(super) fn expand(
         memories.push(
             quote! { #pattern => { let bytes = ::std::mem::size_of::<Self>(); #(#owned)* bytes } },
         );
-        schemas.push(quote! { #harmos::schema::Field {
+        schemas.push(quote! { #harmos::schema::graph::Field {
             name: ::std::borrow::Cow::Borrowed(#authored), tag: #number,
-            kind: #harmos::schema::Kind::Message { fields: ::std::borrow::Cow::Borrowed(<#payload as #harmos::schema::Described>::FIELDS) },
+            kind: #harmos::schema::graph::Kind::Message { definition: <#payload as #harmos::schema::Described>::DEFINITION },
             cardinality: #harmos::schema::Cardinality::Variant,
         }});
     }
@@ -248,7 +248,7 @@ pub(super) fn expand(
     });
     let first_variant = &item.variants[0];
     let first = &first_variant.ident;
-    let first_payload = format_ident!("Payload0");
+    let first_payload = format_ident!("{name}Payload0");
     let first_fields = first_variant
         .fields
         .iter()
@@ -284,6 +284,7 @@ pub(super) fn expand(
         quote!(<#first_payload as #harmos::__private::Protobuf>::decoding_memory_input(input.child(&[])?)?)
     };
     let schemas = schemas.into_iter();
+    let schema = super::described(name, quote!(&[#(#schemas),*]), &harmos);
     Ok(quote! {
         #item
         #postcard
@@ -328,9 +329,7 @@ pub(super) fn expand(
                 }
             }
             impl #harmos::RowMetadata for #name { const ROW_METADATA_JSON: &'static str = "[]"; }
-            impl #harmos::schema::Described for #name {
-                const FIELDS: &'static [#harmos::schema::Field] = &[#(#schemas),*];
-            }
+            #schema
         };
     })
 }

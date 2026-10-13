@@ -113,7 +113,10 @@ pub(super) fn contract_scenario() {
             let empty = Seal::default();
             assert!(empty.cursor.is_none() && empty.version.is_none() && empty.file.is_none());
             for field in Revision::FIELDS {
-                assert!(matches!(field.kind, harmos::schema::Kind::Message { .. }));
+                assert!(matches!(
+                    field.kind,
+                    harmos::schema::graph::Kind::Message { .. }
+                ));
             }
         });
     }

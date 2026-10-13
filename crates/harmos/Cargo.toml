@@ -71,6 +71,10 @@ bench = false
 # Core Runtime And Authoring Are Always Available
 [features]
 default = []
+bindings-python = ["harmos-contract/bindings-python"]
+packaging = ["dep:harmos-bundle", "dep:notify", "dep:process-wrap", "dep:tempfile"]
+packaging-sidecar = ["packaging"]
+packaging-guest = ["packaging", "dep:harmos-guest", "harmos-guest/componentize"]
 plugin = ["dep:petgraph", "dep:semver", "semver/serde", "dep:harmos-bundle"]
 plugin-sidecar = [
   "plugin",
@@ -95,6 +99,8 @@ grpc = [
   "dep:tonic",
   "dep:prost-reflect",
   "dep:tonic-web",
+  "dep:tower",
+  "dep:tower-http",
   "tonic/tls-ring",
   "harmos-contract/reflection",
 ]
@@ -137,10 +143,17 @@ serde_json = { workspace = true, default-features = true, features = ["raw_value
 # Configuration
 
 # Filesystem
+notify = { workspace = true, optional = true }
+tempfile = { workspace = true, default-features = true, optional = true }
 
 # Parsing
 
 # Concurrency
+process-wrap = { workspace = true, optional = true, features = [
+  "std",
+  "job-object",
+  "process-group",
+] }
 
 # Async
 futures-core = { workspace = true, default-features = true }
@@ -157,6 +170,8 @@ http-body = { workspace = true, optional = true }
 tonic = { workspace = true, default-features = true, optional = true }
 tonic-reflection = { workspace = true, features = ["server"], optional = true }
 tonic-web = { workspace = true, optional = true }
+tower = { workspace = true, optional = true }
+tower-http = { workspace = true, optional = true }
 
 # Storage
 

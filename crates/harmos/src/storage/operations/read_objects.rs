@@ -26,7 +26,7 @@ use crate::MemorySize;
 
 use crate::operations::{Context, Operation, StreamOutput};
 use crate::operations::{Grpc, OperationDeclaration, OutputDeclaration, Visibility, WireOperation};
-use crate::schema::{Described, Field};
+use crate::schema::Described;
 
 use crate::storage::StorageManager;
 use crate::storage::{ObjectFields, StorageCursor};
@@ -101,7 +101,7 @@ impl WireOperation for ReadObjects {
             Some(visitor.download::<Self>())
         }
     }
-    const OUTPUT: Option<&'static [Field]> = Some(ObjectResult::FIELDS);
+    const OUTPUT: Option<crate::schema::declaration::Definition> = Some(ObjectResult::DEFINITION);
 }
 
 impl<C: 'static> Operation for Handler<C> {

@@ -296,6 +296,188 @@ fn requiring(required: Vec<Required>) -> PluginDefinitions {
 
 pub(super) fn contract_scenario() {
     {
+        scenario_runtime::check("discovery_keeps_original_authority", || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    use harmos::operations::discovery::Discovery;
+                    use harmos::operations::host::{
+                        DiscoveredOperation, Operations, OperationsRequest, Survey, SurveyRequest,
+                    };
+                    let runtime =
+                        super::runtime_with_preparation(NonZeroUsize::new(4096).unwrap()).await;
+                    runtime
+                        .operations
+                        .register_wire_operation::<Discovery>(
+                            "host",
+                            super::Lanes::Open,
+                            Arc::new(()),
+                        )
+                        .unwrap();
+                    runtime
+                        .operations
+                        .register_wire_operation::<Surveying>(
+                            "host",
+                            super::Lanes::Open,
+                            Arc::new(CoreOwner::default()),
+                        )
+                        .unwrap();
+                    let survey = WireDeclaration::of::<Survey>().contract().unwrap();
+                    let candidate = requiring(vec![
+                        required(
+                            WireDeclaration::of::<Operations>().contract().unwrap(),
+                            vec![],
+                        ),
+                        required(survey.clone(), vec![Grant::Survey("reading".into())]),
+                    ]);
+                    let mut host = Host {
+                        operations: runtime.operations.clone(),
+                        owner: Arc::new(Owner::default()),
+                        scope: None,
+                        callers: BTreeMap::new(),
+                    };
+                    let mut manager = PluginManager::new(candidate).unwrap();
+                    manager.initialize(&mut host).await.unwrap();
+                    let caller = runtime.operations.caller(&host.callers["client"]).unwrap();
+                    let page = caller
+                        .submit::<Operations>(OperationsRequest {
+                            rows: Some(1),
+                            ..Default::default()
+                        })
+                        .unwrap()
+                        .await
+                        .unwrap();
+                    let first: Vec<DiscoveredOperation> =
+                        serde_json::from_slice(&page.catalog).unwrap();
+                    assert_eq!(first.len(), 1);
+                    assert!(page.next.is_some());
+                    let discovery = first
+                        .iter()
+                        .find(|entry| entry.contract.operation().id.as_str() == Operations::ID)
+                        .unwrap();
+                    assert_eq!(discovery.grpc_available, cfg!(feature = "grpc"));
+                    #[cfg(feature = "grpc")]
+                    assert_eq!(
+                        discovery.contract.grpc().unwrap().path(),
+                        "/harmos.host.v1.Host/Operations"
+                    );
+                    let bounded = caller
+                        .submit::<Operations>(OperationsRequest {
+                            bytes: Some(page.catalog.len() as u32),
+                            ..Default::default()
+                        })
+                        .unwrap()
+                        .await
+                        .unwrap();
+                    assert!(bounded.catalog.len() <= page.catalog.len());
+                    assert!(bounded.next.is_some());
+                    let bounded_entries: Vec<DiscoveredOperation> =
+                        serde_json::from_slice(&bounded.catalog).unwrap();
+                    assert_eq!(bounded_entries, first);
+                    let page = caller
+                        .submit::<Operations>(OperationsRequest {
+                            after: page.next.clone(),
+                            rows: Some(1),
+                            ..Default::default()
+                        })
+                        .unwrap()
+                        .await
+                        .unwrap();
+                    let second: Vec<DiscoveredOperation> =
+                        serde_json::from_slice(&page.catalog).unwrap();
+                    assert_eq!(second.len(), 1);
+                    assert!(page.next.is_none());
+                    let discovered = first
+                        .iter()
+                        .chain(&second)
+                        .find(|entry| entry.contract.operation().id.as_str() == Survey::ID)
+                        .unwrap();
+                    assert_eq!(discovered.contract, survey);
+                    assert_eq!(discovered.grants, vec![Grant::Survey("reading".into())]);
+                    assert_eq!(discovered.owner.as_str(), "host");
+                    assert!(discovered.generation > 0 && discovered.conditional_access);
+                    assert!(!discovered.grpc_available);
+                    assert!(
+                        first.iter().chain(&second).all(|entry| entry
+                            .contract
+                            .operation()
+                            .id
+                            .as_str()
+                            != Control::ID)
+                    );
+                    assert!(matches!(
+                        caller.submit::<Survey>(SurveyRequest {
+                            stream: "power".into(),
+                            ..Default::default()
+                        }),
+                        Err(Error::OperationUnauthorized { .. })
+                    ));
+                    assert!(
+                        caller
+                            .submit::<Operations>(OperationsRequest {
+                                bytes: Some(2),
+                                ..Default::default()
+                            })
+                            .unwrap()
+                            .await
+                            .is_err()
+                    );
+                    assert!(
+                        caller
+                            .submit::<Operations>(OperationsRequest {
+                                after: Some("invalid".into()),
+                                ..Default::default()
+                            })
+                            .unwrap()
+                            .await
+                            .is_err()
+                    );
+                    assert!(
+                        caller
+                            .submit::<Operations>(OperationsRequest {
+                                rows: Some(257),
+                                ..Default::default()
+                            })
+                            .unwrap()
+                            .await
+                            .is_err()
+                    );
+                    let host_page = runtime
+                        .operations
+                        .submit::<Operations>(OperationsRequest::default())
+                        .unwrap()
+                        .await
+                        .unwrap();
+                    let ready: Vec<DiscoveredOperation> =
+                        serde_json::from_slice(&host_page.catalog).unwrap();
+                    assert!(ready.iter().any(|entry| entry.owner.as_str() == "provider"
+                        && entry.contract.operation().id.as_str() == Control::ID));
+                    manager.shutdown(&mut host).await.unwrap();
+                    let host_page = runtime
+                        .operations
+                        .submit::<Operations>(OperationsRequest::default())
+                        .unwrap()
+                        .await
+                        .unwrap();
+                    let stopped: Vec<DiscoveredOperation> =
+                        serde_json::from_slice(&host_page.catalog).unwrap();
+                    assert!(
+                        stopped
+                            .iter()
+                            .all(|entry| entry.owner.as_str() != "provider")
+                    );
+                    assert!(
+                        caller
+                            .submit::<Operations>(OperationsRequest::default())
+                            .is_err()
+                    );
+                    runtime.stop().await.unwrap();
+                });
+        });
+    }
+    {
         scenario_runtime::check("preflight_preserves_plugin", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor
@@ -330,8 +512,7 @@ pub(super) fn contract_scenario() {
                         drift,
                         selected.version(),
                         selected.codec(),
-                        selected.request().to_vec(),
-                        selected.response().to_vec(),
+                        selected.schema().clone(),
                     )
                     .unwrap();
                     let mut refused =

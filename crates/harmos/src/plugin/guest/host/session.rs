@@ -386,7 +386,7 @@ impl<A: Application> Owned<A> {
                         if let Command::Background { call, submitted } = request.call {
                             let admitted = if call.generation_context.as_ref().is_some_and(|token| scope.as_ref().is_some_and(|scope| scope.accepts_generation_context(token))) {
                                 caller.as_ref().ok_or(crate::Error::Closing { domain: "guest generation context" })
-                                    .and_then(|caller| caller.submit_encoded_at(&call.operation, call.payload, submitted))
+                                    .and_then(|caller| caller.submit_encoded_at(&call.operation, call.payload, submitted, call.values))
                             } else { Err(crate::Error::Closing { domain: "guest generation context" }) };
                             let invocation = match admitted {
                                 Ok(invocation) => invocation,

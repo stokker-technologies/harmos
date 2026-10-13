@@ -111,7 +111,8 @@ impl<C> StorageManager<C> {
         mode: Mode,
         execution: QueryLimits,
     ) -> Result<StorageFollower<T>> {
-        if selection.kind != T::KIND
+        if selection.record_filter.is_some()
+            || selection.kind != T::KIND
             || selection.order != ReadOrder::Ascending
             || selection.history != super::ReadHistory::Complete
             || selection.object_versions != super::ObjectVersions::Revisions

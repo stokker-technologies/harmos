@@ -95,7 +95,7 @@ pub fn registrations<P: Plugin + Declared>()
 -> Result<Vec<__bindings::harmos::guest::capabilities::Registration>, String> {
     supported_observers::<P>()?;
     super::context::retain();
-    std::hint::black_box(P::markers());
+    std::hint::black_box(P::markers().map_err(|error| error.to_string())?);
     let mut registrar = harmos_contract::Registrar::new();
     <P as harmos_contract::Plugin>::register(&mut registrar).map_err(|error| error.to_string())?;
     Ok(registrar
@@ -129,7 +129,7 @@ where
             }
             return Ok(Arc::clone(&instance.table));
         }
-        std::hint::black_box(P::markers());
+        std::hint::black_box(P::markers().map_err(refusal)?);
         let required = harmos_contract::inventory::contracts::Required::from_tree(P::REQUIRES)
             .map_err(refusal)?;
         let provides = Contracts::from_tree(P::PROVIDES).map_err(refusal)?;
@@ -137,7 +137,7 @@ where
             harmos_contract::listeners::Declarations::from_tree(P::LISTENERS).map_err(refusal)?;
         harmos_contract::inventory::listeners::validate(&listeners, &provides).map_err(refusal)?;
         let declaration = harmos_contract::inventory::Declaration::inspect(
-            &P::markers().concat(),
+            &P::markers().map_err(refusal)?.concat(),
             harmos_contract::inventory::Facility::Guest,
         )
         .map_err(refusal)?;
@@ -179,9 +179,17 @@ where
         | WireCommand::StreamAttempt { context, .. } => Some(*context),
         _ => None,
     };
+    let values = match &command {
+        WireCommand::Attempt { values, .. } | WireCommand::StreamAttempt { values, .. } => {
+            values.clone()
+        }
+        _ => Vec::new(),
+    };
+    let call = crate::operations::CallContext::from_portable(values).map_err(refusal)?;
     let context = Arc::new(Context {
         context: token,
         generation_context: None,
+        call: Arc::new(call),
     });
     let phase = table.lock().map_err(refusal)?.begin(command, context);
     // The Original Slot Owns Work While Both Instance And Table Borrows Are Free

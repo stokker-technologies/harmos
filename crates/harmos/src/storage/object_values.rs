@@ -28,7 +28,8 @@ use crate::__private::{DecodeInput, decoding_add};
 use crate::Identifier;
 #[cfg(feature = "grpc")]
 use crate::MessageError;
-use crate::schema::{Cardinality, Described, Field, Kind};
+use crate::schema::declaration::{Field, Kind};
+use crate::schema::{Cardinality, Described};
 use crate::storage::catalog::invalid;
 #[cfg(feature = "grpc")]
 use crate::storage::position::codec::{identifier, text_field, uint_field};
@@ -268,6 +269,7 @@ impl crate::__private::Protobuf for ObjectVersionToken {
 }
 
 impl Described for ObjectVersionToken {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(ObjectVersionToken));
     const FIELDS: &'static [Field] = &[
         Field {
             name: Cow::Borrowed("store"),
@@ -288,6 +290,10 @@ impl Described for ObjectVersionToken {
             cardinality: Cardinality::Required,
         },
     ];
+
+    const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
+        { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
 }
 
 /* === Public Functions === */

@@ -67,6 +67,7 @@ pub struct QueryOptions {
 
 pub struct RecordQuery<T> {
     pub schema: SchemaKey,
+    pub filter: Option<RecordFilter>,
     pub source_time: Option<SourceTimeRange>,
     pub scope: Option<Identifier>,
     pub item: Option<Identifier>,
@@ -225,6 +226,7 @@ impl<T> RecordQuery<T> {
     ) -> Self {
         Self {
             schema,
+            filter: None,
             source_time: None,
             decode: Box::new(decode),
             scope: None,
@@ -307,6 +309,12 @@ impl<C, T: MemorySize + 'static> FollowQuery<C> for RecordQuery<T> {
         manager: &StorageManager<C>,
         replay: bool,
     ) -> Result<super::follow::QueryFollower<Self::Raw, Self::Value>> {
+        if self.filter.is_some() {
+            return Err(Error::InvalidInput {
+                field: "record filter",
+                reason: "payload filters require saved-query paging",
+            });
+        }
         let started = tokio::time::Instant::now();
         let execution = manager.query_execution(&self.options)?;
         let page = manager.query_page(&self.options)?;
@@ -400,6 +408,21 @@ impl<C, T: MemorySize + 'static> Query<C> for RecordQuery<T> {
         &self.options
     }
 
+    fn preflight(&self, manager: &StorageManager<C>, limits: QueryLimits) -> Result<()> {
+        if let Some(filter) = &self.filter {
+            filter.check()?;
+            let _reservation = manager.reserve_read_now(filter.memory_size(), 1)?;
+            let mut selection = self.options.selection(ReadKind::Records);
+            selection.schema = Some(self.schema.clone());
+            selection.record_filter = Some(filter.clone());
+            manager
+                .inner
+                .primary
+                .validate_record_filter(&selection, limits)?;
+        }
+        Ok(())
+    }
+
     fn open(
         self,
         view: StorageView,
@@ -417,6 +440,7 @@ impl<C, T: MemorySize + 'static> Query<C> for RecordQuery<T> {
         selection.source_time = self.source_time;
         selection.scope = self.scope;
         selection.item = self.item;
+        selection.record_filter = self.filter;
         let decode = self.decode;
         computation.finish(QueryResult {
             retained_view: None,

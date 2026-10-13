@@ -171,7 +171,11 @@ impl Message for Payload {
 }
 
 impl harmos::schema::Described for Payload {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Payload));
     const FIELDS: &'static [harmos::schema::Field] = <Text as harmos::schema::Described>::FIELDS;
+    const MARKER: &'static [u8] = &harmos::schema::declaration::encode::<
+        { harmos::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
 }
 
 impl harmos::operations::WireOperation for Codec {

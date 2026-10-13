@@ -182,7 +182,11 @@ impl<T: StoredObject> ObjectBrowseQuery<T> {
 }
 
 impl ObjectBrowseRequest {
-    fn column(&mut self, fields: &[schema::Field], field: &Identifier) -> Result<usize> {
+    fn column<R>(
+        &mut self,
+        fields: &[schema::graph::Field<R>],
+        field: &Identifier,
+    ) -> Result<usize> {
         if let Some(index) = self.columns.iter().position(|column| column.name == *field) {
             return Ok(index);
         }
@@ -269,7 +273,7 @@ impl ObjectBrowseRequest {
         Ok(())
     }
 
-    pub fn check_schema(&self, fields: &[schema::Field]) -> Result<()> {
+    pub fn check_schema<R>(&self, fields: &[schema::graph::Field<R>]) -> Result<()> {
         self.check()?;
         for expected in &self.columns {
             let field = fields
@@ -630,7 +634,7 @@ fn open_request(
     })
 }
 
-fn column(fields: &[schema::Field], name: &Identifier) -> Result<ObjectColumn> {
+fn column<R>(fields: &[schema::graph::Field<R>], name: &Identifier) -> Result<ObjectColumn> {
     let field = fields
         .iter()
         .find(|field| field.name == name.as_str())

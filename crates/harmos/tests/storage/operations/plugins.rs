@@ -186,16 +186,22 @@ fn frame(schemas: &[SchemaKey], max_groups: usize) -> ReductionsRequest {
 }
 
 async fn seed(fixture: &Fixture, values: &[u64]) {
-    let field = harmos::schema::Field {
+    let field = harmos::schema::graph::Field {
         name: "value".into(),
         tag: 1,
-        kind: harmos::schema::Kind::U64,
+        kind: harmos::schema::graph::Kind::U64,
         cardinality: harmos::schema::Cardinality::Required,
     };
     let schema = super::super::schema();
     fixture
         .storage
-        .write_schema(&schema, &[field])
+        .write_schema(
+            &schema,
+            &harmos::schema::graph::Schema {
+                root: 0,
+                definitions: vec![vec![field]],
+            },
+        )
         .await
         .unwrap();
     for (index, value) in values.iter().enumerate() {

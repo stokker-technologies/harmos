@@ -25,7 +25,7 @@ use super::DataSelection;
 
 use crate::operations::{Context, Operation, StreamOutput};
 use crate::operations::{OperationDeclaration, OutputDeclaration, Visibility, WireOperation};
-use crate::schema::{Described, Field};
+use crate::schema::Described;
 use crate::storage::{StorageCursor, StoredRow};
 
 use crate::storage::{StorageManager, StreamQuery};
@@ -67,7 +67,7 @@ impl OutputDeclaration for FollowStream {
 
 impl WireOperation for FollowStream {
     const VERSION: u32 = 1;
-    const OUTPUT: Option<&'static [Field]> = Some(StoredRow::FIELDS);
+    const OUTPUT: Option<crate::schema::declaration::Definition> = Some(StoredRow::DEFINITION);
 }
 
 impl<C: 'static> Operation for Handler<C> {

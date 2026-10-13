@@ -77,6 +77,124 @@ fn component() -> Vec<u8> {
 
 pub(super) fn contract_scenario() {
     {
+        scenario_runtime::check("runtime_guest_shutdown_retains_budgeted_cleanup", || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    use std::time::Duration;
+                    let runtime = runtime().await;
+                    let host = harmos::plugin::guest::Host::new(&runtime).unwrap();
+                    let loaded = host.load(&component()).unwrap();
+                    let settings = harmos::config::PluginSettings {
+                        configuration: serde_json::to_vec("shutdown-pending").unwrap(),
+                        shutdown_timeout: Duration::from_millis(20),
+                        ..Default::default()
+                    };
+                    let wrong_catalog = runtime
+                        .plugin
+                        .register_guest::<()>(
+                            host.load(&component()).unwrap(),
+                            settings.clone(),
+                            super::GuestLanes::Open,
+                        )
+                        .await
+                        .unwrap_err();
+                    assert!(matches!(
+                        wrong_catalog,
+                        harmos::Error::InvalidInput {
+                            field: "guest operation catalog",
+                            ..
+                        }
+                    ));
+                    assert!(runtime.plugin.status("operation-guest").is_none());
+                    runtime
+                        .plugin
+                        .register_guest::<Operations>(loaded, settings, super::GuestLanes::Open)
+                        .await
+                        .unwrap();
+                    runtime.plugin.initialize().await.unwrap();
+                    let ready = runtime.plugin.status("operation-guest").unwrap();
+                    assert_eq!(ready.attempts, 1);
+                    let stopped = tokio::time::timeout(
+                        Duration::from_millis(300),
+                        runtime.plugin.stop("operation-guest"),
+                    )
+                    .await;
+                    let error = stopped.unwrap().unwrap_err();
+                    assert!(format!("{error:?}").contains("guest plugin shutdown timeout"));
+                    let failed = runtime.plugin.status("operation-guest").unwrap();
+                    assert_eq!(failed.state, harmos::plugin::PluginState::Failed);
+                    assert_eq!(failed.generation, ready.generation);
+                    assert_eq!(failed.attempts, 1);
+                    assert!(failed.next_retry.is_none());
+                    assert!(failed.cleanup_pending);
+                    assert!(
+                        runtime
+                            .operations
+                            .call::<Read>(Value {
+                                value: "fenced".into()
+                            })
+                            .await
+                            .is_err()
+                    );
+                    tokio::time::timeout(Duration::from_secs(3), async {
+                        loop {
+                            if runtime.plugin.stop("operation-guest").await.is_ok() {
+                                break;
+                            }
+                            tokio::time::sleep(Duration::from_millis(20)).await;
+                        }
+                    })
+                    .await
+                    .unwrap();
+                    assert_eq!(
+                        runtime.plugin.status("operation-guest").unwrap().attempts,
+                        1
+                    );
+                    runtime.stop().await.unwrap();
+                });
+        });
+    }
+
+    {
+        scenario_runtime::check("guest_child_overlay_preserves_parent", || {
+            let mut executor = tokio::runtime::Builder::new_current_thread();
+            executor.enable_all().build().unwrap().block_on(async {
+                let runtime = runtime().await;
+                let mut lifecycle = Lifecycle::<Operations, _>::for_component(
+                    &runtime,
+                    component(),
+                    super::GuestLanes::Open,
+                );
+                let mut manager = Manager::new(lifecycle.candidate("normal").await).unwrap();
+                manager.initialize(&mut lifecycle).await.unwrap();
+                let mut context = harmos::operations::CallContext::default();
+                context
+                    .insert_portable(contract::Stage {
+                        id: "parent".into(),
+                    })
+                    .unwrap();
+                let caller = runtime.operations.with_context(context.clone());
+                let answer = caller
+                    .call::<Read>(Value {
+                        value: "context-parent".into(),
+                    })
+                    .await
+                    .unwrap();
+                assert_eq!(answer.value, "parent:child");
+                assert_eq!(
+                    context.value::<contract::Stage>().unwrap().unwrap().id,
+                    "parent"
+                );
+                manager.shutdown(&mut lifecycle).await.unwrap();
+                drop((manager, lifecycle));
+                runtime.stop().await.unwrap();
+            });
+        });
+    }
+    {
         scenario_runtime::check("phases_retain_capacity", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor
@@ -486,6 +604,7 @@ pub(super) fn contract_scenario() {
                         operations: harmos::grpc::server::Settings::default(),
                         reflection: true,
                         web: false,
+                        allowed_origins: Vec::new(),
                         tls: None,
                         connections: NonZeroUsize::new(4).unwrap(),
                         calls_per_connection: NonZeroUsize::new(8).unwrap(),

@@ -25,7 +25,7 @@ use super::Selection;
 
 use crate::operations::{Context, Operation, StreamOutput};
 use crate::operations::{OperationDeclaration, OutputDeclaration, Visibility, WireOperation};
-use crate::schema::{Described, Field};
+use crate::schema::Described;
 
 use crate::storage::{FileQuery, StorageManager};
 use crate::storage::{FileReference, StorageCursor};
@@ -67,7 +67,7 @@ impl OutputDeclaration for QueryFiles {
 
 impl WireOperation for QueryFiles {
     const VERSION: u32 = 1;
-    const OUTPUT: Option<&'static [Field]> = Some(FileReference::FIELDS);
+    const OUTPUT: Option<crate::schema::declaration::Definition> = Some(FileReference::DEFINITION);
 }
 
 impl<C: 'static> Operation for Handler<C> {

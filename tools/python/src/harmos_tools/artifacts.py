@@ -188,6 +188,8 @@ def prepare(root: Path) -> None:
         shutil.copy2(filename, destination)
         libraries[name] = str(destination)
 
+    artifacts.update(_tools(repository, root, target, host))
+
     # Keep Each Feature And Catalog Variant Before The Next Cargo Invocation
     for example, features, case in GUESTS:
         key = f"{example}:{features}:{case or 'default'}"
@@ -384,6 +386,76 @@ def artifacts() -> dict[str, Path]:
 
 
 # === Private Functions === #
+
+
+def _tools(repository: Path, root: Path, target: Path, host: str) -> dict[str, str]:
+    # Preserve Each Tool Feature Selection And Its Resolved Runtime Dependencies
+    artifacts: dict[str, str] = {}
+    tool_dependencies: dict[str, list[str]] = {}
+    for variant, features in (
+        ("none", ""),
+        ("sidecar", "sidecar"),
+        ("guest", "guest"),
+        ("both", "sidecar,guest"),
+    ):
+        selection = ["-p", "cargo-harmos", "--no-default-features"]
+        if features:
+            selection.extend(["--features", features])
+        built = _run(
+            repository,
+            [
+                "build",
+                "--locked",
+                *selection,
+                "--target",
+                host,
+                "--target-dir",
+                str(target),
+                "--message-format=json",
+            ],
+            capture=True,
+        )
+        executables = [
+            message["executable"]
+            for line in built.stdout.splitlines()
+            if line.startswith("{")
+            and (message := json.loads(line)).get("reason") == "compiler-artifact"
+            and message["target"]["name"] == "cargo-harmos"
+            and message.get("executable")
+        ]
+        if len(executables) != 1:
+            raise RuntimeError(f"ambiguous cargo-harmos {variant} compiler artifact")
+        source = Path(executables[0])
+        destination = root / f"cargo-harmos-{variant}" / source.name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+        artifacts[f"cargo-harmos-{variant}"] = str(destination)
+        resolved = _run(
+            repository,
+            [
+                "tree",
+                "--locked",
+                *selection,
+                "--target",
+                host,
+                "--edges",
+                "normal",
+                "--prefix",
+                "none",
+                "--format",
+                "{p}",
+            ],
+            capture=True,
+        )
+        tool_dependencies[variant] = sorted(
+            {line.split()[0] for line in resolved.stdout.splitlines() if line.strip()}
+        )
+    dependency_record = root / "cargo-harmos-dependencies.json"
+    dependency_record.write_text(
+        json.dumps(tool_dependencies, indent=2) + "\n", encoding="utf-8"
+    )
+    artifacts["cargo-harmos-dependencies"] = str(dependency_record)
+    return artifacts
 
 
 def _catalogs(

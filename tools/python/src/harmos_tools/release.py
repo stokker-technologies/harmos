@@ -33,7 +33,7 @@ from . import _policy, evidence, release_registry, version
 # === Constants === #
 
 STABLE = r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
-RESERVED = {"SHA256SUMS", "release-manifest.json", "platform.json", "published.json"}
+RESERVED = {"SHA256SUMS", "release.json", "platform.json", "published.json"}
 
 # === Types === #
 
@@ -47,7 +47,12 @@ def inputs(directory: Path) -> dict:
 
     def output(command: list[str]) -> str:
         return subprocess.run(
-            command, cwd=directory, capture_output=True, text=True, check=True
+            command,
+            cwd=directory,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
         ).stdout
 
     tree = output(["git", "rev-parse", "HEAD^{tree}"]).strip()
@@ -477,9 +482,9 @@ def assemble(directory: Path, settings: dict, root: Path) -> dict:
         "targets": selected,
         "files": files,
     }
-    _policy.write_json(root / "release-manifest.json", manifest)
+    _policy.write_json(root / "release.json", manifest)
     sums = "".join(f"{asset['sha256']}  {asset['name']}\n" for asset in files)
-    sums += f"{hashlib.sha256((root / 'release-manifest.json').read_bytes()).hexdigest()}  release-manifest.json\n"
+    sums += f"{hashlib.sha256((root / 'release.json').read_bytes()).hexdigest()}  release.json\n"
     (root / "SHA256SUMS").write_text(sums)
     return manifest
 

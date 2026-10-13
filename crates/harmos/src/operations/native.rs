@@ -140,6 +140,12 @@ pub enum NativeError {
 /* === Traits === */
 
 /* === Implementations === */
+impl NativeError {
+    pub(crate) fn classification(&self) -> Failure {
+        classify(self)
+    }
+}
+
 impl super::WireVisitor for Project<'_, '_> {
     type Entry = crate::Result<()>;
     fn wire<O>(self) -> Self::Entry
@@ -609,7 +615,7 @@ impl Native {
                 answer = &mut running => break answer?,
                 Some(request) = incoming.recv() => {
                     if request.answer.is_closed() { continue; }
-                    let child = context.submit_encoded_at(&request.operation, request.payload, request.submitted);
+                    let child = context.submit_encoded_at(&request.operation, request.payload, request.submitted, request.values);
                     // A Cancelled Admission Reply Still Cancels Its Admitted Child
                     if let Err(Ok(child)) = request.answer.send(child) { child.cancel(); }
                 }

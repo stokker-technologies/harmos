@@ -102,7 +102,7 @@ impl<R, P: Declared> ObserverHost<R> for Publisher<P> {
     }
 }
 
-impl<R: Sync, V: StreamSpec<Row = V> + harmos_contract::schema::Described, P: Declared>
+impl<R: Sync, V: StreamSpec<Row = V> + harmos_contract::schema::Described + Message, P: Declared>
     ObserverPublisher<R, V> for Publisher<P>
 {
     type Error = PublishError;

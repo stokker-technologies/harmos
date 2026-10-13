@@ -30,7 +30,7 @@ pub const RECORDINGS: &str = "SCHEMATIC_RECORDINGS";
 
 /* === Structs === */
 #[derive(Clone, Debug)]
-pub struct Config {
+pub struct Settings {
     pub journal_sync_entries: NonZeroUsize,
     recordings: PathBuf,
 }
@@ -40,7 +40,7 @@ pub struct Config {
 /* === Traits === */
 
 /* === Implementations === */
-impl Config {
+impl Settings {
     pub fn new(recordings: impl Into<PathBuf>) -> Self {
         Self {
             journal_sync_entries: NonZeroUsize::new(1).unwrap(),

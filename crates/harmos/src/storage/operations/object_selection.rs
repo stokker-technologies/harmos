@@ -121,6 +121,7 @@ impl MemorySize for ObjectSelection {
     }
 }
 impl Value for Versions {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Versions));
     fn postcard_write(value: &Self::Native, bytes: &mut Vec<u8>) {
         crate::__private::PostcardValue::write(
             &match value {
@@ -153,7 +154,7 @@ impl Value for Versions {
     }
 
     type Native = ObjectVersions;
-    const KIND: crate::schema::Kind = crate::schema::Kind::U64;
+    const KIND: crate::schema::declaration::Kind = crate::schema::declaration::Kind::U64;
     #[cfg(feature = "grpc")]
     fn write(value: &ObjectVersions, tag: u32, bytes: &mut Vec<u8>) {
         Unsigned::write(&u64::from(*value == ObjectVersions::Latest), tag, bytes);

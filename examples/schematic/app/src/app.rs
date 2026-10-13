@@ -19,7 +19,7 @@ use std::result::Result;
 // Third Party Imports
 
 // Local Imports
-use crate::config::Config;
+use crate::config::Settings;
 use crate::document::Document;
 use crate::error::Error;
 use crate::records::Records;
@@ -84,7 +84,7 @@ pub fn builder(origin: impl Into<Origin>, resources: ()) -> Builder<SchematicEdi
         generation = document.generation(),
     )
 )]
-pub async fn launch(document: Document, config: &Config) -> Result<Runtime, Error> {
+pub async fn launch(document: Document, config: &Settings) -> Result<Runtime, Error> {
     let recovery = document.recovering()?;
     let origin = document.into_origin();
     let assembly = builder(origin, ());

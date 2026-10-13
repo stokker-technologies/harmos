@@ -50,7 +50,7 @@ run = "{{vars.cargo_guard}}cargo clippy --locked --workspace --all-targets --all
 [tasks."lint:rust:fix"]
 description = "Lint / Rust / Fix"
 run = [
-  "{{vars.cargo_guard}}cargo clippy --workspace --all-targets --all-features --fix --allow-dirty --allow-staged --allow-no-vcs",
+  "{{vars.cargo_guard}}cargo clippy --workspace --all-targets --all-features --fix --allow-dirty --allow-staged",
 ]
 
 
@@ -105,7 +105,7 @@ run = "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harm
 
 [tasks."build:workspace:release"]
 description = "Build / Release"
-run = "{{vars.cargo_guard}}cargo build --locked --workspace --all-features --release --timings"
+run = "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harmos_tools.packages build"
 
 # === === Tasks | Docs === === #
 
@@ -140,19 +140,19 @@ description = "Lint / Authoring"
 run = "{{vars.cargo_guard}}cargo clippy --locked -p harmos-macros --all-targets -- -D warnings"
 
 [tasks."format:python"]
-run = "uv run --locked --project tools/python ruff format tools/python"
+run = "uv run --locked --project tools/python ruff format --config tools/python/pyproject.toml tools/python crates/harmos-contract/src/bindings/python crates/harmos-contract/tests/grpc/python.py"
 
 [tasks."format:python:check"]
-run = "uv run --locked --project tools/python ruff format --check tools/python"
+run = "uv run --locked --project tools/python ruff format --check --config tools/python/pyproject.toml tools/python crates/harmos-contract/src/bindings/python crates/harmos-contract/tests/grpc/python.py"
 
 [tasks."lint:python"]
-run = "uv run --locked --project tools/python ruff check tools/python"
+run = "uv run --locked --project tools/python ruff check --config tools/python/pyproject.toml tools/python crates/harmos-contract/src/bindings/python crates/harmos-contract/tests/grpc/python.py"
 
 [tasks."build:workspace:dev"]
 run = "{{vars.cargo_guard}}cargo build --locked --workspace --timings"
 
 [tasks."check:types:python"]
-run = "uv run --locked --project tools/python --group test ty check tools/python"
+run = "uv run --locked --project tools/python --group test ty check tools/python crates/harmos-contract/src/bindings/python"
 
 # === Tasks | Continuous Integration === #
 
@@ -210,6 +210,13 @@ run = [
   "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features signal",
   "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features signal-fft",
   "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features simulation",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features packaging",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features packaging-sidecar",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features packaging-guest",
+  "{{vars.cargo_guard}}cargo check --locked -p cargo-harmos --no-default-features",
+  "{{vars.cargo_guard}}cargo check --locked -p cargo-harmos --no-default-features --features sidecar",
+  "{{vars.cargo_guard}}cargo check --locked -p cargo-harmos --no-default-features --features guest",
+  "{{vars.cargo_guard}}cargo check --locked -p cargo-harmos --no-default-features --features sidecar,guest",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-bundle",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-contract --no-default-features",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-guest --no-default-features --features kit,derive,streaming",
@@ -222,17 +229,42 @@ run = [
 ]
 
 
-[tasks."check"]
-description = "Check"
-depends = ["sync"]
+[tasks."check:fast"]
+description = "Check Source Without Compiling Product Targets"
+# Source Jobs Install No Compiler Cache.
+env = { RUSTC_WRAPPER = "" }
+depends = ["sync:tools"]
 run = [
   { task = "format:check" },
-  { task = "lint" },
+  { task = "lint:python" },
   { task = "check:types" },
+]
+
+[tasks."check:compiled"]
+description = "Check Native And Portable Compilation Contracts"
+depends = ["sync:rust"]
+run = [
+  { task = "lint:rust" },
   # lint:rust already compiles these targets; keep distinct feature/target checks.
   { task = "check:features" },
   { task = "check:wasm" },
   { task = "check:plugin" },
+]
+
+[tasks."check"]
+description = "Check"
+run = [{ task = "check:fast" }, { task = "check:compiled" }]
+
+[tasks."build:ci"]
+description = "Check Compiled Targets And Build Native Release Assets"
+run = [{ task = "check:compiled" }, { task = "build:release" }]
+
+[tasks."ci:feature"]
+description = "Validate Feature Branch Source And Integration Behavior"
+run = [
+  { task = "check:fast" },
+  { task = "check:compiled" },
+  { task = "test:integration" },
 ]
 
 
@@ -241,7 +273,7 @@ depends = ["fixtures:prepare"]
 # Bound Concurrent Guest Compilers To Avoid Oversubscribing The Host.
 env = { NEXTEST_TEST_THREADS = "4" }
 run = [
-  "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harmos_tools.evidence run integration rust --all-features",
+  "{{vars.cargo_guard}}uv run --locked --project tools/python --group test python -m harmos_tools.evidence run integration rust --all-features",
 ]
 
 
@@ -274,7 +306,6 @@ run = [{ task = "build:workspace:dev" }]
 depends = ["sync", "ci:bootstrap"]
 run = [
   { task = "build:workspace:release" },
-  "{{vars.cargo_guard}}cargo build --locked -p schematic-guest --release --target wasm32-unknown-unknown --timings",
   "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harmos_tools.packages stage",
 ]
 
@@ -302,6 +333,11 @@ run = "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harm
 depends = ["sync"]
 description = "Reuse Exact Validated Assets From One Native Validation Run"
 run = "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harmos_tools.packages reuse"
+
+[tasks."packages:development"]
+depends = ["sync"]
+description = "Verify Dated Linux Development Proof Without Release Promotion"
+run = "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harmos_tools.packages development"
 
 [tasks."packages:export"]
 description = "Export Platform Assets And Retained Diagnostics"
@@ -335,9 +371,8 @@ run = "uv run --locked --project tools/python python -m harmos_tools.evidence ru
 
 
 [tasks."fixtures:prepare"]
-depends = [
-  "{% if env.CI | default(value='false') == 'true' %}packages:verify{% else %}build:release{% endif %}",
-]
+# Fixtures Build Their Own Inputs; Exact Release Verification Remains On Acceptance.
+depends = ["sync:tools"]
 description = "Prepare And Validate Native Fixture Artifacts"
 run = "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harmos_tools.artifacts target/fixtures/harmos"
 

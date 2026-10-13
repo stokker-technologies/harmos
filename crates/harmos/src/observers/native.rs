@@ -102,8 +102,8 @@ where
     F: Fn(Arc<R>) -> H + Send + Sync + 'static,
 {
     type Resources = R;
-    fn definition(&self) -> ObserverDefinition {
-        ObserverDefinition {
+    fn definition(&self) -> crate::Result<ObserverDefinition> {
+        Ok(ObserverDefinition {
             id: self.instance.id().to_owned(),
             interval: self.instance.interval(),
             demand_keys: self
@@ -116,16 +116,24 @@ where
                 .instance
                 .streams()
                 .iter()
-                .map(|entry| harmos_contract::inventory::StreamDeclaration {
-                    id: entry.id.to_owned(),
-                    metadata: entry.metadata(),
-                    row_metadata: entry.row_metadata(),
-                    schema: entry.schema,
-                    window: entry.window,
-                    fields: entry.fields.to_vec(),
+                .map(|entry| {
+                    Ok(harmos_contract::inventory::StreamDeclaration {
+                        id: entry.id.to_owned(),
+                        metadata: entry.metadata(),
+                        row_metadata: entry.row_metadata(),
+                        schema: entry.schema,
+                        window: entry.window,
+                        row: crate::schema::graph::Schema::from_declaration(
+                            entry.row,
+                            &crate::config::SchemaSettings::default(),
+                        )
+                        .map_err(|source| Error::RecordSchema {
+                            source: source.into(),
+                        })?,
+                    })
                 })
-                .collect(),
-        }
+                .collect::<Result<Vec<_>>>()?,
+        })
     }
 
     async fn run(&self, resources: Arc<R>, mut activation: ObserverActivation) -> Result<()> {

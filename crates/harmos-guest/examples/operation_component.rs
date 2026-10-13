@@ -88,6 +88,7 @@ harmos_guest::export_plugin!(Program, capacity = 2);
 struct Program {
     owner: Arc<Owner>,
     mismatch: bool,
+    pending_shutdown: bool,
 }
 
 #[derive(Default)]
@@ -176,6 +177,39 @@ impl Operation for ReadOperation {
                     "initialization context remained active",
                 ));
             }
+        }
+        if self.value == "context-leaf" {
+            let stage = context
+                .context()
+                .value::<contract::Stage>()
+                .map_err(std::io::Error::other)?
+                .unwrap();
+            return Ok(Value { value: stage.id });
+        }
+        if self.value == "context-parent" {
+            let parent = context
+                .context()
+                .value::<contract::Stage>()
+                .map_err(std::io::Error::other)?
+                .unwrap();
+            assert_eq!(parent.id, "parent");
+            let caller = context
+                .with_value(contract::Stage { id: "child".into() })
+                .map_err(std::io::Error::other)?;
+            let child = caller
+                .operation::<Read>(Value {
+                    value: "context-leaf".into(),
+                })
+                .await
+                .map_err(std::io::Error::other)?;
+            let original = context
+                .context()
+                .value::<contract::Stage>()
+                .map_err(std::io::Error::other)?
+                .unwrap();
+            return Ok(Value {
+                value: format!("{}:{}", original.id, child.value),
+            });
         }
         self.attempts += 1;
         if self.value == "leaf" {
@@ -278,8 +312,11 @@ impl Declared for Program {
     ];
     const REQUIRES: &'static [Node<harmos_contract::plugin::Requirement>] = &[];
     const STREAMS: &'static [publications::Entry] = &[];
-    fn markers() -> Vec<&'static [u8]> {
-        vec![&IDENTITY, &CONTRACTS, &PUBLICATIONS, &LISTENERS, &OBSERVERS]
+    fn markers() -> Result<Vec<&'static [u8]>, harmos_contract::schema::graph::Error> {
+        harmos_contract::plugin::schema_markers::<Self>(
+            vec![&IDENTITY, &CONTRACTS, &PUBLICATIONS, &LISTENERS, &OBSERVERS],
+            &harmos_contract::config::SchemaSettings::default(),
+        )
     }
 }
 
@@ -296,6 +333,7 @@ impl Plugin for Program {
                 ..Owner::default()
             }),
             mismatch: config == "mismatch",
+            pending_shutdown: config == "shutdown-pending",
         })
     }
     fn resources(&self) -> Arc<Owner> {
@@ -313,6 +351,9 @@ impl Plugin for Program {
         Ok(())
     }
     async fn shutdown(&mut self, _: &Context) -> Result<(), Self::Error> {
+        if self.pending_shutdown {
+            std::future::pending::<()>().await;
+        }
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Self::Error> {

@@ -13,11 +13,12 @@ mod sealed {
 }
 
 /* === Re-Exports === */
+pub use crate::config::EncodeSettings;
 
 /* === Imports === */
 
 // Standard Library Imports
-use std::{marker::PhantomData, num::NonZeroUsize, sync::Arc};
+use std::{marker::PhantomData, sync::Arc};
 
 // Third Party Imports
 use bytes::BufMut;
@@ -38,11 +39,6 @@ use crate::{MemorySize, Protobuf, operations::StreamItem};
 /* === Type Aliases === */
 
 /* === Structs === */
-#[derive(Clone, Copy, Debug)]
-pub struct EncodeSettings {
-    pub message_bytes: NonZeroUsize,
-    pub buffer_bytes: NonZeroUsize,
-}
 
 pub struct Codec<D, E> {
     decoder: Decoder<D>,

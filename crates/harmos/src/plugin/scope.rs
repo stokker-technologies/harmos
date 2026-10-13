@@ -469,7 +469,7 @@ impl PluginScope {
                             && definition.window() == declared.window
                             && definition.metadata() == &declared.metadata
                             && definition.row_metadata() == declared.row_metadata
-                            && definition.fields() == Some(declared.fields.as_slice())
+                            && definition.schema() == Some(&declared.row)
                     })
             })
     }

@@ -25,6 +25,18 @@ use serde::{Serialize, de::DeserializeOwned};
 /* === Type Aliases === */
 
 /* === Structs === */
+#[derive(Clone, Copy, Debug)]
+pub struct SchemaSettings {
+    pub preparation_bytes: std::num::NonZeroUsize,
+    pub preparation_work: std::num::NonZeroUsize,
+}
+
+#[cfg(feature = "streaming")]
+#[derive(Clone, Copy, Debug)]
+pub struct StreamSettings {
+    pub items: std::num::NonZeroUsize,
+    pub bytes: std::num::NonZeroUsize,
+}
 
 /* === Enums === */
 #[derive(Debug, thiserror::Error)]
@@ -38,6 +50,15 @@ pub enum ConfigError {
 /* === Traits === */
 
 /* === Implementations === */
+impl Default for SchemaSettings {
+    fn default() -> Self {
+        Self {
+            // Complete Checkpoint Schemas Fit Below 128 KiB; Retain Headroom For Larger Catalogs.
+            preparation_bytes: std::num::NonZeroUsize::new(4 * 1024 * 1024).unwrap(),
+            preparation_work: std::num::NonZeroUsize::new(1024 * 1024).unwrap(),
+        }
+    }
+}
 
 /* === Public Functions === */
 #[tracing::instrument(level = "trace", skip_all)]

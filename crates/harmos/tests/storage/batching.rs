@@ -23,7 +23,8 @@ use std::time::Duration;
 // Local Imports
 use super::{Fixture, config, record, schema, write};
 use harmos::Identifier;
-use harmos::schema::{Cardinality, Field, Kind};
+use harmos::schema::Cardinality;
+use harmos::schema::graph::{Field, Kind};
 use harmos::storage::StreamWrite;
 
 /* === Constants === */
@@ -87,7 +88,16 @@ fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let f = Fixture::new(config()).await;
-                    f.storage.write_schema(&schema(), &[]).await.unwrap();
+                    f.storage
+                        .write_schema(
+                            &schema(),
+                            &harmos::schema::graph::Schema {
+                                root: 0,
+                                definitions: vec![vec![]],
+                            },
+                        )
+                        .await
+                        .unwrap();
                     write(&f.storage, "one").await;
                     write(&f.storage, "two").await;
                     for sequence in 1..=2 {
@@ -104,7 +114,16 @@ fn contract_scenario() {
                             .await
                             .unwrap();
                     }
-                    f.storage.write_schema(&schema(), &[]).await.unwrap();
+                    f.storage
+                        .write_schema(
+                            &schema(),
+                            &harmos::schema::graph::Schema {
+                                root: 0,
+                                definitions: vec![vec![]],
+                            },
+                        )
+                        .await
+                        .unwrap();
                     write(&f.storage, "three").await;
                     write(&f.storage, "four").await;
                     f.storage.write_recovery(&[b"first"]).await.unwrap();
@@ -750,20 +769,24 @@ fn contract_scenario() {
                             cardinality: Cardinality::Required,
                         })
                         .collect();
+                    let graph = harmos::schema::graph::Schema {
+                        root: 0,
+                        definitions: vec![fields],
+                    };
                     let mut policy = config();
                     policy.queue_capacity_bytes = NonZeroUsize::new(16 * 1024).unwrap();
                     policy.target_batch_bytes = policy.queue_capacity_bytes;
                     policy.max_batch_bytes = policy.queue_capacity_bytes;
                     let f = Fixture::new(policy.clone()).await;
                     let key = schema();
-                    let position = f.storage.write_schema(&key, &fields).await.unwrap();
+                    let position = f.storage.write_schema(&key, &graph).await.unwrap();
                     assert_eq!(position.sequence, 1);
                     assert!(f.storage.status().pending_bytes < policy.queue_capacity_bytes.get());
                     f.storage.flush().await.unwrap();
                     {
                         let saved = f.data.schemas.lock().unwrap();
                         assert_eq!(saved.len(), 1);
-                        assert_eq!(saved[&1].fields, fields);
+                        assert_eq!(saved[&1].schema, graph);
                     }
                     f.finish().await;
 
@@ -771,7 +794,7 @@ fn contract_scenario() {
                     policy.target_batch_bytes = policy.max_batch_bytes;
                     let f = Fixture::new(policy).await;
                     assert!(matches!(
-                        f.storage.write_schema(&key, &fields).await,
+                        f.storage.write_schema(&key, &graph).await,
                         Err(harmos::Error::InvalidInput {
                             field: "storage admission",
                             reason: "one entry exceeds max_batch_bytes",
@@ -806,18 +829,20 @@ fn contract_scenario() {
                     let fields = [Field {
                         name: Cow::Borrowed("parent"),
                         tag: 1,
-                        kind: Kind::Message {
-                            fields: Cow::Borrowed(CHILDREN.as_slice()),
-                        },
+                        kind: Kind::Message { definition: 1 },
                         cardinality: Cardinality::Required,
                     }];
+                    let graph = harmos::schema::graph::Schema {
+                        root: 0,
+                        definitions: vec![fields.to_vec(), CHILDREN.to_vec()],
+                    };
                     let mut policy = config();
                     policy.queue_capacity_bytes = NonZeroUsize::new(4096).unwrap();
                     policy.target_batch_bytes = policy.queue_capacity_bytes;
                     policy.max_batch_bytes = policy.queue_capacity_bytes;
                     let f = Fixture::new(policy.clone()).await;
                     assert!(matches!(
-                        f.storage.write_schema(&schema(), &fields).await,
+                        f.storage.write_schema(&schema(), &graph).await,
                         Err(harmos::Error::InvalidInput {
                             field: "storage schema",
                             reason: "validation scratch exceeds write memory budget"
@@ -831,7 +856,7 @@ fn contract_scenario() {
                     policy.target_batch_bytes = policy.queue_capacity_bytes;
                     policy.max_batch_bytes = policy.queue_capacity_bytes;
                     let f = Fixture::new(policy).await;
-                    f.storage.write_schema(&schema(), &fields).await.unwrap();
+                    f.storage.write_schema(&schema(), &graph).await.unwrap();
                     f.storage.flush().await.unwrap();
                     assert_eq!(f.storage.status().pending_bytes, 0);
                     f.finish().await;

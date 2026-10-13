@@ -28,7 +28,8 @@ use crate::__private::DecodeInput;
 #[cfg(feature = "grpc")]
 use crate::__private::Protobuf as Message;
 use crate::__private::{PostcardReader, PostcardValue};
-use crate::schema::{Cardinality, Described, Kind};
+use crate::schema::declaration::{self, Field, Kind};
+use crate::schema::{Cardinality, Described};
 #[cfg(feature = "grpc")]
 use crate::storage::position::codec::{
     bytes_field, field_len, identifier, text_field, uint_field, write_bytes, write_header,
@@ -44,13 +45,18 @@ macro_rules! product {
     };
     ($ty:ty { $($field:ident: $codec:ty => $tag:literal),* $(,)? }, check = $check:expr) => {
         impl crate::schema::Described for $ty {
-            const FIELDS: &'static [crate::schema::Field] = &[$(crate::schema::Field {
+            const NAME: &'static str = concat!(module_path!(), "::", stringify!($ty));
+            const FIELDS: &'static [crate::schema::declaration::Field] = &[$(crate::schema::declaration::Field {
                 name: std::borrow::Cow::Borrowed(stringify!($field)),
                 tag: $tag,
                 kind: <$codec as crate::storage::codec::Value>::KIND,
                 cardinality: <$codec as crate::storage::codec::Value>::CARDINALITY,
             }),*];
-        }
+
+            const MARKER: &'static [u8] = &crate::schema::declaration::encode::<{
+                crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS)
+            }>(Self::NAME, Self::FIELDS);
+}
         impl crate::__private::PostcardValue for $ty {
             fn write(&self, bytes: &mut Vec<u8>) {
                 $(<$codec as crate::storage::codec::Value>::postcard_write(&self.$field, bytes);)*
@@ -136,21 +142,34 @@ pub(crate) use postcard_field;
 
 macro_rules! variants {
     ($ty:ty { $($index:literal, $tag:literal, $name:literal: $pat:pat => { $($field:ident: $codec:ty => $ftag:literal),* $(,)? } => $build:expr;)+ }) => {
+        const _: () = {
+        struct Variant<const TAG: u32>;
+        $(impl crate::schema::Described for Variant<$tag> {
+            const NAME: &'static str = concat!(module_path!(), "::", stringify!($ty), "::", $name);
+            const FIELDS: &'static [crate::schema::declaration::Field] = &[$(crate::schema::declaration::Field {
+                name: std::borrow::Cow::Borrowed(stringify!($field)), tag: $ftag,
+                kind: <$codec as crate::storage::codec::Value>::KIND,
+                cardinality: <$codec as crate::storage::codec::Value>::CARDINALITY,
+            }),*];
+            const MARKER: &'static [u8] = &crate::schema::declaration::encode::<{
+                crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS)
+            }>(Self::NAME, Self::FIELDS);
+        })+
         impl crate::schema::Described for $ty {
-            const FIELDS: &'static [crate::schema::Field] = &[$(crate::schema::Field {
+            const NAME: &'static str = concat!(module_path!(), "::", stringify!($ty));
+            const FIELDS: &'static [crate::schema::declaration::Field] = &[$(crate::schema::declaration::Field {
                 name: std::borrow::Cow::Borrowed($name),
                 tag: $tag,
                 cardinality: crate::schema::Cardinality::Variant,
-                kind: crate::schema::Kind::Message {
-                    fields: std::borrow::Cow::Borrowed(&[$(crate::schema::Field {
-                        name: std::borrow::Cow::Borrowed(stringify!($field)),
-                        tag: $ftag,
-                        kind: <$codec as crate::storage::codec::Value>::KIND,
-                        cardinality: <$codec as crate::storage::codec::Value>::CARDINALITY,
-                    }),*]),
+                kind: crate::schema::declaration::Kind::Message {
+                    definition: <Variant<$tag> as crate::schema::Described>::DEFINITION,
                 },
             }),+];
-        }
+
+            const MARKER: &'static [u8] = &crate::schema::declaration::encode::<{
+                crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS)
+            }>(Self::NAME, Self::FIELDS);
+}
         impl crate::__private::PostcardValue for $ty {
             #[allow(unused_variables)]
             fn write(&self, bytes: &mut Vec<u8>) {
@@ -253,6 +272,7 @@ macro_rules! variants {
                 }
             }
         }
+        };
     };
 }
 pub(crate) use variants;
@@ -260,6 +280,7 @@ pub(crate) use variants;
 macro_rules! coded {
     ($ty:ident { $($variant:ident),+ $(,)? }) => {
         impl crate::storage::codec::Coded for $ty {
+            const NAME: &'static str = concat!(module_path!(), "::", stringify!($ty));
             const VARIANTS: &'static [Self] = &[$(Self::$variant),+];
         }
     };
@@ -307,6 +328,7 @@ pub(crate) trait Native: PostcardValue + MemorySize + Described {}
 impl<T: PostcardValue + MemorySize + Described> Native for T {}
 
 pub(crate) trait Coded: Copy + PartialEq + Send + Sync + 'static {
+    const NAME: &'static str;
     const VARIANTS: &'static [Self];
     fn code(&self) -> u32 {
         Self::VARIANTS
@@ -324,7 +346,8 @@ pub(crate) trait Coded: Copy + PartialEq + Send + Sync + 'static {
     }
 }
 
-pub(crate) trait Value {
+pub(crate) trait Value: 'static {
+    const NAME: &'static str;
     type Native;
     const KIND: Kind;
     const CARDINALITY: Cardinality = Cardinality::Required;
@@ -344,6 +367,11 @@ pub(crate) trait Value {
 
 /* === Implementations === */
 impl<T: Native> Value for Repeated<T> {
+    const NAME: &'static str = declaration::Name::new(
+        concat!(module_path!(), "::", stringify!(Repeated)),
+        &[T::NAME],
+    )
+    .as_str();
     postcard_field!();
     type Native = Vec<T>;
     const KIND: Kind = Nested::<T>::KIND;
@@ -396,10 +424,15 @@ impl<T: Native> Value for Repeated<T> {
 }
 
 impl<T: Native> Value for Nested<T> {
+    const NAME: &'static str = declaration::Name::new(
+        concat!(module_path!(), "::", stringify!(Nested)),
+        &[T::NAME],
+    )
+    .as_str();
     postcard_field!();
     type Native = T;
     const KIND: Kind = Kind::Message {
-        fields: Cow::Borrowed(T::FIELDS),
+        definition: T::DEFINITION,
     };
     #[cfg(feature = "grpc")]
     fn write(value: &T, tag: u32, bytes: &mut Vec<u8>) {
@@ -426,6 +459,11 @@ impl<T: Native> Value for Nested<T> {
 }
 
 impl<T: Value> Value for Optional<T> {
+    const NAME: &'static str = declaration::Name::new(
+        concat!(module_path!(), "::", stringify!(Optional)),
+        &[T::NAME],
+    )
+    .as_str();
     fn postcard_write(value: &Self::Native, bytes: &mut Vec<u8>) {
         PostcardValue::write(&value.is_some(), bytes);
         if let Some(value) = value {
@@ -492,6 +530,7 @@ impl<T: Value> Value for Optional<T> {
 }
 
 impl Value for Id {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Id));
     postcard_field!();
     type Native = Identifier;
     const KIND: Kind = Kind::String;
@@ -517,6 +556,7 @@ impl Value for Id {
 }
 
 impl Value for Bytes {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Bytes));
     postcard_field!();
     type Native = Vec<u8>;
     const KIND: Kind = Kind::Bytes;
@@ -542,6 +582,7 @@ impl Value for Bytes {
 }
 
 impl Value for Unsigned {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Unsigned));
     postcard_field!();
     type Native = u64;
     const KIND: Kind = Kind::U64;
@@ -568,6 +609,7 @@ impl Value for Unsigned {
 }
 
 impl Value for Version {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Version));
     postcard_field!();
     type Native = NonZeroU32;
     const KIND: Kind = Kind::U32;
@@ -599,6 +641,7 @@ impl Value for Version {
 macro_rules! varint {
     ($adapter:ty, $native:ty, $kind:ident, $encoding:ident, $from:expr) => {
         impl Value for $adapter {
+            const NAME: &'static str = concat!(module_path!(), "::", stringify!($adapter));
             postcard_field!();
             type Native = $native;
             const KIND: Kind = Kind::$kind;
@@ -637,6 +680,7 @@ varint!(Flag, bool, Bool, bool, |value: u64| match value {
 varint!(Signed, i64, I64, int64, |value: u64| Ok(value as i64));
 
 impl Value for Float {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Float));
     postcard_field!();
     type Native = f64;
     const KIND: Kind = Kind::F64;
@@ -681,6 +725,7 @@ impl Value for Float {
 }
 
 impl Value for Text {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Text));
     postcard_field!();
     type Native = String;
     const KIND: Kind = Kind::String;
@@ -712,6 +757,9 @@ impl Value for Text {
 }
 
 impl<E: Coded> Value for Code<E> {
+    const NAME: &'static str =
+        declaration::Name::new(concat!(module_path!(), "::", stringify!(Code)), &[E::NAME])
+            .as_str();
     type Native = E;
     const KIND: Kind = Kind::U32;
     fn postcard_write(value: &E, bytes: &mut Vec<u8>) {
@@ -767,6 +815,7 @@ fn host_width(value: u64) -> Result<usize> {
 }
 
 impl Value for Index {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Index));
     type Native = usize;
     const KIND: Kind = Kind::U64;
     fn postcard_write(value: &usize, bytes: &mut Vec<u8>) {
@@ -815,6 +864,7 @@ impl Value for Index {
 }
 
 impl Value for Count {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Count));
     type Native = NonZeroUsize;
     const KIND: Kind = Kind::U64;
     fn postcard_write(value: &NonZeroUsize, bytes: &mut Vec<u8>) {
@@ -861,23 +911,31 @@ impl Value for Count {
 // 128-Bit Values Travel As A Message Of Lossless High And Low Halves.
 macro_rules! wide {
     ($adapter:ty, $native:ty, $high:ty, $high_codec:ty, $split:expr, $join:expr) => {
+        impl Described for $adapter {
+            const NAME: &'static str = <Self as Value>::NAME;
+            const FIELDS: &'static [Field] = &[
+                crate::schema::declaration::Field {
+                    name: Cow::Borrowed("high"),
+                    tag: 1,
+                    kind: <$high_codec as Value>::KIND,
+                    cardinality: Cardinality::Required,
+                },
+                crate::schema::declaration::Field {
+                    name: Cow::Borrowed("low"),
+                    tag: 2,
+                    kind: Kind::U64,
+                    cardinality: Cardinality::Required,
+                },
+            ];
+            const MARKER: &'static [u8] = &declaration::encode::<
+                { declaration::encoded_len(<Self as Described>::NAME, Self::FIELDS) },
+            >(<Self as Described>::NAME, Self::FIELDS);
+        }
         impl Value for $adapter {
+            const NAME: &'static str = concat!(module_path!(), "::", stringify!($adapter));
             type Native = $native;
             const KIND: Kind = Kind::Message {
-                fields: Cow::Borrowed(&[
-                    crate::schema::Field {
-                        name: Cow::Borrowed("high"),
-                        tag: 1,
-                        kind: <$high_codec as Value>::KIND,
-                        cardinality: Cardinality::Required,
-                    },
-                    crate::schema::Field {
-                        name: Cow::Borrowed("low"),
-                        tag: 2,
-                        kind: Kind::U64,
-                        cardinality: Cardinality::Required,
-                    },
-                ]),
+                definition: <Self as Described>::DEFINITION,
             };
             fn postcard_write(value: &$native, bytes: &mut Vec<u8>) {
                 let (high, low): ($high, u64) = ($split)(*value);
@@ -957,15 +1015,29 @@ wide!(
 );
 
 // One Message Holding A Single Field At Tag 1; Absence Reads As Empty.
+impl<A: Value> Described for Wrap<A> {
+    const NAME: &'static str = <Self as Value>::NAME;
+    const FIELDS: &'static [Field] = &[crate::schema::declaration::Field {
+        name: Cow::Borrowed("value"),
+        tag: 1,
+        kind: A::KIND,
+        cardinality: A::CARDINALITY,
+    }];
+    const MARKER: &'static [u8] =
+        declaration::encode_buffer::<2048>(<Self as Described>::NAME, Self::FIELDS)
+            .split_at(declaration::encoded_len(
+                <Self as Described>::NAME,
+                Self::FIELDS,
+            ))
+            .0;
+}
 impl<A: Value> Value for Wrap<A> {
+    const NAME: &'static str =
+        declaration::Name::new(concat!(module_path!(), "::", stringify!(Wrap)), &[A::NAME])
+            .as_str();
     type Native = A::Native;
     const KIND: Kind = Kind::Message {
-        fields: Cow::Borrowed(&[crate::schema::Field {
-            name: Cow::Borrowed("value"),
-            tag: 1,
-            kind: A::KIND,
-            cardinality: A::CARDINALITY,
-        }]),
+        definition: <Self as Described>::DEFINITION,
     };
     fn postcard_write(value: &A::Native, bytes: &mut Vec<u8>) {
         A::postcard_write(value, bytes);
@@ -1007,6 +1079,9 @@ impl<A: Value> Value for Wrap<A> {
 
 // Repeated Messages, Each Holding One Element At Tag 1.
 impl<A: Value> Value for Many<A> {
+    const NAME: &'static str =
+        declaration::Name::new(concat!(module_path!(), "::", stringify!(Many)), &[A::NAME])
+            .as_str();
     type Native = Vec<A::Native>;
     const KIND: Kind = Wrap::<A>::KIND;
     const CARDINALITY: Cardinality = Cardinality::Repeated;
@@ -1096,23 +1171,39 @@ impl<A: Value> Value for Many<A> {
 }
 
 // One Message Holding A Pair At Tags 1 And 2.
+impl<A: Value, B: Value> Described for Both<A, B> {
+    const NAME: &'static str = <Self as Value>::NAME;
+    const FIELDS: &'static [Field] = &[
+        crate::schema::declaration::Field {
+            name: Cow::Borrowed("first"),
+            tag: 1,
+            kind: A::KIND,
+            cardinality: A::CARDINALITY,
+        },
+        crate::schema::declaration::Field {
+            name: Cow::Borrowed("second"),
+            tag: 2,
+            kind: B::KIND,
+            cardinality: B::CARDINALITY,
+        },
+    ];
+    const MARKER: &'static [u8] =
+        declaration::encode_buffer::<2048>(<Self as Described>::NAME, Self::FIELDS)
+            .split_at(declaration::encoded_len(
+                <Self as Described>::NAME,
+                Self::FIELDS,
+            ))
+            .0;
+}
 impl<A: Value, B: Value> Value for Both<A, B> {
+    const NAME: &'static str = declaration::Name::new(
+        concat!(module_path!(), "::", stringify!(Both)),
+        &[A::NAME, B::NAME],
+    )
+    .as_str();
     type Native = (A::Native, B::Native);
     const KIND: Kind = Kind::Message {
-        fields: Cow::Borrowed(&[
-            crate::schema::Field {
-                name: Cow::Borrowed("first"),
-                tag: 1,
-                kind: A::KIND,
-                cardinality: A::CARDINALITY,
-            },
-            crate::schema::Field {
-                name: Cow::Borrowed("second"),
-                tag: 2,
-                kind: B::KIND,
-                cardinality: B::CARDINALITY,
-            },
-        ]),
+        definition: <Self as Described>::DEFINITION,
     };
     fn postcard_write(value: &Self::Native, bytes: &mut Vec<u8>) {
         A::postcard_write(&value.0, bytes);

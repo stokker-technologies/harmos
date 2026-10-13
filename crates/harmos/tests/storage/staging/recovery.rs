@@ -43,7 +43,6 @@ use harmos::storage::{StagedFile, StorageBackends, StorageManager};
 // Copy A Crash Image Without Letting The Original Manager's Close Save Its Tail.
 fn crash_image(source: &Fixture) -> Arc<Data> {
     let mut data = Data::new(source.data.history.clone());
-    data.schema_encoding = source.data.schema_encoding;
     let data = Arc::new(data);
     *data.saved_productions.lock().unwrap() = source.data.saved_productions.lock().unwrap().clone();
     *data.file_generations.lock().unwrap() = source.data.file_generations.lock().unwrap().clone();

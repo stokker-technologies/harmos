@@ -2140,7 +2140,7 @@ fn own_contract() {
             id: <MeterPulse as harmos::StreamSpec>::ID.into(),
             schema: support::Pulse::VERSION + 1,
             window: support::Pulse::WINDOW,
-            fields: <support::Pulse as harmos::schema::Described>::FIELDS.to_vec(),
+            row: harmos::schema::graph::Schema::from_declaration(<support::Pulse as harmos::schema::Described>::DEFINITION, &harmos::config::SchemaSettings::default()).unwrap(),
         }],
     ] {
         let mut peer = meter(Arc::new(AtomicUsize::new(0)));

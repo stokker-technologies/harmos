@@ -31,8 +31,8 @@ use clap::Parser;
 #[derive(Parser)]
 #[command(version, about = "Run The Schematic Editor Walkthrough")]
 struct Args {
-    #[arg(long, conflicts_with = "sidecar")]
-    guest: Option<PathBuf>,
+    #[arg(long, conflicts_with = "sidecar", num_args = 0..=1)]
+    guest: Option<Option<PathBuf>>,
     #[arg(long)]
     sidecar: Option<PathBuf>,
     #[arg(long)]
@@ -62,11 +62,23 @@ async fn main() -> ExitCode {
 
 async fn dispatch(args: Args) -> schematic_cli::Result<()> {
     let executable = std::env::current_exe()?;
-    let sibling =
-        executable.with_file_name(format!("schematic-sidecar{}", std::env::consts::EXE_SUFFIX));
+    let directory = executable
+        .parent()
+        .ok_or_else(|| std::io::Error::other("schematic executable has no directory"))?;
+    let bundled = directory
+        .join("plugins")
+        .join(format!("schematic-sidecar{}", std::env::consts::EXE_SUFFIX));
+    let sibling = if bundled.is_file() {
+        bundled
+    } else {
+        directory.join(format!("schematic-sidecar{}", std::env::consts::EXE_SUFFIX))
+    };
     let sidecar = args.sidecar.unwrap_or(sibling);
+    let guest = args
+        .guest
+        .map(|path| path.unwrap_or_else(|| directory.join("plugins/schematic-guest.wasm")));
     let directory = std::env::current_dir()?;
-    schematic_cli::run(args.guest.as_deref(), &sidecar, &directory, args.advanced).await
+    schematic_cli::run(guest.as_deref(), &sidecar, &directory, args.advanced).await
 }
 
 /* === Tests === */

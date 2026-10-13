@@ -58,7 +58,7 @@ const STREAMS: &[publications::Entry] = &[publications::Entry {
     id: Echoed::ID,
     schema: Echoed::VERSION,
     window: Echoed::WINDOW,
-    fields: Echoed::FIELDS,
+    row: Echoed::DEFINITION,
     metadata_json: "",
     row_metadata_json: "[]",
 }];
@@ -119,7 +119,7 @@ static LINKED_PUBLICATIONS: [&[u8]; 2] = {
         id: "foreign",
         schema: 1,
         window: 8,
-        fields: &[],
+        row: <() as harmos_contract::schema::Described>::DEFINITION,
     }];
     #[used]
     static OTHER: [u8; encoded_len("guest", "other", STREAMS)] = encode("guest", "other", STREAMS);
@@ -164,18 +164,21 @@ impl Declared for RouteComponent {
     const PROVIDES: &'static [Node<WireDeclaration>] = PROVIDED;
     const REQUIRES: &'static [Node<Requirement>] = REQUIRED;
     const STREAMS: &'static [publications::Entry] = STREAMS;
-    fn markers() -> Vec<&'static [u8]> {
-        vec![
-            &IDENTITY,
-            &CONTRACTS,
-            &PUBLICATIONS,
-            &LISTENERS,
-            &OBSERVERS,
-            LINKED_CONTRACTS[0],
-            LINKED_CONTRACTS[1],
-            LINKED_PUBLICATIONS[0],
-            LINKED_PUBLICATIONS[1],
-        ]
+    fn markers() -> Result<Vec<&'static [u8]>, harmos_contract::schema::graph::Error> {
+        harmos_contract::plugin::schema_markers::<Self>(
+            vec![
+                &IDENTITY,
+                &CONTRACTS,
+                &PUBLICATIONS,
+                &LISTENERS,
+                &OBSERVERS,
+                LINKED_CONTRACTS[0],
+                LINKED_CONTRACTS[1],
+                LINKED_PUBLICATIONS[0],
+                LINKED_PUBLICATIONS[1],
+            ],
+            &harmos_contract::config::SchemaSettings::default(),
+        )
     }
 }
 

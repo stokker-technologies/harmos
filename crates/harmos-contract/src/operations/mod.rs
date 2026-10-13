@@ -29,7 +29,8 @@ pub use context::{
     CallContext, CallValue, ContextError, ContextValue, PORTABLE_BYTES, PORTABLE_VALUES,
 };
 pub use contract::{
-    Codec, Contract, ContractError, Contracts, WireDeclaration, WireOperation, WireVisitor,
+    AuthoredContracts, Codec, Contract, ContractError, Contracts, WireDeclaration, WireOperation,
+    WireVisitor,
 };
 pub use grpc::Grpc;
 #[cfg(feature = "grpc")]

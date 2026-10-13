@@ -18,7 +18,6 @@ mod browse;
 pub(crate) mod capture;
 pub(crate) mod catalog;
 pub(crate) mod codec;
-mod config;
 pub(crate) mod consumer;
 pub(crate) mod data;
 mod deletion;
@@ -45,6 +44,7 @@ mod query;
 mod queue;
 mod reads;
 mod receipts;
+mod record_filter;
 pub mod recovery;
 pub mod reduce;
 mod replication;
@@ -62,6 +62,7 @@ mod writes;
 pub mod series;
 
 /* === Re-Exports === */
+pub use crate::config::StorageSettings;
 pub use crate::storage::catalog::{
     ObjectCatalog, ObjectDefinition, ObjectDefinitions, ObjectKey, ObjectRetention, ObjectValue,
     PayloadEncoding, SchemaKey, StoredObject,
@@ -92,7 +93,6 @@ pub use browse::{
     ObjectBrowseResult, ObjectColumn, ObjectFieldsQuery, ObjectOrder, ObjectPredicate,
 };
 pub use capture::{ProjectedRecords, RecordProjection};
-pub use config::StorageSettings;
 pub use consumer::{Batch, Cursor, JournalConsumer, Series, StreamConsumer};
 pub use file_checkpoint::FileCheckpoint;
 pub use file_follow::FileFollower;
@@ -115,8 +115,8 @@ pub use reads::{
     ReadSelection, ReadView, SourceTimeRange,
 };
 pub use receipts::{MutationReceipt, MutationValue};
+pub use record_filter::RecordFilter;
 pub use replication::{ReplicaHolder, ReplicaReceipt, ReplicaStatus, ReplicaTarget};
-pub use schema::SchemaEncoding;
 pub use schema_input::{SchemaInfo, SchemaInput};
 pub use staging::StorageFile;
 pub(crate) use staging::checkpoint::FileSave;

@@ -65,7 +65,7 @@ impl OperationDeclaration for WriteSchema {
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
 }
 impl WireOperation for WriteSchema {
-    const VERSION: u32 = 1;
+    const VERSION: u32 = 2;
 }
 impl crate::MemorySize for WriteSchemaRequest {
     fn memory_size(&self) -> usize {
@@ -96,7 +96,7 @@ impl<C: 'static> Operation for Handler<C> {
             .write_schema_once(
                 &request.mutation,
                 &request.schema.key,
-                request.schema.fields(),
+                request.schema.graph(),
             )
             .await
     }

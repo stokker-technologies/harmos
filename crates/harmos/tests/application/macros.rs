@@ -406,7 +406,7 @@ mod unified_plugins {
                 let initialization = SdkInitialization::default();
                 assert!(initialization.settings.is_empty());
                 assert!(initialization.snapshot.is_empty());
-                let markers = SdkAuthored::markers();
+                let markers = SdkAuthored::markers().unwrap();
                 let declaration = harmos::plugin::sidecar::inventory::Declaration::inspect(
                     &markers.concat(),
                     harmos::plugin::sidecar::inventory::Facility::Sidecar,
@@ -459,9 +459,11 @@ mod unified_plugins {
         {
             super::scenario_runtime::check("contributions_carry_inert", || {
                 use harmos_contract::inventory::{Declaration, Facility};
-                let declaration =
-                    Declaration::inspect(&Contributing::markers().concat(), Facility::Sidecar)
-                        .unwrap();
+                let declaration = Declaration::inspect(
+                    &Contributing::markers().unwrap().concat(),
+                    Facility::Sidecar,
+                )
+                .unwrap();
                 let namespaces = declaration
                     .sections
                     .iter()
@@ -498,6 +500,7 @@ mod unified_plugins {
         {
             super::scenario_runtime::check("inventory_rejects_changed", || {
                 let mut parts: Vec<serde_json::Value> = Listening::markers()
+                    .unwrap()
                     .into_iter()
                     .map(|marker| {
                         serde_json::from_slice(
@@ -546,6 +549,7 @@ mod unified_plugins {
         {
             super::scenario_runtime::check("listener_inventory_inert", || {
                 let bytes: Vec<_> = Listening::markers()
+                    .unwrap()
                     .into_iter()
                     .flatten()
                     .copied()
@@ -563,6 +567,7 @@ mod unified_plugins {
                 assert_eq!(selected[0].callback(), &declaration.contracts.provides[0]);
                 assert_eq!(selected[0].callback().version(), 4);
                 let guest_markers: Vec<_> = ListeningGuest::markers()
+                    .unwrap()
                     .into_iter()
                     .flatten()
                     .copied()
@@ -575,8 +580,12 @@ mod unified_plugins {
                 assert_eq!(&guest.listeners, &selected);
                 assert_eq!(guest.listeners[0].callback(), &guest.contracts.provides[0]);
 
-                let guest_markers: Vec<_> =
-                    Guest::markers().into_iter().flatten().copied().collect();
+                let guest_markers: Vec<_> = Guest::markers()
+                    .unwrap()
+                    .into_iter()
+                    .flatten()
+                    .copied()
+                    .collect();
                 assert_eq!(
                     harmos::plugin::guest::inventory::Declaration::inspect(
                         &guest_markers,
@@ -804,46 +813,30 @@ mod unified_plugins {
         }
     }
 
-    #[derive(Deserialize)]
-    #[serde(tag = "kind", rename_all = "snake_case")]
-    enum Fragment {
-        Plugin(PluginInventory::contracts::Identity),
-        Contracts(Box<PluginInventory::contracts::Manifest>),
-        Publications(PluginInventory::publications::Manifest),
-    }
-
     fn inspect<P: PluginDeclared>(facility: &str, streams: usize, requires: usize) {
         assert_eq!(harmos::catalog::count(P::PROVIDES), 1);
         assert_eq!(harmos::catalog::count(P::REQUIRES), requires);
         assert_eq!(P::STREAMS.len(), streams);
         assert_eq!(P::STREAMS[0].id, "unified_rows");
         let mut bytes = Vec::new();
-        for marker in P::markers() {
+        for marker in P::markers().unwrap() {
             assert!(marker.starts_with(harmos_contract::PREFIX));
             bytes.extend_from_slice(marker);
         }
-        let mut fragments = harmos_contract::fragments::<Fragment>(
+        let declaration = PluginInventory::Declaration::inspect(
             &bytes,
-            &["plugin", "contracts", "publications"],
+            match facility {
+                "sidecar" => PluginInventory::Facility::Sidecar,
+                "guest" => PluginInventory::Facility::Guest,
+                _ => unreachable!("fixture selects one supported carrier"),
+            },
         )
         .unwrap();
-        assert_eq!(fragments.len(), 3);
-        let Fragment::Publications(publications) = fragments.pop().unwrap() else {
-            panic!("third marker is publications")
-        };
-        let Fragment::Contracts(contracts) = fragments.pop().unwrap() else {
-            panic!("second marker is contracts")
-        };
-        let Fragment::Plugin(identity) = fragments.pop().unwrap() else {
-            panic!("first marker is identity")
-        };
-        assert_eq!(identity.facility, facility);
-        assert_eq!(identity.id, P::ID);
-        assert_eq!(identity.version, env!("CARGO_PKG_VERSION"));
-        assert_eq!(identity.description, P::DESCRIPTION);
-        assert!(!identity.config.is_empty());
-        let contracts =
-            PluginInventory::contracts::select(vec![*contracts], facility, P::ID).unwrap();
+        assert_eq!(declaration.id, P::ID);
+        assert_eq!(declaration.version.to_string(), env!("CARGO_PKG_VERSION"));
+        assert_eq!(declaration.description, P::DESCRIPTION);
+        assert!(!declaration.config.is_empty());
+        let contracts = declaration.contracts;
         assert_eq!(contracts.provides, Contracts::of::<Selected>().unwrap());
         assert_eq!(contracts.requires.len(), requires);
         if requires != 0 {
@@ -861,9 +854,7 @@ mod unified_plugins {
         assert_eq!(contracts.lifecycle[1].action(), lifecycle::Action::Shutdown);
         assert_eq!(contracts.lifecycle[0].contract().operation().policy, POLICY);
         assert_eq!(contracts.lifecycle[1].contract().operation().policy, POLICY);
-        assert_eq!(publications.facility, facility);
-        assert_eq!(publications.owner, P::ID);
-        assert_eq!(publications.streams.len(), streams);
+        assert_eq!(declaration.streams.len(), streams);
 
         let inspected = match facility {
             "sidecar" => {

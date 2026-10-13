@@ -46,6 +46,7 @@ pub struct Response {
     visibility = harmos_contract::operations::Visibility::Shared,
     replay = harmos_contract::operations::ReplaySafety::Idempotent,
     version = 1,
+    grpc(package = "schematic.v1", service = "Schematic", method = "Validate"),
 )]
 pub struct ValidateSchematic;
 

@@ -21,10 +21,10 @@ use serde::Deserialize;
 use super::contributions::{self, Section};
 use super::{contracts, listeners, observers, publications};
 use crate::operations::{Contract, Definition};
-use crate::{FRAGMENT_LIMIT, ScanError, StreamDeclaration, artifact_subset, fragments};
+use crate::{FRAGMENT_LIMIT, ScanError, StreamDeclaration, artifact_subset};
 
 /* === Constants === */
-const OWNED: [&str; 16] = [
+const OWNED: [&str; 17] = [
     "capabilities",
     "contracts",
     "contributions",
@@ -38,6 +38,7 @@ const OWNED: [&str; 16] = [
     "publications",
     "requires",
     "restart",
+    "schema",
     "sidecar",
     "subscribe",
     "survey",
@@ -92,6 +93,8 @@ pub enum DeclarationError {
     #[error("the artifact uses retired Harmos metadata; rebuild it with the current SDK")]
     IncompatiblePayload,
     #[error(transparent)]
+    Schema(#[from] crate::schema::graph::Error),
+    #[error(transparent)]
     PublicationInventory(#[from] publications::Error),
     #[error(transparent)]
     ContractInventory(#[from] contracts::Error),
@@ -131,19 +134,19 @@ pub enum DeclarationError {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum Fragment {
     Plugin(contracts::Identity),
-    Contracts(Box<contracts::Manifest>),
+    Contracts(Box<contracts::NamedManifest>),
     Contributions(Box<contributions::Manifest>),
-    Listeners(Box<listeners::Manifest>),
-    Observers(Box<observers::Manifest>),
+    Listeners(Box<listeners::NamedManifest>),
+    Observers(Box<observers::NamedManifest>),
     Restart {
         facility: String,
         owner: String,
         policy: RestartPolicy,
     },
-    Publications {
-        facility: String,
-        owner: String,
-        streams: Vec<StreamDeclaration>,
+    Publications(publications::NamedManifest),
+    Schema {
+        name: String,
+        fields: Vec<crate::schema::declaration::Field<String>>,
     },
 }
 
@@ -164,13 +167,17 @@ impl Declaration {
     pub fn inspect(artifact: &[u8], facility: Facility) -> Result<Self, DeclarationError> {
         let name = facility.as_str();
         let mut identity = None;
+        let mut schemas = Vec::new();
         let mut contract_manifests = Vec::new();
         let mut contribution_manifests = Vec::new();
         let mut listener_manifests = Vec::new();
         let mut observer_manifests = Vec::new();
         let mut publications = Vec::new();
         let mut restart_policies = Vec::new();
-        for fragment in fragments::<Fragment>(artifact, &OWNED)? {
+        let mut settings = crate::config::SchemaSettings::default();
+        for fragment in
+            crate::scan::fragments_with_settings::<Fragment>(artifact, &OWNED, &mut settings)?
+        {
             match fragment {
                 Fragment::Plugin(common) => {
                     if common.facility != name {
@@ -195,22 +202,33 @@ impl Declaration {
                     owner,
                     policy,
                 } => restart_policies.push((facility, owner, policy)),
-                Fragment::Publications {
-                    facility,
-                    owner,
-                    streams,
-                } => publications.push(publications::Manifest {
-                    facility,
-                    owner,
-                    streams,
-                }),
+                Fragment::Publications(manifest) => publications.push(manifest),
+                Fragment::Schema { name, fields } => {
+                    schemas.push(crate::schema::declaration::Named { name, fields })
+                }
             }
         }
         let Some((id, version, description, config)) = identity else {
             return Err(DeclarationError::MissingIdentity { facility: name });
         };
 
-        // Select The Owner's Shared Sections
+        // Resolve The Complete Inert Dictionary Before Selecting Owned Sections.
+        let contract_manifests = contract_manifests
+            .into_iter()
+            .map(|manifest| manifest.resolve(&schemas, &mut settings))
+            .collect::<Result<_, contracts::Error>>()?;
+        let listener_manifests = listener_manifests
+            .into_iter()
+            .map(|manifest| manifest.resolve(&schemas, &mut settings))
+            .collect::<Result<_, listeners::Error>>()?;
+        let observer_manifests = observer_manifests
+            .into_iter()
+            .map(|manifest| manifest.resolve(&schemas, &mut settings))
+            .collect::<Result<_, observers::Error>>()?;
+        let publications = publications
+            .into_iter()
+            .map(|manifest| manifest.resolve(&schemas, &mut settings))
+            .collect::<Result<_, publications::Error>>()?;
         let contracts = contracts::select(contract_manifests, name, &id)?;
         let sections = contributions::select(contribution_manifests, name, &id)?;
         let listeners = listeners::select(listener_manifests, name, &id, &contracts.provides)?
@@ -331,6 +349,7 @@ impl From<ScanError> for DeclarationError {
     fn from(error: ScanError) -> Self {
         match error {
             ScanError::IncompatiblePayload => Self::IncompatiblePayload,
+            ScanError::Budget => Self::Schema(crate::schema::graph::Error::Budget),
             ScanError::Oversized => Self::OversizedFragment,
             ScanError::Malformed { source } => Self::Malformed { source },
             ScanError::UnknownKind { kind } => Self::UnknownKind { kind },

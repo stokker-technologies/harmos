@@ -1,0 +1,90 @@
+# ***
+#
+# Harmos
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
+# === Package ===
+
+[package]
+name = "cargo-harmos"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+# === Package Targets ===
+
+# === Features ===
+
+[features]
+default = ["sidecar", "guest"]
+sidecar = ["harmos/packaging-sidecar", "dep:ctrlc"]
+guest = ["harmos/packaging-guest", "dep:ctrlc"]
+
+# === Dependencies ===
+
+[dependencies]
+# Local
+harmos = { workspace = true, features = ["packaging", "bindings-python"] }
+
+# Git
+
+# Error Handling
+thiserror = { workspace = true, default-features = true }
+
+# Logging
+
+# Utilities
+semver = { workspace = true, default-features = true }
+
+# Serialization
+serde_json = { workspace = true, default-features = true }
+
+# Configuration
+clap = { workspace = true, features = ["derive", "std", "help", "usage", "error-context"] }
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+ctrlc = { workspace = true, optional = true, features = ["termination"] }
+
+# Async
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Build Dependencies ===
+
+# === Dev Dependencies ===
+
+# === Target Dependencies ===
+
+# === Test Targets ===
+
+# === Bench Targets ===
+
+# === Example Targets ===
+
+# === Workspace Lints ===
+
+# === Lints ===
+
+[lints]
+workspace = true
+
+# === Profiles ===
+
+# === Patches ===
+
+# === Other ===

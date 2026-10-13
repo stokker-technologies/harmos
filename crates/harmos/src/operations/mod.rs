@@ -23,6 +23,7 @@ pub(crate) mod children;
 
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 mod component;
+pub mod discovery;
 mod execution;
 mod finalization;
 #[cfg(feature = "grpc")]
@@ -35,7 +36,6 @@ pub mod middleware;
 pub(crate) mod refusal;
 pub(crate) mod scope;
 mod session;
-mod settings;
 mod streaming;
 
 #[cfg(feature = "plugin-sidecar")]
@@ -74,13 +74,13 @@ pub use harmos_contract::operations::CallContext;
 #[cfg(feature = "grpc")]
 pub use harmos_contract::operations::GrpcVisitor;
 pub use harmos_contract::operations::{
-    AuthoredDeclarations, Backoff, CHILD_METHOD, CacheKey, CacheKeyError, CallValue, Codec,
-    ContextError, ContextValue, Contract, ContractError, Contracts, Declarations, Declares,
-    Definition, Entry, Failure, Grpc, InputDeclaration, Jitter, MAX_CACHE_KEY_BYTES, Operation,
-    OperationDeclaration, OperationPolicy, OutputDeclaration, PORTABLE_BYTES, PORTABLE_VALUES,
-    PolicyError, ReplaySafety, RetryPolicy, Serves, ServingError, Visibility, WIRE_METHOD,
-    WireAnswer, WireBinding, WireChildCall, WireCodecError, WireCommand, WireDeclaration,
-    WireEndpoints, WireOperation, WireStreamLimits, WireStreams, WireTable,
+    AuthoredContracts, AuthoredDeclarations, Backoff, CHILD_METHOD, CacheKey, CacheKeyError,
+    CallValue, Codec, ContextError, ContextValue, Contract, ContractError, Contracts, Declarations,
+    Declares, Definition, Entry, Failure, Grpc, InputDeclaration, Jitter, MAX_CACHE_KEY_BYTES,
+    Operation, OperationDeclaration, OperationPolicy, OutputDeclaration, PORTABLE_BYTES,
+    PORTABLE_VALUES, PolicyError, ReplaySafety, RetryPolicy, Serves, ServingError, Visibility,
+    WIRE_METHOD, WireAnswer, WireBinding, WireChildCall, WireCodecError, WireCommand,
+    WireDeclaration, WireEndpoints, WireOperation, WireStreamLimits, WireStreams, WireTable,
 };
 pub use lane::{Capacity, Lane, LaneSet};
 #[cfg(any(
@@ -90,6 +90,7 @@ pub use lane::{Capacity, Lane, LaneSet};
 pub use remote::{RemoteStreamError, StreamEndpoints, StreamPeer};
 pub use scope::Scope;
 
+pub use crate::config::OperationSettings as Settings;
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 pub use component::{Component, ComponentBindings, ComponentError, ComponentOperation};
 pub use handler::{Context, OperationGeneration, OperationInstance, OperationInstanceId};
@@ -99,7 +100,6 @@ pub use harmos_contract::operations::{
 };
 pub use manager::OperationManager;
 pub use session::{Completion, Download, Exchange, Session, SessionInput, SessionOutput, Upload};
-pub use settings::Settings;
 pub use streaming::{StreamInput, StreamItem, StreamOutput, StreamPermit, StreamSettings, stream};
 
 #[cfg(any(

@@ -7,10 +7,9 @@
  * ***
  */
 
-
 /* === Modules === */
-mod streams;
 mod operations;
+mod streams;
 
 /* === Re-Exports === */
 
@@ -41,7 +40,9 @@ struct Catalog;
 
 /* === Enums === */
 #[harmos::catalog]
-enum Observers { Watch(Watch) }
+enum Observers {
+    Watch(Watch),
+}
 
 /* === Traits === */
 trait ProductPlugin {}
@@ -52,16 +53,31 @@ impl harmos::operations::lifecycle::Policy for Native {
     const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = operations::SDK_POLICY;
 }
 
-#[harmos::observer(id = "selected.watch", interval_ms = 17, streams(self::streams::Reading), demand_keys(RECORD_DEMAND))]
+#[harmos::observer(
+    id = "selected.watch",
+    interval_ms = 17,
+    streams(self::streams::Reading),
+    demand_keys(RECORD_DEMAND)
+)]
 impl Watch {
-    async fn observe(&mut self, _: &harmos::ObserverContext<'_, ()>) -> Result<(), harmos::Refusal> {
+    async fn observe(
+        &mut self,
+        _: &harmos::ObserverContext<'_, ()>,
+    ) -> Result<(), harmos::Refusal> {
         panic!("inspection never invokes observer code")
     }
 }
 
-#[harmos::observer(id = "unselected.watch", interval_ms = 19, streams(self::streams::Ungranted))]
+#[harmos::observer(
+    id = "unselected.watch",
+    interval_ms = 19,
+    streams(self::streams::Ungranted)
+)]
 impl Unselected {
-    async fn observe(&mut self, _: &harmos::ObserverContext<'_, ()>) -> Result<(), harmos::Refusal> {
+    async fn observe(
+        &mut self,
+        _: &harmos::ObserverContext<'_, ()>,
+    ) -> Result<(), harmos::Refusal> {
         panic!("unselected observer is inert")
     }
 }
@@ -88,9 +104,12 @@ fn main() {
     if std::env::args().nth(1).as_deref() == Some("--markers") {
         use std::io::Write;
         let mut output = std::io::stdout().lock();
-        let markers = std::hint::black_box(<Native as harmos::plugin::Declared>::markers());
+        let markers =
+            std::hint::black_box(<Native as harmos::plugin::Declared>::markers().unwrap());
         for marker in markers {
-            output.write_all(marker).expect("markers reach standard output");
+            output
+                .write_all(marker)
+                .expect("markers reach standard output");
         }
         output.flush().expect("markers reach standard output");
     }

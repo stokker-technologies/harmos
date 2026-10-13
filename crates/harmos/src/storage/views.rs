@@ -542,6 +542,16 @@ impl StorageView {
     pub(super) fn reader<T: Entry>(&self, selection: ReadSelection) -> Result<StorageReader<T>> {
         let (_, view) = self.pin()?;
         view.check_kind(T::KIND, &selection, None)?;
+        if selection.record_filter.is_some() {
+            let limits = view.execution_limits().ok_or(Error::InvalidInput {
+                field: "record filter",
+                reason: "requires bounded saved-query limits",
+            })?;
+            self.manager()
+                .inner
+                .primary
+                .validate_record_filter(&selection, limits)?;
+        }
         if T::KIND == ReadKind::Objects {
             self.manager()
                 .inner
@@ -985,7 +995,7 @@ fn fetch<'a, T: Entry>(
     Box::pin(async move {
         let _activity = owned.activity()?;
         let manager = &owned.lease.manager;
-        let limits = T::read_limits(limits, manager.inner.schema_encoding);
+        let limits = T::read_limits(limits);
         let _lifecycle = manager.inner.lifecycle.lock().await;
         // Reserve the bounded backend page and cursor/filter metadata before I/O.
         // Identifiers are unbounded; fixed per-row overhead cannot cover them.
@@ -1002,9 +1012,7 @@ fn fetch<'a, T: Entry>(
                 .bytes
                 .get()
                 .checked_mul(4)
-                .and_then(|bytes| {
-                    bytes.checked_add(T::decoding_overhead(manager.inner.schema_encoding))
-                })
+                .and_then(|bytes| bytes.checked_add(T::decoding_overhead(limits)?))
                 .ok_or(Error::InvalidInput {
                     field: "read page",
                     reason: "schema decode bound overflow",

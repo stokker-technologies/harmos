@@ -25,7 +25,7 @@ use super::ObjectSelection;
 
 use crate::operations::{Context, Operation, StreamOutput};
 use crate::operations::{OperationDeclaration, OutputDeclaration, Visibility, WireOperation};
-use crate::schema::{Described, Field};
+use crate::schema::Described;
 
 use crate::storage::StorageManager;
 use crate::storage::{ObjectEntry, StorageCursor};
@@ -67,7 +67,7 @@ impl OutputDeclaration for FollowObjects {
 
 impl WireOperation for FollowObjects {
     const VERSION: u32 = 1;
-    const OUTPUT: Option<&'static [Field]> = Some(ObjectEntry::FIELDS);
+    const OUTPUT: Option<crate::schema::declaration::Definition> = Some(ObjectEntry::DEFINITION);
 }
 
 impl<C: 'static> Operation for Handler<C> {

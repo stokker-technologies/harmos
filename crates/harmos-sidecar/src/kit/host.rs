@@ -230,6 +230,15 @@ impl Supervisor {
         Ok(self.for_operation(context))
     }
 
+    pub fn with_value<T: harmos_contract::operations::ContextValue>(
+        &self,
+        value: T,
+    ) -> Result<Self, harmos_contract::operations::ContextError> {
+        let mut child = self.clone();
+        child.call = Arc::new(self.call.with_value(value)?);
+        Ok(child)
+    }
+
     pub async fn operation<O>(&self, request: O::Request) -> Result<O::Response, CallError>
     where
         O: harmos_contract::operations::OperationDeclaration,
@@ -274,6 +283,7 @@ impl Supervisor {
         let command = harmos_contract::operations::WireChildCall {
             context,
             generation_context: self.generation_context,
+            values: self.call.portable(),
             operation: O::ID.to_owned(),
             payload,
         };

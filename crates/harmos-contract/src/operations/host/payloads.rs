@@ -22,7 +22,8 @@ use crate::MemorySize;
 use crate::message::{
     DecodeField, DecodeInput, DecodeScalar, DecodeValue, decoding_add, decoding_vector,
 };
-use crate::schema::{Cardinality, Described, Field, Kind};
+use crate::schema::declaration::{Field, Kind};
+use crate::schema::{Cardinality, Described};
 #[cfg(feature = "grpc")]
 use crate::{MessageError, Protobuf as Message};
 
@@ -34,10 +35,14 @@ macro_rules! payload {
         #[derive(Clone, Debug, Default, PartialEq)]
         pub struct $name { $(pub $field: $ty),* }
         impl Described for $name {
+            const NAME: &'static str = concat!(module_path!(), "::", stringify!($name));
             const FIELDS: &'static [Field] = &[$(Field {
                 name: Cow::Borrowed(stringify!($field)), tag: $tag,
                 kind: $kind, cardinality: Cardinality::$cardinality,
             }),*];
+            const MARKER: &'static [u8] = &crate::schema::declaration::encode::<{
+                crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS)
+            }>(Self::NAME, Self::FIELDS);
         }
         crate::message::postcard_product!($name { $($field: $ty),* });
         crate::with_protobuf! {
@@ -253,6 +258,18 @@ repeated!(Measured);
 
 }
 
+payload! { OperationsRequest,
+    after: Option<String> => (1, Kind::String, Optional),
+    rows: Option<u32> => (2, Kind::U32, Optional),
+    bytes: Option<u32> => (3, Kind::U32, Optional),
+}
+
+// Catalog Is A UTF-8 JSON Array Of Canonical DiscoveredOperation Values.
+payload! { OperationsResponse,
+    catalog: Vec<u8> => (1, Kind::Bytes, Required),
+    next: Option<String> => (2, Kind::String, Optional),
+}
+
 payload! { Publication,
     stream: String => (1, Kind::String, Required),
     schema: u32 => (2, Kind::U32, Required),
@@ -287,7 +304,7 @@ payload! { Remembered,
 }
 
 payload! { RecallResponse,
-    rows: Vec<Remembered> => (1, Kind::Message { fields: Cow::Borrowed(Remembered::FIELDS) }, Repeated),
+    rows: Vec<Remembered> => (1, Kind::Message { definition: Remembered::DEFINITION }, Repeated),
 }
 
 payload! { InvokeRequest,
@@ -305,13 +322,13 @@ payload! { EgressRequest,
     name: String => (1, Kind::String, Required),
     method: String => (2, Kind::String, Required),
     path: String => (3, Kind::String, Required),
-    headers: Vec<Header> => (4, Kind::Message { fields: Cow::Borrowed(Header::FIELDS) }, Repeated),
+    headers: Vec<Header> => (4, Kind::Message { definition: Header::DEFINITION }, Repeated),
     body: Vec<u8> => (5, Kind::Bytes, Required),
 }
 
 payload! { Fetched,
     status: u32 => (1, Kind::U32, Required),
-    headers: Vec<Header> => (2, Kind::Message { fields: Cow::Borrowed(Header::FIELDS) }, Repeated),
+    headers: Vec<Header> => (2, Kind::Message { definition: Header::DEFINITION }, Repeated),
     body: Vec<u8> => (3, Kind::Bytes, Required),
 }
 
@@ -328,7 +345,7 @@ payload! { Measured,
 }
 
 payload! { SurveyResponse,
-    rows: Vec<Measured> => (1, Kind::Message { fields: Cow::Borrowed(Measured::FIELDS) }, Repeated),
+    rows: Vec<Measured> => (1, Kind::Message { definition: Measured::DEFINITION }, Repeated),
 }
 
 /* === Type Aliases === */

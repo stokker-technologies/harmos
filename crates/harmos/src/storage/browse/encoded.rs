@@ -115,14 +115,14 @@ impl ObjectFieldsQuery {
         };
         apply_options(&mut request, &self.options);
         for field in &self.fields.projection {
-            let column = request.column(definition.fields(), field)?;
+            let column = request.column((definition.declaration().fields)(), field)?;
             if request.projection.contains(&column) {
                 return Err(invalid("duplicate projection field"));
             }
             request.projection.push(column);
         }
         for filter in &self.fields.filters {
-            let column = request.column(definition.fields(), &filter.field)?;
+            let column = request.column((definition.declaration().fields)(), &filter.field)?;
             request.predicates.push(ObjectPredicate {
                 column,
                 comparison: filter.comparison,
@@ -130,7 +130,7 @@ impl ObjectFieldsQuery {
             });
         }
         for sort in &self.fields.order {
-            let column = request.column(definition.fields(), &sort.field)?;
+            let column = request.column((definition.declaration().fields)(), &sort.field)?;
             request.order.push(ObjectOrder {
                 column,
                 direction: if sort.descending {
@@ -141,7 +141,7 @@ impl ObjectFieldsQuery {
                 nulls: sort.nulls,
             });
         }
-        request.check_schema(definition.fields())?;
+        request.check_schema((definition.declaration().fields)())?;
         if request.memory_size() > bytes {
             return Err(invalid("scalar plan exceeded its memory claim"));
         }

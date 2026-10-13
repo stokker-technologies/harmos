@@ -355,8 +355,10 @@ impl super::Caller {
         operation: &str,
         payload: Vec<u8>,
         submitted: tokio::time::Instant,
+        values: Vec<super::CallValue>,
     ) -> Result<EncodedInvocation> {
-        self.operations.submit_encoded_at_as(
+        let context = self.operations.call_context().with_values(values)?;
+        self.operations.with_context(context).submit_encoded_at_as(
             operation,
             payload,
             Source::Observer(self.source.clone()),
@@ -370,8 +372,10 @@ impl super::Caller {
         operation: &str,
         payload: Vec<u8>,
         submitted: tokio::time::Instant,
+        values: Vec<super::CallValue>,
     ) -> Result<EncodedInvocation> {
-        self.operations.submit_encoded_at_as(
+        let context = self.operations.call_context().with_values(values)?;
+        self.operations.with_context(context).submit_encoded_at_as(
             operation,
             payload,
             Source::Plugin(self.source.clone()),
@@ -403,8 +407,10 @@ impl super::Context<'_> {
         operation: &str,
         payload: Vec<u8>,
         submitted: tokio::time::Instant,
+        values: Vec<super::CallValue>,
     ) -> Result<EncodedInvocation> {
-        self.operations.submit_encoded_at_as(
+        let context = self.operations.call_context().with_values(values)?;
+        self.operations.with_context(context).submit_encoded_at_as(
             operation,
             payload,
             self.source.clone(),

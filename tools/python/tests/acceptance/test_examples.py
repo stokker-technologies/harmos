@@ -48,7 +48,7 @@ def test_native_schematic(native_examples: dict[str, Path]) -> None:
 
 def test_guest_schematic(built_examples: dict[str, Path]) -> None:
     subprocess.run(
-        [built_examples["schematic-cli"], "--guest", built_examples["schematic-tools"]],
+        [built_examples["schematic-cli"], "--guest"],
         cwd=ROOT,
         check=True,
     )
@@ -85,6 +85,81 @@ def test_matching_backends(built_examples: dict[str, Path], tmp_path: Path) -> N
     assert "Analysis settled: 3 findings" in guest
     assert "Cancelled analysis and waited for settlement" in guest
     assert "Reopened: 2 symbols, 1 net, 3 route points" in guest
+
+
+def test_bundled_backends(built_examples: dict[str, Path], tmp_path: Path) -> None:
+    (tmp_path / "only-caller-directory").mkdir()
+    for arguments in ([], ["--guest"]):
+        result = subprocess.run(
+            [built_examples["schematic-cli"], *arguments, "--advanced"],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        assert "Reopened: 2 symbols, 1 net, 3 route points" in result.stdout
+        if not arguments:
+            assert 'Native directories: ["only-caller-directory"]' in result.stdout
+        else:
+            assert "Native directories:" not in result.stdout
+
+
+def test_cargo_tool_installation(
+    native_examples: dict[str, Path], tmp_path: Path
+) -> None:
+    # Cargo Discovers The Exact Extracted Release Executable Through PATH.
+    environment = os.environ | {
+        "PATH": str(native_examples["cargo-harmos"].parent)
+        + os.pathsep
+        + os.environ["PATH"]
+    }
+    help_result = subprocess.run(
+        ["cargo", "harmos", "--help"],
+        cwd=tmp_path,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert "sidecar" in help_result.stdout
+    assert "guest" in help_result.stdout
+    assert "componentize" not in help_result.stdout
+    assert "inspect" in help_result.stdout
+    for artifact, facility in [
+        ("schematic-tools", "guest"),
+        ("schematic-sidecar", "sidecar"),
+    ]:
+        result = subprocess.run(
+            ["cargo", "harmos", "inspect", str(native_examples[artifact]), "--json"],
+            cwd=tmp_path,
+            env=environment,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        record = json.loads(result.stdout)
+        assert record["facility"] == facility
+        assert record["id"] == "schematic-tools"
+        assert len(record["sha256"]) == 64
+        assert record["operations"]
+    missing = subprocess.run(
+        ["cargo", "harmos", "inspect", "missing-plugin"],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+    assert missing.returncode == 3
+    malformed = tmp_path / "invalid.wasm"
+    malformed.write_bytes(b"invalid input")
+    invalid = subprocess.run(
+        ["cargo", "harmos", "inspect", str(malformed)],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+    assert invalid.returncode == 2
 
 
 @pytest.mark.skipif(os.name != "posix", reason="Unix process signal contract")

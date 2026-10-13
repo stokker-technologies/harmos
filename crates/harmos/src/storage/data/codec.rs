@@ -65,8 +65,9 @@ struct Encoding;
 
 /* === Implementations === */
 impl crate::storage::codec::Value for Encoding {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Encoding));
     type Native = crate::storage::PayloadEncoding;
-    const KIND: crate::schema::Kind = crate::schema::Kind::U64;
+    const KIND: crate::schema::declaration::Kind = crate::schema::declaration::Kind::U64;
     fn postcard_write(value: &Self::Native, bytes: &mut Vec<u8>) {
         crate::__private::PostcardValue::write(&(*value as u64), bytes);
     }

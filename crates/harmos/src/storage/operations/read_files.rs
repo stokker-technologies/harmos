@@ -25,7 +25,7 @@ use super::{FileBytes, FileSelection};
 
 use crate::operations::{Context, Operation, StreamOutput};
 use crate::operations::{Grpc, OperationDeclaration, OutputDeclaration, Visibility, WireOperation};
-use crate::schema::{Described, Field};
+use crate::schema::Described;
 use crate::storage::FileProgress;
 
 use crate::storage::StorageManager;
@@ -76,7 +76,7 @@ impl WireOperation for ReadFiles {
             Some(visitor.download::<Self>())
         }
     }
-    const OUTPUT: Option<&'static [Field]> = Some(FileBytes::FIELDS);
+    const OUTPUT: Option<crate::schema::declaration::Definition> = Some(FileBytes::DEFINITION);
 }
 
 impl<C: 'static> Operation for Handler<C> {

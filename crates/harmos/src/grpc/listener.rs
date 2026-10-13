@@ -339,12 +339,14 @@ impl<A: Application> Resident<A> for Listener {
                 }
             }
         };
-        // gRPC-Web Translates Outside Ingress, So Authentication Sees gRPC.
+        // Cross-Origin Preflight Wraps gRPC-Web; Actual Calls Keep Ingress Authentication.
         let web = self.resources.settings.web;
+        let origins = super::origin::CrossOrigin::new(&self.resources.settings.allowed_origins);
         self.task = Some(tokio::spawn(async move {
             if web {
                 server
                     .accept_http1(true)
+                    .layer(tower::util::option_layer(origins))
                     .layer(tonic_web::GrpcWebLayer::new())
                     .serve_with_incoming_shutdown(ingress, incoming, shutdown)
                     .await

@@ -254,6 +254,66 @@ impl PluginArtifact {
 }
 
 impl PluginDefinition {
+    #[cfg(feature = "plugin-sidecar")]
+    pub fn sidecar(
+        executable: &harmos_sidecar::Executable,
+        configuration: Vec<u8>,
+    ) -> Result<Self, PluginDefinitionError> {
+        let artifact = PluginArtifact::Sidecar {
+            path: executable.path().to_path_buf(),
+            sha256: executable.sha256(),
+            arguments: executable.arguments().to_vec(),
+            directory: executable
+                .working_directory()
+                .map(std::path::Path::to_path_buf),
+            environment: executable.environment().iter().cloned().collect(),
+        };
+        Self::inspected(executable.declaration(), artifact, configuration)
+    }
+
+    #[cfg(feature = "plugin-guest")]
+    pub fn guest<A: crate::Application>(
+        loaded: &super::guest::Loaded<A>,
+        configuration: Vec<u8>,
+    ) -> Result<Self, PluginDefinitionError> {
+        Self::inspected(
+            loaded.declaration(),
+            PluginArtifact::Guest {
+                sha256: loaded.sha256(),
+            },
+            configuration,
+        )
+    }
+
+    #[cfg(any(feature = "plugin-sidecar", feature = "plugin-guest"))]
+    fn inspected(
+        declaration: &harmos_contract::inventory::Declaration,
+        artifact: PluginArtifact,
+        configuration: Vec<u8>,
+    ) -> Result<Self, PluginDefinitionError> {
+        let mut definition = Self {
+            id: declaration.id.clone(),
+            version: declaration.version.clone(),
+            artifact,
+            requires: Vec::new(),
+            configuration,
+            contributions: PluginContributions {
+                lifecycle: Some(declaration.contracts.lifecycle.clone()),
+                operations: declaration.operations.clone(),
+                wire_contracts: declaration.contracts.provides.clone(),
+                required_contracts: Some(declaration.contracts.requires.clone()),
+                observers: declaration.observers.clone(),
+                observer_controls: declaration.observer_controls().cloned(),
+                streams: declaration.streams.clone(),
+                listeners: declaration.listeners.clone(),
+                sections: declaration.sections.clone(),
+                registrations: Vec::new(),
+            },
+        };
+        definition.validate()?;
+        Ok(definition)
+    }
+
     pub fn kind(&self) -> PluginKind {
         self.artifact.kind()
     }

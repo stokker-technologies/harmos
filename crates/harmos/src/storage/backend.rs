@@ -24,9 +24,8 @@ use super::{
     BackendSnapshot, BootstrapId, BootstrapManifest, FileCheckpoint, FileMetadata, FileProgress,
     FileReference, MutationReceipt, ObjectBrowseCursor, ObjectBrowsePage, ObjectBrowseRequest,
     ObjectCatalog, ObjectEntry, ObjectPoint, ObjectVersions, QueryLimits, ReadCursor, ReadLimits,
-    ReadPage, ReadSelection, ReadView, ReplicaTarget, RetainedBatch, RetainedSnapshot,
-    SchemaEncoding, StagedFile, StorageBatch, StorageCursor, StorageSchema, StoreHistory,
-    StoredRecord, StoredRow,
+    ReadPage, ReadSelection, ReadView, ReplicaTarget, RetainedBatch, RetainedSnapshot, StagedFile,
+    StorageBatch, StorageCursor, StorageSchema, StoreHistory, StoredRecord, StoredRow,
 };
 
 /* === Constants === */
@@ -42,7 +41,6 @@ macro_rules! backend_contract {
         $(#[$trait_doc])*
         pub trait StorageBackend: Send + Sync + 'static {
                         type Catalog: ObjectCatalog;
-                                                fn schema_encoding(&self) -> SchemaEncoding { SchemaEncoding::Inline }
                                                             fn validate_object_browse(&self, _request: &ObjectBrowseRequest, _limits: QueryLimits) -> crate::Result<()> {
                 Err(crate::Error::InvalidInput { field: "object browse", reason: "backend does not support scalar object browsing" })
             }
@@ -203,6 +201,13 @@ pub trait StorageBackend {
         cursor: Option<&'a ReadCursor>,
         limits: ReadLimits,
     ) -> StorageFuture<'a, ReadPage<ObjectEntry>>;
+    // Validate support before opening a filtered saved query. Implementations
+    // validate the selected schema and fixed candidates before predicates,
+    // preserving the original cut, continuation and execution bounds.
+    fn validate_record_filter(&self, _selection: &ReadSelection, _limits: QueryLimits) -> crate::Result<()> = Err(crate::Error::InvalidInput {
+        field: "record filter",
+        reason: "backend does not support filtered record queries",
+    });
     fn read_records<'a>(
         &'a self,
         view: &'a ReadView,

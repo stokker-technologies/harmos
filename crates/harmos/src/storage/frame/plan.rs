@@ -22,7 +22,8 @@ use serde::{Deserialize, Serialize};
 
 // Local Imports
 use crate::storage::codec::{
-    Both, Code, Count, Index, Many, Nested, Optional, Repeated, Wrap, coded, product, variants,
+    Both, Code, Count, Flag, Index, Many, Nested, Optional, Repeated, Wrap, coded, product,
+    variants,
 };
 use crate::storage::read_selection::{ReadKind, ReadSelection};
 use crate::storage::reduce::scalar::{Agg, ScalarKind, ScalarValue};
@@ -45,13 +46,6 @@ pub(crate) const MAX_GROUPS: usize = 4096;
 pub struct Scan {
     pub selection: ReadSelection,
     pub columns: Vec<ScalarField>,
-}
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Predicate {
-    pub expr: Expr,
-    pub compare: Compare,
-    pub value: ScalarValue,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -118,6 +112,26 @@ pub struct Explain {
 }
 
 /* === Enums === */
+// Filters are combined with AND. Membership alternatives are bounded to 64.
+// Presence excludes both missing fields and explicit null values.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub enum Predicate {
+    Compare {
+        expr: Expr,
+        compare: Compare,
+        value: ScalarValue,
+    },
+    In {
+        expr: Expr,
+        values: Vec<ScalarValue>,
+    },
+    Exists {
+        expr: Expr,
+        present: bool,
+    },
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ScalarPath {
     Payload(Vec<Identifier>),
@@ -208,6 +222,9 @@ impl Frame {
             return Err(invalid("frame exceeds scan, join or group bound"));
         }
         for scan in &self.scans {
+            if scan.selection.record_filter.is_some() {
+                return Err(invalid("frame predicates belong to group or join filters"));
+            }
             if scan.columns.is_empty() || scan.columns.len() > MAX_WIDTH {
                 return Err(invalid("scan needs 1..64 typed columns"));
             }
@@ -259,7 +276,7 @@ impl Frame {
             self.column(join.right, present)?;
         }
         for predicate in &join.right_filter {
-            if !matches!(predicate.expr, Expr::Col(_)) {
+            if !matches!(predicate.expr(), Expr::Col(_)) {
                 return Err(invalid("right filters must use original source columns"));
             }
             self.predicate(join.right, predicate)?;
@@ -385,23 +402,9 @@ impl Frame {
     }
 
     fn predicate(&self, scan: usize, predicate: &Predicate) -> Result<()> {
-        self.expr(scan, &predicate.expr)?;
-        predicate.value.check()?;
-        let selected = self.expr_kind(scan, &predicate.expr);
-        let numeric = |kind| {
-            matches!(
-                kind,
-                ScalarKind::Signed | ScalarKind::Unsigned | ScalarKind::Exact
-            )
-        };
-        if predicate
-            .value
-            .kind()
-            .is_some_and(|kind| kind != selected && !(numeric(kind) && numeric(selected)))
-        {
-            return Err(invalid("predicate differs from selected expression type"));
-        }
-        Ok(())
+        self.expr(scan, predicate.expr())?;
+        let selected = self.expr_kind(scan, predicate.expr());
+        predicate.check_kind(selected)
     }
 }
 impl GroupBy {
@@ -437,7 +440,7 @@ impl GroupBy {
         let exprs = self
             .filter
             .iter()
-            .map(|predicate| &predicate.expr)
+            .map(Predicate::expr)
             .chain(self.aggs.iter().map(|(expr, _)| expr));
         for expr in exprs {
             let join = match *expr {
@@ -534,9 +537,52 @@ impl MemorySize for GroupRow {
             .saturating_add(heap(&self.values))
     }
 }
+impl Predicate {
+    pub(crate) fn check_kind(&self, selected: ScalarKind) -> Result<()> {
+        let numeric = |kind| {
+            matches!(
+                kind,
+                ScalarKind::Signed | ScalarKind::Unsigned | ScalarKind::Exact
+            )
+        };
+        let check = |value: &ScalarValue| {
+            value.check()?;
+            if value
+                .kind()
+                .is_some_and(|kind| kind != selected && !(numeric(kind) && numeric(selected)))
+            {
+                return Err(invalid("predicate differs from selected expression type"));
+            }
+            Ok(())
+        };
+        match self {
+            Predicate::Compare { value, .. } => check(value),
+            Predicate::In { values, .. } => {
+                if values.len() > MAX_WIDTH {
+                    return Err(invalid("membership exceeds 64 alternatives"));
+                }
+                for value in values {
+                    check(value)?;
+                }
+                Ok(())
+            }
+            Predicate::Exists { .. } => Ok(()),
+        }
+    }
+    pub fn expr(&self) -> &Expr {
+        match self {
+            Self::Compare { expr, .. } | Self::In { expr, .. } | Self::Exists { expr, .. } => expr,
+        }
+    }
+}
 impl MemorySize for Predicate {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(heap(&self.value))
+        let allocated = match self {
+            Self::Compare { value, .. } => heap(value),
+            Self::In { values, .. } => heap(values),
+            Self::Exists { .. } => 0,
+        };
+        std::mem::size_of::<Self>().saturating_add(allocated)
     }
 }
 impl MemorySize for Frame {
@@ -610,14 +656,15 @@ impl ScalarField {
         Ok(())
     }
 
-    pub fn check_schema(&self, fields: &[schema::Field]) -> Result<()> {
+    pub fn check_schema(&self, view: schema::graph::View<'_>) -> Result<()> {
         self.check()?;
         let ScalarPath::Payload(path) = &self.path else {
             return Ok(());
         };
-        let mut fields = fields;
+        let mut view = view;
         for (index, name) in path.iter().enumerate() {
-            let field = fields
+            let field = view
+                .fields()
                 .iter()
                 .find(|field| field.name == name.as_str())
                 .ok_or(invalid("unknown schema field"))?;
@@ -628,18 +675,18 @@ impl ScalarField {
                 return Err(invalid("field path crosses repeated or variant value"));
             }
             if index + 1 < path.len() {
-                let schema::Kind::Message { fields: children } = &field.kind else {
-                    return Err(invalid("field path crosses scalar"));
-                };
-                fields = children;
+                view = view
+                    .message(field)
+                    .map_err(|_| invalid("invalid schema reference"))?
+                    .ok_or(invalid("field path crosses scalar"))?;
                 continue;
             }
             let kind = match field.kind {
-                schema::Kind::Bool => ScalarKind::Bool,
-                schema::Kind::I32 | schema::Kind::I64 => ScalarKind::Signed,
-                schema::Kind::U32 | schema::Kind::U64 => ScalarKind::Unsigned,
-                schema::Kind::F32 | schema::Kind::F64 => ScalarKind::Float,
-                schema::Kind::String => ScalarKind::Text,
+                schema::graph::Kind::Bool => ScalarKind::Bool,
+                schema::graph::Kind::I32 | schema::graph::Kind::I64 => ScalarKind::Signed,
+                schema::graph::Kind::U32 | schema::graph::Kind::U64 => ScalarKind::Unsigned,
+                schema::graph::Kind::F32 | schema::graph::Kind::F64 => ScalarKind::Float,
+                schema::graph::Kind::String => ScalarKind::Text,
                 _ => return Err(invalid("selected field is not a supported scalar")),
             };
             if kind != self.kind {
@@ -713,10 +760,10 @@ variants!(ScalarPath {
 });
 product!(ScalarField { path: Nested<ScalarPath> => 1, kind: Code<ScalarKind> => 2 });
 product!(Scan { selection: Nested<ReadSelection> => 1, columns: Repeated<ScalarField> => 2 });
-product!(Predicate {
-    expr: Nested<Expr> => 1,
-    compare: Code<Compare> => 2,
-    value: Nested<ScalarValue> => 3,
+variants!(Predicate {
+    0, 1, "compare": Self::Compare { expr, compare, value } => { expr: Nested<Expr> => 1, compare: Code<Compare> => 2, value: Nested<ScalarValue> => 3 } => Self::Compare { expr, compare, value };
+    1, 2, "in": Self::In { expr, values } => { expr: Nested<Expr> => 1, values: Repeated<ScalarValue> => 2 } => Self::In { expr, values };
+    2, 3, "exists": Self::Exists { expr, present } => { expr: Nested<Expr> => 1, present: Flag => 2 } => Self::Exists { expr, present };
 });
 product!(AsOf {
     left: Index => 1,

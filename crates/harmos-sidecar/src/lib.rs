@@ -18,8 +18,6 @@ pub mod transport;
 
 #[cfg(feature = "kit")]
 pub mod kit;
-#[cfg(all(feature = "packaging", not(target_arch = "wasm32")))]
-pub mod packaging;
 
 #[cfg(feature = "transport")]
 mod wire;

@@ -206,7 +206,7 @@ pub(super) fn contract_scenario() {
             use harmos_contract::inventory::{Declaration, Facility};
             use harmos_contract::plugin::Declared;
 
-            let bytes = <Native as Declared>::markers().concat();
+            let bytes = <Native as Declared>::markers().unwrap().concat();
             let inspected = Declaration::inspect(&bytes, Facility::Sidecar).unwrap();
             let expected = Declarations::of::<Operations>().unwrap();
             assert_eq!(inspected.operations, expected.clone());
@@ -219,8 +219,10 @@ pub(super) fn contract_scenario() {
             assert_ne!(expected[0].id.as_str(), Unselected::ID);
 
             for bytes in [
-                <EmptyNative as Declared>::markers().concat(),
-                <ExplicitEmptyNative as Declared>::markers().concat(),
+                <EmptyNative as Declared>::markers().unwrap().concat(),
+                <ExplicitEmptyNative as Declared>::markers()
+                    .unwrap()
+                    .concat(),
             ] {
                 assert_eq!(
                     Declaration::inspect(&bytes, Facility::Sidecar)
@@ -237,7 +239,7 @@ pub(super) fn contract_scenario() {
             use harmos_contract::inventory::{Declaration, Facility};
             use harmos_contract::plugin::Declared;
 
-            let bytes = <Guest as Declared>::markers().concat();
+            let bytes = <Guest as Declared>::markers().unwrap().concat();
             let inspected = Declaration::inspect(&bytes, Facility::Guest).unwrap();
             let expected = Declarations::of::<Operations>().unwrap();
             assert_eq!(inspected.operations, expected.clone());
@@ -250,8 +252,10 @@ pub(super) fn contract_scenario() {
             assert_ne!(expected[0].id.as_str(), Unselected::ID);
 
             for bytes in [
-                <EmptyGuest as Declared>::markers().concat(),
-                <ExplicitEmptyGuest as Declared>::markers().concat(),
+                <EmptyGuest as Declared>::markers().unwrap().concat(),
+                <ExplicitEmptyGuest as Declared>::markers()
+                    .unwrap()
+                    .concat(),
             ] {
                 assert_eq!(
                     Declaration::inspect(&bytes, Facility::Guest)

@@ -36,6 +36,11 @@ use harmos::{Error, Runtime};
 
 /* === Structs === */
 struct Principal(&'static str);
+#[harmos::message]
+struct Stage {
+    id: String,
+}
+struct Overlay<const CHILD: bool>;
 struct Declare<const CHILD: bool>;
 struct Read<const CHILD: bool>;
 struct Policy {
@@ -49,6 +54,54 @@ struct Policy {
 /* === Traits === */
 
 /* === Implementations === */
+impl harmos::operations::ContextValue for Stage {
+    const KEY: &'static str = "test.stage";
+}
+
+impl<const CHILD: bool> OperationDeclaration for Overlay<CHILD> {
+    type Request = ();
+    type Response = String;
+    const ID: &'static str = if CHILD {
+        "overlay.child"
+    } else {
+        "overlay.parent"
+    };
+    const POLICY: OperationPolicy = OperationPolicy {
+        timeout: Duration::from_secs(2),
+        attempt_timeout: Duration::from_secs(1),
+        retries: RetryPolicy::Never,
+    };
+}
+
+impl<const CHILD: bool> Operation for Overlay<CHILD> {
+    type Declaration = Self;
+    type Resources = ();
+    type Error = Error;
+    type Endpoints = ();
+    type Context<'a> = Context<'a>;
+    fn new(_: Arc<()>) -> harmos::Result<Self> {
+        Ok(Self)
+    }
+    async fn run<'a>(
+        &mut self,
+        context: Self::Context<'a>,
+        _: &mut (),
+        _: &mut Self::Endpoints,
+    ) -> harmos::Result<String> {
+        let actor = context.context().require::<Principal>()?.0;
+        let stage = context.context().value::<Stage>()?.unwrap();
+        if CHILD {
+            return Ok(format!("{actor}:{}", stage.id));
+        }
+        assert_eq!(stage.id, "parent");
+        let child = context.with_value(Stage { id: "child".into() })?;
+        let stage = child.context().require::<Stage>()?;
+        assert_eq!(stage.id, "child");
+        let answer = child.call::<Overlay<true>>(()).await?;
+        Ok(format!("{actor}:{}:{answer}", "parent"))
+    }
+}
+
 impl<const CHILD: bool> OperationDeclaration for Declare<CHILD> {
     type Request = ();
     type Response = String;
@@ -148,6 +201,127 @@ fn context(actor: &'static str) -> CallContext {
 /* === Tests === */
 
 pub(super) fn contract_scenario() {
+    {
+        scenario_runtime::check("portable_overlays_preserve_local_values", || {
+            use harmos::Message;
+            use harmos::operations::{CallValue, ContextError, PORTABLE_BYTES, PORTABLE_VALUES};
+            let mut original = context("alice");
+            original
+                .insert_portable(Stage {
+                    id: "parent".into(),
+                })
+                .unwrap();
+            let child = original.with_value(Stage { id: "child".into() }).unwrap();
+            assert!(std::ptr::eq(
+                original.require::<Principal>().unwrap(),
+                child.require::<Principal>().unwrap()
+            ));
+            assert_eq!(original.require::<Stage>().unwrap().id, "parent");
+            assert_eq!(child.require::<Stage>().unwrap().id, "child");
+            assert_eq!(child.value::<Stage>().unwrap().unwrap().id, "child");
+            let values = vec![CallValue {
+                key: "test.stage".into(),
+                payload: Stage { id: "wire".into() }.encode_to_vec(),
+            }];
+            let mut call = harmos::operations::WireChildCall {
+                context: [7; 32],
+                generation_context: Some([9; 32]),
+                values: values.clone(),
+                operation: "overlay.child".into(),
+                payload: ().encode_to_vec(),
+            };
+            let encoded = call.encode().unwrap();
+            let decoded = harmos::operations::WireChildCall::decode(&encoded).unwrap();
+            assert_eq!(decoded.context, call.context);
+            assert_eq!(decoded.generation_context, call.generation_context);
+            assert_eq!(decoded.values, values);
+            let mut obsolete = encoded.clone();
+            obsolete[0] = 4;
+            assert!(matches!(
+                harmos::operations::WireChildCall::decode(&obsolete),
+                Err(harmos::operations::WireCodecError::Version)
+            ));
+            call.values.push(values[0].clone());
+            assert!(call.encode().is_err());
+            call.values = vec![CallValue {
+                key: "oversized".into(),
+                payload: vec![0; PORTABLE_BYTES],
+            }];
+            assert!(matches!(
+                call.encode(),
+                Err(harmos::operations::WireCodecError::Oversized)
+            ));
+            let wire = original.with_values(decoded.values).unwrap();
+            assert!(wire.get::<Stage>().is_none());
+            assert_eq!(wire.value::<Stage>().unwrap().unwrap().id, "wire");
+            assert!(std::ptr::eq(
+                original.require::<Principal>().unwrap(),
+                wire.require::<Principal>().unwrap()
+            ));
+            assert!(matches!(
+                original.with_values(vec![values[0].clone(), values[0].clone()]),
+                Err(ContextError::Duplicate { .. })
+            ));
+            assert!(matches!(
+                original.with_values(vec![CallValue {
+                    key: "oversized".into(),
+                    payload: vec![0; PORTABLE_BYTES]
+                }]),
+                Err(ContextError::Budget)
+            ));
+            let replacements = (0..PORTABLE_VALUES)
+                .map(|index| CallValue {
+                    key: format!("value{index}"),
+                    payload: Vec::new(),
+                })
+                .collect();
+            assert!(matches!(
+                original.with_values(replacements),
+                Err(ContextError::Budget)
+            ));
+            assert_eq!(original.value::<Stage>().unwrap().unwrap().id, "parent");
+            let mut trusted = CallContext::default();
+            trusted.insert(Stage { id: "local".into() }).unwrap();
+            assert!(matches!(
+                trusted.with_value(Stage { id: "other".into() }),
+                Err(ContextError::Duplicate { .. })
+            ));
+            assert_eq!(trusted.require::<Stage>().unwrap().id, "local");
+        });
+    }
+    {
+        scenario_runtime::check("child_overlay_preserves_principal_and_parent_stage", || {
+            let mut executor = tokio::runtime::Builder::new_current_thread();
+            executor.enable_all().build().unwrap().block_on(async {
+                let runtime = runtime().await;
+                runtime
+                    .operations
+                    .register_operation::<Overlay<false>>("app", Lanes::Open, Arc::new(()))
+                    .unwrap();
+                runtime
+                    .operations
+                    .register_operation::<Overlay<true>>("app", Lanes::Open, Arc::new(()))
+                    .unwrap();
+                let mut original = context("alice");
+                original
+                    .insert_portable(Stage {
+                        id: "parent".into(),
+                    })
+                    .unwrap();
+                let operations = runtime.operations.with_context(original.clone());
+                assert_eq!(
+                    &*operations.call::<Overlay<false>>(()).await.unwrap(),
+                    "alice:parent:alice:child"
+                );
+                assert_eq!(original.require::<Stage>().unwrap().id, "parent");
+                assert_eq!(
+                    &*operations.call::<Overlay<true>>(()).await.unwrap(),
+                    "alice:parent"
+                );
+                runtime.stop().await.unwrap();
+            });
+        });
+    }
     {
         scenario_runtime::check("children_inherit_principals", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();

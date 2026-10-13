@@ -503,7 +503,7 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
             "policy": { "credit": policy.credit, "sustained_health_ms": policy.sustained_health_ms,
                 "backoff_base_ms": policy.backoff_base_ms, "backoff_cap_ms": policy.backoff_cap_ms }
         });
-        let encoded = format!("\0HARMOS:ARTIFACT:V5:{value}\0").into_bytes();
+        let encoded = format!("\0HARMOS:ARTIFACT:V6:{value}\0").into_bytes();
         let length = encoded.len();
         let bytes = syn::LitByteStr::new(&encoded, id.span());
         (
@@ -540,8 +540,11 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
                 #(<#contributed as #harmos::__private::PluginContribution>::SECTION),*
             ];
 
-            fn markers() -> ::std::vec::Vec<&'static [u8]> {
-                ::std::vec![#identity, #contracts, #publications, #listeners, #observers, #contribution_marker #restart_reference]
+            fn markers() -> ::std::result::Result<::std::vec::Vec<&'static [u8]>, #harmos::schema::graph::Error> {
+                #harmos::__private::PluginSchemaMarkers::<Self>(
+                    ::std::vec![#identity, #contracts, #publications, #listeners, #observers, #contribution_marker #restart_reference],
+                    &#harmos::__private::SchemaSettings::default(),
+                )
             }
         }
 

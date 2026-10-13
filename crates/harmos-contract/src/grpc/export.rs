@@ -15,7 +15,7 @@
 
 // Standard Library Imports
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fmt::Write as _,
     path::{Path, PathBuf},
 };
@@ -45,8 +45,20 @@ const MAX_DESCRIPTOR_BYTES: usize = 16 * 1024 * 1024;
 pub struct Artifacts {
     files: BTreeMap<String, String>,
     descriptors: Vec<u8>,
+    contracts: Vec<u8>,
 }
 
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Catalog {
+    schema: u32,
+    #[serde(deserialize_with = "bounded_contracts")]
+    contracts: Vec<Contract>,
+}
+
+struct MetadataWriter(Vec<u8>);
+
+struct ContractVisitor;
 /* === Enums === */
 #[derive(Debug, thiserror::Error)]
 pub enum ExportError {
@@ -60,12 +72,12 @@ pub enum ExportError {
     Name,
     #[error("unsupported generated protobuf descriptor")]
     Unsupported,
-    #[error("cargo metadata failed: {0}")]
-    Cargo(String),
-    #[error("cargo metadata returned no absolute target directory")]
+    #[error("Cargo build script did not supply OUT_DIR")]
     TargetDirectory,
-    #[error(transparent)]
-    Metadata(#[from] serde_json::Error),
+    #[error("invalid canonical contract export: {0}")]
+    Json(#[from] serde_json::Error),
+    #[error("descriptor and canonical contract exports differ")]
+    Incompatible,
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }
@@ -73,18 +85,85 @@ pub enum ExportError {
 /* === Traits === */
 
 /* === Implementations === */
+impl std::io::Write for MetadataWriter {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        let length = self
+            .0
+            .len()
+            .checked_add(bytes.len())
+            .filter(|length| *length <= MAX_DESCRIPTOR_BYTES)
+            .ok_or_else(|| std::io::Error::other("contract export byte limit"))?;
+        if length > self.0.capacity() {
+            let capacity = length
+                .checked_next_power_of_two()
+                .unwrap_or(MAX_DESCRIPTOR_BYTES)
+                .min(MAX_DESCRIPTOR_BYTES);
+            self.0
+                .try_reserve_exact(capacity - self.0.len())
+                .map_err(std::io::Error::other)?;
+        }
+        self.0.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<'de> serde::de::Visitor<'de> for ContractVisitor {
+    type Value = Vec<Contract>;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a bounded operation contract catalog")
+    }
+
+    fn visit_seq<A: serde::de::SeqAccess<'de>>(
+        self,
+        mut input: A,
+    ) -> Result<Self::Value, A::Error> {
+        use serde::de::Error as _;
+        let mut contracts = Vec::new();
+        while contracts.len() < MAX_METHODS {
+            let Some(contract) = input.next_element::<Contract>()? else {
+                return Ok(contracts);
+            };
+            if contracts.len() == contracts.capacity() {
+                let capacity = (contracts.len() + 1).next_power_of_two().min(MAX_METHODS);
+                contracts
+                    .try_reserve_exact(capacity - contracts.len())
+                    .map_err(A::Error::custom)?;
+            }
+            contracts.push(contract);
+        }
+        if input.next_element::<serde::de::IgnoredAny>()?.is_some() {
+            return Err(A::Error::custom(
+                "operation catalog exceeds its contract limit",
+            ));
+        }
+        Ok(contracts)
+    }
+}
+
 impl Artifacts {
     pub fn new<'a>(contracts: impl IntoIterator<Item = &'a Contract>) -> Result<Self, ExportError> {
-        let mut services: BTreeMap<(&str, &str), Vec<(&str, &Contract)>> = BTreeMap::new();
-        let mut count = 0;
+        let mut selected = Vec::new();
+        let mut identities = BTreeSet::new();
         for contract in contracts {
+            if selected.len() == MAX_METHODS {
+                return Err(ExportError::Limit);
+            }
+            if !identities.insert(contract.operation().id.as_str()) {
+                return Err(ExportError::Collision(contract.operation().id.to_string()));
+            }
+            selected.push(contract);
+        }
+        selected.sort_unstable_by_key(|contract| contract.operation().id.as_str());
+        let metadata = canonical_contracts(&selected)?;
+        let mut services: BTreeMap<(&str, &str), Vec<(&str, &Contract)>> = BTreeMap::new();
+        for contract in selected {
             let Some(binding) = contract.grpc() else {
                 continue;
             };
-            count += 1;
-            if count > MAX_METHODS {
-                return Err(ExportError::Limit);
-            }
             services
                 .entry((&binding.package, &binding.service))
                 .or_default()
@@ -128,7 +207,30 @@ impl Artifacts {
         Ok(Self {
             files: sources,
             descriptors: set.encode_to_vec(),
+            contracts: metadata,
         })
+    }
+
+    // Read And Revalidate An Exact Export Without Executing Its Producer.
+    pub fn read(directory: &Path) -> Result<Self, ExportError> {
+        let encoded = read_bounded(&directory.join("contracts.json"))?;
+        let contracts = decode_contracts(&encoded)?;
+        let artifacts = Self::new(&contracts)?;
+        if artifacts.contracts != encoded
+            || artifacts.descriptors != read_bounded(&directory.join("descriptors.bin"))?
+        {
+            return Err(ExportError::Incompatible);
+        }
+        Ok(artifacts)
+    }
+
+    #[cfg(feature = "bindings-python")]
+    pub(crate) fn operation_contracts(&self) -> Result<Vec<Contract>, ExportError> {
+        decode_contracts(&self.contracts)
+    }
+
+    pub fn contracts(&self) -> &[u8] {
+        &self.contracts
     }
 
     pub fn descriptors(&self) -> &[u8] {
@@ -138,41 +240,14 @@ impl Artifacts {
         &self.files
     }
 
+    // Export One Catalog Into The Current Producer Build's Cargo Output Directory.
     #[cfg(not(target_arch = "wasm32"))]
-    pub fn export_cargo(&self, manifest: &Path, name: &str) -> Result<PathBuf, ExportError> {
-        let manifest = manifest.canonicalize()?;
-        let directory = manifest.parent().ok_or(ExportError::TargetDirectory)?;
-        let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-        let output = std::process::Command::new(cargo)
-            .current_dir(directory)
-            .args([
-                "metadata",
-                "--locked",
-                "--offline",
-                "--no-deps",
-                "--format-version",
-                "1",
-                "--manifest-path",
-            ])
-            .arg(&manifest)
-            .output()?;
-        if !output.status.success() {
-            return Err(ExportError::Cargo(
-                String::from_utf8_lossy(&output.stderr).into_owned(),
-            ));
-        }
-        #[derive(serde::Deserialize)]
-        struct Metadata {
-            target_directory: PathBuf,
-        }
-        let metadata: Metadata = serde_json::from_slice(&output.stdout)?;
-        if !metadata.target_directory.is_absolute() {
-            return Err(ExportError::TargetDirectory);
-        }
-        self.export(&metadata.target_directory, name)
+    pub fn export_build(&self, name: &str) -> Result<PathBuf, ExportError> {
+        let directory = std::env::var_os("OUT_DIR").ok_or(ExportError::TargetDirectory)?;
+        self.export(Path::new(&directory), name)
     }
 
-    pub fn export(&self, target_directory: &Path, name: &str) -> Result<PathBuf, ExportError> {
+    pub fn export(&self, output_directory: &Path, name: &str) -> Result<PathBuf, ExportError> {
         if name.is_empty()
             || name.len() > 255
             || !name
@@ -181,7 +256,7 @@ impl Artifacts {
         {
             return Err(ExportError::Name);
         }
-        let root = target_directory.join("grpc").join(name);
+        let root = output_directory.join("grpc").join(name);
         std::fs::create_dir_all(&root)?;
         let previous = match std::fs::read_to_string(root.join("manifest.txt")) {
             Ok(manifest) => manifest,
@@ -208,6 +283,7 @@ impl Artifacts {
             std::fs::write(path, source)?;
         }
         std::fs::write(root.join("descriptors.bin"), &self.descriptors)?;
+        std::fs::write(root.join("contracts.json"), &self.contracts)?;
         for name in stale {
             match std::fs::remove_file(root.join(name)) {
                 Ok(()) => (),
@@ -215,7 +291,7 @@ impl Artifacts {
                 Err(error) => return Err(error.into()),
             }
         }
-        let mut manifest = String::from("descriptors.bin\n");
+        let mut manifest = String::from("descriptors.bin\ncontracts.json\n");
         for name in self.files.keys() {
             writeln!(manifest, "{name}").expect("String writer");
         }
@@ -227,6 +303,62 @@ impl Artifacts {
 /* === Public Functions === */
 
 /* === Private Functions === */
+fn bounded_contracts<'de, D: serde::Deserializer<'de>>(
+    input: D,
+) -> Result<Vec<Contract>, D::Error> {
+    input.deserialize_seq(ContractVisitor)
+}
+
+fn decode_contracts(encoded: &[u8]) -> Result<Vec<Contract>, ExportError> {
+    if encoded.len() > MAX_DESCRIPTOR_BYTES {
+        return Err(ExportError::Limit);
+    }
+    let catalog: Catalog = serde_json::from_slice(encoded)?;
+    if catalog.schema != 1 {
+        return Err(ExportError::Incompatible);
+    }
+    Ok(catalog.contracts)
+}
+
+fn canonical_contracts(contracts: &[&Contract]) -> Result<Vec<u8>, ExportError> {
+    #[derive(serde::Serialize)]
+    struct Catalog<'a> {
+        schema: u32,
+        contracts: &'a [&'a Contract],
+    }
+    let mut writer = MetadataWriter(Vec::new());
+    serde_json::to_writer(
+        &mut writer,
+        &Catalog {
+            schema: 1,
+            contracts,
+        },
+    )
+    .map_err(|error| {
+        if error.is_io() {
+            ExportError::Limit
+        } else {
+            ExportError::Json(error)
+        }
+    })?;
+    Ok(writer.0)
+}
+
+fn read_bounded(path: &Path) -> Result<Vec<u8>, ExportError> {
+    use std::io::Read;
+    let file = std::fs::File::open(path)?;
+    if file.metadata()?.len() > MAX_DESCRIPTOR_BYTES as u64 {
+        return Err(ExportError::Limit);
+    }
+    let mut bytes = Vec::new();
+    file.take(MAX_DESCRIPTOR_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > MAX_DESCRIPTOR_BYTES {
+        return Err(ExportError::Limit);
+    }
+    Ok(bytes)
+}
+
 fn source(file: &FileDescriptorProto) -> Result<String, ExportError> {
     let mut output = String::from(
         "// Generated From Harmos Operation Contracts. Do Not Edit.\nsyntax = \"proto3\";\n\n",

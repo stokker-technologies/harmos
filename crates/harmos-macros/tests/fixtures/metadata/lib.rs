@@ -7,11 +7,10 @@
  * ***
  */
 
-
 #![cfg(feature = "guest")]
 /* === Modules === */
-mod streams;
 mod operations;
+mod streams;
 
 /* === Re-Exports === */
 
@@ -49,7 +48,7 @@ impl ProductPlugin for Guest {}
 /* === Public Functions === */
 #[unsafe(no_mangle)]
 pub extern "C" fn anchor() -> usize {
-    let markers = std::hint::black_box(<Guest as harmos::plugin::Declared>::markers());
+    let markers = std::hint::black_box(<Guest as harmos::plugin::Declared>::markers().unwrap());
     markers.iter().map(|marker| marker.len()).sum()
 }
 

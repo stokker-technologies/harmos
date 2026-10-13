@@ -28,17 +28,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check:
-    name: check (push, ${{ matrix.platform }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: linux
-            runner: ubuntu-24.04
-          - platform: windows
-            runner: windows-2022
-    runs-on: ${{ matrix.runner }}
+  ci_feature:
+    name: CI Feature (Push, Linux)
+    runs-on: ubuntu-24.04
     timeout-minutes: 240
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -46,6 +38,36 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup
+        id: setup
         with:
-          cargo-cache-role: check
-      - run: mise run check
+          cargo-cache-role: release
+          cache-write: 'true'
+      - name: ci:feature
+        run: mise run ci:feature
+      - name: Save Cargo Compilation
+        if: success()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.setup.outputs.compiler-cache-paths }}
+          key: ${{ steps.setup.outputs.compiler-cache-key }}
+      - name: Save Dependency Downloads
+        if: success() && steps.setup.outputs.downloads-cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .cache/cargo/registry/index
+            .cache/cargo/registry/cache
+            .cache/cargo/git/db
+            .cache/uv
+          key: ${{ steps.setup.outputs.downloads-cache-key }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: harmos-feature-linux-${{ github.run_attempt }}
+          path: |
+            .stkr/tests
+            target/validation
+            !target/validation/cargo
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14

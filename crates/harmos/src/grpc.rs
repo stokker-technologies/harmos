@@ -25,6 +25,8 @@ mod listener;
 
 mod manager;
 
+mod origin;
+
 pub mod middleware;
 
 mod reflection;
@@ -49,6 +51,7 @@ pub use harmos_contract::grpc::{Artifacts, DescriptorError, ExportError, descrip
 pub use input::{InputError, input, open};
 
 pub use manager::{Attached, GrpcManager, Settings};
+pub use origin::Origin;
 
 /* === Imports === */
 

@@ -23,7 +23,8 @@ use super::{FileMetadata, FileReference};
 use crate::__private::DecodeInput;
 use crate::__private::decoding_add;
 
-use crate::schema::{Cardinality, Described, Field, Kind};
+use crate::schema::declaration::{Field, Kind};
+use crate::schema::{Cardinality, Described};
 use crate::storage::StorageCursor;
 #[cfg(feature = "grpc")]
 use crate::storage::position::codec::{
@@ -63,6 +64,7 @@ struct Phase;
 
 /* === Implementations === */
 impl crate::storage::codec::Value for Phase {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Phase));
     fn postcard_write(value: &Self::Native, bytes: &mut Vec<u8>) {
         crate::__private::PostcardValue::write(
             &match value {
@@ -424,6 +426,7 @@ fn read_hash(
 }
 
 impl Described for FileMetadata {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(FileMetadata));
     const FIELDS: &'static [Field] = &[
         Field {
             name: Cow::Borrowed("id"),
@@ -456,15 +459,20 @@ impl Described for FileMetadata {
             cardinality: Cardinality::Optional,
         },
     ];
+
+    const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
+        { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
 }
 
 impl Described for FileReference {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(FileReference));
     const FIELDS: &'static [Field] = &[
         Field {
             name: Cow::Borrowed("position"),
             tag: 1,
             kind: Kind::Message {
-                fields: Cow::Borrowed(StorageCursor::FIELDS),
+                definition: StorageCursor::DEFINITION,
             },
             cardinality: Cardinality::Required,
         },
@@ -472,7 +480,7 @@ impl Described for FileReference {
             name: Cow::Borrowed("metadata"),
             tag: 2,
             kind: Kind::Message {
-                fields: Cow::Borrowed(FileMetadata::FIELDS),
+                definition: FileMetadata::DEFINITION,
             },
             cardinality: Cardinality::Required,
         },
@@ -489,6 +497,10 @@ impl Described for FileReference {
             cardinality: Cardinality::Required,
         },
     ];
+
+    const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
+        { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
 }
 
 /* === Public Functions === */

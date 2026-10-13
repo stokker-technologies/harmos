@@ -35,6 +35,7 @@ pub const PORTABLE_BYTES: usize = 64 * 1024;
 pub struct CallContext {
     values: HashMap<TypeId, Arc<dyn Any + Send + Sync>>,
     portable: BTreeMap<String, Arc<[u8]>>,
+    portable_types: HashMap<&'static str, TypeId>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -99,7 +100,58 @@ impl CallContext {
         }
         self.insert(value)?;
         self.portable.insert(T::KEY.to_owned(), payload.into());
+        self.portable_types.insert(T::KEY, TypeId::of::<T>());
         Ok(())
+    }
+
+    // Derive a child context with a replaced portable value. Local-only values
+    // retain their original allocation and cannot be replaced by this method.
+    pub fn with_value<T: ContextValue>(&self, value: T) -> Result<Self, ContextError> {
+        let kind = TypeId::of::<T>();
+        if self.values.contains_key(&kind) && self.portable_types.get(T::KEY) != Some(&kind) {
+            return Err(ContextError::Duplicate {
+                name: type_name::<T>().to_owned(),
+            });
+        }
+        let replacement = CallValue {
+            key: T::KEY.to_owned(),
+            payload: value.encode_to_vec(),
+        };
+        let mut child = self.with_values(vec![replacement])?;
+        child.values.insert(kind, Arc::new(value));
+        child.portable_types.insert(T::KEY, kind);
+        Ok(child)
+    }
+
+    // Overlay portable values without changing trusted local-only values.
+    // Replaced typed projections are invalidated; read wire values with `value`.
+    pub fn with_values(&self, values: Vec<CallValue>) -> Result<Self, ContextError> {
+        let replacements = Self::from_portable(values)?;
+        let retained = self
+            .portable
+            .iter()
+            .filter(|(key, _)| !replacements.portable.contains_key(*key));
+        let mut entries = replacements.portable.len();
+        let mut bytes = replacements
+            .portable
+            .iter()
+            .map(|(key, value)| key.len().saturating_add(value.len()))
+            .fold(0usize, usize::saturating_add);
+        for (key, value) in retained {
+            entries = entries.saturating_add(1);
+            bytes = bytes.saturating_add(key.len()).saturating_add(value.len());
+        }
+        if entries > PORTABLE_VALUES || bytes > PORTABLE_BYTES {
+            return Err(ContextError::Budget);
+        }
+        let mut child = self.clone();
+        for (key, payload) in replacements.portable {
+            if let Some(kind) = child.portable_types.remove(key.as_str()) {
+                child.values.remove(&kind);
+            }
+            child.portable.insert(key, payload);
+        }
+        Ok(child)
     }
 
     pub fn from_portable(values: Vec<CallValue>) -> Result<Self, ContextError> {

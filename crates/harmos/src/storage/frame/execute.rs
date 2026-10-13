@@ -308,7 +308,7 @@ impl<'f> Join<'f> {
             return Ok(false);
         }
         for predicate in &as_of.right_filter {
-            let Expr::Col(column) = predicate.expr else {
+            let Expr::Col(column) = *predicate.expr() else {
                 return Err(invalid("right filter requires source column"));
             };
             if !satisfies(&row.values[column], predicate)? {
@@ -430,7 +430,7 @@ impl Context<'_, '_> {
 
     fn selected(&self, filter: &[Predicate]) -> Result<bool> {
         for predicate in filter {
-            let value = self.eval(&predicate.expr)?;
+            let value = self.eval(predicate.expr())?;
             if !satisfies(value.as_ref(), predicate)? {
                 return Ok(false);
             }
@@ -901,16 +901,34 @@ fn accumulators(group_by: &GroupBy) -> Result<Vec<Accumulator>> {
     }
     Ok(aggs)
 }
-fn satisfies(value: &ScalarValue, predicate: &Predicate) -> Result<bool> {
-    if absent(value) || absent(&predicate.value) {
-        return Ok(match predicate.compare {
-            Compare::Eq => *value == predicate.value,
-            Compare::Ne => *value != predicate.value,
+pub(crate) fn satisfies(value: &ScalarValue, predicate: &Predicate) -> Result<bool> {
+    match predicate {
+        Predicate::Compare {
+            compare,
+            value: expected,
+            ..
+        } => compare_value(value, *compare, expected),
+        Predicate::In { values, .. } => {
+            for expected in values {
+                if compare_value(value, Compare::Eq, expected)? {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        }
+        Predicate::Exists { present, .. } => Ok(!absent(value) == *present),
+    }
+}
+fn compare_value(value: &ScalarValue, compare: Compare, expected: &ScalarValue) -> Result<bool> {
+    if absent(value) || absent(expected) {
+        return Ok(match compare {
+            Compare::Eq => value == expected,
+            Compare::Ne => value != expected,
             _ => false,
         });
     }
-    let order = value.compare(&predicate.value)?;
-    Ok(match predicate.compare {
+    let order = value.compare(expected)?;
+    Ok(match compare {
         Compare::Eq => order.is_eq(),
         Compare::Ne => !order.is_eq(),
         Compare::Lt => order.is_lt(),
@@ -919,6 +937,7 @@ fn satisfies(value: &ScalarValue, predicate: &Predicate) -> Result<bool> {
         Compare::Ge => !order.is_lt(),
     })
 }
+
 fn elapsed(start: i128, end: i128) -> Result<ScalarValue> {
     if end < start {
         return Ok(ScalarValue::Missing);

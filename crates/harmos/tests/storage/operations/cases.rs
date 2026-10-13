@@ -48,6 +48,11 @@ use harmos::storage::operations::{Operations, QueryFiles, Save, SaveRequest, Sel
 /* === Type Aliases === */
 
 /* === Structs === */
+#[harmos::message]
+struct Reading {
+    value: u64,
+    owner: Option<String>,
+}
 
 /* === Enums === */
 #[harmos::lanes]
@@ -90,6 +95,160 @@ pub(super) fn save_request(
 /* === Tests === */
 
 fn own_contract() {
+    {
+        scenario_runtime::check("record_operation_preserves_payload_filters", || {
+            let mut executor = tokio::runtime::Builder::new_current_thread();
+            executor.enable_all().build().unwrap().block_on(async {
+                use harmos::Message;
+                use harmos::storage::frame::{Compare, Expr, Predicate, ScalarField, ScalarPath};
+                use harmos::storage::operations::{DataSelection, ReadRecords};
+                use harmos::storage::reduce::{ScalarKind, ScalarValue};
+                use harmos::storage::{RecordFilter, RecordWrite, StoredRecord};
+
+                let fixture = Fixture::new(config()).await;
+                Operations::register(
+                    &fixture.runtime.operations,
+                    "storage",
+                    Lanes::Open,
+                    Arc::new(fixture.storage.clone()),
+                )
+                .unwrap();
+                let key = super::schema();
+                fixture
+                    .storage
+                    .write_schema(
+                        &key,
+                        &harmos::schema::graph::Schema::from_declaration(
+                            <Reading as harmos::schema::Described>::DEFINITION,
+                            &harmos::config::SchemaSettings::default(),
+                        )
+                        .unwrap(),
+                    )
+                    .await
+                    .unwrap();
+                let process = harmos::Identifier::new("process").unwrap();
+                let foreign = harmos::Identifier::new("foreign").unwrap();
+                for (index, (value, owner, scope)) in [
+                    (2, Some("chosen"), &process),
+                    (2, None, &process),
+                    (4, Some("chosen"), &process),
+                    (2, Some("other"), &process),
+                    (2, Some("chosen"), &foreign),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    let payload = Reading {
+                        value,
+                        owner: owner.map(String::from),
+                    }
+                    .encode_to_vec();
+                    let item = harmos::Identifier::new(format!("filtered{index}")).unwrap();
+                    fixture
+                        .storage
+                        .write_records(&[RecordWrite {
+                            scope: Some(scope),
+                            ..super::record(&key, &item, &payload)
+                        }])
+                        .await
+                        .unwrap();
+                }
+                let boundary = fixture.storage.flush().await.unwrap();
+                let mut request = DataSelection {
+                    selection: Selection {
+                        scope: Some(process),
+                        through: Some(boundary.sequence),
+                        page_rows: 1,
+                        page_bytes: 4096,
+                        ..Selection::default()
+                    },
+                    schema: key.clone(),
+                    stream: None,
+                    source_start: None,
+                    source_end: None,
+                    record_filter: Some(RecordFilter {
+                        columns: vec![
+                            ScalarField {
+                                path: ScalarPath::Payload(vec![
+                                    harmos::Identifier::new("value").unwrap(),
+                                ]),
+                                kind: ScalarKind::Unsigned,
+                            },
+                            ScalarField {
+                                path: ScalarPath::Payload(vec![
+                                    harmos::Identifier::new("owner").unwrap(),
+                                ]),
+                                kind: ScalarKind::Text,
+                            },
+                        ],
+                        predicates: vec![
+                            Predicate::In {
+                                expr: Expr::Col(0),
+                                values: vec![ScalarValue::Unsigned(2), ScalarValue::Unsigned(4)],
+                            },
+                            Predicate::Compare {
+                                expr: Expr::Col(1),
+                                compare: Compare::Eq,
+                                value: ScalarValue::Text("chosen".into()),
+                            },
+                        ],
+                    }),
+                };
+                assert_eq!(
+                    DataSelection::decode(&request.encode_to_vec()).unwrap(),
+                    request
+                );
+
+                let payload = Reading {
+                    value: 2,
+                    owner: Some("chosen".into()),
+                }
+                .encode_to_vec();
+                let late = harmos::Identifier::new("late").unwrap();
+                fixture
+                    .storage
+                    .write_records(&[RecordWrite {
+                        scope: request.selection.scope.as_ref(),
+                        ..super::record(&key, &late, &payload)
+                    }])
+                    .await
+                    .unwrap();
+                let saved = fixture.storage.flush().await.unwrap();
+                let limits = harmos::operations::StreamSettings {
+                    items: NonZeroUsize::MIN,
+                    bytes: NonZeroUsize::new(4096).unwrap(),
+                };
+                for descending in [false, true] {
+                    request.selection.descending = descending;
+                    let (sender, mut receiver) =
+                        harmos::operations::stream::<StoredRecord>(limits).unwrap();
+                    let instance = fixture
+                        .runtime
+                        .operations
+                        .submit_endpoints::<ReadRecords, _>(request.clone(), sender)
+                        .unwrap();
+                    let collect = async {
+                        let mut items = Vec::new();
+                        while let Some(entry) = receiver.recv().await {
+                            assert_eq!(entry.scope, request.selection.scope);
+                            assert!(entry.position.sequence <= boundary.sequence);
+                            items.push(entry.item.as_str().to_owned());
+                        }
+                        items
+                    };
+                    let (items, result) = tokio::join!(collect, instance);
+                    assert_eq!(*result.unwrap(), saved);
+                    let expected = if descending {
+                        vec!["filtered2", "filtered0"]
+                    } else {
+                        vec!["filtered0", "filtered2"]
+                    };
+                    assert_eq!(items, expected);
+                }
+                fixture.finish().await;
+            });
+        });
+    }
     {
         scenario_runtime::check("operation_preserves_storage", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
@@ -453,6 +612,7 @@ fn own_contract() {
                         stream: None,
                         source_start: Some(UNIX_EPOCH - Duration::from_secs(1)),
                         source_end: Some(UNIX_EPOCH),
+                        record_filter: None,
                     };
                     let limits = harmos::operations::StreamSettings {
                         items: NonZeroUsize::MIN,
@@ -530,6 +690,7 @@ fn own_contract() {
                             stream: None,
                             source_start: None,
                             source_end: None,
+                            record_filter: None,
                         };
                         let limits = harmos::operations::StreamSettings {
                             items: NonZeroUsize::MIN,
@@ -610,6 +771,7 @@ fn own_contract() {
                             stream: Some(stream.clone()),
                             source_start: None,
                             source_end: None,
+                            record_filter: None,
                         };
                         let limits = harmos::operations::StreamSettings {
                             items: NonZeroUsize::MIN,
@@ -690,6 +852,7 @@ fn own_contract() {
                         stream: None,
                         source_start: None,
                         source_end: None,
+                        record_filter: None,
                     };
                     let instance = fixture
                         .runtime

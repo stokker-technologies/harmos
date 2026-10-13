@@ -21,7 +21,6 @@ use std::path::Path;
 
 // Local Imports
 use crate::app::{Runtime, SchematicEditor};
-use harmos::services::ServiceLease;
 
 /* === Constants === */
 
@@ -34,10 +33,11 @@ use harmos::services::ServiceLease;
 /* === Enums === */
 pub enum Plugin {
     Guest {
-        manager: guest::Manager,
-        lifecycle: Box<guest::Lifecycle>,
+        manager: harmos::plugin::PluginHost<SchematicEditor>,
     },
-    Sidecar(ServiceLease<SchematicEditor>),
+    Sidecar {
+        manager: harmos::plugin::PluginHost<SchematicEditor>,
+    },
 }
 
 /* === Traits === */
@@ -47,29 +47,23 @@ impl Plugin {
     pub async fn guest(runtime: &Runtime, path: &Path) -> harmos::Result<Self> {
         let bytes = std::fs::read(path).map_err(guest::failure)?;
         let loaded = guest::load(runtime, &bytes).map_err(guest::failure)?;
-        let (mut manager, mut lifecycle) = guest::lifecycle(runtime, loaded).await?;
-        if let Err(error) = manager.initialize(&mut lifecycle).await {
-            manager.shutdown(&mut lifecycle).await?;
-            return Err(error);
-        }
+        guest::start(runtime, loaded).await?;
         Ok(Self::Guest {
-            manager,
-            lifecycle: Box::new(lifecycle),
+            manager: runtime.plugin.clone(),
         })
     }
 
     pub async fn sidecar(runtime: &Runtime, path: &Path, directory: &Path) -> harmos::Result<Self> {
-        let lease = sidecar::start(runtime, path, directory).await?;
-        Ok(Self::Sidecar(lease))
+        sidecar::start(runtime, path, directory).await?;
+        Ok(Self::Sidecar {
+            manager: runtime.plugin.clone(),
+        })
     }
 
     pub async fn stop(self) -> harmos::Result<()> {
         match self {
-            Self::Guest {
-                mut manager,
-                mut lifecycle,
-            } => manager.shutdown(lifecycle.as_mut()).await,
-            Self::Sidecar(lease) => lease.release().await,
+            Self::Guest { manager } => manager.stop(guest::NAME).await,
+            Self::Sidecar { manager } => manager.stop(sidecar::NAME).await,
         }
     }
 }

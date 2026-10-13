@@ -153,7 +153,16 @@ fn contract_scenario() {
                     let item = Identifier::new("item").unwrap();
                     let scope = Identifier::new("selected").unwrap();
                     let stream = Identifier::new("voltage").unwrap();
-                    f.storage.write_schema(&key, &[]).await.unwrap();
+                    f.storage
+                        .write_schema(
+                            &key,
+                            &harmos::schema::graph::Schema {
+                                root: 0,
+                                definitions: vec![vec![]],
+                            },
+                        )
+                        .await
+                        .unwrap();
                     let mut input = record(&key, &item, &[1]);
                     input.scope = Some(&scope);
                     f.storage.write_records(&[input]).await.unwrap();

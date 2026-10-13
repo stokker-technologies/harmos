@@ -101,7 +101,7 @@ impl ObserverManager {
         let mut entries = Vec::new();
         let mut ids = BTreeSet::new();
         for backend in backends {
-            let definition = backend.definition();
+            let definition = backend.definition()?;
             validate(&definition)?;
             if !ids.insert(definition.id.clone()) {
                 return Err(Error::AlreadyRegistered {

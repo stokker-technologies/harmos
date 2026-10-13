@@ -24,7 +24,8 @@ use std::sync::Arc;
 // Local Imports
 use super::{Fixture, Lanes, config};
 use harmos::Identifier;
-use harmos::schema::{Cardinality, Field, Kind};
+use harmos::schema::Cardinality;
+use harmos::schema::graph::{Field, Kind, Schema};
 use harmos::storage::operations::{
     Operations, QuerySchemas, QuerySchemasRequest, Selection, WriteSchema, WriteSchemaRequest,
 };
@@ -54,19 +55,31 @@ fn schema(name: &str) -> SchemaInput {
             id: Identifier::new(name).unwrap(),
             version: NonZeroU32::MIN,
         },
-        &[Field {
-            name: Cow::Borrowed("rows"),
-            tag: 1,
-            cardinality: Cardinality::Repeated,
-            kind: Kind::Message {
-                fields: Cow::Owned(vec![Field {
-                    name: Cow::Borrowed("value"),
+        &Schema {
+            root: 0,
+            definitions: vec![
+                vec![Field {
+                    name: Cow::Borrowed("rows"),
                     tag: 1,
-                    cardinality: Cardinality::Required,
-                    kind: Kind::F64,
-                }]),
-            },
-        }],
+                    cardinality: Cardinality::Repeated,
+                    kind: Kind::Message { definition: 1 },
+                }],
+                vec![
+                    Field {
+                        name: Cow::Borrowed("value"),
+                        tag: 1,
+                        cardinality: Cardinality::Required,
+                        kind: Kind::F64,
+                    },
+                    Field {
+                        name: Cow::Borrowed("next"),
+                        tag: 2,
+                        cardinality: Cardinality::Optional,
+                        kind: Kind::Message { definition: 1 },
+                    },
+                ],
+            ],
+        },
     )
     .unwrap()
 }
@@ -122,13 +135,59 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let f = setup().await;
+                    let declared = harmos::operations::WireDeclaration::of::<WriteSchema>()
+                        .contract()
+                        .unwrap();
+                    assert_eq!(declared.version(), 2);
+                    let retired = harmos::operations::Contract::new(
+                        declared.operation().clone(),
+                        1,
+                        declared.codec(),
+                        declared.schema().clone(),
+                    )
+                    .unwrap();
+                    assert!(!declared.compatible(&retired));
+                    assert!(
+                        f.runtime
+                            .operations
+                            .register_wire_contract::<WriteSchema>(
+                                "schema-v1",
+                                &retired,
+                                Lanes::Open,
+                                Arc::new(f.storage.clone())
+                            )
+                            .is_err()
+                    );
+                    let declared = harmos::operations::WireDeclaration::of::<QuerySchemas>()
+                        .contract()
+                        .unwrap();
+                    assert_eq!(declared.version(), 2);
+                    let retired = harmos::operations::Contract::new(
+                        declared.operation().clone(),
+                        1,
+                        declared.codec(),
+                        declared.schema().clone(),
+                    )
+                    .unwrap();
+                    assert!(!declared.compatible(&retired));
+                    assert!(
+                        f.runtime
+                            .operations
+                            .register_wire_contract::<QuerySchemas>(
+                                "schema-v1",
+                                &retired,
+                                Lanes::Open,
+                                Arc::new(f.storage.clone())
+                            )
+                            .is_err()
+                    );
                     let request = request(&f, "schema");
                     let cursor = f
                         .storage
                         .write_schema_once(
                             &request.mutation,
                             &request.schema.key,
-                            request.schema.fields(),
+                            request.schema.graph(),
                         )
                         .await
                         .unwrap();
@@ -239,11 +298,8 @@ pub(super) fn contract_scenario() {
                         .call::<WriteSchema>(request.clone())
                         .await
                         .unwrap();
-                    let mut changed = request.schema.fields().to_vec();
-                    let Kind::Message { fields } = &mut changed[0].kind else {
-                        panic!("nested")
-                    };
-                    fields.to_mut()[0].kind = Kind::String;
+                    let mut changed = request.schema.graph().clone();
+                    changed.definitions[1][0].kind = Kind::String;
                     let modified = SchemaInput::new(request.schema.key.clone(), &changed).unwrap();
                     assert!(
                         f.runtime
@@ -256,8 +312,8 @@ pub(super) fn contract_scenario() {
                             .is_err()
                     );
                     assert_eq!(f.storage.cursor_accepted().sequence, 1);
-                    let mut invalid = request.schema.fields().to_vec();
-                    invalid[0].tag = 0;
+                    let mut invalid = request.schema.graph().clone();
+                    invalid.definitions[invalid.root][0].tag = 0;
                     assert!(
                         f.storage
                             .write_schema_once(&request.mutation, &request.schema.key, &invalid)
@@ -318,8 +374,7 @@ pub(super) fn contract_scenario() {
                             .runtime()
                             .await
                             .unwrap();
-                    let mut data = crate::Data::new(crate::backend::history());
-                    data.schema_encoding = harmos::storage::SchemaEncoding::GraphV1;
+                    let data = crate::Data::new(crate::backend::history());
                     let data = Arc::new(data);
                     let recovery = Arc::new(crate::Recovery::new(crate::backend::history()));
                     let storage = harmos::storage::StorageManager::new(
@@ -353,17 +408,25 @@ pub(super) fn contract_scenario() {
                         .await
                         .unwrap();
                     f.storage.flush().await.unwrap();
-                    assert_eq!(
-                        f.data
-                            .schemas
-                            .lock()
-                            .unwrap()
-                            .values()
-                            .next()
-                            .unwrap()
-                            .encoding(),
-                        harmos::storage::SchemaEncoding::GraphV1
-                    );
+                    let persisted = f
+                        .data
+                        .schemas
+                        .lock()
+                        .unwrap()
+                        .values()
+                        .next()
+                        .unwrap()
+                        .clone();
+                    let metadata = serde_json::to_value(&persisted).unwrap();
+                    assert_eq!(metadata["encoding"], "graph_v1");
+                    let restored: harmos::storage::StorageSchema =
+                        serde_json::from_value(metadata.clone()).unwrap();
+                    assert_eq!(restored.schema, *request.schema.graph());
+                    let mut retired = metadata;
+                    retired["encoding"] = "inline".into();
+                    let error = serde_json::from_value::<harmos::storage::StorageSchema>(retired)
+                        .unwrap_err();
+                    assert!(error.to_string().contains("select a fresh storage root"));
                     let rows = query(&f, QuerySchemasRequest::default()).await;
                     assert_eq!(rows[0].schema, request.schema);
                     let (sender, mut receiver) = harmos::operations::stream::<SchemaInfo>(

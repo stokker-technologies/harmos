@@ -10,11 +10,12 @@
 /* === Modules === */
 
 /* === Re-Exports === */
+pub use crate::config::DecodeSettings;
 
 /* === Imports === */
 
 // Standard Library Imports
-use std::{marker::PhantomData, num::NonZeroUsize, sync::Arc};
+use std::{marker::PhantomData, sync::Arc};
 
 // Third Party Imports
 use bytes::Buf;
@@ -31,11 +32,6 @@ use crate::{MemorySize, Protobuf, operations::StreamItem};
 /* === Type Aliases === */
 
 /* === Structs === */
-#[derive(Clone, Copy, Debug)]
-pub struct DecodeSettings {
-    pub message_bytes: NonZeroUsize,
-    pub retained_bytes: NonZeroUsize,
-}
 
 pub struct Decoder<T> {
     settings: DecodeSettings,

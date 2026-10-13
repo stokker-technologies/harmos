@@ -33,6 +33,10 @@ pub const POLICY: OperationPolicy = OperationPolicy {
 /* === Type Aliases === */
 
 /* === Structs === */
+#[harmos::message]
+pub struct Stage {
+    pub id: String,
+}
 pub struct Inspect;
 
 /* === Enums === */
@@ -44,6 +48,9 @@ pub enum Queries {
 /* === Traits === */
 
 /* === Implementations === */
+impl harmos::operations::ContextValue for Stage {
+    const KEY: &'static str = "fixture.stage";
+}
 
 impl OperationDeclaration for Inspect {
     type Request = String;

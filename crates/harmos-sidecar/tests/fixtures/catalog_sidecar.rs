@@ -151,8 +151,11 @@ impl Declared for Catalog {
         harmos_contract::plugin::Requirement,
     >] = &[];
     const STREAMS: &'static [publications::Entry] = &[];
-    fn markers() -> Vec<&'static [u8]> {
-        vec![&IDENTITY, &CONTRACTS, &PUBLICATIONS, &LISTENERS, &OBSERVERS]
+    fn markers() -> Result<Vec<&'static [u8]>, harmos_contract::schema::graph::Error> {
+        harmos_contract::plugin::schema_markers::<Self>(
+            vec![&IDENTITY, &CONTRACTS, &PUBLICATIONS, &LISTENERS, &OBSERVERS],
+            &harmos_contract::config::SchemaSettings::default(),
+        )
     }
 }
 

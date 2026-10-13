@@ -26,6 +26,7 @@ use std::pin::Pin;
 use std::process::Stdio;
 use std::sync::Arc;
 // Third Party Imports
+use sha2::{Digest, Sha256};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::process::{Child, Command};
 // Local Imports
@@ -72,6 +73,7 @@ pub struct Attached {
 pub struct Executable {
     program: PathBuf,
     declaration: Declaration,
+    sha256: [u8; 32],
     arguments: Vec<OsString>,
     directory: Option<PathBuf>,
     environment: Vec<(OsString, OsString)>,
@@ -309,10 +311,15 @@ impl Executable {
         Ok(Self {
             program,
             declaration,
+            sha256: Sha256::digest(&bytes).into(),
             arguments: Vec::new(),
             directory: None,
             environment: Vec::new(),
         })
+    }
+
+    pub fn sha256(&self) -> [u8; 32] {
+        self.sha256
     }
 
     pub fn declaration(&self) -> &Declaration {

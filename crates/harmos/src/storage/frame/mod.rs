@@ -14,6 +14,7 @@ pub(crate) mod plan;
 mod query;
 
 /* === Re-Exports === */
+pub(crate) use execute::satisfies;
 pub use execute::{ProjectedRow, ScanCursor, ScanOrder, ScanPage, ScanSource, collect};
 pub use fields::ScalarProjection;
 pub use plan::{

@@ -159,7 +159,11 @@ impl Drop for Fact {
 }
 
 impl Described for Fact {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Fact));
     const FIELDS: &'static [Field] = WireFact::FIELDS;
+    const MARKER: &'static [u8] = &harmos::schema::declaration::encode::<
+        { harmos::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
 }
 
 impl Message for Fact {
@@ -424,7 +428,11 @@ fn publication() -> harmos_contract::StreamDeclaration {
         id: "listener.samples".into(),
         schema: 1,
         window: 512,
-        fields: Fact::FIELDS.to_vec(),
+        row: harmos::schema::graph::Schema::from_declaration(
+            Fact::DEFINITION,
+            &harmos::config::SchemaSettings::default(),
+        )
+        .unwrap(),
     }
 }
 
@@ -454,7 +462,11 @@ fn candidate(managed: bool) -> PluginDefinitions {
                 Source::Stream {
                     id: "listener.samples".into(),
                     schema_ordinal: 1,
-                    fields: std::borrow::Cow::Borrowed(Fact::FIELDS),
+                    row: harmos::schema::graph::Schema::from_declaration(
+                        Fact::DEFINITION,
+                        &harmos::config::SchemaSettings::default(),
+                    )
+                    .unwrap(),
                 },
                 callback,
             )
@@ -698,13 +710,16 @@ fn contract_scenario() {
                     }
                     impl harmos::observers::ObserverBackend for BlockedObserver {
                         type Resources = Gates;
-                        fn definition(&self) -> harmos::observers::ObserverDefinition {
-                            harmos::observers::ObserverDefinition {
+                        fn definition(
+                            &self,
+                        ) -> harmos::Result<harmos::observers::ObserverDefinition>
+                        {
+                            Ok(harmos::observers::ObserverDefinition {
                                 id: "blocked-cleanup".into(),
                                 interval: Duration::from_secs(10),
                                 streams: vec![],
                                 demand_keys: vec![],
-                            }
+                            })
                         }
                         async fn run(
                             &self,

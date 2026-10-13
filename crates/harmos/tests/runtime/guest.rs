@@ -145,6 +145,31 @@ fn execution_error(error: &harmos::Error) -> &wasmtime::Error {
 
 #[test]
 fn contract_scenario() {
+    scenario_runtime::check("host_resource_settings", || {
+        let mut executor = tokio::runtime::Builder::new_current_thread();
+        executor.enable_all().build().unwrap().block_on(async {
+            let runtime = runtime().await;
+            let bytes = route_component();
+            let settings = harmos::config::PluginGuestSettings {
+                component_bytes: std::num::NonZeroUsize::new(bytes.len() - 1).unwrap(),
+                ..Default::default()
+            };
+            let restricted = Host::with_settings(&runtime, settings).unwrap();
+            assert!(matches!(restricted.load(&bytes), Err(Error::Oversized { limit }) if limit == bytes.len() - 1));
+            let settings = harmos::config::PluginGuestSettings {
+                memory_bytes: std::num::NonZeroUsize::new(1).unwrap(),
+                ..Default::default()
+            };
+            let restricted = Host::with_settings(&runtime, settings).unwrap();
+            let refused = restricted.load(&bytes).unwrap().register().await;
+            let error = match refused { Ok(_) => panic!("one byte cannot admit the component's initial memory"), Err(error) => error };
+            assert!(error.to_string().contains("memory"), "{error}");
+            let allowed = Host::new(&runtime).unwrap().load(&bytes).unwrap().register().await.unwrap();
+            drop(allowed);
+            drop(restricted);
+            runtime.stop().await.unwrap();
+        });
+    });
     {
         scenario_runtime::check("memory_growth_bounded", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();

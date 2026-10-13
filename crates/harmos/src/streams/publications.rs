@@ -141,11 +141,13 @@ impl<A: Application> StreamManager<A> {
         let validations = definitions
             .iter()
             .map(|definition| {
-                crate::schema::Validator::new(
+                crate::schema::Validator::from_schema(
                     definition
-                        .fields()
-                        .expect("plugin definitions own a field schema"),
+                        .schema()
+                        .expect("plugin definitions own a row schema"),
+                    &harmos_contract::config::SchemaSettings::default(),
                 )
+                .map_err(crate::schema::Error::from)
                 .map(Arc::new)
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -643,7 +645,7 @@ pub(super) fn publication_definitions(
             );
             let definition = definition
                 .presentation(declaration.metadata, declaration.row_metadata)
-                .publication(owner, declaration.fields);
+                .publication(owner, declaration.row);
             Ok(definition)
         })
         .collect()
@@ -674,7 +676,7 @@ pub(super) fn validate_existing(
             continue;
         };
         if wired.definition.owner() != definition.owner()
-            || wired.definition.fields() != definition.fields()
+            || wired.definition.schema() != definition.schema()
             || wired.definition.window() != definition.window()
         {
             return Err(StreamAdmissionError::Changed(definition.id().into()));

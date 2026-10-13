@@ -315,7 +315,9 @@ fn main() {
     // declares. `harmos::plugin::guest::export_plugin!` roots them from a component's first
     // export the same way `harmos::plugin::sidecar::run_plugin` roots the native ones; a
     // native binary reaches no such export, so it states the reference here.
-    std::hint::black_box(<linked::LinkedGuest as harmos_contract::plugin::Declared>::markers());
+    std::hint::black_box(
+        <linked::LinkedGuest as harmos_contract::plugin::Declared>::markers().unwrap(),
+    );
 
     if std::env::var("HARMOS_TEST_SIDECAR").as_deref() == Ok("silent") {
         std::thread::sleep(Duration::from_secs(30));

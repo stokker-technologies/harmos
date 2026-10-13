@@ -17,7 +17,8 @@ use std::borrow::Cow;
 // Third Party Imports
 
 // Local Imports
-use crate::schema::{Cardinality, Described, Field, Kind};
+use crate::schema::declaration::{Field, Kind};
+use crate::schema::{Cardinality, Described};
 
 /* === Constants === */
 
@@ -106,6 +107,7 @@ impl crate::MemorySize for Status {
 }
 
 impl Described for Control {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Control));
     const FIELDS: &'static [Field] = &[
         Field {
             name: Cow::Borrowed("observer"),
@@ -126,9 +128,13 @@ impl Described for Control {
             cardinality: Cardinality::Required,
         },
     ];
+    const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
+        { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
 }
 
 impl Described for Status {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Status));
     const FIELDS: &'static [Field] = &[
         Field {
             name: Cow::Borrowed("exit"),
@@ -143,6 +149,9 @@ impl Described for Status {
             cardinality: Cardinality::Required,
         },
     ];
+    const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
+        { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
 }
 
 /* === Public Functions === */

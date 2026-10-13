@@ -32,6 +32,16 @@ use harmos::storage::reduce::{Agg, ExactNumber, ScalarKind, ScalarValue};
 /* === Type Aliases === */
 
 /* === Structs === */
+#[harmos::message]
+struct Ownership {
+    session: String,
+    cycle: Option<String>,
+}
+#[harmos::message]
+struct Evidence {
+    value: u64,
+    owner: Option<Ownership>,
+}
 
 /* === Enums === */
 
@@ -70,15 +80,21 @@ fn request() -> FrameQuery {
     }
 }
 async fn seed(fixture: &Fixture, values: &[u64]) {
-    let field = harmos::schema::Field {
+    let field = harmos::schema::graph::Field {
         name: "value".into(),
         tag: 1,
-        kind: harmos::schema::Kind::U64,
+        kind: harmos::schema::graph::Kind::U64,
         cardinality: harmos::schema::Cardinality::Required,
     };
     fixture
         .storage
-        .write_schema(&schema(), &[field])
+        .write_schema(
+            &schema(),
+            &harmos::schema::graph::Schema {
+                root: 0,
+                definitions: vec![vec![field]],
+            },
+        )
         .await
         .unwrap();
     let scope = Identifier::new("line").unwrap();
@@ -104,6 +120,474 @@ async fn seed(fixture: &Fixture, values: &[u64]) {
 
 #[test]
 fn contract_scenario() {
+    {
+        scenario_runtime::check("raw_record_filters_keep_paging_and_scope", || {
+            let mut executor = tokio::runtime::Builder::new_current_thread();
+            executor.enable_all().build().unwrap().block_on(async {
+                let f = Fixture::new(config()).await;
+                f.storage
+                    .write_schema(
+                        &schema(),
+                        &harmos::schema::graph::Schema::from_declaration(
+                            <Evidence as harmos::schema::Described>::DEFINITION,
+                            &harmos::config::SchemaSettings::default(),
+                        )
+                        .unwrap(),
+                    )
+                    .await
+                    .unwrap();
+                let epoch = Identifier::new("process").unwrap();
+                let other = Identifier::new("foreign-process").unwrap();
+                for (index, (value, owner, process)) in [
+                    (
+                        2,
+                        Some(Ownership {
+                            session: "a".into(),
+                            cycle: Some("one".into()),
+                        }),
+                        &epoch,
+                    ),
+                    (2, None, &epoch),
+                    (
+                        4,
+                        Some(Ownership {
+                            session: "a".into(),
+                            cycle: Some("one".into()),
+                        }),
+                        &epoch,
+                    ),
+                    (
+                        2,
+                        Some(Ownership {
+                            session: "b".into(),
+                            cycle: Some("one".into()),
+                        }),
+                        &epoch,
+                    ),
+                    (
+                        2,
+                        Some(Ownership {
+                            session: "a".into(),
+                            cycle: Some("one".into()),
+                        }),
+                        &other,
+                    ),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    let payload = Evidence { value, owner }.encode_to_vec();
+                    let item = Identifier::new(format!("raw{index}")).unwrap();
+                    f.storage
+                        .write_records(&[RecordWrite {
+                            scope: Some(process),
+                            ..record(&schema(), &item, &payload)
+                        }])
+                        .await
+                        .unwrap();
+                }
+                f.storage.flush().await.unwrap();
+                let filter = harmos::storage::RecordFilter {
+                    columns: vec![
+                        value(),
+                        ScalarField {
+                            path: ScalarPath::Payload(vec![
+                                Identifier::new("owner").unwrap(),
+                                Identifier::new("session").unwrap(),
+                            ]),
+                            kind: ScalarKind::Text,
+                        },
+                        ScalarField {
+                            path: ScalarPath::Payload(vec![
+                                Identifier::new("owner").unwrap(),
+                                Identifier::new("cycle").unwrap(),
+                            ]),
+                            kind: ScalarKind::Text,
+                        },
+                    ],
+                    predicates: vec![
+                        Predicate::In {
+                            expr: Expr::Col(0),
+                            values: vec![ScalarValue::Unsigned(2), ScalarValue::Unsigned(4)],
+                        },
+                        Predicate::Compare {
+                            expr: Expr::Col(1),
+                            compare: Compare::Eq,
+                            value: ScalarValue::Text("a".into()),
+                        },
+                        Predicate::Exists {
+                            expr: Expr::Col(2),
+                            present: true,
+                        },
+                        Predicate::Compare {
+                            expr: Expr::Col(2),
+                            compare: Compare::Eq,
+                            value: ScalarValue::Text("one".into()),
+                        },
+                    ],
+                };
+                assert_eq!(
+                    harmos::storage::RecordFilter::decode(&filter.encode_to_vec()).unwrap(),
+                    filter
+                );
+                let make = |filter| {
+                    let mut query = RecordQuery::new(schema(), decode_bytes);
+                    query.filter = Some(filter);
+                    query.scope = Some(epoch.clone());
+                    query.options.page = Some(ReadLimits {
+                        rows: NonZeroUsize::MIN,
+                        bytes: NonZeroUsize::new(4096).unwrap(),
+                    });
+                    query
+                };
+                let mut reader = f.storage.query(make(filter.clone())).await.unwrap();
+                let saved = reader.view().unwrap().saved().unwrap();
+                let late = Evidence {
+                    value: 2,
+                    owner: Some(Ownership {
+                        session: "a".into(),
+                        cycle: Some("one".into()),
+                    }),
+                }
+                .encode_to_vec();
+                f.storage
+                    .write_records(&[RecordWrite {
+                        scope: Some(&epoch),
+                        ..record(&schema(), &Identifier::new("late").unwrap(), &late)
+                    }])
+                    .await
+                    .unwrap();
+                f.storage.flush().await.unwrap();
+                assert!(f.storage.cursor_saved().sequence > saved.sequence);
+                let mut items = Vec::new();
+                while let Some(page) = reader.next_page().await.unwrap() {
+                    assert_eq!(page.len(), 1);
+                    assert_eq!(page[0].scope.as_ref(), Some(&epoch));
+                    items.push(page[0].item.to_string());
+                }
+                assert_eq!(items, ["raw0", "raw2"]);
+                let mut descending = make(filter.clone());
+                descending.options.order = ReadOrder::Descending;
+                descending.options.through = Some(saved.sequence);
+                let mut reader = f.storage.query(descending).await.unwrap();
+                let mut items = Vec::new();
+                while let Some(page) = reader.next_page().await.unwrap() {
+                    items.push(page[0].item.to_string());
+                }
+                assert_eq!(items, ["raw2", "raw0"]);
+                let mut bounded = make(filter.clone());
+                bounded.options.decoded_bytes = Some(NonZeroUsize::MIN);
+                let mut reader = f.storage.query(bounded).await.unwrap();
+                assert!(reader.next_page().await.is_err());
+                drop(reader);
+                let before = f.data.control.query_views.load(Ordering::SeqCst);
+                let mut bounded = make(filter.clone());
+                bounded.options.execution = Some(QueryLimits {
+                    memory_bytes: NonZeroUsize::MIN,
+                    ..f.execution
+                });
+                assert!(f.storage.query(bounded).await.is_err());
+                assert_eq!(f.data.control.query_views.load(Ordering::SeqCst), before);
+                f.data
+                    .control
+                    .refuse_record_filters
+                    .store(true, Ordering::SeqCst);
+                assert!(f.storage.query(make(filter.clone())).await.is_err());
+                f.data
+                    .control
+                    .refuse_record_filters
+                    .store(false, Ordering::SeqCst);
+                let mut invalid = filter.clone();
+                invalid.predicates.push(Predicate::In {
+                    expr: Expr::Col(0),
+                    values: vec![ScalarValue::Unsigned(2); 65],
+                });
+                assert!(f.storage.query(make(invalid)).await.is_err());
+                assert!(f.storage.follow(make(filter.clone())).await.is_err());
+                assert_eq!(f.data.control.query_views.load(Ordering::SeqCst), before);
+                let mut invalid = filter;
+                invalid.columns[1].path =
+                    ScalarPath::Payload(vec![Identifier::new("unknown").unwrap()]);
+                let mut reader = f.storage.query(make(invalid)).await.unwrap();
+                assert!(reader.next_page().await.is_err());
+                drop(reader);
+                f.finish().await;
+            });
+        });
+    }
+    {
+        scenario_runtime::check("nested_record_ownership_keeps_cut", || {
+            let mut executor = tokio::runtime::Builder::new_current_thread();
+            executor.enable_all().build().unwrap().block_on(async {
+                let f = Fixture::new(config()).await;
+                f.storage
+                    .write_schema(
+                        &schema(),
+                        &harmos::schema::graph::Schema::from_declaration(
+                            <Evidence as harmos::schema::Described>::DEFINITION,
+                            &harmos::config::SchemaSettings::default(),
+                        )
+                        .unwrap(),
+                    )
+                    .await
+                    .unwrap();
+                for (index, owner) in [
+                    Some(Ownership {
+                        session: "a".into(),
+                        cycle: Some("one".into()),
+                    }),
+                    Some(Ownership {
+                        session: "a".into(),
+                        cycle: Some("two".into()),
+                    }),
+                    Some(Ownership {
+                        session: "b".into(),
+                        cycle: Some("one".into()),
+                    }),
+                    Some(Ownership {
+                        session: "a".into(),
+                        cycle: None,
+                    }),
+                    None,
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    let payload = Evidence { value: 2, owner }.encode_to_vec();
+                    f.storage
+                        .write_records(&[record(
+                            &schema(),
+                            &Identifier::new(format!("owned{index}")).unwrap(),
+                            &payload,
+                        )])
+                        .await
+                        .unwrap();
+                }
+                f.storage.flush().await.unwrap();
+                let mut query = request();
+                for field in ["session", "cycle"] {
+                    query.frame.scans[0].columns.push(ScalarField {
+                        path: ScalarPath::Payload(vec![
+                            Identifier::new("owner").unwrap(),
+                            Identifier::new(field).unwrap(),
+                        ]),
+                        kind: ScalarKind::Text,
+                    });
+                }
+                query.frame.group_bys[0].aggs = vec![(Expr::Col(0), Agg::Len)];
+                query.frame.group_bys[0].filter = vec![
+                    Predicate::In {
+                        expr: Expr::Col(0),
+                        values: vec![ScalarValue::Unsigned(2)],
+                    },
+                    Predicate::Compare {
+                        expr: Expr::Col(1),
+                        compare: Compare::Eq,
+                        value: ScalarValue::Text("a".into()),
+                    },
+                    Predicate::Exists {
+                        expr: Expr::Col(2),
+                        present: true,
+                    },
+                    Predicate::Compare {
+                        expr: Expr::Col(2),
+                        compare: Compare::Eq,
+                        value: ScalarValue::Text("one".into()),
+                    },
+                ];
+                let mut reader = f.storage.query(query).await.unwrap();
+                let saved = reader.view().saved().unwrap();
+                let payload = Evidence {
+                    value: 2,
+                    owner: Some(Ownership {
+                        session: "a".into(),
+                        cycle: Some("one".into()),
+                    }),
+                }
+                .encode_to_vec();
+                f.storage
+                    .write_records(&[record(
+                        &schema(),
+                        &Identifier::new("late").unwrap(),
+                        &payload,
+                    )])
+                    .await
+                    .unwrap();
+                f.storage.flush().await.unwrap();
+                assert!(f.storage.cursor_saved().sequence > saved.sequence);
+                let batch = reader.read().await.unwrap();
+                assert_eq!(
+                    batch.outputs[0].groups[0].values,
+                    vec![ScalarValue::Unsigned(1)]
+                );
+                drop(batch);
+                drop(reader);
+                f.finish().await;
+            });
+        });
+    }
+    {
+        scenario_runtime::check("membership_presence_and_ownership", || {
+            let mut executor = tokio::runtime::Builder::new_current_thread();
+            executor.enable_all().build().unwrap().block_on(async {
+                let f = Fixture::new(config()).await;
+                let field = harmos::schema::graph::Field {
+                    name: "value".into(),
+                    tag: 1,
+                    kind: harmos::schema::graph::Kind::U64,
+                    cardinality: harmos::schema::Cardinality::Optional,
+                };
+                f.storage
+                    .write_schema(
+                        &schema(),
+                        &harmos::schema::graph::Schema {
+                            root: 0,
+                            definitions: vec![vec![field]],
+                        },
+                    )
+                    .await
+                    .unwrap();
+                let owner = Identifier::new("line").unwrap();
+                for (index, (value, scoped)) in [
+                    (Some(2u64), true),
+                    (Some(4), true),
+                    (None, true),
+                    (Some(2), false),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    let payload = value.encode_to_vec();
+                    let item = Identifier::new(format!("value{index}")).unwrap();
+                    f.storage
+                        .write_records(&[RecordWrite {
+                            scope: scoped.then_some(&owner),
+                            ..record(&schema(), &item, &payload)
+                        }])
+                        .await
+                        .unwrap();
+                }
+                f.storage.flush().await.unwrap();
+                let make = |filters| {
+                    let mut query = request();
+                    query.frame.scans[0].columns.push(ScalarField {
+                        path: ScalarPath::Scope,
+                        kind: ScalarKind::Text,
+                    });
+                    query.frame.group_bys[0].aggs = vec![(Expr::Col(0), Agg::Len)];
+                    query.frame.group_bys[0].filter = filters;
+                    query
+                };
+                for (filters, expected) in [
+                    (
+                        vec![Predicate::In {
+                            expr: Expr::Col(0),
+                            values: vec![ScalarValue::Unsigned(2), ScalarValue::Unsigned(2)],
+                        }],
+                        2,
+                    ),
+                    (
+                        vec![Predicate::In {
+                            expr: Expr::Col(0),
+                            values: vec![],
+                        }],
+                        0,
+                    ),
+                    (
+                        vec![Predicate::Exists {
+                            expr: Expr::Col(0),
+                            present: true,
+                        }],
+                        3,
+                    ),
+                    (
+                        vec![Predicate::Exists {
+                            expr: Expr::Col(0),
+                            present: false,
+                        }],
+                        1,
+                    ),
+                    (
+                        vec![Predicate::Exists {
+                            expr: Expr::Col(1),
+                            present: false,
+                        }],
+                        1,
+                    ),
+                    (
+                        vec![
+                            Predicate::In {
+                                expr: Expr::Col(0),
+                                values: vec![ScalarValue::Unsigned(2), ScalarValue::Unsigned(4)],
+                            },
+                            Predicate::Exists {
+                                expr: Expr::Col(1),
+                                present: true,
+                            },
+                            Predicate::Compare {
+                                expr: Expr::Col(1),
+                                compare: Compare::Eq,
+                                value: ScalarValue::Text("line".into()),
+                            },
+                        ],
+                        2,
+                    ),
+                ] {
+                    let query = make(filters);
+                    let encoded = query.frame.encode_to_vec();
+                    let decoded = Frame::decode(&encoded).unwrap();
+                    assert_eq!(decoded, query.frame);
+                    let mut reader = f
+                        .storage
+                        .query(FrameQuery {
+                            frame: decoded,
+                            options: query.options,
+                        })
+                        .await
+                        .unwrap();
+                    let batch = reader.read().await.unwrap();
+                    assert_eq!(
+                        batch.outputs[0].groups[0].values,
+                        vec![ScalarValue::Unsigned(expected)]
+                    );
+                }
+                let before = f.data.control.query_views.load(Ordering::SeqCst);
+                for values in [
+                    vec![ScalarValue::Unsigned(2); 65],
+                    vec![ScalarValue::Text("wrong type".into())],
+                    vec![ScalarValue::Float(f64::NAN)],
+                ] {
+                    assert!(
+                        f.storage
+                            .query(make(vec![Predicate::In {
+                                expr: Expr::Col(0),
+                                values
+                            }]))
+                            .await
+                            .is_err()
+                    );
+                }
+                let mut invalid = make(vec![Predicate::Exists {
+                    expr: Expr::Col(9),
+                    present: true,
+                }]);
+                assert!(f.storage.query(invalid).await.is_err());
+                assert_eq!(f.data.control.query_views.load(Ordering::SeqCst), before);
+                let decodes = f.data.control.frame_decodes.load(Ordering::SeqCst);
+                invalid = make(vec![Predicate::Exists {
+                    expr: Expr::Col(0),
+                    present: true,
+                }]);
+                invalid.frame.scans[0].columns[0].path =
+                    ScalarPath::Payload(vec![Identifier::new("unknown").unwrap()]);
+                let mut reader = f.storage.query(invalid).await.unwrap();
+                assert!(reader.read().await.is_err());
+                assert_eq!(f.data.control.frame_decodes.load(Ordering::SeqCst), decodes);
+                drop(reader);
+                f.finish().await;
+            });
+        });
+    }
     {
         scenario_runtime::check("backend_uses_cut", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
@@ -219,11 +703,13 @@ fn contract_scenario() {
                     assert!(f.storage.query(non_numeric).await.is_err());
 
                     let mut wrong_predicate = request();
-                    wrong_predicate.frame.group_bys[0].filter.push(Predicate {
-                        expr: Expr::Col(0),
-                        compare: Compare::Eq,
-                        value: ScalarValue::Text("wrong type".into()),
-                    });
+                    wrong_predicate.frame.group_bys[0]
+                        .filter
+                        .push(Predicate::Compare {
+                            expr: Expr::Col(0),
+                            compare: Compare::Eq,
+                            value: ScalarValue::Text("wrong type".into()),
+                        });
                     assert!(f.storage.query(wrong_predicate).await.is_err());
 
                     // A Keyed Order The Backend Cannot Serve Refuses The Whole Frame Up Front.
@@ -358,7 +844,7 @@ fn contract_scenario() {
                         by: vec![(1, 1)],
                         on: (2, 2),
                         strategy: AsOfStrategy::Backward { present: 0 },
-                        right_filter: vec![Predicate {
+                        right_filter: vec![Predicate::Compare {
                             expr: Expr::Col(0),
                             compare: Compare::Lt,
                             value: ScalarValue::Unsigned(9),

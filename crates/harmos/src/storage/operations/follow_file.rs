@@ -25,7 +25,7 @@ use super::{FileBytes, FileSelection};
 
 use crate::operations::{Context, Operation, StreamOutput};
 use crate::operations::{OperationDeclaration, OutputDeclaration, Visibility, WireOperation};
-use crate::schema::{Described, Field};
+use crate::schema::Described;
 use crate::storage::FileProgress;
 
 use crate::storage::StorageManager;
@@ -65,7 +65,7 @@ impl OutputDeclaration for FollowFile {
 }
 impl WireOperation for FollowFile {
     const VERSION: u32 = 1;
-    const OUTPUT: Option<&'static [Field]> = Some(FileBytes::FIELDS);
+    const OUTPUT: Option<crate::schema::declaration::Definition> = Some(FileBytes::DEFINITION);
 }
 
 impl<C: 'static> Operation for Handler<C> {

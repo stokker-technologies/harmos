@@ -28,7 +28,8 @@ use super::{
     WireOperation,
 };
 use crate::catalog::{self, Member};
-use crate::schema::{Cardinality, Described, Field, Kind};
+use crate::schema::declaration::{Field, Kind};
+use crate::schema::{Cardinality, Described};
 
 /* === Constants === */
 
@@ -138,6 +139,7 @@ impl<P: Policy> SdkOperation for Shutdown<P> {
 }
 
 impl Described for InitializeRequest {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(InitializeRequest));
     const FIELDS: &'static [Field] = &[
         Field {
             name: Cow::Borrowed("config_json"),
@@ -152,6 +154,9 @@ impl Described for InitializeRequest {
             cardinality: Cardinality::Required,
         },
     ];
+    const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
+        { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
 }
 
 impl<P: Policy> OperationDeclaration for Initialize<P> {

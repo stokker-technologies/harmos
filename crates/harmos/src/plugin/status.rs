@@ -38,9 +38,25 @@ pub struct PluginStatus {
     pub active_definition: Option<PluginDefinition>,
     pub generation: Option<PluginGeneration>,
     pub state: PluginState,
+    // Startup Attempts Begun Since This Plugin Identity Was Registered.
+    pub attempts: u64,
+    // The Most Recent Startup Or Cleanup Failure, Retained Across Recovery.
+    pub last_failure: Option<String>,
+    pub cleanup_pending: bool,
+    // Classification Of The Last Failure, Retained Across Recovery.
+    pub failure_class: Option<PluginFailureClass>,
+    // A Restart Deadline; Cleanup Must Settle Before Another Attempt Begins.
+    pub next_retry: Option<tokio::time::Instant>,
 }
 
 /* === Enums === */
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PluginFailureClass {
+    Recoverable,
+    Terminal,
+    Cancelled,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PluginState {
     Registered,

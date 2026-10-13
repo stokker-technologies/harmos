@@ -26,7 +26,8 @@ use crate::__private::decoding_add;
 use crate::__private::{DecodeInput, DecodeScalar, DecodeValue, decoding_vector};
 
 use crate::MessageError;
-use crate::schema::{Cardinality, Described, Field, Kind};
+use crate::schema::declaration::{Field, Kind};
+use crate::schema::{Cardinality, Described};
 #[cfg(feature = "grpc")]
 use crate::storage::codec::{Id, Unsigned};
 use crate::storage::codec::{Nested, Repeated, Value, product};
@@ -50,6 +51,7 @@ product!(ObjectMetadata {
 macro_rules! enumeration {
     ($codec:ident, $ty:ident, {$($variant:ident => $number:literal),+}) => {
         impl Value for $codec {
+            const NAME: &'static str = concat!(module_path!(), "::", stringify!($codec));
             fn postcard_write(value: &$ty, bytes: &mut Vec<u8>) {
                 let value: u64 = match value { $($ty::$variant => $number),+ };
                 crate::__private::PostcardValue::write(&value, bytes);
@@ -101,6 +103,7 @@ struct Bounded<T>(PhantomData<T>);
 
 /* === Implementations === */
 impl Value for FieldName {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(FieldName));
     fn postcard_write(value: &Identifier, bytes: &mut Vec<u8>) {
         crate::__private::PostcardValue::write(value, bytes);
     }
@@ -150,6 +153,7 @@ impl Value for FieldName {
     }
 }
 impl Value for FilterScalar {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(FilterScalar));
     fn postcard_write(value: &ObjectScalar, bytes: &mut Vec<u8>) {
         crate::__private::PostcardValue::write(value, bytes);
     }
@@ -203,6 +207,7 @@ impl Value for FilterScalar {
     }
 }
 impl Value for Boolean {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Boolean));
     crate::storage::codec::postcard_field!();
     type Native = bool;
     const KIND: Kind = Kind::Bool;
@@ -227,6 +232,11 @@ impl Value for Boolean {
     }
 }
 impl<T: crate::storage::codec::Native> Value for Bounded<T> {
+    const NAME: &'static str = crate::schema::declaration::Name::new(
+        concat!(module_path!(), "::", stringify!(Bounded)),
+        &[T::NAME],
+    )
+    .as_str();
     fn postcard_write(value: &Vec<T>, bytes: &mut Vec<u8>) {
         crate::__private::PostcardValue::write(value, bytes);
     }
@@ -275,6 +285,7 @@ impl<T: crate::storage::codec::Native> Value for Bounded<T> {
     }
 }
 impl Value for Names {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Names));
     fn postcard_write(value: &Vec<Identifier>, bytes: &mut Vec<u8>) {
         crate::__private::PostcardValue::write(value, bytes);
     }
@@ -350,12 +361,13 @@ impl Value for Names {
     }
 }
 impl Described for ObjectScalar {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(ObjectScalar));
     const FIELDS: &'static [Field] = &[
         Field {
             name: Cow::Borrowed("null"),
             tag: 1,
             kind: Kind::Message {
-                fields: Cow::Borrowed(&[]),
+                definition: <()>::DEFINITION,
             },
             cardinality: Cardinality::Variant,
         },
@@ -363,12 +375,7 @@ impl Described for ObjectScalar {
             name: Cow::Borrowed("boolean"),
             tag: 2,
             kind: Kind::Message {
-                fields: Cow::Borrowed(&[Field {
-                    name: Cow::Borrowed("value"),
-                    tag: 1,
-                    kind: Kind::Bool,
-                    cardinality: Cardinality::Required,
-                }]),
+                definition: <bool>::DEFINITION,
             },
             cardinality: Cardinality::Variant,
         },
@@ -376,12 +383,7 @@ impl Described for ObjectScalar {
             name: Cow::Borrowed("signed"),
             tag: 3,
             kind: Kind::Message {
-                fields: Cow::Borrowed(&[Field {
-                    name: Cow::Borrowed("value"),
-                    tag: 1,
-                    kind: Kind::I64,
-                    cardinality: Cardinality::Required,
-                }]),
+                definition: <i64>::DEFINITION,
             },
             cardinality: Cardinality::Variant,
         },
@@ -389,12 +391,7 @@ impl Described for ObjectScalar {
             name: Cow::Borrowed("unsigned"),
             tag: 4,
             kind: Kind::Message {
-                fields: Cow::Borrowed(&[Field {
-                    name: Cow::Borrowed("value"),
-                    tag: 1,
-                    kind: Kind::U64,
-                    cardinality: Cardinality::Required,
-                }]),
+                definition: <u64>::DEFINITION,
             },
             cardinality: Cardinality::Variant,
         },
@@ -402,12 +399,7 @@ impl Described for ObjectScalar {
             name: Cow::Borrowed("float"),
             tag: 5,
             kind: Kind::Message {
-                fields: Cow::Borrowed(&[Field {
-                    name: Cow::Borrowed("value"),
-                    tag: 1,
-                    kind: Kind::F64,
-                    cardinality: Cardinality::Required,
-                }]),
+                definition: <f64>::DEFINITION,
             },
             cardinality: Cardinality::Variant,
         },
@@ -415,16 +407,15 @@ impl Described for ObjectScalar {
             name: Cow::Borrowed("text"),
             tag: 6,
             kind: Kind::Message {
-                fields: Cow::Borrowed(&[Field {
-                    name: Cow::Borrowed("value"),
-                    tag: 1,
-                    kind: Kind::String,
-                    cardinality: Cardinality::Required,
-                }]),
+                definition: <String>::DEFINITION,
             },
             cardinality: Cardinality::Variant,
         },
     ];
+
+    const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
+        { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
 }
 #[cfg(feature = "grpc")]
 impl ObjectScalar {

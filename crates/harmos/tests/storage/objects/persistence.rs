@@ -314,7 +314,16 @@ pub(super) fn contract_scenario() {
                         ..StorageSettings::default()
                     })
                     .await;
-                    f.storage.write_schema(&schema(), &[]).await.unwrap();
+                    f.storage
+                        .write_schema(
+                            &schema(),
+                            &harmos::schema::graph::Schema {
+                                root: 0,
+                                definitions: vec![vec![]],
+                            },
+                        )
+                        .await
+                        .unwrap();
                     f.storage.write_object(&document("running")).await.unwrap();
                     write(&f.storage, "record").await;
                     f.storage.write_object(&document("finished")).await.unwrap();
@@ -763,8 +772,22 @@ pub(super) fn contract_scenario() {
                     f.storage.flush_until(&receipts[1].position).await.unwrap();
                     {
                         let schemas = f.primary.schemas.lock().unwrap();
-                        assert_eq!(schemas[&1].fields, Document::FIELDS);
-                        assert_eq!(schemas[&3].fields, LegacyDocument::FIELDS);
+                        assert_eq!(
+                            schemas[&1].schema,
+                            harmos::schema::graph::Schema::from_declaration(
+                                Document::DEFINITION,
+                                &harmos::config::SchemaSettings::default()
+                            )
+                            .unwrap()
+                        );
+                        assert_eq!(
+                            schemas[&3].schema,
+                            harmos::schema::graph::Schema::from_declaration(
+                                LegacyDocument::DEFINITION,
+                                &harmos::config::SchemaSettings::default()
+                            )
+                            .unwrap()
+                        );
                     }
                     assert_eq!(*f.primary.control.writes.lock().unwrap(), [1, 2, 3, 4]);
                     assert_eq!(f.primary.objects.lock().unwrap().len(), 2);

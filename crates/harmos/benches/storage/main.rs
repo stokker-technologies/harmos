@@ -226,7 +226,16 @@ async fn measure(mode: &str, count: usize, repetition: Option<usize>) -> Duratio
     }
     let runtime = builder.runtime_with_storage(&storage).await.unwrap();
     let schema = schema();
-    storage.write_schema(&schema, &[]).await.unwrap();
+    storage
+        .write_schema(
+            &schema,
+            &harmos::schema::graph::Schema {
+                root: 0,
+                definitions: vec![vec![]],
+            },
+        )
+        .await
+        .unwrap();
     storage.flush().await.unwrap();
     storage.flush_recovery().await.unwrap();
     data.control.write_sizes.lock().unwrap().clear();

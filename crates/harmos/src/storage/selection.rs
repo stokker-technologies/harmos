@@ -35,8 +35,8 @@ use crate::Identifier;
 pub(super) trait Entry: Clone + Serialize + Send + Sync + 'static {
     const KIND: ReadKind;
     fn pending(operation: &Operation) -> &[Self];
-    fn read_limits(limits: ReadLimits, encoding: SchemaEncoding) -> ReadLimits {
-        if Self::KIND == ReadKind::Schemas && encoding == SchemaEncoding::GraphV1 {
+    fn read_limits(limits: ReadLimits) -> ReadLimits {
+        if Self::KIND == ReadKind::Schemas {
             ReadLimits {
                 rows: std::num::NonZeroUsize::MIN,
                 ..limits
@@ -46,11 +46,11 @@ pub(super) trait Entry: Clone + Serialize + Send + Sync + 'static {
         }
     }
 
-    fn decoding_overhead(encoding: SchemaEncoding) -> usize {
+    fn decoding_overhead(limits: ReadLimits) -> Option<usize> {
         if Self::KIND == ReadKind::Schemas {
-            encoding.decoding_overhead()
+            super::schema::decoding_overhead(limits.bytes.get())
         } else {
-            0
+            Some(0)
         }
     }
 
@@ -199,22 +199,20 @@ impl Entry for StoredRow {
 }
 
 impl Entry for StorageSchema {
-    fn validate(&self, inner: &super::manager::Inner, limits: ReadLimits) -> crate::Result<()> {
-        if self.encoding() != SchemaEncoding::Inline && self.encoding() != inner.schema_encoding {
-            return Err(crate::Error::InvalidInput {
+    fn validate(&self, _: &super::manager::Inner, limits: ReadLimits) -> crate::Result<()> {
+        self.schema
+            .prepare(&harmos_contract::config::SchemaSettings::default())
+            .map_err(|_| crate::Error::InvalidInput {
                 field: "storage schema",
-                reason: "backend returned an unsupported schema encoding",
-            });
-        }
-        crate::schema::validate(&self.fields).map_err(|_| crate::Error::InvalidInput {
-            field: "storage schema",
-            reason: "invalid stored fields",
-        })?;
+                reason: "invalid stored shared schema",
+            })?;
         let bound = limits
             .bytes
             .get()
             .checked_mul(4)
-            .and_then(|bytes| bytes.checked_add(inner.schema_encoding.decoding_overhead()))
+            .and_then(|bytes| {
+                bytes.checked_add(super::schema::decoding_overhead(limits.bytes.get())?)
+            })
             .ok_or(crate::Error::InvalidInput {
                 field: "storage schema",
                 reason: "decoded size overflow",

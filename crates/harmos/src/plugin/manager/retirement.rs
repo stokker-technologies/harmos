@@ -33,6 +33,7 @@ use crate::supervision::dependencies;
 
 /* === Type Aliases === */
 type Outcomes = Arc<Mutex<BTreeMap<String, Result<(), Arc<Error>>>>>;
+pub(super) type Notice = Arc<dyn Fn(PluginState) + Send + Sync>;
 
 /* === Structs === */
 #[derive(Clone)]
@@ -40,6 +41,7 @@ pub(super) struct Owner {
     pub generation: PluginGeneration,
     pub state: watch::Sender<PluginState>,
     pub cleanup: Option<CleanupOwner>,
+    pub notice: Option<Notice>,
 }
 
 pub(super) struct Driver {
@@ -163,6 +165,9 @@ impl Resource for Driver {
 
 impl Driver {
     fn publish(&self, id: &str, state: PluginState, kind: PluginEventKind) {
+        if let Some(notice) = &self.owners[id].notice {
+            notice(state);
+        }
         let _ = self.events.send(PluginEvent::Changed {
             id: id.to_owned(),
             generation: Some(self.owners[id].generation),

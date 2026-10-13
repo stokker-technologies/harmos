@@ -169,13 +169,13 @@ pub(crate) fn structure(
     });
     let wire = version.map(|version| {
         let input_schema = input.as_ref().map(|_| quote! {
-            const INPUT: Option<&'static [#sdk::schema::Field]> = Some(
-                <<Self as #sdk::operations::InputDeclaration>::Item as #sdk::schema::Described>::FIELDS
+            const INPUT: Option<#sdk::schema::declaration::Definition> = Some(
+                <<Self as #sdk::operations::InputDeclaration>::Item as #sdk::schema::Described>::DEFINITION
             );
         });
         let output_schema = output.as_ref().map(|_| quote! {
-            const OUTPUT: Option<&'static [#sdk::schema::Field]> = Some(
-                <<Self as #sdk::operations::OutputDeclaration>::Item as #sdk::schema::Described>::FIELDS
+            const OUTPUT: Option<#sdk::schema::declaration::Definition> = Some(
+                <<Self as #sdk::operations::OutputDeclaration>::Item as #sdk::schema::Described>::DEFINITION
             );
         });
         quote! {

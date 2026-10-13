@@ -23,7 +23,8 @@ use std::borrow::Cow;
 use crate::__private::DecodeInput;
 use crate::__private::decoding_add;
 
-use crate::schema::{Cardinality, Described, Field, Kind};
+use crate::schema::declaration::{Field, Kind};
+use crate::schema::{Cardinality, Described};
 #[cfg(feature = "grpc")]
 use crate::storage::codec::{Nested, Value};
 use crate::storage::{ObjectEntry, ObjectMetadata};
@@ -68,13 +69,14 @@ impl MemorySize for ObjectResult {
     }
 }
 impl Described for ObjectResult {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(ObjectResult));
     const FIELDS: &'static [Field] = &[
         Field {
             name: Cow::Borrowed("value"),
             tag: 1,
             cardinality: Cardinality::Variant,
             kind: Kind::Message {
-                fields: Cow::Borrowed(ObjectEntry::FIELDS),
+                definition: ObjectEntry::DEFINITION,
             },
         },
         Field {
@@ -82,10 +84,14 @@ impl Described for ObjectResult {
             tag: 2,
             cardinality: Cardinality::Variant,
             kind: Kind::Message {
-                fields: Cow::Borrowed(ObjectMetadata::FIELDS),
+                definition: ObjectMetadata::DEFINITION,
             },
         },
     ];
+
+    const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
+        { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
 }
 #[cfg(feature = "grpc")]
 impl crate::__private::Protobuf for ObjectResult {

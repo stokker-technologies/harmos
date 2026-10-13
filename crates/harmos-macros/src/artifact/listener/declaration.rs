@@ -120,18 +120,18 @@ pub(super) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
     let harmos = HarmosPath::resolve(facade);
     let (source, row) = match (record, version, row, stream) {
         (Some(record), Some(version), Some(row), None) => {
-            let source = quote!(#harmos::listeners::Source::Record {
-                id: ::std::borrow::Cow::Borrowed(#record), version: #version,
-                fields: ::std::borrow::Cow::Borrowed(<#row as #harmos::schema::Described>::FIELDS),
+            let source = quote!(#harmos::listeners::SourceDeclaration::Record {
+                id: #record, version: #version,
+                row: <#row as #harmos::schema::Described>::DEFINITION,
             });
             (source, quote!(#row))
         }
         (None, None, None, Some(stream)) => {
             let row = quote!(<#stream as #harmos::StreamSpec>::Row);
-            let source = quote!(#harmos::listeners::Source::Stream {
-                id: ::std::borrow::Cow::Borrowed(<#stream as #harmos::StreamSpec>::ID),
+            let source = quote!(#harmos::listeners::SourceDeclaration::Stream {
+                id: <#stream as #harmos::StreamSpec>::ID,
                 schema_ordinal: <#stream as #harmos::StreamSpec>::VERSION,
-                fields: ::std::borrow::Cow::Borrowed(<#row as #harmos::schema::Described>::FIELDS),
+                row: <#row as #harmos::schema::Described>::DEFINITION,
             });
             (source, row)
         }

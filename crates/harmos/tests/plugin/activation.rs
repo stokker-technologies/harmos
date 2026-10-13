@@ -28,12 +28,65 @@ use super::*;
 /* === Type Aliases === */
 
 /* === Structs === */
+struct WireClient;
+struct WireCall;
 
 /* === Enums === */
+#[harmos::catalog]
+enum WireClients {
+    Run(WireClient),
+}
 
 /* === Traits === */
 
 /* === Implementations === */
+impl OperationDeclaration for WireCall {
+    type Request = RunRequest;
+    type Response = String;
+    const ID: &'static str = "client.run";
+    const POLICY: OperationPolicy = Run::<1, 100, false>::POLICY;
+    const VISIBILITY: Visibility = Visibility::Shared;
+}
+
+impl harmos::operations::WireOperation for WireCall {
+    const VERSION: u32 = 1;
+    #[cfg(feature = "grpc")]
+    const GRPC: Option<harmos::operations::Grpc> = Some(harmos::operations::Grpc::new(
+        "fixture.embedded.v1",
+        "Client",
+        "Run",
+    ));
+    #[cfg(feature = "grpc")]
+    fn visit_grpc<V: harmos::operations::GrpcVisitor>(visitor: V) -> Option<V::Entry> {
+        Some(visitor.unary::<Self>())
+    }
+}
+
+impl Operation for WireClient {
+    type Declaration = WireCall;
+    type Resources = ();
+    type Error = Error;
+    type Endpoints = ();
+    type Context<'a> = Context<'a>;
+
+    fn new(_: Arc<()>) -> Result<Self> {
+        Ok(Self)
+    }
+
+    async fn run<'ctx>(
+        &mut self,
+        context: Self::Context<'ctx>,
+        request: &mut RunRequest,
+        _: &mut Self::Endpoints,
+    ) -> Result<String> {
+        let response = context
+            .call::<Run<0, 100, false>>(RunRequest {
+                value: request.value.clone(),
+            })
+            .await?;
+        Ok(response.as_ref().clone())
+    }
+}
 
 /* === Public Functions === */
 
@@ -43,6 +96,432 @@ use super::*;
 
 #[test]
 fn contract_scenario() {
+    scenario_runtime::check("runtime_embedded_wire_contracts", || {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                use harmos::operations::{AuthoredContracts, Contract};
+                use harmos_contract::inventory::contracts::Required;
+                let runtime = harmos::Runtime::<Fixture>::builder((), ())
+                    .operation_settings(harmos::operations::Settings {
+                        preparation_bytes: Some(std::num::NonZeroUsize::new(4096).unwrap()),
+                        ..Default::default()
+                    })
+                    .register(Lanes::catalog())
+                    .runtime()
+                    .await
+                    .unwrap();
+                let mut provider = plan()
+                    .ordered()
+                    .iter()
+                    .find(|definition| definition.id == "provider")
+                    .unwrap()
+                    .clone();
+                provider.contributions = PluginContributions::default();
+                runtime
+                    .plugin
+                    .register_embedded_wire::<Operations<0, 100, false>, _>(
+                        provider,
+                        Default::default(),
+                        Lanes::Open,
+                        Arc::new(Owner),
+                    )
+                    .await
+                    .unwrap();
+                let registered = runtime.plugin.status("provider").unwrap();
+                assert_eq!(registered.attempts, 0);
+                let contracts = AuthoredContracts::of::<Operations<0, 100, false>>().unwrap();
+                assert_eq!(
+                    registered
+                        .definition
+                        .as_ref()
+                        .unwrap()
+                        .contributions
+                        .wire_contracts,
+                    contracts
+                );
+                assert!(
+                    runtime
+                        .operations
+                        .call_encoded("provider.run", request_payload())
+                        .await
+                        .is_err()
+                );
+
+                let mut client = plan()
+                    .ordered()
+                    .iter()
+                    .find(|definition| definition.id == "client")
+                    .unwrap()
+                    .clone();
+                client.artifact = PluginArtifact::Embedded {
+                    revision: "wire-client".into(),
+                };
+                client.contributions.required_contracts = Some(vec![Required {
+                    contract: contracts[0].clone(),
+                    grants: vec![],
+                }]);
+                runtime
+                    .plugin
+                    .register_embedded_wire::<WireClients, _>(
+                        client,
+                        Default::default(),
+                        Lanes::Open,
+                        Arc::new(()),
+                    )
+                    .await
+                    .unwrap();
+                runtime.plugin.initialize().await.unwrap();
+                let ready = runtime.plugin.status("provider").unwrap();
+                #[cfg(feature = "grpc")]
+                let grpc_generation = runtime.grpc().methods()[0].generation;
+
+                #[cfg(feature = "grpc")]
+                {
+                    let methods = runtime.grpc().methods();
+                    assert_eq!(methods.len(), 1);
+                    assert_eq!(methods[0].owner.as_str(), "client");
+                    assert_eq!(
+                        methods[0].contract.grpc().unwrap().path(),
+                        "/fixture.embedded.v1.Client/Run"
+                    );
+                    let attached = runtime.grpc().attach(Default::default()).await.unwrap();
+                    let channel = tonic::transport::Endpoint::from_shared(format!(
+                        "http://{}",
+                        attached.local_addr()
+                    ))
+                    .unwrap()
+                    .connect()
+                    .await
+                    .unwrap();
+                    let mut client = tonic::client::Grpc::new(channel);
+                    client.ready().await.unwrap();
+                    let settings = harmos::grpc::server::Settings::default();
+                    let codec = harmos::grpc::Codec::<String, Arc<RunRequest>>::new(
+                        settings.decode,
+                        settings.encode,
+                    )
+                    .unwrap();
+                    let response: tonic::Response<harmos::operations::StreamItem<String>> = client
+                        .unary(
+                            tonic::Request::new(Arc::new(RunRequest {
+                                value: "grpc embedded provider".into(),
+                            })),
+                            tonic::codegen::http::uri::PathAndQuery::from_static(
+                                "/fixture.embedded.v1.Client/Run",
+                            ),
+                            codec,
+                        )
+                        .await
+                        .unwrap();
+                    assert_eq!(response.into_inner().as_str(), "grpc embedded provider");
+                }
+
+                let request = harmos::Message::encode_to_vec(&RunRequest {
+                    value: "original provider".into(),
+                });
+                let response = runtime
+                    .operations
+                    .call_encoded("client.run", request)
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    <String as harmos::Message>::decode(&response).unwrap(),
+                    "original provider"
+                );
+
+                // Wire Version Drift Is Rejected Without Replacing The Live Generation
+                let mut replacement = ready.definition.clone().unwrap();
+                let original = &contracts[0];
+                replacement.contributions.wire_contracts = vec![
+                    Contract::new(
+                        original.operation().clone(),
+                        2,
+                        original.codec(),
+                        original.schema().clone(),
+                    )
+                    .unwrap(),
+                ];
+                assert!(matches!(
+                    runtime
+                        .plugin
+                        .reload_embedded_wire::<Operations<0, 100, false>, _>(
+                            replacement,
+                            Default::default(),
+                            Lanes::Open,
+                            Arc::new(Owner)
+                        )
+                        .await,
+                    Err(Error::InvalidInput {
+                        field: "embedded plugin contracts",
+                        ..
+                    })
+                ));
+                assert_eq!(runtime.plugin.status("provider").unwrap(), ready);
+
+                let mut replacement = ready.definition.clone().unwrap();
+                replacement.artifact = PluginArtifact::Embedded {
+                    revision: "wire-provider-v2".into(),
+                };
+                runtime
+                    .plugin
+                    .reload_embedded_wire::<Operations<0, 100, false>, _>(
+                        replacement,
+                        Default::default(),
+                        Lanes::Open,
+                        Arc::new(Owner),
+                    )
+                    .await
+                    .unwrap();
+                let reloaded = runtime.plugin.status("provider").unwrap();
+                assert_ne!(reloaded.generation, ready.generation);
+                assert_eq!(reloaded.attempts, 2);
+                #[cfg(feature = "grpc")]
+                assert_ne!(runtime.grpc().methods()[0].generation, grpc_generation);
+
+                assert_eq!(runtime.plugin.status("client").unwrap().attempts, 2);
+                let response = runtime
+                    .operations
+                    .call_encoded("client.run", request_payload())
+                    .await
+                    .unwrap();
+                assert_eq!(<String as harmos::Message>::decode(&response).unwrap(), "");
+                runtime.stop().await.unwrap();
+                #[cfg(feature = "grpc")]
+                assert!(runtime.grpc().methods().is_empty());
+
+                assert!(
+                    runtime
+                        .operations
+                        .call_encoded("client.run", request_payload())
+                        .await
+                        .is_err()
+                );
+                assert!(matches!(
+                    runtime.plugin.cleanup().status(),
+                    PluginCleanupStatus::Settled
+                ));
+            });
+    });
+    scenario_runtime::check("runtime_owned_embedded_plugins", || {
+        let mut executor = tokio::runtime::Builder::new_current_thread();
+        executor.enable_all().build().unwrap().block_on(async {
+            let runtime = harmos::Runtime::<Fixture>::builder((), ())
+                .register(Lanes::catalog())
+                .runtime()
+                .await
+                .unwrap();
+            let handle = runtime.handle();
+            assert!(runtime.plugin.same_instance(&handle.plugin));
+            assert!(handle.plugin.same_instance(&handle.clone().plugin));
+            let mut definition = plan()
+                .ordered()
+                .iter()
+                .find(|definition| definition.id == "provider")
+                .unwrap()
+                .clone();
+            definition.artifact = PluginArtifact::Embedded {
+                revision: "runtime-owned".into(),
+            };
+            definition.contributions = PluginContributions::default();
+            handle
+                .plugin
+                .register_embedded::<Operations<0, 100, false>, _>(
+                    definition,
+                    Default::default(),
+                    Lanes::Open,
+                    Arc::new(Owner),
+                )
+                .await
+                .unwrap();
+            let registered = runtime.plugin.status("provider").unwrap();
+            assert_eq!(registered.state, PluginState::Registered);
+            assert_eq!(registered.attempts, 0);
+            assert!(matches!(
+                runtime
+                    .operations
+                    .call::<Run<0, 100, false>>(RunRequest {
+                        value: "before".into()
+                    })
+                    .await,
+                Err(Error::NotRegistered { .. })
+            ));
+            runtime.plugin.initialize().await.unwrap();
+            handle.plugin.initialize().await.unwrap();
+            let ready = handle.plugin.status("provider").unwrap();
+            assert_eq!(ready.state, PluginState::Ready);
+            assert_eq!(ready.attempts, 1);
+            assert_eq!(
+                runtime
+                    .operations
+                    .call::<Run<0, 100, false>>(RunRequest {
+                        value: "shared runtime owner".into()
+                    })
+                    .await
+                    .unwrap()
+                    .as_str(),
+                "shared runtime owner"
+            );
+            let generation = runtime
+                .plugin
+                .status("provider")
+                .unwrap()
+                .generation
+                .unwrap();
+            runtime.plugin.reload("provider").await.unwrap();
+            let reloaded = runtime.plugin.status("provider").unwrap();
+            assert_ne!(reloaded.generation, Some(generation));
+            assert_eq!(reloaded.attempts, 2);
+            assert_eq!(
+                runtime
+                    .operations
+                    .call::<Run<0, 100, false>>(RunRequest {
+                        value: "after reload".into()
+                    })
+                    .await
+                    .unwrap()
+                    .as_str(),
+                "after reload"
+            );
+            let mut replacement = reloaded.definition.clone().unwrap();
+            replacement.artifact = PluginArtifact::Embedded {
+                revision: "runtime-owned-v2".into(),
+            };
+            handle
+                .plugin
+                .reload_embedded::<Operations<0, 100, false>, _>(
+                    replacement.clone(),
+                    Default::default(),
+                    Lanes::Open,
+                    Arc::new(Owner),
+                )
+                .await
+                .unwrap();
+            let updated = runtime.plugin.status("provider").unwrap();
+            assert_eq!(updated.attempts, 3);
+            assert_ne!(updated.generation, reloaded.generation);
+            assert_eq!(updated.active_definition, Some(replacement.clone()));
+            assert!(
+                runtime
+                    .plugin
+                    .reload_embedded::<Operations<1, 100, false>, _>(
+                        replacement,
+                        Default::default(),
+                        Lanes::Open,
+                        Arc::new(Owner),
+                    )
+                    .await
+                    .is_err()
+            );
+            assert_eq!(runtime.plugin.status("provider").unwrap(), updated);
+            assert_eq!(
+                runtime
+                    .operations
+                    .call::<Run<0, 100, false>>(RunRequest {
+                        value: "after replacement".into()
+                    })
+                    .await
+                    .unwrap()
+                    .as_str(),
+                "after replacement"
+            );
+            runtime.plugin.remove("provider").await.unwrap();
+            assert!(runtime.plugin.status("provider").is_none());
+            assert!(matches!(
+                runtime
+                    .operations
+                    .call::<Run<0, 100, false>>(RunRequest {
+                        value: "removed".into()
+                    })
+                    .await,
+                Err(Error::NotRegistered { .. })
+            ));
+            runtime.stop().await.unwrap();
+            assert!(handle.plugin.initialize().await.is_err());
+            assert!(matches!(
+                handle.plugin.cleanup().status(),
+                PluginCleanupStatus::Settled
+            ));
+            assert!(
+                handle
+                    .plugin
+                    .statuses()
+                    .iter()
+                    .all(|status| status.generation.is_none())
+            );
+        });
+    });
+    scenario_runtime::check("inert_registration_preserves_live_graph", || {
+        let mut executor = tokio::runtime::Builder::new_current_thread();
+        executor.enable_all().build().unwrap().block_on(async {
+            let mut session = session();
+            let mut host = Host::new().await;
+            session.initialize(&mut host).await.unwrap();
+            let provider = session.status("provider").unwrap();
+            host.control.lock().unwrap().events.clear();
+            let mut added = session.definition("other").unwrap().clone();
+            added.id = "registered-later".into();
+            added.contributions = PluginContributions::default();
+            let definitions: Vec<_> = session
+                .definitions()
+                .cloned()
+                .chain([added.clone()])
+                .collect();
+            let frozen = session.plan_reload(candidate([])).unwrap();
+            session
+                .register(PluginDefinitions::new(definitions.clone(), []).unwrap())
+                .unwrap();
+            assert!(host.control.lock().unwrap().events.is_empty());
+            assert_eq!(session.status("provider").unwrap(), provider);
+            let inert = session.status(&added.id).unwrap();
+            assert_eq!(inert.state, PluginState::Registered);
+            assert_eq!(inert.attempts, 0);
+            assert!(inert.generation.is_none());
+            assert!(
+                host.operations()
+                    .call_encoded("provider.run", request_payload())
+                    .await
+                    .is_ok()
+            );
+            assert!(matches!(
+                session
+                    .apply_reload(frozen, &mut host)
+                    .await
+                    .map_err(failure),
+                Err(PluginFailure::StalePlan { .. })
+            ));
+            let before: Vec<_> = session.statuses().collect();
+            let mut replaced = definitions.clone();
+            replaced
+                .iter_mut()
+                .find(|definition| definition.id == "provider")
+                .unwrap()
+                .configuration = b" null ".to_vec();
+            assert!(
+                session
+                    .register(PluginDefinitions::new(replaced, []).unwrap())
+                    .is_err()
+            );
+            assert!(
+                session
+                    .register(
+                        PluginDefinitions::new(
+                            definitions
+                                .into_iter()
+                                .filter(|definition| definition.id != "client"),
+                            []
+                        )
+                        .unwrap()
+                    )
+                    .is_err()
+            );
+            assert_eq!(session.statuses().collect::<Vec<_>>(), before);
+            assert!(host.control.lock().unwrap().events.is_empty());
+            session.shutdown(&mut host).await.unwrap();
+        });
+    });
     {
         scenario_runtime::check("activation_failure_cleans", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
@@ -51,6 +530,9 @@ fn contract_scenario() {
     let mut session = session();
     let mut host = Host::new().await;
     session.initialize(&mut host).await.unwrap();
+    assert_eq!(session.status("client").unwrap().attempts, 1);
+    session.initialize(&mut host).await.unwrap();
+    assert_eq!(session.status("client").unwrap().attempts, 1);
     host.control.lock().unwrap().events.clear();
     host.fail_start = Some("client".to_owned());
     let next = plan();
@@ -83,6 +565,9 @@ fn contract_scenario() {
     host.fail_start = None;
     session.initialize(&mut host).await.unwrap();
     assert_eq!(session.ready().count(), 3);
+    let recovered = session.status("client").unwrap();
+    assert_eq!(recovered.attempts, 3);
+    assert!(recovered.last_failure.is_some());
     session.shutdown(&mut host).await.unwrap();
 
 });
@@ -341,7 +826,10 @@ fn contract_scenario() {
                                 None,
                             ),
                             row_metadata: Vec::new(),
-                            fields: Vec::new(),
+                            row: harmos::schema::graph::Schema {
+                                root: 0,
+                                definitions: vec![vec![]],
+                            },
                         });
                     let mut manager =
                         PluginManager::new(PluginDefinitions::new(definitions, []).unwrap())
@@ -359,7 +847,11 @@ fn contract_scenario() {
                     assert!(cleanup.is_empty());
                     assert!(matches!(failure(source), PluginFailure::Routing(
         DispatchError::IncompleteStreams { owner }) if owner == "client"));
-                    assert_eq!(manager.status("client").unwrap().state, PluginState::Failed);
+                    let status = manager.status("client").unwrap();
+                    assert_eq!(status.state, PluginState::Failed);
+                    assert_eq!(status.attempts, 1);
+                    assert!(status.last_failure.is_some());
+                    assert!(!status.cleanup_pending);
                     assert!(
                         !manager
                             .status("client")

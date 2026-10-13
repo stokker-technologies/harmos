@@ -21,6 +21,7 @@ use std::time::SystemTime as Timestamp;
 use serde::{Deserialize, Serialize};
 
 // Local Imports
+use crate::storage::RecordFilter;
 use crate::storage::catalog::{ObjectKey, SchemaKey};
 use crate::storage::codec::{Code, Count, Id, Nested, Optional, Time, Unsigned, coded, product};
 use crate::storage::object_values::Key;
@@ -49,7 +50,7 @@ pub struct ReadLimits {
     pub bytes: NonZeroUsize,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ReadSelection {
     pub kind: ReadKind,
@@ -66,6 +67,8 @@ pub struct ReadSelection {
     pub order: ReadOrder,
     pub history: ReadHistory,
     pub source_time: Option<SourceTimeRange>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub record_filter: Option<RecordFilter>,
 }
 
 /* === Enums === */
@@ -123,6 +126,13 @@ impl MemorySize for ReadSelection {
                     .saturating_sub(std::mem::size_of::<ObjectKey>()),
             );
         }
+        if let Some(filter) = &self.record_filter {
+            bytes = bytes.saturating_add(
+                filter
+                    .memory_size()
+                    .saturating_sub(std::mem::size_of::<RecordFilter>()),
+            );
+        }
         bytes
     }
 }
@@ -142,6 +152,7 @@ impl ReadSelection {
             order: ReadOrder::Ascending,
             history: ReadHistory::Complete,
             source_time: None,
+            record_filter: None,
         }
     }
 }
@@ -200,6 +211,7 @@ product!(ReadSelection {
     order: Code<ReadOrder> => 10,
     history: Code<ReadHistory> => 11,
     source_time: Optional<Nested<SourceTimeRange>> => 12,
+    record_filter: Optional<Nested<RecordFilter>> => 13,
 });
 
 /* === Public Functions === */

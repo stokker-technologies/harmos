@@ -40,6 +40,7 @@ pub(crate) struct Children {
 pub(crate) struct ChildRequest {
     pub(crate) operation: String,
     pub(crate) payload: Vec<u8>,
+    pub(crate) values: Vec<super::CallValue>,
     pub(crate) submitted: tokio::time::Instant,
     pub(crate) answer: oneshot::Sender<Result<EncodedInvocation, Error>>,
 }
@@ -64,6 +65,7 @@ impl Children {
         let request = ChildRequest {
             operation: call.operation,
             payload: call.payload,
+            values: call.values,
             submitted,
             answer,
         };

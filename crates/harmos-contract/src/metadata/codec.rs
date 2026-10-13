@@ -20,10 +20,11 @@ use std::borrow::Cow;
 use super::{Identifier, Metadata};
 use crate::MessageError;
 use crate::message::{PostcardReader as Reader, PostcardValue, decoding_add};
-use crate::schema::{Cardinality, Described, Field, Kind};
+use crate::schema::declaration::{Definition, Field, Kind};
+use crate::schema::{Cardinality, Described};
 use crate::value::codec::{
-    ENTRY_FIELDS, TIMESTAMP_FIELDS, VALUE_DEPTH, entries_memory, entries_size, read_entries,
-    read_timestamp, timestamp_size, write_entries, write_timestamp,
+    ENTRY_DEFINITION, TIMESTAMP_DEFINITION, VALUE_DEPTH, entries_memory, entries_size,
+    read_entries, read_timestamp, timestamp_size, write_entries, write_timestamp,
 };
 
 /* === Constants === */
@@ -42,19 +43,19 @@ const METADATA_FIELDS: &[Field] = &[
     field(
         "attributes",
         5,
-        message(ENTRY_FIELDS),
+        message(ENTRY_DEFINITION),
         Cardinality::Repeated,
     ),
     field(
         "created_at",
         6,
-        message(TIMESTAMP_FIELDS),
+        message(TIMESTAMP_DEFINITION),
         Cardinality::Optional,
     ),
     field(
         "updated_at",
         7,
-        message(TIMESTAMP_FIELDS),
+        message(TIMESTAMP_DEFINITION),
         Cardinality::Optional,
     ),
 ];
@@ -71,11 +72,19 @@ const METADATA_FIELDS: &[Field] = &[
 
 /* === Implementations === */
 impl Described for Identifier {
+    const NAME: &'static str = "harmos::Identifier";
     const FIELDS: &'static [Field] = IDENTIFIER_FIELDS;
+    const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
+        { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
 }
 
 impl Described for Metadata {
+    const NAME: &'static str = "harmos::Metadata";
     const FIELDS: &'static [Field] = METADATA_FIELDS;
+    const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
+        { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
 }
 
 impl PostcardValue for Metadata {
@@ -320,10 +329,8 @@ const fn field(name: &'static str, tag: u32, kind: Kind, cardinality: Cardinalit
     }
 }
 
-const fn message(fields: &'static [Field]) -> Kind {
-    Kind::Message {
-        fields: Cow::Borrowed(fields),
-    }
+const fn message(definition: Definition) -> Kind {
+    Kind::Message { definition }
 }
 
 fn write_instant(value: Option<time::OffsetDateTime>, bytes: &mut Vec<u8>) {

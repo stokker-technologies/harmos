@@ -488,10 +488,26 @@ impl Bindings<'_> {
         if definition != *contract.operation()
             || declared.version() != contract.version()
             || declared.codec() != contract.codec()
-            || declared.request() != contract.request()
-            || declared.response() != contract.response()
-            || declared.input() != contract.input()
-            || declared.output() != contract.output()
+            || ![
+                (Some(declared.request()), Some(contract.request())),
+                (Some(declared.response()), Some(contract.response())),
+                (declared.input(), contract.input()),
+                (declared.output(), contract.output()),
+            ]
+            .into_iter()
+            .all(|(left, right)| match (left, right) {
+                (None, None) => true,
+                (Some(left), Some(right)) => left
+                    .schema()
+                    .equivalent(
+                        left.index(),
+                        right.schema(),
+                        right.index(),
+                        &harmos_contract::config::SchemaSettings::default(),
+                    )
+                    .unwrap_or(false),
+                _ => false,
+            })
             || declared.grpc() != contract.grpc()
         {
             return Err(Error::InvalidInput {

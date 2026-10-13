@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+mod discovery;
 
 /* === Re-Exports === */
 

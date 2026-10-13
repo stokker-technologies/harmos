@@ -713,7 +713,8 @@ const DOWNSTREAM: [&str; 44] = [
 ];
 
 // Reviewed Direct Dependencies Include Dev-Only Test And Benchmark Edges.
-const ALLOWANCE: [(&str, &[&str]); 16] = [
+const ALLOWANCE: [(&str, &[&str]); 17] = [
+    ("cargo-harmos", &["clap", "ctrlc", "harmos", "serde_json"]),
     (
         "harmos",
         &[
@@ -732,7 +733,9 @@ const ALLOWANCE: [(&str, &[&str]); 16] = [
             "http-body",
             "http-body-util",
             "jsonl-adapter",
+            "notify",
             "petgraph",
+            "process-wrap",
             "prost-reflect",
             "protoc-bin-vendored",
             "semver",
@@ -747,6 +750,8 @@ const ALLOWANCE: [(&str, &[&str]); 16] = [
             "tonic",
             "tonic-reflection",
             "tonic-web",
+            "tower",
+            "tower-http",
             "tracing",
             "tracing-subscriber",
             "wasmtime",
@@ -864,6 +869,7 @@ const ALLOWANCE: [(&str, &[&str]); 16] = [
             "semver",
             "serde",
             "serde_json",
+            "sha2",
             "tempfile",
             "thiserror",
             "tokio",
@@ -907,7 +913,9 @@ const ALLOWANCE: [(&str, &[&str]); 16] = [
         &[
             "clap",
             "harmos",
+            "harmos-contract",
             "schematic-app",
+            "schematic-contract",
             "tempfile",
             "thiserror",
             "tokio",
@@ -921,6 +929,7 @@ const ALLOWANCE: [(&str, &[&str]); 16] = [
     (
         "schematic-guest",
         &[
+            "harmos-contract",
             "harmos-guest",
             "schematic-contract",
             "serde",
@@ -932,6 +941,7 @@ const ALLOWANCE: [(&str, &[&str]); 16] = [
     (
         "schematic-sidecar",
         &[
+            "harmos-contract",
             "harmos-sidecar",
             "schematic-contract",
             "schematic-guest",
@@ -1206,6 +1216,7 @@ fn operation_facility_gate(path: &str, attribute: &str) -> bool {
                 "operations/caller.rs",
                 "operations/handler.rs",
                 "operations/manager.rs",
+                "operations/manager/discovery.rs",
                 "operations/middleware.rs",
                 "operations/mod.rs",
                 "operations/registration.rs",
@@ -1235,15 +1246,36 @@ fn operation_facility_gate(path: &str, attribute: &str) -> bool {
             ]
         }
         // Generation Callers And Lifecycle Loans Select Facilities, Never Persistence.
-        "#[cfg(any(feature=\"plugin-sidecar\",feature=\"plugin-guest\"))]" => {
-            &["operations/children.rs", "operations/wire.rs"]
-        }
+        "#[cfg(any(feature=\"plugin-sidecar\",feature=\"plugin-guest\"))]" => &[
+            "plugin/definition.rs",
+            "plugin/manager.rs",
+            "operations/children.rs",
+            "operations/wire.rs",
+        ],
         "#[cfg(not(feature=\"plugin-sidecar\"))]" => {
             &["operations/manager.rs", "operations/caller.rs"]
         }
-        "#[cfg(feature=\"plugin-guest\")]" => &["plugin/mod.rs"],
+        "#[cfg(all(feature=\"plugin\",not(target_arch=\"wasm32\")))]" => {
+            &["runtime.rs", "runtime/lifecycle.rs"]
+        }
+        "#[cfg(not(all(feature=\"plugin\",not(target_arch=\"wasm32\"))))]" => {
+            &["runtime/lifecycle.rs"]
+        }
+        "#[cfg(feature=\"plugin\")]" => &["config.rs"],
+        "#[cfg(feature=\"plugin-guest\")]" => &[
+            "config.rs",
+            "plugin/definition.rs",
+            "plugin/manager.rs",
+            "plugin/mod.rs",
+            "plugin/host.rs",
+        ],
         "#[cfg(feature=\"signal-fft\")]" => &["storage/series/transform.rs"],
         "#[cfg(feature=\"plugin-sidecar\")]" => &[
+            "config.rs",
+            "plugin/definition.rs",
+            "plugin/manager.rs",
+            "plugin/host.rs",
+            "plugin/host/progress.rs",
             "plugin/scope.rs",
             "operations/authored.rs",
             "operations/caller.rs",
@@ -1279,9 +1311,6 @@ fn contract_facility_gate(path: &str, attribute: &str) -> bool {
         "#[cfg(all(feature=\"grpc\",feature=\"streaming\"))]" => {
             &["crates/harmos-contract/src/operations/serving/owned.rs"]
         }
-        "#[cfg(all(feature=\"packaging\",not(target_arch=\"wasm32\")))]" => {
-            &["crates/harmos-sidecar/src/lib.rs"]
-        }
         "#[cfg(all(test,feature=\"derive\"))]" => &[
             "crates/harmos-contract/src/operations/authored.rs",
             "crates/harmos-contract/src/operations/serving/streams.rs",
@@ -1299,6 +1328,7 @@ fn contract_facility_gate(path: &str, attribute: &str) -> bool {
             "crates/harmos-contract/src/message/mod.rs",
             "crates/harmos-contract/src/operations/contract.rs",
             "crates/harmos-contract/src/operations/grpc.rs",
+            "crates/harmos-contract/src/operations/host.rs",
             "crates/harmos-contract/src/operations/host/payloads.rs",
             "crates/harmos-contract/src/operations/mod.rs",
             "crates/harmos-contract/src/operations/serving.rs",
@@ -1313,6 +1343,7 @@ fn contract_facility_gate(path: &str, attribute: &str) -> bool {
         ],
         "#[cfg(feature=\"reflection\")]" => &["crates/harmos-contract/src/lib.rs"],
         "#[cfg(feature=\"streaming\")]" => &[
+            "crates/harmos-contract/src/config.rs",
             "crates/harmos-contract/src/operations/mod.rs",
             "crates/harmos-contract/src/operations/serving.rs",
             "crates/harmos-contract/src/operations/serving/owned.rs",
@@ -1435,11 +1466,44 @@ fn codec_facility_gate(path: &str, attribute: &str, following: &str) -> bool {
     )
 }
 
+// Packaging Selects Build Tools And Child Process Ownership, Never Persistence.
+fn packaging_facility_gate(path: &str, attribute: &str) -> bool {
+    let key: String = attribute.chars().filter(|c| !c.is_whitespace()).collect();
+    let owners: &[&str] = match key.as_str() {
+        "#[cfg(feature=\"packaging\")]" => &["crates/harmos/src/config.rs"],
+        "#[cfg(all(feature=\"packaging\",not(target_arch=\"wasm32\")))]" => {
+            &["crates/harmos/src/lib.rs"]
+        }
+        "#[cfg(feature=\"packaging-guest\")]" => &[
+            "crates/harmos/src/packaging/mod.rs",
+            "crates/harmos/src/packaging/build.rs",
+        ],
+        "#[cfg(not(feature=\"packaging-guest\"))]" => &["crates/harmos/src/packaging/build.rs"],
+        "#[cfg(unix)]" | "#[cfg(windows)]" => &["crates/harmos/src/packaging/process.rs"],
+        "#[cfg(feature=\"sidecar\")]" | "#[cfg(feature=\"guest\")]" => {
+            &["crates/cargo-harmos/src/commands/mod.rs"]
+        }
+        "#[cfg(any(feature=\"sidecar\",feature=\"guest\"))]" => {
+            &["crates/cargo-harmos/src/main.rs"]
+        }
+        "#[cfg(not(any(feature=\"sidecar\",feature=\"guest\")))]" => &[
+            "crates/cargo-harmos/src/main.rs",
+            "crates/cargo-harmos/src/commands/mod.rs",
+        ],
+        _ => return false,
+    };
+    owners
+        .iter()
+        .any(|owner| path.ends_with(&format!("/{owner}")))
+}
+
 // Exact Transport Owners Keep Facility Selection Out Of Persistence Paths.
 fn transport_facility_gate(path: &str, attribute: &str) -> bool {
     let key: String = attribute.chars().filter(|c| !c.is_whitespace()).collect();
     let owners: &[&str] = match key.as_str() {
         "#[cfg(feature=\"grpc\")]" => &[
+            "crates/harmos/src/config.rs",
+            "crates/harmos/src/operations/manager/discovery.rs",
             "tests/fixtures/grpc/build.rs",
             "crates/harmos-sidecar/build.rs",
             "crates/harmos-sidecar/src/lib.rs",
@@ -1459,6 +1523,7 @@ fn transport_facility_gate(path: &str, attribute: &str) -> bool {
             "crates/harmos/src/services/sidecar/carrier.rs",
         ],
         "#[cfg(not(feature=\"grpc\"))]" => &[
+            "crates/harmos/src/operations/manager/discovery.rs",
             "tests/fixtures/grpc/build.rs",
             "crates/harmos-sidecar/src/wire.rs",
             "crates/harmos-sidecar/src/kit/plugin.rs",
@@ -1577,6 +1642,7 @@ fn contract_scenario() {
                 ] {
                     assert!(!transport_facility_gate(&path, gate), "{path}: {gate}");
                     assert!(!operation_facility_gate(&path, gate), "{path}: {gate}");
+                    assert!(!packaging_facility_gate(&path, gate), "{path}: {gate}");
                 }
             }
             // Runtime Shutdown Closes Transport Ingress For Both Storage Modes.
@@ -1594,6 +1660,25 @@ fn contract_scenario() {
             assert!(!transport_facility_gate(
                 "/crates/harmos/src/storage/carrier.rs",
                 grpc
+            ));
+            assert!(packaging_facility_gate(
+                "/crates/harmos/src/config.rs",
+                "#[cfg(feature = \"packaging\")]"
+            ));
+            for owner in [
+                "storage/config.rs",
+                "storage/manager.rs",
+                "state/manager.rs",
+            ] {
+                let path = format!("/crates/harmos/src/{owner}");
+                assert!(!packaging_facility_gate(
+                    &path,
+                    "#[cfg(feature = \"packaging\")]"
+                ));
+            }
+            assert!(!packaging_facility_gate(
+                "/crates/harmos/src/config.rs",
+                "#[cfg(feature = \"persistence\")]"
             ));
             assert!(!transport_facility_gate(
                 "/examples/unreviewed/cli/src/commands/serve.rs",
@@ -1883,6 +1968,7 @@ fn contract_scenario() {
                                 || path.ends_with("/crates/harmos-signal/src/spectrum/mod.rs")))
                         && !operation_facility_gate(&path, line)
                         && !transport_facility_gate(&path, line)
+                        && !packaging_facility_gate(&path, line)
                         && !(line == "#[cfg(all(not(target_arch = \"wasm32\"), feature = \"plugin\"))]"
                             && path.ends_with("/crates/harmos/src/lib.rs"))
                         // Console flags and SystemRoot belong to native process

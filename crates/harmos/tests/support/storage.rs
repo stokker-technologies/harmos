@@ -84,6 +84,7 @@ pub struct Control {
     pub bootstrap_file_finishes: AtomicUsize,
     pub bootstrap_file_aborts: AtomicUsize,
     pub refuse_latest_objects: AtomicBool,
+    pub refuse_record_filters: AtomicBool,
     pub allow_empty_browse: AtomicBool,
     pub browse_request: Mutex<Option<ObjectBrowseRequest>>,
     pub browse_rows: Mutex<Option<Vec<ObjectMetadata>>>,
@@ -186,7 +187,6 @@ struct Import {
 }
 
 pub struct Data<C = ()> {
-    pub schema_encoding: SchemaEncoding,
     catalog: PhantomData<fn() -> C>,
     pub objects: Mutex<BTreeMap<u64, ObjectEntry>>,
     pub object_schemas: Mutex<BTreeMap<(String, u32), Vec<harmos::schema::Field>>>,
@@ -296,7 +296,6 @@ impl<C: ObjectCatalog> Data<C> {
     pub fn with_catalog(history: StoreHistory) -> Self {
         Self {
             catalog: PhantomData,
-            schema_encoding: SchemaEncoding::Inline,
             objects: Mutex::default(),
             object_schemas: Mutex::default(),
             staged: Mutex::default(),
@@ -332,9 +331,6 @@ impl<C: ObjectCatalog> Data<C> {
 }
 
 impl<C: ObjectCatalog> StorageBackend for Data<C> {
-    fn schema_encoding(&self) -> SchemaEncoding {
-        self.schema_encoding
-    }
     fn supports_scan_order(
         &self,
         _scan: &harmos::storage::frame::Scan,
@@ -360,6 +356,29 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
             return Err(Error::InvalidInput {
                 field: "object query",
                 reason: "test backend refuses latest object selection",
+            });
+        }
+        Ok(())
+    }
+    fn validate_record_filter(&self, selection: &ReadSelection, limits: QueryLimits) -> Result<()> {
+        if self.control.refuse_record_filters.load(Ordering::SeqCst) {
+            return Err(Error::InvalidInput {
+                field: "record filter",
+                reason: "test backend refuses filtered records",
+            });
+        }
+        limits.check()?;
+        let filter = selection
+            .record_filter
+            .as_ref()
+            .ok_or(Error::InvalidInput {
+                field: "record filter",
+                reason: "missing filter",
+            })?;
+        filter.check()?;
+        if filter.memory_size() > limits.memory_bytes.get() {
+            return Err(Error::ResourceExhausted {
+                resource: "record filter memory",
             });
         }
         Ok(())
@@ -833,7 +852,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
                                 object.value.schema.id.to_string(),
                                 object.value.schema.version.get(),
                             ),
-                            definition.fields().to_vec(),
+                            (definition.declaration().fields)().to_vec(),
                         );
                         stored.insert(position, object.clone());
                     }
@@ -1324,7 +1343,45 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
             }
             let held = self.snapshots.lock().unwrap();
             let snapshot = held.get(&view.snapshot().token).ok_or(Error::ViewExpired)?;
-            let mut page = page(
+            let projection = selection
+                .record_filter
+                .as_ref()
+                .map(|filter| {
+                    let fields = &snapshot
+                        .schemas
+                        .values()
+                        .find(|schema| Some(&schema.key) == selection.schema.as_ref())
+                        .ok_or(Error::InvalidInput {
+                            field: "record filter",
+                            reason: "selected schema absent from saved view",
+                        })?
+                        .schema;
+                    let view = fields.root().map_err(|_| Error::InvalidInput {
+                        field: "record filter",
+                        reason: "invalid shared schema root",
+                    })?;
+                    filter.check_schema(view)?;
+                    let remaining = view
+                        .execution_limits()
+                        .ok_or(Error::InvalidInput {
+                            field: "record filter",
+                            reason: "requires bounded saved query",
+                        })?
+                        .memory_bytes
+                        .get()
+                        .checked_sub(snapshot.query_bytes)
+                        .and_then(NonZeroUsize::new)
+                        .ok_or(Error::ResourceExhausted {
+                            resource: "record projection memory",
+                        })?;
+                    harmos::storage::frame::ScalarProjection::new(
+                        view,
+                        filter.columns.clone(),
+                        remaining,
+                    )
+                })
+                .transpose()?;
+            let mut page = filtered_page(
                 snapshot.records.values(),
                 PageView {
                     view,
@@ -1334,7 +1391,23 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
                 cursor,
                 limits,
                 |row| &row.position,
-                |row| matches_record(row, selection),
+                |row| {
+                    if !matches_record(row, selection) {
+                        return Ok(false);
+                    }
+                    if let (Some(filter), Some(projection)) =
+                        (&selection.record_filter, &projection)
+                    {
+                        let values = projection.project(
+                            &row.payload,
+                            |path, allowance| frame::metadata(row, None, path, allowance),
+                            limits.bytes,
+                        )?;
+                        filter.matches(&values)
+                    } else {
+                        Ok(true)
+                    }
+                },
             )?;
             if self.control.invalid_page.load(Ordering::SeqCst) && !page.entries.is_empty() {
                 page.entries[0].item = Identifier::new("wrong-item").unwrap();
@@ -2285,6 +2358,25 @@ fn page<'a, T: Clone + MemorySize + serde::Serialize + 'a>(
     position: impl Fn(&T) -> &StorageCursor,
     matches: impl Fn(&T) -> bool,
 ) -> Result<ReadPage<T>> {
+    filtered_page(
+        entries,
+        held,
+        selection,
+        cursor,
+        limits,
+        position,
+        |entry| Ok(matches(entry)),
+    )
+}
+fn filtered_page<'a, T: Clone + MemorySize + serde::Serialize + 'a>(
+    entries: impl DoubleEndedIterator<Item = &'a T> + Clone,
+    held: PageView<'_>,
+    selection: &ReadSelection,
+    cursor: Option<&ReadCursor>,
+    limits: ReadLimits,
+    position: impl Fn(&T) -> &StorageCursor,
+    matches: impl Fn(&T) -> Result<bool>,
+) -> Result<ReadPage<T>> {
     let PageView { view, pinned_bytes } = held;
     let _computation = view.retain_computation()?;
     let execution = view.execution_limits();
@@ -2296,14 +2388,16 @@ fn page<'a, T: Clone + MemorySize + serde::Serialize + 'a>(
     }
     let selected = |entry: &T| {
         let at = position(entry).sequence;
-        at > selection.after
-            && at <= selection.through.unwrap_or(view.accepted().sequence)
-            && at <= view.saved().sequence
-            && matches(entry)
-            && cursor.is_none_or(|cursor| match selection.order {
-                ReadOrder::Ascending => at > cursor.position().sequence,
-                ReadOrder::Descending => at < cursor.position().sequence,
-            })
+        Ok::<bool, Error>(
+            at > selection.after
+                && at <= selection.through.unwrap_or(view.accepted().sequence)
+                && at <= view.saved().sequence
+                && matches(entry)?
+                && cursor.is_none_or(|cursor| match selection.order {
+                    ReadOrder::Ascending => at > cursor.position().sequence,
+                    ReadOrder::Descending => at < cursor.position().sequence,
+                }),
+        )
     };
     let next = |entries: &mut dyn DoubleEndedIterator<Item = &'a T>| match selection.order {
         ReadOrder::Ascending => entries.next(),
@@ -2320,7 +2414,7 @@ fn page<'a, T: Clone + MemorySize + serde::Serialize + 'a>(
                 resource: "test query time",
             });
         }
-        if !selected(entry) {
+        if !selected(entry)? {
             continue;
         }
         if count == limits.rows.get() {
@@ -2370,7 +2464,7 @@ fn page<'a, T: Clone + MemorySize + serde::Serialize + 'a>(
         }
         let entry =
             next(&mut copying).expect("same immutable snapshot retains preflighted entries");
-        if selected(entry) {
+        if selected(entry)? {
             result.push(entry.clone());
         }
     }

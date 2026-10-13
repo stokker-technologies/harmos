@@ -84,7 +84,7 @@ pub enum ObserverPhase {
 /* === Traits === */
 pub trait ObserverBackend: Send + Sync + 'static {
     type Resources: Send + Sync + 'static;
-    fn definition(&self) -> ObserverDefinition;
+    fn definition(&self) -> crate::Result<ObserverDefinition>;
     fn run(
         &self,
         resources: Arc<Self::Resources>,

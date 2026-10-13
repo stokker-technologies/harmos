@@ -547,7 +547,7 @@ def authorize(directory: Path, settings: dict, manifest: dict) -> None:
 
 def files(root: Path, manifest: dict) -> list[dict]:
     result = list(manifest["files"])
-    for name in ["SHA256SUMS", "release-manifest.json"]:
+    for name in ["SHA256SUMS", "release.json"]:
         data = (root / name).read_bytes()
         result.append(
             {
@@ -772,7 +772,7 @@ def verify_publication(directory: Path, settings: dict) -> None:
             item["name"]: f"releases/assets/{item['id']}"
             for item in pages(settings, f"releases/{remote['id']}/assets")
         }
-        data = request(settings, downloads["release-manifest.json"], binary=True)
+        data = request(settings, downloads["release.json"], binary=True)
         tagged = document(settings, "git/ref/tags/" + tag)
         sha = tagged["object"]["sha"]
     else:
@@ -783,7 +783,7 @@ def verify_publication(directory: Path, settings: dict) -> None:
             settings.get("package", settings["product"]), safe=""
         )
         prefix = f"packages/generic/{package}/{tag}/"
-        data = request(settings, prefix + "release-manifest.json", binary=True)
+        data = request(settings, prefix + "release.json", binary=True)
         downloads = {
             item["name"]: prefix + urllib.parse.quote(item["name"], safe="")
             for item in remote["assets"]["links"]
@@ -816,9 +816,7 @@ def verify_publication(directory: Path, settings: dict) -> None:
     expected = "".join(
         f"{item['sha256']}  {item['name']}\n" for item in manifest["files"]
     ).encode()
-    expected += (
-        f"{hashlib.sha256(data or b'').hexdigest()}  release-manifest.json\n".encode()
-    )
+    expected += f"{hashlib.sha256(data or b'').hexdigest()}  release.json\n".encode()
     if sums != expected:
         raise _policy.ToolError("remote checksum catalog differs")
     _policy.write_json(

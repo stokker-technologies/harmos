@@ -30,7 +30,7 @@ use schematic_app::contract::{
 use schematic_app::state::{NetId, NetName, PinRef, Point, Rotation, SymbolId};
 use schematic_app::transactions::net::{ApplyRoute, ConnectPins};
 use schematic_app::transactions::symbol::{MoveSymbol, PlaceSymbol};
-use schematic_app::{app, config::Config, document::Document, services::Plugin, storage};
+use schematic_app::{app, config::Settings, document::Document, services::Plugin, storage};
 
 /* === Constants === */
 
@@ -59,7 +59,7 @@ pub async fn run(
     let path = scratch.path().join("schematic.json");
     let document = Document::new(&path);
     let recordings = scratch.path().join("streams");
-    let config = Config::new(recordings);
+    let config = Settings::new(recordings);
     let recovery = document.recovering()?;
     let checkpoint = recovery.sidecars();
     let origin = document.into_origin();

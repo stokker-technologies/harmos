@@ -25,7 +25,7 @@ use super::Selection;
 
 use crate::operations::{Context, Operation, StreamOutput};
 use crate::operations::{OperationDeclaration, OutputDeclaration, Visibility, WireOperation};
-use crate::schema::{Described, Field};
+use crate::schema::Described;
 
 use crate::storage::SchemaInput;
 use crate::storage::{SchemaInfo, SchemaKey, StorageCursor};
@@ -87,8 +87,8 @@ impl OutputDeclaration for QuerySchemas {
 }
 
 impl WireOperation for QuerySchemas {
-    const VERSION: u32 = 1;
-    const OUTPUT: Option<&'static [Field]> = Some(SchemaInfo::FIELDS);
+    const VERSION: u32 = 2;
+    const OUTPUT: Option<crate::schema::declaration::Definition> = Some(SchemaInfo::DEFINITION);
 }
 
 impl<C: 'static> Operation for Handler<C> {
@@ -132,12 +132,12 @@ impl<C: 'static> Operation for Handler<C> {
         }
         while let Some(page) = reader.next_page().await? {
             for schema in page.iter() {
-                let scratch =
-                    crate::schema::validation_memory_bytes(&schema.fields).map_err(|_| {
-                        Error::InvalidInput {
-                            field: "storage schema",
-                            reason: "invalid backend schema",
-                        }
+                let scratch = schema
+                    .schema
+                    .validation_memory_bytes(&harmos_contract::config::SchemaSettings::default())
+                    .map_err(|_| Error::InvalidInput {
+                        field: "storage schema",
+                        reason: "invalid backend schema",
                     })?;
                 let bytes = schema
                     .memory_size()
@@ -147,7 +147,7 @@ impl<C: 'static> Operation for Handler<C> {
                     .send_with(bytes, || {
                         Ok(SchemaInfo {
                             position: schema.position.clone(),
-                            schema: SchemaInput::new(schema.key.clone(), &schema.fields)?,
+                            schema: SchemaInput::new(schema.key.clone(), &schema.schema)?,
                         })
                     })
                     .await?;

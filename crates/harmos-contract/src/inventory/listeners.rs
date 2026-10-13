@@ -13,15 +13,17 @@
 
 /* === Imports === */
 // Standard Library Imports
-use std::borrow::Cow;
 use std::collections::BTreeSet;
 // Third Party Imports
 use serde::Deserialize;
 // Local Imports
 use super::contracts::{self, Encoder};
 use crate::catalog::Node;
-use crate::listeners::{Definition, Entry, Source};
+use crate::config::SchemaSettings;
+use crate::listeners::{Definition, Entry, Source, SourceDeclaration};
 use crate::operations::Contract;
+use crate::schema::declaration::Named;
+use crate::schema::graph::Schema;
 
 /* === Constants === */
 const LIMIT: usize = 4096;
@@ -39,9 +41,46 @@ pub struct Manifest {
     pub listeners: Vec<Definition>,
 }
 
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum NamedSource {
+    Record {
+        id: String,
+        version: u32,
+        row: String,
+    },
+    Stream {
+        id: String,
+        schema_ordinal: u32,
+        row: String,
+    },
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NamedListener {
+    pub id: crate::Identifier,
+    pub source: NamedSource,
+    pub callback: contracts::NamedContract,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NamedManifest {
+    pub facility: String,
+    pub owner: String,
+    pub listeners: Vec<NamedListener>,
+}
+
 /* === Enums === */
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error(transparent)]
+    Schema(#[from] crate::schema::graph::Error),
+    #[error(transparent)]
+    Contract(#[from] contracts::Error),
+    #[error(transparent)]
+    Listener(#[from] crate::listeners::Error),
     #[error("multiple listener inventories for {facility} artifact `{owner}`")]
     Duplicate { facility: String, owner: String },
     #[error("listener inventory identity or count is invalid")]
@@ -55,6 +94,53 @@ pub enum Error {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl NamedManifest {
+    pub fn resolve(
+        self,
+        declarations: &[Named],
+        settings: &mut SchemaSettings,
+    ) -> Result<Manifest, Error> {
+        if self.listeners.len() > LIMIT {
+            return Err(Error::Inventory);
+        }
+        let listeners = self
+            .listeners
+            .into_iter()
+            .map(|entry| {
+                let source = match entry.source {
+                    NamedSource::Record { id, version, row } => Source::Record {
+                        id: id.into(),
+                        version,
+                        row: super::retain_schema(
+                            Schema::from_named(&row, declarations, settings)?,
+                            settings,
+                        )?,
+                    },
+                    NamedSource::Stream {
+                        id,
+                        schema_ordinal,
+                        row,
+                    } => Source::Stream {
+                        id: id.into(),
+                        schema_ordinal,
+                        row: super::retain_schema(
+                            Schema::from_named(&row, declarations, settings)?,
+                            settings,
+                        )?,
+                    },
+                };
+                let callback = entry.callback.resolve(declarations, settings)?;
+                Ok(Definition::new(entry.id, source, callback)?)
+            })
+            .collect::<Result<_, Error>>()?;
+        Ok(Manifest {
+            facility: self.facility,
+            owner: self.owner,
+            listeners,
+        })
+    }
+}
 
 /* === Public Functions === */
 pub fn select(
@@ -169,34 +255,24 @@ const fn tree<const N: usize>(out: &mut Encoder<N>, entries: &[Node<Entry>], fir
                 out.raw(b"{\"id\":");
                 out.quoted(entry.id);
                 out.raw(b",\"source\":{\"kind\":");
-                let (kind, id, version, fields) = match &entry.source {
-                    Source::Record {
-                        id,
-                        version,
-                        fields,
-                    } => ("record", id, *version, fields),
-                    Source::Stream {
+                let (kind, id, version, row) = match &entry.source {
+                    SourceDeclaration::Record { id, version, row } => ("record", id, *version, row),
+                    SourceDeclaration::Stream {
                         id,
                         schema_ordinal,
-                        fields,
-                    } => ("stream", id, *schema_ordinal, fields),
+                        row,
+                    } => ("stream", id, *schema_ordinal, row),
                 };
                 out.quoted(kind);
                 out.raw(b",\"id\":");
-                let Cow::Borrowed(id) = id else {
-                    panic!("listener source identity must be borrowed")
-                };
                 out.quoted(id);
                 match &entry.source {
-                    Source::Record { .. } => out.raw(b",\"version\":"),
-                    Source::Stream { .. } => out.raw(b",\"schema_ordinal\":"),
+                    SourceDeclaration::Record { .. } => out.raw(b",\"version\":"),
+                    SourceDeclaration::Stream { .. } => out.raw(b",\"schema_ordinal\":"),
                 }
                 out.number(version as u64);
-                out.raw(b",\"fields\":");
-                let Cow::Borrowed(fields) = fields else {
-                    panic!("listener source fields must be borrowed")
-                };
-                contracts::fields(out, fields);
+                out.raw(b",\"row\":");
+                out.quoted(row.name);
                 out.raw(b"},\"callback\":");
                 contracts::wire(out, &entry.callback);
                 out.raw(b"}");

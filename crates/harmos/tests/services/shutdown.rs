@@ -215,13 +215,16 @@ pub(super) fn contract_scenario() {
                     struct Blocked;
                     impl harmos::observers::ObserverBackend for Blocked {
                         type Resources = Cleanup;
-                        fn definition(&self) -> harmos::observers::ObserverDefinition {
-                            harmos::observers::ObserverDefinition {
+                        fn definition(
+                            &self,
+                        ) -> harmos::Result<harmos::observers::ObserverDefinition>
+                        {
+                            Ok(harmos::observers::ObserverDefinition {
                                 id: "blocked-observer".into(),
                                 interval: Duration::from_secs(10),
                                 streams: vec![],
                                 demand_keys: vec![],
-                            }
+                            })
                         }
                         async fn run(
                             &self,

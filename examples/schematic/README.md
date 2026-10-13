@@ -54,7 +54,28 @@ operation because this guest has no filesystem grant. WebAssembly can support
 filesystem capabilities when a host provides them; this example does not.
 
 The CLI accepts `--sidecar <executable>` or `--guest <component>`. Without either,
-it selects `schematic-sidecar` beside its own executable.
+it selects `plugins/schematic-sidecar` relative to its own executable, falling
+back to a sibling executable for Cargo development. `--guest` without a path
+selects `plugins/schematic-guest.wasm` relative to the CLI. Explicit paths remain
+relative to the caller's working directory.
+
+## Downloaded Examples And Schemas
+
+Native CI provides an example ZIP with `examples/schematic/`, containing the CLI,
+both ready-to-load plugins, and `grpc/<producer>/operations/`. Run the extracted
+CLI from any working directory; native directory listing uses that directory.
+Windows executables have the `.exe` suffix.
+
+The CLI, sidecar and guest build scripts derive their schema bundles from the
+shared Rust contract. Each bundle contains `manifest.txt`, `descriptors.bin` and
+package-relative `.proto` files, preserving imports. The native catalogs include
+`ListDirectories`; the guest catalog includes only portable operations. The
+`schematic.v1.Schematic` schema describes known methods. Exporting it does not
+start a gRPC server; runtime reflection describes the methods actually exposed
+by a running host, including dynamic plugins.
+
+GitHub Release archives contain only `cargo-harmos`, its README and license.
+Examples and test reports remain GitHub Actions artifacts.
 
 ## Tests And Persistence
 

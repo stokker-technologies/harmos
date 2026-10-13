@@ -89,6 +89,13 @@ impl PluginGraph {
 }
 
 impl ReloadImpact {
+    pub(super) fn select(&mut self, selected: &BTreeSet<String>) {
+        self.stopping
+            .retain(|definition| selected.contains(&definition.id));
+        self.starting
+            .retain(|definition| selected.contains(&definition.id));
+    }
+
     pub fn stopping(&self) -> &[PluginDefinition] {
         &self.stopping
     }
