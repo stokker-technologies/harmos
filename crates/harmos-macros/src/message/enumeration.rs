@@ -19,7 +19,7 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{Error, Fields, ItemEnum, Type, spanned::Spanned};
 // Local Imports
-use super::{encoding, tag};
+use super::{boxed, encoding, tag};
 use crate::path::HarmosPath;
 
 /* === Constants === */
@@ -379,6 +379,12 @@ pub(super) fn codec(
             (
                 quote!(for value in #value { #write }),
                 quote!(#value.iter().fold(0usize, |length, value| length.saturating_add(#size))),
+            )
+        } else if let Some(inner) = boxed(ty) {
+            // Protobuf Calls Do Not Autoderef: Encode Through The Boxed Message
+            (
+                quote!({ let value: &#inner = &**#value; #write }),
+                quote!({ let value: &#inner = &**#value; #size }),
             )
         } else {
             (

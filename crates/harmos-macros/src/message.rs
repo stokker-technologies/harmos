@@ -207,6 +207,15 @@ fn encoding(
     };
     let segment = path.path.segments.last().ok_or_else(|| unsupported(ty))?;
     let name = segment.ident.to_string();
+    // Box Changes Ownership Only: The Field Keeps The Plain Nested Message Wire Shape
+    if matches!(name.as_str(), "Box" | "Rc" | "Arc") {
+        let inner = boxed(ty).ok_or_else(|| unsupported_box(ty))?;
+        return Ok((
+            quote!(message, required),
+            message_kind(inner, harmos),
+            quote!(#harmos::schema::Cardinality::Required),
+        ));
+    }
     if name == "Option" || name == "Vec" {
         let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
             return Err(unsupported(ty));
@@ -227,6 +236,9 @@ fn encoding(
                 quote!(#harmos::schema::graph::Kind::Bytes),
                 quote!(#harmos::schema::Cardinality::Required),
             ));
+        }
+        if matches!(inner_name.as_deref(), Some("Box" | "Rc" | "Arc")) {
+            return Err(unsupported_box(ty));
         }
         if matches!(inner_name.as_deref(), Some("Option" | "Vec")) {
             return Err(unsupported(ty));
@@ -276,7 +288,6 @@ fn encoding(
                 | "char"
                 | "HashMap"
                 | "BTreeMap"
-                | "Box"
         )
     {
         return Err(unsupported(ty));
@@ -286,6 +297,53 @@ fn encoding(
         message_kind(ty, harmos),
         quote!(#harmos::schema::Cardinality::Required),
     ))
+}
+
+// Return The Nested Message Owned By A Direct `Box<T>` Field
+fn boxed(ty: &Type) -> Option<&Type> {
+    let Type::Path(path) = ty else {
+        return None;
+    };
+    let segment = path.path.segments.last()?;
+    if path.qself.is_some() || segment.ident != "Box" {
+        return None;
+    }
+    let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+        return None;
+    };
+    let (1, Some(GenericArgument::Type(inner))) = (arguments.args.len(), arguments.args.first())
+    else {
+        return None;
+    };
+    let Type::Path(inner_path) = inner else {
+        return None;
+    };
+    let inner_segment = inner_path.path.segments.last()?;
+    let inner_name = inner_segment.ident.to_string();
+    let reserved = matches!(
+        inner_name.as_str(),
+        "u8" | "i8"
+            | "u16"
+            | "i16"
+            | "usize"
+            | "isize"
+            | "u128"
+            | "i128"
+            | "char"
+            | "str"
+            | "HashMap"
+            | "BTreeMap"
+            | "Box"
+            | "Rc"
+            | "Arc"
+            | "Option"
+            | "Vec"
+    );
+    let nested = inner_path.qself.is_none()
+        && matches!(inner_segment.arguments, PathArguments::None)
+        && scalar(&inner_name).is_none()
+        && !reserved;
+    nested.then_some(inner)
 }
 
 fn message_kind(ty: &Type, harmos: &HarmosPath) -> TokenStream {
@@ -311,7 +369,14 @@ fn scalar(name: &str) -> Option<(TokenStream, TokenStream)> {
 fn unsupported(ty: &Type) -> Error {
     Error::new(
         ty.span(),
-        "unsupported message field: use bool/u32/u64/i32/i64/f32/f64/String, Vec<u8> bytes, a nested message, Option<T>, or Vec<T> of supported scalars/messages; maps, aliases and recursive containers require an explicit message shape",
+        "unsupported message field: use bool/u32/u64/i32/i64/f32/f64/String, Vec<u8> bytes, a nested message, Box<T> of a nested message, Option<T>, or Vec<T> of supported scalars/messages; maps, aliases and recursive containers require an explicit message shape",
+    )
+}
+
+fn unsupported_box(ty: &Type) -> Error {
+    Error::new(
+        ty.span(),
+        "unsupported boxed message field: use Box<T> directly as the field type, where T is a nested message; Box of scalars, strings, bytes or containers, Box<Box<T>>, Option<Box<T>>, Vec<Box<T>>, Rc<T> and Arc<T> are unsupported",
     )
 }
 

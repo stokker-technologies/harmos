@@ -222,6 +222,12 @@ declare operation metadata.
   before decoding, adding only their own entry bookkeeping. `None` refuses
   arithmetic overflow. Consume the same bound as native storage admissions;
   never duplicate its factor or substitute protobuf decode accounting.
+- `#[message]` fields use `bool`/`u32`/`u64`/`i32`/`i64`/`f32`/`f64`/`String`,
+  `Vec<u8>` bytes, nested messages, `Box<T>` of a nested message, `Option<T>`
+  and `Vec<T>`. `Box<T>` changes Rust ownership only: names, tags, descriptors
+  and Protobuf/Postcard/JSON bytes match a plain `T`. Boxed scalars or
+  containers, nested boxes, `Option<Box<T>>`, `Vec<Box<T>>`, `Rc` and `Arc`
+  are refused at compile time.
 - Default `Message` bytes are Postcard; protobuf is an explicit separate codec.
   Persist encoding and schema version. Legacy protobuf data requires an explicit,
   bounded migration with an application-owned commit, never decode fallback.

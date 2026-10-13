@@ -19,7 +19,7 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{GenericArgument, ItemStruct, PathArguments, Type};
 // Local Imports
-use super::tag;
+use super::{boxed, tag};
 use crate::path::HarmosPath;
 
 /* === Constants === */
@@ -55,7 +55,8 @@ pub(super) fn declare(item: &ItemStruct, harmos: &HarmosPath) -> TokenStream {
         let count = format_ident!("__harmos_count_{field_name}");
         let local = format_ident!("__harmos_member_{field_name}");
         let ty = &member.ty;
-        let (inner, optional, repeated, bytes) = shape(ty);
+        let boxed = boxed(ty);
+        let (inner, optional, repeated, bytes) = shape(boxed.unwrap_or(ty));
         let scalar = scalar(inner, harmos);
         let string = named(inner, "String");
         let nested = scalar.is_none() && !string && !bytes;
@@ -132,6 +133,7 @@ pub(super) fn declare(item: &ItemStruct, harmos: &HarmosPath) -> TokenStream {
                 #local.push(__harmos_scalar);
             }));
         } else {
+            // The Nested Bound Includes The Message Resident Size: A Box Pointee Exactly
             let bound = quote! {
                 let child = __harmos_input.field(#number)?;
                 let bytes = <#inner as #harmos::__private::Protobuf>::decoding_memory_input(child)?;
@@ -143,6 +145,12 @@ pub(super) fn declare(item: &ItemStruct, harmos: &HarmosPath) -> TokenStream {
                 bound
             });
             let value = quote!(<#inner as #harmos::__private::Protobuf>::decode_input(__harmos_input.field(#number)?)?);
+            // Allocate The Box Only After Its Message Decoded Successfully
+            let value = if boxed.is_some() {
+                quote!(::std::boxed::Box::new(#value))
+            } else {
+                value
+            };
             finish.push(if optional {
                 quote!(let #local: #ty = if #count == 0 { ::std::option::Option::None } else { ::std::option::Option::Some(#value) };)
             } else {

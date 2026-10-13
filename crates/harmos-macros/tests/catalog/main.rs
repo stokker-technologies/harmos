@@ -137,6 +137,17 @@ fn contract_scenario() {
                     "malformed_harmos_path.rs",
                     "`harmos_path` names the crate path",
                 ),
+                // A message field owns a nested message directly or through one
+                // `Box<T>`; every other boxed or shared shape is refused.
+                ("boxed_scalar_field.rs", "unsupported boxed message field"),
+                (
+                    "boxed_container_field.rs",
+                    "unsupported boxed message field",
+                ),
+                ("nested_box_field.rs", "unsupported boxed message field"),
+                ("optional_box_field.rs", "unsupported boxed message field"),
+                ("repeated_box_field.rs", "unsupported boxed message field"),
+                ("shared_message_field.rs", "unsupported boxed message field"),
             ] {
                 let source = fixtures.join(fixture);
                 let compiled = Command::new(&rustc)

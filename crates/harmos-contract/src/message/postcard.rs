@@ -243,6 +243,21 @@ impl<T: Value> Value for Vec<T> {
         })
     }
 }
+// A Box Shares Its Pointee's Bytes, Nesting And Work Limits; Only Ownership Differs
+impl<T: Value> Value for Box<T> {
+    fn write(&self, bytes: &mut Vec<u8>) {
+        (**self).write(bytes);
+    }
+    fn size(&self) -> usize {
+        (**self).size()
+    }
+    fn memory(input: &mut Reader<'_>) -> Result<usize, MessageError> {
+        decoding_add(std::mem::size_of::<Self>(), T::memory(input)?)
+    }
+    fn read(input: &mut Reader<'_>) -> Result<Self, MessageError> {
+        T::read(input).map(Box::new)
+    }
+}
 impl<T: Value> Value for Option<T> {
     fn write(&self, bytes: &mut Vec<u8>) {
         self.is_some().write(bytes);

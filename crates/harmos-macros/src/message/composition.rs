@@ -19,7 +19,7 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{Error, ItemStruct, Type};
 // Local Imports
-use super::{encoding, enumeration, tag};
+use super::{boxed, encoding, enumeration, tag};
 use crate::path::HarmosPath;
 
 /* === Constants === */
@@ -104,6 +104,13 @@ pub(super) fn declare(
         } else if repeated {
             writes.insert(number, quote!(for value in &self.#ident { #write }));
             sizes.push(quote!(self.#ident.iter().fold(0usize, |length, value| length.saturating_add(#size))));
+        } else if let Some(inner) = boxed(ty) {
+            // Protobuf Calls Do Not Autoderef: Encode Through The Boxed Message
+            writes.insert(
+                number,
+                quote!({ let value: &#inner = &*self.#ident; #write }),
+            );
+            sizes.push(quote!({ let value: &#inner = &*self.#ident; #size }));
         } else {
             writes.insert(number, quote!({ let value = &self.#ident; #write }));
             sizes.push(quote!({ let value = &self.#ident; #size }));

@@ -94,6 +94,28 @@ enum Portable {
     Annotate(Annotate),
 }
 
+#[harmos_contract::message(harmos_path = ::harmos_contract)]
+#[derive(Clone, PartialEq)]
+struct Envelope {
+    inner: Box<Annotated>,
+    sequence: u64,
+}
+
+#[harmos_contract::message(harmos_path = ::harmos_contract)]
+#[derive(Clone, PartialEq)]
+enum Delivered {
+    Missing,
+    Boxed(Box<Annotated>),
+}
+
+#[harmos_macros::operation(request = Envelope, response = Delivered, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Boxed", method = "Wrap"))]
+struct Wrap;
+
+#[harmos_macros::catalog(harmos_path = ::harmos_contract)]
+enum Boxed {
+    Wrap(Wrap),
+}
+
 fn annotated() -> Annotated {
     use harmos_contract::{Identifier, Metadata, Value};
     let mut metadata = Metadata::definition(
@@ -146,6 +168,64 @@ fn contract_scenario() {
                 output.status.success(),
                 "{}",
                 String::from_utf8_lossy(&output.stderr)
+            );
+        });
+    }
+    {
+        scenario_runtime::check("boxed_messages_cross", || {
+            use harmos_contract::{Message, Protobuf};
+            let request = Envelope {
+                inner: Box::new(annotated()),
+                sequence: 3,
+            };
+            let response = Delivered::Boxed(Box::new(annotated()));
+            let postcard = Message::encode_to_vec(&request);
+            assert!(<Envelope as Message>::decode(&postcard).unwrap() == request);
+            let protobuf = Protobuf::encode_to_vec(&response);
+            assert!(<Delivered as Protobuf>::decode(&protobuf).unwrap() == response);
+            let contracts = Contracts::of::<Boxed>().unwrap();
+            let artifacts = Artifacts::new(&contracts).unwrap();
+            let target = tempfile::tempdir().unwrap();
+            let root = artifacts.export(target.path(), "boxed").unwrap();
+            let compiled = target.path().join("compiled.bin");
+            let output =
+                std::process::Command::new(protoc_bin_vendored::protoc_bin_path().unwrap())
+                    .current_dir(&root)
+                    .arg("--proto_path=.")
+                    .arg("--include_imports")
+                    .arg(format!("--descriptor_set_out={}", compiled.display()))
+                    .args(artifacts.files().keys())
+                    .output()
+                    .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+
+            // The Reflected Request Keeps The Plain Nested Message As A Singular Field
+            use harmos_contract::schema::{Described, reflection};
+            let settings = harmos_contract::config::SchemaSettings::default();
+            let graph = harmos_contract::schema::graph::Schema::from_declaration(
+                Envelope::DEFINITION,
+                &settings,
+            )
+            .unwrap();
+            let envelope = reflection::descriptor_schema(&graph, "test.v1", &settings).unwrap();
+            let inner = envelope.get_field_by_name("inner").unwrap();
+            assert!(!inner.is_list());
+            let prost_reflect::Kind::Message(nested) = inner.kind() else {
+                panic!("boxed field reflects its nested message");
+            };
+            assert!(nested.get_field_by_name("identifier").is_some());
+            let decoded = prost_reflect::DynamicMessage::decode(
+                envelope,
+                Protobuf::encode_to_vec(&request).as_slice(),
+            )
+            .unwrap();
+            assert_eq!(
+                prost::Message::encode_to_vec(&decoded),
+                Protobuf::encode_to_vec(&request)
             );
         });
     }

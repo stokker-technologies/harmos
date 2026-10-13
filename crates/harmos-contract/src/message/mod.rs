@@ -194,6 +194,18 @@ impl<T: MemorySize> MemorySize for Option<T> {
     }
 }
 
+// The Heap Pointee Owns Its Full Resident Size Beside The Inline Pointer
+impl<T: MemorySize> MemorySize for Box<T> {
+    fn memory_size(&self) -> usize {
+        let owned = (**self).memory_size();
+        if owned == usize::MAX {
+            return usize::MAX;
+        }
+
+        std::mem::size_of::<Self>().saturating_add(owned)
+    }
+}
+
 impl<K: MemorySize, V: MemorySize> MemorySize for BTreeMap<K, V> {
     fn memory_size(&self) -> usize {
         let mut bytes = btree_map_memory::<K, V>(self.len());

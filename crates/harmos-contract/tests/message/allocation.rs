@@ -90,7 +90,27 @@ struct Strings {
     counts: Vec<u32>,
 }
 
+#[message(harmos_path = ::harmos_contract)]
+#[derive(PartialEq)]
+struct BoxedSelection {
+    row: Box<Fifth>,
+    choice: BoxedChoice,
+}
+
+#[message(harmos_path = ::harmos_contract)]
+#[derive(PartialEq)]
+struct BoxedLeaf {
+    row: Box<Leaf>,
+}
+
 /* === Enums === */
+#[message(harmos_path = ::harmos_contract)]
+#[derive(PartialEq)]
+enum BoxedChoice {
+    Selected(Box<Fifth>),
+    Named { row: Box<Leaf> },
+}
+
 #[message(harmos_path = ::harmos_contract)]
 #[derive(PartialEq)]
 enum Choice {
@@ -255,6 +275,51 @@ fn contract_scenario() {
                 decoded.rows[0].row.row.row.row.row.payload.capacity(),
                 32_768
             );
+        });
+    }
+    {
+        scenario_runtime::check("boxed_decode_peak", || {
+            for choice in [
+                BoxedChoice::Selected(Box::new(nested())),
+                BoxedChoice::Named {
+                    row: Box::new(Leaf {
+                        payload: vec![7; 4096],
+                    }),
+                },
+            ] {
+                let row = BoxedSelection {
+                    row: Box::new(nested()),
+                    choice,
+                };
+                let encoded = row.encode_to_vec();
+                let (budget, inspected) =
+                    measure(|| BoxedSelection::decoding_memory(&encoded).unwrap());
+                assert_eq!(inspected.allocations, 0, "{inspected:?}");
+                let (decoded, measured) = measure(|| BoxedSelection::decode(&encoded).unwrap());
+                assert!(decoded == row);
+                assert!(measured.peak <= budget, "{measured:?}, budget {budget}");
+                assert_eq!(decoded.row.row.row.row.row.row.payload.capacity(), 32_768);
+            }
+        });
+    }
+    {
+        scenario_runtime::check("boxed_allocates_after", || {
+            use harmos_contract::schema::Described;
+            let tag = |fields: &[harmos_contract::schema::graph::Field<_>], name: &str| {
+                fields.iter().find(|field| field.name == name).unwrap().tag
+            };
+            // A Varint Where The Boxed Leaf Declares Bytes
+            let mut row = Vec::new();
+            prost::encoding::uint64::encode(tag(Leaf::FIELDS, "payload"), &1, &mut row);
+            let mut bytes = Vec::new();
+            prost::encoding::bytes::encode(tag(BoxedLeaf::FIELDS, "row"), &row, &mut bytes);
+
+            let (refused, inspected) = measure(|| BoxedLeaf::decoding_memory(&bytes));
+            assert!(refused.is_err());
+            assert_eq!(inspected.allocations, 0, "{inspected:?}");
+            let (refused, decoded) = measure(|| BoxedLeaf::decode(&bytes));
+            assert!(refused.is_err());
+            assert_eq!(decoded.allocations, 0, "{decoded:?}");
         });
     }
     {
