@@ -79,6 +79,8 @@ struct Listener {
 
 struct Connection {
     stream: TcpStream,
+    stopping: Pin<Box<dyn Future<Output = ()> + Send>>,
+    stopped: bool,
     _permit: OwnedSemaphorePermit,
 }
 
@@ -305,15 +307,26 @@ impl<A: Application> Resident<A> for Listener {
             .local_addr()
             .map_err(|source| Fault::Application(failure(source)))?;
         let slots = Arc::new(Semaphore::new(self.resources.settings.connections.get()));
-        let incoming =
-            futures_util::stream::unfold((listener, slots), |(listener, slots)| async move {
+        let stopping = self.resources.stopping.subscribe();
+        let incoming = futures_util::stream::unfold(
+            (listener, slots, stopping),
+            |(listener, slots, stopping)| async move {
                 let permit = slots.clone().acquire_owned().await.ok()?;
-                let connection = listener.accept().await.map(|(stream, _)| Connection {
-                    stream,
-                    _permit: permit,
+                let connection = listener.accept().await.and_then(|(stream, _)| {
+                    stream.set_nodelay(true)?;
+                    let mut cancellation = stopping.clone();
+                    Ok(Connection {
+                        stream,
+                        stopping: Box::pin(async move {
+                            let _ = cancellation.wait_for(|stopping| *stopping).await;
+                        }),
+                        stopped: false,
+                        _permit: permit,
+                    })
                 });
-                Some((connection, (listener, slots)))
-            });
+                Some((connection, (listener, slots, stopping)))
+            },
+        );
         let ingress = Ingress {
             routes: self.resources.routes.clone(),
             middleware: self.resources.middleware.clone(),
@@ -410,12 +423,29 @@ impl Connected for Connection {
     }
 }
 
+impl Connection {
+    // Wake Socket I/O So Tonic Can Settle Its Own Connection Tasks.
+    fn poll_stopping(&mut self, context: &mut Context<'_>) -> std::io::Result<()> {
+        if !self.stopped {
+            self.stopped = self.stopping.as_mut().poll(context).is_ready();
+        }
+        if self.stopped {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::ConnectionAborted,
+                "gRPC listener is stopping",
+            ));
+        }
+        Ok(())
+    }
+}
+
 impl AsyncRead for Connection {
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buffer: &mut ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
+        self.poll_stopping(cx)?;
         Pin::new(&mut self.stream).poll_read(cx, buffer)
     }
 }
@@ -425,14 +455,17 @@ impl AsyncWrite for Connection {
         cx: &mut Context<'_>,
         bytes: &[u8],
     ) -> Poll<std::io::Result<usize>> {
+        self.poll_stopping(cx)?;
         Pin::new(&mut self.stream).poll_write(cx, bytes)
     }
 
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        self.poll_stopping(cx)?;
         Pin::new(&mut self.stream).poll_flush(cx)
     }
 
     fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        self.poll_stopping(cx)?;
         Pin::new(&mut self.stream).poll_shutdown(cx)
     }
 }

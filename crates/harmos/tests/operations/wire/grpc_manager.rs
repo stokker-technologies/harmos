@@ -1372,6 +1372,106 @@ pub(super) fn contract_scenario() {
                 });
         });
     }
+    {
+        scenario_runtime::check("stalled_listener_settles", || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    use harmos::grpc::OutputEnvelope;
+                    let runtime = Runtime::<App>::builder((), ())
+                        .register(Lanes::catalog())
+                        .runtime()
+                        .await
+                        .unwrap();
+                    let stopped = Arc::new(tokio::sync::Semaphore::new(0));
+                    runtime
+                        .operations
+                        .register_operation::<Hold>("app", Lanes::Open, stopped.clone())
+                        .unwrap();
+                    runtime
+                        .operations
+                        .register_operation::<Read>("app", Lanes::Open, Arc::new(()))
+                        .unwrap();
+                    runtime
+                        .grpc()
+                        .register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions))))
+                        .unwrap();
+                    runtime
+                        .grpc()
+                        .register_service(Endpoint {
+                            authority: harmos::grpc::server::Authority::TrustedHost(
+                                runtime.operations.clone(),
+                            ),
+                        })
+                        .unwrap();
+                    for abandoned in [false, true] {
+                        let attached = runtime.grpc().attach(settings()).await.unwrap();
+                        let address = attached.local_addr();
+                        let channel =
+                            tonic::transport::Endpoint::from_shared(format!("http://{address}"))
+                                .unwrap()
+                                .initial_connection_window_size(1)
+                                .initial_stream_window_size(1)
+                                .connect()
+                                .await
+                                .unwrap();
+                        let mut client = tonic::client::Grpc::new(channel);
+                        client.ready().await.unwrap();
+                        let mut request =
+                            tonic::Request::new(harmos::operations::Response::new(Ask {}));
+                        request
+                            .metadata_mut()
+                            .insert("authorization", "Bearer alice".parse().unwrap());
+                        let (decode, encode) = limits();
+                        let mut unread = client
+                            .server_streaming(
+                                request,
+                                http::uri::PathAndQuery::from_static("/fixture.Identity/Hold"),
+                                Codec::<
+                                    OutputEnvelope<Reply, Reply>,
+                                    harmos::operations::Response<Ask>,
+                                >::new(decode, encode)
+                                .unwrap(),
+                            )
+                            .await
+                            .unwrap()
+                            .into_inner();
+                        // Keep The One-Byte Window Stalled Throughout Listener Retirement.
+                        let replacement = tokio::time::timeout(Duration::from_secs(2), async {
+                            if abandoned {
+                                drop(attached);
+                            } else {
+                                attached.detach().await.unwrap();
+                                assert!(runtime.grpc().local_addr().is_none());
+                            }
+                            runtime.grpc().attach(settings()).await.unwrap()
+                        })
+                        .await
+                        .expect("unread peer cannot hold listener retirement");
+                        assert!(tokio::net::TcpStream::connect(address).await.is_err());
+                        tokio::time::timeout(Duration::from_secs(1), async {
+                            while let Ok(Some(_)) = unread.message().await {}
+                            stopped.acquire().await.unwrap().forget();
+                        })
+                        .await
+                        .expect("connection and original operation settle");
+                        let channel = tonic::transport::Endpoint::from_shared(format!(
+                            "http://{}",
+                            replacement.local_addr()
+                        ))
+                        .unwrap()
+                        .connect()
+                        .await
+                        .unwrap();
+                        assert_eq!(call(channel, Some("Bearer alice")).await.unwrap(), "alice");
+                        replacement.detach().await.unwrap();
+                    }
+                    runtime.stop().await.unwrap();
+                });
+        });
+    }
     #[cfg(feature = "grpc")]
     {
         scenario_runtime::check("grpc_web_served", || {
