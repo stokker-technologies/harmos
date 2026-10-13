@@ -250,6 +250,15 @@ visibility/dependency rules; `conditional_access` means invocation still checks
 request-specific grants and middleware. Re-discover after provider reload or
 runtime restart; pages do not promise a frozen registry snapshot.
 
+Register one `operations::authorization::Authorizer` with the original operation
+manager before external calls. It selects a compatible canonical `Required` from
+trusted `CallContext` and live provider metadata; discovery and actual request
+grants use the same selection. Application policy owns roles and entitlements.
+Registration freezes at first external access, allowing earlier internal boot
+work. Internal host calls retain their authority; external calls and descendants
+retain their authenticated context and separate cache identity. Existing
+explicitly anonymous routes keep their behavior when no authorizer is configured.
+
 For browser gRPC-Web clients, enable `GrpcSettings::web` and list exact
 `grpc::Origin` values in `allowed_origins`. Configured origins receive preflight
 and response headers; other origins are refused. Authentication still applies

@@ -35,6 +35,7 @@ const EVENTS: usize = 64;
 /* === Macros === */
 
 /* === Type Aliases === */
+type Observer = dyn Fn(&str, Option<PluginStatus>) + Send + Sync;
 type CleanupOwner = Arc<Cleanup<Box<dyn Resource>>>;
 type Stop<G, S, E> = for<'a> fn(
     &'a PluginDefinition,
@@ -56,7 +57,7 @@ pub struct PluginManager<G, S, E> {
     identity: PluginGeneration,
     revision: u64,
     events: broadcast::Sender<PluginEvent>,
-    observer: Option<Arc<dyn Fn(&str, Option<PluginStatus>) + Send + Sync>>,
+    observer: Option<Arc<Observer>>,
     retirement: Option<retirement::Wait>,
     cleanup: PluginCleanup,
     executor: Option<tokio::runtime::Handle>,
@@ -435,10 +436,7 @@ impl<G: Send + 'static, S: Send + 'static, E: Send + 'static> PluginManager<G, S
             .await
     }
 
-    pub(crate) fn observe(
-        &mut self,
-        observer: Arc<dyn Fn(&str, Option<PluginStatus>) + Send + Sync>,
-    ) {
+    pub(crate) fn observe(&mut self, observer: Arc<Observer>) {
         self.observer = Some(observer);
     }
 

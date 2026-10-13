@@ -101,13 +101,13 @@ pub(super) struct Workload {
 impl ObserverBackend for Watch {
     type Resources = Trace;
 
-    fn definition(&self) -> ObserverDefinition {
-        ObserverDefinition {
+    fn definition(&self) -> harmos::Result<ObserverDefinition> {
+        Ok(ObserverDefinition {
             id: "shutdown-exercise.watch".into(),
             interval: Duration::from_millis(5),
             streams: Vec::new(),
             demand_keys: Vec::new(),
-        }
+        })
     }
 
     async fn run(

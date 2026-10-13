@@ -429,7 +429,7 @@ fn publication() -> harmos_contract::StreamDeclaration {
         schema: 1,
         window: 512,
         row: harmos::schema::graph::Schema::from_declaration(
-            Fact::DEFINITION,
+            <Fact as harmos::schema::Described>::DEFINITION,
             &harmos::config::SchemaSettings::default(),
         )
         .unwrap(),
@@ -463,7 +463,7 @@ fn candidate(managed: bool) -> PluginDefinitions {
                     id: "listener.samples".into(),
                     schema_ordinal: 1,
                     row: harmos::schema::graph::Schema::from_declaration(
-                        Fact::DEFINITION,
+                        <Fact as harmos::schema::Described>::DEFINITION,
                         &harmos::config::SchemaSettings::default(),
                     )
                     .unwrap(),

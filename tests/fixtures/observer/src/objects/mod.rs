@@ -73,6 +73,10 @@ impl Message for Calibration {
 }
 
 impl schema::Described for Calibration {
+    const NAME: &'static str = concat!(module_path!(), "::Calibration");
+    const MARKER: &'static [u8] = &schema::declaration::encode::<
+        { schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
     const FIELDS: &'static [schema::Field] = <Wire as schema::Described>::FIELDS;
 }
 

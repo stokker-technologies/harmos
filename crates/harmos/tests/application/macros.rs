@@ -218,7 +218,6 @@ mod unified_plugins {
         Contracts, OperationDeclaration, OperationPolicy, RetryPolicy, ServingError, WireOperation,
         WireTable, lifecycle,
     };
-    use serde::Deserialize;
 
     struct Echo;
     impl OperationDeclaration for Echo {

@@ -72,7 +72,7 @@ impl GrpcBinding {
             (super::binding::Request::charged(request), endpoints),
             None,
             &[],
-            &Source::Host,
+            &Source::Host.external()?,
             Submission {
                 submitted: crate::supervision::executor::now(),
                 entry: self.entry.clone(),

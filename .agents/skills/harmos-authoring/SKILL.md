@@ -99,6 +99,20 @@ declare operation metadata.
   Metadata is conditional: invocation keeps original request grants/admission
   and middleware. Re-discover after reload/restart; paging is live.
 
+- Register one `operations::authorization::Authorizer` through
+  `OperationManager::register_authorizer` before external exposure. Its bounded,
+  nonblocking `required(&CallContext, Provider)` callback selects a compatible
+  canonical `Required` or denies with `None`; the same selection filters discovery
+  and actual request grants. Principal roles and explicit entitlement remain
+  application-owned. Registration rejects a second owner and freezes at first
+  external admission/catalog access; earlier internal boot calls remain valid.
+  Callbacks run outside registry locks, and provider readiness is rechecked.
+  Configured policies must reject missing principals and undeclared entitlements.
+  Without a configured policy, existing explicitly exposed anonymous routes keep
+  their behavior. All gRPC adapters use a private external origin, inherited by
+  children/retries with a distinct per-ingress cache identity; they are not
+  trusted internal host calls. Portable metadata cannot mint that authority.
+
 - Normal operation registration automatically publishes declared gRPC methods
   when their provider is ready. Removing the `grpc(...)` declaration removes that
   exposure; do not add a second exposure catalog or flag.

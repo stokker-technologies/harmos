@@ -174,15 +174,19 @@ pub fn check() {
         );
         assert!(data["fields"][0]["kind"].get("fields").is_none());
         let named: declaration::Named = serde_json::from_slice(body).unwrap();
-        let resolved =
-            Schema::from_named(&named.name, &[named.clone()], &SchemaSettings::default()).unwrap();
+        let resolved = Schema::from_named(
+            &named.name,
+            std::slice::from_ref(&named),
+            &SchemaSettings::default(),
+        )
+        .unwrap();
         assert_eq!(resolved.definitions, schema.definitions);
         let resolved_directions = Schema::from_named_roots(
             &[
                 ("request", named.name.as_str()),
                 ("response", named.name.as_str()),
             ],
-            &[named.clone()],
+            std::slice::from_ref(&named),
             &SchemaSettings::default(),
         )
         .unwrap();
@@ -372,11 +376,15 @@ pub fn check() {
             started.elapsed()
         );
 
-        let mut bounded = SchemaSettings::default();
-        bounded.preparation_bytes = NonZeroUsize::new(preparation.bytes - 1).unwrap();
+        let bounded = SchemaSettings {
+            preparation_bytes: NonZeroUsize::new(preparation.bytes - 1).unwrap(),
+            ..Default::default()
+        };
         assert!(matches!(schema.prepare(&bounded), Err(Error::Budget)));
-        bounded = SchemaSettings::default();
-        bounded.preparation_work = NonZeroUsize::new(preparation.work - 1).unwrap();
+        let bounded = SchemaSettings {
+            preparation_work: NonZeroUsize::new(preparation.work - 1).unwrap(),
+            ..Default::default()
+        };
         assert!(matches!(schema.prepare(&bounded), Err(Error::Budget)));
     });
     scenario_runtime::check("large_schema_preparation", || {

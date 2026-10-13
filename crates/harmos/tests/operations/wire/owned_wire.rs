@@ -422,7 +422,7 @@ struct StreamContract;
     let (runtime, resources) = runtime(false).await;
     let contracts = harmos::operations::Contracts::of::<StreamContracts>().unwrap();
     assert!(contracts[0].input().is_some());
-    assert_eq!(contracts[0].output(), Some([].as_slice()));
+    assert!(contracts[0].output().unwrap().fields().is_empty());
     assert!(matches!(
         runtime
             .operations

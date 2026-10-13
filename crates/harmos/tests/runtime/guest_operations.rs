@@ -10,8 +10,7 @@
 /* === Modules === */
 use crate::scenario_runtime;
 
-#[path = "../../../harmos-guest/examples/operation_component/contract.rs"]
-mod contract;
+use crate::operation_component_contract as contract;
 
 /* === Re-Exports === */
 

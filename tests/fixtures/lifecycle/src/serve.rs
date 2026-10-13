@@ -24,7 +24,7 @@ use std::time::Instant;
 // Local Imports
 use super::workload::Workload;
 use crate::Result;
-use schematic_app::{app, config::Config, document::Document};
+use schematic_app::{app, config::Settings, document::Document};
 
 /* === Constants === */
 
@@ -67,7 +67,7 @@ pub async fn run(args: Args) -> Result<()> {
     } else {
         Document::new(&path)
     };
-    let mut config = Config::new(args.directory.join("streams"));
+    let mut config = Settings::new(args.directory.join("streams"));
     if args.exercise_shutdown {
         config.journal_sync_entries = NonZeroUsize::new(128).unwrap();
     }

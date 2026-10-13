@@ -187,6 +187,71 @@ impl OperationManager {
         self.registry.middleware.register(middleware)
     }
 
+    pub fn register_authorizer(
+        &self,
+        authorizer: Arc<dyn super::authorization::Authorizer>,
+    ) -> Result<()> {
+        self.registry.middleware.register_authorizer(authorizer)
+    }
+
+    #[cfg(feature = "grpc")]
+    pub(crate) fn submit_external_charged<O: OperationDeclaration, P: Send + 'static>(
+        &self,
+        request: super::StreamItem<O::Request>,
+        endpoints: P,
+    ) -> Result<OperationInstance<O>> {
+        self.admit::<O, P>(
+            (super::binding::Request::charged(request), endpoints),
+            None,
+            &[],
+            &Source::Host.external()?,
+            None,
+        )
+    }
+
+    pub(super) fn required_external(
+        &self,
+        entry: &Entry,
+        origin: &Origin,
+    ) -> Result<Option<harmos_contract::inventory::contracts::Required>> {
+        #[cfg(feature = "grpc")]
+        if matches!(origin.identity, super::caller::Identity::External(_)) {
+            let Some(authorizer) = self.registry.middleware.authorizer() else {
+                // Preserve Existing Explicit Anonymous Routes When No Policy Is Configured.
+                return Ok(None);
+            };
+            let denied = || Error::OperationUnauthorized {
+                caller: "external".to_owned(),
+                owner: entry.owner.to_string(),
+                operation: entry.id().to_owned(),
+            };
+            let contract = entry.contract.as_ref().ok_or_else(denied)?;
+            let selected = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                authorizer.required(
+                    self.call_context(),
+                    super::authorization::Provider {
+                        owner: &entry.owner,
+                        generation: entry.generation,
+                        definition: &entry.definition,
+                        contract,
+                    },
+                )
+            }))
+            .map_err(|_| Error::InvalidInput {
+                field: "operation authorizer",
+                reason: "authorization callback panicked",
+            })??
+            .ok_or_else(denied)?;
+            if !contract.compatible(&selected.contract) {
+                return Err(denied());
+            }
+            return Ok(Some(selected));
+        }
+        #[cfg(not(feature = "grpc"))]
+        let _ = (entry, origin);
+        Ok(None)
+    }
+
     pub fn with_context(&self, context: super::CallContext) -> Self {
         let mut handle = self.clone();
         handle.context = Arc::new(std::sync::OnceLock::from(context));
@@ -823,7 +888,21 @@ impl OperationManager {
         }
         entry.available_to(&origin)?;
         entry.authorize(&origin)?;
-        entry.authorize_grant(O::grant(&request.value), &origin)?;
+        let grant = O::grant(&request.value);
+        entry.authorize_grant(grant.clone(), &origin)?;
+        let required = self.required_external(&entry, &origin)?;
+        if let Some(required) = required.as_ref()
+            && grant.as_ref().is_some_and(|grant| !required.grants(grant))
+        {
+            return Err(Error::OperationUnauthorized {
+                caller: "external".to_owned(),
+                owner: entry.owner.to_string(),
+                operation: entry.id().to_owned(),
+            });
+        }
+        // Authoring Callbacks Run Outside Registry/Pending Locks. Recheck The Provider.
+        source.check()?;
+        entry.available_to(&origin)?;
         let binding = Arc::clone(&entry.binding).downcast::<Typed<O, P>>();
         #[cfg(feature = "plugin-sidecar")]
         let binding = binding.or_else(|original| {

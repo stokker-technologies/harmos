@@ -10,10 +10,8 @@
 /* === Modules === */
 use crate::scenario_runtime;
 
-#[path = "../support/process_core_contract.rs"]
-mod contract;
-#[path = "../../../harmos-guest/examples/operation_component/contract.rs"]
-mod guest_contract;
+use crate::operation_component_contract as guest_contract;
+use crate::process_core_contract as contract;
 use crate::support::fixtures as prepared_fixtures;
 
 /* === Re-Exports === */

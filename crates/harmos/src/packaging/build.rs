@@ -33,6 +33,7 @@ use crate::config::{BuildBackend, BuildSettings};
 /* === Macros === */
 
 /* === Type Aliases === */
+type BuildMessages = (Vec<Artifact>, BTreeSet<(String, PathBuf)>);
 
 /* === Structs === */
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -414,7 +415,7 @@ fn publish(path: &std::path::Path, bytes: &[u8]) -> Result<(), Error> {
 fn read_messages(
     reader: impl BufRead,
     selected: &BTreeMap<String, String>,
-) -> Result<(Vec<Artifact>, BTreeSet<(String, PathBuf)>), Error> {
+) -> Result<BuildMessages, Error> {
     let mut artifacts = Vec::new();
     let mut outputs = BTreeSet::new();
     for line in reader.lines() {

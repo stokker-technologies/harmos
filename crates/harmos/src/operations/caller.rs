@@ -120,6 +120,11 @@ pub(super) struct LifecycleLoan {
 #[derive(Clone)]
 pub(super) enum Source {
     Host,
+    #[cfg(feature = "grpc")]
+    External {
+        source: Box<Source>,
+        id: super::OperationInstanceId,
+    },
     #[cfg(any(
         feature = "plugin",
         feature = "plugin-guest",
@@ -155,6 +160,8 @@ pub(super) enum Source {
 #[derive(Clone, PartialEq, Eq)]
 pub(super) enum Identity {
     Host,
+    #[cfg(feature = "grpc")]
+    External(super::OperationInstanceId),
     #[cfg(any(
         feature = "plugin",
         feature = "plugin-guest",
@@ -202,6 +209,18 @@ impl Caller {
             &[],
             &Source::Plugin(self.source.clone()),
             None,
+        )
+    }
+
+    #[cfg(feature = "grpc")]
+    pub(crate) fn submit_external_charged<O: OperationDeclaration, P: Send + 'static>(
+        &self,
+        request: super::StreamItem<O::Request>,
+        endpoints: P,
+    ) -> Result<super::OperationInstance<O>> {
+        self.operations.submit_as::<O, P>(
+            (super::binding::Request::charged(request), endpoints),
+            &Source::Plugin(self.source.clone()).external()?,
         )
     }
 
@@ -273,7 +292,22 @@ impl Caller {
 }
 
 impl Source {
+    #[cfg(feature = "grpc")]
+    pub(super) fn external(self) -> Result<Self> {
+        Ok(Self::External {
+            source: Box::new(self),
+            id: super::OperationInstanceId::fresh()?,
+        })
+    }
+
     pub(super) fn check(&self) -> Result<Origin> {
+        #[cfg(feature = "grpc")]
+        if let Self::External { source, id } = self {
+            let mut origin = source.check()?;
+            origin.identity = Identity::External(*id);
+            return Ok(origin);
+        }
+
         #[cfg(any(
             feature = "plugin",
             feature = "plugin-guest",
@@ -281,6 +315,8 @@ impl Source {
         ))]
         let scope = match self {
             Self::Host => None,
+            #[cfg(feature = "grpc")]
+            Self::External { .. } => unreachable!("external origin was checked"),
             #[cfg(feature = "plugin-sidecar")]
             Self::Observer(source) => Some(
                 source
@@ -380,6 +416,13 @@ impl Source {
         _scope: crate::operations::Scope<'_>,
         _origin: &Origin,
     ) -> Self {
+        #[cfg(feature = "grpc")]
+        if let Self::External { source, id } = self {
+            return Self::External {
+                source: Box::new(source.for_attempt(entry, _scope, _origin)),
+                id: *id,
+            };
+        }
         // A Host Provider Serving A Plugin Requirement Acts For That Caller
         #[cfg(any(
             feature = "plugin",

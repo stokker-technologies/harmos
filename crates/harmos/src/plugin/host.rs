@@ -122,7 +122,7 @@ enum Command {
         reply: oneshot::Sender<Result<()>>,
     },
     Register {
-        definition: PluginDefinition,
+        definition: Box<PluginDefinition>,
         grants: BTreeSet<crate::Identifier>,
         factory: Factory,
         restart: crate::config::PluginRestartSettings,
@@ -438,7 +438,7 @@ impl<A: Application> PluginHost<A> {
         self.shared
             .commands
             .send(Command::Register {
-                definition,
+                definition: Box::new(definition),
                 grants,
                 factory,
                 restart,
@@ -728,20 +728,17 @@ fn recovering(registry: &Registry, lifecycle: &Lifecycle, id: &str) -> Result<BT
 }
 
 fn schedule_failure(registry: &mut Registry, lifecycle: &Lifecycle, outcome: &Result<()>) {
-    if let Err(Error::PluginLifecycle { source }) = outcome {
-        if let super::PluginFailure::Start {
+    if let Err(Error::PluginLifecycle { source }) = outcome
+        && let super::PluginFailure::Start {
             artifact, cleanup, ..
         } = source.as_ref()
-        {
-            if cleanup.is_empty()
-                && lifecycle
-                    .sources
-                    .get(artifact)
-                    .is_some_and(|source| source.enabled)
-            {
-                registry.schedule_retry(artifact);
-            }
-        }
+        && cleanup.is_empty()
+        && lifecycle
+            .sources
+            .get(artifact)
+            .is_some_and(|source| source.enabled)
+    {
+        registry.schedule_retry(artifact);
     }
 }
 
@@ -926,6 +923,7 @@ async fn run(
                 if reply.is_closed() {
                     continue;
                 }
+                let definition = *definition;
                 let result = async {
                     let exists = registry.definition(&definition.id).is_some();
                     if exists && !replace {

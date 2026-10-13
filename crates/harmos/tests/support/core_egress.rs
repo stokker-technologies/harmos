@@ -8,9 +8,7 @@
  */
 
 /* === Modules === */
-#[allow(dead_code)]
-#[path = "process_core_contract.rs"]
-mod context_contract;
+use crate::process_core_contract as context_contract;
 
 /* === Re-Exports === */
 

@@ -38,12 +38,31 @@ use harmos::storage::{MutationId, SchemaInfo, SchemaInput, SchemaKey};
 /* === Type Aliases === */
 
 /* === Structs === */
+struct Binding<D>(std::marker::PhantomData<D>);
 
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
+impl<D: harmos::operations::OperationDeclaration> harmos::operations::Operation for Binding<D> {
+    type Declaration = D;
+    type Resources = ();
+    type Error = harmos::Error;
+    type Endpoints = ();
+    type Context<'a> = harmos::operations::Context<'a>;
+    fn new(_: Arc<()>) -> harmos::Result<Self> {
+        Ok(Self(std::marker::PhantomData))
+    }
+    async fn run<'a>(
+        &mut self,
+        _: Self::Context<'a>,
+        _: &mut D::Request,
+        _: &mut Self::Endpoints,
+    ) -> harmos::Result<D::Response> {
+        unreachable!("retired contract must be rejected before execution")
+    }
+}
 
 /* === Public Functions === */
 
@@ -150,11 +169,11 @@ pub(super) fn contract_scenario() {
                     assert!(
                         f.runtime
                             .operations
-                            .register_wire_contract::<WriteSchema>(
+                            .register_wire_contract::<Binding<WriteSchema>>(
                                 "schema-v1",
                                 &retired,
                                 Lanes::Open,
-                                Arc::new(f.storage.clone())
+                                Arc::new(())
                             )
                             .is_err()
                     );
@@ -173,11 +192,11 @@ pub(super) fn contract_scenario() {
                     assert!(
                         f.runtime
                             .operations
-                            .register_wire_contract::<QuerySchemas>(
+                            .register_wire_contract::<Binding<QuerySchemas>>(
                                 "schema-v1",
                                 &retired,
                                 Lanes::Open,
-                                Arc::new(f.storage.clone())
+                                Arc::new(())
                             )
                             .is_err()
                     );

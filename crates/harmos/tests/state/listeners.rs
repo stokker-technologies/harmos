@@ -376,7 +376,7 @@ fn candidate() -> PluginDefinitions {
                     id: "listener.fact".into(),
                     version: 1,
                     row: harmos::schema::graph::Schema::from_declaration(
-                        Fact::DEFINITION,
+                        <Fact as harmos::schema::Described>::DEFINITION,
                         &harmos::config::SchemaSettings::default(),
                     )
                     .unwrap(),

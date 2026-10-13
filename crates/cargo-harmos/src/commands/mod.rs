@@ -38,15 +38,15 @@ mod sidecar;
 /* === Enums === */
 #[derive(clap::Subcommand)]
 pub enum Command {
-    #[command(help = "Generate Producer-Owned Transport Bindings.")]
+    #[command(about = "Generate Producer-Owned Transport Bindings.")]
     Bindings(bindings::Arguments),
-    #[command(help = "Build Or Watch Native Sidecar Plugins.")]
+    #[command(about = "Build Or Watch Native Sidecar Plugins.")]
     #[cfg(feature = "sidecar")]
     Sidecar(sidecar::Arguments),
-    #[command(help = "Build Or Watch Sandboxed Guest Plugins.")]
+    #[command(about = "Build Or Watch Sandboxed Guest Plugins.")]
     #[cfg(feature = "guest")]
     Guest(guest::Arguments),
-    #[command(help = "Inspect Embedded Plugin Metadata Without Executing Plugin Code.")]
+    #[command(about = "Inspect Embedded Plugin Metadata Without Executing Plugin Code.")]
     Inspect(inspect::Arguments),
 }
 

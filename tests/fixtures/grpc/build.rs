@@ -67,11 +67,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         harmos::Protobuf::encode_to_vec(&final_response),
     )?;
     let contracts = Contracts::of::<Operations>()?;
-    let manifest = std::path::PathBuf::from(
-        std::env::var_os("CARGO_MANIFEST_DIR").ok_or("missing CARGO_MANIFEST_DIR")?,
-    )
-    .join("Cargo.toml");
-    harmos::grpc::Artifacts::new(&contracts)?.export_cargo(&manifest, "harmos-grpc-fixture")?;
+    harmos::grpc::Artifacts::new(&contracts)?.export_build("operations")?;
     let methods: Vec<_> = ["Unary", "Upload", "Download", "Exchange"]
         .into_iter()
         .zip(&contracts)

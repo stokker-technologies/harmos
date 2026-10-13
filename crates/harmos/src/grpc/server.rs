@@ -90,13 +90,15 @@ impl Authority {
     ) -> crate::Result<OperationInstance<O>> {
         match self {
             Self::Binding(binding) => binding.submit::<O, P>(request, endpoints),
-            Self::TrustedHost(operations) => operations.submit_charged::<O, P>(request, endpoints),
+            Self::TrustedHost(operations) => {
+                operations.submit_external_charged::<O, P>(request, endpoints)
+            }
             #[cfg(any(
                 feature = "plugin",
                 feature = "plugin-guest",
                 feature = "plugin-sidecar"
             ))]
-            Self::Plugin(caller) => caller.submit_charged::<O, P>(request, endpoints),
+            Self::Plugin(caller) => caller.submit_external_charged::<O, P>(request, endpoints),
         }
     }
 }
@@ -359,6 +361,27 @@ where
 
 /* === Private Functions === */
 fn code(error: &Error) -> tonic::Code {
+    // Preserve Known Runtime Denials Through Authored Child Failures. Bound Wrapping.
+    let mut error = error;
+    for _ in 0..32 {
+        match error {
+            Error::TaskFailed { source, .. } | Error::OperationFailed { source, .. } => {
+                if let Some(status) = source.downcast_ref::<Status>() {
+                    return status.code();
+                }
+                if let Some(inner) = source.downcast_ref::<Error>() {
+                    error = inner;
+                } else {
+                    return tonic::Code::Internal;
+                }
+            }
+            _ => return leaf_code(error),
+        }
+    }
+    tonic::Code::Internal
+}
+
+fn leaf_code(error: &Error) -> tonic::Code {
     match error {
         Error::OperationRefused(Refusal::TimedOut) => tonic::Code::DeadlineExceeded,
         Error::OperationRefused(Refusal::Cancelled) => tonic::Code::Cancelled,
@@ -377,9 +400,6 @@ fn code(error: &Error) -> tonic::Code {
             feature = "plugin-sidecar"
         ))]
         Error::OperationCaller { .. } => tonic::Code::Unauthenticated,
-        Error::TaskFailed { source, .. } | Error::OperationFailed { source, .. } => source
-            .downcast_ref::<Status>()
-            .map_or(tonic::Code::Internal, Status::code),
         _ => tonic::Code::Internal,
     }
 }

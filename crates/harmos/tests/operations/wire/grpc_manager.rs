@@ -50,6 +50,14 @@ use harmos::{Error, Runtime};
 
 /* === Structs === */
 struct Principal(String);
+struct Guarded;
+struct Guard;
+struct Descendant;
+struct Descend;
+struct ExternalAccess {
+    operations: std::sync::Weak<harmos::operations::OperationManager>,
+    mode: Arc<std::sync::atomic::AtomicUsize>,
+}
 struct Sessions;
 struct PendingAuthentication;
 struct DiscoveryAccess;
@@ -98,6 +106,8 @@ impl Authenticator for Sessions {
             {
                 Some("Bearer alice") => Ok(Principal("alice".into())),
                 Some("Bearer bob") => Ok(Principal("bob".into())),
+                Some("Bearer limited") => Ok(Principal("limited".into())),
+                Some("Bearer carol") => Ok(Principal("carol".into())),
                 _ => Err(Error::Unauthenticated),
             }
         })
@@ -162,6 +172,140 @@ impl Operation for Read {
         })
     }
 }
+impl harmos::operations::authorization::Authorizer for ExternalAccess {
+    fn required(
+        &self,
+        context: &harmos::operations::CallContext,
+        provider: harmos::operations::authorization::Provider<'_>,
+    ) -> harmos::Result<Option<harmos::operations::authorization::Required>> {
+        use harmos::operations::authorization::Required;
+        use harmos_contract::plugin::Grant;
+        // Reentrant Read Proves The Callback Does Not Hold The Original Registry Lock.
+        assert_eq!(
+            self.operations
+                .upgrade()
+                .unwrap()
+                .owner(provider.definition.id.as_str())?,
+            *provider.owner
+        );
+        assert!(provider.generation.value() > 0);
+        let Some(principal) = context.get::<Principal>() else {
+            return Ok(None);
+        };
+        let mut grants = Vec::new();
+        match provider.definition.id.as_str() {
+            "host.operations" | "grpc.descendant" => (),
+            "grpc.guarded" => {
+                match self.mode.load(std::sync::atomic::Ordering::Acquire) {
+                    1 => {
+                        return Ok(Some(Required {
+                            contract: harmos::operations::WireDeclaration::of::<Descendant>()
+                                .contract()
+                                .unwrap(),
+                            grants,
+                        }));
+                    }
+                    2 => panic!("authorizer panic fixture"),
+                    _ => (),
+                }
+                match principal.0.as_str() {
+                    "alice" | "carol" => grants.push(Grant::Survey("reading".into())),
+                    "limited" => (),
+                    _ => return Ok(None),
+                }
+            }
+            _ => return Ok(None),
+        }
+        Ok(Some(Required {
+            contract: provider.contract.clone(),
+            grants,
+        }))
+    }
+}
+
+impl OperationDeclaration for Guarded {
+    type Request = Ask;
+    type Response = Reply;
+    const ID: &'static str = "grpc.guarded";
+    const POLICY: OperationPolicy = Who::POLICY;
+    fn visit_wire<V: harmos::operations::WireVisitor>(visitor: V) -> Option<V::Entry> {
+        Some(visitor.unary::<Self>())
+    }
+    fn grant(_: &Ask) -> Option<harmos_contract::plugin::Grant> {
+        Some(harmos_contract::plugin::Grant::Survey("reading".into()))
+    }
+    fn key(_: &Ask) -> Option<harmos::operations::CacheKey> {
+        Some(harmos::operations::CacheKey::new(b"same-request".to_vec()).unwrap())
+    }
+}
+impl harmos::operations::WireOperation for Guarded {
+    const VERSION: u32 = 1;
+}
+impl Operation for Guard {
+    type Declaration = Guarded;
+    type Resources = ();
+    type Error = Error;
+    type Endpoints = ();
+    type Context<'a> = Context<'a>;
+    fn new(_: Arc<()>) -> harmos::Result<Self> {
+        Ok(Self)
+    }
+    async fn run<'a>(
+        &mut self,
+        context: Self::Context<'a>,
+        _: &mut Ask,
+        _: &mut (),
+    ) -> harmos::Result<Reply> {
+        let principal = context
+            .context()
+            .get::<Principal>()
+            .map_or("anonymous", |value| value.0.as_str());
+        Ok(Reply {
+            actor: format!(
+                "{}:{principal}",
+                if context.is_host_call() {
+                    "host"
+                } else {
+                    "external"
+                }
+            ),
+        })
+    }
+}
+impl OperationDeclaration for Descendant {
+    type Request = Ask;
+    type Response = Reply;
+    const ID: &'static str = "grpc.descendant";
+    const POLICY: OperationPolicy = Who::POLICY;
+    fn visit_wire<V: harmos::operations::WireVisitor>(visitor: V) -> Option<V::Entry> {
+        Some(visitor.unary::<Self>())
+    }
+}
+impl harmos::operations::WireOperation for Descendant {
+    const VERSION: u32 = 1;
+}
+impl Operation for Descend {
+    type Declaration = Descendant;
+    type Resources = ();
+    type Error = Error;
+    type Endpoints = ();
+    type Context<'a> = Context<'a>;
+    fn new(_: Arc<()>) -> harmos::Result<Self> {
+        Ok(Self)
+    }
+    async fn run<'a>(
+        &mut self,
+        context: Self::Context<'a>,
+        _: &mut Ask,
+        _: &mut (),
+    ) -> harmos::Result<Reply> {
+        let response = context.call::<Guarded>(Ask {}).await?;
+        Ok(Reply {
+            actor: response.actor.clone(),
+        })
+    }
+}
+
 impl NamedService for Endpoint {
     const NAME: &'static str = "fixture.Identity";
 }
@@ -190,6 +334,14 @@ impl Service<http::Request<Body>> for Endpoint {
                 }
                 "/fixture.Identity/Exchange" => {
                     harmos::grpc::server::exchange::<Exchange>(authority, wire_settings(), request)
+                        .await
+                }
+                "/fixture.Identity/Guarded" => {
+                    harmos::grpc::server::unary::<Guarded>(authority, wire_settings(), request)
+                        .await
+                }
+                "/fixture.Identity/Descendant" => {
+                    harmos::grpc::server::unary::<Descendant>(authority, wire_settings(), request)
                         .await
                 }
                 _ => harmos::grpc::server::unary::<Who>(authority, wire_settings(), request).await,
@@ -581,6 +733,64 @@ async fn call(
     Ok(response.into_inner().actor.clone())
 }
 
+async fn external_call(
+    channel: tonic::transport::Channel,
+    token: Option<&'static str>,
+    path: &'static str,
+) -> Result<String, tonic::Status> {
+    let mut client = tonic::client::Grpc::new(channel);
+    client
+        .ready()
+        .await
+        .map_err(|_| tonic::Status::unavailable("channel"))?;
+    let mut request = tonic::Request::new(Arc::new(Ask {}));
+    if let Some(token) = token {
+        request
+            .metadata_mut()
+            .insert("authorization", token.parse().unwrap());
+    }
+    let (decode, encode) = limits();
+    let response = client
+        .unary(
+            request,
+            http::uri::PathAndQuery::from_static(path),
+            Codec::<Reply, Arc<Ask>>::new(decode, encode)?,
+        )
+        .await?;
+    Ok(response.into_inner().actor.clone())
+}
+
+async fn external_catalog(
+    channel: tonic::transport::Channel,
+    token: Option<&'static str>,
+) -> Result<Vec<harmos::operations::host::DiscoveredOperation>, tonic::Status> {
+    use harmos::operations::host::{OperationsRequest, OperationsResponse};
+    let mut client = tonic::client::Grpc::new(channel);
+    client
+        .ready()
+        .await
+        .map_err(|_| tonic::Status::unavailable("channel"))?;
+    let mut request = tonic::Request::new(Arc::new(OperationsRequest {
+        after: None,
+        rows: None,
+        bytes: None,
+    }));
+    if let Some(token) = token {
+        request
+            .metadata_mut()
+            .insert("authorization", token.parse().unwrap());
+    }
+    let (decode, encode) = limits();
+    let response: tonic::Response<harmos::operations::StreamItem<OperationsResponse>> = client
+        .unary(
+            request,
+            http::uri::PathAndQuery::from_static("/harmos.host.v1.Host/Operations"),
+            Codec::<OperationsResponse, Arc<OperationsRequest>>::new(decode, encode)?,
+        )
+        .await?;
+    Ok(serde_json::from_slice(&response.into_inner().catalog).unwrap())
+}
+
 async fn web(
     address: std::net::SocketAddr,
     method: &str,
@@ -714,6 +924,322 @@ async fn failures(
 /* === Tests === */
 
 pub(super) fn contract_scenario() {
+    {
+        scenario_runtime::check("external_authority_parity", || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    use harmos::operations::discovery::Discovery;
+                    use harmos_contract::plugin::Grant;
+                    let runtime = Runtime::<App>::builder((), ())
+                        .register(Lanes::catalog())
+                        .runtime()
+                        .await
+                        .unwrap();
+                    runtime
+                        .operations
+                        .register_wire_operation::<Guard>("app", Lanes::Open, Arc::new(()))
+                        .unwrap();
+                    runtime
+                        .operations
+                        .register_wire_operation::<Descend>("app", Lanes::Open, Arc::new(()))
+                        .unwrap();
+                    runtime
+                        .operations
+                        .register_wire_operation::<Discovery>("host", Lanes::Open, Arc::new(()))
+                        .unwrap();
+                    // Internal Boot Work Does Not Freeze The Later Listener Policy.
+                    assert_eq!(
+                        runtime
+                            .operations
+                            .call::<Guarded>(Ask {})
+                            .await
+                            .unwrap()
+                            .actor,
+                        "host:anonymous"
+                    );
+                    let mode = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+                    let operations = Arc::new(runtime.operations.clone());
+                    let policy = Arc::new(ExternalAccess {
+                        operations: Arc::downgrade(&operations),
+                        mode: mode.clone(),
+                    });
+                    runtime
+                        .operations
+                        .register_authorizer(policy.clone())
+                        .unwrap();
+                    assert!(
+                        runtime
+                            .operations
+                            .register_authorizer(policy.clone())
+                            .is_err()
+                    );
+                    runtime
+                        .grpc()
+                        .register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions))))
+                        .unwrap();
+                    runtime
+                        .grpc()
+                        .register_service(Endpoint {
+                            authority: harmos::grpc::server::Authority::TrustedHost(
+                                runtime.operations.clone(),
+                            ),
+                        })
+                        .unwrap();
+                    let attached = runtime.grpc().attach(settings()).await.unwrap();
+                    let channel = tonic::transport::Endpoint::from_shared(format!(
+                        "http://{}",
+                        attached.local_addr()
+                    ))
+                    .unwrap()
+                    .connect()
+                    .await
+                    .unwrap();
+                    assert_eq!(
+                        external_catalog(channel.clone(), None)
+                            .await
+                            .unwrap_err()
+                            .code(),
+                        tonic::Code::Unauthenticated
+                    );
+                    let alice = external_catalog(channel.clone(), Some("Bearer alice"))
+                        .await
+                        .unwrap();
+                    let guarded = alice
+                        .iter()
+                        .find(|entry| entry.contract.operation().id.as_str() == "grpc.guarded")
+                        .unwrap();
+                    assert_eq!(guarded.grants, [Grant::Survey("reading".into())]);
+                    let bob = external_catalog(channel.clone(), Some("Bearer bob"))
+                        .await
+                        .unwrap();
+                    assert!(
+                        bob.iter()
+                            .all(|entry| entry.contract.operation().id.as_str() != "grpc.guarded")
+                    );
+                    assert_eq!(
+                        external_call(
+                            channel.clone(),
+                            Some("Bearer alice"),
+                            "/fixture.Identity/Guarded"
+                        )
+                        .await
+                        .unwrap(),
+                        "external:alice"
+                    );
+                    assert_eq!(
+                        external_call(
+                            channel.clone(),
+                            Some("Bearer bob"),
+                            "/fixture.Identity/Guarded"
+                        )
+                        .await
+                        .unwrap_err()
+                        .code(),
+                        tonic::Code::PermissionDenied
+                    );
+                    assert_eq!(
+                        external_call(
+                            channel.clone(),
+                            Some("Bearer limited"),
+                            "/fixture.Identity/Guarded"
+                        )
+                        .await
+                        .unwrap_err()
+                        .code(),
+                        tonic::Code::PermissionDenied
+                    );
+                    assert_eq!(
+                        external_call(
+                            channel.clone(),
+                            Some("Bearer alice"),
+                            "/fixture.Identity/Descendant"
+                        )
+                        .await
+                        .unwrap(),
+                        "external:alice"
+                    );
+                    assert_eq!(
+                        external_call(
+                            channel.clone(),
+                            Some("Bearer bob"),
+                            "/fixture.Identity/Descendant"
+                        )
+                        .await
+                        .unwrap_err()
+                        .code(),
+                        tonic::Code::PermissionDenied
+                    );
+                    assert_eq!(
+                        external_call(
+                            channel.clone(),
+                            Some("Bearer alice"),
+                            "/fixture.Identity/Guarded"
+                        )
+                        .await
+                        .unwrap(),
+                        "external:alice"
+                    );
+                    assert_eq!(
+                        external_call(
+                            channel.clone(),
+                            Some("Bearer carol"),
+                            "/fixture.Identity/Guarded"
+                        )
+                        .await
+                        .unwrap(),
+                        "external:carol"
+                    );
+                    runtime.operations.clear_cache();
+                    let mut context = harmos::operations::CallContext::default();
+                    context.insert(Principal("bob".into())).unwrap();
+                    assert_eq!(
+                        runtime
+                            .operations
+                            .with_context(context)
+                            .call::<Descendant>(Ask {})
+                            .await
+                            .unwrap()
+                            .actor,
+                        "host:bob"
+                    );
+                    assert_eq!(
+                        external_call(
+                            channel.clone(),
+                            Some("Bearer carol"),
+                            "/fixture.Identity/Guarded"
+                        )
+                        .await
+                        .unwrap(),
+                        "external:carol"
+                    );
+                    mode.store(1, std::sync::atomic::Ordering::Release);
+                    assert!(
+                        external_catalog(channel.clone(), Some("Bearer alice"))
+                            .await
+                            .unwrap()
+                            .iter()
+                            .all(|entry| entry.contract.operation().id.as_str() != "grpc.guarded")
+                    );
+                    assert_eq!(
+                        external_call(
+                            channel.clone(),
+                            Some("Bearer alice"),
+                            "/fixture.Identity/Guarded"
+                        )
+                        .await
+                        .unwrap_err()
+                        .code(),
+                        tonic::Code::PermissionDenied
+                    );
+                    mode.store(2, std::sync::atomic::Ordering::Release);
+                    assert_eq!(
+                        external_call(
+                            channel.clone(),
+                            Some("Bearer alice"),
+                            "/fixture.Identity/Guarded"
+                        )
+                        .await
+                        .unwrap_err()
+                        .code(),
+                        tonic::Code::InvalidArgument
+                    );
+                    mode.store(0, std::sync::atomic::Ordering::Release);
+                    assert_eq!(
+                        external_call(
+                            channel.clone(),
+                            Some("Bearer alice"),
+                            "/fixture.Identity/Guarded"
+                        )
+                        .await
+                        .unwrap(),
+                        "external:alice"
+                    );
+                    assert!(runtime.operations.register_authorizer(policy).is_err());
+                    runtime.stop().await.unwrap();
+
+                    // Existing Explicit Anonymous Routes Have No New Registration Requirement.
+                    let runtime = Runtime::<App>::builder((), ())
+                        .register(Lanes::catalog())
+                        .runtime()
+                        .await
+                        .unwrap();
+                    runtime
+                        .operations
+                        .register_wire_operation::<Guard>("app", Lanes::Open, Arc::new(()))
+                        .unwrap();
+                    runtime
+                        .grpc()
+                        .register_service(Endpoint {
+                            authority: harmos::grpc::server::Authority::TrustedHost(
+                                runtime.operations.clone(),
+                            ),
+                        })
+                        .unwrap();
+                    let attached = runtime.grpc().attach(settings()).await.unwrap();
+                    let channel = tonic::transport::Endpoint::from_shared(format!(
+                        "http://{}",
+                        attached.local_addr()
+                    ))
+                    .unwrap()
+                    .connect()
+                    .await
+                    .unwrap();
+                    assert_eq!(
+                        external_call(channel, None, "/fixture.Identity/Guarded")
+                            .await
+                            .unwrap(),
+                        "external:anonymous"
+                    );
+                    runtime.stop().await.unwrap();
+                    let runtime = Runtime::<App>::builder((), ())
+                        .register(Lanes::catalog())
+                        .runtime()
+                        .await
+                        .unwrap();
+                    runtime
+                        .operations
+                        .register_wire_operation::<Guard>("app", Lanes::Open, Arc::new(()))
+                        .unwrap();
+                    let operations = Arc::new(runtime.operations.clone());
+                    runtime
+                        .operations
+                        .register_authorizer(Arc::new(ExternalAccess {
+                            operations: Arc::downgrade(&operations),
+                            mode: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+                        }))
+                        .unwrap();
+                    runtime
+                        .grpc()
+                        .register_service(Endpoint {
+                            authority: harmos::grpc::server::Authority::TrustedHost(
+                                runtime.operations.clone(),
+                            ),
+                        })
+                        .unwrap();
+                    let attached = runtime.grpc().attach(settings()).await.unwrap();
+                    let channel = tonic::transport::Endpoint::from_shared(format!(
+                        "http://{}",
+                        attached.local_addr()
+                    ))
+                    .unwrap()
+                    .connect()
+                    .await
+                    .unwrap();
+                    assert_eq!(
+                        external_call(channel, None, "/fixture.Identity/Guarded")
+                            .await
+                            .unwrap_err()
+                            .code(),
+                        tonic::Code::PermissionDenied
+                    );
+                    runtime.stop().await.unwrap();
+                });
+        });
+    }
+
     {
         scenario_runtime::check("empty_manager_attaches", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();

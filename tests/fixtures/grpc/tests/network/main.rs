@@ -304,27 +304,27 @@ async fn stock_generated_client() -> Result<(), harmos_grpc_fixture::Error> {
         let missing = client.upload(futures_util::stream::empty::<OperationsUploadInput>()).await.unwrap_err();
         assert_eq!(missing.code(), tonic::Code::InvalidArgument);
         let early = OperationsUploadInput {
-            value: Some(operations_upload_input::Value::Item(messages::upload::input::Row0 { value: "early".into() })),
+            value: Some(operations_upload_input::Value::Item(messages::upload::Row1 { value: "early".into() })),
         };
         let invalid = client.upload(futures_util::stream::iter([early])).await.unwrap_err();
         assert_eq!(invalid.code(), tonic::Code::InvalidArgument);
         assert_eq!(trace.new.load(Ordering::SeqCst), 0);
 
-        let response = client.unary(messages::unary::request::Row0 { value: "one".into() }).await.unwrap().into_inner();
+        let response = client.unary(messages::unary::Row1 { value: "one".into() }).await.unwrap().into_inner();
         assert_eq!(response.value,"unary:one");
         let frames = [
-            OperationsUploadInput { value: Some(operations_upload_input::Value::Request(messages::upload::request::Row0 { value: "start".into() })) },
-            OperationsUploadInput { value: Some(operations_upload_input::Value::Item(messages::upload::input::Row0 { value: ":item".into() })) },
+            OperationsUploadInput { value: Some(operations_upload_input::Value::Request(messages::upload::Row1 { value: "start".into() })) },
+            OperationsUploadInput { value: Some(operations_upload_input::Value::Item(messages::upload::Row1 { value: ":item".into() })) },
         ];
         let response = client.upload(futures_util::stream::iter(frames)).await.unwrap().into_inner();
         assert_eq!(response.value,"start:item");
-        let mut output = client.download(messages::download::request::Row0 { value: "two".into() }).await.unwrap().into_inner();
+        let mut output = client.download(messages::download::Row1 { value: "two".into() }).await.unwrap().into_inner();
         assert!(matches!(output.message().await.unwrap().unwrap().value, Some(operations_download_output::Value::Item(item)) if item.value == "item:two"));
         assert!(matches!(output.message().await.unwrap().unwrap().value, Some(operations_download_output::Value::Response(response)) if response.value == "download:done"));
         assert!(output.message().await.unwrap().is_none());
         let frames = [
-            OperationsExchangeInput { value: Some(operations_exchange_input::Value::Request(messages::exchange::request::Row0 { value: "bidi".into() })) },
-            OperationsExchangeInput { value: Some(operations_exchange_input::Value::Item(messages::exchange::input::Row0 { value: "item".into() })) },
+            OperationsExchangeInput { value: Some(operations_exchange_input::Value::Request(messages::exchange::Row1 { value: "bidi".into() })) },
+            OperationsExchangeInput { value: Some(operations_exchange_input::Value::Item(messages::exchange::Row1 { value: "item".into() })) },
         ];
         let mut output = client.exchange(futures_util::stream::iter(frames)).await.unwrap().into_inner();
         assert!(matches!(output.message().await.unwrap().unwrap().value, Some(operations_exchange_output::Value::Item(item)) if item.value == "bidi:item"));
@@ -368,7 +368,7 @@ async fn streams_settle_owner() -> Result<(), harmos_grpc_fixture::Error> {
         // Duplicate Openings Must Settle The One Admitted Operation
         let opening = || OperationsUploadInput {
             value: Some(operations_upload_input::Value::Request(
-                messages::upload::request::Row0 {
+                messages::upload::Row1 {
                     value: "duplicate".into(),
                 },
             )),
@@ -385,7 +385,7 @@ async fn streams_settle_owner() -> Result<(), harmos_grpc_fixture::Error> {
         // Aborting The Whole RPC Resets Its Still-Open Request Stream
         let opening = OperationsUploadInput {
             value: Some(operations_upload_input::Value::Request(
-                messages::upload::request::Row0 {
+                messages::upload::Row1 {
                     value: "abandoned".into(),
                 },
             )),
@@ -436,7 +436,7 @@ async fn call_limit_refuses() -> Result<(), harmos_grpc_fixture::Error> {
         } = Network::new(Duration::from_secs(1), 1).await?;
         let opening = OperationsUploadInput {
             value: Some(operations_upload_input::Value::Request(
-                messages::upload::request::Row0 {
+                messages::upload::Row1 {
                     value: "held".into(),
                 },
             )),
@@ -448,7 +448,7 @@ async fn call_limit_refuses() -> Result<(), harmos_grpc_fixture::Error> {
             trace.started_event.notified().await;
         }
         let refused = client
-            .unary(messages::unary::request::Row0 {
+            .unary(messages::unary::Row1 {
                 value: "excess".into(),
             })
             .await
@@ -465,7 +465,7 @@ async fn call_limit_refuses() -> Result<(), harmos_grpc_fixture::Error> {
         .await
         .unwrap();
         let response = client
-            .unary(messages::unary::request::Row0 {
+            .unary(messages::unary::Row1 {
                 value: "released".into(),
             })
             .await
@@ -492,14 +492,14 @@ async fn bidi_outputs_progress() -> Result<(), harmos_grpc_fixture::Error> {
     tokio::time::timeout(Duration::from_secs(5), async {
         let Network { runtime, trace, mut client, stop, server } = Network::new(Duration::from_secs(1), 1).await?;
         let (input, receiving) = tokio::sync::mpsc::channel(1);
-        let opening = OperationsExchangeInput { value: Some(operations_exchange_input::Value::Request(messages::exchange::request::Row0 { value: "live".into() })) };
+        let opening = OperationsExchangeInput { value: Some(operations_exchange_input::Value::Request(messages::exchange::Row1 { value: "live".into() })) };
         input.send(opening).await.unwrap();
         let incoming = futures_util::stream::unfold(receiving, |mut receiving| async move {
             receiving.recv().await.map(|item| (item, receiving))
         });
         let mut output = client.exchange(incoming).await.unwrap().into_inner();
         for value in ["one", "two", "three"] {
-            let item = OperationsExchangeInput { value: Some(operations_exchange_input::Value::Item(messages::exchange::input::Row0 { value: value.into() })) };
+            let item = OperationsExchangeInput { value: Some(operations_exchange_input::Value::Item(messages::exchange::Row1 { value: value.into() })) };
             input.send(item).await.unwrap();
             let event = tokio::time::timeout(Duration::from_millis(500), output.message()).await.unwrap().unwrap().unwrap();
             assert!(matches!(event.value, Some(operations_exchange_output::Value::Item(item)) if item.value == format!("live:{value}")));
@@ -534,7 +534,7 @@ async fn failure_retains_owner() -> Result<(), harmos_grpc_fixture::Error> {
         } = Network::new(Duration::from_secs(1), 1).await?;
         trace.fail_finalize.store(true, Ordering::SeqCst);
         let error = client
-            .unary(messages::unary::request::Row0 {
+            .unary(messages::unary::Row1 {
                 value: "retained".into(),
             })
             .await
@@ -567,7 +567,7 @@ async fn failure_preserve_stream() -> Result<(), harmos_grpc_fixture::Error> {
         for mode in ["independent", "partial-failure"] {
             let (input, receiving) = tokio::sync::mpsc::channel(1);
             input.send(OperationsExchangeInput {
-                value: Some(operations_exchange_input::Value::Request(messages::exchange::request::Row0 { value: mode.into() })),
+                value: Some(operations_exchange_input::Value::Request(messages::exchange::Row1 { value: mode.into() })),
             }).await.unwrap();
             let incoming = futures_util::stream::unfold(receiving, |mut receiving| async move {
                 receiving.recv().await.map(|item| (item, receiving))
@@ -586,7 +586,7 @@ async fn failure_preserve_stream() -> Result<(), harmos_grpc_fixture::Error> {
             let sending = async move {
                 for value in 0..128 {
                     input.send(OperationsExchangeInput {
-                        value: Some(operations_exchange_input::Value::Item(messages::exchange::input::Row0 { value: value.to_string() })),
+                        value: Some(operations_exchange_input::Value::Item(messages::exchange::Row1 { value: value.to_string() })),
                     }).await.unwrap();
                 }
                 // Dropping The Complete Request Producer Half-Closes HTTP/2 Input.

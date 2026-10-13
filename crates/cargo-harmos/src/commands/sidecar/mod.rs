@@ -39,9 +39,9 @@ pub struct Arguments {
 /* === Enums === */
 #[derive(clap::Subcommand)]
 enum Command {
-    #[command(help = "Build And Package Inspected Sidecar Artifacts.")]
+    #[command(about = "Build And Package Inspected Sidecar Artifacts.")]
     Build(build::Arguments),
-    #[command(help = "Watch Sources And Dependencies And Rebuild Sidecar Artifacts.")]
+    #[command(about = "Watch Sources And Dependencies And Rebuild Sidecar Artifacts.")]
     Dev(dev::Arguments),
 }
 

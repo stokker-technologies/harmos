@@ -1356,11 +1356,11 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
                             reason: "selected schema absent from saved view",
                         })?
                         .schema;
-                    let view = fields.root().map_err(|_| Error::InvalidInput {
+                    let schema_view = fields.root().map_err(|_| Error::InvalidInput {
                         field: "record filter",
                         reason: "invalid shared schema root",
                     })?;
-                    filter.check_schema(view)?;
+                    filter.check_schema(schema_view)?;
                     let remaining = view
                         .execution_limits()
                         .ok_or(Error::InvalidInput {
@@ -1375,7 +1375,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
                             resource: "record projection memory",
                         })?;
                     harmos::storage::frame::ScalarProjection::new(
-                        view,
+                        schema_view,
                         filter.columns.clone(),
                         remaining,
                     )

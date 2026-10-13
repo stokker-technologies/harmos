@@ -35,7 +35,7 @@ pub struct Arguments {
 /* === Enums === */
 #[derive(clap::Subcommand)]
 enum Command {
-    #[command(help = "Generate A Pure Python Package From One Selected Contract Export.")]
+    #[command(about = "Generate A Pure Python Package From One Selected Contract Export.")]
     Python(python::Arguments),
 }
 

@@ -10,6 +10,7 @@
 /* === Modules === */
 mod admission;
 mod authored;
+pub mod authorization;
 mod binding;
 mod caller;
 mod catalog;

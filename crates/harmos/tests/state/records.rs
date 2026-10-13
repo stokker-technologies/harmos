@@ -203,7 +203,19 @@ pub(super) fn contract_scenario() {
                             .await
                             .is_err()
                     );
-                    assert!(producer.register("plugin", &schema, &[]).await.is_err());
+                    assert!(
+                        producer
+                            .register(
+                                "plugin",
+                                &schema,
+                                &harmos::schema::graph::Schema {
+                                    root: 0,
+                                    definitions: vec![vec![]]
+                                }
+                            )
+                            .await
+                            .is_err()
+                    );
                     assert_eq!(producer.definitions().len(), 1);
                     assert_eq!(runtime.state.applied(), Position::ORIGIN);
                     drop(producer);

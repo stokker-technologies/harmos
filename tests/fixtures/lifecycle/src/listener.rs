@@ -14,7 +14,6 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::borrow::Cow;
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
@@ -25,6 +24,7 @@ use std::time::Duration;
 use tokio::sync::Notify;
 
 // Local Imports
+use harmos::config::SchemaSettings;
 use harmos::listeners::{Delivery, Source};
 use harmos::operations::{
     Context, Declarations, OperationPolicy, PluginRegistration, RetryPolicy, Visibility,
@@ -36,7 +36,7 @@ use harmos::plugin::{
     PluginEndpoint, PluginLifecycle, PluginLifecycleAuthority, PluginManager, PluginTransition,
     Router,
 };
-use harmos::schema::Described;
+use harmos::schema::{Described, graph::Schema};
 use harmos::streams::{PluginListenerRegistration, StreamRegistration};
 use harmos::{Error, Message, Result};
 use schematic_app::{
@@ -204,7 +204,8 @@ impl Listener {
             Source::Stream {
                 id: STREAM.into(),
                 schema_ordinal: 1,
-                fields: Cow::Borrowed(Sample::FIELDS),
+                row: Schema::from_declaration(Sample::DEFINITION, &SchemaSettings::default())
+                    .map_err(failed)?,
             },
             callback,
         )
@@ -279,7 +280,7 @@ fn publication() -> StreamDeclaration {
         id: STREAM.into(),
         schema: 1,
         window: 4,
-        fields: Sample::FIELDS.to_vec(),
+        row: Schema::from_declaration(Sample::DEFINITION, &SchemaSettings::default()).unwrap(),
     }
 }
 

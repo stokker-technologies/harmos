@@ -212,10 +212,10 @@ fn configure(
         watcher.watch(directory, RecursiveMode::NonRecursive)?;
     }
     for directory in watched.difference(&selected) {
-        if let Err(error) = watcher.unwatch(directory) {
-            if !matches!(error.kind, notify::ErrorKind::WatchNotFound) {
-                return Err(Error::Watch(error));
-            }
+        if let Err(error) = watcher.unwatch(directory)
+            && !matches!(error.kind, notify::ErrorKind::WatchNotFound)
+        {
+            return Err(Error::Watch(error));
         }
     }
     *watched = selected;
