@@ -215,6 +215,11 @@ declare operation metadata.
   version 2 for finite schema-description RPC bytes. Product row codecs and
   unrelated operation versions are unchanged. Preserve original data and use
   a fresh storage root for unsupported metadata; never reset or silently migrate.
+- Storage backends reserve JSON graph decode allocation through the original
+  `storage::StorageSchema::decoding_memory_bytes(encoded_bytes) -> Option<usize>`
+  before decoding, adding only their own entry bookkeeping. `None` refuses
+  arithmetic overflow. Consume the same bound as native storage admissions;
+  never duplicate its factor or substitute protobuf decode accounting.
 - Default `Message` bytes are Postcard; protobuf is an explicit separate codec.
   Persist encoding and schema version. Legacy protobuf data requires an explicit,
   bounded migration with an application-owned commit, never decode fallback.

@@ -48,7 +48,7 @@ pub(super) trait Entry: Clone + Serialize + Send + Sync + 'static {
 
     fn decoding_overhead(limits: ReadLimits) -> Option<usize> {
         if Self::KIND == ReadKind::Schemas {
-            super::schema::decoding_overhead(limits.bytes.get())
+            StorageSchema::decoding_memory_bytes(limits.bytes.get())
         } else {
             Some(0)
         }
@@ -211,7 +211,7 @@ impl Entry for StorageSchema {
             .get()
             .checked_mul(4)
             .and_then(|bytes| {
-                bytes.checked_add(super::schema::decoding_overhead(limits.bytes.get())?)
+                bytes.checked_add(StorageSchema::decoding_memory_bytes(limits.bytes.get())?)
             })
             .ok_or(crate::Error::InvalidInput {
                 field: "storage schema",

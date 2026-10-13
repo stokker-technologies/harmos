@@ -787,6 +787,40 @@ fn contract_scenario() {
                         let saved = f.data.schemas.lock().unwrap();
                         assert_eq!(saved.len(), 1);
                         assert_eq!(saved[&1].schema, graph);
+                        for definitions in [1usize, 32, 256] {
+                            let mut metadata = saved[&1].clone();
+                            let fields = (1..definitions)
+                                .map(|definition| Field {
+                                    name: Cow::Owned(format!("child_{definition}")),
+                                    tag: definition as u32,
+                                    cardinality: Cardinality::Repeated,
+                                    kind: Kind::Message { definition },
+                                })
+                                .collect();
+                            metadata.schema.definitions = vec![Vec::new(); definitions];
+                            metadata.schema.definitions[0] = fields;
+                            let encoded = serde_json::to_vec(&metadata).unwrap();
+                            let admitted = harmos::storage::StorageSchema::decoding_memory_bytes(
+                                encoded.len(),
+                            )
+                            .unwrap();
+                            let decoded: harmos::storage::StorageSchema =
+                                serde_json::from_slice(&encoded).unwrap();
+                            assert_eq!(decoded, metadata);
+                            assert!(
+                                harmos::MemorySize::memory_size(&decoded)
+                                    <= admitted
+                                        + std::mem::size_of::<harmos::storage::StorageSchema>()
+                            );
+                        }
+                        assert!(
+                            harmos::storage::StorageSchema::decoding_memory_bytes(usize::MAX)
+                                .is_none()
+                        );
+                        assert!(
+                            harmos::storage::StorageSchema::decoding_memory_bytes(usize::MAX / 36)
+                                .is_none()
+                        );
                     }
                     f.finish().await;
 

@@ -744,7 +744,7 @@ fn transfer_bytes(settings: &StorageSettings, objects: bool) -> Result<usize> {
         })
         .and_then(|n| n.checked_add(settings.file_chunk_bytes.get()))
         .and_then(|n| {
-            n.checked_add(super::schema::decoding_overhead(
+            n.checked_add(StorageSchema::decoding_memory_bytes(
                 settings.replication_limits.bytes.get(),
             )?)
         })

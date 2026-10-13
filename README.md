@@ -240,7 +240,9 @@ hosts and SDK consumers together. Stored schema metadata uses `graph_v1`;
 `storage.write_schema` and `storage.query_schemas` use semantic version 2 for the
 finite schema description. Product row payload codecs are unchanged. Inline
 schema metadata is unsupported: preserve the original data and select a fresh
-storage root rather than resetting or silently converting it.
+storage root rather than resetting or silently converting it. Backends can reserve
+JSON schema decode memory with `StorageSchema::decoding_memory_bytes(encoded_bytes)`
+before decoding; add their own entry bookkeeping and reject `None` on overflow.
 
 Native managed calls return `operations::Response<T>`, which dereferences to the
 original declared payload. Response clones and cache entries share its owner.

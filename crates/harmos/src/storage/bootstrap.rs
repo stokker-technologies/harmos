@@ -373,7 +373,7 @@ pub(super) async fn copy(
         .get()
         .checked_mul(4)
         .and_then(|bytes| {
-            bytes.checked_add(super::schema::decoding_overhead(
+            bytes.checked_add(StorageSchema::decoding_memory_bytes(
                 manager.inner.settings.replication_limits.bytes.get(),
             )?)
         })
