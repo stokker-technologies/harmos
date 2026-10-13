@@ -88,6 +88,16 @@ class DynamicTests(unittest.TestCase):
 
     def _graph_refusals(self) -> None:
         loader = _projector()
+        for name, value in [("root", "0"), ("root", True), ("definitions", {})]:
+            with self.subTest(schema_type=name, value=value):
+                bad = _contract()
+                bad["schema"][name] = value
+                with self.assertRaises(TypeError):
+                    loader(bad)
+        bad = _contract()
+        bad["schema"]["definitions"][1] = {}
+        with self.assertRaises(TypeError):
+            loader(bad)
         bad = _contract()
         bad["schema"]["definitions"][1][2]["kind"]["definition"] = 99
         with self.assertRaises(ValueError):

@@ -102,7 +102,7 @@ def from_contract(
         or isinstance(root, bool)
         or not isinstance(definitions, list)
     ):
-        raise ValueError("invalid finite schema table")
+        raise TypeError("invalid finite schema table")
     if not 0 <= root < len(definitions) <= max_definitions:
         raise ValueError("invalid or excessive finite schema definitions")
     namespace = f"{package}.{service}Messages.{method}"
@@ -116,7 +116,7 @@ def from_contract(
     admitted = len(definitions) * 128
     for index, fields in enumerate(definitions):
         if not isinstance(fields, list):
-            raise ValueError("schema definition must contain fields")
+            raise TypeError("schema definition must contain fields")
         names: set[str] = set()
         tags: set[int] = set()
         refs: set[int] = set()
