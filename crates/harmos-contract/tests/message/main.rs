@@ -13,6 +13,7 @@ mod scenario_runtime;
 
 mod allocation;
 mod boxed;
+mod enums;
 mod graph;
 mod host;
 mod native;
@@ -190,6 +191,7 @@ fn schema_descriptor(
 fn contract_scenario() {
     graph::check();
     boxed::check();
+    enums::check();
     {
         scenario_runtime::check("names_never_shadow", || {
             let value = DecoderNames {
