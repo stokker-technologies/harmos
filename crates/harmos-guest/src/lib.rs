@@ -18,10 +18,11 @@ pub mod kit;
 
 /* === Re-Exports === */
 pub use error::{Error, Result};
+pub use harmos_contract::operations::Host;
 pub use harmos_contract::operations::{
     CacheKey, OperationDeclaration, OperationPolicy, RetryPolicy,
 };
-pub use harmos_contract::{catalog, listeners, operations};
+pub use harmos_contract::{builtin, catalog, listeners, operations};
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "componentize"))]
 pub use component::componentize;
@@ -32,7 +33,9 @@ pub use harmos_contract::{
 };
 
 #[cfg(feature = "kit")]
-pub use kit::{Context, OperationRefusal, PublishError, Publisher, UNKNOWN, UNREADABLE, WIT};
+pub use kit::{
+    Context, OperationInstance, OperationRefusal, PublishError, Publisher, UNKNOWN, UNREADABLE, WIT,
+};
 
 pub use harmos_contract::__private;
 

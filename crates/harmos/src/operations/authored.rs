@@ -41,7 +41,8 @@ type Payload<T> = <<T as Operation>::Declaration as OperationDeclaration>::Respo
 
 /* === Structs === */
 struct Physical<T: Operation> {
-    operation: T,
+    resources: Arc<T::Resources>,
+    operation: Option<T>,
     request: <T::Declaration as OperationDeclaration>::Request,
     endpoints: T::Endpoints,
     _request: Option<super::streaming::RequestClaims>,
@@ -77,17 +78,21 @@ struct Owned<T: Operation> {
 /* === Implementations === */
 impl<T: Operation> Physical<T> {
     async fn finish(&mut self, name: &str, control: &Weak<Instance>) -> Result<()> {
+        // An Operation That Never Initialized Owns Nothing To Stop
+        let Some(operation) = self.operation.as_mut() else {
+            return Ok(());
+        };
         if !self.stopped {
             if let Some(control) = control.upgrade() {
                 control.transition(Phase::Stopping);
             }
-            guarded(name, async { self.operation.stop().await }).await?;
+            guarded(name, async { operation.stop().await }).await?;
             self.stopped = true;
         }
         if let Some(control) = control.upgrade() {
             control.transition(Phase::Finalizing);
         }
-        guarded(name, async { self.operation.finalize().await }).await
+        guarded(name, async { operation.cleanup().await }).await
     }
 }
 
@@ -113,7 +118,10 @@ impl<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>> Body<super::Response
     for Bound<T>
 {
     fn transferred(&self) -> bool {
-        self.physical.operation.transferred()
+        self.physical
+            .operation
+            .as_ref()
+            .is_some_and(Operation::transferred)
             || super::EndpointSet::transferred(&self.physical.endpoints)
     }
 
@@ -123,10 +131,16 @@ impl<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>> Body<super::Response
             if self.cached.is_some() {
                 return Ok(());
             }
-            guarded(self.entry.id(), async {
-                self.physical.operation.initialize(context).await
+            if self.physical.operation.is_some() {
+                return Ok(());
+            }
+            let resources = Arc::clone(&self.physical.resources);
+            let operation = guarded(self.entry.id(), async {
+                T::initialize(resources, context).await
             })
-            .await
+            .await?;
+            self.physical.operation = Some(operation);
+            Ok(())
         })
     }
 
@@ -140,6 +154,8 @@ impl<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>> Body<super::Response
             guarded(self.entry.id(), async {
                 self.physical
                     .operation
+                    .as_mut()
+                    .expect("initialized operation")
                     .run(
                         context,
                         &mut self.physical.request,
@@ -265,22 +281,13 @@ pub(super) fn factory<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>>(
                         reason: "endpoint execution cannot reuse a response without executing its streams",
                     });
                 }
-                let operation = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    T::new(resources.clone())
-                }))
-                .map_err(|_| Error::OperationPanicked {
-                    operation: entry.id().to_owned(),
-                })?
-                .map_err(|source| Error::OperationFailed {
-                    operation: entry.id().to_owned(),
-                    source: Arc::new(source),
-                })?;
                 let cached = key.as_ref().and_then(|key| {
                     operations.lookup::<T::Declaration>(&entry, key, &origin.identity)
                 });
                 let bound = Bound::<T> {
                     physical: Physical {
-                        operation,
+                        resources: resources.clone(),
+                        operation: None,
                         request,
                         endpoints,
                         _request: retention,

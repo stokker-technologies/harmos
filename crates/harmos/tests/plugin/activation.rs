@@ -69,7 +69,7 @@ impl Operation for WireClient {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    fn new(_: Arc<()>) -> Result<Self> {
+    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self> {
         Ok(Self)
     }
 
@@ -81,7 +81,7 @@ impl Operation for WireClient {
     ) -> Result<harmos::operations::Response<String>> {
         let result: ::core::result::Result<String, Self::Error> = async move {
             let response = context
-                .call::<Run<0, 100, false>>(RunRequest {
+                .call_as::<Run<0, 100, false>>(RunRequest {
                     value: request.value.clone(),
                 })
                 .await?;
@@ -346,7 +346,7 @@ fn contract_scenario() {
             assert!(matches!(
                 runtime
                     .operations
-                    .call::<Run<0, 100, false>>(RunRequest {
+                    .call_as::<Run<0, 100, false>>(RunRequest {
                         value: "before".into()
                     })
                     .await,
@@ -360,7 +360,7 @@ fn contract_scenario() {
             assert_eq!(
                 runtime
                     .operations
-                    .call::<Run<0, 100, false>>(RunRequest {
+                    .call_as::<Run<0, 100, false>>(RunRequest {
                         value: "shared runtime owner".into()
                     })
                     .await
@@ -381,7 +381,7 @@ fn contract_scenario() {
             assert_eq!(
                 runtime
                     .operations
-                    .call::<Run<0, 100, false>>(RunRequest {
+                    .call_as::<Run<0, 100, false>>(RunRequest {
                         value: "after reload".into()
                     })
                     .await
@@ -423,7 +423,7 @@ fn contract_scenario() {
             assert_eq!(
                 runtime
                     .operations
-                    .call::<Run<0, 100, false>>(RunRequest {
+                    .call_as::<Run<0, 100, false>>(RunRequest {
                         value: "after replacement".into()
                     })
                     .await
@@ -436,7 +436,7 @@ fn contract_scenario() {
             assert!(matches!(
                 runtime
                     .operations
-                    .call::<Run<0, 100, false>>(RunRequest {
+                    .call_as::<Run<0, 100, false>>(RunRequest {
                         value: "removed".into()
                     })
                     .await,

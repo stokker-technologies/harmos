@@ -72,13 +72,18 @@ enum Event {
 /* === Implementations === */
 #[harmos::observer(id = "execution.watch", interval_ms = 5)]
 impl Watch {
-    fn new(resources: &Resources) -> Result<Self, std::io::Error> {
-        Ok(Self(resources.clone()))
-    }
-
-    async fn initialize(&mut self) -> Result<(), std::io::Error> {
-        self.0.events.send(Event::Opened).unwrap();
-        Ok(())
+    async fn initialize(resources: &Resources) -> Result<Self, std::io::Error> {
+        let constructed: Result<Self, std::io::Error> =
+            async move { Ok(Self(resources.clone())) }.await;
+        let mut observer = constructed?;
+        let started: Result<(), std::io::Error> = async {
+            let observer = &mut observer;
+            observer.0.events.send(Event::Opened).unwrap();
+            Ok(())
+        }
+        .await;
+        started?;
+        Ok(observer)
     }
 
     async fn observe(
@@ -138,14 +143,19 @@ impl std::io::Write for Diagnostics {
 
 #[harmos::observer(interval_ms = 5)]
 impl NeverStarts {
-    fn new(resources: &Resources) -> Result<Self, std::io::Error> {
-        Ok(Self(resources.clone()))
-    }
-
-    async fn initialize(&mut self) -> Result<(), std::io::Error> {
-        let _initializing = Callback(self.0.clone());
-        self.0.events.send(Event::Opened).unwrap();
-        std::future::pending().await
+    async fn initialize(resources: &Resources) -> Result<Self, std::io::Error> {
+        let constructed: Result<Self, std::io::Error> =
+            async move { Ok(Self(resources.clone())) }.await;
+        let mut observer = constructed?;
+        let started: Result<(), std::io::Error> = async {
+            let observer = &mut observer;
+            let _initializing = Callback(observer.0.clone());
+            observer.0.events.send(Event::Opened).unwrap();
+            std::future::pending().await
+        }
+        .await;
+        started?;
+        Ok(observer)
     }
 
     async fn observe(

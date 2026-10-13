@@ -129,7 +129,7 @@ impl harmos::Plugin for Receiver {
         table.bind_operation::<Consumption>(self.resources())?;
         table.bind_operation::<Reporting>(self.resources())
     }
-    async fn shutdown(&mut self, _: &Supervisor) -> Result<(), Refusal> {
+    async fn stop(&mut self, _: &Supervisor) -> Result<(), Refusal> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Refusal> {
@@ -163,7 +163,7 @@ impl Operation for Consumption {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    fn new(state: Arc<State>) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(state: Arc<State>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
         Ok(Self { state })
     }
     async fn run<'a>(
@@ -204,7 +204,7 @@ impl Operation for Reporting {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    fn new(state: Arc<State>) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(state: Arc<State>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
         Ok(Self { state })
     }
     async fn run<'a>(

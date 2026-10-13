@@ -88,16 +88,27 @@ impl Operation for Read {
     type Context<'a> = Context<'a>;
     type Endpoints = ();
 
-    fn new(events: Arc<Self::Resources>) -> std::io::Result<Self> {
-        events.lock().unwrap().push("new");
-        Ok(Self {
-            events,
-            address: None,
-        })
-    }
-    async fn initialize<'a>(&mut self, _: Self::Context<'a>) -> std::io::Result<()> {
-        self.events.lock().unwrap().push("initialize");
-        Ok(())
+    async fn initialize<'ctx>(
+        events: Arc<Self::Resources>,
+        _context: Self::Context<'ctx>,
+    ) -> std::io::Result<Self> {
+        let constructed: std::io::Result<Self> = async move {
+            events.lock().unwrap().push("new");
+            Ok(Self {
+                events,
+                address: None,
+            })
+        }
+        .await;
+        let mut operation = constructed?;
+        let started: std::io::Result<()> = async {
+            let operation = &mut operation;
+            operation.events.lock().unwrap().push("initialize");
+            Ok(())
+        }
+        .await;
+        started?;
+        Ok(operation)
     }
     async fn run<'a>(
         &mut self,
@@ -125,7 +136,7 @@ impl Operation for Read {
         self.events.lock().unwrap().push("stop");
         Ok(())
     }
-    async fn finalize(&mut self) -> std::io::Result<()> {
+    async fn cleanup(&mut self) -> std::io::Result<()> {
         let mut events = self.events.lock().unwrap();
         assert!(!events.contains(&"request dropped"));
         events.push("finalize");
@@ -163,7 +174,10 @@ fn contract_scenario() {
                         value: Cell::new(19),
                         events: events.clone(),
                     };
-                    let call = runtime.operations.submit::<Declaration>(request).unwrap();
+                    let call = runtime
+                        .operations
+                        .submit_as::<Declaration>(request)
+                        .unwrap();
                     assert_eq!(*call.join().await.unwrap(), 21);
                     runtime.stop().await.unwrap();
                     assert_eq!(
@@ -254,7 +268,7 @@ fn contract_scenario() {
 struct Streaming(Arc<std::sync::atomic::AtomicUsize>, bool);
 #[harmos::operation(harmos_path = harmos, policy = Declaration::POLICY, input = u32, output = u32)]
 impl Streaming {
-    fn new(resources: Arc<std::sync::atomic::AtomicUsize>) -> Self {
+    async fn initialize(resources: Arc<std::sync::atomic::AtomicUsize>, _: Context<'_>) -> Self {
         Self(resources, false)
     }
     async fn run(
@@ -286,7 +300,7 @@ impl Streaming {
         panic!("disabled lifecycle hook must use the trait default")
     }
     #[cfg_attr(all(), cfg_attr(all(), cfg(any())))]
-    async fn finalize(&mut self) -> std::result::Result<(), std::io::Error> {
+    async fn cleanup(&mut self) -> std::result::Result<(), std::io::Error> {
         panic!("disabled lifecycle hook must use the trait default")
     }
 }

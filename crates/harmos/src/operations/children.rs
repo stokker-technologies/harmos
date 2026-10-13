@@ -13,15 +13,17 @@
 
 /* === Imports === */
 // Standard Library Imports
+use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 // Third Party Imports
 use tokio::sync::{mpsc, oneshot};
 // Local Imports
 use crate::Error;
-use crate::operations::{EncodedInvocation, WireChildCall};
-use harmos_contract::Refusal;
+use crate::operations::{EncodedInvocation, WireChildAction, WireChildCall, WireChildControl};
+use harmos_contract::{Message, Refusal};
 
 /* === Constants === */
 pub(crate) const CHILD_REQUESTS: usize = 64;
@@ -35,6 +37,8 @@ pub(crate) const CHILD_REQUESTS: usize = 64;
 pub(crate) struct Children {
     pub(crate) context: [u8; 32],
     pub(crate) requests: mpsc::Sender<ChildRequest>,
+    // Submitted children this attempt still owns; dropping one cancels it.
+    pub(crate) submitted: Arc<Mutex<BTreeMap<u64, Child>>>,
 }
 
 pub(crate) struct ChildRequest {
@@ -45,7 +49,7 @@ pub(crate) struct ChildRequest {
     pub(crate) answer: oneshot::Sender<Result<EncodedInvocation, Error>>,
 }
 
-struct Child {
+pub(crate) struct Child {
     invocation: Option<EncodedInvocation>,
 }
 
@@ -88,17 +92,62 @@ impl Children {
             }
             admitted = admission => admitted.map_err(refused)?,
         };
-        let mut invocation = Child {
+        let invocation = Child {
             invocation: Some(invocation),
         };
-        // Cancellation Requests Interruption; The Same Child Still Drains
-        tokio::select! {
-            biased;
-            _ = &mut cancelled => {
-                invocation.invocation.as_ref().expect("owned child").cancel();
-                invocation.await.map_err(refused)
+        if call.submit {
+            let id = invocation.invocation.as_ref().expect("owned child").id();
+            self.submitted
+                .lock()
+                .expect("submitted child lock is healthy")
+                .insert(id.value(), invocation);
+            return Ok(id.value().encode_to_vec());
+        }
+        drained(invocation, cancelled).await
+    }
+
+    pub(crate) async fn control(
+        &self,
+        control: WireChildControl,
+        cancelled: oneshot::Receiver<()>,
+    ) -> Result<Vec<u8>, Refusal> {
+        let instance = control.instance;
+        let take = || {
+            self.submitted
+                .lock()
+                .expect("submitted child lock is healthy")
+                .remove(&instance)
+                .ok_or_else(|| unknown(instance))
+        };
+        match control.action {
+            WireChildAction::Join => drained(take()?, cancelled).await,
+            WireChildAction::Status | WireChildAction::Cancel => {
+                let submitted = self
+                    .submitted
+                    .lock()
+                    .expect("submitted child lock is healthy");
+                let invocation = submitted
+                    .get(&instance)
+                    .and_then(|child| child.invocation.as_ref())
+                    .ok_or_else(|| unknown(instance))?;
+                if control.action == WireChildAction::Cancel {
+                    invocation.cancel();
+                }
+                let state = harmos_contract::builtin::InstanceState::from(
+                    invocation.control.status().portable(),
+                );
+                Ok(state.encode_to_vec())
             }
-            outcome = &mut invocation => outcome.map_err(refused),
+            WireChildAction::Release => {
+                drop(take()?);
+                Ok(Vec::new())
+            }
+            WireChildAction::Detach => {
+                let mut child = take()?;
+                // Without Its Handle The Child Runs On; Its Scope Still Settles It
+                drop(child.invocation.take());
+                Ok(Vec::new())
+            }
         }
     }
 }
@@ -123,6 +172,7 @@ impl Drop for Child {
 }
 
 /* === Public Functions === */
+
 #[cfg(any(feature = "plugin-sidecar", feature = "plugin-guest"))]
 pub(crate) async fn lifecycle(
     invocation: EncodedInvocation,
@@ -166,5 +216,27 @@ pub(crate) fn refused(error: Error) -> Refusal {
 }
 
 /* === Private Functions === */
+// Await one child; cancellation requests interruption and the same child still
+// drains before its outcome is reported.
+async fn drained(
+    mut invocation: Child,
+    mut cancelled: oneshot::Receiver<()>,
+) -> Result<Vec<u8>, Refusal> {
+    tokio::select! {
+        biased;
+        _ = &mut cancelled => {
+            invocation.invocation.as_ref().expect("owned child").cancel();
+            invocation.await.map_err(refused)
+        }
+        outcome = &mut invocation => outcome.map_err(refused),
+    }
+}
+
+fn unknown(instance: u64) -> Refusal {
+    Refusal::new(
+        harmos_contract::UNKNOWN,
+        format!("operation instance {instance} is not a child this attempt owns"),
+    )
+}
 
 /* === Tests === */

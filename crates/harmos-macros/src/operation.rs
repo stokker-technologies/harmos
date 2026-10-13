@@ -143,12 +143,27 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
     }
     let sdk = HarmosPath::resolve(sdk);
     let owner = &implementation.self_ty;
-    let constructor = method(&implementation, "new")?;
+    if let Some(renamed) = optional(&implementation, "new") {
+        return Err(Error::new_spanned(
+            &renamed.sig,
+            "operation `new` was renamed: use `async fn initialize(resources: Arc<Resources>, context) -> Result<Self, Error>`",
+        ));
+    }
+    if let Some(renamed) = optional(&implementation, "finalize") {
+        return Err(Error::new_spanned(
+            &renamed.sig,
+            "operation `finalize` was renamed to `cleanup`",
+        ));
+    }
+    let constructor = method(&implementation, "initialize")?;
     let run = method(&implementation, "run")?;
-    if constructor.sig.asyncness.is_some() || constructor.sig.inputs.len() != 1 {
+    if constructor.sig.asyncness.is_none()
+        || constructor.sig.inputs.len() != 2
+        || matches!(constructor.sig.inputs.first(), Some(FnArg::Receiver(_)))
+    {
         return Err(Error::new_spanned(
             &constructor.sig,
-            "new requires one Arc<Resources> argument and must be synchronous",
+            "async initialize requires an Arc<Resources> argument and the context, without self",
         ));
     }
     let resources = typed(&constructor.sig.inputs[0])?;
@@ -273,13 +288,13 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
     let construct = match &constructor.sig.output {
         ReturnType::Type(_, ty) if matches!(ty.as_ref(), Type::Path(path) if path.path.is_ident("Self")) =>
         {
-            quote!(::core::result::Result::Ok(<#owner>::new(resources)))
+            quote!(::core::result::Result::Ok(<#owner>::initialize(resources, context).await))
         }
-        ReturnType::Type(_, _) => quote!(<#owner>::new(resources)),
+        ReturnType::Type(_, _) => quote!(<#owner>::initialize(resources, context).await),
         _ => {
             return Err(Error::new_spanned(
                 &constructor.sig,
-                "new must return Self or Result<Self, Error>",
+                "initialize must return Self or Result<Self, Error>",
             ));
         }
     };
@@ -289,13 +304,7 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
         let name = &method.sig.ident;
         let gates = configuration(&method.attrs)?;
         match name.to_string().as_str() {
-            "initialize" => lifecycle.push(quote! {
-                #(#gates)*
-                async fn initialize<'ctx>(&mut self, context: Self::Context<'ctx>) -> ::core::result::Result<(), Self::Error> {
-                    <#owner>::initialize(self, context).await
-                }
-            }),
-            "stop" | "finalize" => lifecycle.push(quote! {
+            "stop" | "cleanup" => lifecycle.push(quote! {
                 #(#gates)*
                 async fn #name(&mut self) -> ::core::result::Result<(), Self::Error> {
                     <#owner>::#name(self).await
@@ -311,7 +320,7 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
                     <#owner>::classify(error)
                 }
             }),
-            _ => {},
+            _ => {}
         }
     }
     let (generics, _, where_clause) = implementation.generics.split_for_impl();
@@ -334,7 +343,10 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
             type Error = #error;
             type Context<'ctx> = #context;
             type Endpoints = #endpoint_type;
-            fn new(resources: ::std::sync::Arc<Self::Resources>) -> ::core::result::Result<Self, Self::Error> {
+            async fn initialize<'ctx>(
+                resources: ::std::sync::Arc<Self::Resources>,
+                context: Self::Context<'ctx>,
+            ) -> ::core::result::Result<Self, Self::Error> {
                 #construct
             }
             async fn run<'ctx>(
@@ -388,14 +400,15 @@ fn configuration(attributes: &[Attribute]) -> Result<Vec<Attribute>, Error> {
 }
 
 fn method<'a>(implementation: &'a ItemImpl, name: &str) -> Result<&'a ImplItemFn, Error> {
-    implementation
-        .items
-        .iter()
-        .find_map(|item| match item {
-            ImplItem::Fn(method) if method.sig.ident == name => Some(method),
-            _ => None,
-        })
+    optional(implementation, name)
         .ok_or_else(|| Error::new_spanned(implementation, format!("operation requires {name}")))
+}
+
+fn optional<'a>(implementation: &'a ItemImpl, name: &str) -> Option<&'a ImplItemFn> {
+    implementation.items.iter().find_map(|item| match item {
+        ImplItem::Fn(method) if method.sig.ident == name => Some(method),
+        _ => None,
+    })
 }
 
 fn typed(argument: &FnArg) -> Result<&Type, Error> {

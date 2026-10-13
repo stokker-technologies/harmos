@@ -84,13 +84,13 @@ pub(super) fn contract_scenario() {
                     let producer = f
                         .runtime
                         .operations
-                        .call::<CreateFile>(create.clone())
+                        .call_as::<CreateFile>(create.clone())
                         .await
                         .unwrap();
                     assert_eq!(
                         *f.runtime
                             .operations
-                            .call::<CreateFile>(create.clone())
+                            .call_as::<CreateFile>(create.clone())
                             .await
                             .unwrap(),
                         *producer
@@ -104,7 +104,7 @@ pub(super) fn contract_scenario() {
                     let appended = f
                         .runtime
                         .operations
-                        .call::<AppendFile>(first.clone())
+                        .call_as::<AppendFile>(first.clone())
                         .await
                         .unwrap();
                     assert_eq!(appended.length, 3);
@@ -117,7 +117,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         f.runtime
                             .operations
-                            .call::<AppendFile>(second)
+                            .call_as::<AppendFile>(second)
                             .await
                             .unwrap()
                             .length,
@@ -126,7 +126,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         *f.runtime
                             .operations
-                            .call::<AppendFile>(first.clone())
+                            .call_as::<AppendFile>(first.clone())
                             .await
                             .unwrap(),
                         *appended
@@ -138,7 +138,7 @@ pub(super) fn contract_scenario() {
                     assert!(
                         f.runtime
                             .operations
-                            .call::<AppendFile>(conflict)
+                            .call_as::<AppendFile>(conflict)
                             .await
                             .is_err()
                     );
@@ -149,7 +149,7 @@ pub(super) fn contract_scenario() {
                     assert!(
                         f.runtime
                             .operations
-                            .call::<AppendFile>(wrong_offset)
+                            .call_as::<AppendFile>(wrong_offset)
                             .await
                             .is_err()
                     );
@@ -160,14 +160,14 @@ pub(super) fn contract_scenario() {
                     let reference = f
                         .runtime
                         .operations
-                        .call::<FinishFile>(finish.clone())
+                        .call_as::<FinishFile>(finish.clone())
                         .await
                         .unwrap();
                     assert_eq!(reference.length, 6);
                     assert_eq!(
                         *f.runtime
                             .operations
-                            .call::<FinishFile>(finish.clone())
+                            .call_as::<FinishFile>(finish.clone())
                             .await
                             .unwrap(),
                         *reference
@@ -175,7 +175,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         *f.runtime
                             .operations
-                            .call::<CreateFile>(create)
+                            .call_as::<CreateFile>(create)
                             .await
                             .unwrap(),
                         *producer
@@ -231,7 +231,7 @@ pub(super) fn contract_scenario() {
                     let producer = f
                         .runtime
                         .operations
-                        .call::<CreateFile>(CreateFileRequest {
+                        .call_as::<CreateFile>(CreateFileRequest {
                             mutation: key(&f, "create"),
                             metadata: metadata("lost"),
                         })
@@ -249,7 +249,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         f.runtime
                             .operations
-                            .call::<AppendFile>(append.clone())
+                            .call_as::<AppendFile>(append.clone())
                             .await
                             .unwrap()
                             .length,
@@ -267,7 +267,7 @@ pub(super) fn contract_scenario() {
                     let abandoned = f
                         .runtime
                         .operations
-                        .call::<AbandonFile>(abandon.clone())
+                        .call_as::<AbandonFile>(abandon.clone())
                         .await
                         .unwrap();
                     assert_eq!(abandoned.phase, FilePhase::Abandoned);
@@ -275,7 +275,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         *f.runtime
                             .operations
-                            .call::<AbandonFile>(abandon)
+                            .call_as::<AbandonFile>(abandon)
                             .await
                             .unwrap(),
                         *abandoned
@@ -283,7 +283,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         f.runtime
                             .operations
-                            .call::<AppendFile>(append)
+                            .call_as::<AppendFile>(append)
                             .await
                             .unwrap()
                             .length,
@@ -500,13 +500,13 @@ pub(super) fn contract_scenario() {
                     let result = f
                         .runtime
                         .operations
-                        .call::<FinishFile>(request.clone())
+                        .call_as::<FinishFile>(request.clone())
                         .await
                         .unwrap();
                     let replay = f
                         .runtime
                         .operations
-                        .call::<FinishFile>(request)
+                        .call_as::<FinishFile>(request)
                         .await
                         .unwrap();
                     assert_eq!(result, replay);
@@ -544,7 +544,7 @@ pub(super) fn contract_scenario() {
                     assert!(
                         f.runtime
                             .operations
-                            .call::<CreateFile>(request.clone())
+                            .call_as::<CreateFile>(request.clone())
                             .await
                             .is_err()
                     );
@@ -553,7 +553,7 @@ pub(super) fn contract_scenario() {
                     let producer = f
                         .runtime
                         .operations
-                        .call::<CreateFile>(request)
+                        .call_as::<CreateFile>(request)
                         .await
                         .unwrap();
                     f.storage

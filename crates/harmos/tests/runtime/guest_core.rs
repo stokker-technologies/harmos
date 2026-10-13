@@ -63,7 +63,7 @@ fn contract_scenario() {
                     let denied = format!("invoke:ledger.withdraw:unselected:{payload}");
                     let refused = runtime
                         .operations
-                        .call::<Echo>(Echo {
+                        .call_as::<Echo>(Echo {
                             say: denied.clone(),
                         })
                         .await
@@ -82,14 +82,14 @@ fn contract_scenario() {
                     let accepted = format!("invoke:{}:same-original-commit:{payload}", DEPOSIT.1);
                     let first = runtime
                         .operations
-                        .call::<Echo>(Echo {
+                        .call_as::<Echo>(Echo {
                             say: accepted.clone(),
                         })
                         .await
                         .unwrap();
                     let second = runtime
                         .operations
-                        .call::<Echo>(Echo { say: accepted })
+                        .call_as::<Echo>(Echo { say: accepted })
                         .await
                         .unwrap();
                     assert_eq!(first.said, second.said);
@@ -116,7 +116,7 @@ fn contract_scenario() {
 
                     let malformed = runtime
                         .operations
-                        .call::<Echo>(Echo {
+                        .call_as::<Echo>(Echo {
                             say: format!("invoke:{}:malformed:invalid-json", DEPOSIT.1),
                         })
                         .await
@@ -131,7 +131,7 @@ fn contract_scenario() {
                     assert_eq!(original.finalized.load(Ordering::SeqCst), 4);
                     let refused = runtime
                         .operations
-                        .call::<Echo>(Echo { say: denied })
+                        .call_as::<Echo>(Echo { say: denied })
                         .await
                         .unwrap();
                     assert!(

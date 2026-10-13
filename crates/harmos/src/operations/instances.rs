@@ -65,6 +65,8 @@ pub(crate) struct Reservation<O> {
 struct State {
     closing: bool,
     active: BTreeMap<OperationInstanceId, Arc<Instance>>,
+    // The submitting caller of each active instance, for the built-ins.
+    owners: BTreeMap<OperationInstanceId, super::caller::Identity>,
 }
 
 struct Queue {
@@ -115,6 +117,7 @@ impl Instances {
             state: Mutex::new(State {
                 closing: false,
                 active: BTreeMap::new(),
+                owners: BTreeMap::new(),
             }),
             ordinary,
             lifecycle,
@@ -143,6 +146,32 @@ impl Instances {
             .active
             .get(&id)
             .map(|instance| instance.status())
+    }
+
+    pub(super) fn assign(&self, id: OperationInstanceId, owner: super::caller::Identity) {
+        let mut state = self
+            .state
+            .lock()
+            .expect("operation instance index is healthy");
+        if state.active.contains_key(&id) {
+            state.owners.insert(id, owner);
+        }
+    }
+
+    // Resolve an active instance only for the caller that submitted it.
+    pub(super) fn owned(
+        &self,
+        id: OperationInstanceId,
+        caller: &super::caller::Identity,
+    ) -> Option<Arc<Instance>> {
+        let state = self
+            .state
+            .lock()
+            .expect("operation instance index is healthy");
+        if state.owners.get(&id) != Some(caller) {
+            return None;
+        }
+        state.active.get(&id).cloned()
     }
 
     pub(crate) fn state_of<A: crate::Application>(&self) -> crate::state::StateManager<A> {
@@ -203,12 +232,14 @@ impl Instances {
         let instance = Instance::queued(cancellation).on_settled(move || {
             retiring.release();
             if let Some(owner) = owner.upgrade() {
-                let retired = owner
-                    .state
-                    .lock()
-                    .expect("operation instance index is healthy")
-                    .active
-                    .remove(&id);
+                let retired = {
+                    let mut state = owner
+                        .state
+                        .lock()
+                        .expect("operation instance index is healthy");
+                    state.owners.remove(&id);
+                    state.active.remove(&id)
+                };
                 drop(retired);
             }
             retired();

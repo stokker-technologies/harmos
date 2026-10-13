@@ -355,7 +355,7 @@ where
         Ok(())
     }
 
-    pub fn submit<O: crate::operations::OperationDeclaration>(
+    pub fn submit_as<O: crate::operations::OperationDeclaration>(
         &mut self,
         request: O::Request,
     ) -> crate::Result<crate::operations::OperationInstance<O>> {
@@ -365,7 +365,7 @@ where
         let operations = runtime.operations.clone();
         let handle = self
             .executor
-            .block_on(async move { operations.submit::<O>(request) });
+            .block_on(async move { operations.submit_as::<O>(request) });
         self.executor.drive();
         handle
     }

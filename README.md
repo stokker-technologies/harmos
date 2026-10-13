@@ -254,6 +254,13 @@ ledger; the loan is released when its last owner is dropped. Stream producers
 use `output.send_owned(response).await?` to retain the same owner through queueing
 and encoding; ordinary stream payloads keep their existing `Send` contract. Protobuf payloads and RPC paths remain unchanged.
 
+Harmos serves no built-in operation by default. `builtin::Catalog::register`
+serves `host.operations.status` and `host.operations.cancel` (gRPC
+`/harmos.host.v1.Operations/Status` and `/Cancel`) over the manager's instances.
+Each answers only for active instances the caller submitted; unknown, foreign
+and settled ids are refused alike. Plugins reach them like any other operation,
+so they must declare them as requirements.
+
 Hosts can register `operations::discovery::Discovery` in their existing operation
 manager to serve `host.operations` (unary gRPC path
 `/harmos.host.v1.Host/Operations` when `grpc` is enabled). `OperationsRequest` accepts optional `after`,
@@ -325,11 +332,46 @@ producer and clears the disconnected deadline. Finish, abort and storage shutdow
 still retire production; existing file-count and memory budgets remain enforced.
 A viewer owns its subscription, while the original service owns production.
 
-Operations derive child context with `Context::with_value` for a declared
-`ContextValue`; sidecar `Supervisor` and guest `Context` expose the same method.
+One `operations::Host` capability serves operation bodies wherever they run: in
+process over `OperationManager` and `operations::Context`, in a sidecar over
+`Supervisor`, and in a guest over `Context`. `call` and `submit` take the
+declaration itself when it is its own request; `call_as::<O>` and
+`submit_as::<O>` name an operation with a separate request type. A submitted
+`OperationInstance` reports `status`, and supports `cancel`, `join` and
+`cancel_and_join`. Dropping an unsettled instance cancels it; `detach` keeps it
+running without a handle until its submitting attempt ends, which cancels and
+settles it like any other child.
+
+```rust,ignore
+use harmos::operations::{Host, Instance};
+
+async fn sample<H: Host>(host: &H) -> Result<u64, H::Error> {
+    let reading = host.call(Read { channel: 3 }).await?;
+    let pending = host.submit_as::<Calibrate>(Calibration::default()).await?;
+    let status = pending.status().await?;
+    let calibrated = pending.join().await?;
+    host.publish_on::<Progress>(&Progress { percent: 100 }).await?;
+    Ok(reading.value + calibrated.offset + u64::from(status.attempt))
+}
+```
+
+In process, the inherent `submit` and `submit_as` admit synchronously. Sidecars
+and guests submit unary children; streaming child sessions (`upload`,
+`download`, `exchange`) remain in-process for now.
+
+Operations derive child context with `with_value` for a declared
+`ContextValue`; every binding borrows its handle and returns the derived one.
 The child keeps the original caller, grants, cancellation and deadline while
 receiving the selected portable value. Read portable values with
 `CallContext::value`; overlays retain the 64-value, 64 KiB context budget.
+
+Operations, observers and plugins share lifecycle verbs. An operation's
+`async fn initialize(resources, context) -> Self` constructs it on its first
+attempt; queued instances cancelled before they start and cache hits construct
+nothing. `run` (operations) and `observe` (observers) do the work, `stop` ends
+domain activity, and `cleanup` releases physical resources after a successful
+initialization. Observers initialize from `&Resources`; plugins keep `prepare`
+and `initialize(&mut self, context)` and end with `stop` and `cleanup`.
 
 Externally supplied settings and defaults live in each configurable crate's root
 `config.rs`. Composition passes each owner its relevant settings rather than

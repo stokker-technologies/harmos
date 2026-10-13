@@ -454,7 +454,10 @@ where
     type Endpoints = ();
     type Context<'a> = crate::operations::Context<'a>;
 
-    fn new(resources: Arc<Self::Resources>) -> crate::Result<Self> {
+    async fn initialize<'ctx>(
+        resources: Arc<Self::Resources>,
+        _: Self::Context<'ctx>,
+    ) -> crate::Result<Self> {
         let endpoint =
             resources
                 .calls
@@ -1200,8 +1203,8 @@ where
                 }
                 if method == crate::operations::CHILD_METHOD {
                     let submitted = executor::now();
-                    let call = match crate::operations::WireChildCall::decode(&params) {
-                        Ok(call) => call,
+                    let child = match crate::operations::WireChild::decode(&params) {
+                        Ok(child) => child,
                         Err(error) => {
                             let refusal = harmos_contract::Refusal::of(error);
                             return self
@@ -1220,7 +1223,7 @@ where
                     let scope = self
                         .child_scopes
                         .values()
-                        .find(|scope| scope.context == call.context)
+                        .find(|scope| &scope.context == child.context())
                         .cloned();
                     let admission = if self.routed_tasks.len() >= CHILD_REQUESTS {
                         Err(crate::plugin::DispatchError::Busy.into_refusal())
@@ -1234,22 +1237,52 @@ where
                         Ok(scope) => {
                             let (cancellation, cancelled) = oneshot::channel();
                             let invocation = match scope {
-                                Some(scope) => {
-                                    Box::pin(
-                                        async move { scope.call(call, submitted, cancelled).await },
-                                    )
-                                        as Pin<
-                                            Box<
-                                                dyn Future<
-                                                        Output = Result<
-                                                            Vec<u8>,
-                                                            harmos_contract::Refusal,
-                                                        >,
-                                                    > + Send,
-                                            >,
-                                        >
-                                }
+                                Some(scope) => Box::pin(async move {
+                                    match child {
+                                        crate::operations::WireChild::Call(call) => {
+                                            scope.call(call, submitted, cancelled).await
+                                        }
+                                        crate::operations::WireChild::Control(control) => {
+                                            scope.control(control, cancelled).await
+                                        }
+                                    }
+                                })
+                                    as Pin<
+                                        Box<
+                                            dyn Future<
+                                                    Output = Result<
+                                                        Vec<u8>,
+                                                        harmos_contract::Refusal,
+                                                    >,
+                                                > + Send,
+                                        >,
+                                    >,
                                 None => {
+                                    // Submitted Children Belong To An Attempt Scope
+                                    let call = match child {
+                                        crate::operations::WireChild::Call(call)
+                                            if !call.submit =>
+                                        {
+                                            call
+                                        }
+                                        _ => {
+                                            let refusal = harmos_contract::Refusal::new(
+                                                harmos_contract::UNKNOWN,
+                                                "submitted children require an attempt context",
+                                            );
+                                            return self
+                                                .send(Frame::Refusal {
+                                                    id,
+                                                    code: refusal.code(),
+                                                    message: refusal.message().to_owned(),
+                                                })
+                                                .await
+                                                .map_or_else(
+                                                    |error| Absorbed::Malformed(error.to_string()),
+                                                    |()| Absorbed::Carried,
+                                                );
+                                        }
+                                    };
                                     match if self.remote_observers.owns_context(&call.context) {
                                         self.remote_observers.submit_child(call, submitted)
                                     } else if call.generation_context.as_ref().is_some_and(

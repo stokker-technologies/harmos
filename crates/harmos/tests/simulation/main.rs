@@ -354,7 +354,7 @@ impl Operation for Pending {
     type Resources = ();
     type Error = Infallible;
 
-    fn new(_: Arc<()>) -> Result<Pending, Infallible> {
+    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Pending, Infallible> {
         Ok(Self)
     }
 
@@ -390,7 +390,7 @@ impl Operation for Answer {
     type Resources = ();
     type Error = Infallible;
 
-    fn new(_: Arc<()>) -> Result<Self, Infallible> {
+    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, Infallible> {
         Ok(Self)
     }
 
@@ -426,7 +426,7 @@ impl Operation for Draw {
     type Resources = ();
     type Error = Infallible;
 
-    fn new(_: Arc<()>) -> Result<Self, Infallible> {
+    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, Infallible> {
         Ok(Self)
     }
 
@@ -514,7 +514,7 @@ impl Operation for TimeWait {
     type Resources = ();
     type Error = Infallible;
 
-    fn new(_: Arc<()>) -> Result<Self, Infallible> {
+    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, Infallible> {
         Ok(Self)
     }
 
@@ -695,7 +695,7 @@ impl harmos::Plugin for Idle {
     ) -> Result<(), harmos::operations::ServingError> {
         Ok(())
     }
-    async fn shutdown(&mut self, _: &Self::Context) -> Result<(), Infallible> {
+    async fn stop(&mut self, _: &Self::Context) -> Result<(), Infallible> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Infallible> {
@@ -810,7 +810,7 @@ fn scripted(seed: u64) -> SimulatedRuntime<Bank> {
 fn scripted_wait(seed: u64) -> Duration {
     let mut sim = bank(seed).simulate().expect("the simulation boots");
     let timed = sim
-        .submit::<TimingItsOwnWait>(TimingItsOwnWait { wait_ms: 750 })
+        .submit_as::<TimingItsOwnWait>(TimingItsOwnWait { wait_ms: 750 })
         .unwrap();
     sim.advance_ms(400);
     sim.advance_ms(350);
@@ -837,7 +837,7 @@ fn entropy_run(seed: u64) -> (SimulatedRuntime<Bank>, Vec<u64>) {
         .simulate()
         .expect("the simulation boots");
     let handle = sim
-        .submit::<Drawing>(Drawing {
+        .submit_as::<Drawing>(Drawing {
             draws: Arc::clone(&draws),
         })
         .unwrap();
@@ -922,7 +922,7 @@ fn contract_scenario() {
                 sim.service("adapter").exits(),
                 ["environmental:disconnected"]
             );
-            let deadline = sim.submit::<Pending>(Pending).unwrap();
+            let deadline = sim.submit_as::<Pending>(Pending).unwrap();
             sim.advance_ms(5);
             assert!(matches!(
                 sim.settle(deadline),
@@ -1039,7 +1039,9 @@ fn contract_scenario() {
             sim.record(alice(), Noted("full script".to_owned()))
                 .expect("record lands");
             sim.publish(pulse(8)).expect("publish lands");
-            let job = sim.submit::<Answering>(Answering { answer: 13 }).unwrap();
+            let job = sim
+                .submit_as::<Answering>(Answering { answer: 13 })
+                .unwrap();
             assert_eq!(*sim.settle(job).expect("operation settles"), 13);
             sim.advance_ms(1);
             sim.fault("adapter", Fault::Environmental("reset"))

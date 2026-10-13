@@ -42,7 +42,7 @@ struct Read;
 /* === Implementations === */
 #[harmos::operation(policy = POLICY, input = u32)]
 impl Read {
-    fn new(_: Arc<()>) -> Self { Self }
+    async fn initialize(_: Arc<()>, _: Context<'_>) -> Self { Self }
     async fn run(&mut self, _: Context<'_>, _: &(), _: &mut harmos::operations::StreamInput<u64>) -> Result<(), harmos::Error> {
         Ok(())
     }

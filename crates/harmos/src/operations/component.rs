@@ -206,7 +206,10 @@ where
     type Endpoints = E;
     type Context<'a> = Context<'a>;
 
-    fn new(component: Arc<Component>) -> Result<Self, ComponentError> {
+    async fn initialize<'ctx>(
+        component: Arc<Component>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, ComponentError> {
         Ok(Self {
             component,
             state: None,
@@ -279,7 +282,7 @@ where
         result.map(::core::convert::Into::into)
     }
 
-    async fn finalize(&mut self) -> Result<(), ComponentError> {
+    async fn cleanup(&mut self) -> Result<(), ComponentError> {
         let Some(state) = self.state.as_mut() else {
             return Ok(());
         };
@@ -386,6 +389,7 @@ impl Component {
         let children = Children {
             context: token,
             requests,
+            submitted: Default::default(),
         };
         let command = match phase {
             Phase::Initialize => WireCommand::Initialize {
@@ -515,7 +519,10 @@ impl Operation for SdkOperation {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    fn new(binding: Arc<SdkBinding>) -> Result<Self, ComponentError> {
+    async fn initialize<'ctx>(
+        binding: Arc<SdkBinding>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, ComponentError> {
         Ok(Self {
             binding,
             state: None,
@@ -578,7 +585,7 @@ impl Operation for SdkOperation {
         result.map(::core::convert::Into::into)
     }
 
-    async fn finalize(&mut self) -> Result<(), ComponentError> {
+    async fn cleanup(&mut self) -> Result<(), ComponentError> {
         let Some(state) = self.state.as_mut() else {
             return Ok(());
         };
@@ -636,6 +643,7 @@ fn sdk_dispatch(
     let id = invocation.id();
     let generation = invocation.generation();
     let control = Arc::clone(&invocation.control);
+    let invocation = invocation.unguarded();
     let outcome = Box::pin(async move {
         let payload = invocation.await?;
         payload.try_unwrap().map_err(|_| Error::InvalidInput {

@@ -130,7 +130,7 @@ impl Plugin for Catalog {
     fn bind_operations(&self, _: &mut WireTable<Supervisor>) -> Result<(), ServingError> {
         panic!("export must never bind authored handlers")
     }
-    async fn shutdown(&mut self, _: &Supervisor) -> Result<(), Refusal> {
+    async fn stop(&mut self, _: &Supervisor) -> Result<(), Refusal> {
         panic!("export must never enter domain shutdown")
     }
     async fn cleanup(&mut self) -> Result<(), Refusal> {

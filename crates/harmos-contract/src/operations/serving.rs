@@ -67,6 +67,20 @@ pub struct WireChildCall {
     pub values: Vec<super::CallValue>,
     pub operation: String,
     pub payload: Vec<u8>,
+    // Submitted children answer their instance id at admission and remain
+    // owned by the calling attempt until joined, released or detached.
+    #[serde(default)]
+    pub submit: bool,
+}
+
+// Drives one child the same attempt submitted; the host resolves the instance
+// only inside the attempt context that submitted it.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WireChildControl {
+    pub context: [u8; 32],
+    pub instance: u64,
+    pub action: WireChildAction,
 }
 
 pub struct WireTable<C> {
@@ -112,6 +126,25 @@ pub struct WireBinding<H, C> {
 }
 
 /* === Enums === */
+// Answers: `Join` the child's response payload, `Status` and `Cancel` an
+// encoded `builtin::InstanceState`, `Release` and `Detach` an empty payload.
+// Releasing cancels the child; detaching leaves it running without a handle.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WireChildAction {
+    Join,
+    Status,
+    Cancel,
+    Release,
+    Detach,
+}
+
+#[derive(Debug)]
+pub enum WireChild {
+    Call(WireChildCall),
+    Control(WireChildControl),
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "phase", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WireCommand {

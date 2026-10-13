@@ -297,7 +297,7 @@ impl harmos::Plugin for Ticking {
     fn attachment(&self) -> Option<Arc<dyn harmos_contract::plugin::Attachment<Self::Context>>> {
         Some(self.attachment.clone())
     }
-    async fn shutdown(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
@@ -372,7 +372,7 @@ impl harmos::Plugin for Twins {
     ) -> Result<(), harmos::operations::ServingError> {
         Ok(())
     }
-    async fn shutdown(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
@@ -492,7 +492,7 @@ impl harmos::Plugin for SampledTwins {
     fn attachment(&self) -> Option<Arc<dyn harmos_contract::plugin::Attachment<Self::Context>>> {
         Some(self.attachment.clone())
     }
-    async fn shutdown(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
@@ -508,7 +508,7 @@ impl harmos::Plugin for SampledTwins {
 
 #[harmos::observer(streams(Left), activation = "demand", interval_ms = 5)]
 impl LeftObserver {
-    fn new(resources: &ObserverResources) -> Result<Self, Infallible> {
+    async fn initialize(resources: &ObserverResources) -> Result<Self, Infallible> {
         resources.counts.started[0].fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Ok(Self(resources.counts.clone()))
     }
@@ -544,7 +544,7 @@ impl LeftObserver {
 
 #[harmos::observer(streams(Right), activation = "demand", interval_ms = 5)]
 impl RightObserver {
-    fn new(resources: &ObserverResources) -> Result<Self, Infallible> {
+    async fn initialize(resources: &ObserverResources) -> Result<Self, Infallible> {
         resources.counts.started[1].fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Ok(Self(resources.counts.clone()))
     }
@@ -626,7 +626,7 @@ impl harmos::Plugin for MultiStream {
     fn attachment(&self) -> Option<Arc<dyn harmos_contract::plugin::Attachment<Self::Context>>> {
         Some(self.attachment.clone())
     }
-    async fn shutdown(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
@@ -717,7 +717,7 @@ pub(super) fn contract_scenario() {
                     fixture.initialize().await.unwrap();
                     ready(fixture.ready().clone()).await;
                     fixture
-                        .call::<PublishPulse>(PublishPulse { sample: 41 })
+                        .call_as::<PublishPulse>(PublishPulse { sample: 41 })
                         .await
                         .unwrap();
                     let stream = fixture
@@ -742,7 +742,7 @@ pub(super) fn contract_scenario() {
                     fixture.initialize().await.unwrap();
                     ready(fixture.ready().clone()).await;
                     fixture
-                        .call::<PublishPulse>(PublishPulse { sample: 42 })
+                        .call_as::<PublishPulse>(PublishPulse { sample: 42 })
                         .await
                         .unwrap();
                     let samples: Vec<_> = stream

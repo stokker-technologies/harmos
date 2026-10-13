@@ -132,7 +132,7 @@ impl harmos::Plugin for Receiver {
     ) -> Result<(), harmos::operations::ServingError> {
         table.bind_operation::<Observing>(self.resources())
     }
-    async fn shutdown(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
+    async fn stop(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
@@ -168,7 +168,10 @@ impl Operation for Observing {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    fn new(resources: Arc<Probe>) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(
+        resources: Arc<Probe>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Refusal> {
         Ok(Self { resources })
     }
     async fn run<'a>(
@@ -248,7 +251,7 @@ pub(super) fn contract_scenario() {
                     fixture.initialize().await.unwrap();
                     super::publications::ready(fixture.ready().clone()).await;
                     let operations = fixture.runtime.operations.clone();
-                    fixture.call::<Observe>(delivered(7)).await.unwrap();
+                    fixture.call_as::<Observe>(delivered(7)).await.unwrap();
                     assert_eq!(probe.total.load(Ordering::SeqCst), 7);
 
                     for name in ["unknown", "harmos.record"] {
@@ -272,10 +275,10 @@ pub(super) fn contract_scenario() {
                     }
                     assert_eq!(probe.total.load(Ordering::SeqCst), 7);
                     assert!(matches!(
-                        fixture.call::<Observe>(delivered(0)).await,
+                        fixture.call_as::<Observe>(delivered(0)).await,
                         Err(harmos::Error::OperationRefused(harmos::Refusal::TimedOut))
                     ));
-                    fixture.call::<Observe>(delivered(3)).await.unwrap();
+                    fixture.call_as::<Observe>(delivered(3)).await.unwrap();
                     assert_eq!(probe.active.load(Ordering::SeqCst), 0);
                     assert_eq!(probe.total.load(Ordering::SeqCst), 10);
 
@@ -297,7 +300,7 @@ pub(super) fn contract_scenario() {
                     .unwrap();
                     stalled.abort();
                     let _ = stalled.await;
-                    fixture.call::<Observe>(delivered(2)).await.unwrap();
+                    fixture.call_as::<Observe>(delivered(2)).await.unwrap();
                     assert_eq!(probe.total.load(Ordering::SeqCst), 12);
                     fixture.shutdown().await.unwrap();
                     fixture.runtime.stop().await.unwrap();

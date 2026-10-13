@@ -197,7 +197,10 @@ where
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
 
-    fn new(attachment: Arc<Self::Resources>) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(
+        attachment: Arc<Self::Resources>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Refusal> {
         Ok(Self {
             attachment,
             _operation: PhantomData,
@@ -243,7 +246,10 @@ where
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
 
-    fn new(attachment: Arc<Self::Resources>) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(
+        attachment: Arc<Self::Resources>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Refusal> {
         Ok(Self {
             attachment,
             work: None,

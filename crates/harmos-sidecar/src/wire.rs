@@ -117,6 +117,7 @@ impl Frame {
             values: Vec::new(),
             operation: O::ID.to_owned(),
             payload: Vec::new(),
+            submit: true,
         };
         call_encoded_len(
             u64::MAX,

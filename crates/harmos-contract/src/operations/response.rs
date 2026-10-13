@@ -83,6 +83,15 @@ impl<T: Send + Sync + 'static> Response<T> {
         Arc::try_unwrap(owner).map_err(Self::from_owner)
     }
 
+    // Move the payload out, cloning only when the owner is shared or projected.
+    pub fn into_owned(self) -> T
+    where
+        T: Clone,
+    {
+        self.try_unwrap()
+            .unwrap_or_else(|response| (*response).clone())
+    }
+
     pub fn into_erased(self) -> ErasedResponse {
         self.erased
     }

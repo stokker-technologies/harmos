@@ -23,6 +23,7 @@ use std::sync::Arc;
 
 // Local Imports
 use contract::{Inspect, POLICY, Queries};
+use harmos::operations::Host as _;
 use harmos::operations::{Operation, OperationPolicy, WireTable, host};
 use harmos::plugin::sidecar::{Refusal, Supervisor};
 
@@ -110,7 +111,7 @@ impl harmos::Plugin for Process {
     ) -> Result<(), harmos::operations::ServingError> {
         table.bind_operation::<Inspecting>(self.resources())
     }
-    async fn shutdown(&mut self, _: &Supervisor) -> Result<(), Refusal> {
+    async fn stop(&mut self, _: &Supervisor) -> Result<(), Refusal> {
         self.resources.mark("shutdown")?;
         if std::env::var("HARMOS_TEST_CORE_FAIL_SHUTDOWN").as_deref() == Ok("1") {
             return Err(Refusal::of(std::io::Error::other(
@@ -130,7 +131,10 @@ impl Operation for Inspecting {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    fn new(resources: Arc<Resources>) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(
+        resources: Arc<Resources>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Refusal> {
         Ok(Self {
             _resources: resources,
         })
@@ -159,7 +163,7 @@ impl Operation for Inspecting {
                 context.clone()
             };
             let answered = selected
-                .operation::<host::Egress>(host::EgressRequest {
+                .call_as::<host::Egress>(host::EgressRequest {
                     name: if name == "context-denied" {
                         "other".into()
                     } else if name.starts_with("context") {
@@ -186,7 +190,8 @@ impl Operation for Inspecting {
                         .value::<contract::Stage>()
                         .map_err(Refusal::of)?
                         .unwrap();
-                    let child = String::from_utf8(response.body).map_err(Refusal::of)?;
+                    let child =
+                        String::from_utf8(response.into_owned().body).map_err(Refusal::of)?;
                     format!("{}:{child}", parent.id)
                 }
                 Ok(response) => format!("egress status {}", response.status),

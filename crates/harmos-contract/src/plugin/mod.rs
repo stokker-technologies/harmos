@@ -61,7 +61,7 @@ pub trait Plugin: lifecycle::Policy + Send + Sync + Sized + 'static {
 
     fn bind_operations(&self, table: &mut WireTable<Self::Context>) -> Result<(), ServingError>;
 
-    fn shutdown(
+    fn stop(
         &mut self,
         context: &Self::Context,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send;

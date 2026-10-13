@@ -86,7 +86,10 @@ impl Operation for Ping {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    fn new(_resources: Arc<()>) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(
+        _resources: Arc<()>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Self::Error> {
         Ok(Self)
     }
 
@@ -230,7 +233,11 @@ fn own_contract() {
                         .register_operation::<Ping>("service", Lanes::Open, Arc::new(()))
                         .unwrap();
                     assert_eq!(
-                        *runtime.operations.call::<PingContract>(()).await.unwrap(),
+                        *runtime
+                            .operations
+                            .call_as::<PingContract>(())
+                            .await
+                            .unwrap(),
                         42
                     );
                     runtime.stop().await.unwrap();

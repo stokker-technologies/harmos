@@ -450,7 +450,10 @@ const AUTHORING: [&str; 13] = [
     "operation",
 ];
 
-const GUEST_CENSUS: [&str; 49] = [
+const GUEST_CENSUS: [&str; 52] = [
+    "Host",
+    "OperationInstance",
+    "builtin",
     "CacheKey",
     "ConfigError",
     "Context",
@@ -502,7 +505,10 @@ const GUEST_CENSUS: [&str; 49] = [
     "streams",
 ];
 
-const SIDECAR_KIT_CENSUS: [&str; 80] = [
+const SIDECAR_KIT_CENSUS: [&str; 83] = [
+    "Host",
+    "OperationInstance",
+    "builtin",
     "Activation",
     "ActivationId",
     "Attach",
@@ -1338,6 +1344,7 @@ fn contract_facility_gate(path: &str, attribute: &str) -> bool {
             &["crates/harmos/src/operations/session.rs"]
         }
         "#[cfg(feature=\"grpc\")]" => &[
+            "crates/harmos-contract/src/builtin.rs",
             "crates/harmos-contract/src/lib.rs",
             "crates/harmos-contract/src/message/mod.rs",
             "crates/harmos-contract/src/operations/contract.rs",

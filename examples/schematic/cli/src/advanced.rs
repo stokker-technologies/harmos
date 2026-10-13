@@ -68,7 +68,10 @@ pub async fn run(runtime: &Runtime, schematic: Snapshot, native: bool) -> Result
     // Only The Native Sidecar Has Filesystem Access
     if native {
         let request = list_directories::Request {};
-        let response = runtime.operations.call::<ListDirectories>(request).await?;
+        let response = runtime
+            .operations
+            .call_as::<ListDirectories>(request)
+            .await?;
         println!("Native directories: {:?}", response.directories);
     }
     Ok(())

@@ -190,7 +190,7 @@ impl harmos::Plugin for Producer {
     fn attachment(&self) -> Option<Arc<dyn harmos_contract::plugin::Attachment<Supervisor>>> {
         Some(self.attachment.clone())
     }
-    async fn shutdown(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
+    async fn stop(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
@@ -211,7 +211,7 @@ impl harmos::Plugin for Producer {
     demand_keys(RECORD)
 )]
 impl RecordOnly {
-    fn new(resources: &Resources) -> Result<Self, Infallible> {
+    async fn initialize(resources: &Resources) -> Result<Self, Infallible> {
         resources.counts.started[0].fetch_add(1, SeqCst);
         Ok(Self(resources.counts.clone()))
     }
@@ -244,7 +244,7 @@ impl RecordOnly {
     demand_keys(RECORD, AUXILIARY)
 )]
 impl Mixed {
-    fn new(resources: &Resources) -> Result<Self, Infallible> {
+    async fn initialize(resources: &Resources) -> Result<Self, Infallible> {
         resources.counts.started[1].fetch_add(1, SeqCst);
         Ok(Self(resources.counts.clone()))
     }

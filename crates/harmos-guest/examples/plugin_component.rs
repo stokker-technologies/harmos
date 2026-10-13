@@ -143,7 +143,7 @@ impl Plugin for Program {
     ) -> Result<(), harmos_contract::operations::ServingError> {
         table.bind_operation::<Reader>(self.resources())
     }
-    async fn shutdown(&mut self, _: &Context) -> Result<(), Self::Error> {
+    async fn stop(&mut self, _: &Context) -> Result<(), Self::Error> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
@@ -172,15 +172,26 @@ impl Operation for Reader {
     type Endpoints = ();
     type Context<'a> = &'a Context;
 
-    fn new(value: Arc<String>) -> Result<Self, Self::Error> {
-        Ok(Self {
-            value,
-            initializations: 0,
-        })
-    }
-    async fn initialize<'ctx>(&mut self, _: Self::Context<'ctx>) -> Result<(), Self::Error> {
-        self.initializations += 1;
-        Ok(())
+    async fn initialize<'ctx>(
+        value: Arc<String>,
+        _context: Self::Context<'ctx>,
+    ) -> Result<Self, Self::Error> {
+        let constructed: Result<Self, Self::Error> = async move {
+            Ok(Self {
+                value,
+                initializations: 0,
+            })
+        }
+        .await;
+        let mut operation = constructed?;
+        let started: Result<(), Self::Error> = async {
+            let operation = &mut operation;
+            operation.initializations += 1;
+            Ok(())
+        }
+        .await;
+        started?;
+        Ok(operation)
     }
     async fn run<'ctx>(
         &mut self,

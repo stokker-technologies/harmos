@@ -98,7 +98,10 @@ impl Operation for Measure {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    fn new(resources: Arc<Gauge>) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(
+        resources: Arc<Gauge>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Self::Error> {
         Ok(Self(resources))
     }
 
@@ -144,7 +147,7 @@ async fn assert_admission(lane: Lanes, count: usize, admitted: usize) {
         .register_operation::<Measure>("app", lane, gauge.clone())
         .unwrap();
     let instances: Vec<_> = (0..count)
-        .map(|_| runtime.operations.submit::<MeasureContract>(()).unwrap())
+        .map(|_| runtime.operations.submit_as::<MeasureContract>(()).unwrap())
         .collect();
 
     for _ in 0..admitted {

@@ -101,7 +101,10 @@ impl harmos::operations::Operation for PendingCall {
     type Endpoints = ();
     type Context<'a> = harmos::operations::Context<'a>;
 
-    fn new(trace: Arc<Cancellation>) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(
+        trace: Arc<Cancellation>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Self::Error> {
         Ok(Self(trace))
     }
 
@@ -119,7 +122,7 @@ impl harmos::operations::Operation for PendingCall {
         result.map(::core::convert::Into::into)
     }
 
-    async fn finalize(&mut self) -> Result<(), Self::Error> {
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
         self.0.finalized.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
@@ -161,7 +164,7 @@ fn contract_scenario() {
                         .operations
                         .register_operation::<PendingCall>("shutdown", Lanes::Open, trace.clone())
                         .unwrap();
-                    let operation = runtime.operations.submit::<PendingContract>(()).unwrap();
+                    let operation = runtime.operations.submit_as::<PendingContract>(()).unwrap();
                     trace.started.notified().await;
                     runtime
                         .services

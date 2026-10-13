@@ -70,7 +70,7 @@ pub mod linked {
         ) -> Result<(), harmos::operations::ServingError> {
             Ok(())
         }
-        async fn shutdown(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+        async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
             Ok(())
         }
         async fn cleanup(&mut self) -> Result<(), Self::Error> {
@@ -89,6 +89,7 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
+use harmos::operations::Host as _;
 use harmos::operations::{
     Operation, OperationDeclaration, OperationPolicy, RetryPolicy, WireTable,
 };
@@ -199,7 +200,7 @@ impl harmos::Plugin for Stubborn {
         table.bind_operation::<Asking>(self.resources())?;
         table.bind_operation::<Echoing>(self.resources())
     }
-    async fn shutdown(&mut self, _: &Supervisor) -> Result<(), Refusal> {
+    async fn stop(&mut self, _: &Supervisor) -> Result<(), Refusal> {
         if std::env::var("HARMOS_TEST_DELAY_SHUTDOWN").as_deref() == Ok("1") {
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
@@ -253,7 +254,10 @@ impl Operation for Asking {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    fn new(resources: Arc<Handler>) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(
+        resources: Arc<Handler>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Refusal> {
         Ok(Self {
             _resources: resources,
         })
@@ -276,7 +280,10 @@ impl Operation for Echoing {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    fn new(resources: Arc<Handler>) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(
+        resources: Arc<Handler>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Refusal> {
         Ok(Self {
             _resources: resources,
         })
@@ -290,7 +297,7 @@ impl Operation for Echoing {
         let result: ::core::result::Result<String, Self::Error> = async move {
             if request == "publish-foreign" {
                 // Reach The Host With A Selected Core Leaf And An Ungranted Stream.
-                host.operation::<harmos::operations::host::Publish>(
+                host.call_as::<harmos::operations::host::Publish>(
                     harmos::operations::host::Publication {
                         stream: <linked::Foreign as harmos::StreamSpec>::ID.to_owned(),
                         schema: <linked::Foreign as harmos::StreamSpec>::VERSION,

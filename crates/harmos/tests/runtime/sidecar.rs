@@ -75,7 +75,10 @@ mod visibility {
         type Error = Refusal;
         type Endpoints = ();
         type Context<'a> = &'a Supervisor;
-        fn new(resources: Arc<GaugeResources>) -> Result<Self, Refusal> {
+        async fn initialize<'ctx>(
+            resources: Arc<GaugeResources>,
+            _: Self::Context<'ctx>,
+        ) -> Result<Self, Refusal> {
             Ok(Self { resources })
         }
         async fn run<'ctx>(
@@ -103,7 +106,10 @@ mod visibility {
         type Error = Refusal;
         type Endpoints = ();
         type Context<'a> = &'a Supervisor;
-        fn new(resources: Arc<GaugeResources>) -> Result<Self, Refusal> {
+        async fn initialize<'ctx>(
+            resources: Arc<GaugeResources>,
+            _: Self::Context<'ctx>,
+        ) -> Result<Self, Refusal> {
             Ok(Self { resources })
         }
         async fn run<'ctx>(
@@ -468,7 +474,7 @@ impl harmos::Plugin for Joinable {
     ) -> Result<(), harmos::operations::ServingError> {
         Ok(())
     }
-    async fn shutdown(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
@@ -514,7 +520,7 @@ impl harmos::Plugin for Gauge {
         table.bind_operation::<visibility::ScalingPrivately>(self.resources())?;
         table.bind_operation::<visibility::ScalingPublicly>(self.resources())
     }
-    async fn shutdown(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
@@ -569,7 +575,10 @@ impl harmos::operations::Operation for Measuring {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    fn new(resources: Arc<GaugeResources>) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(
+        resources: Arc<GaugeResources>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Refusal> {
         Ok(Self { resources })
     }
     async fn run<'ctx>(
@@ -622,7 +631,10 @@ impl harmos::operations::Operation for Echoing {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    fn new(resources: Arc<GaugeResources>) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(
+        resources: Arc<GaugeResources>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Refusal> {
         Ok(Self {
             _resources: resources,
         })
@@ -659,7 +671,10 @@ impl harmos::operations::Operation for Uppercasing {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    fn new(resources: Arc<GaugeResources>) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(
+        resources: Arc<GaugeResources>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Refusal> {
         Ok(Self {
             _resources: resources,
         })
@@ -696,7 +711,10 @@ impl harmos::operations::Operation for StoppingSampling {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    fn new(resources: Arc<GaugeResources>) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(
+        resources: Arc<GaugeResources>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Refusal> {
         Ok(Self { resources })
     }
     async fn run<'ctx>(
@@ -732,7 +750,10 @@ impl harmos::operations::Operation for ReadingFactor {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    fn new(resources: Arc<GaugeResources>) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(
+        resources: Arc<GaugeResources>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Refusal> {
         Ok(Self { resources })
     }
     async fn run<'ctx>(
@@ -762,7 +783,10 @@ impl harmos::operations::Operation for Amplifying {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    fn new(resources: Arc<MeterHandler>) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(
+        resources: Arc<MeterHandler>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Refusal> {
         Ok(Self {
             _resources: resources,
         })
@@ -796,7 +820,10 @@ impl harmos::operations::Operation for Emitting {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    fn new(resources: Arc<MeterHandler>) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(
+        resources: Arc<MeterHandler>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Refusal> {
         Ok(Self {
             _resources: resources,
         })
@@ -828,7 +855,10 @@ impl harmos::operations::Operation for PublishingPulse {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    fn new(resources: Arc<MeterHandler>) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(
+        resources: Arc<MeterHandler>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Refusal> {
         Ok(Self {
             _resources: resources,
         })
@@ -860,7 +890,10 @@ impl harmos::operations::Operation for Collapsing {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    fn new(resources: Arc<MeterHandler>) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(
+        resources: Arc<MeterHandler>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Refusal> {
         Ok(Self {
             _resources: resources,
         })
@@ -891,7 +924,10 @@ impl harmos::operations::Operation for Finishing {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    fn new(resources: Arc<MeterHandler>) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(
+        resources: Arc<MeterHandler>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Refusal> {
         Ok(Self {
             _resources: resources,
         })
@@ -922,7 +958,10 @@ impl harmos::operations::Operation for BudgetedCall {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    fn new(resources: Arc<MeterHandler>) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(
+        resources: Arc<MeterHandler>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Refusal> {
         Ok(Self {
             _resources: resources,
         })
@@ -964,7 +1003,10 @@ impl harmos::operations::Operation for Sampling {
     type Error = harmos::Error;
     type Endpoints = ();
     type Context<'a> = harmos::operations::Context<'a>;
-    fn new(resources: Arc<SampleProjection>) -> harmos::Result<Self> {
+    async fn initialize<'ctx>(
+        resources: Arc<SampleProjection>,
+        _: Self::Context<'ctx>,
+    ) -> harmos::Result<Self> {
         Ok(Self { resources })
     }
     async fn run<'ctx>(
@@ -1021,7 +1063,7 @@ impl harmos::Plugin for Meter {
         table.bind_operation::<Finishing>(self.resources())?;
         table.bind_operation::<BudgetedCall>(self.resources())
     }
-    async fn shutdown(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
+    async fn stop(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
@@ -1199,7 +1241,7 @@ fn own_contract() {
                     publications::ready(fixture.ready().clone()).await;
                     let runtime = &fixture.runtime;
                     fixture
-                        .call::<PublishPulse>(PublishPulse { sample: 42 })
+                        .call_as::<PublishPulse>(PublishPulse { sample: 42 })
                         .await
                         .expect("the sidecar publishes the requested sample");
 
@@ -1408,7 +1450,7 @@ fn own_contract() {
                         refusal_bytes: 0,
                     };
                     assert!(!Frame::request_fits::<BudgetedRoute>(&request));
-                    let oversized = fixture.call::<BudgetedRoute>(request).await.unwrap_err();
+                    let oversized = fixture.call_as::<BudgetedRoute>(request).await.unwrap_err();
                     assert_transport_refusal(oversized, Frame::OVERSIZED, "request");
 
                     for request in [
@@ -1423,12 +1465,15 @@ fn own_contract() {
                             refusal_bytes: Frame::LIMIT as u32,
                         },
                     ] {
-                        let refused = fixture.call::<BudgetedRoute>(request).await.unwrap_err();
+                        let refused = fixture.call_as::<BudgetedRoute>(request).await.unwrap_err();
                         assert_transport_refusal(refused, Frame::OVERSIZED, "reply");
                     }
 
                     assert_eq!(
-                        fixture.call::<Amplify>(Amplify { value: 5 }).await.unwrap(),
+                        fixture
+                            .call_as::<Amplify>(Amplify { value: 5 })
+                            .await
+                            .unwrap(),
                         Amplified { value: 10 },
                         "every oversize refusal leaves the same exchange available to a later call"
                     );
@@ -2010,7 +2055,7 @@ fn own_contract() {
 
     assert_eq!(
         fixture
-            .call::<visibility::ScalePrivately>(visibility::Scale { value: 4 })
+            .call_as::<visibility::ScalePrivately>(visibility::Scale { value: 4 })
             .await
             .unwrap(),
         visibility::Scale { value: 20 },
@@ -2018,7 +2063,7 @@ fn own_contract() {
     );
     assert_eq!(
         fixture
-            .call::<visibility::ScalePublicly>(visibility::ScalePubliclyRequest {})
+            .call_as::<visibility::ScalePublicly>(visibility::ScalePubliclyRequest {})
             .await
             .unwrap(),
         visibility::Scale { value: 5 },
@@ -2055,14 +2100,14 @@ fn own_contract() {
 
     assert_eq!(
         fixture
-            .call::<GetMeasure>(Measure { value: 7 })
+            .call_as::<GetMeasure>(Measure { value: 7 })
             .await
             .unwrap(),
         Measured { value: 21 },
         "the route answers under the configuration the entry was activated with"
     );
     let error = fixture
-        .call::<GetMeasure>(Measure { value: -1 })
+        .call_as::<GetMeasure>(Measure { value: -1 })
         .await
         .unwrap_err();
     let harmos::Error::OperationFailed { source, .. } = error else {
@@ -2075,12 +2120,12 @@ fn own_contract() {
     );
 
     assert_eq!(
-        fixture.call::<RunEcho>("hello".to_owned()).await.unwrap(),
+        fixture.call_as::<RunEcho>("hello".to_owned()).await.unwrap(),
         "hello".to_owned()
     );
     assert_eq!(
         fixture
-            .call::<RunUppercase>("hello".to_owned())
+            .call_as::<RunUppercase>("hello".to_owned())
             .await
             .unwrap(),
         "HELLO".to_owned()
@@ -2088,7 +2133,7 @@ fn own_contract() {
 
     assert_eq!(
         fixture
-            .call::<StopSampling>(StopSamplingRequest {})
+            .call_as::<StopSampling>(StopSamplingRequest {})
             .await
             .unwrap(),
         StopSamplingResponse {},
@@ -2096,7 +2141,7 @@ fn own_contract() {
     );
     assert_eq!(
         fixture
-            .call::<GetFactor>(GetFactorRequest {})
+            .call_as::<GetFactor>(GetFactorRequest {})
             .await
             .unwrap(),
         Measured { value: 3 },
@@ -2225,7 +2270,7 @@ fn own_contract() {
         fixture.initialize().await.unwrap();
         publications::ready(fixture.ready().clone()).await;
         let refused = fixture
-            .call::<PublishPulse>(PublishPulse { sample: 42 })
+            .call_as::<PublishPulse>(PublishPulse { sample: 42 })
             .await
             .unwrap_err();
         assert!(

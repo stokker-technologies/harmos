@@ -91,7 +91,10 @@ impl harmos::operations::Operation for Surveying {
     type Error = super::Failed;
     type Endpoints = ();
     type Context<'a> = Context<'a>;
-    fn new(owner: Arc<CoreOwner>) -> std::result::Result<Self, Self::Error> {
+    async fn initialize<'ctx>(
+        owner: Arc<CoreOwner>,
+        _: Self::Context<'ctx>,
+    ) -> std::result::Result<Self, Self::Error> {
         Ok(Self(owner))
     }
     async fn run<'ctx>(
@@ -119,7 +122,10 @@ impl harmos::operations::Operation for CorePublication {
     type Error = super::Failed;
     type Endpoints = ();
     type Context<'a> = Context<'a>;
-    fn new(owner: Arc<CoreOwner>) -> std::result::Result<Self, Self::Error> {
+    async fn initialize<'ctx>(
+        owner: Arc<CoreOwner>,
+        _: Self::Context<'ctx>,
+    ) -> std::result::Result<Self, Self::Error> {
         owner.prepared.fetch_add(1, Ordering::SeqCst);
         Ok(Self(owner))
     }
@@ -134,7 +140,7 @@ impl harmos::operations::Operation for CorePublication {
             assert!(!context.is_host_call());
             assert_eq!(context.caller_scope().unwrap().owner(), "client");
             assert!(matches!(
-                context.submit::<Control>("child".into()),
+                context.submit_as::<Control>("child".into()),
                 Err(Error::OperationUnauthorized { .. })
             ));
             self.0.called.fetch_add(1, Ordering::SeqCst);
@@ -172,7 +178,10 @@ impl Operation for Controlling {
     type Error = super::Failed;
     type Endpoints = ();
     type Context<'a> = Context<'a>;
-    fn new(resources: Arc<Owner>) -> std::result::Result<Self, Self::Error> {
+    async fn initialize<'ctx>(
+        resources: Arc<Owner>,
+        _: Self::Context<'ctx>,
+    ) -> std::result::Result<Self, Self::Error> {
         resources.prepared.fetch_add(1, Ordering::SeqCst);
         Ok(Self {
             _resources: resources,
@@ -232,7 +241,7 @@ impl PluginLifecycle for Host {
                 )
             })?);
             assert!(matches!(
-                self.operations.submit::<Control>("staged".into()),
+                self.operations.submit_as::<Control>("staged".into()),
                 Err(Error::NotReady { .. })
             ));
             assert!(matches!(
@@ -356,7 +365,7 @@ pub(super) fn contract_scenario() {
                     manager.initialize(&mut host).await.unwrap();
                     let caller = runtime.operations.caller(&host.callers["client"]).unwrap();
                     let page = caller
-                        .submit::<Operations>(OperationsRequest {
+                        .submit_as::<Operations>(OperationsRequest {
                             rows: Some(1),
                             ..Default::default()
                         })
@@ -378,7 +387,7 @@ pub(super) fn contract_scenario() {
                         "/harmos.host.v1.Host/Operations"
                     );
                     let bounded = caller
-                        .submit::<Operations>(OperationsRequest {
+                        .submit_as::<Operations>(OperationsRequest {
                             bytes: Some(page.catalog.len() as u32),
                             ..Default::default()
                         })
@@ -391,7 +400,7 @@ pub(super) fn contract_scenario() {
                         serde_json::from_slice(&bounded.catalog).unwrap();
                     assert_eq!(bounded_entries, first);
                     let page = caller
-                        .submit::<Operations>(OperationsRequest {
+                        .submit_as::<Operations>(OperationsRequest {
                             after: page.next.clone(),
                             rows: Some(1),
                             ..Default::default()
@@ -422,7 +431,7 @@ pub(super) fn contract_scenario() {
                             != Control::ID)
                     );
                     assert!(matches!(
-                        caller.submit::<Survey>(SurveyRequest {
+                        caller.submit_as::<Survey>(SurveyRequest {
                             stream: "power".into(),
                             ..Default::default()
                         }),
@@ -430,7 +439,7 @@ pub(super) fn contract_scenario() {
                     ));
                     assert!(
                         caller
-                            .submit::<Operations>(OperationsRequest {
+                            .submit_as::<Operations>(OperationsRequest {
                                 bytes: Some(2),
                                 ..Default::default()
                             })
@@ -440,7 +449,7 @@ pub(super) fn contract_scenario() {
                     );
                     assert!(
                         caller
-                            .submit::<Operations>(OperationsRequest {
+                            .submit_as::<Operations>(OperationsRequest {
                                 after: Some("invalid".into()),
                                 ..Default::default()
                             })
@@ -450,7 +459,7 @@ pub(super) fn contract_scenario() {
                     );
                     assert!(
                         caller
-                            .submit::<Operations>(OperationsRequest {
+                            .submit_as::<Operations>(OperationsRequest {
                                 rows: Some(257),
                                 ..Default::default()
                             })
@@ -460,7 +469,7 @@ pub(super) fn contract_scenario() {
                     );
                     let host_page = runtime
                         .operations
-                        .submit::<Operations>(OperationsRequest::default())
+                        .submit_as::<Operations>(OperationsRequest::default())
                         .unwrap()
                         .await
                         .unwrap();
@@ -471,7 +480,7 @@ pub(super) fn contract_scenario() {
                     manager.shutdown(&mut host).await.unwrap();
                     let host_page = runtime
                         .operations
-                        .submit::<Operations>(OperationsRequest::default())
+                        .submit_as::<Operations>(OperationsRequest::default())
                         .unwrap()
                         .await
                         .unwrap();
@@ -484,7 +493,7 @@ pub(super) fn contract_scenario() {
                     );
                     assert!(
                         caller
-                            .submit::<Operations>(OperationsRequest::default())
+                            .submit_as::<Operations>(OperationsRequest::default())
                             .is_err()
                     );
                     runtime.stop().await.unwrap();
@@ -549,7 +558,7 @@ pub(super) fn contract_scenario() {
                         .caller(&host.callers["provider"])
                         .unwrap();
                     assert!(matches!(
-                        provider.submit::<Publish>(Publication::default()),
+                        provider.submit_as::<Publish>(Publication::default()),
                         Err(Error::OperationUnauthorized { .. })
                     ));
                     let mut context = harmos::operations::CallContext::default();
@@ -560,7 +569,7 @@ pub(super) fn contract_scenario() {
                         .caller(&host.callers["client"])
                         .unwrap();
                     caller
-                        .submit::<Publish>(Publication::default())
+                        .submit_as::<Publish>(Publication::default())
                         .unwrap()
                         .await
                         .unwrap();
@@ -591,7 +600,7 @@ pub(super) fn contract_scenario() {
                         .unwrap();
                     manager.shutdown(&mut host).await.unwrap();
                     assert!(matches!(
-                        caller.submit::<Publish>(Publication::default()),
+                        caller.submit_as::<Publish>(Publication::default()),
                         Err(Error::OperationCaller { .. })
                     ));
                     runtime.stop().await.unwrap();
@@ -637,19 +646,19 @@ pub(super) fn contract_scenario() {
                         ..SurveyRequest::default()
                     };
                     caller
-                        .submit::<Survey>(survey("reading"))
+                        .submit_as::<Survey>(survey("reading"))
                         .unwrap()
                         .await
                         .unwrap();
                     assert!(matches!(
-                        caller.submit::<Survey>(survey("power")),
+                        caller.submit_as::<Survey>(survey("power")),
                         Err(Error::OperationUnauthorized { .. })
                     ));
                     assert_eq!(owner.called.load(Ordering::SeqCst), 1);
                     // The Host Itself Needs No Grant
                     runtime
                         .operations
-                        .submit::<Survey>(survey("power"))
+                        .submit_as::<Survey>(survey("power"))
                         .unwrap()
                         .await
                         .unwrap();
@@ -685,7 +694,7 @@ pub(super) fn contract_scenario() {
                     let dependency = runtime.operations.caller(&host.callers["client"]).unwrap();
                     for caller in [&own, &dependency] {
                         assert!(matches!(
-                            caller.submit::<Control>("plugin".into()),
+                            caller.submit_as::<Control>("plugin".into()),
                             Err(Error::OperationUnauthorized { .. })
                         ));
                         assert!(matches!(
@@ -712,7 +721,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         *runtime
                             .operations
-                            .call::<Control>("host".into())
+                            .call_as::<Control>("host".into())
                             .await
                             .unwrap(),
                         "host"
@@ -736,7 +745,7 @@ pub(super) fn contract_scenario() {
                         host.scope.as_ref().unwrap().generation()
                     );
                     assert!(matches!(
-                        own.submit::<Control>("stale".into()),
+                        own.submit_as::<Control>("stale".into()),
                         Err(Error::OperationCaller { .. })
                     ));
                     assert!(
@@ -751,7 +760,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         *runtime
                             .operations
-                            .call::<Control>("replacement".into())
+                            .call_as::<Control>("replacement".into())
                             .await
                             .unwrap(),
                         "replacement"
@@ -760,7 +769,7 @@ pub(super) fn contract_scenario() {
                     assert!(
                         runtime
                             .operations
-                            .submit::<Control>("closed".into())
+                            .submit_as::<Control>("closed".into())
                             .is_err()
                     );
                     runtime.stop().await.unwrap();

@@ -201,7 +201,10 @@ impl Operation for Echoing {
     type Error = harmos_sidecar::Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    fn new(resources: Arc<Handler>) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(
+        resources: Arc<Handler>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Self::Error> {
         Ok(Self {
             _resources: resources,
         })
@@ -228,7 +231,10 @@ impl Operation for Starting {
     type Error = harmos_sidecar::Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    fn new(resources: Arc<Handler>) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(
+        resources: Arc<Handler>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Self::Error> {
         Ok(Self { resources })
     }
     async fn run<'ctx>(
@@ -313,7 +319,7 @@ impl Plugin for TransportPlugin {
         table.bind_operation::<Echoing>(Arc::clone(&self.resources))?;
         table.bind_operation::<Starting>(Arc::clone(&self.resources))
     }
-    async fn shutdown(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
+    async fn stop(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Self::Error> {

@@ -65,8 +65,19 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
     if let Some(start) = declared(&block, "start") {
         return Err(Error::new(
             start.sig.ident.span(),
-            "observer `start` was renamed: use `fn new(resources: &Resources) -> Result<Self, Error>` and `async fn initialize(&mut self) -> Result<(), Error>`; observe receives `&ObserverContext<'_, Resources>`",
+            "observer `start` was renamed: use `async fn initialize(resources: &Resources) -> Result<Self, Error>`; observe receives `&ObserverContext<'_, Resources>`",
         ));
+    }
+    for (renamed, message) in [
+        (
+            "new",
+            "observer `new` was folded into `async fn initialize(resources: &Resources) -> Result<Self, Error>`",
+        ),
+        ("finalize", "observer `finalize` was renamed to `cleanup`"),
+    ] {
+        if let Some(found) = declared(&block, renamed) {
+            return Err(Error::new(found.sig.ident.span(), message));
+        }
     }
     let observing = required(
         &block,
@@ -82,19 +93,17 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
         .map(|ty| quote!(#ty))
         .unwrap_or_else(|| quote!(#harmos::__private::sidecar::Supervisor));
     let observed = returned(observing)?;
-    let construction = if let Some(opening) = declared(&block, "new") {
-        if opening.sig.asyncness.is_some() {
-            return Err(Error::new(
-                opening.sig.span(),
-                "observer new is synchronous; asynchronous acquisition belongs in initialize(&mut self)",
-            ));
-        }
+    let construction = if let Some(opening) = declared(&block, "initialize") {
+        asynchronous(
+            opening,
+            "initializing awaits whatever the observer acquires",
+        )?;
         if opening.sig.inputs.len() != 1
             || !matches!(opening.sig.inputs.first(), Some(FnArg::Typed(_)))
         {
             return Err(Error::new(
                 opening.sig.inputs.span(),
-                "new takes the resource bundle: `resources: &Resources`",
+                "initialize takes the resource bundle and returns the observer: `async fn initialize(resources: &Resources) -> Result<Self, Error>`",
             ));
         }
         borrowed(
@@ -102,38 +111,18 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
             "the bundle an observer binds",
         )?;
         returned(opening)?;
-        quote!(<Self>::new(resources))
+        quote!(<Self>::initialize(resources))
     } else {
         quote! {{
             let _ = resources;
-            #[diagnostic::on_unimplemented(message = "derive Default or provide fn new(resources: &Resources) -> Result<Self, Error> for this observer")]
+            #[diagnostic::on_unimplemented(message = "derive Default or provide async fn initialize(resources: &Resources) -> Result<Self, Error> for this observer")]
             trait ObserverDefault: ::core::default::Default {}
             impl<T: ::core::default::Default> ObserverDefault for T {}
             fn construct_default<T: ObserverDefault>() -> T { T::default() }
 
-            ::core::result::Result::Ok(construct_default::<Self>())
+            ::core::future::ready(::core::result::Result::Ok(construct_default::<Self>()))
         }}
     };
-    let initialization = declared(&block, "initialize")
-        .map(|opening| {
-            asynchronous(opening, "initializing awaits whatever the retained instance opens")?;
-            if opening.sig.inputs.len() != 1
-                || !matches!(opening.sig.inputs.first(), Some(FnArg::Receiver(receiver))
-                    if matches!(receiver.kind, syn::ReceiverKind::Reference(_, _, Some(_))))
-            {
-                return Err(Error::new(opening.sig.inputs.span(),
-                    "initialize borrows the retained observer: `async fn initialize(&mut self) -> Result<(), Error>`; bind resources in new"));
-            }
-            returned(opening)?;
-            Ok::<_, Error>(quote! {
-                fn initialize(&mut self) -> impl ::core::future::Future<
-                    Output = ::core::result::Result<(), Self::Error>,
-                > + Send {
-                    <Self>::initialize(self)
-                }
-            })
-        })
-        .transpose()?;
 
     let answer = quote!(#harmos::__private::Answer);
     if let Type::Path(path) = &observed
@@ -154,7 +143,7 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
         quote!(Plugin)
     };
 
-    let closing = ["stop", "finalize"].into_iter().filter_map(|name| declared(&block, name))
+    let closing = ["stop", "cleanup"].into_iter().filter_map(|name| declared(&block, name))
         .map(|closing| {
             asynchronous(closing, "stopping awaits whatever the retained instance releases")?;
             if closing.sig.inputs.len() != 1
@@ -202,11 +191,13 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
             // The author's own inherent functions are what run: an inherent
             // associated function shadows the trait's, so these delegations
             // reach the lines that were written rather than loop back here.
-            fn new(resources: &Self::Resources) -> ::core::result::Result<Self, Self::Error> {
+            fn initialize(
+                resources: &Self::Resources,
+            ) -> impl ::core::future::Future<
+                Output = ::core::result::Result<Self, Self::Error>,
+            > + Send {
                 #construction
             }
-
-            #initialization
 
             fn observe(
                 &mut self,

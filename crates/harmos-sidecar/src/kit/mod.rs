@@ -14,6 +14,7 @@ mod catalog;
 mod connection;
 mod host;
 mod identity;
+mod instance;
 mod local;
 mod observer;
 mod plugin;
@@ -36,6 +37,7 @@ pub use capabilities::{ObserverCaller, ObserverHost, ObserverPublisher, Observer
 pub use catalog::{CATALOG_EXPORT_FLAG, CATALOG_EXPORT_LIMIT};
 pub use host::{CallError, PublicationError, Supervisor};
 pub use identity::ActivationId;
+pub use instance::OperationInstance;
 pub use observer::{
     Activation, DemandKey, Instance, Observer, ObserverAttachment, ObserverContext, ObserverExit,
     ObserverStatus, ObserverTask, Tick,

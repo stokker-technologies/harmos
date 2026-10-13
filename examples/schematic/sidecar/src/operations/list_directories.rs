@@ -38,7 +38,7 @@ pub(crate) struct ListDirectories;
 /* === Implementations === */
 #[harmos_sidecar::operation(declaration = schematic_contract::native::ListDirectories)]
 impl ListDirectories {
-    fn new(_: Arc<()>) -> Self {
+    async fn initialize(_: Arc<()>, _: &Supervisor) -> Self {
         Self
     }
 

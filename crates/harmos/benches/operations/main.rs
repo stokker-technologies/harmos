@@ -85,7 +85,7 @@ impl Operation for Dispatching {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    fn new(_: Arc<()>) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, Self::Error> {
         Ok(Self { waiting: None })
     }
 
@@ -114,7 +114,7 @@ impl Operation for Dispatching {
         Ok(())
     }
 
-    async fn finalize(&mut self) -> Result<(), Self::Error> {
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
         Ok(())
     }
 }
@@ -143,7 +143,7 @@ async fn cancellation(load: u32) -> Cancellation {
         .map(|_| {
             runtime
                 .operations
-                .submit::<Dispatch>(Some(signals.clone()))
+                .submit_as::<Dispatch>(Some(signals.clone()))
                 .unwrap()
         })
         .collect();
@@ -192,7 +192,7 @@ fn benchmarks(c: &mut Criterion) {
             executor.block_on(async {
                 let started = Instant::now();
                 for _ in 0..iterations {
-                    let instance = runtime.operations.submit::<Dispatch>(None).unwrap();
+                    let instance = runtime.operations.submit_as::<Dispatch>(None).unwrap();
                     let result = instance.join().await.unwrap();
                     assert_eq!(*std::hint::black_box(result), 42);
                 }

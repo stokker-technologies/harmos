@@ -128,7 +128,7 @@ impl ObserverBackend for Watch {
 
 #[harmos::operation(declaration = HoldDeclaration)]
 impl Hold {
-    fn new(trace: Arc<Trace>) -> Result<Self, Infallible> {
+    async fn initialize(trace: Arc<Trace>, _: Context<'_>) -> Result<Self, Infallible> {
         Ok(Self { trace, slot: None })
     }
 
@@ -147,7 +147,7 @@ impl Hold {
         Ok(())
     }
 
-    async fn finalize(&mut self) -> Result<(), Infallible> {
+    async fn cleanup(&mut self) -> Result<(), Infallible> {
         self.trace.finalized[self.slot.unwrap_or(1)].fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
@@ -161,9 +161,9 @@ impl Workload {
             Lanes::Analysis,
             trace.clone(),
         )?;
-        let running = runtime.operations.submit::<HoldDeclaration>(false)?;
+        let running = runtime.operations.submit_as::<HoldDeclaration>(false)?;
         trace.started.notified().await;
-        let queued = runtime.operations.submit::<HoldDeclaration>(true)?;
+        let queued = runtime.operations.submit_as::<HoldDeclaration>(true)?;
         runtime.observers.register(Watch)?;
         let scope = runtime.observers.scope(trace.clone())?;
         let observer = runtime

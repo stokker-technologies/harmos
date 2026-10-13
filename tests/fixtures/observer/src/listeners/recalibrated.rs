@@ -57,7 +57,10 @@ pub struct Heard {
     }
 )]
 impl Heard {
-    pub fn new(resources: Arc<Resources>) -> Self {
+    pub async fn initialize(
+        resources: Arc<Resources>,
+        _: &harmos::plugin::sidecar::Supervisor,
+    ) -> Self {
         Self { resources }
     }
 

@@ -78,7 +78,7 @@ pub struct Value {
     replay = ReplaySafety::Unknown
 )]
 impl Read {
-    pub fn new(resources: Arc<Resources>) -> Self {
+    pub async fn initialize(resources: Arc<Resources>, _: &Supervisor) -> Self {
         Self { resources }
     }
 

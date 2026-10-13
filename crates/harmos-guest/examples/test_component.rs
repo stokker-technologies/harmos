@@ -31,6 +31,7 @@ use harmos_contract::plugin::{Declared, Grant, Plugin, Requirement};
 use harmos_contract::schema::Described;
 use harmos_contract::{Refusal, StreamSpec, listeners::Delivery};
 use harmos_guest::Context;
+use harmos_guest::Host;
 
 /* === Constants === */
 const REQUIRED: &[Node<Requirement>] = &[
@@ -173,10 +174,10 @@ impl Plugin for TestComponent {
             .await
             .map_err(std::io::Error::other)
     }
-    async fn shutdown(&mut self, context: &Context) -> Result<(), Self::Error> {
+    async fn stop(&mut self, context: &Context) -> Result<(), Self::Error> {
         if self.deactivate == 1 {
             let result = context
-                .operation::<host::Invoke>(host::InvokeRequest {
+                .call_as::<host::Invoke>(host::InvokeRequest {
                     grant: "counter.increment".into(),
                     key: "after-revoke".into(),
                     payload: br#"{"amount":1}"#.to_vec(),
@@ -292,6 +293,7 @@ impl TestComponent {
                 }
                 Ok(())
             }
+            "submit" => submitted(core).await,
             "publish" => {
                 let publisher = core.publisher::<TestComponent>();
                 publisher
@@ -413,7 +415,10 @@ impl Operation for Hearing {
     type Error = std::io::Error;
     type Endpoints = ();
     type Context<'a> = &'a Context;
-    fn new(resources: Arc<Resources>) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(
+        resources: Arc<Resources>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Self::Error> {
         Ok(Self { resources })
     }
     async fn run<'ctx>(
@@ -469,12 +474,13 @@ async fn record(
     version: u32,
     payload: &[u8],
 ) -> Result<host::Receipt, Refusal> {
-    core.operation::<host::RecordSelf>(host::RecordRequest {
+    core.call_as::<host::RecordSelf>(host::RecordRequest {
         name: name.into(),
         version,
         payload: payload.to_vec(),
     })
     .await
+    .map(harmos_guest::operations::Response::into_owned)
 }
 
 async fn invoke_request(
@@ -483,12 +489,13 @@ async fn invoke_request(
     key: &str,
     payload: &[u8],
 ) -> Result<host::Receipt, Refusal> {
-    core.operation::<host::Invoke>(host::InvokeRequest {
+    core.call_as::<host::Invoke>(host::InvokeRequest {
         grant: grant.into(),
         key: key.into(),
         payload: payload.to_vec(),
     })
     .await
+    .map(harmos_guest::operations::Response::into_owned)
 }
 
 async fn recall(
@@ -497,13 +504,13 @@ async fn recall(
     after: u64,
     limit: u32,
 ) -> Result<Vec<host::Remembered>, Refusal> {
-    core.operation::<host::RecallSelf>(host::RecallRequest {
+    core.call_as::<host::RecallSelf>(host::RecallRequest {
         name: name.into(),
         after,
         limit,
     })
     .await
-    .map(|response| response.rows)
+    .map(|response| response.into_owned().rows)
 }
 
 async fn survey(
@@ -513,14 +520,14 @@ async fn survey(
     last: u64,
     aggregate: &str,
 ) -> Result<Vec<host::Measured>, Refusal> {
-    core.operation::<host::Survey>(host::SurveyRequest {
+    core.call_as::<host::Survey>(host::SurveyRequest {
         stream: stream.into(),
         first,
         last,
         aggregate: aggregate.into(),
     })
     .await
-    .map(|response| response.rows)
+    .map(|response| response.into_owned().rows)
 }
 
 async fn egress(
@@ -531,7 +538,7 @@ async fn egress(
     headers: &[host::Header],
     body: &[u8],
 ) -> Result<host::Fetched, Refusal> {
-    core.operation::<host::Egress>(host::EgressRequest {
+    core.call_as::<host::Egress>(host::EgressRequest {
         name: name.into(),
         method: method.into(),
         path: path.into(),
@@ -539,6 +546,53 @@ async fn egress(
         body: body.to_vec(),
     })
     .await
+    .map(harmos_guest::operations::Response::into_owned)
+}
+
+// Unary children through the guest binding: status and join, cancel and join,
+// a dropped handle and a detached one.
+async fn submitted(core: &Context) -> Result<(), String> {
+    use harmos_guest::operations::Instance;
+    use harmos_guest::operations::instance::Phase;
+    let request = |key: &str| host::InvokeRequest {
+        grant: "counter.increment".into(),
+        key: key.into(),
+        payload: br#"{"amount":1}"#.to_vec(),
+    };
+
+    let joined = core
+        .submit_as::<host::Invoke>(request("joined"))
+        .await
+        .map_err(refusal)?;
+    let status = joined.status().await.map_err(refusal)?;
+    if status.phase != Phase::Running {
+        return Err(format!("a live child reported {:?}", status.phase));
+    }
+    let receipt = joined.join().await.map_err(refusal)?;
+    if receipt.position != 1 {
+        return Err(format!("joined receipt {}", receipt.position));
+    }
+
+    let cancelled = core
+        .submit_as::<host::Invoke>(request("cancelled"))
+        .await
+        .map_err(refusal)?;
+    if Instance::cancel_and_join(cancelled).await.is_ok() {
+        return Err("a cancelled child must not answer".into());
+    }
+
+    let dropped = core
+        .submit_as::<host::Invoke>(request("dropped"))
+        .await
+        .map_err(refusal)?;
+    drop(dropped);
+
+    let detached = core
+        .submit_as::<host::Invoke>(request("detached"))
+        .await
+        .map_err(refusal)?;
+    Instance::detach(detached);
+    Ok(())
 }
 
 fn refusal(error: impl std::fmt::Display) -> String {

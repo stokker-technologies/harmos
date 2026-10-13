@@ -82,7 +82,7 @@ fn benchmarks(criterion: &mut Criterion) {
                     executor.block_on(async {
                         let response = runtime
                             .operations
-                            .call::<ValidateSchematic>(request.clone())
+                            .call_as::<ValidateSchematic>(request.clone())
                             .await
                             .unwrap();
                         assert!(response.diagnostics.is_empty());

@@ -18,7 +18,7 @@ use std::marker::PhantomData;
 
 // Local Imports
 use super::Context;
-use harmos_contract::operations::host;
+use harmos_contract::operations::{Host, host};
 use harmos_contract::{Message, StreamSpec, plugin::Declared};
 
 /* === Constants === */
@@ -83,7 +83,9 @@ impl<P: Declared> Publisher<P> {
             context: None,
             payload: row.encode_to_vec(),
         };
-        Ok(self.context.operation::<host::Publish>(request).await?)
+        let published = Host::call_as::<host::Publish>(&self.context, request).await?;
+        drop(published);
+        Ok(())
     }
 }
 

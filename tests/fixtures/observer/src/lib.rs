@@ -126,7 +126,7 @@ impl harmos::Plugin for StandaloneBridge {
             .map(|observers| observers.clone() as std::sync::Arc<dyn Attachment<Supervisor>>)
     }
 
-    async fn shutdown(&mut self, _: &Supervisor) -> std::result::Result<(), Refusal> {
+    async fn stop(&mut self, _: &Supervisor) -> std::result::Result<(), Refusal> {
         Ok(())
     }
     async fn cleanup(&mut self) -> std::result::Result<(), Refusal> {

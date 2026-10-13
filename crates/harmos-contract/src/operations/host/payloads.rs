@@ -165,6 +165,13 @@ scalar!(
 );
 
 scalar!(
+    bool,
+    bool,
+    |field: DecodeField<'_>| field.scalar(DecodeScalar::Varint).map(|_| 0),
+    |field: DecodeField<'_>| unsigned(field).map(|value| value != 0)
+);
+
+scalar!(
     u32,
     uint32,
     |field: DecodeField<'_>| field.scalar(DecodeScalar::Varint).map(|_| 0),
@@ -346,6 +353,26 @@ payload! { Measured,
 
 payload! { SurveyResponse,
     rows: Vec<Measured> => (1, Kind::Message { definition: Measured::DEFINITION }, Repeated),
+}
+
+// Built-In Operation Payloads, Re-Exported By `crate::builtin`
+pub(crate) mod builtin {
+    use super::*;
+
+    payload! { Status,
+        instance: u64 => (1, Kind::U64, Required),
+    }
+
+    payload! { Cancel,
+        instance: u64 => (1, Kind::U64, Required),
+    }
+
+    payload! { InstanceState,
+        phase: String => (1, Kind::String, Required),
+        outcome: String => (2, Kind::String, Required),
+        cancellation_requested: bool => (3, Kind::Bool, Required),
+        attempt: u32 => (4, Kind::U32, Required),
+    }
 }
 
 /* === Type Aliases === */

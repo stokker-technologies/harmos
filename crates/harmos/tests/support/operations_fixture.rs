@@ -226,7 +226,7 @@ impl Operation for ComputeCall {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
     type Error = Failed;
-    fn new(owner: Arc<Owner>) -> Result<Self, Failed> {
+    async fn initialize<'ctx>(owner: Arc<Owner>, _: Self::Context<'ctx>) -> Result<Self, Failed> {
         owner.prepared.fetch_add(1, Ordering::SeqCst);
         let state = State { attempts: 0 };
         Ok(Self { owner, state })
@@ -252,7 +252,7 @@ impl Operation for SlowCall {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
     type Error = Failed;
-    fn new(owner: Arc<Owner>) -> Result<Self, Failed> {
+    async fn initialize<'ctx>(owner: Arc<Owner>, _: Self::Context<'ctx>) -> Result<Self, Failed> {
         owner.prepared.fetch_add(1, Ordering::SeqCst);
         Ok(Self { owner })
     }
@@ -281,7 +281,10 @@ impl Operation for ParentCall {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
     type Error = Failed;
-    fn new(owner: Arc<ParentOwner>) -> Result<Self, Failed> {
+    async fn initialize<'ctx>(
+        owner: Arc<ParentOwner>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Failed> {
         Ok(Self { _owner: owner })
     }
     async fn run<'ctx>(
@@ -291,7 +294,7 @@ impl Operation for ParentCall {
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Response>, Failed> {
         let result: ::core::result::Result<Response, Self::Error> = async move {
-            let response = context.call::<Compute>(request.take()).await?;
+            let response = context.call_as::<Compute>(request.take()).await?;
             Ok(Response {
                 value: response.value,
                 attempts: response.attempts,

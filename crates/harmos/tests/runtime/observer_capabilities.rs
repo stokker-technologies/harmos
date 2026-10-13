@@ -157,7 +157,7 @@ impl<S: StreamSpec<Row = Pulse>> ObserverStreamPublisher<u64, S> for Host {
 #[harmos::observer(id = "host.watch", interval_ms = 5, streams(Pulse))]
 impl Watch {
     async fn observe(&mut self, ctx: &ObserverContext<'_, u64, Host>) -> Result<(), Failure> {
-        let value = ctx.call::<Measure>(7).await?;
+        let value = ctx.call_as::<Measure>(7).await?;
         ctx.publish(Recorded(value)).await?;
         ctx.publish(Pulse { sample: value }).await?;
         ctx.publish_on::<Pulse>(&Pulse { sample: value + 1 }).await

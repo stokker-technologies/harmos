@@ -115,30 +115,40 @@ impl Operation for Read {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    fn new(resources: Arc<Resources>) -> Result<Self, Self::Error> {
-        resources.0.constructed.fetch_add(1, Ordering::SeqCst);
-        if resources.0.fail_new.load(Ordering::SeqCst) {
-            return Err(std::io::Error::other("inert resource refusal"));
+    async fn initialize<'ctx>(
+        resources: Arc<Resources>,
+        context: Self::Context<'ctx>,
+    ) -> Result<Self, Self::Error> {
+        let constructed: Result<Self, Self::Error> = async move {
+            resources.0.constructed.fetch_add(1, Ordering::SeqCst);
+            if resources.0.fail_new.load(Ordering::SeqCst) {
+                return Err(std::io::Error::other("inert resource refusal"));
+            }
+            Ok(Self {
+                trace: resources.0.clone(),
+                phase: Cell::new(0),
+                attempts: 0,
+            })
         }
-        Ok(Self {
-            trace: resources.0.clone(),
-            phase: Cell::new(0),
-            attempts: 0,
-        })
-    }
-
-    async fn initialize<'ctx>(&mut self, context: Self::Context<'ctx>) -> Result<(), Self::Error> {
-        self.trace.initialized.fetch_add(1, Ordering::SeqCst);
-        self.trace.ids.lock().unwrap().push(context.id());
-        self.phase.set(1);
-        self.trace.initializing.notify_one();
-        if self.trace.fail_initialize.load(Ordering::SeqCst) {
-            return Err(std::io::Error::other("partial acquisition failed"));
+        .await;
+        let mut operation = constructed?;
+        let started: Result<(), Self::Error> = async {
+            let operation = &mut operation;
+            operation.trace.initialized.fetch_add(1, Ordering::SeqCst);
+            operation.trace.ids.lock().unwrap().push(context.id());
+            operation.phase.set(1);
+            operation.trace.initializing.notify_one();
+            if operation.trace.fail_initialize.load(Ordering::SeqCst) {
+                return Err(std::io::Error::other("partial acquisition failed"));
+            }
+            if operation.trace.wait_initialize.load(Ordering::SeqCst) {
+                std::future::pending::<()>().await;
+            }
+            Ok(())
         }
-        if self.trace.wait_initialize.load(Ordering::SeqCst) {
-            std::future::pending::<()>().await;
-        }
-        Ok(())
+        .await;
+        started?;
+        Ok(operation)
     }
 
     async fn run<'ctx>(
@@ -179,7 +189,7 @@ impl Operation for Read {
         Ok(())
     }
 
-    async fn finalize(&mut self) -> Result<(), Self::Error> {
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
         assert_eq!(self.phase.get(), 3, "physical stop precedes finalization");
         self.trace.finalized.fetch_add(1, Ordering::SeqCst);
         self.trace.finalizing.notify_one();
@@ -233,7 +243,7 @@ fn count(value: &AtomicUsize) -> usize {
 
 pub(super) fn contract_scenario() {
     {
-        scenario_runtime::check("inert_construction_precedes", || {
+        scenario_runtime::check("construction_awaits_initialization", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor.start_paused(true);
             scenario_executor
@@ -244,9 +254,10 @@ pub(super) fn contract_scenario() {
                     let (runtime, trace) = runtime().await;
                     let mut instance = runtime
                         .operations
-                        .submit::<ReadContract>(Mode::Complete)
+                        .submit_as::<ReadContract>(Mode::Complete)
                         .unwrap();
-                    assert_eq!(count(&trace.constructed), 1);
+                    // Construction waits for the first attempt's initialization.
+                    assert_eq!(count(&trace.constructed), 0);
                     assert_eq!(count(&trace.initialized), 0);
                     assert_eq!((&mut instance).await.unwrap().0, 42);
                     assert_eq!(count(&trace.initialized), 1);
@@ -279,7 +290,7 @@ pub(super) fn contract_scenario() {
                     trace.fail_initialize.store(true, Ordering::SeqCst);
                     let instance = runtime
                         .operations
-                        .submit::<ReadContract>(Mode::Complete)
+                        .submit_as::<ReadContract>(Mode::Complete)
                         .unwrap();
                     assert!(matches!(
                         instance.join().await,
@@ -287,8 +298,9 @@ pub(super) fn contract_scenario() {
                     ));
                     assert_eq!(count(&trace.initialized), 1);
                     assert_eq!(count(&trace.ran), 0);
-                    assert_eq!(count(&trace.stopped), 1);
-                    assert_eq!(count(&trace.finalized), 1);
+                    // A failed initialization drops its partial owner without cleanup.
+                    assert_eq!(count(&trace.stopped), 0);
+                    assert_eq!(count(&trace.finalized), 0);
                     assert_eq!(count(&trace.dropped), 1);
                     runtime.stop().await.unwrap();
                 });
@@ -307,7 +319,7 @@ pub(super) fn contract_scenario() {
                     trace.wait_initialize.store(true, Ordering::SeqCst);
                     let instance = runtime
                         .operations
-                        .submit::<ReadContract>(Mode::Complete)
+                        .submit_as::<ReadContract>(Mode::Complete)
                         .unwrap();
                     trace.initializing.notified().await;
                     assert_eq!(instance.status().phase(), OperationPhase::Initializing);
@@ -318,8 +330,9 @@ pub(super) fn contract_scenario() {
                         Err(Error::OperationRefused(Refusal::Cancelled))
                     ));
                     assert_eq!(count(&trace.ran), 0);
-                    assert_eq!(count(&trace.stopped), 1);
-                    assert_eq!(count(&trace.finalized), 1);
+                    // A failed initialization drops its partial owner without cleanup.
+                    assert_eq!(count(&trace.stopped), 0);
+                    assert_eq!(count(&trace.finalized), 0);
                     assert_eq!(count(&trace.dropped), 1);
                     runtime.stop().await.unwrap();
                 });
@@ -338,7 +351,7 @@ pub(super) fn contract_scenario() {
                     trace.wait_initialize.store(true, Ordering::SeqCst);
                     let instance = runtime
                         .operations
-                        .submit::<ReadContract>(Mode::Complete)
+                        .submit_as::<ReadContract>(Mode::Complete)
                         .unwrap();
                     trace.initializing.notified().await;
                     tokio::time::advance(Duration::from_secs(2)).await;
@@ -348,7 +361,7 @@ pub(super) fn contract_scenario() {
                     ));
                     assert_eq!(count(&trace.initialized), 1);
                     assert_eq!(count(&trace.ran), 0);
-                    assert_eq!(count(&trace.stopped), 1);
+                    assert_eq!(count(&trace.stopped), 0);
                     assert_eq!(count(&trace.dropped), 1);
                     runtime.stop().await.unwrap();
                 });
@@ -366,7 +379,7 @@ pub(super) fn contract_scenario() {
                     let (runtime, trace) = runtime().await;
                     let instance = runtime
                         .operations
-                        .submit::<ReadContract>(Mode::Retry)
+                        .submit_as::<ReadContract>(Mode::Retry)
                         .unwrap();
                     let id = instance.id();
                     assert_eq!(instance.join().await.unwrap().0, 42);
@@ -399,7 +412,7 @@ pub(super) fn contract_scenario() {
                     trace.fail_stop.store(true, Ordering::SeqCst);
                     let mut instance = runtime
                         .operations
-                        .submit::<ReadContract>(Mode::Complete)
+                        .submit_as::<ReadContract>(Mode::Complete)
                         .unwrap();
                     assert!((&mut instance).await.is_err());
                     assert_eq!(instance.status().phase(), OperationPhase::Stopping);
@@ -440,7 +453,7 @@ pub(super) fn contract_scenario() {
                     trace.fail_finalize.store(true, Ordering::SeqCst);
                     let mut instance = runtime
                         .operations
-                        .submit::<ReadContract>(Mode::Complete)
+                        .submit_as::<ReadContract>(Mode::Complete)
                         .unwrap();
                     assert!((&mut instance).await.is_err());
                     assert_eq!(instance.status().phase(), OperationPhase::Finalizing);
@@ -467,26 +480,26 @@ pub(super) fn contract_scenario() {
                     let (runtime, trace) = runtime().await;
                     let first = runtime
                         .operations
-                        .submit::<ReadContract>(Mode::WaitRun)
+                        .submit_as::<ReadContract>(Mode::WaitRun)
                         .unwrap();
                     trace.running.notified().await;
                     let queued = runtime
                         .operations
-                        .submit::<ReadContract>(Mode::Complete)
+                        .submit_as::<ReadContract>(Mode::Complete)
                         .unwrap();
                     queued.cancel();
                     assert!(matches!(
                         queued.join().await,
                         Err(Error::OperationRefused(Refusal::Cancelled))
                     ));
-                    assert_eq!(count(&trace.constructed), 2);
+                    assert_eq!(count(&trace.constructed), 1);
                     assert_eq!(count(&trace.initialized), 1);
                     assert_eq!(count(&trace.ran), 1);
-                    assert_eq!(count(&trace.dropped), 1);
+                    assert_eq!(count(&trace.dropped), 0);
                     first.cancel();
                     assert!(first.join().await.is_err());
-                    assert_eq!(count(&trace.stopped), 2);
-                    assert_eq!(count(&trace.dropped), 2);
+                    assert_eq!(count(&trace.stopped), 1);
+                    assert_eq!(count(&trace.dropped), 1);
                     runtime.stop().await.unwrap();
                 });
         });
@@ -504,7 +517,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         runtime
                             .operations
-                            .call::<ReadContract>(Mode::Cache)
+                            .call_as::<ReadContract>(Mode::Cache)
                             .await
                             .unwrap()
                             .0,
@@ -513,18 +526,19 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         runtime
                             .operations
-                            .call::<ReadContract>(Mode::Cache)
+                            .call_as::<ReadContract>(Mode::Cache)
                             .await
                             .unwrap()
                             .0,
                         42
                     );
-                    assert_eq!(count(&trace.constructed), 2);
+                    // The cache hit constructs nothing.
+                    assert_eq!(count(&trace.constructed), 1);
                     assert_eq!(count(&trace.initialized), 1);
                     assert_eq!(count(&trace.ran), 1);
-                    assert_eq!(count(&trace.stopped), 2);
-                    assert_eq!(count(&trace.finalized), 2);
-                    assert_eq!(count(&trace.dropped), 2);
+                    assert_eq!(count(&trace.stopped), 1);
+                    assert_eq!(count(&trace.finalized), 1);
+                    assert_eq!(count(&trace.dropped), 1);
                     runtime.stop().await.unwrap();
                 });
         });
@@ -540,12 +554,15 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let (runtime, trace) = runtime().await;
                     trace.fail_new.store(true, Ordering::SeqCst);
-                    assert!(
-                        runtime
-                            .operations
-                            .submit::<ReadContract>(Mode::Complete)
-                            .is_err()
-                    );
+                    // A refused construction fails the instance before any work.
+                    let instance = runtime
+                        .operations
+                        .submit_as::<ReadContract>(Mode::Complete)
+                        .unwrap();
+                    assert!(matches!(
+                        instance.join().await,
+                        Err(Error::OperationFailed { .. })
+                    ));
                     runtime.stop().await.unwrap();
                     assert_eq!(count(&trace.initialized), 0);
                     assert_eq!(count(&trace.stopped), 0);
@@ -565,7 +582,7 @@ pub(super) fn contract_scenario() {
                     let (runtime, trace) = runtime().await;
                     let instance = runtime
                         .operations
-                        .submit::<ReadContract>(Mode::PanicRun)
+                        .submit_as::<ReadContract>(Mode::PanicRun)
                         .unwrap();
                     assert!(matches!(
                         instance.join().await,
@@ -593,7 +610,7 @@ pub(super) fn contract_scenario() {
                     trace.fail_stop.store(true, Ordering::SeqCst);
                     let mut instance = runtime
                         .operations
-                        .submit::<ReadContract>(Mode::Complete)
+                        .submit_as::<ReadContract>(Mode::Complete)
                         .unwrap();
                     assert!((&mut instance).await.is_err());
                     trace.fail_stop.store(false, Ordering::SeqCst);
@@ -617,7 +634,7 @@ pub(super) fn contract_scenario() {
         });
     }
     {
-        scenario_runtime::check("failure_keeps_initialization", || {
+        scenario_runtime::check("failed_initialization_skips_stop", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor.start_paused(true);
             scenario_executor
@@ -630,29 +647,21 @@ pub(super) fn contract_scenario() {
                     trace.fail_stop.store(true, Ordering::SeqCst);
                     let mut instance = runtime
                         .operations
-                        .submit::<ReadContract>(Mode::Complete)
+                        .submit_as::<ReadContract>(Mode::Complete)
                         .unwrap();
+                    // A failed initialization owns no instance, so a failing
+                    // stop cannot retain one.
                     let error = (&mut instance).await.err().unwrap();
-                    let Error::OperationFinalization {
-                        outcome: Some(outcome),
-                        source,
-                        ..
-                    } = error
-                    else {
-                        panic!("both logical and physical failures remain available");
-                    };
-                    assert!(matches!(*outcome, Error::OperationFailed { .. }));
-                    assert!(matches!(*source, Error::OperationFailed { .. }));
+                    assert!(matches!(error, Error::OperationFailed { .. }));
+                    instance.settle().await.unwrap();
+                    assert_eq!(instance.status().phase(), OperationPhase::Settled);
                     assert_eq!(
                         instance.status().outcome(),
                         Some(harmos::operations::OperationOutcome::Failed)
                     );
-                    assert_eq!(instance.status().phase(), OperationPhase::Stopping);
-                    assert_eq!(count(&trace.dropped), 0);
-                    trace.fail_stop.store(false, Ordering::SeqCst);
-                    instance.settle().await.unwrap();
                     assert_eq!(count(&trace.initialized), 1);
                     assert_eq!(count(&trace.ran), 0);
+                    assert_eq!(count(&trace.stopped), 0);
                     assert_eq!(count(&trace.dropped), 1);
                     runtime.stop().await.unwrap();
                 });
@@ -671,9 +680,11 @@ pub(super) fn contract_scenario() {
                     trace.block_finalize.store(true, Ordering::SeqCst);
                     let instance = runtime
                         .operations
-                        .submit::<ReadContract>(Mode::WaitRun)
+                        .submit_as::<ReadContract>(Mode::WaitRun)
                         .unwrap();
                     let id = instance.id();
+                    // Only a constructed instance has cleanup to retain.
+                    trace.running.notified().await;
                     let response = harmos::grpc::response(instance);
                     drop(response);
                     trace.finalizing.notified().await;
@@ -706,7 +717,7 @@ pub(super) fn contract_scenario() {
                     trace.block_finalize.store(true, Ordering::SeqCst);
                     let instance = runtime
                         .operations
-                        .submit::<ReadContract>(Mode::Complete)
+                        .submit_as::<ReadContract>(Mode::Complete)
                         .unwrap();
                     let id = instance.id();
                     let mut response = Box::pin(harmos::grpc::response(instance));
@@ -739,7 +750,7 @@ pub(super) fn contract_scenario() {
                     trace.fail_finalize.store(true, Ordering::SeqCst);
                     let instance = runtime
                         .operations
-                        .submit::<ReadContract>(Mode::Complete)
+                        .submit_as::<ReadContract>(Mode::Complete)
                         .unwrap();
                     let id = instance.id();
                     assert!(harmos::grpc::response(instance).await.is_err());
@@ -777,7 +788,7 @@ pub(super) fn contract_scenario() {
                     trace.block_finalize.store(true, Ordering::SeqCst);
                     let instance = runtime
                         .operations
-                        .submit::<ReadContract>(Mode::WaitRun)
+                        .submit_as::<ReadContract>(Mode::WaitRun)
                         .unwrap();
                     let id = instance.id();
                     let mut response = Box::pin(harmos::grpc::response(instance));
@@ -827,7 +838,7 @@ mod listed {
 
     #[harmos::operation(id = "authored.doubling", version = 1, policy = POLICY)]
     impl Doubling {
-        pub fn new(_: Arc<()>) -> Self {
+        pub async fn initialize(_: Arc<()>, _: Context<'_>) -> Self {
             Self
         }
 
@@ -840,7 +851,7 @@ mod listed {
 
     #[harmos::operation(id = "authored.inferred_owned", version = 1, policy = POLICY)]
     impl InferredOwned {
-        fn new(owner: Arc<u32>) -> Self {
+        async fn initialize(owner: Arc<u32>, _: Context<'_>) -> Self {
             Self(owner)
         }
         async fn run(
@@ -856,7 +867,7 @@ mod listed {
 
     #[harmos::operation(declaration = DoublingDeclaration)]
     impl DeclaredOwned {
-        fn new(owner: Arc<u32>) -> Self {
+        async fn initialize(owner: Arc<u32>, _: Context<'_>) -> Self {
             Self(owner)
         }
         async fn run(
@@ -896,7 +907,7 @@ mod listed {
 
     #[harmos::operation(id = "authored.cached_owner", version = 1, policy = POLICY, key = owner_key)]
     impl CachedOwner {
-        fn new(owner: Arc<BorrowOwner>) -> Self {
+        async fn initialize(owner: Arc<BorrowOwner>, _: Context<'_>) -> Self {
             Self(owner)
         }
         async fn run(
@@ -945,12 +956,12 @@ mod listed {
                         .unwrap();
                     let first = runtime
                         .operations
-                        .call::<CachedOwnerDeclaration>(0)
+                        .call_as::<CachedOwnerDeclaration>(0)
                         .await
                         .unwrap();
                     let cached = runtime
                         .operations
-                        .call::<CachedOwnerDeclaration>(0)
+                        .call_as::<CachedOwnerDeclaration>(0)
                         .await
                         .unwrap();
                     assert!(first.ptr_eq(&cached));
@@ -992,12 +1003,12 @@ mod listed {
                         .unwrap();
                     let inferred = runtime
                         .operations
-                        .call::<InferredOwnedDeclaration>(0)
+                        .call_as::<InferredOwnedDeclaration>(0)
                         .await
                         .unwrap();
                     let declared = runtime
                         .operations
-                        .call::<DoublingDeclaration>(0)
+                        .call_as::<DoublingDeclaration>(0)
                         .await
                         .unwrap();
                     assert_eq!(*inferred, 7_u32);

@@ -72,21 +72,26 @@ impl<const MODE: u8, const INTERVAL_MS: u64> Observer<()> for Watch<MODE, INTERV
     const ID: &'static str = "lifecycle";
     const INTERVAL: Duration = Duration::from_millis(INTERVAL_MS);
 
-    fn new(resources: &Arc<Resources>) -> Result<Self, Self::Error> {
-        Ok(Self(resources.clone(), false))
-    }
-
-    async fn initialize(&mut self) -> Result<(), Self::Error> {
-        let resources = &self.0;
-        self.1 = true;
-        resources.acquired.fetch_add(1, Ordering::SeqCst);
-        let attempt = resources.attempts.fetch_add(1, Ordering::SeqCst);
-        assert!(MODE != 4 || attempt != 0, "initialization panic");
-        if MODE == 3 && attempt == 0 {
-            return Err(std::io::Error::other("initialization refusal"));
+    async fn initialize(resources: &Arc<Resources>) -> Result<Self, Self::Error> {
+        let constructed: Result<Self, Self::Error> =
+            async move { Ok(Self(resources.clone(), false)) }.await;
+        let mut observer = constructed?;
+        let started: Result<(), Self::Error> = async {
+            let observer = &mut observer;
+            let resources = &observer.0;
+            observer.1 = true;
+            resources.acquired.fetch_add(1, Ordering::SeqCst);
+            let attempt = resources.attempts.fetch_add(1, Ordering::SeqCst);
+            assert!(MODE != 4 || attempt != 0, "initialization panic");
+            if MODE == 3 && attempt == 0 {
+                return Err(std::io::Error::other("initialization refusal"));
+            }
+            resources.initialization.acquire().await.unwrap().forget();
+            Ok(())
         }
-        resources.initialization.acquire().await.unwrap().forget();
-        Ok(())
+        .await;
+        started?;
+        Ok(observer)
     }
 
     async fn observe(
@@ -108,7 +113,7 @@ impl<const MODE: u8, const INTERVAL_MS: u64> Observer<()> for Watch<MODE, INTERV
         Ok(())
     }
 
-    async fn finalize(&mut self) -> Result<(), Self::Error> {
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
         let attempt = self.0.finalizations.fetch_add(1, Ordering::SeqCst);
         assert!(MODE != 6 || attempt != 0, "finalization panic");
         if MODE == 5 && attempt == 0 {
@@ -210,18 +215,15 @@ pub(super) fn contract_scenario() {
                         .start(Arc::new(resources.clone()), ())
                         .unwrap();
                     count(&resources.attempts, 1).await;
-                    task.cancel();
-                    assert_eq!(task.status(), ObserverStatus::Stopping);
-                    assert_eq!(resources.dropped.load(Ordering::SeqCst), 0);
                     assert_eq!(resources.acquired.load(Ordering::SeqCst), 1);
-                    assert!(
-                        tokio::time::timeout(Duration::from_millis(20), task.join())
-                            .await
-                            .is_err(),
-                        "cancelled initialization retains its partial owner for cleanup"
-                    );
-                    resources.cleanup.add_permits(1);
+                    task.cancel();
+                    // Initialization owns its partial acquisition; cancelling it
+                    // drops that owner without running stop or cleanup.
                     task.join().await.unwrap();
+                    assert_eq!(resources.dropped.load(Ordering::SeqCst), 1);
+                    assert_eq!(resources.acquired.load(Ordering::SeqCst), 0);
+                    assert_eq!(resources.stops.load(Ordering::SeqCst), 0);
+                    assert_eq!(resources.finalizations.load(Ordering::SeqCst), 0);
                     assert_eq!(
                         task.status(),
                         ObserverStatus::Stopped(ObserverExit::Cancelled)
@@ -401,7 +403,7 @@ pub(super) fn contract_scenario() {
         });
     }
     {
-        scenario_runtime::check("cancelled_cleanup_skips", || {
+        scenario_runtime::check("cancelled_retry_skips_cleanup", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor
                 .enable_all()
@@ -414,19 +416,14 @@ pub(super) fn contract_scenario() {
                         .unwrap();
                     count(&resources.attempts, 1).await;
                     task.cancel();
-                    assert!(
-                        tokio::time::timeout(Duration::from_millis(20), task.join())
-                            .await
-                            .is_err()
-                    );
-                    assert_eq!(resources.acquired.load(Ordering::SeqCst), 1);
-                    assert_eq!(resources.dropped.load(Ordering::SeqCst), 0);
-                    resources.cleanup.add_permits(1);
+                    // A refused initialization already released its partial owner.
                     task.join().await.unwrap();
-                    assert_eq!(resources.attempts.load(Ordering::SeqCst), 1);
+                    let attempts = resources.attempts.load(Ordering::SeqCst);
+                    assert!(attempts >= 1);
                     assert_eq!(resources.ticks.load(Ordering::SeqCst), 0);
                     assert_eq!(resources.acquired.load(Ordering::SeqCst), 0);
-                    assert_eq!(resources.dropped.load(Ordering::SeqCst), 1);
+                    assert_eq!(resources.dropped.load(Ordering::SeqCst), attempts);
+                    assert_eq!(resources.stops.load(Ordering::SeqCst), 0);
                     assert_eq!(
                         task.status(),
                         ObserverStatus::Stopped(ObserverExit::Cancelled)
@@ -435,7 +432,7 @@ pub(super) fn contract_scenario() {
         });
     }
     {
-        scenario_runtime::check("initialization_refusal_cleanup", || {
+        scenario_runtime::check("initialization_refusal_retries", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor
                 .enable_all()
@@ -447,7 +444,7 @@ pub(super) fn contract_scenario() {
         });
     }
     {
-        scenario_runtime::check("initialization_panic_cleanup", || {
+        scenario_runtime::check("initialization_panic_retries", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor
                 .enable_all()
@@ -557,21 +554,14 @@ async fn initialization_retry<const MODE: u8>() {
     let mut task = Instance::<Arc<Resources>, ()>::of::<Watch<MODE>>()
         .start(Arc::new(resources.clone()), ())
         .unwrap();
-    count(&resources.attempts, 1).await;
-    assert_eq!(task.status(), ObserverStatus::Starting);
-    assert_eq!(resources.dropped.load(Ordering::SeqCst), 0);
-    assert_eq!(resources.acquired.load(Ordering::SeqCst), 1);
-    assert!(
-        tokio::time::timeout(Duration::from_millis(20), count(&resources.attempts, 2))
-            .await
-            .is_err(),
-        "the next initialization cannot overlap partial-owner cleanup"
-    );
-    resources.cleanup.add_permits(1);
+    // A failed initialization drops its partial owner and retries on the next
+    // cadence without stop or cleanup.
     count(&resources.attempts, 2).await;
+    assert_eq!(task.status(), ObserverStatus::Starting);
     assert_eq!(resources.dropped.load(Ordering::SeqCst), 1);
     assert_eq!(resources.acquired.load(Ordering::SeqCst), 1);
-    assert_eq!(task.status(), ObserverStatus::Starting);
+    assert_eq!(resources.stops.load(Ordering::SeqCst), 0);
+    assert_eq!(resources.finalizations.load(Ordering::SeqCst), 0);
     resources.initialization.add_permits(1);
     state(&mut task.subscribe(), ObserverStatus::Running).await;
     resources.cleanup.add_permits(1);
@@ -580,6 +570,7 @@ async fn initialization_retry<const MODE: u8>() {
         task.status(),
         ObserverStatus::Stopped(ObserverExit::Cancelled)
     );
+    assert_eq!(resources.stops.load(Ordering::SeqCst), 1);
 }
 
 /* === Tests === */

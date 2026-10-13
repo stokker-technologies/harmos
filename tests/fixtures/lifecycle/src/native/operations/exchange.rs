@@ -42,7 +42,7 @@ pub(crate) struct Exchange {
 /* === Implementations === */
 #[harmos::operation(declaration = worker::Exchange)]
 impl Exchange {
-    fn new(resources: Arc<Resources>) -> Result<Self> {
+    async fn initialize(resources: Arc<Resources>, _: &Supervisor) -> Result<Self> {
         resources.constructed.fetch_add(1, Ordering::SeqCst);
         Ok(Self { resources })
     }
@@ -63,7 +63,7 @@ impl Exchange {
             bytes: std::mem::take(&mut request.bytes),
         })
     }
-    async fn finalize(&mut self) -> Result<()> {
+    async fn cleanup(&mut self) -> Result<()> {
         self.resources.finalized.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }

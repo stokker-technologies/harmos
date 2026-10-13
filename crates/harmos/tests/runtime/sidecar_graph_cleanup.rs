@@ -144,7 +144,7 @@ impl harmos::Plugin for Independent {
     ) -> Result<(), harmos::operations::ServingError> {
         Ok(())
     }
-    async fn shutdown(&mut self, _: &Supervisor) -> Result<(), Refusal> {
+    async fn stop(&mut self, _: &Supervisor) -> Result<(), Refusal> {
         self.resources.mark("shutdown")
     }
     async fn cleanup(&mut self) -> Result<(), Refusal> {

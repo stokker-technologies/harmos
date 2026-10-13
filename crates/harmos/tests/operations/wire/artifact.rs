@@ -51,7 +51,7 @@ macro_rules! inert_plugin {
             fn resources(&self) -> std::sync::Arc<()> { panic!("inert inspection never acquires resources") }
             async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> { panic!("inert inspection never initializes resources") }
             fn bind_operations(&self, _: &mut harmos::operations::WireTable<Self::Context>) -> Result<(), harmos::operations::ServingError> { panic!("inert inspection never binds resources") }
-            async fn shutdown(&mut self, _: &Self::Context) -> Result<(), Self::Error> { panic!("inert inspection never shuts resources down") }
+            async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> { panic!("inert inspection never shuts resources down") }
             async fn cleanup(&mut self) -> Result<(), Self::Error> { panic!("inert inspection never releases resources") }
         }
     };

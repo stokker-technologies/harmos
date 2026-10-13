@@ -492,6 +492,7 @@ where
     let id = invocation.id();
     let generation = invocation.generation();
     let control = Arc::clone(&invocation.control);
+    let invocation = invocation.unguarded();
     let outcome = Box::pin(async move {
         let response = invocation.await?;
         available(&target, &source)?;

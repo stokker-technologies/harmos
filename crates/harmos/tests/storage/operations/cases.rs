@@ -276,7 +276,7 @@ fn own_contract() {
                     let saved = fixture
                         .runtime
                         .operations
-                        .call::<Save>(save_request(&fixture, through.clone()))
+                        .call_as::<Save>(save_request(&fixture, through.clone()))
                         .await
                         .unwrap();
                     assert!(saved.covers(&through).unwrap());
@@ -284,7 +284,7 @@ fn own_contract() {
                     let repeated = fixture
                         .runtime
                         .operations
-                        .call::<Save>(save_request(&fixture, through.clone()))
+                        .call_as::<Save>(save_request(&fixture, through.clone()))
                         .await
                         .unwrap();
                     assert_eq!(*repeated, *saved);
@@ -315,7 +315,7 @@ fn own_contract() {
                         fixture
                             .runtime
                             .operations
-                            .call::<Save>(save_request(&fixture, foreign))
+                            .call_as::<Save>(save_request(&fixture, foreign))
                             .await
                             .is_err()
                     );
@@ -325,7 +325,7 @@ fn own_contract() {
                         fixture
                             .runtime
                             .operations
-                            .call::<Save>(save_request(&fixture, future))
+                            .call_as::<Save>(save_request(&fixture, future))
                             .await
                             .is_err()
                     );
@@ -428,7 +428,7 @@ fn own_contract() {
                     fixture
                         .runtime
                         .operations
-                        .call::<Save>(save_request(&fixture, boundary.clone()))
+                        .call_as::<Save>(save_request(&fixture, boundary.clone()))
                         .await
                         .unwrap();
                     let (sender, mut receiver) =
@@ -489,7 +489,7 @@ fn own_contract() {
                     let saved = fixture
                         .runtime
                         .operations
-                        .call::<Save>(save_request(&fixture, through.clone()))
+                        .call_as::<Save>(save_request(&fixture, through.clone()))
                         .await
                         .unwrap();
                     assert_eq!(*saved, through);
@@ -535,7 +535,7 @@ fn own_contract() {
                         fixture
                             .runtime
                             .operations
-                            .call::<Save>(save_request(&fixture, through.clone()))
+                            .call_as::<Save>(save_request(&fixture, through.clone()))
                             .await
                             .is_err()
                     );
@@ -556,7 +556,7 @@ fn own_contract() {
                     fixture
                         .runtime
                         .operations
-                        .call::<Save>(save_request(&fixture, through))
+                        .call_as::<Save>(save_request(&fixture, through))
                         .await
                         .unwrap();
                     fixture.finish().await;

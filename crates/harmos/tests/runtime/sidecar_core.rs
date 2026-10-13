@@ -83,7 +83,7 @@ impl harmos::operations::Operation for DeadlineRead {
     type Error = harmos::Error;
     type Endpoints = ();
     type Context<'a> = harmos::operations::Context<'a>;
-    fn new(_: Arc<()>) -> harmos::Result<Self> {
+    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> harmos::Result<Self> {
         Ok(Self)
     }
     async fn run<'a>(
@@ -96,7 +96,7 @@ impl harmos::operations::Operation for DeadlineRead {
             let child = context.with_value(contract::Stage {
                 id: "parent".into(),
             })?;
-            let answer = child.call::<Inspect>(request.clone()).await?;
+            let answer = child.call_as::<Inspect>(request.clone()).await?;
             Ok((*answer).clone())
         }
         .await;
@@ -200,12 +200,12 @@ pub(super) fn contract_scenario() {
                 })
                 .unwrap();
             let caller = f.runtime.operations.with_context(context.clone());
-            let answer = caller.call::<Inspect>("context".into()).await.unwrap();
+            let answer = caller.call_as::<Inspect>("context".into()).await.unwrap();
             assert_eq!(&*answer, "parent:child");
             assert_eq!(context.require::<contract::Stage>().unwrap().id, "parent");
             assert_eq!(f.calls.load(Ordering::SeqCst), 1);
             let refused = caller
-                .call::<Inspect>("context-denied".into())
+                .call_as::<Inspect>("context-denied".into())
                 .await
                 .unwrap();
             assert!(refused.contains("may not invoke operation"), "{refused}");
@@ -238,7 +238,7 @@ pub(super) fn contract_scenario() {
                 if deadline {
                     let result = tokio::time::timeout(
                         Duration::from_secs(3),
-                        caller.call::<DeadlineRead>("context-wait".into()),
+                        caller.call_as::<DeadlineRead>("context-wait".into()),
                     )
                     .await
                     .unwrap();
@@ -250,7 +250,8 @@ pub(super) fn contract_scenario() {
                         "{result:?}"
                     );
                 } else {
-                    let mut invocation = caller.submit::<Inspect>("context-wait".into()).unwrap();
+                    let mut invocation =
+                        caller.submit_as::<Inspect>("context-wait".into()).unwrap();
                     tokio::time::timeout(Duration::from_secs(2), async {
                         while f.calls.load(Ordering::SeqCst) == 0 {
                             tokio::time::sleep(Duration::from_millis(5)).await;
@@ -429,7 +430,7 @@ pub(super) fn contract_scenario() {
             assert_eq!(
                 runtime
                     .operations
-                    .call::<Inspect>("vendor".into())
+                    .call_as::<Inspect>("vendor".into())
                     .await
                     .unwrap()
                     .as_str(),
@@ -439,7 +440,7 @@ pub(super) fn contract_scenario() {
                 let generation = runtime.plugin.status(&owner).unwrap().generation.unwrap();
                 let crashed = tokio::time::timeout(
                     Duration::from_secs(5),
-                    runtime.operations.call::<Inspect>("crash".into()),
+                    runtime.operations.call_as::<Inspect>("crash".into()),
                 )
                 .await;
                 assert!(
@@ -717,7 +718,7 @@ pub(super) fn contract_scenario() {
                 let answer = runtime
                     .operations
                     .with_context(context)
-                    .call::<guest_contract::Read>(guest_contract::Value {
+                    .call_as::<guest_contract::Read>(guest_contract::Value {
                         value: "context-parent".into(),
                     })
                     .await
@@ -727,7 +728,7 @@ pub(super) fn contract_scenario() {
                 let consumer = runtime.plugin.status(&owner).unwrap().generation;
                 let denied = runtime
                     .operations
-                    .call::<Inspect>("other".into())
+                    .call_as::<Inspect>("other".into())
                     .await
                     .unwrap();
                 assert!(denied.contains("may not invoke operation"), "{denied}");
@@ -736,7 +737,9 @@ pub(super) fn contract_scenario() {
                 assert_eq!(prepared.load(Ordering::SeqCst), 0);
                 let invoking = {
                     let operations = runtime.operations.clone();
-                    tokio::spawn(async move { operations.call::<Inspect>("vendor".into()).await })
+                    tokio::spawn(
+                        async move { operations.call_as::<Inspect>("vendor".into()).await },
+                    )
                 };
                 tokio::time::timeout(Duration::from_secs(5), async {
                     while calls.load(Ordering::SeqCst) == 0 {
@@ -781,7 +784,7 @@ pub(super) fn contract_scenario() {
                 assert_eq!(
                     runtime
                         .operations
-                        .call::<Inspect>("vendor".into())
+                        .call_as::<Inspect>("vendor".into())
                         .await
                         .unwrap()
                         .as_str(),
@@ -798,7 +801,7 @@ pub(super) fn contract_scenario() {
                 assert!(
                     runtime
                         .operations
-                        .call::<Inspect>("vendor".into())
+                        .call_as::<Inspect>("vendor".into())
                         .await
                         .is_err()
                 );
@@ -808,7 +811,7 @@ pub(super) fn contract_scenario() {
                 assert_eq!(
                     runtime
                         .operations
-                        .call::<guest_contract::Read>(guest_contract::Value {
+                        .call_as::<guest_contract::Read>(guest_contract::Value {
                             value: "leaf".into()
                         })
                         .await
@@ -966,7 +969,7 @@ pub(super) fn contract_scenario() {
                         assert!(
                             handle
                                 .operations
-                                .call::<Inspect>("vendor".into())
+                                .call_as::<Inspect>("vendor".into())
                                 .await
                                 .is_err()
                         );
@@ -1076,7 +1079,7 @@ pub(super) fn contract_scenario() {
             );
             let answer = runtime
                 .operations
-                .call::<Inspect>("vendor".into())
+                .call_as::<Inspect>("vendor".into())
                 .await
                 .unwrap();
             assert_eq!(answer.as_str(), "egress status 200");
@@ -1110,7 +1113,7 @@ pub(super) fn contract_scenario() {
             assert_eq!(
                 runtime
                     .operations
-                    .call::<Inspect>("vendor".into())
+                    .call_as::<Inspect>("vendor".into())
                     .await
                     .unwrap()
                     .as_str(),
@@ -1152,7 +1155,7 @@ pub(super) fn contract_scenario() {
                         let answer = fixture
                             .runtime
                             .operations
-                            .call::<Inspect>(family.into())
+                            .call_as::<Inspect>(family.into())
                             .await
                             .unwrap();
                         if family == "vendor" {

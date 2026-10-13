@@ -30,10 +30,12 @@ use wasmtime::{Config, Engine, Store};
 // Local Imports
 use contract::{Heard, Metrics, Note, Progress};
 use harmos::guest::capabilities::Refusal as BridgeRefusal;
+use harmos_contract::builtin::InstanceState;
 use harmos_contract::inventory::{Declaration, DeclarationError, Facility};
 use harmos_contract::operations::host::{self, Fetched, Header, Measured, Receipt, Remembered};
 use harmos_contract::operations::{
-    OperationDeclaration, WireAnswer, WireChildCall, WireCommand, lifecycle::InitializeRequest,
+    OperationDeclaration, WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl,
+    WireCommand, lifecycle::InitializeRequest,
 };
 use harmos_contract::{Message, Refusal};
 use support::{component, legacy_component, route_component};
@@ -57,6 +59,8 @@ struct Stub {
     measured: Vec<Measured>,
     remembered: Vec<Remembered>,
     fetched: Option<Fetched>,
+    // Submitted children by instance id, and whether each was cancelled.
+    submitted: std::collections::BTreeMap<u64, bool>,
 }
 
 struct Session {
@@ -96,6 +100,14 @@ enum Call {
         name: String,
         method: String,
         path: String,
+    },
+    Submit {
+        key: String,
+        instance: u64,
+    },
+    Control {
+        instance: u64,
+        action: WireChildAction,
     },
 }
 
@@ -142,7 +154,11 @@ impl<T: Send> harmos::guest::operation_context::HostWithStore<T> for HasSelf<Stu
 impl Stub {
     // Scripted Transport Answers Prove Encoding, Not Root Authorization
     fn child(&mut self, payload: Vec<u8>) -> Result<Vec<u8>, Refusal> {
-        let call: WireChildCall = WireChildCall::decode(&payload).map_err(Refusal::of)?;
+        let call = match WireChild::decode(&payload).map_err(Refusal::of)? {
+            WireChild::Call(call) if call.submit => return self.submit(call),
+            WireChild::Call(call) => call,
+            WireChild::Control(control) => return self.control(control),
+        };
         assert_ne!(
             call.context, [0; 32],
             "the SDK forwards the current finite calling context"
@@ -222,6 +238,47 @@ impl Stub {
                 .encode_to_vec())
             }
             _ => Err(Refusal::new(-32601, "no operation scope")),
+        }
+    }
+
+    fn submit(&mut self, call: WireChildCall) -> Result<Vec<u8>, Refusal> {
+        assert_eq!(call.operation, "host.invoke");
+        let request = host::InvokeRequest::decode(&call.payload).map_err(Refusal::of)?;
+        let instance = self.submitted.len() as u64 + 1;
+        self.submitted.insert(instance, false);
+        self.calls.push(Call::Submit {
+            key: request.key,
+            instance,
+        });
+        Ok(instance.encode_to_vec())
+    }
+
+    fn control(&mut self, control: WireChildControl) -> Result<Vec<u8>, Refusal> {
+        assert_ne!(control.context, [0; 32], "controls name the attempt");
+        let instance = control.instance;
+        self.calls.push(Call::Control {
+            instance,
+            action: control.action,
+        });
+        let cancelled = *self
+            .submitted
+            .get(&instance)
+            .ok_or_else(|| Refusal::new(-32601, "unknown child"))?;
+        let state = |cancelled: bool| InstanceState {
+            phase: if cancelled { "stopping" } else { "running" }.into(),
+            outcome: String::new(),
+            cancellation_requested: cancelled,
+            attempt: 1,
+        };
+        match control.action {
+            WireChildAction::Status => Ok(state(cancelled).encode_to_vec()),
+            WireChildAction::Cancel => {
+                self.submitted.insert(instance, true);
+                Ok(state(true).encode_to_vec())
+            }
+            WireChildAction::Join if cancelled => Err(Refusal::new(-32606, "cancelled")),
+            WireChildAction::Join => Ok(Self::receipt(instance).encode_to_vec()),
+            WireChildAction::Release | WireChildAction::Detach => Ok(Vec::new()),
         }
     }
 }
@@ -573,6 +630,43 @@ fn contract_scenario() {
     );
 
 });
+        });
+    }
+    {
+        scenario_runtime::check("submitted_children_controls", || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("scenario runtime is valid")
+                .block_on(async {
+                    let (stub, answered) = initialize(Stub::default(), r#""submit""#).await;
+                    assert_eq!(answered, Ok(()));
+                    let submit = |key: &str, instance| Call::Submit {
+                        key: key.into(),
+                        instance,
+                    };
+                    let control = |instance, action| Call::Control { instance, action };
+                    assert_eq!(
+                        stub.calls[..7],
+                        [
+                            submit("joined", 1),
+                            control(1, WireChildAction::Status),
+                            control(1, WireChildAction::Join),
+                            submit("cancelled", 2),
+                            control(2, WireChildAction::Cancel),
+                            control(2, WireChildAction::Join),
+                            submit("dropped", 3),
+                        ]
+                    );
+                    for expected in [
+                        control(3, WireChildAction::Release),
+                        submit("detached", 4),
+                        control(4, WireChildAction::Detach),
+                    ] {
+                        assert!(stub.calls.contains(&expected), "{expected:?}");
+                    }
+                    assert_eq!(stub.calls.len(), 10);
+                });
         });
     }
     {

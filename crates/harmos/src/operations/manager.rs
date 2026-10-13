@@ -737,7 +737,21 @@ impl OperationManager {
         self.entry(id).map(|entry| entry.owner.clone())
     }
 
-    pub fn submit<O: OperationDeclaration>(
+    // The declaration is its own request; `submit_as::<O>` names a separate one.
+    pub fn submit<O: OperationDeclaration<Request = O>>(
+        &self,
+        request: O,
+    ) -> Result<OperationInstance<O>> {
+        self.submit_as::<O>(request)
+    }
+
+    pub async fn call<O: OperationDeclaration<Request = O>>(
+        &self,
+        request: O,
+    ) -> Result<crate::operations::Response<O::Response>> {
+        self.call_as::<O>(request).await
+    }
+    pub fn submit_as<O: OperationDeclaration>(
         &self,
         request: O::Request,
     ) -> Result<OperationInstance<O>> {
@@ -774,11 +788,11 @@ impl OperationManager {
         self.admit_at::<O, ()>(id, (request.into(), ()), None, &[], &Source::Host, None)
     }
 
-    pub async fn call<O: OperationDeclaration>(
+    pub async fn call_as<O: OperationDeclaration>(
         &self,
         request: O::Request,
     ) -> Result<crate::operations::Response<O::Response>> {
-        self.submit::<O>(request)?.await
+        self.submit_as::<O>(request)?.await
     }
 
     pub fn submit_caused<O: OperationDeclaration>(
@@ -802,7 +816,7 @@ impl OperationManager {
         feature = "plugin-guest",
         feature = "plugin-sidecar"
     ))]
-    pub(super) fn submit_as<O: OperationDeclaration, P: Send + 'static>(
+    pub(super) fn submit_by<O: OperationDeclaration, P: Send + 'static>(
         &self,
         input: (super::binding::Request<O::Request>, P),
         source: &Source,
@@ -918,7 +932,7 @@ impl OperationManager {
             reason: "identity belongs to a different operation or endpoint type",
         })?;
         let admission = self.lanes.admit(ancestors, entry.lane, entry.bounded)?;
-        let id = OperationInstanceId::fresh()?;
+        let id = super::handler::fresh_instance()?;
         let mut pending = entry
             .pending
             .lock()
@@ -954,6 +968,7 @@ impl OperationManager {
                 .reserve(id, entry.lane, submitted, privileged, retired)?,
         };
         let control = reservation.control();
+        self.instances.assign(id, origin.identity.clone());
         pending.insert(id, Arc::clone(&control));
         drop(pending);
 
@@ -1019,6 +1034,7 @@ impl OperationManager {
             generation: entry.generation,
             outcome,
             control,
+            released: false,
         })
     }
 

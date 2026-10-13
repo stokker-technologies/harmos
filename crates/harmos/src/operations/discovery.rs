@@ -43,7 +43,7 @@ impl Operation for Discovery {
     type Context<'a> = Context<'a>;
     type Endpoints = ();
 
-    fn new(_: Arc<()>) -> Result<Self> {
+    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self> {
         Ok(Self)
     }
 

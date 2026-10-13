@@ -201,7 +201,10 @@ impl<const FIRST: bool> Operation for Hearing<FIRST> {
     type Declaration = Heard<FIRST>;
     type Resources = Owner;
     type Error = Failed;
-    fn new(resources: Arc<Owner>) -> std::result::Result<Self, Failed> {
+    async fn initialize<'ctx>(
+        resources: Arc<Owner>,
+        _: Self::Context<'ctx>,
+    ) -> std::result::Result<Self, Failed> {
         Ok(Self {
             resources,
             wait_cleanup: false,
@@ -241,7 +244,7 @@ impl<const FIRST: bool> Operation for Hearing<FIRST> {
         .await;
         result.map(::core::convert::Into::into)
     }
-    async fn finalize(&mut self) -> std::result::Result<(), Failed> {
+    async fn cleanup(&mut self) -> std::result::Result<(), Failed> {
         self.resources.finalizations.fetch_add(1, Ordering::SeqCst);
         if self.wait_cleanup {
             self.resources.finalizing.notify_one();

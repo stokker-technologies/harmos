@@ -63,7 +63,7 @@ impl GrpcBinding {
         self.entry.grpc
     }
 
-    pub(crate) fn submit<O: OperationDeclaration, P: Send + 'static>(
+    pub(crate) fn submit_as<O: OperationDeclaration, P: Send + 'static>(
         &self,
         request: StreamItem<O::Request>,
         endpoints: P,

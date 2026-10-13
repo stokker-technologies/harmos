@@ -20,6 +20,7 @@ use std::time::Duration;
 // Local Imports
 use super::contract;
 use contract::{Marks, POLICY, Probe, Queries, Read, Readings, Step};
+use harmos::operations::Host as _;
 use harmos::operations::{Operation, OperationPolicy, WireTable};
 use harmos::plugin::sidecar::{Refusal, Supervisor};
 
@@ -65,7 +66,7 @@ impl harmos::Plugin for Client {
         std::fs::create_dir_all(&self.resources.root).map_err(Refusal::of)?;
         self.resources.mark("initializing")?;
         let response = context
-            .operation::<Read>(Step { phase: 1 })
+            .call_as::<Read>(Step { phase: 1 })
             .await
             .map_err(Refusal::of)?;
         if response.phase != 1 {
@@ -91,9 +92,9 @@ impl harmos::Plugin for Client {
         table.bind_operation::<Probing>(self.resources())
     }
 
-    async fn shutdown(&mut self, context: &Supervisor) -> Result<(), Refusal> {
+    async fn stop(&mut self, context: &Supervisor) -> Result<(), Refusal> {
         let response = context
-            .operation::<Read>(Step { phase: 2 })
+            .call_as::<Read>(Step { phase: 2 })
             .await
             .map_err(Refusal::of)?;
         if response.phase != 2 {
@@ -115,12 +116,19 @@ impl Operation for Probing {
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
 
-    fn new(resources: Arc<Marks>) -> Result<Self, Refusal> {
-        Ok(Self { resources })
-    }
-
-    async fn initialize<'ctx>(&mut self, _: Self::Context<'ctx>) -> Result<(), Refusal> {
-        self.resources.mark("probe-initialized")
+    async fn initialize<'ctx>(
+        resources: Arc<Marks>,
+        _context: Self::Context<'ctx>,
+    ) -> Result<Self, Refusal> {
+        let constructed: Result<Self, Refusal> = async move { Ok(Self { resources }) }.await;
+        let mut operation = constructed?;
+        let started: Result<(), Refusal> = async {
+            let operation = &mut operation;
+            operation.resources.mark("probe-initialized")
+        }
+        .await;
+        started?;
+        Ok(operation)
     }
 
     async fn run<'ctx>(
@@ -137,7 +145,7 @@ impl Operation for Probing {
         result.map(::core::convert::Into::into)
     }
 
-    async fn finalize(&mut self) -> Result<(), Refusal> {
+    async fn cleanup(&mut self) -> Result<(), Refusal> {
         self.resources.mark("probe-finalized")
     }
 }

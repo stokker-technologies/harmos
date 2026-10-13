@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+pub mod builtin;
 pub mod config;
 mod error;
 #[cfg(feature = "grpc")]

@@ -19,6 +19,7 @@ use crate::scenario_runtime;
 
 // Local Imports
 use super::*;
+use harmos::operations::Host as _;
 use harmos::operations::{Declarations, NativeError, PluginRegistration, PluginSdkRegistration};
 use harmos::plugin::{
     PluginBackend, PluginDefinition, PluginDefinitions, PluginLifecycle, PluginManager,
@@ -212,7 +213,7 @@ impl harmos::Plugin for ProviderEndpoint {
         table.bind_operation::<Amplifying>(self.resources.clone())?;
         table.bind_operation::<Retrying>(self.resources.clone())
     }
-    async fn shutdown(&mut self, _: &Self::Context) -> Result<(), Refusal> {
+    async fn stop(&mut self, _: &Self::Context) -> Result<(), Refusal> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Refusal> {
@@ -249,7 +250,7 @@ impl harmos::Plugin for CallerEndpoint {
     ) -> Result<(), harmos::operations::ServingError> {
         table.bind_operation::<Forwarding<true>>(self.resources.clone())
     }
-    async fn shutdown(&mut self, _: &Self::Context) -> Result<(), Refusal> {
+    async fn stop(&mut self, _: &Self::Context) -> Result<(), Refusal> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Refusal> {
@@ -286,7 +287,7 @@ impl harmos::Plugin for UnauthorizedEndpoint {
     ) -> Result<(), harmos::operations::ServingError> {
         table.bind_operation::<Forwarding<false>>(self.resources.clone())
     }
-    async fn shutdown(&mut self, _: &Self::Context) -> Result<(), Refusal> {
+    async fn stop(&mut self, _: &Self::Context) -> Result<(), Refusal> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Refusal> {
@@ -309,7 +310,7 @@ impl harmos::operations::Operation for PublishingCall {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    fn new(resources: Arc<()>) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(resources: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
         Ok(Self {
             _resources: resources,
         })
@@ -362,7 +363,7 @@ impl harmos::Plugin for Publishing {
     ) -> Result<(), harmos::operations::ServingError> {
         table.bind_operation::<PublishingCall>(self.resources())
     }
-    async fn shutdown(&mut self, context: &Self::Context) -> Result<(), Refusal> {
+    async fn stop(&mut self, context: &Self::Context) -> Result<(), Refusal> {
         if self.publish_on_cleanup {
             context
                 .publisher::<Self>()
@@ -400,12 +401,12 @@ impl harmos::Plugin for Dependent {
     }
     async fn initialize(&mut self, context: &Self::Context) -> Result<(), Refusal> {
         context
-            .operation::<Amplify>(Amplify { value: 11 })
+            .call_as::<Amplify>(Amplify { value: 11 })
             .await
             .map_err(Refusal::of)?;
         if self.notify {
             context
-                .operation::<Sample>(Sample { value: 99 })
+                .call_as::<Sample>(Sample { value: 99 })
                 .await
                 .map_err(Refusal::of)?;
         }
@@ -420,9 +421,9 @@ impl harmos::Plugin for Dependent {
     ) -> Result<(), harmos::operations::ServingError> {
         Ok(())
     }
-    async fn shutdown(&mut self, context: &Self::Context) -> Result<(), Refusal> {
+    async fn stop(&mut self, context: &Self::Context) -> Result<(), Refusal> {
         context
-            .operation::<Amplify>(Amplify { value: 22 })
+            .call_as::<Amplify>(Amplify { value: 22 })
             .await
             .expect("provider remains available through cleanup");
         Ok(())
@@ -459,7 +460,10 @@ impl harmos::operations::Operation for Amplifying {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    fn new(resources: Arc<Provider>) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(
+        resources: Arc<Provider>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Refusal> {
         Ok(Self { resources })
     }
     async fn run<'ctx>(
@@ -511,7 +515,10 @@ impl harmos::operations::Operation for Retrying {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    fn new(resources: Arc<Provider>) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(
+        resources: Arc<Provider>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Refusal> {
         resources.prepared.fetch_add(1, Ordering::SeqCst);
         Ok(Self { resources })
     }
@@ -534,7 +541,7 @@ impl harmos::operations::Operation for Retrying {
         .await;
         result.map(::core::convert::Into::into)
     }
-    async fn finalize(&mut self) -> Result<(), Refusal> {
+    async fn cleanup(&mut self) -> Result<(), Refusal> {
         if self.resources.fail_cleanup.load(Ordering::SeqCst) {
             return Err(Refusal::of("retained cleanup"));
         }
@@ -556,7 +563,10 @@ impl<const ALLOWED: bool> harmos::operations::Operation for Forwarding<ALLOWED> 
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    fn new(resources: Arc<Forwarder>) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(
+        resources: Arc<Forwarder>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Refusal> {
         Ok(Self {
             _resources: resources,
         })
@@ -568,8 +578,9 @@ impl<const ALLOWED: bool> harmos::operations::Operation for Forwarding<ALLOWED> 
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Amplified>, Refusal> {
         let result: ::core::result::Result<Amplified, Self::Error> = async move {
-            host.operation::<Amplify>(request.clone())
+            host.call(request.clone())
                 .await
+                .map(harmos::operations::Response::into_owned)
                 .map_err(|error| match error {
                     harmos_sidecar::CallError::Refused { code, message } => {
                         Refusal::new(code, message)
@@ -1420,7 +1431,7 @@ pub(super) fn contract_scenario() {
     assert_eq!(
         runtime
             .operations
-            .call::<Forward<true>>(Amplify { value: 7 })
+            .call_as::<Forward<true>>(Amplify { value: 7 })
             .await
             .unwrap()
             .value,
@@ -1428,7 +1439,7 @@ pub(super) fn contract_scenario() {
     );
     let denied = runtime
         .operations
-        .call::<Forward<false>>(Amplify { value: 7 })
+        .call_as::<Forward<false>>(Amplify { value: 7 })
         .await
         .unwrap_err();
     let harmos::Error::OperationFailed { source, .. } = denied else {
@@ -1440,7 +1451,7 @@ pub(super) fn contract_scenario() {
     assert_eq!(
         runtime
             .operations
-            .call::<Forward<true>>(Amplify { value: 8 })
+            .call_as::<Forward<true>>(Amplify { value: 8 })
             .await
             .unwrap()
             .value,
@@ -1513,7 +1524,7 @@ pub(super) fn contract_scenario() {
                     manager.initialize(&mut lifecycle).await.unwrap();
                     let invocation = runtime
                         .operations
-                        .submit::<Forward<true>>(Amplify { value: 0 })
+                        .submit_as::<Forward<true>>(Amplify { value: 0 })
                         .unwrap();
                     tokio::time::timeout(Duration::from_secs(1), provider.started.notified())
                         .await
@@ -1529,7 +1540,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         runtime
                             .operations
-                            .call::<Forward<true>>(Amplify { value: 9 })
+                            .call_as::<Forward<true>>(Amplify { value: 9 })
                             .await
                             .unwrap()
                             .value,
@@ -1538,7 +1549,7 @@ pub(super) fn contract_scenario() {
 
                     let timed = runtime
                         .operations
-                        .call::<Amplify>(Amplify { value: 0 })
+                        .call_as::<Amplify>(Amplify { value: 0 })
                         .await;
                     assert!(matches!(
                         timed,
@@ -1550,7 +1561,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         runtime
                             .operations
-                            .call::<Amplify>(Amplify { value: 10 })
+                            .call_as::<Amplify>(Amplify { value: 10 })
                             .await
                             .unwrap()
                             .value,
@@ -1861,7 +1872,7 @@ pub(super) fn contract_scenario() {
         if !dynamic {
             let busy = runtime
                 .operations
-                .submit::<Forward<true>>(Amplify { value: 1 })
+                .submit_as::<Forward<true>>(Amplify { value: 1 })
                 .unwrap()
                 .await;
             assert!(
@@ -1885,7 +1896,7 @@ pub(super) fn contract_scenario() {
         if !dynamic {
             let response = runtime
                 .operations
-                .call::<Forward<true>>(Amplify { value: 11 })
+                .call_as::<Forward<true>>(Amplify { value: 11 })
                 .await
                 .unwrap();
             assert_eq!(response.value, 11);

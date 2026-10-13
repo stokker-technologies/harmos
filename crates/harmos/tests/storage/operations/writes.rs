@@ -91,8 +91,12 @@ pub(super) fn contract_scenario() {
                     let f = fixture().await;
                     let request = request(&f, "records");
                     let (left, right) = tokio::join!(
-                        f.runtime.operations.call::<WriteRecords>(request.clone()),
-                        f.runtime.operations.call::<WriteRecords>(request.clone())
+                        f.runtime
+                            .operations
+                            .call_as::<WriteRecords>(request.clone()),
+                        f.runtime
+                            .operations
+                            .call_as::<WriteRecords>(request.clone())
                     );
                     let original = left.unwrap();
                     assert_eq!(right.unwrap(), original);
@@ -100,13 +104,13 @@ pub(super) fn contract_scenario() {
                     let later = f
                         .runtime
                         .operations
-                        .call::<WriteRecords>(self::request(&f, "later"))
+                        .call_as::<WriteRecords>(self::request(&f, "later"))
                         .await;
                     assert!(later.is_ok());
                     assert_eq!(
                         f.runtime
                             .operations
-                            .call::<WriteRecords>(request.clone())
+                            .call_as::<WriteRecords>(request.clone())
                             .await
                             .unwrap(),
                         original
@@ -117,7 +121,7 @@ pub(super) fn contract_scenario() {
                     assert!(
                         f.runtime
                             .operations
-                            .call::<WriteRecords>(conflicting)
+                            .call_as::<WriteRecords>(conflicting)
                             .await
                             .is_err()
                     );
@@ -148,13 +152,13 @@ pub(super) fn contract_scenario() {
                     let original = f
                         .runtime
                         .operations
-                        .call::<WriteStream>(request.clone())
+                        .call_as::<WriteStream>(request.clone())
                         .await
                         .unwrap();
                     assert_eq!(
                         f.runtime
                             .operations
-                            .call::<WriteStream>(request)
+                            .call_as::<WriteStream>(request)
                             .await
                             .unwrap(),
                         original
@@ -162,7 +166,7 @@ pub(super) fn contract_scenario() {
                     assert!(
                         f.runtime
                             .operations
-                            .call::<WriteRecords>(record)
+                            .call_as::<WriteRecords>(record)
                             .await
                             .is_err()
                     );
@@ -227,7 +231,7 @@ pub(super) fn contract_scenario() {
                     assert!(
                         f.runtime
                             .operations
-                            .call::<WriteRecords>(request)
+                            .call_as::<WriteRecords>(request)
                             .await
                             .is_err()
                     );

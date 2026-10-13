@@ -369,7 +369,7 @@ pub(super) fn contract_scenario() {
                         .store(3, Ordering::SeqCst);
                     let request =
                         super::super::operations::save_request(&f, f.storage.cursor_accepted());
-                    let save = f.runtime.operations.call::<Save>(request.clone());
+                    let save = f.runtime.operations.call_as::<Save>(request.clone());
                     let append = async {
                         f.data.control.checkpoint_entered.notified().await;
                         f.data
@@ -381,7 +381,7 @@ pub(super) fn contract_scenario() {
                     let (result, ()) = tokio::join!(save, append);
                     result.unwrap();
                     producer.write_all(b"later").await.unwrap();
-                    f.runtime.operations.call::<Save>(request).await.unwrap();
+                    f.runtime.operations.call_as::<Save>(request).await.unwrap();
                     assert_eq!(f.data.control.checkpoint_failures.load(Ordering::SeqCst), 0);
                     assert_eq!(
                         f.data.saved_productions.lock().unwrap()["save-retry"].1,

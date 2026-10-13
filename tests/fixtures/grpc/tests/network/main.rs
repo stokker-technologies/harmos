@@ -44,7 +44,10 @@ macro_rules! operation {
             type Error = harmos::Error;
             type Context<'a> = Context<'a>;
             type Endpoints = $endpoints;
-            fn new(trace: Arc<Trace>) -> harmos::Result<Self> {
+            async fn initialize<'a>(
+                trace: Arc<Trace>,
+                _: Self::Context<'a>,
+            ) -> harmos::Result<Self> {
                 trace.new.fetch_add(1, Ordering::SeqCst);
                 trace.started_event.notify_one();
                 Ok(Self { trace })
@@ -63,7 +66,7 @@ macro_rules! operation {
                 .await;
                 result.map(::core::convert::Into::into)
             }
-            async fn finalize(&mut self) -> harmos::Result<()> {
+            async fn cleanup(&mut self) -> harmos::Result<()> {
                 self.trace.finalized.fetch_add(1, Ordering::SeqCst);
                 if self.trace.fail_finalize.load(Ordering::SeqCst) {
                     return Err(harmos::Error::InvalidInput {
@@ -382,9 +385,10 @@ async fn streams_settle_owner() -> Result<(), harmos_grpc_fixture::Error> {
             .await
             .unwrap_err();
         assert_eq!(duplicate.code(), tonic::Code::InvalidArgument);
-        assert_eq!(trace.new.load(Ordering::SeqCst), 1);
-        assert_eq!(trace.finalized.load(Ordering::SeqCst), 1);
-        assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
+        // The refused upload settles before its operation initializes.
+        assert_eq!(trace.new.load(Ordering::SeqCst), 0);
+        assert_eq!(trace.finalized.load(Ordering::SeqCst), 0);
+        assert_eq!(trace.dropped.load(Ordering::SeqCst), 0);
 
         // Aborting The Whole RPC Resets Its Still-Open Request Stream
         let opening = OperationsUploadInput {
@@ -398,7 +402,7 @@ async fn streams_settle_owner() -> Result<(), harmos_grpc_fixture::Error> {
         let mut abandoned_client = client.clone();
         let abandoned = tokio::spawn(async move { abandoned_client.upload(incoming).await });
         tokio::time::timeout(Duration::from_secs(1), async {
-            while trace.new.load(Ordering::SeqCst) != 2 {
+            while trace.new.load(Ordering::SeqCst) != 1 {
                 trace.started_event.notified().await;
             }
         })
@@ -407,13 +411,13 @@ async fn streams_settle_owner() -> Result<(), harmos_grpc_fixture::Error> {
         abandoned.abort();
         assert!(abandoned.await.unwrap_err().is_cancelled());
         tokio::time::timeout(Duration::from_millis(500), async {
-            while trace.dropped.load(Ordering::SeqCst) != 2 {
+            while trace.dropped.load(Ordering::SeqCst) != 1 {
                 trace.dropped_event.notified().await;
             }
         })
         .await
         .unwrap();
-        assert_eq!(trace.finalized.load(Ordering::SeqCst), 2);
+        assert_eq!(trace.finalized.load(Ordering::SeqCst), 1);
 
         drop(client);
         stop.send(()).unwrap();

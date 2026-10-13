@@ -39,7 +39,7 @@ pub struct Level;
 /* === Implementations === */
 #[harmos::observer(interval_ms = 100)]
 impl Level {
-    fn new(_resources: &Resources) -> Result<Self, String> {
+    async fn initialize(_resources: &Resources) -> Result<Self, String> {
         Ok(Self)
     }
 

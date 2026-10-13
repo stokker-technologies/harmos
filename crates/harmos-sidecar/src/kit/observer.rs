@@ -112,11 +112,9 @@ pub trait Observer<H: Send + Sync + 'static = Supervisor>: Sized + Send + 'stati
 
     const INTERVAL: Duration;
 
-    fn new(resources: &Self::Resources) -> Result<Self, Self::Error>;
-
-    fn initialize(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send {
-        std::future::ready(Ok(()))
-    }
+    fn initialize(
+        resources: &Self::Resources,
+    ) -> impl Future<Output = Result<Self, Self::Error>> + Send;
 
     fn observe(
         &mut self,
@@ -127,7 +125,7 @@ pub trait Observer<H: Send + Sync + 'static = Supervisor>: Sized + Send + 'stati
         std::future::ready(Ok(()))
     }
 
-    fn finalize(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send {
+    fn cleanup(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send {
         std::future::ready(Ok(()))
     }
 }
@@ -247,7 +245,7 @@ impl<R: Sync, H> ObserverContext<'_, R, H> {
         self.capabilities.publish_on(self, row).await
     }
 
-    pub async fn call<C>(&self, request: H::Request) -> Result<H::Response, H::Error>
+    pub async fn call_as<C>(&self, request: H::Request) -> Result<H::Response, H::Error>
     where
         H: ObserverCaller<R, C>,
     {
@@ -508,42 +506,23 @@ async fn drive<S: Observer<H>, H: Send + Sync + 'static>(
             _ = &mut ended => return ObserverExit::Cancelled,
             _ = clock.tick() => {}
         }
-        let mut observer = match std::panic::catch_unwind(AssertUnwindSafe(|| S::new(&resources))) {
-            Ok(Ok(observer)) => observer,
-            Ok(Err(error)) => {
-                tracing::warn!(observer = name, activation_id = %identity.activation, %error,
-                    "observer construction failed; retrying next cadence");
-                continue;
-            }
-            Err(_) => {
-                tracing::error!(observer = name, activation_id = %identity.activation,
-                    "observer construction panicked; retrying next cadence");
-                continue;
-            }
-        };
+        // Initialization Owns Its Partial Acquisitions; Only Success Is Cleaned Up
         let result = tokio::select! {
             biased;
             _ = &mut ended => None,
-            result = AssertUnwindSafe(async { observer.initialize().await }).catch_unwind() => Some(result),
+            result = AssertUnwindSafe(S::initialize(&resources)).catch_unwind() => Some(result),
         };
-        let cancelled = result.is_none();
         match result {
-            Some(Ok(Ok(()))) => break observer,
+            Some(Ok(Ok(observer))) => break observer,
             Some(Ok(Err(error))) => {
                 tracing::warn!(observer = name, activation_id = %identity.activation, %error,
-                    "observer initialization failed; cleaning up before retry")
+                    "observer initialization failed; retrying next cadence")
             }
             Some(Err(_)) => tracing::error!(
                 observer = name, activation_id = %identity.activation,
-                "observer initialization panicked; cleaning up before retry"
+                "observer initialization panicked; retrying next cadence"
             ),
-            None => lifecycle.stopping(),
-        }
-        if let Some(exit) = cleanup::<S, H>(&mut observer, identity, lifecycle, cancelled).await {
-            return exit;
-        }
-        if cancelled {
-            return ObserverExit::Cancelled;
+            None => return ObserverExit::Cancelled,
         }
     };
     let opened = Instant::now();
@@ -629,7 +608,7 @@ async fn cleanup<S: Observer<H>, H: Send + Sync + 'static>(
                     lifecycle.finalizing();
                 }
                 guarded(
-                    async { observer.finalize().await },
+                    async { observer.cleanup().await },
                     ObserverExit::FinalizeFailed,
                     ObserverExit::FinalizePanicked,
                 )

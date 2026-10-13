@@ -64,7 +64,10 @@ impl Operation for Measure {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    fn new(_resources: Arc<()>) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(
+        _resources: Arc<()>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Self::Error> {
         Ok(Self)
     }
 
@@ -157,7 +160,7 @@ pub(super) fn contract_scenario() {
 
                     let answer = runtime
                         .operations
-                        .submit::<MeasureContract>(scripted)
+                        .submit_as::<MeasureContract>(scripted)
                         .unwrap()
                         .await
                         .expect("the attempt measures its own wait");
@@ -177,7 +180,7 @@ pub(super) fn contract_scenario() {
                     // duration every time it is run.
                     let again = runtime
                         .operations
-                        .submit::<MeasureContract>(scripted)
+                        .submit_as::<MeasureContract>(scripted)
                         .unwrap()
                         .await
                         .expect("the second attempt measures its own wait");

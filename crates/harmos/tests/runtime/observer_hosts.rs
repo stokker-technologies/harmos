@@ -197,7 +197,7 @@ impl harmos::Plugin for Bridge {
     fn attachment(&self) -> Option<Arc<dyn harmos_contract::plugin::Attachment<Supervisor>>> {
         Some(self.attachment.clone())
     }
-    async fn shutdown(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
+    async fn stop(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
@@ -278,7 +278,7 @@ impl<const N: u64> Observer<Host> for Watch<N> {
     const INTERVAL: Duration = Duration::from_millis(5);
     const STREAMS: &'static [publications::Entry] = &[publications::Entry::of::<Published>()];
 
-    fn new(resources: &Settings) -> Result<Self, PublishError> {
+    async fn initialize(resources: &Settings) -> Result<Self, PublishError> {
         resources.state.initialized.fetch_add(1, Ordering::SeqCst);
         Ok(Self(resources.state.clone()))
     }
@@ -287,7 +287,7 @@ impl<const N: u64> Observer<Host> for Watch<N> {
         &mut self,
         ctx: &ObserverContext<'_, Settings, Host>,
     ) -> Result<(), PublishError> {
-        let value = ctx.call::<ReadValue>(N).await?;
+        let value = ctx.call_as::<ReadValue>(N).await?;
         ctx.publish(Pulse { sample: value }).await
     }
 

@@ -292,7 +292,7 @@ mod unified_plugins {
         fn bind_operations(&self, _: &mut WireTable<Self::Context>) -> Result<(), ServingError> {
             Ok(())
         }
-        async fn shutdown(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+        async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
             Ok(())
         }
         async fn cleanup(&mut self) -> Result<(), Self::Error> {
@@ -339,7 +339,7 @@ mod unified_plugins {
     struct InertObserver;
     #[harmos::observer(id = "fixture.unified.inert-observer", interval_ms = 1000)]
     impl InertObserver {
-        fn new(_: &()) -> Result<Self, Infallible> {
+        async fn initialize(_: &()) -> Result<Self, Infallible> {
             panic!("metadata inspection must not initialize callback resources")
         }
         async fn observe(
@@ -659,7 +659,7 @@ mod unified_plugins {
         fn bind_operations(&self, _: &mut WireTable<Self::Context>) -> Result<(), ServingError> {
             Ok(())
         }
-        async fn shutdown(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+        async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
             Ok(())
         }
         async fn cleanup(&mut self) -> Result<(), Self::Error> {
@@ -720,7 +720,7 @@ mod unified_plugins {
         fn bind_operations(&self, _: &mut WireTable<Self::Context>) -> Result<(), ServingError> {
             Ok(())
         }
-        async fn shutdown(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+        async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
             Ok(())
         }
         async fn cleanup(&mut self) -> Result<(), Self::Error> {
@@ -773,7 +773,7 @@ mod unified_plugins {
         fn bind_operations(&self, _: &mut WireTable<Self::Context>) -> Result<(), ServingError> {
             Ok(())
         }
-        async fn shutdown(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+        async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
             Ok(())
         }
         async fn cleanup(&mut self) -> Result<(), Self::Error> {
@@ -804,7 +804,7 @@ mod unified_plugins {
         fn bind_operations(&self, _: &mut WireTable<Self::Context>) -> Result<(), ServingError> {
             Ok(())
         }
-        async fn shutdown(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+        async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
             Ok(())
         }
         async fn cleanup(&mut self) -> Result<(), Self::Error> {

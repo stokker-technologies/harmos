@@ -236,7 +236,7 @@ pub(super) fn contract_scenario() {
                     let result = f
                         .runtime
                         .operations
-                        .call::<DeleteFile>(request.clone())
+                        .call_as::<DeleteFile>(request.clone())
                         .await
                         .unwrap();
                     assert_eq!(*result, request.file);
@@ -389,7 +389,7 @@ pub(super) fn contract_scenario() {
                     assert!(
                         f.runtime
                             .operations
-                            .call::<DeleteFile>(request.clone())
+                            .call_as::<DeleteFile>(request.clone())
                             .await
                             .is_err()
                     );

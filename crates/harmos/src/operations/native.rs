@@ -389,7 +389,10 @@ where
     type Endpoints = E;
     type Context<'a> = Context<'a>;
 
-    fn new(native: Arc<Native>) -> std::result::Result<Self, NativeError> {
+    async fn initialize<'ctx>(
+        native: Arc<Native>,
+        _: Self::Context<'ctx>,
+    ) -> std::result::Result<Self, NativeError> {
         Ok(Self {
             native,
             state: None,
@@ -457,7 +460,7 @@ where
         result.map(::core::convert::Into::into)
     }
 
-    async fn finalize(&mut self) -> std::result::Result<(), NativeError> {
+    async fn cleanup(&mut self) -> std::result::Result<(), NativeError> {
         let Some(state) = self.state.as_mut() else {
             return Ok(());
         };
@@ -593,6 +596,7 @@ impl Native {
         let children = Children {
             context: token,
             requests,
+            submitted: Default::default(),
         };
         let command = match phase {
             Phase::Initialize => WireCommand::Initialize {
@@ -714,7 +718,10 @@ impl<E: super::StreamEndpoints> Operation for EncodedOperation<E> {
     type Endpoints = E;
     type Context<'a> = Context<'a>;
 
-    fn new(binding: Arc<Binding>) -> std::result::Result<Self, NativeError> {
+    async fn initialize<'ctx>(
+        binding: Arc<Binding>,
+        _: Self::Context<'ctx>,
+    ) -> std::result::Result<Self, NativeError> {
         Ok(Self {
             binding,
             state: None,
@@ -835,7 +842,7 @@ impl<E: super::StreamEndpoints> Operation for EncodedOperation<E> {
         result.map(::core::convert::Into::into)
     }
 
-    async fn finalize(&mut self) -> std::result::Result<(), NativeError> {
+    async fn cleanup(&mut self) -> std::result::Result<(), NativeError> {
         let Some(state) = self.state.as_mut() else {
             return Ok(());
         };
@@ -1110,6 +1117,7 @@ pub(super) fn dispatch(
     let id = invocation.id();
     let generation = invocation.generation();
     let control = Arc::clone(&invocation.control);
+    let invocation = invocation.unguarded();
     let outcome = Box::pin(async move {
         let response = invocation.await?;
         super::wire::available(&target, &source)?;

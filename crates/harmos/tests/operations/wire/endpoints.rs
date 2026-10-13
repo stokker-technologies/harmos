@@ -81,7 +81,7 @@ impl<const CHARGED: bool> Operation for Parent<CHARGED> {
     type Context<'a> = Context<'a>;
     type Endpoints = ();
 
-    fn new(_: Arc<()>) -> harmos::Result<Self> {
+    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> harmos::Result<Self> {
         Ok(Self)
     }
 
@@ -167,13 +167,24 @@ impl<const N: u8> Operation for Forward<N> {
     type Error = Error;
     type Context<'a> = Context<'a>;
     type Endpoints = Endpoints;
-    fn new(trace: Arc<Trace>) -> harmos::Result<Self> {
-        trace.new.fetch_add(1, Ordering::SeqCst);
-        Ok(Self { trace })
-    }
-    async fn initialize<'ctx>(&mut self, _: Self::Context<'ctx>) -> harmos::Result<()> {
-        self.trace.initialized.fetch_add(1, Ordering::SeqCst);
-        Ok(())
+    async fn initialize<'ctx>(
+        trace: Arc<Trace>,
+        _context: Self::Context<'ctx>,
+    ) -> harmos::Result<Self> {
+        let constructed: harmos::Result<Self> = async move {
+            trace.new.fetch_add(1, Ordering::SeqCst);
+            Ok(Self { trace })
+        }
+        .await;
+        let mut operation = constructed?;
+        let started: harmos::Result<()> = async {
+            let operation = &mut operation;
+            operation.trace.initialized.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+        .await;
+        started?;
+        Ok(operation)
     }
     async fn run<'ctx>(
         &mut self,
@@ -208,7 +219,7 @@ impl<const N: u8> Operation for Forward<N> {
         }
         Ok(())
     }
-    async fn finalize(&mut self) -> harmos::Result<()> {
+    async fn cleanup(&mut self) -> harmos::Result<()> {
         self.trace.finalized.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
@@ -549,8 +560,14 @@ pub(super) fn contract_scenario() {
                         .operations
                         .submit_endpoints::<Declaration<0>, _>(true, (receiving, sending))
                         .unwrap();
-                    let incoming =
-                        futures_util::stream::iter([Err(tonic::Status::data_loss("broken input"))]);
+                    // Only a constructed instance has cleanup to preserve.
+                    let initialized = trace.clone();
+                    let incoming = futures_util::stream::once(async move {
+                        while initialized.initialized.load(Ordering::SeqCst) == 0 {
+                            tokio::task::yield_now().await;
+                        }
+                        Err(tonic::Status::data_loss("broken input"))
+                    });
                     let error = bounded(harmos::grpc::input(instance, input, incoming))
                         .await
                         .unwrap_err();
@@ -602,8 +619,9 @@ pub(super) fn contract_scenario() {
                         futures_util::stream::pending(),
                     ));
                     bounded(runtime.stop()).await.unwrap();
-                    assert_eq!(trace.new.load(Ordering::SeqCst), 1);
-                    assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
+                    // Abandoned before it started, the instance never constructed.
+                    assert_eq!(trace.new.load(Ordering::SeqCst), 0);
+                    assert_eq!(trace.dropped.load(Ordering::SeqCst), 0);
                 });
         });
     }
@@ -721,7 +739,14 @@ pub(super) fn contract_scenario() {
         .operations
         .submit_endpoints::<Declaration<0>, _>(true, (receiving, sending))
         .unwrap();
-    let incoming = futures_util::stream::iter([Err(tonic::Status::data_loss("broken input"))]);
+    // Only a constructed instance has cleanup to retain.
+    let initialized = trace.clone();
+    let incoming = futures_util::stream::once(async move {
+        while initialized.initialized.load(Ordering::SeqCst) == 0 {
+            tokio::task::yield_now().await;
+        }
+        Err(tonic::Status::data_loss("broken input"))
+    });
     let mut exchange = harmos::grpc::exchange(instance, input, incoming, output);
     let error = match bounded(exchange.next()).await.unwrap() {
         Err(error) => error,
@@ -769,8 +794,9 @@ pub(super) fn contract_scenario() {
                         output,
                     ));
                     bounded(runtime.stop()).await.unwrap();
-                    assert_eq!(trace.new.load(Ordering::SeqCst), 1);
-                    assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
+                    // Abandoned before it started, the instance never constructed.
+                    assert_eq!(trace.new.load(Ordering::SeqCst), 0);
+                    assert_eq!(trace.dropped.load(Ordering::SeqCst), 0);
                 });
         });
     }
@@ -940,7 +966,7 @@ async fn parent_cancellation<const CHARGED: bool>() {
     let (sending, mut output) = channel();
     let parent = runtime
         .operations
-        .submit::<ParentDeclaration>(Some((receiving, sending)))
+        .submit_as::<ParentDeclaration>(Some((receiving, sending)))
         .unwrap();
     bounded(input.send_with(4, || Ok(7))).await.unwrap();
     let held = bounded(output.recv()).await.unwrap();

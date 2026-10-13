@@ -113,7 +113,7 @@ impl harmos::Plugin for Program {
     ) -> Result<(), harmos::operations::ServingError> {
         Ok(())
     }
-    async fn shutdown(&mut self, _: &Supervisor) -> Result<(), Refusal> {
+    async fn stop(&mut self, _: &Supervisor) -> Result<(), Refusal> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Refusal> {

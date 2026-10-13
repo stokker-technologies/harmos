@@ -28,10 +28,12 @@ mod payload {
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 // Local Imports
-use super::{Failure, WireAnswer, WireChildCall, WireCommand};
+use super::{
+    Failure, WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCommand,
+};
 
 /* === Constants === */
-const VERSION: u8 = 5;
+const VERSION: u8 = 6;
 pub(super) const LIMIT: usize = 16 * 1024 * 1024;
 
 /* === Macros === */
@@ -61,7 +63,7 @@ pub enum WireCodecError {
     Encoding(#[from] postcard::Error),
 }
 
-// Variant Order Is Part Of Version 5. Borrowed Fields Validate Before Allocation.
+// Variant Order Is Part Of Version 6. Borrowed Fields Validate Before Allocation.
 // As In The Transport Experiment, Payloads Use Postcard Byte Strings, Not Sequences.
 #[derive(Serialize, Deserialize)]
 enum Envelope<'a> {
@@ -100,6 +102,7 @@ enum Envelope<'a> {
         operation: &'a str,
         #[serde(borrow, with = "payload")]
         payload: &'a [u8],
+        submit: bool,
     },
     PrepareGrpc {
         invocation: u64,
@@ -137,6 +140,11 @@ enum Envelope<'a> {
     StreamEnd {
         epoch: u64,
         transferred: bool,
+    },
+    ChildControl {
+        context: [u8; 32],
+        instance: u64,
+        action: WireChildAction,
     },
 }
 
@@ -352,27 +360,65 @@ impl WireChildCall {
             values: borrowed(&self.values),
             operation: &self.operation,
             payload: &self.payload,
+            submit: self.submit,
         })
     }
 
     pub fn decode(bytes: &[u8]) -> Result<Self, WireCodecError> {
-        let Envelope::Child {
-            context,
-            generation_context,
-            values,
-            operation,
-            payload,
-        } = decode(bytes)?
-        else {
-            return Err(WireCodecError::Kind);
-        };
-        Ok(Self {
-            context,
-            generation_context,
-            values: owned(values)?,
-            operation: operation.to_owned(),
-            payload: payload.to_vec(),
+        match WireChild::decode(bytes)? {
+            WireChild::Call(call) => Ok(call),
+            WireChild::Control(_) => Err(WireCodecError::Kind),
+        }
+    }
+}
+
+impl WireChildControl {
+    pub fn encode(&self) -> Result<Vec<u8>, WireCodecError> {
+        encode(Envelope::ChildControl {
+            context: self.context,
+            instance: self.instance,
+            action: self.action,
         })
+    }
+}
+
+impl WireChild {
+    pub fn decode(bytes: &[u8]) -> Result<Self, WireCodecError> {
+        let child = match decode(bytes)? {
+            Envelope::Child {
+                context,
+                generation_context,
+                values,
+                operation,
+                payload,
+                submit,
+            } => Self::Call(WireChildCall {
+                context,
+                generation_context,
+                values: owned(values)?,
+                operation: operation.to_owned(),
+                payload: payload.to_vec(),
+                submit,
+            }),
+            Envelope::ChildControl {
+                context,
+                instance,
+                action,
+            } => Self::Control(WireChildControl {
+                context,
+                instance,
+                action,
+            }),
+            _ => return Err(WireCodecError::Kind),
+        };
+        Ok(child)
+    }
+
+    pub fn context(&self) -> &[u8; 32] {
+        match self {
+            Self::Call(call) => &call.context,
+            Self::Control(control) => &control.context,
+        }
     }
 }
 

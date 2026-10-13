@@ -217,7 +217,10 @@ impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> Operation
     type Error = std::io::Error;
     type Endpoints = ();
     type Context<'a> = Context<'a>;
-    fn new(resources: Arc<Owner>) -> std::io::Result<Self> {
+    async fn initialize<'ctx>(
+        resources: Arc<Owner>,
+        _: Self::Context<'ctx>,
+    ) -> std::io::Result<Self> {
         Ok(Self {
             _resources: resources,
         })

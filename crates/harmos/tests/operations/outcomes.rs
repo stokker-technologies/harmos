@@ -119,17 +119,27 @@ impl Operation for Compute {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    fn new(counts: Arc<Counts>) -> Exported<Self> {
-        counts.constructed.fetch_add(1, Ordering::SeqCst);
-        Ok(Self {
-            attempts: 0,
-            counts,
-        })
-    }
-
-    async fn initialize<'ctx>(&mut self, _context: Self::Context<'ctx>) -> Exported<()> {
-        self.counts.initialized.fetch_add(1, Ordering::SeqCst);
-        Ok(())
+    async fn initialize<'ctx>(
+        counts: Arc<Counts>,
+        _context: Self::Context<'ctx>,
+    ) -> Exported<Self> {
+        let constructed: Exported<Self> = async move {
+            counts.constructed.fetch_add(1, Ordering::SeqCst);
+            Ok(Self {
+                attempts: 0,
+                counts,
+            })
+        }
+        .await;
+        let mut operation = constructed?;
+        let started: Exported<()> = async {
+            let operation = &mut operation;
+            operation.counts.initialized.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+        .await;
+        started?;
+        Ok(operation)
     }
 
     async fn run<'ctx>(
@@ -160,7 +170,7 @@ impl Operation for Compute {
         }
     }
 
-    async fn finalize(&mut self) -> Exported<()> {
+    async fn cleanup(&mut self) -> Exported<()> {
         self.counts.finalized.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
@@ -173,7 +183,7 @@ impl Operation for Parent {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    fn new(_resources: Arc<()>) -> Answered<Self> {
+    async fn initialize<'ctx>(_resources: Arc<()>, _: Self::Context<'ctx>) -> Answered<Self> {
         Ok(Self)
     }
 
@@ -184,7 +194,7 @@ impl Operation for Parent {
         _endpoints: &mut Self::Endpoints,
     ) -> Answered<harmos::operations::Response<usize>> {
         let result: ::core::result::Result<usize, Self::Error> = async move {
-            let answer = context.submit::<ComputeContract>(*mode)?.await?;
+            let answer = context.submit_as::<ComputeContract>(*mode)?.await?;
             Ok(*answer)
         }
         .await;
@@ -227,21 +237,21 @@ pub(super) fn contract_scenario() {
                     let (runtime, _) = runtime().await;
                     let root = runtime
                         .operations
-                        .submit::<ComputeContract>(Mode::Value(4))
+                        .submit_as::<ComputeContract>(Mode::Value(4))
                         .unwrap()
                         .await
                         .unwrap();
                     assert_eq!(*root, 4);
                     let child = runtime
                         .operations
-                        .submit::<ParentContract>(Mode::Value(9))
+                        .submit_as::<ParentContract>(Mode::Value(9))
                         .unwrap()
                         .await
                         .unwrap();
                     assert_eq!(*child, 9);
                     let error = runtime
                         .operations
-                        .submit::<ComputeContract>(Mode::Reject)
+                        .submit_as::<ComputeContract>(Mode::Reject)
                         .unwrap()
                         .await
                         .unwrap_err();
@@ -269,7 +279,7 @@ pub(super) fn contract_scenario() {
                     let (runtime, _) = runtime().await;
                     let elapsed = runtime
                         .operations
-                        .submit::<ComputeContract>(Mode::Wait)
+                        .submit_as::<ComputeContract>(Mode::Wait)
                         .unwrap()
                         .await;
                     assert!(matches!(
@@ -279,7 +289,7 @@ pub(super) fn contract_scenario() {
 
                     let error = runtime
                         .operations
-                        .submit::<ParentContract>(Mode::Reject)
+                        .submit_as::<ParentContract>(Mode::Reject)
                         .unwrap()
                         .await
                         .unwrap_err();
@@ -300,7 +310,7 @@ pub(super) fn contract_scenario() {
 
                     let error = runtime
                         .operations
-                        .submit::<ParentContract>(Mode::Wait)
+                        .submit_as::<ParentContract>(Mode::Wait)
                         .unwrap()
                         .await
                         .unwrap_err();
@@ -327,13 +337,13 @@ pub(super) fn contract_scenario() {
                     let (runtime, counts) = runtime().await;
                     let root = runtime
                         .operations
-                        .submit::<ComputeContract>(Mode::Retry)
+                        .submit_as::<ComputeContract>(Mode::Retry)
                         .unwrap()
                         .await
                         .unwrap();
                     let child = runtime
                         .operations
-                        .submit::<ParentContract>(Mode::Retry)
+                        .submit_as::<ParentContract>(Mode::Retry)
                         .unwrap()
                         .await
                         .unwrap();
@@ -362,7 +372,7 @@ pub(super) fn contract_scenario() {
                         .unwrap();
                     let error = runtime
                         .operations
-                        .submit::<ComputeContract>(Mode::Reject)
+                        .submit_as::<ComputeContract>(Mode::Reject)
                         .unwrap()
                         .await
                         .unwrap_err();

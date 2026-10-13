@@ -93,7 +93,10 @@ impl Operation for Ordered {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    fn new(sequence: Arc<Sequence>) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(
+        sequence: Arc<Sequence>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Self::Error> {
         Ok(Self {
             running: false,
             sequence,
@@ -121,7 +124,7 @@ impl Operation for Ordered {
         result.map(::core::convert::Into::into)
     }
 
-    async fn finalize(&mut self) -> Result<(), Self::Error> {
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
         if self.running {
             self.sequence.events.lock().unwrap().push("job-end");
         }
@@ -672,9 +675,15 @@ pub(super) fn contract_scenario() {
                     })
                     .await;
 
-                    let running = runtime.operations.submit::<OrderedContract>(true).unwrap();
+                    let running = runtime
+                        .operations
+                        .submit_as::<OrderedContract>(true)
+                        .unwrap();
                     started.notified().await;
-                    let queued = runtime.operations.submit::<OrderedContract>(false).unwrap();
+                    let queued = runtime
+                        .operations
+                        .submit_as::<OrderedContract>(false)
+                        .unwrap();
 
                     let mut participant = runtime.stop_participant();
                     let participant_events = Arc::clone(&events);

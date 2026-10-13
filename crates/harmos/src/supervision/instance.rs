@@ -122,6 +122,33 @@ impl Status {
     pub fn settled_at(&self) -> Option<Instant> {
         self.settled_at
     }
+
+    // Project onto the status every host binding reports.
+    pub fn portable(&self) -> harmos_contract::operations::instance::Status {
+        use harmos_contract::operations::instance;
+        let phase = match self.phase {
+            Phase::Queued => instance::Phase::Queued,
+            Phase::Initializing => instance::Phase::Initializing,
+            Phase::Running => instance::Phase::Running,
+            Phase::RetryWaiting => instance::Phase::RetryWaiting,
+            Phase::Stopping => instance::Phase::Stopping,
+            Phase::Finalizing => instance::Phase::CleaningUp,
+            Phase::Settled => instance::Phase::Settled,
+        };
+        let outcome = self.outcome.map(|outcome| match outcome {
+            Outcome::Succeeded => instance::Outcome::Succeeded,
+            Outcome::Failed => instance::Outcome::Failed,
+            Outcome::Cancelled => instance::Outcome::Cancelled,
+            Outcome::TimedOut => instance::Outcome::TimedOut,
+            Outcome::Unavailable => instance::Outcome::Unavailable,
+        });
+        instance::Status {
+            phase,
+            outcome,
+            cancellation_requested: self.cancellation_requested,
+            attempt: u32::try_from(self.attempt).unwrap_or(u32::MAX),
+        }
+    }
 }
 
 impl Instance {

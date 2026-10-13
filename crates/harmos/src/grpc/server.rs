@@ -94,7 +94,7 @@ impl Authority {
         endpoints: P,
     ) -> crate::Result<OperationInstance<O>> {
         match self {
-            Self::Binding(binding) => binding.submit::<O, P>(request, endpoints),
+            Self::Binding(binding) => binding.submit_as::<O, P>(request, endpoints),
             Self::TrustedHost(operations) => {
                 operations.submit_external_charged::<O, P>(request, endpoints)
             }

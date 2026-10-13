@@ -81,7 +81,7 @@ impl harmos_sidecar::Plugin for Plugin {
         Ok(())
     }
 
-    async fn shutdown(&mut self, _: &Supervisor) -> Result<(), Error> {
+    async fn stop(&mut self, _: &Supervisor) -> Result<(), Error> {
         Ok(())
     }
 

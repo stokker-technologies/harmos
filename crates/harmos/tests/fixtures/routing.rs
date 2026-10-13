@@ -124,7 +124,7 @@ impl harmos::Plugin for Process {
     ) -> Result<(), harmos::operations::ServingError> {
         table.bind_operations::<Implemented, _>(self.resources())
     }
-    async fn shutdown(&mut self, context: &Supervisor) -> Result<(), Refusal> {
+    async fn stop(&mut self, context: &Supervisor) -> Result<(), Refusal> {
         if self.resources.root.join("shutdown-publication").exists() {
             context
                 .publisher::<Process>()
@@ -149,15 +149,26 @@ impl Operation for Echoing {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    fn new(resources: Arc<Resources>) -> Result<Self, Refusal> {
-        Ok(Self {
-            resources,
-            id: None,
-            run_started: false,
-        })
-    }
-    async fn initialize<'ctx>(&mut self, _: Self::Context<'ctx>) -> Result<(), Refusal> {
-        self.resources.mark("echo-initialized")
+    async fn initialize<'ctx>(
+        resources: Arc<Resources>,
+        _context: Self::Context<'ctx>,
+    ) -> Result<Self, Refusal> {
+        let constructed: Result<Self, Refusal> = async move {
+            Ok(Self {
+                resources,
+                id: None,
+                run_started: false,
+            })
+        }
+        .await;
+        let mut operation = constructed?;
+        let started: Result<(), Refusal> = async {
+            let operation = &mut operation;
+            operation.resources.mark("echo-initialized")
+        }
+        .await;
+        started?;
+        Ok(operation)
     }
     async fn run<'ctx>(
         &mut self,
@@ -187,7 +198,7 @@ impl Operation for Echoing {
         .await;
         result.map(::core::convert::Into::into)
     }
-    async fn finalize(&mut self) -> Result<(), Refusal> {
+    async fn cleanup(&mut self) -> Result<(), Refusal> {
         if self.id.is_none() {
             return self.resources.mark("echo-finalized-unstarted");
         }
@@ -216,7 +227,10 @@ impl Operation for Probing {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    fn new(resources: Arc<Resources>) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(
+        resources: Arc<Resources>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Refusal> {
         let sequence = resources.probes.fetch_add(1, Ordering::SeqCst) + 1;
         Ok(Self {
             _resources: resources,
@@ -251,14 +265,25 @@ impl Operation for Publishing {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    fn new(resources: Arc<Resources>) -> Result<Self, Refusal> {
-        Ok(Self {
-            resources,
-            id: None,
-        })
-    }
-    async fn initialize<'ctx>(&mut self, _: Self::Context<'ctx>) -> Result<(), Refusal> {
-        self.resources.mark("nested-initialized")
+    async fn initialize<'ctx>(
+        resources: Arc<Resources>,
+        _context: Self::Context<'ctx>,
+    ) -> Result<Self, Refusal> {
+        let constructed: Result<Self, Refusal> = async move {
+            Ok(Self {
+                resources,
+                id: None,
+            })
+        }
+        .await;
+        let mut operation = constructed?;
+        let started: Result<(), Refusal> = async {
+            let operation = &mut operation;
+            operation.resources.mark("nested-initialized")
+        }
+        .await;
+        started?;
+        Ok(operation)
     }
     async fn run<'ctx>(
         &mut self,
@@ -279,7 +304,7 @@ impl Operation for Publishing {
         .await;
         result.map(::core::convert::Into::into)
     }
-    async fn finalize(&mut self) -> Result<(), Refusal> {
+    async fn cleanup(&mut self) -> Result<(), Refusal> {
         if self.id.is_none() {
             return self.resources.mark("nested-finalized-unstarted");
         }

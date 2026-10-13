@@ -23,11 +23,17 @@ Use the original runtime and resource owners. Consult the relevant section only;
   metadata on a unit struct in its vertical operation file, including unshared
   declarations. Never put operation metadata on catalog enum entries. Catalogs
   assemble already-declared leaf types.
-- `new(Arc<Resources>)` constructs an inert owner. `initialize(context)` prepares
-  common resources. `run(context, &mut request, &mut input, &mut output)` performs
-  work, omitting each endpoint argument when that direction is not declared;
-  retain request-dependent handles on `self` for `stop()` and `finalize()`, including
-  partial failures. The same request, endpoints and owner survive allowed retries.
+- Lifecycle verbs are shared by operations, observers and plugins:
+  `initialize` constructs, the work verb (`run`, `observe`) works, `stop` ends
+  domain activity and `cleanup` releases physical resources. An operation's
+  `async fn initialize(Arc<Resources>, context) -> Result<Self, Error>` runs once
+  on the first attempt; queued instances cancelled before they start and cache
+  hits construct nothing. `run(context, &mut request, &mut input, &mut output)`
+  performs work, omitting each endpoint argument when that direction is not
+  declared; retain request-dependent handles on `self` for `stop()` and
+  `cleanup()`, which run only after a successful initialization. Initialization
+  owns its partial acquisitions on failure. The same request, endpoints and owner
+  survive allowed retries. The retired `new` and `finalize` names are refused.
 - The authored `Operation::run` trait returns `operations::Response<T>` for the
   declared wire payload `T`. `#[harmos::operation]` converts an ordinary payload
   through `Into`; an implementation may return the owned response directly.
@@ -52,18 +58,46 @@ Use the original runtime and resource owners. Consult the relevant section only;
   converting it into an owned response. `StreamItem::into_request` is fallible:
   a borrowed owned payload cannot be moved out into a mutable request. Likewise,
   consuming `project` refuses an owned item instead of silently copying it.
-- Declare portable child metadata through `operations::ContextValue`. Native
-  `Context::with_value` consumes and derives the scoped caller; sidecar
-  `Supervisor::with_value` and guest `Context::with_value` borrow and clone it.
+- Declare portable child metadata through `operations::ContextValue`. Every
+  binding's `with_value` borrows its handle and returns the derived caller.
   They retain the original identity, grants, deadline, cancellation and parent
   admission. Use `CallContext::value::<T>()` for portable metadata, including
   stage scope used by product idempotency. Product key construction remains
   product-owned. Replaced raw portable values invalidate cached local typed
   projections; trusted local-only values retain their original allocation.
   Overlays enforce the combined 64-entry, 64 KiB budget before child admission.
-  Child values travel in operation envelope version 5; rebuild both SDK and host
+  Child values travel in operation envelope version 6; rebuild both SDK and host
   together. This transient protocol revision does not change persisted records
   or public WIT namespaces.
+- Write operation bodies against one `operations::Host` capability, bound in
+  process (`OperationManager`, `operations::Context`), in sidecars (`Supervisor`)
+  and in guests (`Context`). Reach host services as declared operations through
+  `call` and `submit`, never as per-kit methods; the one-shot `operation` call is
+  retired.
+
+  ```rust
+  use harmos::operations::{Host, Instance};
+
+  async fn body<H: Host>(host: &H) -> Result<(), H::Error> {
+      let read = host.call(Read { channel: 3 }).await?; // Request = Self
+      let receipt = host.call_as::<host::Invoke>(invoke).await?;
+      let child = host.submit(Read { channel: 4 }).await?;
+      let status = child.status().await?;
+      let joined = child.join().await?;
+      host.publish_on::<Progress>(&progress).await?;
+      Ok(())
+  }
+  ```
+
+  Responses arrive as `operations::Response<T>`; `into_owned` moves the payload
+  out. An `OperationInstance` offers `id`, `status`, `cancel`, `join` and
+  `cancel_and_join`. Dropping it unsettled cancels the child; `detach` keeps it
+  running without a handle until the submitting attempt ends, which cancels and
+  settles it like any other child. Remote children
+  belong to the submitting attempt and travel as child controls (join, status,
+  cancel, release, detach) on the existing child call path. Guests submit unary
+  children only; streaming child sessions stay in process. In-process inherent
+  `submit`/`submit_as` admit synchronously; the trait forms are asynchronous.
 - Declare `input = Item` and/or `output = Item` explicitly. Context has no optional
   stream handles. Caller APIs are `upload`, `download`, and `exchange`, with
   `send`, `next`, synchronous `finish_input`, `split`, `join`, and
@@ -116,6 +150,13 @@ declare operation metadata.
 
 ## gRPC Composition And Discovery
 
+- Harmos serves no built-in operation by default. Register
+  `builtin::Catalog::register(&operations, owner, lane)` to serve
+  `host.operations.status` and `host.operations.cancel`
+  (`/harmos.host.v1.Operations/{Status,Cancel}`). Both resolve only active
+  instances the caller submitted; unknown, foreign and settled ids are refused
+  alike. Plugins must declare them as requirements; a live handle reports its
+  own child through child controls instead.
 - Explicitly register `operations::discovery::Discovery` with the original
   manager to expose `host.operations`; it is not an automatic second catalog.
   With `grpc`, the declared unary route is `/harmos.host.v1.Host/Operations`.
@@ -332,10 +373,11 @@ layouts for guests and sidecars.
   owns actual preparation, initialization, resources and cleanup. Never add an
   unreachable physical implementation just to emit metadata.
 - Return clones of the exact initialized resource Arc from `resources`.
-  Normal `shutdown(&mut self, &Context)` uses the current operation context;
+  Normal `stop(&mut self, &Context)` uses the current operation context;
   context-independent `cleanup(&mut self)` releases physical resources after
-  partial setup or EOF. Acknowledged domain shutdown is not replayed while
-  physical cleanup resumes.
+  partial setup or EOF. Acknowledged domain stop is not replayed while
+  physical cleanup resumes. The SDK lifecycle leaves keep their wire ids
+  (`harmos.initialize`, `harmos.shutdown`).
 - Author portable guests with `harmos-guest` and native plugins with
   `harmos-sidecar`; neither authoring crate depends on the host runtime.
   The SDK context identifies its carrier. Host features `plugin-guest` and
@@ -412,6 +454,10 @@ layouts for guests and sidecars.
   `#[harmos::listener]` attribute and `listeners = Audience` catalog selection.
   Their source identity/schema and exact provided callback contract are inert
   metadata; manager feed/readiness belongs to the original host managers.
+  Observers construct with `async fn initialize(resources: &Resources) ->
+  Result<Self, Error>` (or `Default`), work in `observe`, and end with `stop`
+  and `cleanup`; a failed initialization drops its partial owner and retries on
+  the next cadence without cleanup.
   Native observers select `observers = Catalog` and actual ordinary Host
   `observer_controls(Start, Stop)` leaves with explicit authored policies. Bind
   the same `ObserverAttachment<Resources, Host>` to initialized resources through the original

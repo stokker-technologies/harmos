@@ -76,7 +76,7 @@ impl<const PANIC: bool> Observer<()> for Watch<PANIC> {
     type Error = Error;
     const ID: &'static str = "native";
     const INTERVAL: Duration = Duration::from_millis(5);
-    fn new(resources: &Arc<Counts>) -> Result<Self, Error> {
+    async fn initialize(resources: &Arc<Counts>) -> Result<Self, Error> {
         resources.initialized.fetch_add(1, Ordering::SeqCst);
         Ok(Self(resources.clone()))
     }
@@ -95,7 +95,7 @@ impl<const PANIC: bool> Observer<()> for Watch<PANIC> {
 
         Ok(())
     }
-    async fn finalize(&mut self) -> Result<(), Error> {
+    async fn cleanup(&mut self) -> Result<(), Error> {
         self.0.finalizations.fetch_add(1, Ordering::SeqCst);
         if self.0.refuse_finalize.swap(false, Ordering::SeqCst) {
             return Err(Error::other("native finalization refusal"));

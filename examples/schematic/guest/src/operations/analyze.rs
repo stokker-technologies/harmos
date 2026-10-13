@@ -39,7 +39,7 @@ pub(crate) struct AnalyzeSchematic;
 /* === Implementations === */
 #[harmos_guest::operation(declaration = schematic_contract::operations::AnalyzeSchematic, output = Finding)]
 impl AnalyzeSchematic {
-    fn new(_: Arc<()>) -> Self {
+    async fn initialize(_: Arc<()>, _: &harmos_guest::Context) -> Self {
         Self
     }
 

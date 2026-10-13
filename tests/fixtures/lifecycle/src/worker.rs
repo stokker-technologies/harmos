@@ -104,7 +104,7 @@ impl Resident<SchematicEditor> for Traffic {
                 bytes: vec![sequence as u8; PAYLOAD_BYTES],
             };
             let Some(response) = context
-                .until_stopping(operations.call::<Exchange>(request))
+                .until_stopping(operations.call_as::<Exchange>(request))
                 .await
             else {
                 return Ok(());
