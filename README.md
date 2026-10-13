@@ -280,6 +280,10 @@ For browser gRPC-Web clients, enable `GrpcSettings::web` and list exact
 and response headers; other origins are refused. Authentication still applies
 to actual calls. An empty origin list emits no CORS headers.
 
+Detaching a gRPC listener closes its connections, including unread streams, while
+leaving the application runtime available for a new attachment. Accepted sockets
+use TCP_NODELAY so small flow-control windows do not add Nagle buffering delays.
+
 Saved-view frame queries combine `Predicate::Compare`, `Predicate::In` and
 `Predicate::Exists` filters with AND. Membership accepts at most 64 scalar
 alternatives; an empty set matches nothing. Presence excludes missing and null
