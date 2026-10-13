@@ -280,8 +280,10 @@ For browser gRPC-Web clients, enable `GrpcSettings::web` and list exact
 and response headers; other origins are refused. Authentication still applies
 to actual calls. An empty origin list emits no CORS headers.
 
-Detaching a gRPC listener closes its connections, including unread streams, while
-leaving the application runtime available for a new attachment. Accepted sockets
+Detaching or shutting down a gRPC listener ends in-flight calls with `Unavailable`
+and closes its connections gracefully; connections that cannot drain, such as
+unread streams, are aborted after half of `shutdown_timeout`. The application
+runtime stays available for a new attachment. Accepted sockets
 use TCP_NODELAY so small flow-control windows do not add Nagle buffering delays.
 
 Saved-view frame queries combine `Predicate::Compare`, `Predicate::In` and

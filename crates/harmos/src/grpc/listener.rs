@@ -308,9 +308,11 @@ impl<A: Application> Resident<A> for Listener {
             .map_err(|source| Fault::Application(failure(source)))?;
         let slots = Arc::new(Semaphore::new(self.resources.settings.connections.get()));
         let stopping = self.resources.stopping.subscribe();
+        // Healthy Connections Drain Gracefully; Stalled Ones Are Aborted Before The Stop Deadline.
+        let grace = self.resources.settings.shutdown_timeout / 2;
         let incoming = futures_util::stream::unfold(
             (listener, slots, stopping),
-            |(listener, slots, stopping)| async move {
+            move |(listener, slots, stopping)| async move {
                 let permit = slots.clone().acquire_owned().await.ok()?;
                 let connection = listener.accept().await.and_then(|(stream, _)| {
                     stream.set_nodelay(true)?;
@@ -319,6 +321,7 @@ impl<A: Application> Resident<A> for Listener {
                         stream,
                         stopping: Box::pin(async move {
                             let _ = cancellation.wait_for(|stopping| *stopping).await;
+                            tokio::time::sleep(grace).await;
                         }),
                         stopped: false,
                         _permit: permit,
@@ -424,7 +427,7 @@ impl Connected for Connection {
 }
 
 impl Connection {
-    // Wake Socket I/O So Tonic Can Settle Its Own Connection Tasks.
+    // Abort Socket I/O After The Grace So Tonic Can Settle Stalled Connection Tasks.
     fn poll_stopping(&mut self, context: &mut Context<'_>) -> std::io::Result<()> {
         if !self.stopped {
             self.stopped = self.stopping.as_mut().poll(context).is_ready();

@@ -1472,6 +1472,122 @@ pub(super) fn contract_scenario() {
                 });
         });
     }
+    {
+        scenario_runtime::check("shutdown_streams_unavailable", || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    use harmos::grpc::{InputEnvelope, OutputEnvelope};
+                    let runtime = Runtime::<App>::builder((), ())
+                        .register(Lanes::catalog())
+                        .runtime()
+                        .await
+                        .unwrap();
+                    runtime
+                        .operations
+                        .register_operation::<Hold>(
+                            "app",
+                            Lanes::Open,
+                            Arc::new(tokio::sync::Semaphore::new(0)),
+                        )
+                        .unwrap();
+                    runtime
+                        .operations
+                        .register_operation::<Upload>("app", Lanes::Open, Arc::new(()))
+                        .unwrap();
+                    runtime
+                        .grpc()
+                        .register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions))))
+                        .unwrap();
+                    runtime
+                        .grpc()
+                        .register_service(Endpoint {
+                            authority: harmos::grpc::server::Authority::TrustedHost(
+                                runtime.operations.clone(),
+                            ),
+                        })
+                        .unwrap();
+                    let attached = runtime.grpc().attach(settings()).await.unwrap();
+                    let channel = tonic::transport::Endpoint::from_shared(format!(
+                        "http://{}",
+                        attached.local_addr()
+                    ))
+                    .unwrap()
+                    .connect()
+                    .await
+                    .unwrap();
+                    let mut client = tonic::client::Grpc::new(channel);
+                    let (decode, encode) = limits();
+                    client.ready().await.unwrap();
+                    let mut request =
+                        tonic::Request::new(harmos::operations::Response::new(Ask {}));
+                    request
+                        .metadata_mut()
+                        .insert("authorization", "Bearer alice".parse().unwrap());
+                    let mut held =
+                        client
+                            .server_streaming(
+                                request,
+                                http::uri::PathAndQuery::from_static("/fixture.Identity/Hold"),
+                                Codec::<
+                                    OutputEnvelope<Reply, Reply>,
+                                    harmos::operations::Response<Ask>,
+                                >::new(decode, encode)
+                                .unwrap(),
+                            )
+                            .await
+                            .unwrap()
+                            .into_inner();
+                    assert!(held.message().await.unwrap().is_some());
+                    let mut uploader = client.clone();
+                    let upload = tokio::spawn(async move {
+                        uploader.ready().await.unwrap();
+                        // The Upload Stays Open Until The Listener Settles It.
+                        let opened = futures_util::StreamExt::chain(
+                            futures_util::stream::iter([harmos::operations::Response::new(
+                                InputEnvelope::<Ask, Reply>::Request(Ask {}),
+                            )]),
+                            futures_util::stream::pending(),
+                        );
+                        let mut request = tonic::Request::new(opened);
+                        request
+                            .metadata_mut()
+                            .insert("authorization", "Bearer alice".parse().unwrap());
+                        uploader
+                            .client_streaming(
+                                request,
+                                http::uri::PathAndQuery::from_static("/fixture.Identity/Upload"),
+                                Codec::<
+                                    Reply,
+                                    harmos::operations::Response<InputEnvelope<Ask, Reply>>,
+                                >::new(decode, encode)
+                                .unwrap(),
+                            )
+                            .await
+                            .err()
+                            .expect("pending upload is settled")
+                    });
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    // Bounded Below The Forced Settlement Grace, So Only Graceful Closure Passes.
+                    let observed = tokio::time::timeout(Duration::from_millis(800), async {
+                        let streamed = held.message().await.err().expect("held stream is settled");
+                        (streamed, upload.await.unwrap())
+                    });
+                    let (shutdown, observed) = tokio::join!(
+                        tokio::time::timeout(Duration::from_secs(3), runtime.grpc().shutdown()),
+                        observed
+                    );
+                    shutdown.unwrap().unwrap();
+                    let (streamed, uploaded) = observed.expect("streams settle gracefully");
+                    assert_eq!(streamed.code(), tonic::Code::Unavailable, "{streamed:?}");
+                    assert_eq!(uploaded.code(), tonic::Code::Unavailable, "{uploaded:?}");
+                    drop(attached);
+                    runtime.stop().await.unwrap();
+                });
+        });
+    }
     #[cfg(feature = "grpc")]
     {
         scenario_runtime::check("grpc_web_served", || {
