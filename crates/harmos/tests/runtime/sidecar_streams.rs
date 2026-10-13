@@ -28,8 +28,9 @@ use super::{Counts, Read};
 use super::{Lanes, Managed, source};
 #[cfg(feature = "grpc")]
 use harmos::grpc::{Codec, InputEnvelope, OutputEnvelope};
-use harmos::operations::{Operation, StreamSettings, WireStreamLimits, WireTable};
-use harmos_contract::operations::streaming::{StreamInput, StreamOutput};
+use harmos::operations::{
+    Operation, StreamInput, StreamOutput, StreamSettings, WireStreamLimits, WireTable,
+};
 
 /* === Constants === */
 
@@ -100,6 +101,15 @@ pub(super) enum Operations {
     Exchange(Exchange),
 }
 
+// Runtime-error endpoints bind through the same catalog projection as
+// `bind_operations`, which is the authored sidecar route.
+#[harmos::catalog]
+enum Implemented {
+    Upload(Uploading),
+    Download(Downloading),
+    Exchange(Exchanging),
+}
+
 /* === Traits === */
 
 /* === Implementations === */
@@ -145,9 +155,7 @@ pub(super) fn bind(
         input: direction,
         output: direction,
     };
-    table.bind_streaming_operation::<Uploading>(counts.clone(), limits)?;
-    table.bind_streaming_operation::<Downloading>(counts.clone(), limits)?;
-    table.bind_streaming_operation::<Exchanging>(counts, limits)
+    table.bind_streaming_operations::<Implemented, _>(counts, limits)
 }
 
 /* === Private Functions === */

@@ -81,7 +81,9 @@ Use the original runtime and resource owners. Consult the relevant section only;
   Plain `stop` remains an unbounded orderly drain.
 - Never retry/cache a streaming operation after item transfer. WireTable streaming
   providers bind standard portable endpoints with explicit `WireStreamLimits`,
-  individually or through `bind_streaming_operations`; typed native/guest catalog
+  individually or through `bind_streaming_operations`; `StreamOutput` endpoints
+  bind under the operation's declared error type, so sidecar operations use
+  `harmos::operations::StreamOutput` directly. Typed native/guest catalog
   projections forward the same original invocation. Handwritten declarations
   need shape-aware `visit_wire`/`visit_grpc` projections or explicit bindings.
 

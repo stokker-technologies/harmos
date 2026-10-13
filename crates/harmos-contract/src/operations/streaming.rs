@@ -253,6 +253,18 @@ impl<T, E> StreamOutput<T, E> {
     pub(crate) fn transfer_flag(&self) -> Arc<AtomicBool> {
         self.transferred.clone()
     }
+
+    // Wire bindings construct the channel with the portable error and hand the
+    // same sender to the operation under its declared error type.
+    pub(crate) fn failing_with<F>(self) -> StreamOutput<T, F> {
+        StreamOutput {
+            error: std::marker::PhantomData,
+            sender: self.sender,
+            budget: self.budget,
+            limit: self.limit,
+            transferred: self.transferred,
+        }
+    }
 }
 
 impl<T, E> Clone for StreamOutput<T, E> {

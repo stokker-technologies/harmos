@@ -310,12 +310,12 @@ impl<T: Message + MemorySize + Send + 'static> WireEndpoints for StreamInput<T> 
         ))
     }
 }
-impl<T: Message + MemorySize + Send + 'static> WireEndpoints for StreamOutput<T> {
+impl<T: Message + MemorySize + Send + 'static, E: 'static> WireEndpoints for StreamOutput<T, E> {
     fn bind(limits: WireStreamLimits) -> Result<(Self, WireStreams), ServingError> {
         let (sender, receiver) = streaming::stream(limits.output).map_err(ServingError::Stream)?;
         let transferred = sender.transfer_flag();
         Ok((
-            sender,
+            sender.failing_with(),
             WireStreams::new(
                 None,
                 Some(Arc::new(Receiving(Mutex::new(receiver), transferred))),
@@ -323,14 +323,15 @@ impl<T: Message + MemorySize + Send + 'static> WireEndpoints for StreamOutput<T>
         ))
     }
 }
-impl<I, O> WireEndpoints for (StreamInput<I>, StreamOutput<O>)
+impl<I, O, E> WireEndpoints for (StreamInput<I>, StreamOutput<O, E>)
 where
     I: Message + MemorySize + Send + 'static,
     O: Message + MemorySize + Send + 'static,
+    E: 'static,
 {
     fn bind(limits: WireStreamLimits) -> Result<(Self, WireStreams), ServingError> {
         let (input, incoming) = StreamInput::<I>::bind(limits)?;
-        let (output, outgoing) = StreamOutput::<O>::bind(limits)?;
+        let (output, outgoing) = StreamOutput::<O, E>::bind(limits)?;
         Ok((
             (input, output),
             WireStreams::new(incoming.input, outgoing.output),
