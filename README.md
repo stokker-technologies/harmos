@@ -388,7 +388,10 @@ including squash, merge and history-reset commits with identical trees. `dev`
 requires Linux validation and its separate `development.json` artifact proof.
 Windows runs independently with visible outcomes and remains advisory for `dev`
 until its requirement is explicitly restored. `main` and releases always require
-both Linux and Windows. PR full validation requires approval; integration into `dev` and `main`
+both Linux and Windows. Coverage is an optional diagnostic through
+`STKR_COVERAGE=1 mise run test`; ordinary validation keeps the full selection.
+Dev pushes may use the restricted local Linux runner. PR full validation requires
+approval; integration into `dev` and `main`
 starts automatic validation of the resulting SHA. Caches accelerate those builds.
 Installed tools, dependency downloads and profile-specific compiler outputs use
 separate caches. Preparation jobs save them; test consumers restore them.

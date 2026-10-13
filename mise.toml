@@ -336,7 +336,7 @@ run = "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harm
 
 [tasks."packages:development"]
 depends = ["sync"]
-description = "Verify Dated Linux Development Proof Without Release Promotion"
+description = "Verify Linux Development Proof Without Release Promotion"
 run = "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harmos_tools.packages development"
 
 [tasks."packages:export"]
