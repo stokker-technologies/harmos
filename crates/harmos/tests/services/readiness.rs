@@ -21,10 +21,7 @@ use std::time::Duration;
 use tokio::sync::{Notify, mpsc};
 // Local Imports
 use super::{Bank, assembly, service_status, support};
-use harmos::{
-    services::Fault, services::Service, services::ServiceExit, services::ServicePolicy,
-    services::ServiceStatus,
-};
+use harmos::{services::Fault, services::Service, services::ServiceExit, services::ServiceStatus};
 
 /* === Constants === */
 
@@ -73,17 +70,17 @@ pub(super) fn contract_scenario() {
                     entered.notified().await;
                     assert_eq!(
                         runtime
-                            .services
-                            .status(&harmos::services::ServiceKey::root("initializing"))
-                            .map(|item| item.status),
+                            .operations
+                            .resident(&harmos::operations::resident::Key::root("initializing"))
+                            .and_then(|item| item.health),
                         Some(ServiceStatus::Starting)
                     );
-                    let services = runtime.services.clone();
+                    let services = runtime.operations.clone();
                     runtime.stop().await.unwrap();
                     assert_eq!(
                         services
-                            .status(&harmos::services::ServiceKey::root("initializing"))
-                            .map(|item| item.status),
+                            .resident(&harmos::operations::resident::Key::root("initializing"))
+                            .and_then(|item| item.health),
                         Some(ServiceStatus::Stopped)
                     );
                 });
@@ -127,20 +124,20 @@ pub(super) fn contract_scenario() {
                     entered.notified().await;
                     assert_eq!(
                         runtime
-                            .services
-                            .status(&harmos::services::ServiceKey::root("gated"))
-                            .map(|item| item.status),
+                            .operations
+                            .resident(&harmos::operations::resident::Key::root("gated"))
+                            .and_then(|item| item.health),
                         Some(ServiceStatus::Starting)
                     );
                     initialized.notify_one();
-                    let mut statuses = runtime.services.subscribe();
+                    let mut statuses = runtime.operations.watch_residents();
                     tokio::time::timeout(
                         Duration::from_secs(5),
                         statuses.wait_for(|values| {
                             matches!(
                                 values
-                                    .get(&harmos::services::ServiceKey::root("gated"))
-                                    .map(|item| &item.status),
+                                    .get(&harmos::operations::resident::Key::root("gated"))
+                                    .and_then(|item| item.health.as_ref()),
                                 Some(ServiceStatus::Running { .. })
                             )
                         }),
@@ -164,11 +161,7 @@ pub(super) fn contract_scenario() {
     let runtime = assembly()
         .service_with(
             "unready",
-            ServicePolicy {
-                credit: 1,
-                sustained_health: Duration::from_secs(1),
-                ..ServicePolicy::default()
-            },
+            harmos::operations::OperationPolicy { restart: harmos::operations::RestartPolicy::OnTransient { credit: 1, sustained_health: Duration::from_secs(1), backoff: harmos::operations::Backoff::Exponential { initial: Duration::from_millis(10), maximum: Duration::from_secs(5), jitter: harmos::operations::Jitter::Deterministic } }, ..harmos::services::POLICY },
             {
                 let entered = entered.clone();
                 let fail = fail.clone();
@@ -194,20 +187,20 @@ pub(super) fn contract_scenario() {
     tokio::time::advance(Duration::from_secs(10)).await;
     assert_eq!(
         runtime
-            .services
-            .status(&harmos::services::ServiceKey::root("unready"))
-            .map(|item| item.status),
+            .operations
+            .resident(&harmos::operations::resident::Key::root("unready"))
+            .and_then(|item| item.health),
         Some(ServiceStatus::Starting)
     );
     fail.notify_one();
-    let mut statuses = runtime.services.subscribe();
+    let mut statuses = runtime.operations.watch_residents();
     tokio::time::timeout(
         Duration::from_secs(5),
         statuses.wait_for(|values| {
             matches!(
                 values
-                    .get(&harmos::services::ServiceKey::root("unready"))
-                    .map(|item| &item.status),
+                    .get(&harmos::operations::resident::Key::root("unready"))
+                    .and_then(|item| item.health.as_ref()),
                 Some(ServiceStatus::Inactive { .. })
             )
         }),
@@ -216,7 +209,7 @@ pub(super) fn contract_scenario() {
     .unwrap()
     .unwrap();
     assert!(
-        matches!(runtime.services.status(&harmos::services::ServiceKey::root("unready")).map(|item| item.status), Some(ServiceStatus::Inactive {
+        matches!(runtime.operations.resident(&harmos::operations::resident::Key::root("unready")).and_then(|item| item.health), Some(ServiceStatus::Inactive {
         cause: ServiceExit::CreditExhausted, history
     }) if history == ["not initialized", "not initialized"])
     );
@@ -280,20 +273,20 @@ pub(super) fn contract_scenario() {
                     tokio::task::yield_now().await;
                     assert_eq!(
                         runtime
-                            .services
-                            .status(&harmos::services::ServiceKey::root("replacement"))
-                            .map(|item| item.status),
+                            .operations
+                            .resident(&harmos::operations::resident::Key::root("replacement"))
+                            .and_then(|item| item.health),
                         Some(ServiceStatus::Starting)
                     );
                     initialized.notify_one();
-                    let mut statuses = runtime.services.subscribe();
+                    let mut statuses = runtime.operations.watch_residents();
                     tokio::time::timeout(
                         Duration::from_secs(5),
                         statuses.wait_for(|values| {
                             matches!(
                                 values
-                                    .get(&harmos::services::ServiceKey::root("replacement"))
-                                    .map(|item| &item.status),
+                                    .get(&harmos::operations::resident::Key::root("replacement"))
+                                    .and_then(|item| item.health.as_ref()),
                                 Some(ServiceStatus::Running { .. })
                             )
                         }),
@@ -323,14 +316,14 @@ pub(super) fn contract_scenario() {
                             .runtime()
                             .await
                             .unwrap();
-                        let mut statuses = runtime.services.subscribe();
+                        let mut statuses = runtime.operations.watch_residents();
                         tokio::time::timeout(
                             Duration::from_secs(5),
                             statuses.wait_for(|values| {
                                 matches!(
                                     values
-                                        .get(&harmos::services::ServiceKey::root("failed"))
-                                        .map(|item| &item.status),
+                                        .get(&harmos::operations::resident::Key::root("failed"))
+                                        .and_then(|item| item.health.as_ref()),
                                     Some(ServiceStatus::Inactive { .. })
                                 )
                             }),
@@ -339,9 +332,9 @@ pub(super) fn contract_scenario() {
                         .unwrap()
                         .unwrap();
                         let Some(ServiceStatus::Inactive { cause, history }) = runtime
-                            .services
-                            .status(&harmos::services::ServiceKey::root("failed"))
-                            .map(|item| item.status)
+                            .operations
+                            .resident(&harmos::operations::resident::Key::root("failed"))
+                            .and_then(|item| item.health)
                         else {
                             panic!("failed initialization is terminal");
                         };
@@ -377,18 +370,18 @@ pub(super) fn contract_scenario() {
                         .runtime()
                         .await
                         .expect("a runtime that declares no service of its own boots");
-                    let statuses = runtime.services.subscribe();
+                    let statuses = runtime.operations.watch_residents();
                     assert!(
                         statuses.borrow().is_empty(),
                         "nothing is on the watch before a tenant is admitted"
                     );
 
                     runtime
-                        .services
-                        .register(
+                        .operations
+                        .register_service(
                             harmos::services::ServiceDefinition {
                                 id: "tenant".into(),
-                                policy: ServicePolicy::default(),
+                                policy: harmos::services::POLICY,
                             },
                             |_: Arc<()>| {
                                 |context: harmos::services::Service<Bank>| async move {
@@ -401,8 +394,8 @@ pub(super) fn contract_scenario() {
                         )
                         .expect("the tenant factory is registered");
                     let _tenant = runtime
-                        .services
-                        .activate("tenant", &runtime.services.root_scope())
+                        .operations
+                        .submit_resident("tenant")
                         .await
                         .expect("a tenant is admitted after boot");
 
@@ -414,8 +407,8 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         statuses
                             .borrow()
-                            .get(&harmos::services::ServiceKey::root("tenant"))
-                            .map(|item| &item.status),
+                            .get(&harmos::operations::resident::Key::root("tenant"))
+                            .and_then(|item| item.health.as_ref()),
                         Some(&ServiceStatus::Starting),
                         "an activated tenant reads `Starting` before `activate` answers"
                     );
@@ -429,7 +422,7 @@ pub(super) fn contract_scenario() {
                     assert!(
                         statuses
                             .borrow()
-                            .contains_key(&harmos::services::ServiceKey::root("tenant"))
+                            .contains_key(&harmos::operations::resident::Key::root("tenant"))
                     );
                     runtime.stop().await.unwrap();
                 });
@@ -455,7 +448,7 @@ pub(super) fn contract_scenario() {
                         .runtime()
                         .await
                         .expect("the stream-producing service boots");
-                    service_status(runtime.services.subscribe(), "source", |status| {
+                    service_status(runtime.operations.watch_residents(), "source", |status| {
                         *status == ServiceStatus::Stopped
                     })
                     .await;

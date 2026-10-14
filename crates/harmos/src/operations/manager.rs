@@ -9,6 +9,7 @@
 
 /* === Modules === */
 mod discovery;
+mod residents;
 
 /* === Re-Exports === */
 
@@ -56,6 +57,7 @@ pub struct OperationManager {
     pub(super) lanes: Arc<Lanes>,
     pub(super) preparation: Option<Arc<Semaphore>>,
     pub(super) context: Arc<std::sync::OnceLock<super::CallContext>>,
+    pub(super) resident: super::resident::Registry,
 }
 
 pub(crate) struct Registry {
@@ -98,6 +100,9 @@ pub(super) struct Entry {
     generation: OperationGeneration,
     lane: &'static str,
     bounded: bool,
+    // A resident control runs until cancelled, even while its plugin retires.
+    #[cfg(feature = "plugin-sidecar")]
+    resident: bool,
     active: AtomicBool,
     retirement: AtomicU8,
     pending: Mutex<BTreeMap<OperationInstanceId, Arc<Instance>>>,
@@ -119,8 +124,6 @@ pub(super) struct Entry {
         feature = "plugin-sidecar"
     ))]
     pub(super) sdk: Option<harmos_contract::operations::lifecycle::Action>,
-    #[cfg(feature = "plugin-sidecar")]
-    pub(super) observer_stop: bool,
 }
 
 pub(super) struct Submission {
@@ -150,8 +153,14 @@ enum Retirement {
 
 /* === Implementations === */
 impl OperationManager {
-    pub(crate) fn new(instances: Arc<Instances>, settings: &super::Settings) -> Self {
+    pub(crate) fn new(
+        instances: Arc<Instances>,
+        settings: &super::Settings,
+        reserved: std::collections::BTreeSet<String>,
+        identity: Arc<()>,
+    ) -> Self {
         Self {
+            resident: super::resident::Registry::new(&instances, reserved, identity),
             context: Arc::new(std::sync::OnceLock::from(super::CallContext::default())),
             instances,
             preparation: settings
@@ -445,6 +454,8 @@ impl OperationManager {
             generation,
             lane,
             bounded,
+            #[cfg(feature = "plugin-sidecar")]
+            resident: false,
             active: AtomicBool::new(true),
             retirement: AtomicU8::new(Retirement::Retained as u8),
             pending: Mutex::new(BTreeMap::new()),
@@ -466,8 +477,6 @@ impl OperationManager {
                 feature = "plugin-sidecar"
             ))]
             sdk: None,
-            #[cfg(feature = "plugin-sidecar")]
-            observer_stop: false,
         }))
     }
 
@@ -737,7 +746,21 @@ impl OperationManager {
         self.entry(id).map(|entry| entry.owner.clone())
     }
 
-    pub fn submit<O: OperationDeclaration>(
+    // The declaration is its own request; `submit_as::<O>` names a separate one.
+    pub fn submit<O: OperationDeclaration<Request = O>>(
+        &self,
+        request: O,
+    ) -> Result<OperationInstance<O>> {
+        self.submit_as::<O>(request)
+    }
+
+    pub async fn call<O: OperationDeclaration<Request = O>>(
+        &self,
+        request: O,
+    ) -> Result<crate::operations::Response<O::Response>> {
+        self.call_as::<O>(request).await
+    }
+    pub fn submit_as<O: OperationDeclaration>(
         &self,
         request: O::Request,
     ) -> Result<OperationInstance<O>> {
@@ -774,11 +797,11 @@ impl OperationManager {
         self.admit_at::<O, ()>(id, (request.into(), ()), None, &[], &Source::Host, None)
     }
 
-    pub async fn call<O: OperationDeclaration>(
+    pub async fn call_as<O: OperationDeclaration>(
         &self,
         request: O::Request,
     ) -> Result<crate::operations::Response<O::Response>> {
-        self.submit::<O>(request)?.await
+        self.submit_as::<O>(request)?.await
     }
 
     pub fn submit_caused<O: OperationDeclaration>(
@@ -802,7 +825,7 @@ impl OperationManager {
         feature = "plugin-guest",
         feature = "plugin-sidecar"
     ))]
-    pub(super) fn submit_as<O: OperationDeclaration, P: Send + 'static>(
+    pub(super) fn submit_by<O: OperationDeclaration, P: Send + 'static>(
         &self,
         input: (super::binding::Request<O::Request>, P),
         source: &Source,
@@ -918,7 +941,7 @@ impl OperationManager {
             reason: "identity belongs to a different operation or endpoint type",
         })?;
         let admission = self.lanes.admit(ancestors, entry.lane, entry.bounded)?;
-        let id = OperationInstanceId::fresh()?;
+        let id = super::handler::fresh_instance()?;
         let mut pending = entry
             .pending
             .lock()
@@ -954,6 +977,7 @@ impl OperationManager {
                 .reserve(id, entry.lane, submitted, privileged, retired)?,
         };
         let control = reservation.control();
+        self.instances.assign(id, origin.identity.clone());
         pending.insert(id, Arc::clone(&control));
         drop(pending);
 
@@ -1017,8 +1041,9 @@ impl OperationManager {
         Ok(OperationInstance {
             id,
             generation: entry.generation,
-            outcome,
+            outcome: super::handler::Outcome::Request(outcome),
             control,
+            released: false,
         })
     }
 
@@ -1526,6 +1551,29 @@ impl OperationManager {
 }
 
 impl Entry {
+    // Move a resident control onto the unbounded resident lane.
+    #[cfg(feature = "plugin-sidecar")]
+    pub(super) fn resident(&mut self) {
+        self.lane = super::lane::RESIDENT;
+        self.bounded = false;
+        self.resident = true;
+    }
+
+    // A resident control and its children outlive the committed plugin's
+    // admission until the host cancels them.
+    pub(super) fn retires_late(&self) -> bool {
+        #[cfg(feature = "plugin-sidecar")]
+        if self.resident
+            && self
+                .plugin
+                .as_ref()
+                .is_some_and(|scope| scope.has_committed())
+        {
+            return true;
+        }
+        false
+    }
+
     pub(super) fn declared(&self) -> &Definition {
         &self.definition
     }
@@ -1553,15 +1601,6 @@ impl Entry {
             feature = "plugin-sidecar"
         ))]
         if self.sdk == Some(harmos_contract::operations::lifecycle::Action::Shutdown) {
-            return true;
-        }
-        #[cfg(feature = "plugin-sidecar")]
-        if self.observer_stop
-            && self
-                .plugin
-                .as_ref()
-                .is_some_and(|scope| scope.has_committed())
-        {
             return true;
         }
         false
@@ -1624,15 +1663,8 @@ impl Entry {
     }
 
     pub(super) fn available(&self) -> Result<()> {
-        #[cfg(feature = "plugin-sidecar")]
-        let observer_cleanup = self.observer_stop
-            && self
-                .plugin
-                .as_ref()
-                .is_some_and(|scope| scope.has_committed());
-        #[cfg(not(feature = "plugin-sidecar"))]
-        let observer_cleanup = false;
-        if !self.active.load(Ordering::Acquire) && !observer_cleanup {
+        let retiring = self.retires_late();
+        if !self.active.load(Ordering::Acquire) && !retiring {
             return Err(Error::Closing {
                 domain: "operation",
             });
@@ -1656,12 +1688,12 @@ impl Entry {
                     Action::Initialize | Action::Shutdown => Ok(()),
                 };
             }
-            if scope.is_closed() && !observer_cleanup {
+            if scope.is_closed() && !retiring {
                 return Err(Error::Closing {
                     domain: "operation plugin",
                 });
             }
-            if !scope.is_ready() && !observer_cleanup {
+            if !scope.is_ready() && !retiring {
                 return Err(Error::NotReady {
                     domain: "operation plugin",
                 });

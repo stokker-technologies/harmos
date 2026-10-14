@@ -20,7 +20,7 @@ use std::time::Duration;
 use harmos_contract::StreamSpec;
 use harmos_contract::listeners::Delivery;
 use harmos_contract::operations::{
-    OperationDeclaration, OperationPolicy, RetryPolicy, Visibility, WireOperation,
+    OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireOperation,
 };
 
 /* === Constants === */
@@ -28,6 +28,7 @@ pub const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(2),
     retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
 };
 pub const NOTE: &str = "example.note";
 

@@ -240,6 +240,7 @@ def _contract() -> dict[str, Any]:
                     "timeout": {"secs": 1, "nanos": 0},
                     "attempt_timeout": {"secs": 1, "nanos": 0},
                     "retries": "never",
+                    "restart": "never",
                 },
                 "visibility": "shared",
                 "replay": "idempotent",

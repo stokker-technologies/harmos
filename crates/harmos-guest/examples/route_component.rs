@@ -26,11 +26,12 @@ use harmos_contract::StreamSpec;
 use harmos_contract::catalog::Node;
 use harmos_contract::inventory::{contracts, listeners, observers, publications};
 use harmos_contract::operations::{
-    Operation, OperationPolicy, RetryPolicy, ServingError, WireDeclaration, WireTable, host,
-    lifecycle,
+    Operation, OperationPolicy, RestartPolicy, RetryPolicy, ServingError, WireDeclaration,
+    WireTable, host, lifecycle,
 };
 use harmos_contract::plugin::{Declared, Grant, Plugin, Requirement};
 use harmos_contract::schema::Described;
+use harmos_guest::Host;
 use harmos_guest::{Context, Message, OperationRefusal, PublishError};
 
 /* === Constants === */
@@ -38,6 +39,7 @@ const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(2),
     retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
 };
 const PROVIDED: &[Node<WireDeclaration>] = &[
     Node::Leaf(WireDeclaration::of::<Echo>()),
@@ -224,7 +226,7 @@ impl Plugin for RouteComponent {
         }
         if self.config == "dependencies" {
             context
-                .operation::<ProviderEcho>(Echo {
+                .call_as::<ProviderEcho>(Echo {
                     say: "initialize".into(),
                 })
                 .await
@@ -233,7 +235,7 @@ impl Plugin for RouteComponent {
         }
         Ok(())
     }
-    async fn shutdown(&mut self, _: &Context) -> Result<(), Self::Error> {
+    async fn stop(&mut self, _: &Context) -> Result<(), Self::Error> {
         let context = self
             .owner
             .initialized
@@ -251,7 +253,7 @@ impl Plugin for RouteComponent {
         }
         if self.check_dependency_revocation {
             let result = context
-                .operation::<ProviderEcho>(Echo {
+                .call_as::<ProviderEcho>(Echo {
                     say: "cleanup".into(),
                 })
                 .await;
@@ -283,7 +285,10 @@ impl Operation for Echoing {
     type Error = OperationRefusal;
     type Endpoints = ();
     type Context<'a> = &'a Context;
-    fn new(resources: Arc<Owner>) -> Result<Self, OperationRefusal> {
+    async fn initialize<'ctx>(
+        resources: Arc<Owner>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, OperationRefusal> {
         Ok(Self { resources })
     }
     async fn run<'ctx>(
@@ -317,16 +322,18 @@ impl Operation for Echoing {
                     .clone()
                     .ok_or_else(|| OperationRefusal::of("SDK initialization context is absent"))?;
                 return saved
-                    .operation::<ProviderEcho>(Echo { say: value.into() })
-                    .await;
+                    .call_as::<ProviderEcho>(Echo { say: value.into() })
+                    .await
+                    .map(harmos_guest::operations::Response::into_owned);
             }
 
             if let Some(say) = request.say.strip_prefix("dependency:") {
                 return context
-                    .operation::<ProviderEcho>(Echo {
+                    .call_as::<ProviderEcho>(Echo {
                         say: say.to_owned(),
                     })
-                    .await;
+                    .await
+                    .map(harmos_guest::operations::Response::into_owned);
             }
 
             if let Some(value) = request.say.strip_prefix("invoke:") {
@@ -335,7 +342,7 @@ impl Operation for Echoing {
                 let key = fields.next().unwrap_or_default();
                 let payload = fields.next().unwrap_or_default();
                 let answered = context
-                    .operation::<host::Invoke>(host::InvokeRequest {
+                    .call_as::<host::Invoke>(host::InvokeRequest {
                         grant: grant.into(),
                         key: key.into(),
                         payload: payload.as_bytes().to_vec(),
@@ -353,7 +360,7 @@ impl Operation for Echoing {
 
             if let Some(name) = request.say.strip_prefix("egress:") {
                 let answered = context
-                    .operation::<host::Egress>(host::EgressRequest {
+                    .call_as::<host::Egress>(host::EgressRequest {
                         name: name.into(),
                         method: "get".into(),
                         path: "/reading".into(),
@@ -383,7 +390,7 @@ impl Operation for Echoing {
             }
             if request.say == "publish-foreign" {
                 let refused = context
-                    .operation::<host::Publish>(host::Publication {
+                    .call_as::<host::Publish>(host::Publication {
                         stream: "foreign".into(),
                         schema: 1,
                         sequence: None,
@@ -419,7 +426,10 @@ impl Operation for Declining {
     type Error = OperationRefusal;
     type Endpoints = ();
     type Context<'a> = &'a Context;
-    fn new(resources: Arc<Owner>) -> Result<Self, OperationRefusal> {
+    async fn initialize<'ctx>(
+        resources: Arc<Owner>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, OperationRefusal> {
         Ok(Self {
             _resources: resources,
         })
@@ -446,7 +456,10 @@ impl Operation for Spinning {
     type Error = OperationRefusal;
     type Endpoints = ();
     type Context<'a> = &'a Context;
-    fn new(resources: Arc<Owner>) -> Result<Self, OperationRefusal> {
+    async fn initialize<'ctx>(
+        resources: Arc<Owner>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, OperationRefusal> {
         Ok(Self {
             _resources: resources,
         })
@@ -479,7 +492,10 @@ impl Operation for Waiting {
     type Error = OperationRefusal;
     type Endpoints = ();
     type Context<'a> = &'a Context;
-    fn new(resources: Arc<Owner>) -> Result<Self, OperationRefusal> {
+    async fn initialize<'ctx>(
+        resources: Arc<Owner>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, OperationRefusal> {
         Ok(Self {
             _resources: resources,
         })
@@ -494,7 +510,7 @@ impl Operation for Waiting {
             // The host answers this slowly. Nothing here burns fuel while
             // it waits, so the bound this call blew is wall-clock alone.
             let _ = context
-                .operation::<host::Egress>(host::EgressRequest {
+                .call_as::<host::Egress>(host::EgressRequest {
                     name: "vendor".into(),
                     method: "get".into(),
                     path: "/slow".into(),
@@ -526,7 +542,10 @@ impl Operation for Failing {
     type Error = OperationRefusal;
     type Endpoints = ();
     type Context<'a> = &'a Context;
-    fn new(resources: Arc<Owner>) -> Result<Self, OperationRefusal> {
+    async fn initialize<'ctx>(
+        resources: Arc<Owner>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, OperationRefusal> {
         Ok(Self {
             _resources: resources,
         })

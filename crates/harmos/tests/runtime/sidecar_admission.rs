@@ -59,7 +59,7 @@ fn notices(_: &Service<Bank>, notice: Notice) {
 async fn native(
     root: &Path,
     expected: &[Registration],
-    policy: ServicePolicy,
+    policy: harmos::operations::OperationPolicy,
 ) -> operations::Managed<Executable> {
     let source = Executable::at(prepared_fixtures::artifact("harmos-admission-fixture"))
         .unwrap()
@@ -96,12 +96,12 @@ fn setup() -> tempfile::TempDir {
 
 async fn refuses_frozen_catalog(entries: Vec<Registration>) {
     let root = setup();
-    let mut fixture = native(root.path(), &entries, ServicePolicy::default()).await;
+    let mut fixture = native(root.path(), &entries, harmos::services::POLICY).await;
     let ready = fixture.resident().ready();
     let registrations = fixture.resident().registrations();
     assert!(fixture.initialize().await.is_err());
     let runtime = &fixture.runtime;
-    let status = service_status(runtime.services.subscribe(), NAME, |value| {
+    let status = service_status(runtime.operations.watch_residents(), NAME, |value| {
         matches!(value, ServiceStatus::Inactive { .. })
     })
     .await;
@@ -185,11 +185,11 @@ pub(super) fn contract_scenario() {
             scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
 
     let root = setup();
-    let mut fixture = native(root.path(), &expected(), ServicePolicy::default()).await;
+    let mut fixture = native(root.path(), &expected(), harmos::services::POLICY).await;
     let calls = fixture.resident().clone();
     let ready = calls.ready();
     let mut registrations = calls.registrations();
-    let services = fixture.runtime.services.clone();
+    let services = fixture.runtime.operations.clone();
     assert!(!*ready.borrow());
     {
         let initialization = fixture.initialize();
@@ -203,8 +203,8 @@ pub(super) fn contract_scenario() {
         assert!(!*ready.borrow());
         assert_eq!(
             services
-                .status(&harmos::services::ServiceKey::root(NAME))
-                .map(|item| item.status),
+                .resident(&harmos::operations::resident::Key::root(NAME))
+                .and_then(|item| item.health),
             Some(ServiceStatus::Starting)
         );
         assert!(matches!(calls.operations(), Err(SidecarError::Unavailable)));
@@ -212,7 +212,7 @@ pub(super) fn contract_scenario() {
         initialization.await.unwrap();
     }
     publications::ready(ready.clone()).await;
-    service_status(services.subscribe(), NAME, |value| {
+    service_status(services.watch_residents(), NAME, |value| {
         matches!(value, ServiceStatus::Running { .. })
     })
     .await;
@@ -239,7 +239,7 @@ pub(super) fn contract_scenario() {
                     let root = setup();
                     fs::write(root.path().join("refuse"), "").unwrap();
                     let mut fixture =
-                        native(root.path(), &expected(), ServicePolicy::default()).await;
+                        native(root.path(), &expected(), harmos::services::POLICY).await;
                     let ready = fixture.resident().ready();
                     let failure = fixture
                         .initialize()
@@ -276,12 +276,17 @@ pub(super) fn contract_scenario() {
                     for panic in [false, true] {
                         let root = setup();
                         fs::write(root.path().join("release"), "").unwrap();
-                        let policy = ServicePolicy {
-                            credit: 1,
-                            sustained_health: Duration::from_secs(30),
-                            backoff_base: Duration::from_millis(1),
-                            backoff_cap: Duration::from_millis(2),
-                            ..ServicePolicy::default()
+                        let policy = harmos::operations::OperationPolicy {
+                            restart: harmos::operations::RestartPolicy::OnTransient {
+                                credit: 1,
+                                sustained_health: Duration::from_secs(30),
+                                backoff: harmos::operations::Backoff::Exponential {
+                                    initial: Duration::from_millis(1),
+                                    maximum: Duration::from_millis(2),
+                                    jitter: harmos::operations::Jitter::Deterministic,
+                                },
+                            },
+                            ..harmos::services::POLICY
                         };
                         let source =
                             Executable::at(prepared_fixtures::artifact("harmos-admission-fixture"))
@@ -305,8 +310,8 @@ pub(super) fn contract_scenario() {
                             .unwrap();
                         let resident = calls.clone();
                         runtime
-                            .services
-                            .register(
+                            .operations
+                            .register_service(
                                 harmos::services::ServiceDefinition {
                                     id: NAME.into(),
                                     policy,
@@ -323,19 +328,15 @@ pub(super) fn contract_scenario() {
                                 },
                             )
                             .unwrap();
-                        let _lease = runtime
-                            .services
-                            .activate(NAME, &runtime.services.root_scope())
-                            .await
-                            .unwrap();
-                        service_status(runtime.services.subscribe(), NAME, |status| {
+                        let _lease = runtime.operations.submit_resident(NAME).await.unwrap();
+                        service_status(runtime.operations.watch_residents(), NAME, |status| {
                             matches!(status, ServiceStatus::Running { .. })
                         })
                         .await;
                         fs::write(root.path().join("catalog"), "changed").unwrap();
                         fs::write(root.path().join(if panic { "panic" } else { "crash" }), "")
                             .unwrap();
-                        service_status(runtime.services.subscribe(), NAME, |value| {
+                        service_status(runtime.operations.watch_residents(), NAME, |value| {
                             matches!(value, ServiceStatus::Inactive { .. })
                         })
                         .await;

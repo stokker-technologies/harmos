@@ -25,7 +25,7 @@ use std::time::{Duration, Instant};
 // Local Imports
 use super::{Lanes, app::App};
 use harmos::Runtime;
-use harmos::operations::{Context, Operation, OperationPolicy, RetryPolicy};
+use harmos::operations::{Context, Operation, OperationPolicy, RestartPolicy, RetryPolicy};
 
 /* === Constants === */
 
@@ -45,6 +45,7 @@ struct Measure;
             timeout: Duration::from_secs(600),
             attempt_timeout: Duration::from_secs(600),
             retries: RetryPolicy::Never,
+            restart: RestartPolicy::Never,
         },
     )]
 struct MeasureContract;
@@ -64,7 +65,10 @@ impl Operation for Measure {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    fn new(_resources: Arc<()>) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(
+        _resources: Arc<()>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Self::Error> {
         Ok(Self)
     }
 
@@ -157,7 +161,7 @@ pub(super) fn contract_scenario() {
 
                     let answer = runtime
                         .operations
-                        .submit::<MeasureContract>(scripted)
+                        .submit_as::<MeasureContract>(scripted)
                         .unwrap()
                         .await
                         .expect("the attempt measures its own wait");
@@ -177,7 +181,7 @@ pub(super) fn contract_scenario() {
                     // duration every time it is run.
                     let again = runtime
                         .operations
-                        .submit::<MeasureContract>(scripted)
+                        .submit_as::<MeasureContract>(scripted)
                         .unwrap()
                         .await
                         .expect("the second attempt measures its own wait");

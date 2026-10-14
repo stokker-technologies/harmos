@@ -119,7 +119,7 @@ pub(super) fn contract_scenario() {
                     let first = f
                         .runtime
                         .operations
-                        .call::<ResumeFile>(request.clone())
+                        .call_as::<ResumeFile>(request.clone())
                         .await
                         .unwrap();
                     assert_eq!(first.session.generation, 2);
@@ -127,7 +127,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         *f.runtime
                             .operations
-                            .call::<ResumeFile>(request)
+                            .call_as::<ResumeFile>(request)
                             .await
                             .unwrap(),
                         *first
@@ -386,7 +386,7 @@ pub(super) fn contract_scenario() {
                     assert!(
                         f.runtime
                             .operations
-                            .call::<ResumeFile>(request.clone())
+                            .call_as::<ResumeFile>(request.clone())
                             .await
                             .is_err()
                     );
@@ -395,7 +395,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         f.runtime
                             .operations
-                            .call::<ResumeFile>(request)
+                            .call_as::<ResumeFile>(request)
                             .await
                             .unwrap()
                             .session

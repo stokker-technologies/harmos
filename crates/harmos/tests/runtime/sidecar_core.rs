@@ -30,7 +30,7 @@ use crate::core_egress::Endpoint;
 use crate::support::Bank;
 use contract::{Inspect, Queries};
 use harmos::plugin::sidecar::{Executable, Notice, Supervised};
-use harmos::{Runtime, services::Service, services::ServicePolicy, services::ServiceStatus};
+use harmos::{Runtime, services::Service, services::ServiceStatus};
 
 /* === Constants === */
 
@@ -42,7 +42,7 @@ use harmos::{Runtime, services::Service, services::ServicePolicy, services::Serv
 struct DeadlineRead;
 struct Fixture {
     runtime: Runtime<Bank>,
-    _lease: harmos::services::ServiceLease<Bank>,
+    _lease: harmos::operations::OperationInstance<harmos::operations::resident::Activation>,
     root: tempfile::TempDir,
     prepared: Arc<AtomicUsize>,
     calls: Arc<AtomicUsize>,
@@ -75,6 +75,7 @@ impl harmos::operations::OperationDeclaration for DeadlineRead {
         timeout: Duration::from_millis(400),
         attempt_timeout: Duration::from_millis(300),
         retries: harmos::operations::RetryPolicy::Never,
+        restart: harmos::operations::RestartPolicy::Never,
     };
 }
 impl harmos::operations::Operation for DeadlineRead {
@@ -83,7 +84,7 @@ impl harmos::operations::Operation for DeadlineRead {
     type Error = harmos::Error;
     type Endpoints = ();
     type Context<'a> = harmos::operations::Context<'a>;
-    fn new(_: Arc<()>) -> harmos::Result<Self> {
+    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> harmos::Result<Self> {
         Ok(Self)
     }
     async fn run<'a>(
@@ -96,7 +97,7 @@ impl harmos::operations::Operation for DeadlineRead {
             let child = context.with_value(contract::Stage {
                 id: "parent".into(),
             })?;
-            let answer = child.call::<Inspect>(request.clone()).await?;
+            let answer = child.call_as::<Inspect>(request.clone()).await?;
             Ok((*answer).clone())
         }
         .await;
@@ -142,13 +143,13 @@ impl Fixture {
         let resident = Supervised::new(source, notices as fn(&Service<Bank>, Notice))
             .grace(Duration::from_millis(50));
         runtime
-            .services
-            .register(
+            .operations
+            .register_service(
                 harmos::services::ServiceDefinition {
                     id: "native-core".into(),
-                    policy: ServicePolicy {
-                        credit: 0,
-                        ..Default::default()
+                    policy: harmos::operations::OperationPolicy {
+                        restart: harmos::operations::RestartPolicy::Never,
+                        ..harmos::services::POLICY
                     },
                 },
                 move |_: Arc<()>| {
@@ -164,8 +165,8 @@ impl Fixture {
             )
             .unwrap();
         let lease = runtime
-            .services
-            .activate("native-core", &runtime.services.root_scope())
+            .operations
+            .submit_resident("native-core")
             .await
             .unwrap();
         Self {
@@ -188,9 +189,11 @@ pub(super) fn contract_scenario() {
         let mut executor = tokio::runtime::Builder::new_current_thread();
         executor.enable_all().build().unwrap().block_on(async {
             let f = Fixture::new(true).await;
-            service_status(f.runtime.services.subscribe(), "native-core", |status| {
-                matches!(status, ServiceStatus::Running { .. })
-            })
+            service_status(
+                f.runtime.operations.watch_residents(),
+                "native-core",
+                |status| matches!(status, ServiceStatus::Running { .. }),
+            )
             .await;
             let mut context = harmos::operations::CallContext::default();
             context.insert(73u64).unwrap();
@@ -200,12 +203,12 @@ pub(super) fn contract_scenario() {
                 })
                 .unwrap();
             let caller = f.runtime.operations.with_context(context.clone());
-            let answer = caller.call::<Inspect>("context".into()).await.unwrap();
+            let answer = caller.call_as::<Inspect>("context".into()).await.unwrap();
             assert_eq!(&*answer, "parent:child");
             assert_eq!(context.require::<contract::Stage>().unwrap().id, "parent");
             assert_eq!(f.calls.load(Ordering::SeqCst), 1);
             let refused = caller
-                .call::<Inspect>("context-denied".into())
+                .call_as::<Inspect>("context-denied".into())
                 .await
                 .unwrap();
             assert!(refused.contains("may not invoke operation"), "{refused}");
@@ -219,9 +222,11 @@ pub(super) fn contract_scenario() {
         executor.enable_all().build().unwrap().block_on(async {
             for deadline in [false, true] {
                 let f = Fixture::new(true).await;
-                service_status(f.runtime.services.subscribe(), "native-core", |status| {
-                    matches!(status, ServiceStatus::Running { .. })
-                })
+                service_status(
+                    f.runtime.operations.watch_residents(),
+                    "native-core",
+                    |status| matches!(status, ServiceStatus::Running { .. }),
+                )
                 .await;
                 f.runtime
                     .operations
@@ -238,7 +243,7 @@ pub(super) fn contract_scenario() {
                 if deadline {
                     let result = tokio::time::timeout(
                         Duration::from_secs(3),
-                        caller.call::<DeadlineRead>("context-wait".into()),
+                        caller.call_as::<DeadlineRead>("context-wait".into()),
                     )
                     .await
                     .unwrap();
@@ -250,7 +255,8 @@ pub(super) fn contract_scenario() {
                         "{result:?}"
                     );
                 } else {
-                    let mut invocation = caller.submit::<Inspect>("context-wait".into()).unwrap();
+                    let mut invocation =
+                        caller.submit_as::<Inspect>("context-wait".into()).unwrap();
                     tokio::time::timeout(Duration::from_secs(2), async {
                         while f.calls.load(Ordering::SeqCst) == 0 {
                             tokio::time::sleep(Duration::from_millis(5)).await;
@@ -429,7 +435,7 @@ pub(super) fn contract_scenario() {
             assert_eq!(
                 runtime
                     .operations
-                    .call::<Inspect>("vendor".into())
+                    .call_as::<Inspect>("vendor".into())
                     .await
                     .unwrap()
                     .as_str(),
@@ -439,7 +445,7 @@ pub(super) fn contract_scenario() {
                 let generation = runtime.plugin.status(&owner).unwrap().generation.unwrap();
                 let crashed = tokio::time::timeout(
                     Duration::from_secs(5),
-                    runtime.operations.call::<Inspect>("crash".into()),
+                    runtime.operations.call_as::<Inspect>("crash".into()),
                 )
                 .await;
                 assert!(
@@ -717,7 +723,7 @@ pub(super) fn contract_scenario() {
                 let answer = runtime
                     .operations
                     .with_context(context)
-                    .call::<guest_contract::Read>(guest_contract::Value {
+                    .call_as::<guest_contract::Read>(guest_contract::Value {
                         value: "context-parent".into(),
                     })
                     .await
@@ -727,7 +733,7 @@ pub(super) fn contract_scenario() {
                 let consumer = runtime.plugin.status(&owner).unwrap().generation;
                 let denied = runtime
                     .operations
-                    .call::<Inspect>("other".into())
+                    .call_as::<Inspect>("other".into())
                     .await
                     .unwrap();
                 assert!(denied.contains("may not invoke operation"), "{denied}");
@@ -736,7 +742,9 @@ pub(super) fn contract_scenario() {
                 assert_eq!(prepared.load(Ordering::SeqCst), 0);
                 let invoking = {
                     let operations = runtime.operations.clone();
-                    tokio::spawn(async move { operations.call::<Inspect>("vendor".into()).await })
+                    tokio::spawn(
+                        async move { operations.call_as::<Inspect>("vendor".into()).await },
+                    )
                 };
                 tokio::time::timeout(Duration::from_secs(5), async {
                     while calls.load(Ordering::SeqCst) == 0 {
@@ -781,7 +789,7 @@ pub(super) fn contract_scenario() {
                 assert_eq!(
                     runtime
                         .operations
-                        .call::<Inspect>("vendor".into())
+                        .call_as::<Inspect>("vendor".into())
                         .await
                         .unwrap()
                         .as_str(),
@@ -798,7 +806,7 @@ pub(super) fn contract_scenario() {
                 assert!(
                     runtime
                         .operations
-                        .call::<Inspect>("vendor".into())
+                        .call_as::<Inspect>("vendor".into())
                         .await
                         .is_err()
                 );
@@ -808,7 +816,7 @@ pub(super) fn contract_scenario() {
                 assert_eq!(
                     runtime
                         .operations
-                        .call::<guest_contract::Read>(guest_contract::Value {
+                        .call_as::<guest_contract::Read>(guest_contract::Value {
                             value: "leaf".into()
                         })
                         .await
@@ -966,7 +974,7 @@ pub(super) fn contract_scenario() {
                         assert!(
                             handle
                                 .operations
-                                .call::<Inspect>("vendor".into())
+                                .call_as::<Inspect>("vendor".into())
                                 .await
                                 .is_err()
                         );
@@ -1076,7 +1084,7 @@ pub(super) fn contract_scenario() {
             );
             let answer = runtime
                 .operations
-                .call::<Inspect>("vendor".into())
+                .call_as::<Inspect>("vendor".into())
                 .await
                 .unwrap();
             assert_eq!(answer.as_str(), "egress status 200");
@@ -1110,7 +1118,7 @@ pub(super) fn contract_scenario() {
             assert_eq!(
                 runtime
                     .operations
-                    .call::<Inspect>("vendor".into())
+                    .call_as::<Inspect>("vendor".into())
                     .await
                     .unwrap()
                     .as_str(),
@@ -1143,7 +1151,7 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let fixture = Fixture::new(true).await;
                     service_status(
-                        fixture.runtime.services.subscribe(),
+                        fixture.runtime.operations.watch_residents(),
                         "native-core",
                         |status| matches!(status, ServiceStatus::Running { .. }),
                     )
@@ -1152,7 +1160,7 @@ pub(super) fn contract_scenario() {
                         let answer = fixture
                             .runtime
                             .operations
-                            .call::<Inspect>(family.into())
+                            .call_as::<Inspect>(family.into())
                             .await
                             .unwrap();
                         if family == "vendor" {
@@ -1187,7 +1195,7 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let fixture = Fixture::new(false).await;
                     service_status(
-                        fixture.runtime.services.subscribe(),
+                        fixture.runtime.operations.watch_residents(),
                         "native-core",
                         |status| matches!(status, ServiceStatus::Inactive { .. }),
                     )

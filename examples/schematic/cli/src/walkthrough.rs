@@ -164,7 +164,7 @@ async fn edit(runtime: &app::Runtime, advanced: bool, native: bool) -> Result<()
     };
     let validation = runtime
         .operations
-        .call::<ValidateSchematic>(validation)
+        .call_as::<ValidateSchematic>(validation)
         .await?;
     println!("Validation: {} diagnostics", validation.diagnostics.len());
 
@@ -177,7 +177,7 @@ async fn edit(runtime: &app::Runtime, advanced: bool, native: bool) -> Result<()
         },
         to: model::Point { x: to.x, y: to.y },
     };
-    let proposed = runtime.operations.call::<ProposeRoute>(request).await?;
+    let proposed = runtime.operations.call_as::<ProposeRoute>(request).await?;
     let points = proposed
         .points
         .iter()

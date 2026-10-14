@@ -24,7 +24,8 @@ use std::time::Duration;
 use super::{HostLanes, assembly, operations, service_status};
 use crate::core_journal::OriginalJournal;
 use crate::support::{Bank, DEPOSIT, Deposit, HOUSE};
-use harmos::operations::{OperationPolicy, RetryPolicy};
+use harmos::operations::Host as _;
+use harmos::operations::{OperationPolicy, RestartPolicy, RetryPolicy};
 use harmos::plugin::sidecar::{Notice, Refusal, Supervised, Supervisor};
 use harmos::{services::Service, services::ServiceStatus};
 
@@ -33,6 +34,7 @@ const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(10),
     attempt_timeout: Duration::from_secs(10),
     retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
 };
 /* === Macros === */
 
@@ -88,18 +90,18 @@ impl harmos::Plugin for Invoker {
         let mut denied = request.clone();
         denied.grant = "ledger.withdraw".into();
         if core
-            .operation::<harmos::operations::host::Invoke>(denied.clone())
+            .call_as::<harmos::operations::host::Invoke>(denied.clone())
             .await
             .is_ok()
         {
             return Err(Refusal::of("unselected transaction reached the journal"));
         }
         let first = core
-            .operation::<harmos::operations::host::Invoke>(request.clone())
+            .call_as::<harmos::operations::host::Invoke>(request.clone())
             .await
             .map_err(Refusal::of)?;
         let second = core
-            .operation::<harmos::operations::host::Invoke>(request)
+            .call_as::<harmos::operations::host::Invoke>(request)
             .await
             .map_err(Refusal::of)?;
         if first != second || first.position == 0 {
@@ -113,14 +115,14 @@ impl harmos::Plugin for Invoker {
             payload: b"invalid-json".to_vec(),
         };
         if core
-            .operation::<harmos::operations::host::Invoke>(malformed)
+            .call_as::<harmos::operations::host::Invoke>(malformed)
             .await
             .is_ok()
         {
             return Err(Refusal::of("malformed transaction payload was admitted"));
         }
         if core
-            .operation::<harmos::operations::host::Invoke>(denied)
+            .call_as::<harmos::operations::host::Invoke>(denied)
             .await
             .is_ok()
         {
@@ -130,7 +132,7 @@ impl harmos::Plugin for Invoker {
         }
         Ok(())
     }
-    async fn shutdown(&mut self, _: &Supervisor) -> Result<(), Refusal> {
+    async fn stop(&mut self, _: &Supervisor) -> Result<(), Refusal> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Refusal> {
@@ -175,13 +177,13 @@ pub(super) fn contract_scenario() {
                         operations::definition(&source, serde_json::to_vec(&()).unwrap());
                     let resident = Supervised::new(source, notices as fn(&Service<Bank>, Notice));
                     runtime
-                        .services
-                        .register(
+                        .operations
+                        .register_service(
                             harmos::services::ServiceDefinition {
                                 id: "journal-carrier".into(),
-                                policy: harmos::services::ServicePolicy {
-                                    credit: 0,
-                                    ..Default::default()
+                                policy: harmos::operations::OperationPolicy {
+                                    restart: harmos::operations::RestartPolicy::Never,
+                                    ..harmos::services::POLICY
                                 },
                             },
                             move |_: Arc<()>| {
@@ -197,13 +199,15 @@ pub(super) fn contract_scenario() {
                         )
                         .unwrap();
                     let lease = runtime
-                        .services
-                        .activate("journal-carrier", &runtime.services.root_scope())
+                        .operations
+                        .submit_resident("journal-carrier")
                         .await
                         .unwrap();
-                    service_status(runtime.services.subscribe(), "journal-carrier", |status| {
-                        matches!(status, ServiceStatus::Running { .. })
-                    })
+                    service_status(
+                        runtime.operations.watch_residents(),
+                        "journal-carrier",
+                        |status| matches!(status, ServiceStatus::Running { .. }),
+                    )
                     .await;
                     // No Grant Names Transactions: The Provider Refuses The Two Withdrawals Itself
                     assert_eq!(original.prepared.load(Ordering::SeqCst), 5);

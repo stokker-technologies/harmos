@@ -29,6 +29,8 @@ mod clock;
 mod execution;
 #[path = "../operations/finalization.rs"]
 mod finalization;
+#[path = "../operations/host.rs"]
+mod host;
 #[path = "../operations/lanes.rs"]
 mod lanes;
 #[path = "../operations/middleware.rs"]
@@ -100,4 +102,9 @@ fn operation_settlement() {
     execution::contract_scenario();
     finalization::contract_scenario();
     shutdown::contract_scenario();
+}
+
+#[test]
+fn host_capability() {
+    host::contract_scenario();
 }

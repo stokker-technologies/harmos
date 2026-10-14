@@ -47,7 +47,8 @@ struct State<T: Operation> {
 }
 
 struct Physical<T: Operation> {
-    operation: T,
+    resources: Arc<T::Resources>,
+    operation: Option<T>,
     request: <T::Declaration as OperationDeclaration>::Request,
     endpoints: T::Endpoints,
     stopped: bool,
@@ -102,6 +103,31 @@ impl<C: Send + Sync + 'static> WireTable<C> {
             #[cfg(feature = "grpc")]
             protobuf,
         )
+    }
+
+    // Bind a resident control: it runs until the host cancels it and is not
+    // charged against the ordinary invocation capacity.
+    pub fn bind_resident_operation<T>(
+        &mut self,
+        resources: Arc<T::Resources>,
+    ) -> Result<(), ServingError>
+    where
+        T: for<'a> Operation<Context<'a> = &'a C, Endpoints = ()>,
+        T::Declaration: WireOperation,
+        <T::Declaration as OperationDeclaration>::Request: Message + Described,
+        <T::Declaration as OperationDeclaration>::Response: Message + Described,
+    {
+        let policy = T::Declaration::POLICY;
+        if policy.timeout != crate::operations::UNBOUNDED
+            || policy.attempt_timeout != crate::operations::UNBOUNDED
+        {
+            return Err(ServingError::Catalog);
+        }
+        self.bind_operation::<T>(resources)?;
+        if let Some(handler) = self.handlers.get_mut(T::Declaration::ID) {
+            handler.resident = true;
+        }
+        Ok(())
     }
 
     #[cfg(feature = "streaming")]
@@ -298,12 +324,12 @@ impl<C: Send + Sync + 'static> WireTable<C> {
                     (streams, _) => streams,
                 },
             };
-            let operation = T::new(resources.clone()).map_err(operation_error::<T>)?;
-            let state = State {
+            let state = State::<T> {
                 #[cfg(feature = "streaming")]
                 streams: endpoints.streams,
                 physical: Some(Physical {
-                    operation,
+                    resources: resources.clone(),
+                    operation: None,
                     request,
                     endpoints: endpoints.endpoints,
                     stopped: false,
@@ -318,6 +344,7 @@ impl<C: Send + Sync + 'static> WireTable<C> {
         });
         let handler = Handler {
             lifecycle,
+            resident: false,
             definition: contract.operation().clone(),
             contract: Some(contract),
             prepare,
@@ -352,14 +379,14 @@ where
                 .physical
                 .as_mut()
                 .expect("original operation before cleanup");
-            guarded(async {
-                physical
-                    .operation
-                    .initialize(context)
+            let resources = Arc::clone(&physical.resources);
+            let operation = guarded(async {
+                T::initialize(resources, context)
                     .await
                     .map_err(operation_error::<T>)
             })
             .await?;
+            physical.operation = Some(operation);
             self.initialization = Initialization::Ready;
             Ok(())
         })
@@ -378,8 +405,8 @@ where
                 .as_mut()
                 .expect("original initialized operation");
             guarded(async {
-                let response = physical
-                    .operation
+                let operation = physical.operation.as_mut().expect("initialized operation");
+                let response = operation
                     .run(context, &mut physical.request, &mut physical.endpoints)
                     .await
                     .map_err(operation_error::<T>)?;
@@ -402,19 +429,15 @@ where
                 .expect("original operation for cleanup");
             let future = async move {
                 let result = guarded(async {
+                    // An Operation That Never Initialized Owns Nothing To Stop
+                    let Some(operation) = physical.operation.as_mut() else {
+                        return Ok(());
+                    };
                     if !physical.stopped {
-                        physical
-                            .operation
-                            .stop()
-                            .await
-                            .map_err(operation_error::<T>)?;
+                        operation.stop().await.map_err(operation_error::<T>)?;
                         physical.stopped = true;
                     }
-                    physical
-                        .operation
-                        .finalize()
-                        .await
-                        .map_err(operation_error::<T>)
+                    operation.cleanup().await.map_err(operation_error::<T>)
                 })
                 .await;
                 (physical, result)

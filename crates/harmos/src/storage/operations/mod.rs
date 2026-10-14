@@ -84,7 +84,7 @@ use std::time::Duration;
 use crate::catalog::{Catalog, Contains, Member, Visitor};
 
 use crate::operations::OperationManager;
-use crate::operations::{Backoff, Jitter, OperationPolicy, RetryPolicy};
+use crate::operations::{Backoff, Jitter, OperationPolicy, RestartPolicy, RetryPolicy};
 
 use crate::storage::StorageManager;
 
@@ -102,6 +102,7 @@ pub const POLICY: OperationPolicy = OperationPolicy {
             jitter: Jitter::Deterministic,
         },
     },
+    restart: RestartPolicy::Never,
 };
 
 pub const EVERY_SCHEMA: &str = "*";

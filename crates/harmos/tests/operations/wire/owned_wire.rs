@@ -28,7 +28,7 @@ use std::time::Duration;
 use super::{Lanes, app::App};
 use harmos::operations::{
     Backoff, Context, Failure, Jitter, Operation, OperationDeclaration, OperationInstanceId,
-    OperationPhase, OperationPolicy, RetryPolicy,
+    OperationPhase, OperationPolicy, RestartPolicy, RetryPolicy,
 };
 use harmos::{Message, Runtime};
 
@@ -72,6 +72,7 @@ struct Text {
                 max_retries: 1,
                 backoff: Backoff::Fixed { delay: Duration::from_millis(1), jitter: Jitter::None },
             },
+            restart: RestartPolicy::Never,
         },
     )]
 struct ReadContract;
@@ -104,21 +105,36 @@ impl Operation for Read {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    fn new(resources: Arc<Resources>) -> Result<Self, Self::Error> {
-        resources.events.lock().unwrap().push("new");
-        Ok(Self {
-            resources,
-            attempts: Cell::new(0),
-        })
-    }
-
-    async fn initialize<'ctx>(&mut self, context: Self::Context<'ctx>) -> Result<(), Self::Error> {
-        self.resources.events.lock().unwrap().push("initialize");
-        self.resources.ids.lock().unwrap().push(context.id());
-        if self.resources.fail_initialize.load(Ordering::SeqCst) {
-            return Err(std::io::Error::other("partial initialization"));
+    async fn initialize<'ctx>(
+        resources: Arc<Resources>,
+        context: Self::Context<'ctx>,
+    ) -> Result<Self, Self::Error> {
+        let constructed: Result<Self, Self::Error> = async move {
+            resources.events.lock().unwrap().push("new");
+            Ok(Self {
+                resources,
+                attempts: Cell::new(0),
+            })
         }
-        Ok(())
+        .await;
+        let mut operation = constructed?;
+        let started: Result<(), Self::Error> = async {
+            let operation = &mut operation;
+            operation
+                .resources
+                .events
+                .lock()
+                .unwrap()
+                .push("initialize");
+            operation.resources.ids.lock().unwrap().push(context.id());
+            if operation.resources.fail_initialize.load(Ordering::SeqCst) {
+                return Err(std::io::Error::other("partial initialization"));
+            }
+            Ok(())
+        }
+        .await;
+        started?;
+        Ok(operation)
     }
 
     async fn run<'ctx>(
@@ -148,7 +164,7 @@ impl Operation for Read {
         Ok(())
     }
 
-    async fn finalize(&mut self) -> Result<(), Self::Error> {
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
         self.resources.events.lock().unwrap().push("finalize");
         if self.resources.fail_finalize.load(Ordering::SeqCst) {
             return Err(std::io::Error::other("cleanup incomplete"));
@@ -259,7 +275,8 @@ pub(super) fn contract_scenario() {
                         .operations
                         .submit_encoded(ReadContract::ID, payload("retry"))
                         .unwrap();
-                    assert_eq!(*resources.events.lock().unwrap(), ["new"]);
+                    // Construction waits for the first attempt's initialization.
+                    assert!(resources.events.lock().unwrap().is_empty());
                     let answer = (&mut instance).await.unwrap();
                     assert_eq!(Text::decode(&answer).unwrap().value, "retry:2");
                     assert_eq!(
@@ -279,7 +296,7 @@ pub(super) fn contract_scenario() {
 
                     let typed = runtime
                         .operations
-                        .submit::<ReadContract>(Text {
+                        .submit_as::<ReadContract>(Text {
                             value: "typed".to_owned(),
                         })
                         .unwrap();
@@ -307,7 +324,8 @@ pub(super) fn contract_scenario() {
                     assert!((&mut instance).await.is_err());
                     assert_eq!(
                         *resources.events.lock().unwrap(),
-                        ["new", "initialize", "stop", "finalize", "drop"]
+                        // A failed initialization drops its owner without cleanup.
+                        ["new", "initialize", "drop"]
                     );
                     assert_eq!(instance.status().phase(), OperationPhase::Settled);
                     runtime.stop().await.unwrap();
@@ -378,7 +396,7 @@ pub(super) fn contract_scenario() {
                     );
                     let answer = runtime
                         .operations
-                        .call::<ReadContract>(Text {
+                        .call_as::<ReadContract>(Text {
                             value: "local".to_owned(),
                         })
                         .await
@@ -407,7 +425,7 @@ struct StreamContract;
         type Error = std::io::Error;
         type Endpoints = ();
         type Context<'a> = Context<'a>;
-        fn new(_: Arc<Resources>) -> Result<Self, Self::Error> {
+        async fn initialize<'ctx>(_: Arc<Resources>, _: Self::Context<'ctx>) -> Result<Self, Self::Error> {
             panic!("unsupported binding must not construct an operation")
         }
         async fn run<'ctx>(

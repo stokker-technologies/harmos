@@ -13,6 +13,7 @@ mod authored;
 pub mod authorization;
 mod binding;
 mod caller;
+mod capability;
 mod catalog;
 pub(crate) mod context;
 
@@ -35,6 +36,7 @@ pub(crate) mod lane;
 mod manager;
 pub mod middleware;
 pub(crate) mod refusal;
+pub mod resident;
 pub(crate) mod scope;
 mod session;
 mod streaming;
@@ -78,11 +80,12 @@ pub use harmos_contract::operations::{
     CallValue, Codec, ContextError, ContextValue, Contract, ContractError, Contracts, Declarations,
     Declares, Definition, Entry, Failure, Grpc, InputDeclaration, Jitter, MAX_CACHE_KEY_BYTES,
     Operation, OperationDeclaration, OperationPolicy, OutputDeclaration, PORTABLE_BYTES,
-    PORTABLE_VALUES, PolicyError, ReplaySafety, RetryPolicy, Serves, ServingError, Visibility,
-    WIRE_METHOD, WireAnswer, WireBinding, WireChildCall, WireCodecError, WireCommand,
-    WireDeclaration, WireEndpoints, WireOperation, WireStreamLimits, WireStreams, WireTable,
+    PORTABLE_VALUES, PolicyError, ReplaySafety, RestartPolicy, RetryPolicy, Serves, ServingError,
+    Visibility, WIRE_METHOD, WireAnswer, WireBinding, WireChild, WireChildAction, WireChildCall,
+    WireChildControl, WireCodecError, WireCommand, WireDeclaration, WireEndpoints, WireOperation,
+    WireStreamLimits, WireStreams, WireTable,
 };
-pub use harmos_contract::operations::{CallContext, Response};
+pub use harmos_contract::operations::{CallContext, Callable, Host, Instance, Response, instance};
 pub use lane::{Capacity, Lane, LaneSet};
 #[cfg(any(
     feature = "plugin-sidecar",

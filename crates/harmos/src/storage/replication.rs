@@ -335,12 +335,12 @@ impl<A: Application> Resident<A> for Worker {
         close(&self.manager, &self.replica).await
     }
 
-    async fn finalize(&mut self) -> Result<()> {
+    async fn cleanup(&mut self) -> Result<()> {
         self.reservation = None;
         Ok(())
     }
 
-    async fn attempt(&mut self, mut context: Service<A>) -> std::result::Result<(), Fault<Error>> {
+    async fn run(&mut self, mut context: Service<A>) -> std::result::Result<(), Fault<Error>> {
         let _running = Running {
             manager: self.manager.clone(),
             replica: self.replica.clone(),

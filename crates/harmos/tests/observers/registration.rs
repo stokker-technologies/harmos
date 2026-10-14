@@ -44,6 +44,10 @@ fn backend(id: &'static str) -> Backend {
     }
 }
 
+fn fault(error: Error) -> harmos::services::Fault<String> {
+    harmos::services::Fault::Application(error.to_string())
+}
+
 pub(super) fn contract_scenario() {
     {
         scenario_runtime::check("catalog_stays_inert", || {
@@ -54,37 +58,40 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let runtime = runtime().await;
-                    let manager = &runtime.observers;
+                    let manager = &runtime.operations;
                     let control = Control::new();
-                    let scope = manager.scope(control.clone()).unwrap();
-                    let candidate = manager.stage(&scope, [backend("a"), backend("b")]).unwrap();
-                    assert!(manager.definitions().is_empty());
-                    assert!(manager.definition("a").is_none());
+                    let candidate = manager
+                        .stage_observers(&control, [backend("a"), backend("b")])
+                        .unwrap();
+                    assert!(observers(manager).is_empty());
+                    assert!(manager.resident_definition("a").is_none());
                     assert!(matches!(
-                        manager.activate("a", &scope).await,
+                        manager.submit_with_resources_at("a", control.clone()).await,
                         Err(Error::NotReady { .. })
                     ));
                     assert!(matches!(
-                        manager.register(backend("b")),
+                        manager.register_observer(backend("b")),
                         Err(Error::AlreadyRegistered { .. })
                     ));
                     assert_eq!(control.starts.available_permits(), 0);
 
                     candidate.commit().unwrap();
-                    assert_eq!(manager.definitions().len(), 2);
+                    assert_eq!(observers(manager).len(), 2);
                     assert_eq!(control.starts.available_permits(), 0);
-                    let foreign = manager.scope(Control::new()).unwrap();
                     assert!(matches!(
-                        manager.activate("a", &foreign).await,
+                        manager.submit_with_resources_at("a", Control::new()).await,
                         Err(Error::InvalidInput { .. })
                     ));
-                    let lease = manager.activate("a", &scope).await.unwrap();
+                    let lease = manager
+                        .submit_with_resources_at("a", control.clone())
+                        .await
+                        .unwrap();
                     reached(&control.starts).await;
                     control.finish.add_permits(1);
-                    manager.stop_scope(&scope).await.unwrap();
+                    manager.retire_resources(&control).await.unwrap();
                     lease.release().await.unwrap();
-                    assert!(manager.definitions().is_empty());
-                    assert!(manager.statuses().is_empty());
+                    assert!(observers(manager).is_empty());
+                    assert_eq!(observer_instances(manager), 0);
                     runtime.stop().await.unwrap();
                 });
         });
@@ -98,31 +105,36 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let runtime = runtime().await;
-                    let manager = &runtime.observers;
-                    let scope = manager.scope(Control::new()).unwrap();
+                    let manager = &runtime.operations;
+                    let resources = Control::new();
                     manager
-                        .stage(&scope, std::iter::empty::<Backend>())
+                        .stage_observers(&resources, std::iter::empty::<Backend>())
                         .unwrap()
                         .commit()
                         .unwrap();
-                    manager.register(backend("existing")).unwrap();
+                    manager.register_observer(backend("existing")).unwrap();
                     assert!(matches!(
-                        manager.stage(&scope, [backend("new"), backend("existing")]),
+                        manager.stage_observers(&resources, [backend("new"), backend("existing")]),
                         Err(Error::AlreadyRegistered { .. })
                     ));
-                    manager.register(backend("new")).unwrap();
+                    manager.register_observer(backend("new")).unwrap();
                     assert!(matches!(
-                        manager.stage(&scope, [backend("duplicate"), backend("duplicate")]),
+                        manager.stage_observers(
+                            &resources,
+                            [backend("duplicate"), backend("duplicate")]
+                        ),
                         Err(Error::AlreadyRegistered { .. })
                     ));
-                    manager.register(backend("duplicate")).unwrap();
+                    manager.register_observer(backend("duplicate")).unwrap();
 
-                    let candidate = manager.stage(&scope, [backend("reserved")]).unwrap();
+                    let candidate = manager
+                        .stage_observers(&resources, [backend("reserved")])
+                        .unwrap();
                     drop(candidate);
-                    manager.register(backend("reserved")).unwrap();
-                    manager.stop_scope(&scope).await.unwrap();
+                    manager.register_observer(backend("reserved")).unwrap();
+                    manager.retire_resources(&resources).await.unwrap();
                     assert_eq!(
-                        manager.definitions().len(),
+                        observers(manager).len(),
                         4,
                         "scope closure preserves global definitions"
                     );
@@ -139,23 +151,27 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let runtime = runtime().await;
-                    let manager = &runtime.observers;
-                    let scope = manager.scope(Control::new()).unwrap();
-                    let candidate = manager.stage(&scope, [backend("a"), backend("b")]).unwrap();
-                    manager.unregister("a").await.unwrap();
-                    manager.register(backend("a")).unwrap();
+                    let manager = &runtime.operations;
+                    let resources = Control::new();
+                    let candidate = manager
+                        .stage_observers(&resources, [backend("a"), backend("b")])
+                        .unwrap();
+                    manager.unregister_resident("a").await.unwrap();
+                    manager.register_observer(backend("a")).unwrap();
                     assert!(matches!(
                         candidate.commit(),
                         Err(Error::NotRegistered { .. })
                     ));
-                    assert!(manager.definition("a").is_some());
-                    manager.register(backend("b")).unwrap();
+                    assert!(manager.resident_definition("a").is_some());
+                    manager.register_observer(backend("b")).unwrap();
 
-                    let candidate = manager.stage(&scope, [backend("closed")]).unwrap();
-                    manager.stop_scope(&scope).await.unwrap();
-                    manager.register(backend("closed")).unwrap();
+                    let candidate = manager
+                        .stage_observers(&resources, [backend("closed")])
+                        .unwrap();
+                    manager.retire_resources(&resources).await.unwrap();
+                    manager.register_observer(backend("closed")).unwrap();
                     assert!(matches!(candidate.commit(), Err(Error::Closing { .. })));
-                    assert!(manager.definition("closed").is_some());
+                    assert!(manager.resident_definition("closed").is_some());
                     runtime.stop().await.unwrap();
                 });
         });
@@ -169,39 +185,41 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let runtime = runtime().await;
-                    let manager = &runtime.observers;
+                    let manager = &runtime.operations;
                     let control = Control::new();
-                    let scope = manager.scope(control.clone()).unwrap();
                     manager
-                        .stage(&scope, [backend("owned")])
+                        .stage_observers(&control, [backend("owned")])
                         .unwrap()
                         .commit()
                         .unwrap();
-                    let lease = manager.activate("owned", &scope).await.unwrap();
+                    let lease = manager
+                        .submit_with_resources_at("owned", control.clone())
+                        .await
+                        .unwrap();
                     reached(&control.starts).await;
-                    phase(manager, lease.key(), ObserverPhase::Running).await;
-                    let mut closing = Box::pin(manager.stop_scope(&scope));
+                    phase(manager, &key(manager, &lease), RUNNING).await;
+                    let mut closing = Box::pin(manager.retire_resources(&control));
                     tokio::select! {
                         result = &mut closing => panic!("cleanup escaped its barrier: {result:?}"),
                         _ = reached(&control.stops) => {}
                     }
                     drop(closing);
                     assert!(matches!(
-                        manager.register(backend("owned")),
+                        manager.register_observer(backend("owned")),
                         Err(Error::AlreadyRegistered { .. })
                     ));
                     control.finish.add_permits(1);
-                    manager.stop_scope(&scope).await.unwrap();
-                    let replacement_scope = manager.scope(Control::new()).unwrap();
+                    manager.retire_resources(&control).await.unwrap();
+                    let replacement = Control::new();
                     manager
-                        .stage(&replacement_scope, [backend("owned")])
+                        .stage_observers(&replacement, [backend("owned")])
                         .unwrap()
                         .commit()
                         .unwrap();
-                    manager.stop_scope(&scope).await.unwrap();
+                    manager.retire_resources(&control).await.unwrap();
                     lease.release().await.unwrap();
                     assert!(
-                        manager.definition("owned").is_some(),
+                        manager.resident_definition("owned").is_some(),
                         "stale cleanup preserves the new scope's definition"
                     );
                     runtime.stop().await.unwrap();
@@ -217,8 +235,8 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let runtime = runtime().await;
-                    let manager = &runtime.observers;
-                    let scope = manager.scope(Arc::new(())).unwrap();
+                    let manager = &runtime.operations;
+                    let resources = Arc::new(());
                     let dropped = Arc::new(AtomicBool::new(false));
                     let backend = || {
                         ReentrantBackend(Reentrant {
@@ -226,14 +244,14 @@ pub(super) fn contract_scenario() {
                             dropped: dropped.clone(),
                         })
                     };
-                    drop(manager.stage(&scope, [backend()]).unwrap());
+                    drop(manager.stage_observers(&resources, [backend()]).unwrap());
                     assert!(dropped.swap(false, Ordering::SeqCst));
                     manager
-                        .stage(&scope, [backend()])
+                        .stage_observers(&resources, [backend()])
                         .unwrap()
                         .commit()
                         .unwrap();
-                    manager.stop_scope(&scope).await.unwrap();
+                    manager.retire_resources(&resources).await.unwrap();
                     assert!(dropped.load(Ordering::SeqCst));
                     runtime.stop().await.unwrap();
                 });
@@ -258,30 +276,19 @@ pub(super) fn contract_scenario() {
                                 let control = resident_control.clone();
                                 let opened = opened.clone();
                                 async move {
-                                    let manager = context.observers().clone();
-                                    let scope = manager.scope(control).map_err(|error| {
-                                        harmos::services::Fault::Application(error.to_string())
-                                    })?;
+                                    let manager = context.host();
                                     manager
-                                        .stage(&scope, [backend("service.watch")])
+                                        .stage_observers(&control, [backend("service.watch")])
                                         .and_then(|candidate| candidate.commit())
-                                        .map_err(|error| {
-                                            harmos::services::Fault::Application(error.to_string())
-                                        })?;
+                                        .map_err(fault)?;
                                     let lease = manager
-                                        .activate("service.watch", &scope)
+                                        .submit_with_resources_at("service.watch", control.clone())
                                         .await
-                                        .map_err(|error| {
-                                            harmos::services::Fault::Application(error.to_string())
-                                        })?;
-                                    opened.send((scope.clone(), lease.id())).unwrap();
+                                        .map_err(fault)?;
+                                    opened.send(lease.id()).unwrap();
                                     context.stopping().await;
-                                    manager.stop_scope(&scope).await.map_err(|error| {
-                                        harmos::services::Fault::Application(error.to_string())
-                                    })?;
-                                    lease.release().await.map_err(|error| {
-                                        harmos::services::Fault::Application(error.to_string())
-                                    })?;
+                                    manager.retire_resources(&control).await.map_err(fault)?;
+                                    lease.release().await.map_err(fault)?;
                                     Ok::<(), harmos::services::Fault<String>>(())
                                 }
                             },
@@ -289,30 +296,31 @@ pub(super) fn contract_scenario() {
                         .runtime()
                         .await
                         .unwrap();
-                    let (scope, generation) =
+                    let generation =
                         tokio::time::timeout(Duration::from_secs(2), scope_ready.recv())
                             .await
                             .unwrap()
                             .unwrap();
                     let shared = runtime
                         .handle()
-                        .observers
-                        .activate("service.watch", &scope)
+                        .operations
+                        .submit_with_resources_at("service.watch", control.clone())
                         .await
                         .unwrap();
                     assert_eq!(shared.id(), generation);
-                    phase(&runtime.observers, shared.key(), ObserverPhase::Running).await;
-                    assert_eq!(runtime.observers.status(shared.key()).unwrap().leases, 2);
+                    let shared_key = key(&runtime.operations, &shared);
+                    phase(&runtime.operations, &shared_key, RUNNING).await;
+                    assert_eq!(leases(&runtime.operations, &shared_key), 2);
                     shared.release().await.unwrap();
                     control.finish.add_permits(1);
                     runtime.stop().await.unwrap();
                     assert_eq!(control.completed.load(Ordering::SeqCst), 1);
-                    assert!(runtime.observers.definitions().is_empty());
+                    assert!(observers(&runtime.operations).is_empty());
                     assert_eq!(
                         runtime
-                            .services
-                            .status(&harmos::services::ServiceKey::root("observer-owner"))
-                            .map(|item| item.status),
+                            .operations
+                            .resident(&Key::root("observer-owner"))
+                            .and_then(|item| item.health),
                         Some(harmos::services::ServiceStatus::Stopped)
                     );
                 });
@@ -328,23 +336,58 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let runtime = runtime().await;
                     let other = super::runtime().await;
-                    let manager = &runtime.observers;
-                    let foreign = other.observers.scope(Control::new()).unwrap();
+                    let manager = &runtime.operations;
+                    // Resources staged in another runtime stay foreign to this one.
+                    let shared = Control::new();
+                    other
+                        .operations
+                        .stage_observers(&shared, [backend("foreign")])
+                        .unwrap()
+                        .commit()
+                        .unwrap();
+                    assert!(manager.resident_definition("foreign").is_none());
                     assert!(matches!(
-                        manager.stage(&foreign, [backend("foreign")]),
-                        Err(Error::InvalidInput { .. })
+                        manager
+                            .submit_with_resources_at("foreign", shared.clone())
+                            .await,
+                        Err(Error::NotRegistered { .. })
                     ));
-                    let closed = manager.scope(Control::new()).unwrap();
-                    manager.stop_scope(&closed).await.unwrap();
+
+                    // Resources whose retirement is in flight refuse new catalogs.
+                    let closed = Control::new();
+                    manager
+                        .stage_observers(&closed, [backend("closing")])
+                        .unwrap()
+                        .commit()
+                        .unwrap();
+                    let lease = manager
+                        .submit_with_resources_at("closing", closed.clone())
+                        .await
+                        .unwrap();
+                    phase(manager, &key(manager, &lease), RUNNING).await;
+                    assert!(
+                        tokio::time::timeout(
+                            Duration::from_millis(10),
+                            manager.retire_resources(&closed)
+                        )
+                        .await
+                        .is_err()
+                    );
                     assert!(matches!(
-                        manager.stage(&closed, [backend("closed")]),
+                        manager.stage_observers(&closed, [backend("closed")]),
                         Err(Error::Closing { .. })
                     ));
-                    let scope = manager.scope(Control::new()).unwrap();
-                    let candidate = manager.stage(&scope, [backend("shutdown")]).unwrap();
+                    closed.finish.add_permits(1);
+                    manager.retire_resources(&closed).await.unwrap();
+                    lease.release().await.unwrap();
+
+                    let resources = Control::new();
+                    let candidate = manager
+                        .stage_observers(&resources, [backend("shutdown")])
+                        .unwrap();
                     runtime.stop().await.unwrap();
                     assert!(matches!(candidate.commit(), Err(Error::Closing { .. })));
-                    assert!(manager.definitions().is_empty());
+                    assert!(observers(manager).is_empty());
                     other.stop().await.unwrap();
                 });
         });

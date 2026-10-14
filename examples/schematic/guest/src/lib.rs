@@ -82,7 +82,7 @@ impl harmos_guest::Plugin for Plugin {
         Ok(())
     }
 
-    async fn shutdown(&mut self, _: &Context) -> Result<(), Error> {
+    async fn stop(&mut self, _: &Context) -> Result<(), Error> {
         Ok(())
     }
 

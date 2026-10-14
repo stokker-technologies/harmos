@@ -113,9 +113,7 @@ struct ObserverSeed {
     _counts: Arc<ObserverCounts>,
 }
 
-struct StartObservers;
-
-struct StopObservers;
+struct ObserveControl;
 
 struct ObserverResources {
     counts: ObserverCounts,
@@ -159,8 +157,7 @@ enum MultiObservers {
 
 #[harmos::catalog]
 enum ObserverOperations {
-    Start(StartObservers),
-    Stop(StopObservers),
+    Observe(ObserveControl),
 }
 
 /* === Traits === */
@@ -197,10 +194,8 @@ impl<S: harmos_sidecar::Attach> harmos_sidecar::Attach for Advertised<S> {
     ) -> harmos_contract::Result<Option<[harmos::operations::lifecycle::Descriptor; 2]>> {
         self.inner.sdk_lifecycle()
     }
-    fn observer_controls(
-        &self,
-    ) -> harmos_contract::Result<Option<[harmos::operations::Contract; 2]>> {
-        self.inner.observer_controls()
+    fn observer_control(&self) -> harmos_contract::Result<Option<harmos::operations::Contract>> {
+        self.inner.observer_control()
     }
     fn listener_declarations(
         &self,
@@ -252,13 +247,12 @@ impl Drop for GateSeed {
 }
 
 impl harmos::operations::lifecycle::Policy for Ticking {
-    const INITIALIZATION_POLICY: harmos::operations::OperationPolicy =
-        <StartObservers as harmos::operations::OperationDeclaration>::POLICY;
+    const INITIALIZATION_POLICY: harmos::operations::OperationPolicy = LIFECYCLE;
     const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
 #[harmos::plugin(description = "Observer Demand During SDK Initialization.", id = "ticking", provides = ObserverOperations, requires(harmos::operations::host::Publish),
-    observers = TickingObservers, observer_controls(StartObservers, StopObservers), streams(TickingPulse))]
+    observers = TickingObservers, observer_control = ObserveControl, streams(TickingPulse))]
 impl harmos::Plugin for Ticking {
     type Config = usize;
     type Context = harmos_sidecar::Supervisor;
@@ -292,12 +286,12 @@ impl harmos::Plugin for Ticking {
         &self,
         table: &mut harmos::operations::WireTable<Self::Context>,
     ) -> Result<(), harmos::operations::ServingError> {
-        self.attachment.bind::<StartObservers, StopObservers>(table)
+        self.attachment.bind::<ObserveControl>(table)
     }
     fn attachment(&self) -> Option<Arc<dyn harmos_contract::plugin::Attachment<Self::Context>>> {
         Some(self.attachment.clone())
     }
-    async fn shutdown(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
@@ -329,6 +323,7 @@ impl harmos::operations::lifecycle::Policy for Twins {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_millis(500),
             retries: harmos::operations::RetryPolicy::Never,
+            restart: harmos::operations::RestartPolicy::Never,
         };
     const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
@@ -372,7 +367,7 @@ impl harmos::Plugin for Twins {
     ) -> Result<(), harmos::operations::ServingError> {
         Ok(())
     }
-    async fn shutdown(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
@@ -411,43 +406,32 @@ impl Drop for ObserverSeed {
     }
 }
 
-impl harmos::operations::OperationDeclaration for StartObservers {
+impl harmos::operations::OperationDeclaration for ObserveControl {
     type Request = harmos_contract::observers::Control;
     type Response = ();
-    const ID: &'static str = "publications.observer.start";
+    const ID: &'static str = "publications.observer.observe";
     const VISIBILITY: harmos::operations::Visibility = harmos::operations::Visibility::Host;
-    const POLICY: harmos::operations::OperationPolicy = harmos::operations::OperationPolicy {
-        timeout: Duration::from_secs(2),
-        attempt_timeout: Duration::from_millis(500),
-        retries: harmos::operations::RetryPolicy::Never,
-    };
+    const POLICY: harmos::operations::OperationPolicy = harmos_contract::observers::POLICY;
 }
 
-impl harmos::operations::OperationDeclaration for StopObservers {
-    type Request = harmos_contract::observers::Control;
-    type Response = harmos_contract::observers::Status;
-    const ID: &'static str = "publications.observer.stop";
-    const VISIBILITY: harmos::operations::Visibility = harmos::operations::Visibility::Host;
-    const POLICY: harmos::operations::OperationPolicy =
-        <StartObservers as harmos::operations::OperationDeclaration>::POLICY;
-}
-
-impl harmos::operations::WireOperation for StartObservers {
+impl harmos::operations::WireOperation for ObserveControl {
     const VERSION: u32 = 1;
 }
 
-impl harmos::operations::WireOperation for StopObservers {
-    const VERSION: u32 = 1;
-}
+const LIFECYCLE: harmos::operations::OperationPolicy = harmos::operations::OperationPolicy {
+    timeout: Duration::from_secs(2),
+    attempt_timeout: Duration::from_millis(500),
+    retries: harmos::operations::RetryPolicy::Never,
+    restart: harmos::operations::RestartPolicy::Never,
+};
 
 impl harmos::operations::lifecycle::Policy for SampledTwins {
-    const INITIALIZATION_POLICY: harmos::operations::OperationPolicy =
-        <StartObservers as harmos::operations::OperationDeclaration>::POLICY;
+    const INITIALIZATION_POLICY: harmos::operations::OperationPolicy = LIFECYCLE;
     const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
 #[harmos::plugin(description = "Independent Observers Sharing The Original Initialized Resources.", id = "twin-observers", provides = ObserverOperations, requires(harmos::operations::host::Publish),
-    observers = TwinObservers, observer_controls(StartObservers, StopObservers), streams(Left, Right))]
+    observers = TwinObservers, observer_control = ObserveControl, streams(Left, Right))]
 impl harmos::Plugin for SampledTwins {
     type Config = usize;
     type Context = harmos_sidecar::Supervisor;
@@ -487,12 +471,12 @@ impl harmos::Plugin for SampledTwins {
         &self,
         table: &mut harmos::operations::WireTable<Self::Context>,
     ) -> Result<(), harmos::operations::ServingError> {
-        self.attachment.bind::<StartObservers, StopObservers>(table)
+        self.attachment.bind::<ObserveControl>(table)
     }
     fn attachment(&self) -> Option<Arc<dyn harmos_contract::plugin::Attachment<Self::Context>>> {
         Some(self.attachment.clone())
     }
-    async fn shutdown(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
@@ -508,7 +492,7 @@ impl harmos::Plugin for SampledTwins {
 
 #[harmos::observer(streams(Left), activation = "demand", interval_ms = 5)]
 impl LeftObserver {
-    fn new(resources: &ObserverResources) -> Result<Self, Infallible> {
+    async fn initialize(resources: &ObserverResources) -> Result<Self, Infallible> {
         resources.counts.started[0].fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Ok(Self(resources.counts.clone()))
     }
@@ -544,7 +528,7 @@ impl LeftObserver {
 
 #[harmos::observer(streams(Right), activation = "demand", interval_ms = 5)]
 impl RightObserver {
-    fn new(resources: &ObserverResources) -> Result<Self, Infallible> {
+    async fn initialize(resources: &ObserverResources) -> Result<Self, Infallible> {
         resources.counts.started[1].fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Ok(Self(resources.counts.clone()))
     }
@@ -588,13 +572,12 @@ impl MultiStreamObserver {
 }
 
 impl harmos::operations::lifecycle::Policy for MultiStream {
-    const INITIALIZATION_POLICY: harmos::operations::OperationPolicy =
-        <StartObservers as harmos::operations::OperationDeclaration>::POLICY;
+    const INITIALIZATION_POLICY: harmos::operations::OperationPolicy = LIFECYCLE;
     const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
 #[harmos::plugin(description = "One Observer Publishing Two Rows.", id = "multi-stream", provides = ObserverOperations, requires(harmos::operations::host::Publish),
-    observers = MultiObservers, observer_controls(StartObservers, StopObservers), streams(Left, Right))]
+    observers = MultiObservers, observer_control = ObserveControl, streams(Left, Right))]
 impl harmos::Plugin for MultiStream {
     type Config = ();
     type Context = harmos_sidecar::Supervisor;
@@ -621,12 +604,12 @@ impl harmos::Plugin for MultiStream {
         &self,
         table: &mut harmos::operations::WireTable<Self::Context>,
     ) -> Result<(), harmos::operations::ServingError> {
-        self.attachment.bind::<StartObservers, StopObservers>(table)
+        self.attachment.bind::<ObserveControl>(table)
     }
     fn attachment(&self) -> Option<Arc<dyn harmos_contract::plugin::Attachment<Self::Context>>> {
         Some(self.attachment.clone())
     }
-    async fn shutdown(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
@@ -643,6 +626,31 @@ pub(super) async fn ready(mut ready: tokio::sync::watch::Receiver<bool>) {
 }
 
 /* === Private Functions === */
+fn observers(
+    runtime: &harmos::Runtime<crate::support::Bank>,
+) -> std::collections::BTreeMap<
+    harmos::operations::resident::Key,
+    harmos::operations::resident::Snapshot,
+> {
+    runtime
+        .operations
+        .residents()
+        .into_iter()
+        .filter(|(_, status)| status.kind == harmos::operations::resident::Kind::Observer)
+        .collect()
+}
+
+fn observer_definitions(
+    runtime: &harmos::Runtime<crate::support::Bank>,
+) -> Vec<harmos::operations::resident::Definition> {
+    runtime
+        .operations
+        .resident_definitions()
+        .into_iter()
+        .filter(|definition| definition.kind() == harmos::operations::resident::Kind::Observer)
+        .collect()
+}
+
 async fn row(
     stream: &mut (
              impl futures_core::Stream<Item = harmos::streams::Item<harmos::streams::PublicationRow>>
@@ -700,7 +708,7 @@ pub(super) fn contract_scenario() {
                         calls,
                         Lanes::NativeOpen,
                         std::num::NonZeroUsize::new(16).unwrap(),
-                        ServicePolicy::default(),
+                        harmos::services::POLICY,
                     );
                     fixture.publication().unwrap();
                     fixture
@@ -717,7 +725,7 @@ pub(super) fn contract_scenario() {
                     fixture.initialize().await.unwrap();
                     ready(fixture.ready().clone()).await;
                     fixture
-                        .call::<PublishPulse>(PublishPulse { sample: 41 })
+                        .call_as::<PublishPulse>(PublishPulse { sample: 41 })
                         .await
                         .unwrap();
                     let stream = fixture
@@ -742,7 +750,7 @@ pub(super) fn contract_scenario() {
                     fixture.initialize().await.unwrap();
                     ready(fixture.ready().clone()).await;
                     fixture
-                        .call::<PublishPulse>(PublishPulse { sample: 42 })
+                        .call_as::<PublishPulse>(PublishPulse { sample: 42 })
                         .await
                         .unwrap();
                     let samples: Vec<_> = stream
@@ -819,7 +827,7 @@ pub(super) fn contract_scenario() {
     let stream = streams.publication("ticking.pulse", 1).unwrap();
     let mut samples = stream.watch();
     row(&mut samples).await;
-    let original = fixture.runtime.observers.statuses();
+    let original = observers(&fixture.runtime);
     assert_eq!(original.len(), 1);
     let retiring = Arc::new(Notify::new());
     let release = Arc::new(Notify::new());
@@ -841,7 +849,7 @@ pub(super) fn contract_scenario() {
         shutdown.await.unwrap();
     }
     drop(samples);
-    assert!(fixture.runtime.observers.definitions().is_empty());
+    assert!(observer_definitions(&fixture.runtime).is_empty());
 
     let replacement_seed = GateSeed::new(&gate);
     {
@@ -855,7 +863,7 @@ pub(super) fn contract_scenario() {
         reloading.await.unwrap();
     }
     ready(fixture.ready().clone()).await;
-    let replacement = fixture.runtime.observers.statuses();
+    let replacement = observers(&fixture.runtime);
     assert_eq!(replacement.len(), 1);
     assert!(
         replacement.keys().all(|key| !original.contains_key(key)),
@@ -1138,7 +1146,7 @@ pub(super) fn contract_scenario() {
                 lifecycle: inner.sdk_lifecycle().unwrap(),
                 streams: inner.publications(),
                 observers: observers.clone(),
-                observer_controls: inner.observer_controls().unwrap(),
+                observer_control: inner.observer_control().unwrap(),
                 listeners: inner.listener_declarations().unwrap().unwrap(),
                 ..PluginContributions::default()
             },
@@ -1180,7 +1188,7 @@ pub(super) fn contract_scenario() {
         fixture.publication().unwrap();
         assert!(fixture.initialize().await.is_err());
         let status = service_status(
-            fixture.runtime.services.subscribe(),
+            fixture.runtime.operations.watch_residents(),
             "twin-observers",
             |status| matches!(status, ServiceStatus::Inactive { .. }),
         )
@@ -1267,7 +1275,6 @@ pub(super) fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    use harmos::observers::ObserverPhase;
                     use std::sync::atomic::Ordering::SeqCst;
                     let counts = ObserverCounts::default();
                     counts.coordinated.store(true, SeqCst);
@@ -1289,7 +1296,7 @@ pub(super) fn contract_scenario() {
                     fixture.initialize().await.unwrap();
                     ready(fixture.ready().clone()).await;
                     let runtime = &fixture.runtime;
-                    assert_eq!(runtime.observers.definitions().len(), 2);
+                    assert_eq!(observer_definitions(runtime).len(), 2);
                     let mut left = runtime
                         .streams
                         .publication("twins.left", 1)
@@ -1302,13 +1309,21 @@ pub(super) fn contract_scenario() {
                         .watch();
                     row(&mut left).await;
                     row(&mut right).await;
-                    let mut statuses = runtime.observers.subscribe();
+                    let mut statuses = runtime.operations.watch_residents();
                     tokio::time::timeout(
                         Duration::from_secs(2),
                         statuses.wait_for(|statuses| {
-                            statuses.len() == 2
-                                && statuses.values().all(|status| {
-                                    status.phase == ObserverPhase::Running && status.leases == 1
+                            let observers: Vec<_> = statuses
+                                .values()
+                                .filter(|status| {
+                                    status.kind == harmos::operations::resident::Kind::Observer
+                                })
+                                .collect();
+                            observers.len() == 2
+                                && observers.iter().all(|status| {
+                                    status.lifecycle.phase()
+                                        == harmos::operations::OperationPhase::Running
+                                        && status.leases == 1
                                 })
                         }),
                     )
@@ -1320,7 +1335,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(counts.stopped[0].load(SeqCst), 1);
                     assert_eq!(counts.stopped[1].load(SeqCst), 1);
                     assert_eq!(counts.released.load(SeqCst), 1);
-                    assert!(fixture.runtime.observers.definitions().is_empty());
+                    assert!(observer_definitions(&fixture.runtime).is_empty());
                 });
         });
     }
@@ -1361,8 +1376,8 @@ pub(super) fn contract_scenario() {
                     row(&mut left).await;
                     let error = fixture
                         .runtime
-                        .observers
-                        .shutdown()
+                        .operations
+                        .stop_observers()
                         .await
                         .expect_err("native cleanup failure reaches the manager");
                     assert_eq!(counts.stop_attempts.load(SeqCst), 1);
@@ -1374,8 +1389,10 @@ pub(super) fn contract_scenario() {
                     );
                     let mut cause: &(dyn std::error::Error + 'static) = &error;
                     loop {
-                        if let Some(exit) = cause.downcast_ref::<harmos_sidecar::ObserverExit>() {
-                            assert_eq!(*exit, harmos_sidecar::ObserverExit::StopPanicked);
+                        if cause
+                            .to_string()
+                            .contains("the observer panicked while stopping")
+                        {
                             break;
                         }
                         if let Some(harmos::Error::TaskFailed { source, .. }) =
@@ -1396,7 +1413,7 @@ pub(super) fn contract_scenario() {
                         }
                     }
                     counts.stop_panics.store(false, SeqCst);
-                    let _ = fixture.runtime.observers.shutdown().await;
+                    let _ = fixture.runtime.operations.stop_observers().await;
                     assert_eq!(counts.stop_attempts.load(SeqCst), 2);
                     assert_eq!(counts.started[0].load(SeqCst), 1);
                     assert_eq!(counts.stopped[0].load(SeqCst), 1);

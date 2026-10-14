@@ -20,7 +20,10 @@ use tokio::sync::{Semaphore, SemaphorePermit, mpsc, oneshot};
 // Local Imports
 use crate::Frame;
 use harmos_contract::Message;
-use harmos_contract::operations::OperationDeclaration;
+use harmos_contract::operations::instance::Id;
+use harmos_contract::operations::{
+    CHILD_METHOD, OperationDeclaration, WireChildAction, WireChildControl,
+};
 
 /* === Constants === */
 const PENDING_CALLS: usize = 256;
@@ -85,6 +88,10 @@ pub enum CallError {
         encoded: usize,
         limit: usize,
     },
+    #[error(transparent)]
+    Publication(#[from] PublicationError),
+    #[error("`{method}` needs process-local resources a connection cannot carry")]
+    LocalResources { method: &'static str },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
@@ -178,17 +185,6 @@ impl Drop for PendingCall<'_> {
 }
 
 impl Supervisor {
-    pub(crate) async fn observer_update(&self, update: crate::ObserverUpdate) -> bool {
-        let params = serde_json::to_vec(&update).expect("observer state serializes");
-        self.outgoing
-            .send(Outgoing::Frame(Frame::Push {
-                method: Frame::OBSERVER_STATUS.to_owned(),
-                params,
-            }))
-            .await
-            .is_ok()
-    }
-
     pub(crate) fn new(outgoing: mpsc::Sender<Outgoing>, clock: fn() -> Option<i64>) -> Self {
         Self {
             outgoing,
@@ -223,13 +219,6 @@ impl Supervisor {
         &self.call
     }
 
-    pub(crate) fn for_observer_context(&self, context: [u8; 32]) -> Result<Self, crate::Refusal> {
-        if context == [0; 32] {
-            return Err(crate::Refusal::of("observer context must be host-issued"));
-        }
-        Ok(self.for_operation(context))
-    }
-
     pub fn with_value<T: harmos_contract::operations::ContextValue>(
         &self,
         value: T,
@@ -239,31 +228,89 @@ impl Supervisor {
         Ok(child)
     }
 
-    pub async fn operation<O>(&self, request: O::Request) -> Result<O::Response, CallError>
+    // One child call on this attempt or generation; a submitted child answers
+    // its instance id and stays owned by the attempt.
+    pub(super) async fn child_call<O>(
+        &self,
+        request: &O::Request,
+        submit: bool,
+    ) -> Result<Vec<u8>, CallError>
     where
-        O: harmos_contract::operations::OperationDeclaration,
+        O: OperationDeclaration,
         O::Request: Message,
-        O::Response: Message,
     {
         if self.operation_context.is_none() && self.generation_context.is_none() {
             return Err(CallError::Unavailable);
         }
-        let bytes = self
-            .exchange_with(|id, call| {
-                let params = self.child::<O>(&request)?;
-                let frame =
-                    Self::request_frame(id, harmos_contract::operations::CHILD_METHOD, params)?;
-                call.send(Outgoing::Frame(frame));
-                Ok::<(), CallError>(())
-            })
-            .await?;
-        O::Response::decode(bytes.as_slice()).map_err(|error| CallError::Malformed {
-            method: O::ID,
+        self.exchange_with(|id, call| {
+            let params = self.child::<O>(request, submit)?;
+            let frame = Self::request_frame(id, CHILD_METHOD, params)?;
+            call.send(Outgoing::Frame(frame));
+            Ok::<(), CallError>(())
+        })
+        .await
+    }
+
+    // Drive a child this attempt submitted; the host resolves it only within
+    // the same attempt context.
+    pub(super) async fn child_control(
+        &self,
+        instance: Id,
+        action: WireChildAction,
+    ) -> Result<Vec<u8>, CallError> {
+        let params = self.control_params(instance, action)?;
+        self.exchange_with(|id, call| {
+            let frame = Self::request_frame(id, CHILD_METHOD, params)?;
+            call.send(Outgoing::Frame(frame));
+            Ok::<(), CallError>(())
+        })
+        .await
+    }
+
+    // Send a control without awaiting its answer, for handles that are gone.
+    pub(super) fn child_control_detached(&self, instance: Id, action: WireChildAction) {
+        let Ok(params) = self.control_params(instance, action) else {
+            return;
+        };
+        let (waiter, _) = oneshot::channel();
+        let Ok(id) = self.pending.register(waiter) else {
+            return;
+        };
+        let Ok(frame) = Self::request_frame(id, CHILD_METHOD, params) else {
+            return;
+        };
+        let frame = match self.outgoing.try_send(Outgoing::Frame(frame)) {
+            Ok(()) => return,
+            Err(mpsc::error::TrySendError::Closed(_)) => return,
+            Err(mpsc::error::TrySendError::Full(frame)) => frame,
+        };
+        // A Full Queue Still Delivers The Release Once Capacity Returns
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            let outgoing = self.outgoing.clone();
+            runtime.spawn(async move {
+                let _ = outgoing.send(frame).await;
+            });
+        }
+    }
+
+    fn control_params(&self, instance: Id, action: WireChildAction) -> Result<Vec<u8>, CallError> {
+        let context = self.operation_context.ok_or(CallError::Unavailable)?;
+        let control = WireChildControl {
+            context,
+            instance: instance.value(),
+            action,
+        };
+        control.encode().map_err(|error| CallError::Malformed {
+            method: CHILD_METHOD,
             message: error.to_string(),
         })
     }
 
-    fn child<O: OperationDeclaration>(&self, request: &O::Request) -> Result<Vec<u8>, CallError>
+    fn child<O: OperationDeclaration>(
+        &self,
+        request: &O::Request,
+        submit: bool,
+    ) -> Result<Vec<u8>, CallError>
     where
         O::Request: Message,
     {
@@ -286,6 +333,7 @@ impl Supervisor {
             values: self.call.portable(),
             operation: O::ID.to_owned(),
             payload,
+            submit,
         };
         command.encode().map_err(|error| CallError::Malformed {
             method: O::ID,
@@ -376,14 +424,14 @@ impl Supervisor {
         S: crate::StreamSpec,
         S::Row: Message,
     {
-        use harmos_contract::operations::{CHILD_METHOD, host};
+        use harmos_contract::operations::host;
         if self.operation_context.is_none() && self.generation_context.is_none() {
             return Err(CallError::Unavailable.into());
         }
         let bytes = self
             .exchange_with(|id, call| {
                 self.with_publication::<S, _, super::PublishError>(row, context, |request| {
-                    let params = self.child::<host::Publish>(&request)?;
+                    let params = self.child::<host::Publish>(&request, false)?;
                     let frame = Self::request_frame(id, CHILD_METHOD, params)?;
                     call.send(Outgoing::Frame(frame));
                     Ok(())

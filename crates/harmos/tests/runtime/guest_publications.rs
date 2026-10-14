@@ -103,7 +103,10 @@ impl Operation for Echo {
     type Error = harmos::Error;
     type Endpoints = ();
     type Context<'a> = Context<'a>;
-    fn new(resources: Arc<Domain>) -> harmos::Result<Self> {
+    async fn initialize<'ctx>(
+        resources: Arc<Domain>,
+        _: Self::Context<'ctx>,
+    ) -> harmos::Result<Self> {
         Ok(Self {
             _resources: resources,
         })
@@ -130,7 +133,10 @@ impl Operation for Publish {
     type Error = harmos::Error;
     type Endpoints = ();
     type Context<'a> = Context<'a>;
-    fn new(resources: Arc<Domain>) -> harmos::Result<Self> {
+    async fn initialize<'ctx>(
+        resources: Arc<Domain>,
+        _: Self::Context<'ctx>,
+    ) -> harmos::Result<Self> {
         Ok(Self {
             _resources: resources,
         })
@@ -535,7 +541,7 @@ pub(super) fn contract_scenario() {
                     );
                     runtime
                         .operations
-                        .call::<wire::Echo>(wire::Echo {
+                        .call_as::<wire::Echo>(wire::Echo {
                             say: "publish:route".into(),
                         })
                         .await
@@ -551,7 +557,7 @@ pub(super) fn contract_scenario() {
                     replacement.initialize(&mut lifecycle).await.unwrap();
                     runtime
                         .operations
-                        .call::<wire::Echo>(wire::Echo {
+                        .call_as::<wire::Echo>(wire::Echo {
                             say: "publish:replacement".into(),
                         })
                         .await
@@ -583,7 +589,7 @@ pub(super) fn contract_scenario() {
                     let plan = manager.plan_reload(candidate).unwrap();
                     runtime
                         .operations
-                        .call::<wire::Echo>(wire::Echo {
+                        .call_as::<wire::Echo>(wire::Echo {
                             say: "publish:original".into(),
                         })
                         .await
@@ -592,7 +598,7 @@ pub(super) fn contract_scenario() {
                     manager.apply_reload(plan, &mut lifecycle).await.unwrap();
                     runtime
                         .operations
-                        .call::<wire::Echo>(wire::Echo {
+                        .call_as::<wire::Echo>(wire::Echo {
                             say: "publish:replacement".into(),
                         })
                         .await
@@ -631,7 +637,7 @@ pub(super) fn contract_scenario() {
                     let stream = runtime.streams.publication("progress", 1).unwrap();
                     runtime
                         .operations
-                        .call::<wire::Echo>(wire::Echo {
+                        .call_as::<wire::Echo>(wire::Echo {
                             say: "publish:replacement".into(),
                         })
                         .await
@@ -659,7 +665,7 @@ pub(super) fn contract_scenario() {
                     let mut rows = stream.watch();
                     runtime
                         .operations
-                        .call::<wire::Echo>(wire::Echo {
+                        .call_as::<wire::Echo>(wire::Echo {
                             say: "publish-many".into(),
                         })
                         .await
@@ -710,7 +716,7 @@ pub(super) fn contract_scenario() {
                     let stream = runtime.streams.publication("progress", 1).unwrap();
                     let published = runtime
                         .operations
-                        .call::<wire::Echo>(wire::Echo {
+                        .call_as::<wire::Echo>(wire::Echo {
                             say: "saved-publish:original".into(),
                         })
                         .await
@@ -719,7 +725,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(values(&stream).await, ["original"]);
                     let dependency = runtime
                         .operations
-                        .call::<wire::Echo>(wire::Echo {
+                        .call_as::<wire::Echo>(wire::Echo {
                             say: "saved-dependency:original".into(),
                         })
                         .await

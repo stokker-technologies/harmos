@@ -65,6 +65,11 @@ pub(crate) struct Reservation<O> {
 struct State {
     closing: bool,
     active: BTreeMap<OperationInstanceId, Arc<Instance>>,
+    // The submitting caller of each active instance, for the built-ins.
+    owners: BTreeMap<OperationInstanceId, super::caller::Identity>,
+    // Resident instances run outside the dispatcher until stopped; every
+    // caller holding one of their leases may report them.
+    residents: BTreeMap<OperationInstanceId, (Arc<Instance>, Vec<super::caller::Identity>)>,
 }
 
 struct Queue {
@@ -115,6 +120,8 @@ impl Instances {
             state: Mutex::new(State {
                 closing: false,
                 active: BTreeMap::new(),
+                owners: BTreeMap::new(),
+                residents: BTreeMap::new(),
             }),
             ordinary,
             lifecycle,
@@ -137,19 +144,88 @@ impl Instances {
     }
 
     pub(crate) fn status(&self, id: OperationInstanceId) -> Option<OperationStatus> {
-        self.state
+        let state = self
+            .state
             .lock()
-            .expect("operation instance index is healthy")
+            .expect("operation instance index is healthy");
+        state
             .active
             .get(&id)
+            .or_else(|| state.residents.get(&id).map(|(instance, _)| instance))
             .map(|instance| instance.status())
     }
 
+    // Index a resident instance for the built-ins until it stops.
+    pub(super) fn track_resident(
+        &self,
+        id: OperationInstanceId,
+        instance: &Arc<Instance>,
+        holder: super::caller::Identity,
+    ) {
+        let mut state = self
+            .state
+            .lock()
+            .expect("operation instance index is healthy");
+        if instance.is_settled() {
+            return;
+        }
+        let (_, holders) = state
+            .residents
+            .entry(id)
+            .or_insert_with(|| (Arc::clone(instance), Vec::new()));
+        if !holders.contains(&holder) {
+            holders.push(holder);
+        }
+    }
+
+    pub(crate) fn forget_resident(&self, id: OperationInstanceId) {
+        let retired = self
+            .state
+            .lock()
+            .expect("operation instance index is healthy")
+            .residents
+            .remove(&id);
+        drop(retired);
+    }
+
+    pub(super) fn assign(&self, id: OperationInstanceId, owner: super::caller::Identity) {
+        let mut state = self
+            .state
+            .lock()
+            .expect("operation instance index is healthy");
+        if state.active.contains_key(&id) {
+            state.owners.insert(id, owner);
+        }
+    }
+
+    // Resolve an active instance only for the caller that submitted it.
+    pub(super) fn owned(
+        &self,
+        id: OperationInstanceId,
+        caller: &super::caller::Identity,
+    ) -> Option<Arc<Instance>> {
+        let state = self
+            .state
+            .lock()
+            .expect("operation instance index is healthy");
+        if let Some((instance, holders)) = state.residents.get(&id) {
+            return holders.contains(caller).then(|| Arc::clone(instance));
+        }
+        if state.owners.get(&id) != Some(caller) {
+            return None;
+        }
+        state.active.get(&id).cloned()
+    }
+
     pub(crate) fn state_of<A: crate::Application>(&self) -> crate::state::StateManager<A> {
+        self.handles_of::<A>().state.clone()
+    }
+
+    // The runtime's typed managers a service context lends its resident.
+    pub(crate) fn handles_of<A: crate::Application>(&self) -> &crate::services::Handles<A> {
         self.application_state
-            .downcast_ref::<crate::state::StateManager<A>>()
+            .downcast_ref::<crate::services::Handles<A>>()
             .expect("operation scope names its runtime's application")
-            .clone()
     }
 
     pub(crate) fn resources_of<A: crate::Application>(&self) -> &A::Resources {
@@ -203,12 +279,14 @@ impl Instances {
         let instance = Instance::queued(cancellation).on_settled(move || {
             retiring.release();
             if let Some(owner) = owner.upgrade() {
-                let retired = owner
-                    .state
-                    .lock()
-                    .expect("operation instance index is healthy")
-                    .active
-                    .remove(&id);
+                let retired = {
+                    let mut state = owner
+                        .state
+                        .lock()
+                        .expect("operation instance index is healthy");
+                    state.owners.remove(&id);
+                    state.active.remove(&id)
+                };
                 drop(retired);
             }
             retired();

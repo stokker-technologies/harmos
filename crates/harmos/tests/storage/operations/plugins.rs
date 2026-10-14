@@ -269,22 +269,22 @@ pub(super) fn contract_scenario() {
 
                     // The Granted Source Appends; Another Source Or An Ungranted Caller Is Refused
                     let cursor = writer
-                        .submit::<WriteRecords>(write(&fixture, "first", "bench"))
+                        .submit_as::<WriteRecords>(write(&fixture, "first", "bench"))
                         .unwrap()
                         .await
                         .unwrap();
                     assert!(matches!(
-                        writer.submit::<WriteRecords>(write(&fixture, "second", "other")),
+                        writer.submit_as::<WriteRecords>(write(&fixture, "second", "other")),
                         Err(Error::OperationUnauthorized { .. })
                     ));
                     assert!(matches!(
-                        bystander.submit::<WriteRecords>(write(&fixture, "third", "bench")),
+                        bystander.submit_as::<WriteRecords>(write(&fixture, "third", "bench")),
                         Err(Error::OperationUnauthorized { .. })
                     ));
 
                     // A Receipt Binds To The Calling Plugin And Its Generation
                     let receipt = writer
-                        .submit::<Acknowledge>(AcknowledgeRequest {
+                        .submit_as::<Acknowledge>(AcknowledgeRequest {
                             replica: Identifier::new("mirror").unwrap(),
                             cursor: (*cursor).clone(),
                         })
@@ -299,7 +299,7 @@ pub(super) fn contract_scenario() {
                         fixture
                             .runtime
                             .operations
-                            .submit::<Acknowledge>(AcknowledgeRequest {
+                            .submit_as::<Acknowledge>(AcknowledgeRequest {
                                 replica: Identifier::new("mirror").unwrap(),
                                 cursor: (*cursor).clone(),
                             })
@@ -367,7 +367,7 @@ pub(super) fn contract_scenario() {
 
                     // The Granted Schema Collects Exactly, As The In-Process Query Does
                     let collected = reducer
-                        .submit::<Reductions>(frame(std::slice::from_ref(&schema), 1))
+                        .submit_as::<Reductions>(frame(std::slice::from_ref(&schema), 1))
                         .unwrap()
                         .await
                         .unwrap();
@@ -381,11 +381,11 @@ pub(super) fn contract_scenario() {
 
                     // A Second Schema Widens The Grant To Every Schema; Nobody Else Reads
                     assert!(matches!(
-                        reducer.submit::<Reductions>(frame(&[schema.clone(), other], 1)),
+                        reducer.submit_as::<Reductions>(frame(&[schema.clone(), other], 1)),
                         Err(Error::OperationUnauthorized { .. })
                     ));
                     assert!(matches!(
-                        bystander.submit::<Reductions>(frame(std::slice::from_ref(&schema), 1)),
+                        bystander.submit_as::<Reductions>(frame(std::slice::from_ref(&schema), 1)),
                         Err(Error::OperationUnauthorized { .. })
                     ));
 
@@ -393,7 +393,7 @@ pub(super) fn contract_scenario() {
                     let mut oversized = frame(std::slice::from_ref(&schema), 4096);
                     oversized.frame.max_rows = NonZeroUsize::new(1 << 20).unwrap();
                     let refused = reducer
-                        .submit::<Reductions>(oversized)
+                        .submit_as::<Reductions>(oversized)
                         .unwrap()
                         .await
                         .unwrap_err();

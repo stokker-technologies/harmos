@@ -13,59 +13,38 @@
 
 /* === Imports === */
 // Standard Library Imports
-use std::time::Duration;
+
 // Third Party Imports
 
 // Local Imports
-use harmos::operations::observers::{Control, Status};
-use harmos::operations::{
-    OperationDeclaration, OperationPolicy, ReplaySafety, RetryPolicy, Visibility, WireOperation,
-};
+use harmos::operations::observers::{Control, POLICY};
+use harmos::operations::{OperationDeclaration, ReplaySafety, Visibility, WireOperation};
 
 /* === Constants === */
-const POLICY: OperationPolicy = OperationPolicy {
-    timeout: Duration::from_secs(30),
-    attempt_timeout: Duration::from_secs(5),
-    retries: RetryPolicy::Never,
-};
 
 /* === Macros === */
 
 /* === Type Aliases === */
 
 /* === Structs === */
-pub struct Start;
-
-pub struct Stop;
+// The one Host control that runs each observer until the host cancels it.
+pub struct Observe;
 
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
-impl OperationDeclaration for Start {
+impl OperationDeclaration for Observe {
     type Request = Control;
     type Response = ();
-    const ID: &'static str = "standalone-bridge.observers.start";
+    const ID: &'static str = "standalone-bridge.observers.observe";
     const VISIBILITY: Visibility = Visibility::Host;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-    const POLICY: OperationPolicy = POLICY;
+    const POLICY: harmos::operations::OperationPolicy = POLICY;
 }
 
-impl WireOperation for Start {
-    const VERSION: u32 = 1;
-}
-
-impl OperationDeclaration for Stop {
-    type Request = Control;
-    type Response = Status;
-    const ID: &'static str = "standalone-bridge.observers.stop";
-    const VISIBILITY: Visibility = Visibility::Host;
-    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-    const POLICY: OperationPolicy = POLICY;
-}
-
-impl WireOperation for Stop {
+impl WireOperation for Observe {
     const VERSION: u32 = 1;
 }
 

@@ -62,7 +62,10 @@ impl Operation for Invoke {
     type Error = harmos::Error;
     type Endpoints = ();
     type Context<'a> = Context<'a>;
-    fn new(resources: Arc<OriginalJournal>) -> harmos::Result<Self> {
+    async fn initialize<'ctx>(
+        resources: Arc<OriginalJournal>,
+        _: Self::Context<'ctx>,
+    ) -> harmos::Result<Self> {
         resources.prepared.fetch_add(1, Ordering::SeqCst);
         Ok(Self { resources })
     }
@@ -118,7 +121,7 @@ impl Operation for Invoke {
         .await;
         result.map(::core::convert::Into::into)
     }
-    async fn finalize(&mut self) -> harmos::Result<()> {
+    async fn cleanup(&mut self) -> harmos::Result<()> {
         self.resources.finalized.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }

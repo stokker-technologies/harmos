@@ -26,9 +26,10 @@ use tokio::sync::Notify;
 
 // Local Imports
 use super::listener::Listener;
-use harmos::observers::{ObserverActivation, ObserverBackend, ObserverDefinition, ObserverLease};
+use harmos::observers::{ObserverActivation, ObserverBackend, ObserverDefinition};
 use harmos::operations::{
-    Context, OperationInstance, OperationOutcome, OperationPhase, OperationPolicy, RetryPolicy,
+    Context, OperationInstance, OperationOutcome, OperationPhase, OperationPolicy, RestartPolicy,
+    RetryPolicy,
 };
 use schematic_app::{
     app::Runtime,
@@ -67,6 +68,7 @@ struct Trace {
         timeout: Duration::from_secs(300),
         attempt_timeout: Duration::from_secs(300),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     }
 )]
 struct HoldDeclaration;
@@ -87,7 +89,7 @@ pub(super) struct Verified {
 pub(super) struct Workload {
     listener: Listener,
     expected: (harmos::state::Position, Schematic),
-    observer: ObserverLease,
+    observer: OperationInstance<harmos::operations::resident::Activation>,
     trace: Arc<Trace>,
     running: OperationInstance<HoldDeclaration>,
     queued: OperationInstance<HoldDeclaration>,
@@ -128,7 +130,7 @@ impl ObserverBackend for Watch {
 
 #[harmos::operation(declaration = HoldDeclaration)]
 impl Hold {
-    fn new(trace: Arc<Trace>) -> Result<Self, Infallible> {
+    async fn initialize(trace: Arc<Trace>, _: Context<'_>) -> Result<Self, Infallible> {
         Ok(Self { trace, slot: None })
     }
 
@@ -147,7 +149,7 @@ impl Hold {
         Ok(())
     }
 
-    async fn finalize(&mut self) -> Result<(), Infallible> {
+    async fn cleanup(&mut self) -> Result<(), Infallible> {
         self.trace.finalized[self.slot.unwrap_or(1)].fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
@@ -161,14 +163,13 @@ impl Workload {
             Lanes::Analysis,
             trace.clone(),
         )?;
-        let running = runtime.operations.submit::<HoldDeclaration>(false)?;
+        let running = runtime.operations.submit_as::<HoldDeclaration>(false)?;
         trace.started.notified().await;
-        let queued = runtime.operations.submit::<HoldDeclaration>(true)?;
-        runtime.observers.register(Watch)?;
-        let scope = runtime.observers.scope(trace.clone())?;
+        let queued = runtime.operations.submit_as::<HoldDeclaration>(true)?;
+        runtime.operations.register_observer(Watch)?;
         let observer = runtime
-            .observers
-            .activate("shutdown-exercise.watch", &scope)
+            .operations
+            .submit_with_resources_at("shutdown-exercise.watch", trace.clone())
             .await?;
         trace.observer_ready.notified().await;
         // Bound Accepted Edits Without Waiting For A Storage Barrier
@@ -233,7 +234,7 @@ impl Workload {
         let listener = self.listener.verify();
         self.listener.shutdown().await?;
         listener?;
-        if !self.observer.instance().is_settled()
+        if !self.observer.status().phase().is_terminal()
             || self.trace.observer_stopped.load(Ordering::SeqCst) != 1
         {
             return Err(harmos::Error::NotReady {

@@ -58,7 +58,7 @@ pub(super) fn contract_scenario() {
                         .unwrap();
                     let mut invocation = runtime
                         .operations
-                        .submit::<Compute>(Request {
+                        .submit_as::<Compute>(Request {
                             failures: 2,
                             ..request()
                         })
@@ -103,7 +103,7 @@ pub(super) fn contract_scenario() {
                         assert!(matches!(
                             runtime
                                 .operations
-                                .call::<Compute>(Request {
+                                .call_as::<Compute>(Request {
                                     failures: 10,
                                     failure,
                                     ..request()
@@ -133,7 +133,7 @@ pub(super) fn contract_scenario() {
                         .register_operation::<SlowCall>("app", Lanes::Open, Arc::clone(&owner))
                         .unwrap();
                     assert!(matches!(
-                        runtime.operations.call::<Slow>(request()).await,
+                        runtime.operations.call_as::<Slow>(request()).await,
                         Err(Error::OperationRefused(Refusal::TimedOut))
                     ));
                     assert_eq!(owner.runs.load(Ordering::SeqCst), 1);
@@ -157,7 +157,7 @@ pub(super) fn contract_scenario() {
                         .unwrap();
                     let first = runtime
                         .operations
-                        .call::<Compute>(Request {
+                        .call_as::<Compute>(Request {
                             keyed: true,
                             ..request()
                         })
@@ -165,7 +165,7 @@ pub(super) fn contract_scenario() {
                         .unwrap();
                     let second = runtime
                         .operations
-                        .call::<Compute>(Request {
+                        .call_as::<Compute>(Request {
                             keyed: true,
                             ..request()
                         })
@@ -173,11 +173,12 @@ pub(super) fn contract_scenario() {
                         .unwrap();
                     assert!(first.ptr_eq(&second));
                     assert_eq!(owner.runs.load(Ordering::SeqCst), 1);
-                    assert_eq!(owner.prepared.load(Ordering::SeqCst), 2);
+                    // A cached response is reused without constructing the operation.
+                    assert_eq!(owner.prepared.load(Ordering::SeqCst), 1);
                     assert!(matches!(
                         runtime
                             .operations
-                            .call::<Compute>(Request {
+                            .call_as::<Compute>(Request {
                                 keyed: true,
                                 valid: false,
                                 ..request()
@@ -185,12 +186,16 @@ pub(super) fn contract_scenario() {
                             .await,
                         Err(Error::OperationFailed { .. })
                     ));
-                    runtime.operations.call::<Compute>(request()).await.unwrap();
+                    runtime
+                        .operations
+                        .call_as::<Compute>(request())
+                        .await
+                        .unwrap();
                     assert_eq!(owner.runs.load(Ordering::SeqCst), 2);
                     runtime.operations.set_cache_capacity(0);
                     runtime
                         .operations
-                        .call::<Compute>(Request {
+                        .call_as::<Compute>(Request {
                             keyed: true,
                             ..request()
                         })
@@ -220,7 +225,7 @@ pub(super) fn contract_scenario() {
                     let gate = Arc::new(Notify::new());
                     let invocation = runtime
                         .operations
-                        .submit::<Compute>(Request {
+                        .submit_as::<Compute>(Request {
                             keyed: true,
                             gate: Some((Arc::clone(&opened), Arc::clone(&gate))),
                             ..request()
@@ -271,7 +276,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         runtime
                             .operations
-                            .call::<Compute>(Request {
+                            .call_as::<Compute>(Request {
                                 keyed: true,
                                 ..request()
                             })
@@ -302,7 +307,7 @@ pub(super) fn contract_scenario() {
     assert_eq!(
         runtime
             .operations
-            .call::<Parent>(request())
+            .call_as::<Parent>(request())
             .await
             .unwrap()
             .value,
@@ -314,7 +319,7 @@ pub(super) fn contract_scenario() {
         .register_operation::<ComputeCall>("app", Lanes::Serial, Arc::new(Owner::default()))
         .unwrap();
     assert!(
-        matches!(runtime.operations.call::<Parent>(request()).await, Err(Error::OperationFailed { source, .. }) if matches!(source.downcast_ref::<Failed>(), Some(Failed::Nested(Error::OperationLaneCycle { .. }))))
+        matches!(runtime.operations.call_as::<Parent>(request()).await, Err(Error::OperationFailed { source, .. }) if matches!(source.downcast_ref::<Failed>(), Some(Failed::Nested(Error::OperationLaneCycle { .. }))))
     );
     runtime.stop().await.unwrap();
 
@@ -338,7 +343,7 @@ pub(super) fn contract_scenario() {
         .unwrap();
 
     assert!(
-        matches!(runtime.operations.call::<Parent>(request()).await, Err(Error::OperationFailed { source, .. }) if matches!(source.downcast_ref::<Failed>(), Some(Failed::Nested(Error::OperationLaneCycle { .. }))))
+        matches!(runtime.operations.call_as::<Parent>(request()).await, Err(Error::OperationFailed { source, .. }) if matches!(source.downcast_ref::<Failed>(), Some(Failed::Nested(Error::OperationLaneCycle { .. }))))
     );
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
     assert_eq!(owner.runs.load(Ordering::SeqCst), 0);
@@ -347,7 +352,7 @@ pub(super) fn contract_scenario() {
     assert_eq!(
         runtime
             .operations
-            .call::<Compute>(request())
+            .call_as::<Compute>(request())
             .await
             .unwrap()
             .value,
@@ -375,7 +380,7 @@ pub(super) fn contract_scenario() {
                         .unwrap();
                     runtime
                         .operations
-                        .call::<Compute>(Request {
+                        .call_as::<Compute>(Request {
                             keyed: true,
                             ..request()
                         })
@@ -384,7 +389,7 @@ pub(super) fn contract_scenario() {
                     runtime.stop().await.unwrap();
                     assert!(weak.upgrade().is_none());
                     assert!(matches!(
-                        runtime.operations.submit::<Compute>(request()),
+                        runtime.operations.submit_as::<Compute>(request()),
                         Err(Error::Closing { .. })
                     ));
                 });
@@ -410,7 +415,7 @@ pub(super) fn contract_scenario() {
                     assert!(matches!(
                         runtime
                             .operations
-                            .call::<Compute>(Request {
+                            .call_as::<Compute>(Request {
                                 value: usize::MAX,
                                 ..request()
                             })
@@ -450,7 +455,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         runtime
                             .operations
-                            .call::<Compute>(request())
+                            .call_as::<Compute>(request())
                             .await
                             .unwrap()
                             .value,
@@ -534,7 +539,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         runtime
                             .operations
-                            .call::<Compute>(request())
+                            .call_as::<Compute>(request())
                             .await
                             .unwrap()
                             .value,
@@ -601,7 +606,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(first.prepared.load(Ordering::SeqCst), 0);
                     assert_eq!(second.prepared.load(Ordering::SeqCst), 0);
                     assert!(matches!(
-                        runtime.operations.submit::<Compute>(request()),
+                        runtime.operations.submit_as::<Compute>(request()),
                         Err(Error::InvalidInput {
                             field: "operation provider",
                             ..
@@ -702,7 +707,11 @@ pub(super) fn contract_scenario() {
                             .submit_from::<Compute>("first", request()),
                         Err(Error::NotRegistered { .. })
                     ));
-                    let surviving = runtime.operations.call::<Compute>(keyed()).await.unwrap();
+                    let surviving = runtime
+                        .operations
+                        .call_as::<Compute>(keyed())
+                        .await
+                        .unwrap();
                     assert!(second_result.ptr_eq(&surviving));
                     assert_eq!(second.runs.load(Ordering::SeqCst), 1);
                     runtime.stop().await.unwrap();
@@ -753,15 +762,15 @@ pub(super) fn contract_scenario() {
                 .simulate()
                 .unwrap();
             assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
-            let first = sim.submit::<Compute>(request()).unwrap();
+            let first = sim.submit_as::<Compute>(request()).unwrap();
             assert_eq!(sim.settle(first).unwrap().value, 27);
             sim.stop().unwrap();
             assert!(matches!(
-                sim.submit::<Compute>(request()),
+                sim.submit_as::<Compute>(request()),
                 Err(Error::Closing { .. })
             ));
             sim.reboot().unwrap();
-            let second = sim.submit::<Compute>(request()).unwrap();
+            let second = sim.submit_as::<Compute>(request()).unwrap();
             assert_eq!(sim.settle(second).unwrap().value, 27);
             assert_eq!(owner.prepared.load(Ordering::SeqCst), 2);
             assert_eq!(owner.runs.load(Ordering::SeqCst), 2);
@@ -794,12 +803,12 @@ pub(super) fn contract_scenario() {
                 .simulate()
                 .unwrap();
             assert_eq!(initialized.load(Ordering::SeqCst), 1);
-            let first = sim.submit::<Compute>(request()).unwrap();
+            let first = sim.submit_as::<Compute>(request()).unwrap();
             assert_eq!(sim.settle(first).unwrap().value, 7);
             sim.stop().unwrap();
             sim.reboot().unwrap();
             assert_eq!(initialized.load(Ordering::SeqCst), 2);
-            let second = sim.submit::<Compute>(request()).unwrap();
+            let second = sim.submit_as::<Compute>(request()).unwrap();
             assert_eq!(sim.settle(second).unwrap().value, 7);
             assert_eq!(owner.prepared.load(Ordering::SeqCst), 2);
             sim.stop().unwrap();

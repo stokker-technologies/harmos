@@ -409,7 +409,10 @@ impl<P: Plugin> Operation for Initialize<P> {
     type Endpoints = ();
     type Context<'a> = &'a P::Context;
 
-    fn new(owner: Arc<Owner<P>>) -> Result<Self, Error<P>> {
+    async fn initialize<'ctx>(
+        owner: Arc<Owner<P>>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Error<P>> {
         Ok(Self { owner, state: None })
     }
 
@@ -431,7 +434,7 @@ impl<P: Plugin> Operation for Initialize<P> {
         result.map(::core::convert::Into::into)
     }
 
-    async fn finalize(&mut self) -> Result<(), Error<P>> {
+    async fn cleanup(&mut self) -> Result<(), Error<P>> {
         match self.state.as_mut() {
             Some(state) => state.finalize().await,
             None => Ok(()),
@@ -446,7 +449,10 @@ impl<P: Plugin> Operation for Shutdown<P> {
     type Endpoints = ();
     type Context<'a> = &'a P::Context;
 
-    fn new(owner: Arc<Owner<P>>) -> Result<Self, Error<P>> {
+    async fn initialize<'ctx>(
+        owner: Arc<Owner<P>>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Error<P>> {
         Ok(Self { owner, state: None })
     }
 
@@ -476,7 +482,7 @@ impl<P: Plugin> Operation for Shutdown<P> {
         result.map(::core::convert::Into::into)
     }
 
-    async fn finalize(&mut self) -> Result<(), Error<P>> {
+    async fn cleanup(&mut self) -> Result<(), Error<P>> {
         match self.state.as_mut() {
             Some(state) => state.finalize().await,
             None => Ok(()),
@@ -533,7 +539,7 @@ impl<P: Plugin> State<P> {
                     // Domain Effects Are Never Replayed By Physical Cleanup Retries.
                     shutdown_attempted = true;
                     plugin
-                        .shutdown(context)
+                        .stop(context)
                         .await
                         .map_err(|error| Error::Plugin(Arc::new(error)))?;
                 }

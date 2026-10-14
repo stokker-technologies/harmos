@@ -97,12 +97,13 @@ pub(super) struct Origin {
         feature = "plugin-sidecar"
     ))]
     pub(super) lifecycle: Option<LifecycleLoan>,
+    // Calls made by a resident control, which may publish while it retires.
     #[cfg(any(
         feature = "plugin",
         feature = "plugin-guest",
         feature = "plugin-sidecar"
     ))]
-    pub(super) observer_publication: bool,
+    pub(super) resident: bool,
 }
 
 #[cfg(any(
@@ -131,9 +132,6 @@ pub(super) enum Source {
         feature = "plugin-sidecar"
     ))]
     Plugin(PluginCaller),
-    // Issued Only By The Original Remote Observer Child Owner.
-    #[cfg(feature = "plugin-sidecar")]
-    Observer(PluginCaller),
     #[cfg(any(
         feature = "plugin",
         feature = "plugin-guest",
@@ -218,7 +216,7 @@ impl Caller {
         request: super::StreamItem<O::Request>,
         endpoints: P,
     ) -> Result<super::OperationInstance<O>> {
-        self.operations.submit_as::<O, P>(
+        self.operations.submit_by::<O, P>(
             (super::binding::Request::charged(request)?, endpoints),
             &Source::Plugin(self.source.clone()).external()?,
         )
@@ -253,12 +251,26 @@ impl Caller {
         self.submit_encoded(operation, payload)?.await
     }
 
-    pub fn submit<O: OperationDeclaration>(
+    // The declaration is its own request; `submit_as::<O>` names a separate one.
+    pub fn submit<O: OperationDeclaration<Request = O>>(
+        &self,
+        request: O,
+    ) -> Result<OperationInstance<O>> {
+        self.submit_as::<O>(request)
+    }
+
+    pub async fn call<O: OperationDeclaration<Request = O>>(
+        &self,
+        request: O,
+    ) -> Result<crate::operations::Response<O::Response>> {
+        self.call_as::<O>(request).await
+    }
+    pub fn submit_as<O: OperationDeclaration>(
         &self,
         request: O::Request,
     ) -> Result<OperationInstance<O>> {
         self.operations
-            .submit_as::<O, ()>((request.into(), ()), &Source::Plugin(self.source.clone()))
+            .submit_by::<O, ()>((request.into(), ()), &Source::Plugin(self.source.clone()))
     }
 
     pub fn submit_endpoints<O: OperationDeclaration, P: Send + 'static>(
@@ -266,7 +278,7 @@ impl Caller {
         request: O::Request,
         endpoints: P,
     ) -> Result<OperationInstance<O>> {
-        self.operations.submit_as::<O, P>(
+        self.operations.submit_by::<O, P>(
             (request.into(), endpoints),
             &Source::Plugin(self.source.clone()),
         )
@@ -277,17 +289,17 @@ impl Caller {
         request: super::StreamItem<O::Request>,
         endpoints: P,
     ) -> Result<OperationInstance<O>> {
-        self.operations.submit_as::<O, P>(
+        self.operations.submit_by::<O, P>(
             (super::binding::Request::charged(request)?, endpoints),
             &Source::Plugin(self.source.clone()),
         )
     }
 
-    pub async fn call<O: OperationDeclaration>(
+    pub async fn call_as<O: OperationDeclaration>(
         &self,
         request: O::Request,
     ) -> Result<crate::operations::Response<O::Response>> {
-        self.submit::<O>(request)?.await
+        self.submit_as::<O>(request)?.await
     }
 }
 
@@ -296,7 +308,7 @@ impl Source {
     pub(super) fn external(self) -> Result<Self> {
         Ok(Self::External {
             source: Box::new(self),
-            id: super::OperationInstanceId::fresh()?,
+            id: super::handler::fresh_instance()?,
         })
     }
 
@@ -317,12 +329,6 @@ impl Source {
             Self::Host => None,
             #[cfg(feature = "grpc")]
             Self::External { .. } => unreachable!("external origin was checked"),
-            #[cfg(feature = "plugin-sidecar")]
-            Self::Observer(source) => Some(
-                source
-                    .operation_scope()
-                    .map_err(|source| Error::OperationCaller { source })?,
-            ),
             Self::Plugin(source) => Some(
                 source
                     .operation_scope()
@@ -397,15 +403,11 @@ impl Source {
                 feature = "plugin-guest",
                 feature = "plugin-sidecar"
             ))]
-            observer_publication: {
-                #[cfg(feature = "plugin-sidecar")]
-                {
-                    matches!(self, Self::Observer(_))
-                }
-                #[cfg(not(feature = "plugin-sidecar"))]
-                {
-                    false
-                }
+            resident: match self {
+                Self::Binding(binding) | Self::Callback(binding) => binding
+                    .upgrade()
+                    .is_some_and(|binding| binding.retires_late()),
+                _ => false,
             },
         })
     }

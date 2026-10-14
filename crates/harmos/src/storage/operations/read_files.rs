@@ -85,7 +85,10 @@ impl<C: 'static> Operation for Handler<C> {
     type Error = Error;
     type Context<'a> = Context<'a>;
     type Endpoints = StreamOutput<FileBytes>;
-    fn new(storage: Arc<StorageManager<C>>) -> Result<Self> {
+    async fn initialize<'ctx>(
+        storage: Arc<StorageManager<C>>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self> {
         Ok(Self { storage })
     }
 

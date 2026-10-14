@@ -28,9 +28,10 @@ use tokio::sync::Notify;
 // Local Imports
 use super::{assembly, service_status};
 use crate::support::Bank;
+use harmos::operations::Host as _;
 use harmos::operations::{
-    Declarations, Definition, Operation, OperationDeclaration, OperationPolicy, RetryPolicy,
-    Visibility,
+    Declarations, Definition, Operation, OperationDeclaration, OperationPolicy, RestartPolicy,
+    RetryPolicy, Visibility,
 };
 use harmos::plugin::sidecar::{Attach, Attached, Notice, Supervised};
 use harmos::plugin::{
@@ -76,6 +77,13 @@ struct Counts {
     stale_refused: AtomicUsize,
     saved: Mutex<Option<harmos::plugin::sidecar::Supervisor>>,
     tenants: Mutex<Vec<Option<String>>>,
+    submit_child: AtomicBool,
+    refresh_hold: AtomicBool,
+    refresh_started: Notify,
+    refresh_release: Notify,
+    refresh_completed: AtomicUsize,
+    refresh_cleaned: AtomicUsize,
+    detached_status: Mutex<Option<String>>,
 }
 
 #[harmos::message]
@@ -114,10 +122,10 @@ struct Advertised<S> {
 }
 
 struct Backend<A: Attach> {
-    services: Option<harmos::services::ServiceManager<Bank>>,
+    services: Option<harmos::operations::OperationManager>,
     retirement_gate: RetirementGate,
     resident: Option<Resident<A>>,
-    lease: Option<harmos::services::ServiceLease<Bank>>,
+    lease: Option<harmos::operations::OperationInstance<harmos::operations::resident::Activation>>,
     registration: Option<harmos::operations::PluginRegistration>,
     sdk: Option<harmos::operations::PluginSdkRegistration>,
     initializing: Option<harmos::operations::EncodedInvocation>,
@@ -132,8 +140,7 @@ struct Host<A: Attach> {
     resident: Resident<A>,
     lane: Lanes,
     capacity: std::num::NonZeroUsize,
-    supervision: harmos::services::ServicePolicy,
-    services: harmos::services::ServiceManager<Bank>,
+    supervision: harmos::operations::OperationPolicy,
     operations: harmos::operations::OperationManager,
     retirement_gate: RetirementGate,
 }
@@ -207,6 +214,7 @@ impl OperationDeclaration for Read {
                 jitter: harmos::operations::Jitter::None,
             },
         },
+        restart: RestartPolicy::Never,
     };
 }
 
@@ -220,35 +228,47 @@ impl Operation for ReadOperation {
     type Error = std::io::Error;
     type Endpoints = ();
     type Context<'a> = &'a harmos::plugin::sidecar::Supervisor;
-    fn new(counts: Arc<Counts>) -> Result<Self, Self::Error> {
-        counts.prepared.fetch_add(1, Ordering::SeqCst);
-        if counts.fail_prepare.load(Ordering::SeqCst) {
-            return Err(std::io::Error::other("preparation refused"));
+    async fn initialize<'ctx>(
+        counts: Arc<Counts>,
+        context: Self::Context<'ctx>,
+    ) -> Result<Self, Self::Error> {
+        let constructed: Result<Self, Self::Error> = async move {
+            counts.prepared.fetch_add(1, Ordering::SeqCst);
+            if counts.fail_prepare.load(Ordering::SeqCst) {
+                return Err(std::io::Error::other("preparation refused"));
+            }
+            Ok(Self {
+                counts,
+                attempts: 0,
+            })
         }
-        Ok(Self {
-            counts,
-            attempts: 0,
-        })
-    }
-    async fn initialize<'ctx>(&mut self, context: Self::Context<'ctx>) -> Result<(), Self::Error> {
-        self.counts
-            .operation_initialized
-            .fetch_add(1, Ordering::SeqCst);
-        self.counts.initialization_entered.notify_one();
-        if self.counts.block_initialize.load(Ordering::SeqCst) {
-            std::future::pending::<()>().await;
+        .await;
+        let mut operation = constructed?;
+        let started: Result<(), Self::Error> = async {
+            let operation = &mut operation;
+            operation
+                .counts
+                .operation_initialized
+                .fetch_add(1, Ordering::SeqCst);
+            operation.counts.initialization_entered.notify_one();
+            if operation.counts.block_initialize.load(Ordering::SeqCst) {
+                std::future::pending::<()>().await;
+            }
+            if operation.counts.fail_initialize.load(Ordering::SeqCst) {
+                return Err(std::io::Error::other("partial initialization failed"));
+            }
+            if operation.counts.initialization_child.load(Ordering::SeqCst) {
+                context
+                    .call_as::<Refresh>(())
+                    .await
+                    .map_err(std::io::Error::other)?;
+                *operation.counts.initialization_saved.lock().unwrap() = Some(context.clone());
+            }
+            Ok(())
         }
-        if self.counts.fail_initialize.load(Ordering::SeqCst) {
-            return Err(std::io::Error::other("partial initialization failed"));
-        }
-        if self.counts.initialization_child.load(Ordering::SeqCst) {
-            context
-                .operation::<Refresh>(())
-                .await
-                .map_err(std::io::Error::other)?;
-            *self.counts.initialization_saved.lock().unwrap() = Some(context.clone());
-        }
-        Ok(())
+        .await;
+        started?;
+        Ok(operation)
     }
     async fn run<'ctx>(
         &mut self,
@@ -257,9 +277,14 @@ impl Operation for ReadOperation {
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<()>, Self::Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
+            if self.counts.submit_child.load(Ordering::SeqCst) {
+                return submitted(context, &self.counts)
+                    .await
+                    .map_err(std::io::Error::other);
+            }
             let initialized = self.counts.initialization_saved.lock().unwrap().take();
             if let Some(initialized) = initialized {
-                if initialized.operation::<Refresh>(()).await.is_ok() {
+                if initialized.call_as::<Refresh>(()).await.is_ok() {
                     return Err(std::io::Error::other(
                         "initialization context remained active",
                     ));
@@ -281,14 +306,14 @@ impl Operation for ReadOperation {
             if self.counts.call_child.load(Ordering::SeqCst) {
                 let previous = self.counts.saved.lock().unwrap().take();
                 if let Some(previous) = previous {
-                    if previous.operation::<Refresh>(()).await.is_ok() {
+                    if previous.call_as::<Refresh>(()).await.is_ok() {
                         return Err(std::io::Error::other("expired attempt admitted a child"));
                     }
                     self.counts.stale_refused.fetch_add(1, Ordering::SeqCst);
                 }
                 *self.counts.saved.lock().unwrap() = Some(context.clone());
                 context
-                    .operation::<Refresh>(())
+                    .call_as::<Refresh>(())
                     .await
                     .map_err(std::io::Error::other)?;
             }
@@ -304,7 +329,7 @@ impl Operation for ReadOperation {
         self.counts.stopped.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
-    async fn finalize(&mut self) -> Result<(), Self::Error> {
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
         if self.counts.fail_cleanup.load(Ordering::SeqCst) {
             return Err(std::io::Error::other("retained cleanup"));
         }
@@ -322,7 +347,10 @@ impl Operation for RefreshOperation {
     type Error = std::io::Error;
     type Endpoints = ();
     type Context<'a> = &'a harmos::plugin::sidecar::Supervisor;
-    fn new(counts: Arc<Counts>) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(
+        counts: Arc<Counts>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Self::Error> {
         Ok(Self(counts))
     }
     async fn run<'ctx>(
@@ -333,10 +361,19 @@ impl Operation for RefreshOperation {
     ) -> Result<harmos::operations::Response<()>, Self::Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             self.0.children.fetch_add(1, Ordering::SeqCst);
+            if self.0.refresh_hold.load(Ordering::SeqCst) {
+                self.0.refresh_started.notify_one();
+                self.0.refresh_release.notified().await;
+                self.0.refresh_completed.fetch_add(1, Ordering::SeqCst);
+            }
             Ok(())
         }
         .await;
         result.map(::core::convert::Into::into)
+    }
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
+        self.0.refresh_cleaned.fetch_add(1, Ordering::SeqCst);
+        Ok(())
     }
 }
 
@@ -352,6 +389,7 @@ impl harmos::operations::lifecycle::Policy for Endpoint {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_millis(500),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
@@ -387,7 +425,7 @@ impl harmos::Plugin for Endpoint {
         streams::bind(table, self.resources())?;
         Ok(())
     }
-    async fn shutdown(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
@@ -497,7 +535,7 @@ impl<A: Attach> Managed<A> {
             resident,
             lane,
             capacity,
-            harmos::services::ServicePolicy::default(),
+            harmos::services::POLICY,
         )
     }
     pub(crate) fn from_runtime(
@@ -506,7 +544,7 @@ impl<A: Attach> Managed<A> {
         resident: Resident<A>,
         lane: Lanes,
         capacity: std::num::NonZeroUsize,
-        supervision: harmos::services::ServicePolicy,
+        supervision: harmos::operations::OperationPolicy,
     ) -> Self {
         let host = Host {
             ready: None,
@@ -514,7 +552,6 @@ impl<A: Attach> Managed<A> {
             lane,
             capacity,
             supervision,
-            services: runtime.services.clone(),
             operations: runtime.operations.clone(),
             retirement_gate: Arc::default(),
         };
@@ -561,7 +598,7 @@ impl<A: Attach> Managed<A> {
             )
     }
 
-    pub(crate) async fn call<O>(&self, request: O::Request) -> harmos::Result<O::Response>
+    pub(crate) async fn call_as<O>(&self, request: O::Request) -> harmos::Result<O::Response>
     where
         O: harmos::operations::WireOperation,
         O::Request: harmos::Message + harmos::schema::Described,
@@ -668,7 +705,7 @@ impl<A: Attach> PluginLifecycle for Host<A> {
     }
     fn prepare(&mut self, _: &PluginDefinition) -> harmos::Result<Backends<A>> {
         Ok(PluginBackend::Sidecar(Backend {
-            services: Some(self.services.clone()),
+            services: Some(self.operations.clone()),
             retirement_gate: self.retirement_gate.clone(),
             ..Backend::default()
         }))
@@ -689,7 +726,7 @@ impl<A: Attach> PluginLifecycle for Host<A> {
         let resident = self.resident.clone().routed(router);
         self.ready = Some(resident.ready());
         backend.resident = Some(resident.clone());
-        self.services.register(
+        self.operations.register_service(
             harmos::services::ServiceDefinition {
                 id: definition.id.clone(),
                 policy: self.supervision,
@@ -697,11 +734,7 @@ impl<A: Attach> PluginLifecycle for Host<A> {
             move |_: Arc<()>| resident.clone(),
         )?;
         backend.registered = true;
-        backend.lease = Some(
-            self.services
-                .activate(&definition.id, &self.services.root_scope())
-                .await?,
-        );
+        backend.lease = Some(self.operations.submit_resident(&definition.id).await?);
         let native = tokio::time::timeout(
             Duration::from_secs(5),
             backend.resident.as_ref().unwrap().staged_operations(),
@@ -785,7 +818,7 @@ impl<A: Attach> PluginLifecycle for Host<A> {
                 .services
                 .as_ref()
                 .unwrap()
-                .unregister(&definition.id)
+                .unregister_resident(&definition.id)
                 .await?;
         }
         backend.registered = false;
@@ -831,10 +864,8 @@ impl<S: Attach> Attach for Advertised<S> {
     fn observers(&self) -> Vec<harmos_contract::inventory::observers::Declaration> {
         self.source.observers()
     }
-    fn observer_controls(
-        &self,
-    ) -> harmos_contract::Result<Option<[harmos::operations::Contract; 2]>> {
-        self.source.observer_controls()
+    fn observer_control(&self) -> harmos_contract::Result<Option<harmos::operations::Contract>> {
+        self.source.observer_control()
     }
     fn listener_declarations(
         &self,
@@ -869,7 +900,7 @@ pub(crate) fn definition<A: Attach>(source: &A, configuration: Vec<u8>) -> Plugi
             lifecycle: source.sdk_lifecycle().unwrap(),
             streams: source.publications(),
             observers: source.observers(),
-            observer_controls: source.observer_controls().unwrap(),
+            observer_control: source.observer_control().unwrap(),
             listeners: source.listener_declarations().unwrap().unwrap_or_default(),
             ..PluginContributions::default()
         },
@@ -878,6 +909,59 @@ pub(crate) fn definition<A: Attach>(source: &A, configuration: Vec<u8>) -> Plugi
 
 /* === Private Functions === */
 fn notices(_: &Service<Bank>, _: Notice) {}
+
+// Drives submitted children through the sidecar binding of the host capability.
+async fn submitted(
+    host: &harmos::plugin::sidecar::Supervisor,
+    counts: &Counts,
+) -> Result<(), harmos_sidecar::CallError> {
+    use harmos::operations::instance::Phase;
+    use harmos::operations::{Host, Instance};
+
+    // Status, Then Join
+    let joined = host.submit_as::<Refresh>(()).await?;
+    counts.refresh_started.notified().await;
+    let status = joined.status().await?;
+    assert_eq!(status.phase, Phase::Running);
+    counts.refresh_release.notify_one();
+    joined.join().await?;
+
+    // Cancel, Then Join
+    let cancelled = host.submit_as::<Refresh>(()).await?;
+    counts.refresh_started.notified().await;
+    assert!(Instance::cancel_and_join(cancelled).await.is_err());
+
+    // Dropping The Handle Releases The Child
+    let dropped = host.submit_as::<Refresh>(()).await?;
+    counts.refresh_started.notified().await;
+    let cleaned = counts.refresh_cleaned.load(Ordering::SeqCst);
+    drop(dropped);
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while counts.refresh_cleaned.load(Ordering::SeqCst) == cleaned {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("a dropped instance is cancelled");
+
+    // Detaching Keeps The Child Running Within This Attempt
+    let detached = host.submit_as::<Refresh>(()).await?;
+    counts.refresh_started.notified().await;
+    let id = Instance::detach(detached);
+    // Built-ins are ordinary requirements: an undeclared caller is refused.
+    let refused = host.call(harmos::builtin::Status::of(id)).await;
+    *counts.detached_status.lock().unwrap() = refused.err().map(|error| error.to_string());
+    counts.refresh_release.notify_one();
+    // Without a handle the child still runs while this attempt lives.
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while counts.refresh_completed.load(Ordering::SeqCst) < 2 {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("a detached child runs on");
+    Ok(())
+}
 
 fn source(counts: Arc<Counts>) -> Source {
     let id = NEXT_SEED
@@ -936,7 +1020,7 @@ fn contract_scenario() {
                         let mut fixture = Managed::new(source, Lanes::NativeOpen).await;
                         assert!(fixture.initialize().await.is_err());
                         let status = service_status(
-                            fixture.runtime.services.subscribe(),
+                            fixture.runtime.operations.watch_residents(),
                             "operation-handshake",
                             |status| matches!(status, ServiceStatus::Inactive { .. }),
                         )
@@ -1016,7 +1100,7 @@ fn contract_scenario() {
                     let counts = Arc::new(Counts::default());
                     let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
                     fixture.initialize().await.unwrap();
-                    fixture.call::<Read>(()).await.unwrap();
+                    fixture.call_as::<Read>(()).await.unwrap();
                     assert_eq!(counts.prepared.load(Ordering::SeqCst), 1);
                     assert_eq!(counts.runs.load(Ordering::SeqCst), 2);
                     assert_eq!(counts.operation_initialized.load(Ordering::SeqCst), 1);
@@ -1039,7 +1123,7 @@ fn contract_scenario() {
                     let counts = Arc::new(Counts::default());
                     let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
                     fixture.initialize().await.unwrap();
-                    fixture.call::<Read>(()).await.unwrap();
+                    fixture.call_as::<Read>(()).await.unwrap();
                     let mut context = harmos::operations::CallContext::default();
                     context.insert(Principal).unwrap();
                     context
@@ -1051,6 +1135,36 @@ fn contract_scenario() {
                         [None, None, Some("lab".to_owned()), Some("lab".to_owned())],
                         "every retried attempt carries the admitted values; local ones stay"
                     );
+                    fixture.shutdown().await.unwrap();
+                    fixture.runtime.stop().await.unwrap();
+                });
+        });
+    }
+    {
+        scenario_runtime::check("submitted_child_controls", || {
+            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
+            scenario_executor
+                .enable_all()
+                .build()
+                .expect("scenario runtime is valid")
+                .block_on(async {
+                    let counts = Arc::new(Counts::default());
+                    counts.submit_child.store(true, Ordering::SeqCst);
+                    counts.refresh_hold.store(true, Ordering::SeqCst);
+                    let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
+                    harmos::builtin::Catalog::register(
+                        &fixture.runtime.operations,
+                        "host",
+                        Lanes::NativeOpen,
+                    )
+                    .unwrap();
+                    fixture.initialize().await.unwrap();
+                    fixture.call_as::<Read>(()).await.unwrap();
+                    assert_eq!(counts.children.load(Ordering::SeqCst), 4);
+                    assert_eq!(counts.refresh_completed.load(Ordering::SeqCst), 2);
+                    assert_eq!(counts.refresh_cleaned.load(Ordering::SeqCst), 4);
+                    let refused = counts.detached_status.lock().unwrap().take().unwrap();
+                    assert!(refused.contains("may not invoke operation"), "{refused}");
                     fixture.shutdown().await.unwrap();
                     fixture.runtime.stop().await.unwrap();
                 });
@@ -1071,7 +1185,7 @@ fn contract_scenario() {
                     let runtime = &fixture.runtime;
                     counts.fail_cleanup.store(true, Ordering::SeqCst);
                     assert!(matches!(
-                        fixture.call::<Read>(()).await,
+                        fixture.call_as::<Read>(()).await,
                         Err(harmos::Error::OperationFinalization { .. })
                     ));
                     assert!(runtime.operations.unregister(Read::ID).await.is_err());
@@ -1102,7 +1216,7 @@ fn contract_scenario() {
                     fixture.initialize().await.unwrap();
                     counts.fail_prepare.store(true, Ordering::SeqCst);
                     let Err(harmos::Error::OperationFailed { source, .. }) =
-                        fixture.call::<Read>(()).await
+                        fixture.call_as::<Read>(()).await
                     else {
                         panic!("preparation is refused before any attempt")
                     };
@@ -1136,7 +1250,7 @@ fn contract_scenario() {
                         };
                         let mut fixture = Managed::new(source(counts.clone()), lane).await;
                         fixture.initialize().await.unwrap();
-                        let result = fixture.call::<Read>(()).await;
+                        let result = fixture.call_as::<Read>(()).await;
                         if serial {
                             assert!(matches!(result, Err(harmos::Error::OperationFailed { .. })));
                             assert_eq!(counts.children.load(Ordering::SeqCst), 0);
@@ -1148,7 +1262,7 @@ fn contract_scenario() {
                             assert_eq!(counts.finalized.load(Ordering::SeqCst), 1);
                         }
                         let saved = counts.saved.lock().unwrap().take().unwrap();
-                        assert!(saved.operation::<Refresh>(()).await.is_err());
+                        assert!(saved.call_as::<Refresh>(()).await.is_err());
                         fixture.shutdown().await.unwrap();
                         fixture.runtime.stop().await.unwrap();
                     }
@@ -1156,7 +1270,7 @@ fn contract_scenario() {
         });
     }
     {
-        scenario_runtime::check("initialization_failure_cleans", || {
+        scenario_runtime::check("initialization_failure_skips_cleanup", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
 
@@ -1164,7 +1278,7 @@ fn contract_scenario() {
     let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
     fixture.initialize().await.unwrap();
     counts.fail_initialize.store(true, Ordering::SeqCst);
-    let Err(harmos::Error::OperationFailed { source, .. }) = fixture.call::<Read>(()).await else {
+    let Err(harmos::Error::OperationFailed { source, .. }) = fixture.call_as::<Read>(()).await else {
         panic!("initialization returns the original failure")
     };
     assert!(
@@ -1174,8 +1288,9 @@ fn contract_scenario() {
     assert_eq!(counts.prepared.load(Ordering::SeqCst), 1);
     assert_eq!(counts.operation_initialized.load(Ordering::SeqCst), 1);
     assert_eq!(counts.runs.load(Ordering::SeqCst), 0);
-    assert_eq!(counts.stopped.load(Ordering::SeqCst), 1);
-    assert_eq!(counts.finalized.load(Ordering::SeqCst), 1);
+    // A failed or cancelled initialization owns no instance to clean up.
+    assert_eq!(counts.stopped.load(Ordering::SeqCst), 0);
+    assert_eq!(counts.finalized.load(Ordering::SeqCst), 0);
     fixture.shutdown().await.unwrap();
     fixture.runtime.stop().await.unwrap();
 
@@ -1194,7 +1309,7 @@ fn contract_scenario() {
                     let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
                     fixture.initialize().await.unwrap();
                     counts.initialization_child.store(true, Ordering::SeqCst);
-                    fixture.call::<Read>(()).await.unwrap();
+                    fixture.call_as::<Read>(()).await.unwrap();
                     assert_eq!(counts.operation_initialized.load(Ordering::SeqCst), 1);
                     assert_eq!(counts.children.load(Ordering::SeqCst), 1);
                     assert_eq!(counts.stale_refused.load(Ordering::SeqCst), 1);
@@ -1246,8 +1361,9 @@ fn contract_scenario() {
                     );
                     assert_eq!(counts.operation_initialized.load(Ordering::SeqCst), 1);
                     assert_eq!(counts.runs.load(Ordering::SeqCst), 0);
-                    assert_eq!(counts.stopped.load(Ordering::SeqCst), 1);
-                    assert_eq!(counts.finalized.load(Ordering::SeqCst), 1);
+                    // A failed or cancelled initialization owns no instance to clean up.
+                    assert_eq!(counts.stopped.load(Ordering::SeqCst), 0);
+                    assert_eq!(counts.finalized.load(Ordering::SeqCst), 0);
                     fixture.shutdown().await.unwrap();
                     fixture.runtime.stop().await.unwrap();
                 });

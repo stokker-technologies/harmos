@@ -104,7 +104,7 @@ pub(super) async fn restart(source: &Fixture) -> Fixture {
         settings,
     )
     .unwrap();
-    storage.start(&runtime.services).await.unwrap();
+    storage.start(&runtime).await.unwrap();
     Fixture {
         runtime,
         storage,
@@ -296,7 +296,7 @@ pub(super) fn contract_scenario() {
                         config(),
                     )
                     .unwrap();
-                    restored.start(&f.runtime.services).await.unwrap();
+                    restored.start(&f.runtime).await.unwrap();
                     let mut resumed = restored.resume_file(&token).await.unwrap();
                     assert_eq!(resumed.length(), 17);
                     resumed.abort().await.unwrap();
@@ -369,7 +369,7 @@ pub(super) fn contract_scenario() {
                         .store(3, Ordering::SeqCst);
                     let request =
                         super::super::operations::save_request(&f, f.storage.cursor_accepted());
-                    let save = f.runtime.operations.call::<Save>(request.clone());
+                    let save = f.runtime.operations.call_as::<Save>(request.clone());
                     let append = async {
                         f.data.control.checkpoint_entered.notified().await;
                         f.data
@@ -381,7 +381,7 @@ pub(super) fn contract_scenario() {
                     let (result, ()) = tokio::join!(save, append);
                     result.unwrap();
                     producer.write_all(b"later").await.unwrap();
-                    f.runtime.operations.call::<Save>(request).await.unwrap();
+                    f.runtime.operations.call_as::<Save>(request).await.unwrap();
                     assert_eq!(f.data.control.checkpoint_failures.load(Ordering::SeqCst), 0);
                     assert_eq!(
                         f.data.saved_productions.lock().unwrap()["save-retry"].1,
@@ -444,7 +444,7 @@ pub(super) fn contract_scenario() {
                             settings,
                         )
                         .unwrap();
-                        assert!(storage.start(&runtime.services).await.is_err());
+                        assert!(storage.start(&runtime).await.is_err());
                         storage.close().await.unwrap();
                         assert_eq!(storage.status().read_bytes, 0);
                         assert_eq!(storage.status().pending_bytes, 0);

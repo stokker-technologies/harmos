@@ -31,7 +31,7 @@ use crate::support::Bank;
 use contract::{Blob, Echo, Nested, Operations, Probe};
 use harmos::operations::{Context, Operation};
 use harmos::plugin::sidecar::{Executable, Notice, Supervised};
-use harmos::{Runtime, services::Service, services::ServicePolicy, services::ServiceStatus};
+use harmos::{Runtime, services::Service, services::ServiceStatus};
 
 /* === Constants === */
 const CAPACITY: usize = 2;
@@ -52,7 +52,7 @@ struct Callback {
 
 struct Fixture {
     runtime: Runtime<Bank>,
-    _lease: harmos::services::ServiceLease<Bank>,
+    _lease: harmos::operations::OperationInstance<harmos::operations::resident::Activation>,
     mode: Arc<AtomicUsize>,
     calls: Arc<AtomicUsize>,
     root: tempfile::TempDir,
@@ -75,8 +75,12 @@ impl Operation for CallbackPublication {
     type Error = harmos::Error;
     type Endpoints = ();
     type Context<'a> = Context<'a>;
-    fn new(owner: Arc<Callback>) -> harmos::Result<Self> {
-        let publication = harmos::plugin::sidecar::Publish::new(Arc::clone(&owner.resident))?;
+    async fn initialize<'ctx>(
+        owner: Arc<Callback>,
+        context: Self::Context<'ctx>,
+    ) -> harmos::Result<Self> {
+        let resident = Arc::clone(&owner.resident);
+        let publication = harmos::plugin::sidecar::Publish::initialize(resident, context).await?;
         Ok(Self { owner, publication })
     }
     async fn run<'ctx>(
@@ -94,7 +98,7 @@ impl Operation for CallbackPublication {
                     _ => request.sequence.unwrap(),
                 };
                 let echoed = context
-                    .call::<Echo>(Blob {
+                    .call_as::<Echo>(Blob {
                         id,
                         data: request.payload.clone(),
                     })
@@ -142,13 +146,13 @@ impl Fixture {
             )
             .unwrap();
         runtime
-            .services
-            .register(
+            .operations
+            .register_service(
                 harmos::services::ServiceDefinition {
                     id: "process".into(),
-                    policy: ServicePolicy {
-                        credit: 0,
-                        ..ServicePolicy::default()
+                    policy: harmos::operations::OperationPolicy {
+                        restart: harmos::operations::RestartPolicy::Never,
+                        ..harmos::services::POLICY
                     },
                 },
                 move |_: Arc<()>| {
@@ -163,12 +167,8 @@ impl Fixture {
                 },
             )
             .unwrap();
-        let lease = runtime
-            .services
-            .activate("process", &runtime.services.root_scope())
-            .await
-            .unwrap();
-        service_status(runtime.services.subscribe(), "process", |status| {
+        let lease = runtime.operations.submit_resident("process").await.unwrap();
+        service_status(runtime.operations.watch_residents(), "process", |status| {
             matches!(status, ServiceStatus::Running { .. })
         })
         .await;
@@ -236,7 +236,10 @@ fn contract_scenario() {
                     let request = blob(41, 256 * 1024);
                     let result = tokio::time::timeout(
                         Duration::from_secs(5),
-                        fixture.runtime.operations.call::<Nested>(request.clone()),
+                        fixture
+                            .runtime
+                            .operations
+                            .call_as::<Nested>(request.clone()),
                     )
                     .await
                     .unwrap()
@@ -270,7 +273,7 @@ fn contract_scenario() {
                     let pending = fixture
                         .runtime
                         .operations
-                        .submit::<Nested>(blob(42, 512))
+                        .submit_as::<Nested>(blob(42, 512))
                         .unwrap();
                     marked(fixture.path(), "echo-started-0").await;
                     pending.cancel();
@@ -290,7 +293,7 @@ fn contract_scenario() {
                         *fixture
                             .runtime
                             .operations
-                            .call::<Nested>(blob(43, 512))
+                            .call_as::<Nested>(blob(43, 512))
                             .await
                             .unwrap(),
                         blob(43, 512)
@@ -313,7 +316,7 @@ fn contract_scenario() {
                     let pending = fixture
                         .runtime
                         .operations
-                        .submit::<Nested>(blob(48, 512))
+                        .submit_as::<Nested>(blob(48, 512))
                         .unwrap();
                     marked(fixture.path(), "echo-started-0").await;
 
@@ -342,7 +345,7 @@ fn contract_scenario() {
                         *fixture
                             .runtime
                             .operations
-                            .call::<Nested>(blob(49, 512))
+                            .call_as::<Nested>(blob(49, 512))
                             .await
                             .unwrap(),
                         blob(49, 512)
@@ -365,14 +368,14 @@ fn contract_scenario() {
                         fixture
                             .runtime
                             .operations
-                            .call::<Probe>(blob(44, harmos_sidecar::Frame::LIMIT + 1))
+                            .call_as::<Probe>(blob(44, harmos_sidecar::Frame::LIMIT + 1))
                             .await
                             .is_err()
                     );
                     let prepared = fixture
                         .runtime
                         .operations
-                        .call::<Probe>(blob(u64::MAX, 0))
+                        .call_as::<Probe>(blob(u64::MAX, 0))
                         .await
                         .unwrap();
                     assert_eq!(
@@ -384,7 +387,7 @@ fn contract_scenario() {
                         *fixture
                             .runtime
                             .operations
-                            .call::<Probe>(request.clone())
+                            .call_as::<Probe>(request.clone())
                             .await
                             .unwrap(),
                         request
@@ -406,15 +409,17 @@ fn contract_scenario() {
                     assert!(
                         tokio::time::timeout(
                             Duration::from_secs(5),
-                            fixture.runtime.operations.call::<Nested>(blob(46, 512))
+                            fixture.runtime.operations.call_as::<Nested>(blob(46, 512))
                         )
                         .await
                         .unwrap()
                         .is_err()
                     );
-                    service_status(fixture.runtime.services.subscribe(), "process", |status| {
-                        matches!(status, ServiceStatus::Inactive { .. })
-                    })
+                    service_status(
+                        fixture.runtime.operations.watch_residents(),
+                        "process",
+                        |status| matches!(status, ServiceStatus::Inactive { .. }),
+                    )
                     .await;
                     assert_eq!(count(fixture.path(), "started"), 1);
                     assert_eq!(
@@ -487,14 +492,11 @@ fn contract_scenario() {
                         )
                         .unwrap();
                     runtime
-                        .services
-                        .register(
+                        .operations
+                        .register_service(
                             harmos::services::ServiceDefinition {
                                 id: "process".into(),
-                                policy: ServicePolicy {
-                                    credit: 0,
-                                    ..ServicePolicy::default()
-                                },
+                                policy: harmos::operations::OperationPolicy { restart: harmos::operations::RestartPolicy::Never, ..harmos::services::POLICY },
                             },
                             move |_: Arc<()>| {
                                 harmos::plugin::sidecar::Managed::new_executable_catalog::<Operations>(
@@ -509,11 +511,11 @@ fn contract_scenario() {
                         )
                         .unwrap();
                     let _lease = runtime
-                        .services
-                        .activate("process", &runtime.services.root_scope())
+                        .operations
+                        .submit_resident("process")
                         .await
                         .unwrap();
-                    service_status(runtime.services.subscribe(), "process", |status| {
+                    service_status(runtime.operations.watch_residents(), "process", |status| {
                         matches!(status, ServiceStatus::Running { .. })
                     })
                     .await;

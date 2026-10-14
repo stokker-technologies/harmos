@@ -38,7 +38,8 @@ use harmos::grpc::authentication::{Authenticate, Authentication, Authenticator};
 use harmos::grpc::middleware::{Enter, Invocation, Middleware, Observation};
 use harmos::grpc::{Codec, DecodeSettings, EncodeSettings};
 use harmos::operations::{
-    Context, Operation, OperationDeclaration, OperationPolicy, RetryPolicy, StreamSettings,
+    Context, Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy,
+    StreamSettings,
 };
 use harmos::{Error, Runtime};
 
@@ -157,6 +158,7 @@ impl OperationDeclaration for Who {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 }
 impl Operation for Read {
@@ -165,7 +167,7 @@ impl Operation for Read {
     type Error = Error;
     type Endpoints = ();
     type Context<'a> = Context<'a>;
-    fn new(_: Arc<()>) -> harmos::Result<Self> {
+    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> harmos::Result<Self> {
         Ok(Self)
     }
     async fn run<'a>(
@@ -258,7 +260,7 @@ impl Operation for Guard {
     type Error = Error;
     type Endpoints = ();
     type Context<'a> = Context<'a>;
-    fn new(_: Arc<()>) -> harmos::Result<Self> {
+    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> harmos::Result<Self> {
         Ok(Self)
     }
     async fn run<'a>(
@@ -305,7 +307,7 @@ impl Operation for Descend {
     type Error = Error;
     type Endpoints = ();
     type Context<'a> = Context<'a>;
-    fn new(_: Arc<()>) -> harmos::Result<Self> {
+    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> harmos::Result<Self> {
         Ok(Self)
     }
     async fn run<'a>(
@@ -315,7 +317,7 @@ impl Operation for Descend {
         _: &mut (),
     ) -> harmos::Result<harmos::operations::Response<Reply>> {
         let result: ::core::result::Result<Reply, Self::Error> = async move {
-            let response = context.call::<Guarded>(Ask {}).await?;
+            let response = context.call_as::<Guarded>(Ask {}).await?;
             Ok(Reply {
                 actor: response.actor.clone(),
             })
@@ -387,7 +389,7 @@ impl Operation for Download {
     type Error = Error;
     type Endpoints = harmos::operations::StreamOutput<Reply>;
     type Context<'a> = Context<'a>;
-    fn new(_: Arc<()>) -> harmos::Result<Self> {
+    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> harmos::Result<Self> {
         Ok(Self)
     }
     async fn run<'a>(
@@ -417,7 +419,7 @@ impl Operation for Reject {
     type Error = tonic::Status;
     type Endpoints = ();
     type Context<'a> = Context<'a>;
-    fn new(_: Arc<()>) -> Result<Self, tonic::Status> {
+    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, tonic::Status> {
         Ok(Self)
     }
     async fn run<'a>(
@@ -437,7 +439,7 @@ impl Operation for Crash {
     type Error = std::io::Error;
     type Endpoints = ();
     type Context<'a> = Context<'a>;
-    fn new(_: Arc<()>) -> Result<Self, std::io::Error> {
+    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, std::io::Error> {
         Ok(Self)
     }
     async fn run<'a>(
@@ -457,7 +459,7 @@ impl Operation for RejectStream {
     type Error = tonic::Status;
     type Endpoints = harmos::operations::StreamOutput<Reply>;
     type Context<'a> = Context<'a>;
-    fn new(_: Arc<()>) -> Result<Self, tonic::Status> {
+    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, tonic::Status> {
         Ok(Self)
     }
     async fn run<'a>(
@@ -477,7 +479,7 @@ impl Operation for CrashStream {
     type Error = std::io::Error;
     type Endpoints = harmos::operations::StreamOutput<Reply>;
     type Context<'a> = Context<'a>;
-    fn new(_: Arc<()>) -> Result<Self, std::io::Error> {
+    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, std::io::Error> {
         Ok(Self)
     }
     async fn run<'a>(
@@ -497,7 +499,7 @@ impl Operation for RejectUpload {
     type Error = tonic::Status;
     type Endpoints = harmos::operations::StreamInput<Reply>;
     type Context<'a> = Context<'a>;
-    fn new(_: Arc<()>) -> Result<Self, tonic::Status> {
+    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, tonic::Status> {
         Ok(Self)
     }
     async fn run<'a>(
@@ -520,7 +522,7 @@ impl Operation for RejectExchange {
         harmos::operations::StreamOutput<Reply>,
     );
     type Context<'a> = Context<'a>;
-    fn new(_: Arc<()>) -> Result<Self, Error> {
+    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, Error> {
         Ok(Self)
     }
     async fn run<'a>(
@@ -548,7 +550,7 @@ impl Operation for CrashUpload {
     type Error = std::io::Error;
     type Endpoints = harmos::operations::StreamInput<Reply>;
     type Context<'a> = Context<'a>;
-    fn new(_: Arc<()>) -> Result<Self, std::io::Error> {
+    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, std::io::Error> {
         Ok(Self)
     }
     async fn run<'a>(
@@ -571,7 +573,7 @@ impl Operation for CrashExchange {
         harmos::operations::StreamOutput<Reply>,
     );
     type Context<'a> = Context<'a>;
-    fn new(_: Arc<()>) -> Result<Self, std::io::Error> {
+    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, std::io::Error> {
         Ok(Self)
     }
     async fn run<'a>(
@@ -603,7 +605,7 @@ impl Operation for Upload {
     type Error = Error;
     type Endpoints = harmos::operations::StreamInput<Reply>;
     type Context<'a> = Context<'a>;
-    fn new(_: Arc<()>) -> harmos::Result<Self> {
+    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> harmos::Result<Self> {
         Ok(Self)
     }
     async fn run<'a>(
@@ -649,7 +651,7 @@ impl Operation for Exchange {
         harmos::operations::StreamOutput<Reply>,
     );
     type Context<'a> = Context<'a>;
-    fn new(_: Arc<()>) -> harmos::Result<Self> {
+    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> harmos::Result<Self> {
         Ok(Self)
     }
     async fn run<'a>(
@@ -695,7 +697,10 @@ impl Operation for Hold {
     type Error = Error;
     type Endpoints = harmos::operations::StreamOutput<Reply>;
     type Context<'a> = Context<'a>;
-    fn new(stopped: Arc<Self::Resources>) -> harmos::Result<Self> {
+    async fn initialize<'ctx>(
+        stopped: Arc<Self::Resources>,
+        _: Self::Context<'ctx>,
+    ) -> harmos::Result<Self> {
         Ok(Self { stopped })
     }
     async fn run<'a>(
@@ -832,6 +837,33 @@ async fn external_call(
         )
         .await?;
     Ok(response.into_inner().actor.clone())
+}
+
+// One unary call to a built-in operation over its declared gRPC route.
+async fn builtin_call<Q, R>(
+    channel: tonic::transport::Channel,
+    path: &'static str,
+    request: Q,
+) -> Result<R, tonic::Status>
+where
+    Q: harmos::Protobuf + Send + Sync + 'static,
+    R: harmos::Protobuf + harmos::MemorySize + Clone + Send + Sync + 'static,
+{
+    let mut client = tonic::client::Grpc::new(channel);
+    client
+        .ready()
+        .await
+        .map_err(|_| tonic::Status::unavailable("channel"))?;
+    let request = tonic::Request::new(harmos::operations::Response::new(request));
+    let (decode, encode) = limits();
+    let response: tonic::Response<harmos::operations::StreamItem<R>> = client
+        .unary(
+            request,
+            http::uri::PathAndQuery::from_static(path),
+            Codec::<R, harmos::operations::Response<Q>>::new(decode, encode)?,
+        )
+        .await?;
+    Ok((*response.into_inner()).clone())
 }
 
 async fn external_catalog(
@@ -1002,6 +1034,120 @@ async fn failures(
 
 pub(super) fn contract_scenario() {
     {
+        scenario_runtime::check("builtin_operations_over_grpc", || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    use harmos::builtin::{Cancel, InstanceState, Status};
+                    #[harmos::operation(
+                        request = (),
+                        response = (),
+                        id = "grpc.parked",
+                        policy = OperationPolicy {
+                            timeout: Duration::from_secs(5),
+                            attempt_timeout: Duration::from_secs(5),
+                            retries: RetryPolicy::Never,
+                            restart: RestartPolicy::Never,
+                        },
+                    )]
+                    struct ParkedContract;
+                    struct Parked(Arc<tokio::sync::Notify>);
+                    impl Operation for Parked {
+                        type Declaration = ParkedContract;
+                        type Resources = tokio::sync::Notify;
+                        type Error = Error;
+                        type Context<'a> = Context<'a>;
+                        type Endpoints = ();
+                        async fn initialize<'ctx>(
+                            release: Arc<tokio::sync::Notify>,
+                            _: Self::Context<'ctx>,
+                        ) -> Result<Self, Error> {
+                            Ok(Self(release))
+                        }
+                        async fn run<'ctx>(
+                            &mut self,
+                            _: Self::Context<'ctx>,
+                            _: &mut (),
+                            _: &mut Self::Endpoints,
+                        ) -> Result<harmos::operations::Response<()>, Error>
+                        {
+                            self.0.notified().await;
+                            Ok(().into())
+                        }
+                    }
+
+                    let runtime = Runtime::<App>::builder((), ())
+                        .register(Lanes::catalog())
+                        .runtime()
+                        .await
+                        .unwrap();
+                    let release = Arc::new(tokio::sync::Notify::new());
+                    runtime
+                        .operations
+                        .register_operation::<Parked>("app", Lanes::Open, release.clone())
+                        .unwrap();
+                    harmos::builtin::Catalog::register(&runtime.operations, "host", Lanes::Open)
+                        .unwrap();
+                    let paths = runtime
+                        .operations
+                        .grpc_methods()
+                        .into_iter()
+                        .filter_map(|method| method.contract.grpc().map(|grpc| grpc.path()))
+                        .collect::<Vec<_>>();
+                    assert!(paths.contains(&"/harmos.host.v1.Operations/Status".to_owned()));
+                    assert!(paths.contains(&"/harmos.host.v1.Operations/Cancel".to_owned()));
+
+                    let attached = runtime.grpc().attach(settings()).await.unwrap();
+                    let channel = tonic::transport::Endpoint::from_shared(format!(
+                        "http://{}",
+                        attached.local_addr()
+                    ))
+                    .unwrap()
+                    .connect()
+                    .await
+                    .unwrap();
+                    let parked = runtime.operations.submit_as::<ParkedContract>(()).unwrap();
+                    let id = parked.id();
+
+                    // An External Caller Neither Sees Nor Cancels A Host Instance
+                    let status = builtin_call::<Status, InstanceState>(
+                        channel.clone(),
+                        "/harmos.host.v1.Operations/Status",
+                        Status::of(id),
+                    )
+                    .await;
+                    assert!(status.is_err());
+                    let unknown = harmos::operations::OperationInstanceId::new(u64::MAX);
+                    let cancel = builtin_call::<Cancel, InstanceState>(
+                        channel.clone(),
+                        "/harmos.host.v1.Operations/Cancel",
+                        Cancel::of(unknown),
+                    )
+                    .await;
+                    assert!(cancel.is_err());
+                    let foreign = builtin_call::<Cancel, InstanceState>(
+                        channel.clone(),
+                        "/harmos.host.v1.Operations/Cancel",
+                        Cancel::of(id),
+                    )
+                    .await;
+                    assert_eq!(foreign.unwrap_err().code(), cancel.unwrap_err().code());
+                    assert!(!parked.status().cancellation_requested());
+
+                    // The Submitting Host Reads And Cancels Its Own Instance
+                    let owned = runtime.operations.call(Status::of(id)).await.unwrap();
+                    assert_eq!(owned.phase, "running");
+                    let cancelled = runtime.operations.call(Cancel::of(id)).await.unwrap();
+                    assert!(cancelled.cancellation_requested);
+                    assert!(parked.await.is_err());
+                    drop(attached);
+                    runtime.stop().await.unwrap();
+                });
+        });
+    }
+    {
         scenario_runtime::check("external_authority_parity", || {
             tokio::runtime::Builder::new_current_thread()
                 .enable_all()
@@ -1031,7 +1177,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         runtime
                             .operations
-                            .call::<Guarded>(Ask {})
+                            .call_as::<Guarded>(Ask {})
                             .await
                             .unwrap()
                             .actor,
@@ -1176,7 +1322,7 @@ pub(super) fn contract_scenario() {
                         runtime
                             .operations
                             .with_context(context)
-                            .call::<Descendant>(Ask {})
+                            .call_as::<Descendant>(Ask {})
                             .await
                             .unwrap()
                             .actor,

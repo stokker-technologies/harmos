@@ -19,13 +19,14 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use harmos::operations::{Context, OperationPolicy, RetryPolicy};
+use harmos::operations::{Context, OperationPolicy, RestartPolicy, RetryPolicy};
 
 /* === Constants === */
 const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(1),
     attempt_timeout: Duration::from_secs(1),
     retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
 };
 
 /* === Macros === */
@@ -42,7 +43,7 @@ struct Read;
 /* === Implementations === */
 #[harmos::operation(policy = POLICY, input = u32)]
 impl Read {
-    fn new(_: Arc<()>) -> Self { Self }
+    async fn initialize(_: Arc<()>, _: Context<'_>) -> Self { Self }
     async fn run(&mut self, _: Context<'_>, _: &(), _: &mut harmos::operations::StreamInput<u64>) -> Result<(), harmos::Error> {
         Ok(())
     }

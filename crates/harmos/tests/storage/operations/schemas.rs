@@ -51,7 +51,7 @@ impl<D: harmos::operations::OperationDeclaration> harmos::operations::Operation 
     type Error = harmos::Error;
     type Endpoints = ();
     type Context<'a> = harmos::operations::Context<'a>;
-    fn new(_: Arc<()>) -> harmos::Result<Self> {
+    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> harmos::Result<Self> {
         Ok(Self(std::marker::PhantomData))
     }
     async fn run<'a>(
@@ -215,7 +215,7 @@ pub(super) fn contract_scenario() {
                     let repeated = f
                         .runtime
                         .operations
-                        .call::<WriteSchema>(request.clone())
+                        .call_as::<WriteSchema>(request.clone())
                         .await
                         .unwrap();
                     assert_eq!(*repeated, cursor);
@@ -227,7 +227,7 @@ pub(super) fn contract_scenario() {
                     assert!(
                         f.runtime
                             .operations
-                            .call::<WriteSchema>(conflict)
+                            .call_as::<WriteSchema>(conflict)
                             .await
                             .is_err()
                     );
@@ -264,7 +264,7 @@ pub(super) fn contract_scenario() {
                     for name in ["first", "second", "third"] {
                         f.runtime
                             .operations
-                            .call::<WriteSchema>(request(&f, name))
+                            .call_as::<WriteSchema>(request(&f, name))
                             .await
                             .unwrap();
                     }
@@ -316,7 +316,7 @@ pub(super) fn contract_scenario() {
                     let request = request(&f, "nested");
                     f.runtime
                         .operations
-                        .call::<WriteSchema>(request.clone())
+                        .call_as::<WriteSchema>(request.clone())
                         .await
                         .unwrap();
                     let mut changed = request.schema.graph().clone();
@@ -325,7 +325,7 @@ pub(super) fn contract_scenario() {
                     assert!(
                         f.runtime
                             .operations
-                            .call::<WriteSchema>(WriteSchemaRequest {
+                            .call_as::<WriteSchema>(WriteSchemaRequest {
                                 mutation: request.mutation.clone(),
                                 schema: modified
                             })
@@ -359,7 +359,7 @@ pub(super) fn contract_scenario() {
                     let cursor = f
                         .runtime
                         .operations
-                        .call::<WriteSchema>(request.clone())
+                        .call_as::<WriteSchema>(request.clone())
                         .await
                         .unwrap();
                     f.data
@@ -370,7 +370,7 @@ pub(super) fn contract_scenario() {
                     let replay = f
                         .runtime
                         .operations
-                        .call::<WriteSchema>(request)
+                        .call_as::<WriteSchema>(request)
                         .await
                         .unwrap();
                     assert_eq!(*replay, *cursor);
@@ -407,7 +407,7 @@ pub(super) fn contract_scenario() {
                         settings.clone(),
                     )
                     .unwrap();
-                    storage.start(&runtime.services).await.unwrap();
+                    storage.start(&runtime).await.unwrap();
                     let f = Fixture {
                         runtime,
                         storage,
@@ -425,7 +425,7 @@ pub(super) fn contract_scenario() {
                     let request = request(&f, "graph-schema");
                     f.runtime
                         .operations
-                        .call::<WriteSchema>(request.clone())
+                        .call_as::<WriteSchema>(request.clone())
                         .await
                         .unwrap();
                     f.storage.flush().await.unwrap();

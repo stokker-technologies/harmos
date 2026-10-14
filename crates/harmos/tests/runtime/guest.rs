@@ -34,7 +34,8 @@ use crate::support;
 use crate::support::fixtures::component as load;
 use harmos::Message;
 use harmos::Runtime;
-use harmos::operations::{OperationDeclaration, OperationPolicy, RetryPolicy};
+use harmos::operations::Host as _;
+use harmos::operations::{OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
 use harmos::plugin::guest::{Error, Host};
 use harmos_sidecar::Attach;
 
@@ -75,6 +76,7 @@ impl OperationDeclaration for Reserved {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 
     type Response = Echoed;
@@ -185,7 +187,7 @@ fn contract_scenario() {
                     manager.initialize(&mut lifecycle).await.unwrap();
                     let refused = runtime
                         .operations
-                        .call::<Echo>(Echo { say: "grow".into() })
+                        .call_as::<Echo>(Echo { say: "grow".into() })
                         .await
                         .unwrap_err();
                     assert!(
@@ -197,7 +199,7 @@ fn contract_scenario() {
                     );
                     let after = runtime
                         .operations
-                        .call::<Echo>(Echo {
+                        .call_as::<Echo>(Echo {
                             say: "after".into(),
                         })
                         .await
@@ -246,7 +248,7 @@ fn contract_scenario() {
                     assert!(matches!(
                         runtime
                             .operations
-                            .call::<Echo>(Echo {
+                            .call_as::<Echo>(Echo {
                                 say: "egress:vendor".into(),
                             })
                             .await,
@@ -278,7 +280,7 @@ fn contract_scenario() {
                     // Verify Activation With Ordinary Egress, Not The Five-Millisecond Deadline Probe.
                     let response = runtime
                         .operations
-                        .call::<Echo>(Echo {
+                        .call_as::<Echo>(Echo {
                             say: "egress:vendor".into(),
                         })
                         .await
@@ -316,7 +318,7 @@ fn contract_scenario() {
                     manager.initialize(&mut lifecycle).await.unwrap();
                     let refused = runtime
                         .operations
-                        .call::<Echo>(Echo {
+                        .call_as::<Echo>(Echo {
                             say: "egress:other".into(),
                         })
                         .await
@@ -331,7 +333,7 @@ fn contract_scenario() {
                     assert_eq!(calls.load(Ordering::SeqCst), 0);
                     let accepted = runtime
                         .operations
-                        .call::<Echo>(Echo {
+                        .call_as::<Echo>(Echo {
                             say: "egress:vendor".into(),
                         })
                         .await
@@ -341,7 +343,7 @@ fn contract_scenario() {
                     assert_eq!(calls.load(Ordering::SeqCst), 1);
                     let refused = runtime
                         .operations
-                        .call::<Echo>(Echo {
+                        .call_as::<Echo>(Echo {
                             say: "egress:other".into(),
                         })
                         .await
@@ -370,7 +372,7 @@ fn contract_scenario() {
     manager.initialize(&mut lifecycle).await.unwrap();
     let answered = runtime
         .operations
-        .call::<Echo>(Echo {
+        .call_as::<Echo>(Echo {
             say: "the probe".into(),
         })
         .await
@@ -378,7 +380,7 @@ fn contract_scenario() {
     assert_eq!(answered.said, "heard the probe");
     let denied = runtime
         .operations
-        .call::<Echo>(Echo {
+        .call_as::<Echo>(Echo {
             say: "publish-foreign".into(),
         })
         .await
@@ -426,7 +428,7 @@ fn contract_scenario() {
 
     let refused = runtime
         .operations
-        .call::<Decline>(Decline {})
+        .call_as::<Decline>(Decline {})
         .await
         .unwrap_err();
     assert!(
@@ -438,7 +440,7 @@ fn contract_scenario() {
     assert_eq!(
         runtime
             .operations
-            .call::<Echo>(Echo {
+            .call_as::<Echo>(Echo {
                 say: "again".into()
             })
             .await
@@ -466,14 +468,18 @@ fn contract_scenario() {
                     let mut manager =
                         publications::Manager::new(lifecycle.candidate("idle").await).unwrap();
                     manager.initialize(&mut lifecycle).await.unwrap();
-                    let spun = runtime.operations.call::<Spin>(Spin {}).await.unwrap_err();
+                    let spun = runtime
+                        .operations
+                        .call_as::<Spin>(Spin {})
+                        .await
+                        .unwrap_err();
                     assert_eq!(
                         execution_error(&spun).downcast_ref::<wasmtime::Trap>(),
                         Some(&wasmtime::Trap::OutOfFuel)
                     );
                     let after = runtime
                         .operations
-                        .call::<Echo>(Echo {
+                        .call_as::<Echo>(Echo {
                             say: "anyone".into(),
                         })
                         .await
@@ -506,7 +512,11 @@ fn contract_scenario() {
                     let mut manager =
                         publications::Manager::new(lifecycle.candidate("idle").await).unwrap();
                     manager.initialize(&mut lifecycle).await.unwrap();
-                    let waited = runtime.operations.call::<Wait>(Wait {}).await.unwrap_err();
+                    let waited = runtime
+                        .operations
+                        .call_as::<Wait>(Wait {})
+                        .await
+                        .unwrap_err();
                     assert!(
                         matches!(
                             waited,
@@ -516,7 +526,7 @@ fn contract_scenario() {
                     );
                     let after = runtime
                         .operations
-                        .call::<Echo>(Echo {
+                        .call_as::<Echo>(Echo {
                             say: "anyone".into(),
                         })
                         .await
@@ -544,7 +554,11 @@ fn contract_scenario() {
                     let mut manager =
                         publications::Manager::new(lifecycle.candidate("idle").await).unwrap();
                     manager.initialize(&mut lifecycle).await.unwrap();
-                    let trapped = runtime.operations.call::<Fail>(Fail {}).await.unwrap_err();
+                    let trapped = runtime
+                        .operations
+                        .call_as::<Fail>(Fail {})
+                        .await
+                        .unwrap_err();
                     assert_ne!(
                         execution_error(&trapped).downcast_ref::<wasmtime::Trap>(),
                         Some(&wasmtime::Trap::OutOfFuel)
@@ -556,7 +570,7 @@ fn contract_scenario() {
                     );
                     let after = runtime
                         .operations
-                        .call::<Echo>(Echo {
+                        .call_as::<Echo>(Echo {
                             say: "anyone".into(),
                         })
                         .await
@@ -704,7 +718,7 @@ fn contract_scenario() {
     assert_eq!(
         runtime
             .operations
-            .call::<Echo>(Echo {
+            .call_as::<Echo>(Echo {
                 say: "dependency:normal".into()
             })
             .await
@@ -718,7 +732,7 @@ fn contract_scenario() {
     ] {
         let error = runtime
             .operations
-            .call::<Echo>(Echo {
+            .call_as::<Echo>(Echo {
                 say: format!("dependency:{say}"),
             })
             .await
@@ -755,7 +769,7 @@ fn contract_scenario() {
                     manager.initialize(&mut lifecycle).await.unwrap();
                     let invocation = runtime
                         .operations
-                        .submit::<Echo>(Echo {
+                        .submit_as::<Echo>(Echo {
                             say: "dependency:cancel".into(),
                         })
                         .unwrap();
@@ -770,7 +784,7 @@ fn contract_scenario() {
                         .unwrap();
                     let after = runtime
                         .operations
-                        .call::<Echo>(Echo {
+                        .call_as::<Echo>(Echo {
                             say: "after cancellation".into(),
                         })
                         .await
@@ -804,7 +818,7 @@ fn contract_scenario() {
     // The Saved Initialization Context Uses The Original Generation And Provider.
     let answered = runtime
         .operations
-        .call::<Echo>(Echo {
+        .call_as::<Echo>(Echo {
             say: "saved-dependency:original-background".into(),
         })
         .await
@@ -813,7 +827,7 @@ fn contract_scenario() {
     provider.fail_cleanup.store(true, Ordering::SeqCst);
     let refused = runtime
         .operations
-        .call::<Echo>(Echo {
+        .call_as::<Echo>(Echo {
             say: "saved-dependency:physical-cleanup".into(),
         })
         .await
@@ -826,7 +840,7 @@ fn contract_scenario() {
     assert_eq!(provider.cleanup_finished.load(Ordering::SeqCst), 0);
 
     // Destroying The Actual Guest Store Does Not Settle Its Failed Host Debt.
-    let trapped = runtime.operations.call::<Fail>(Fail {}).await.unwrap_err();
+    let trapped = runtime.operations.call_as::<Fail>(Fail {}).await.unwrap_err();
     assert!(
         execution_error(&trapped)
             .downcast_ref::<wasmtime::Trap>()
@@ -901,7 +915,7 @@ fn contract_scenario() {
     assert!(
         runtime
             .operations
-            .call::<Echo>(Echo {
+            .call_as::<Echo>(Echo {
                 say: "saved-dependency:after-retirement".into(),
             })
             .await
@@ -999,7 +1013,7 @@ fn contract_scenario() {
                     assert_eq!(
                         runtime
                             .operations
-                            .call::<Forward>(Echo {
+                            .call_as::<Forward>(Echo {
                                 say: "dependency:roundtrip".into()
                             })
                             .await
@@ -1014,7 +1028,7 @@ fn contract_scenario() {
                     );
                     assert!(
                         stale
-                            .call::<Echo>(Echo {
+                            .call_as::<Echo>(Echo {
                                 say: "closed".into()
                             })
                             .await
@@ -1053,7 +1067,7 @@ fn contract_scenario() {
     provider.hold_cleanup.store(true, Ordering::SeqCst);
     let invocation = runtime
         .operations
-        .submit::<ProviderEcho>(Echo {
+        .submit_as::<ProviderEcho>(Echo {
             say: "physical-cleanup".into(),
         })
         .unwrap();
@@ -1071,7 +1085,7 @@ fn contract_scenario() {
     assert!(
         runtime
             .operations
-            .call::<Echo>(Echo {
+            .call_as::<Echo>(Echo {
                 say: "closed".into()
             })
             .await
@@ -1114,7 +1128,7 @@ fn contract_scenario() {
                         .unwrap();
                     let invocation = runtime
                         .operations
-                        .submit::<Echo>(Echo {
+                        .submit_as::<Echo>(Echo {
                             say: "dependency:cancel".into(),
                         })
                         .unwrap();
@@ -1131,7 +1145,7 @@ fn contract_scenario() {
                         .unwrap();
                     retire_failed_guest(&mut manager, &mut lifecycle).await;
                     assert!(
-                        old.call::<ProviderEcho>(Echo {
+                        old.call_as::<ProviderEcho>(Echo {
                             say: "stale".into()
                         })
                         .await
@@ -1146,7 +1160,7 @@ fn contract_scenario() {
                     assert_eq!(
                         runtime
                             .operations
-                            .call::<Echo>(Echo {
+                            .call_as::<Echo>(Echo {
                                 say: "replacement".into()
                             })
                             .await
@@ -1155,7 +1169,7 @@ fn contract_scenario() {
                         "heard replacement"
                     );
                     assert!(
-                        old.call::<ProviderEcho>(Echo {
+                        old.call_as::<ProviderEcho>(Echo {
                             say: "stale replacement".into()
                         })
                         .await
@@ -1165,7 +1179,7 @@ fn contract_scenario() {
                     provider.fail_cleanup.store(true, Ordering::SeqCst);
                     let mut debt = runtime
                         .operations
-                        .submit::<ProviderEcho>(Echo {
+                        .submit_as::<ProviderEcho>(Echo {
                             say: "physical-cleanup".into(),
                         })
                         .unwrap();
@@ -1222,7 +1236,7 @@ fn contract_scenario() {
                     assert!(
                         runtime
                             .operations
-                            .call::<Echo>(Echo {
+                            .call_as::<Echo>(Echo {
                                 say: "closed".into()
                             })
                             .await
@@ -1251,7 +1265,7 @@ async fn scripted() -> Vec<String> {
         trace.push(
             runtime
                 .operations
-                .call::<Echo>(Echo { say: say.into() })
+                .call_as::<Echo>(Echo { say: say.into() })
                 .await
                 .unwrap()
                 .said
@@ -1260,7 +1274,7 @@ async fn scripted() -> Vec<String> {
     }
     let refused = runtime
         .operations
-        .call::<Decline>(Decline {})
+        .call_as::<Decline>(Decline {})
         .await
         .unwrap_err();
     let harmos::operations::ComponentError::Remote { failure, message } = component_error(&refused)
@@ -1268,7 +1282,11 @@ async fn scripted() -> Vec<String> {
         panic!("expected classified refusal");
     };
     trace.push(format!("{failure:?}: {message}"));
-    let trapped = runtime.operations.call::<Fail>(Fail {}).await.unwrap_err();
+    let trapped = runtime
+        .operations
+        .call_as::<Fail>(Fail {})
+        .await
+        .unwrap_err();
     trace.push(format!(
         "trapped: {:?}",
         execution_error(&trapped)
@@ -1277,7 +1295,7 @@ async fn scripted() -> Vec<String> {
     ));
     let after = runtime
         .operations
-        .call::<Echo>(Echo {
+        .call_as::<Echo>(Echo {
             say: "after".into(),
         })
         .await
@@ -1329,6 +1347,7 @@ impl OperationDeclaration for ProviderEcho {
         timeout: Duration::from_millis(100),
         attempt_timeout: Duration::from_millis(100),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
     const VISIBILITY: harmos::operations::Visibility = harmos::operations::Visibility::Shared;
 }
@@ -1373,7 +1392,10 @@ impl harmos::operations::Operation for EmbeddedReading {
     type Error = harmos_contract::Refusal;
     type Endpoints = ();
     type Context<'a> = harmos::operations::Context<'a>;
-    fn new(resources: std::sync::Arc<ProviderOwner>) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(
+        resources: std::sync::Arc<ProviderOwner>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Self::Error> {
         resources
             .prepared
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -1395,7 +1417,7 @@ impl harmos::operations::Operation for EmbeddedReading {
         .await;
         result.map(::core::convert::Into::into)
     }
-    async fn finalize(&mut self) -> Result<(), Self::Error> {
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
         self.resources.cleanup(self.cleanup).await
     }
 }
@@ -1463,7 +1485,10 @@ impl harmos::operations::Operation for NativeReading {
     type Error = harmos_contract::Refusal;
     type Endpoints = ();
     type Context<'a> = &'a harmos_sidecar::Supervisor;
-    fn new(resources: std::sync::Arc<NativeProvider>) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(
+        resources: std::sync::Arc<NativeProvider>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Self::Error> {
         resources
             .0
             .prepared
@@ -1486,7 +1511,7 @@ impl harmos::operations::Operation for NativeReading {
         .await;
         result.map(::core::convert::Into::into)
     }
-    async fn finalize(&mut self) -> Result<(), Self::Error> {
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
         self.resources.0.cleanup(self.cleanup).await
     }
 }
@@ -1499,7 +1524,10 @@ impl harmos::operations::Operation for NativeForwarding {
     type Error = harmos_contract::Refusal;
     type Endpoints = ();
     type Context<'a> = &'a harmos_sidecar::Supervisor;
-    fn new(resources: std::sync::Arc<NativeClient>) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(
+        resources: std::sync::Arc<NativeClient>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Self::Error> {
         Ok(Self {
             _resources: resources,
         })
@@ -1511,8 +1539,9 @@ impl harmos::operations::Operation for NativeForwarding {
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Echoed>, Self::Error> {
         let result: ::core::result::Result<Echoed, Self::Error> = async move {
-            host.operation::<Echo>(request.clone())
+            host.call(request.clone())
                 .await
+                .map(harmos::operations::Response::into_owned)
                 .map_err(Self::Error::of)
         }
         .await;
@@ -1581,7 +1610,7 @@ impl harmos::Plugin for NativeProviderPlugin {
     ) -> Result<(), harmos::operations::ServingError> {
         table.bind_operation::<NativeReading>(self.resources())
     }
-    async fn shutdown(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
@@ -1622,7 +1651,7 @@ impl harmos::Plugin for NativeClientPlugin {
     ) -> Result<(), harmos::operations::ServingError> {
         table.bind_operation::<NativeForwarding>(self.resources())
     }
-    async fn shutdown(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
@@ -1697,14 +1726,14 @@ type NativeResident = harmos::plugin::sidecar::Supervised<
 >;
 #[derive(Default)]
 struct NativeResources {
-    services: Option<harmos::services::ServiceManager<Bank>>,
+    services: Option<harmos::operations::OperationManager>,
     sdk: Option<harmos::operations::PluginSdkRegistration>,
     initializing: Option<harmos::operations::EncodedInvocation>,
     shutting_down: Option<harmos::operations::EncodedInvocation>,
     initialized: bool,
     shutdown_attempted: bool,
     resident: Option<NativeResident>,
-    lease: Option<harmos::services::ServiceLease<Bank>>,
+    lease: Option<harmos::operations::OperationInstance<harmos::operations::resident::Activation>>,
     registration: Option<harmos::operations::PluginRegistration>,
     registered: bool,
 }
@@ -1721,7 +1750,6 @@ struct DependencyHost {
     guest: publications::Lifecycle,
     operations: harmos::operations::OperationManager,
     provider: std::sync::Arc<ProviderOwner>,
-    services: harmos::services::ServiceManager<Bank>,
 }
 impl DependencyHost {
     fn new(runtime: &Runtime<Bank>, provider: std::sync::Arc<ProviderOwner>) -> Self {
@@ -1730,7 +1758,6 @@ impl DependencyHost {
             guest: publications::Lifecycle::new(runtime),
             operations: runtime.operations.clone(),
             provider,
-            services: runtime.services.clone(),
         }
     }
 }
@@ -1754,7 +1781,7 @@ impl harmos::plugin::PluginLifecycle for DependencyHost {
             }
             harmos::plugin::PluginKind::Sidecar => {
                 harmos::plugin::PluginBackend::Sidecar(NativeResources {
-                    services: Some(self.services.clone()),
+                    services: Some(self.operations.clone()),
                     ..NativeResources::default()
                 })
             }
@@ -1812,19 +1839,15 @@ impl harmos::plugin::PluginLifecycle for DependencyHost {
                 .routed(router);
                 resources.resident = Some(resident.clone());
                 let mut ready = resident.ready();
-                self.services.register(
+                self.operations.register_service(
                     harmos::services::ServiceDefinition {
                         id: definition.id.clone(),
-                        policy: harmos::services::ServicePolicy::default(),
+                        policy: harmos::services::POLICY,
                     },
                     move |_: std::sync::Arc<()>| resident.clone(),
                 )?;
                 resources.registered = true;
-                resources.lease = Some(
-                    self.services
-                        .activate(&definition.id, &self.services.root_scope())
-                        .await?,
-                );
+                resources.lease = Some(self.operations.submit_resident(&definition.id).await?);
                 let handle = if definition.contributions.lifecycle.is_some() {
                     let native = tokio::time::timeout(
                         Duration::from_secs(2),
@@ -1939,7 +1962,7 @@ impl harmos::plugin::PluginLifecycle for DependencyHost {
                         .services
                         .as_ref()
                         .unwrap()
-                        .unregister(&definition.id)
+                        .unregister_resident(&definition.id)
                         .await?;
                 }
                 resources.registered = false;
@@ -2041,7 +2064,7 @@ async fn native_guest_benchmark() {
         let round_trip = || async {
             let response = runtime
                 .operations
-                .call::<Forward>(Echo {
+                .call_as::<Forward>(Echo {
                     say: request.clone(),
                 })
                 .await

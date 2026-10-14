@@ -60,14 +60,12 @@ pub trait Operation: Send + Sized + 'static {
     type Context<'a>: Send;
     type Endpoints: EndpointSet;
 
-    fn new(resources: Arc<Self::Resources>) -> Result<Self, Self::Error>;
-
+    // Construct the operation for one invocation from its resources and the
+    // first attempt's context; stop and cleanup run only after success.
     fn initialize<'ctx>(
-        &mut self,
-        _context: Self::Context<'ctx>,
-    ) -> impl Future<Output = Result<(), Self::Error>> + Send {
-        async { Ok(()) }
-    }
+        resources: Arc<Self::Resources>,
+        context: Self::Context<'ctx>,
+    ) -> impl Future<Output = Result<Self, Self::Error>> + Send;
 
     fn run<'ctx>(
         &mut self,
@@ -85,7 +83,7 @@ pub trait Operation: Send + Sized + 'static {
         async { Ok(()) }
     }
 
-    fn finalize(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send {
+    fn cleanup(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send {
         async { Ok(()) }
     }
 

@@ -19,7 +19,7 @@ use std::time::Duration;
 // Local Imports
 use harmos_contract::StreamSpec;
 use harmos_contract::operations::{
-    OperationDeclaration, OperationPolicy, RetryPolicy, WireOperation,
+    OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, WireOperation,
 };
 
 /* === Constants === */
@@ -81,6 +81,7 @@ impl OperationDeclaration for ProviderEcho {
         timeout: Duration::from_millis(100),
         attempt_timeout: Duration::from_millis(100),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 }
 
@@ -93,6 +94,7 @@ impl OperationDeclaration for Echo {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 
     type Response = Echoed;
@@ -105,6 +107,7 @@ impl OperationDeclaration for Decline {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 
     type Response = Echoed;
@@ -117,6 +120,7 @@ impl OperationDeclaration for Spin {
         timeout: Duration::from_secs(600),
         attempt_timeout: Duration::from_secs(600),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 
     type Response = Echoed;
@@ -129,6 +133,7 @@ impl OperationDeclaration for Wait {
         timeout: Duration::from_millis(5),
         attempt_timeout: Duration::from_millis(5),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 
     type Response = Echoed;
@@ -141,6 +146,7 @@ impl OperationDeclaration for Fail {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 
     type Response = Echoed;

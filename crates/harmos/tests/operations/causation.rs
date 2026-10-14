@@ -26,7 +26,7 @@ use super::{
     Lanes,
     support::{self, Bank, Fact, Ledger, Noted, catalog},
 };
-use harmos::operations::{Context, Operation, OperationPolicy, RetryPolicy};
+use harmos::operations::{Context, Operation, OperationPolicy, RestartPolicy, RetryPolicy};
 use harmos::{Error, Runtime, state::CausationId, state::Position};
 
 /* === Constants === */
@@ -34,6 +34,7 @@ const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(1),
     retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
 };
 
 /* === Macros === */
@@ -73,7 +74,7 @@ impl Operation for Note {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    fn new(_resources: Arc<()>) -> Result<Self, Error> {
+    async fn initialize<'ctx>(_resources: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, Error> {
         Ok(Self)
     }
 
@@ -103,7 +104,7 @@ impl Operation for Descend {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    fn new(_resources: Arc<()>) -> Result<Self, Error> {
+    async fn initialize<'ctx>(_resources: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, Error> {
         Ok(Self)
     }
 
@@ -120,7 +121,7 @@ impl Operation for Descend {
                 .publish(Noted(request.clone()))
                 .await?;
             context
-                .submit::<NoteContract>(format!("{}-child", *request))?
+                .submit_as::<NoteContract>(format!("{}-child", *request))?
                 .await?;
             Ok(())
         }
@@ -136,7 +137,7 @@ impl Operation for Family {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    fn new(_resources: Arc<()>) -> Result<Self, Error> {
+    async fn initialize<'ctx>(_resources: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, Error> {
         Ok(Self)
     }
 
@@ -153,7 +154,7 @@ impl Operation for Family {
                 .publish(Noted("parent".to_owned()))
                 .await?;
             context
-                .submit::<DescendContract>("inherited".to_owned())?
+                .submit_as::<DescendContract>("inherited".to_owned())?
                 .await?;
             context
                 .submit_caused::<DescendContract>("rerooted".to_owned(), *request)?

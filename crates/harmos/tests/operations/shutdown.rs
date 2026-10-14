@@ -27,7 +27,7 @@ use tokio::sync::Notify;
 
 // Local Imports
 use super::{Lanes, app::App};
-use harmos::operations::{Context, Operation, OperationPolicy, RetryPolicy};
+use harmos::operations::{Context, Operation, OperationPolicy, RestartPolicy, RetryPolicy};
 use harmos::{Error, Refusal, Runtime};
 
 /* === Constants === */
@@ -68,6 +68,7 @@ enum Mode {
             timeout: Duration::from_secs(3),
             attempt_timeout: Duration::from_secs(2),
             retries: RetryPolicy::Never,
+            restart: RestartPolicy::Never,
         },
     )]
 struct WaitContract;
@@ -87,7 +88,10 @@ impl Operation for Wait {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    fn new(trace: Arc<Trace>) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(
+        trace: Arc<Trace>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Self::Error> {
         Ok(Self {
             holding: false,
             released: false,
@@ -123,7 +127,7 @@ impl Operation for Wait {
         result.map(::core::convert::Into::into)
     }
 
-    async fn finalize(&mut self) -> Result<(), Self::Error> {
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
         self.trace.finalizations.fetch_add(1, Ordering::SeqCst);
         self.trace.finalizing.notify_one();
         if self.holding && !self.released {
@@ -171,12 +175,12 @@ pub(super) fn contract_scenario() {
                     let (runtime, trace) = runtime().await;
                     let first = runtime
                         .operations
-                        .submit::<WaitContract>(Mode::Hold)
+                        .submit_as::<WaitContract>(Mode::Hold)
                         .unwrap();
                     trace.started.notified().await;
                     let queued = runtime
                         .operations
-                        .submit::<WaitContract>(Mode::Count)
+                        .submit_as::<WaitContract>(Mode::Count)
                         .unwrap();
                     queued.cancel();
                     assert!(matches!(
@@ -189,7 +193,7 @@ pub(super) fn contract_scenario() {
 
                     let running = runtime
                         .operations
-                        .submit::<WaitContract>(Mode::Sleep)
+                        .submit_as::<WaitContract>(Mode::Sleep)
                         .unwrap();
                     trace.started.notified().await;
                     let cancelled_at = Instant::now();
@@ -199,7 +203,8 @@ pub(super) fn contract_scenario() {
                         Err(Error::OperationRefused(Refusal::Cancelled))
                     ));
                     assert!(cancelled_at.elapsed() <= Duration::from_millis(100));
-                    assert_eq!(trace.dropped.load(Ordering::SeqCst), 3);
+                    // The cancelled queued instance was never constructed.
+                    assert_eq!(trace.dropped.load(Ordering::SeqCst), 2);
                     runtime.stop().await.unwrap();
                 });
         });
@@ -215,7 +220,7 @@ pub(super) fn contract_scenario() {
                     let (runtime, trace) = runtime().await;
                     let instance = runtime
                         .operations
-                        .submit::<WaitContract>(Mode::Hold)
+                        .submit_as::<WaitContract>(Mode::Hold)
                         .unwrap();
                     trace.started.notified().await;
                     {
@@ -229,11 +234,8 @@ pub(super) fn contract_scenario() {
                     for _ in 0..2 {
                         assert!(runtime.stop().now_or_never().is_none());
                         assert!(matches!(
-                            runtime
-                                .services
-                                .activate("late", &runtime.services.root_scope())
-                                .await,
-                            Err(Error::Closing { domain: "service" })
+                            runtime.operations.submit_resident("late").await,
+                            Err(Error::Closing { domain: "resident" })
                         ));
                         assert_eq!(trace.finalizations.load(Ordering::SeqCst), 1);
                         assert_eq!(trace.dropped.load(Ordering::SeqCst), 0);

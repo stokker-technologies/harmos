@@ -22,7 +22,7 @@ mod rows { pub use facade::Reading; }
 // Standard Library Imports
 use std::time::Duration;
 // Third Party Imports
-use facade::__harmos::operations::{OperationDeclaration, OperationPolicy, RetryPolicy};
+use facade::__harmos::operations::{OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
 // Local Imports
 
 /* === Constants === */
@@ -58,6 +58,7 @@ impl OperationDeclaration for Echo {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(1),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 }
 

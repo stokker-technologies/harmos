@@ -10,6 +10,7 @@
 /* === Modules === */
 
 /* === Re-Exports === */
+pub use harmos_contract::operations::instance::Id as OperationInstanceId;
 
 /* === Imports === */
 // Standard Library Imports
@@ -40,18 +41,34 @@ static NEXT_GENERATION: AtomicU64 = AtomicU64::new(1);
 
 /* === Structs === */
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct OperationInstanceId(u64);
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct OperationGeneration(u64);
 
+// Dropping an instance before its outcome is delivered requests cancellation;
+// `detach` keeps the operation running without a handle. A resident handle
+// (an observer or service activation) holds one lease on its shared instance:
+// dropping it releases that lease and the last release stops the instance.
+#[must_use = "dropping an unsettled operation instance requests its cancellation"]
 pub struct OperationInstance<O: OperationDeclaration> {
     pub(crate) id: OperationInstanceId,
     pub(super) generation: OperationGeneration,
-    pub(crate) outcome: oneshot::Receiver<Result<crate::operations::Response<O::Response>>>,
+    pub(crate) outcome: Outcome<O::Response>,
     pub(super) control: Arc<crate::supervision::instance::Instance>,
+    pub(super) released: bool,
 }
 
+pub(crate) enum Outcome<T: Send + Sync + 'static> {
+    Request(oneshot::Receiver<Result<crate::operations::Response<T>>>),
+    Resident {
+        lease: Option<super::resident::Lease>,
+        // Polled only through `&mut`; the lock makes a shared handle `Sync`.
+        settled: std::sync::Mutex<Settling<T>>,
+    },
+}
+
+pub(crate) type Settling<T> =
+    Pin<Box<dyn Future<Output = Result<crate::operations::Response<T>>> + Send>>;
+
+#[derive(Clone)]
 pub struct Context<'a> {
     pub(crate) id: OperationInstanceId,
     pub(crate) attempt: usize,
@@ -69,21 +86,6 @@ pub struct Context<'a> {
 /* === Traits === */
 
 /* === Implementations === */
-impl OperationInstanceId {
-    pub(crate) fn fresh() -> Result<Self> {
-        NEXT_INSTANCE
-            .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
-            .map(Self)
-            .map_err(|_| Error::ResourceExhausted {
-                resource: "operation instance identities",
-            })
-    }
-
-    pub fn value(self) -> u64 {
-        self.0
-    }
-}
-
 impl OperationGeneration {
     pub(super) fn fresh() -> Result<Self> {
         NEXT_GENERATION
@@ -108,19 +110,101 @@ impl<O: OperationDeclaration> OperationInstance<O> {
         self.generation
     }
 
+    // A resident instance stops for every lease holder.
     pub fn cancel(&self) {
-        self.control.cancel();
+        match &self.outcome {
+            Outcome::Resident {
+                lease: Some(lease), ..
+            } => lease.stop(),
+            _ => self.control.cancel(),
+        }
     }
 
     pub fn status(&self) -> super::OperationStatus {
         self.control.status()
     }
 
+    pub fn subscribe(&self) -> tokio::sync::watch::Receiver<super::OperationStatus> {
+        self.control.settlement()
+    }
+
+    // Wait until the instance runs; a resident that stops or fails first
+    // reports why once its cleanup settles.
+    pub async fn ready(&self) -> Result<()> {
+        let mut status = self.control.settlement();
+        loop {
+            let current = status.borrow_and_update().clone();
+            match current.phase() {
+                super::OperationPhase::Running => return Ok(()),
+                phase
+                    if phase.is_terminal()
+                        || current.cancellation_requested()
+                        || current.outcome().is_some() =>
+                {
+                    self.settle().await?;
+                    return Err(Error::NotReady {
+                        domain: "operation activation",
+                    });
+                }
+                _ => {}
+            }
+            if status.changed().await.is_err() {
+                return Err(Error::NotReady {
+                    domain: "operation activation",
+                });
+            }
+        }
+    }
+
     pub async fn join(self) -> Result<crate::operations::Response<O::Response>> {
         self.await
     }
 
+    pub async fn cancel_and_join(self) -> Result<crate::operations::Response<O::Response>> {
+        self.cancel();
+        self.await
+    }
+
+    // Keep the operation running without a handle until its submitting
+    // attempt ends, which cancels and settles it like any other child. A
+    // detached resident lease is held until its resources retire.
+    pub fn detach(mut self) -> OperationInstanceId {
+        self.released = true;
+        if let Outcome::Resident { lease, .. } = &mut self.outcome
+            && let Some(lease) = lease.take()
+        {
+            lease.detach();
+        }
+        self.id
+    }
+
+    // Release this handle. A resident lease that was the last one stops its
+    // instance and waits for it; a request-scoped instance is cancelled and
+    // settled.
+    pub async fn release(mut self) -> Result<()> {
+        self.released = true;
+        let lease = match &mut self.outcome {
+            Outcome::Resident { lease, .. } => lease.take(),
+            Outcome::Request(_) => None,
+        };
+        match lease {
+            Some(lease) => lease.release().await,
+            None => {
+                self.control.cancel();
+                self.settle().await
+            }
+        }
+    }
+
+    // Wait for the instance to settle without consuming the handle. A
+    // resident reports its outcome and retries a retained cleanup.
     pub async fn settle(&self) -> Result<()> {
+        if let Outcome::Resident {
+            lease: Some(lease), ..
+        } = &self.outcome
+        {
+            return lease.settlement().await;
+        }
         self.control
             .settle()
             .await
@@ -128,14 +212,79 @@ impl<O: OperationDeclaration> OperationInstance<O> {
     }
 }
 
+impl<O: OperationDeclaration> OperationInstance<O> {
+    // Encoded invocations keep their own contract: dropping one never
+    // cancels, so the typed instance they await must not cancel either.
+    pub(super) fn unguarded(mut self) -> Self {
+        self.released = true;
+        self
+    }
+}
+
 impl<O: OperationDeclaration> Future for OperationInstance<O> {
     type Output = Result<crate::operations::Response<O::Response>>;
     fn poll(self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<Self::Output> {
-        match Pin::new(&mut self.get_mut().outcome).poll(cx) {
-            Poll::Ready(Ok(answer)) => Poll::Ready(answer),
-            Poll::Ready(Err(_)) => Poll::Ready(Err(crate::Refusal::Unavailable.into())),
-            Poll::Pending => Poll::Pending,
+        let instance = self.get_mut();
+        let answer = match &mut instance.outcome {
+            Outcome::Request(outcome) => match Pin::new(outcome).poll(cx) {
+                Poll::Ready(Ok(answer)) => answer,
+                Poll::Ready(Err(_)) => Err(crate::Refusal::Unavailable.into()),
+                Poll::Pending => return Poll::Pending,
+            },
+            Outcome::Resident { settled, .. } => match settled
+                .get_mut()
+                .expect("resident settlement is healthy")
+                .as_mut()
+                .poll(cx)
+            {
+                Poll::Ready(answer) => answer,
+                Poll::Pending => return Poll::Pending,
+            },
+        };
+        instance.released = true;
+        Poll::Ready(answer)
+    }
+}
+
+impl<O: OperationDeclaration> Drop for OperationInstance<O> {
+    fn drop(&mut self) {
+        // A resident lease releases itself when dropped.
+        if matches!(self.outcome, Outcome::Request(_))
+            && !self.released
+            && !self.control.is_settled()
+        {
+            self.control.cancel();
         }
+    }
+}
+
+impl<O> harmos_contract::operations::Instance<O> for OperationInstance<O>
+where
+    O: OperationDeclaration,
+{
+    type Error = Error;
+
+    fn id(&self) -> OperationInstanceId {
+        self.id
+    }
+
+    fn status(
+        &self,
+    ) -> impl Future<Output = Result<harmos_contract::operations::instance::Status>> + Send {
+        std::future::ready(Ok(self.control.status().portable()))
+    }
+
+    fn cancel(&self) -> impl Future<Output = Result<()>> + Send {
+        OperationInstance::cancel(self);
+        std::future::ready(Ok(()))
+    }
+
+    fn join(self) -> impl Future<Output = Result<crate::operations::Response<O::Response>>> + Send {
+        self
+    }
+
+    fn detach(self) -> OperationInstanceId {
+        OperationInstance::detach(self)
     }
 }
 
@@ -146,14 +295,23 @@ impl Context<'_> {
 
     // Derive a child caller while retaining this attempt's identity, admission,
     // cancellation and deadline. Only the selected portable value changes.
-    pub fn with_value<T: super::ContextValue>(mut self, value: T) -> Result<Self> {
+    pub fn with_value<T: super::ContextValue>(&self, value: T) -> Result<Self> {
         let context = self.context().with_value(value)?;
-        self.operations = self.operations.with_context(context);
-        Ok(self)
+        let mut child = self.clone();
+        child.operations = child.operations.with_context(context);
+        Ok(child)
     }
 
     pub fn id(&self) -> OperationInstanceId {
         self.id
+    }
+
+    // An active instance this attempt's caller submitted; others stay hidden.
+    pub(crate) fn owned_instance(
+        &self,
+        id: OperationInstanceId,
+    ) -> Option<Arc<crate::supervision::instance::Instance>> {
+        self.operations.instances.owned(id, &self.origin.identity)
     }
 
     pub fn attempt(&self) -> usize {
@@ -184,7 +342,7 @@ impl Context<'_> {
     ))]
     pub(crate) fn retains_publication(&self, scope: &crate::plugin::PluginScope) -> bool {
         self.source.check().is_ok_and(|origin| {
-            (origin.has_lifecycle_loan() || origin.observer_publication)
+            (origin.has_lifecycle_loan() || origin.resident)
                 && origin
                     .scope
                     .as_ref()
@@ -207,7 +365,21 @@ impl Context<'_> {
         )
     }
 
-    pub fn submit<O: OperationDeclaration>(
+    // The declaration is its own request; `submit_as::<O>` names a separate one.
+    pub fn submit<O: OperationDeclaration<Request = O>>(
+        &self,
+        request: O,
+    ) -> Result<OperationInstance<O>> {
+        self.submit_as::<O>(request)
+    }
+
+    pub async fn call<O: OperationDeclaration<Request = O>>(
+        &self,
+        request: O,
+    ) -> Result<crate::operations::Response<O::Response>> {
+        self.call_as::<O>(request).await
+    }
+    pub fn submit_as<O: OperationDeclaration>(
         &self,
         request: O::Request,
     ) -> Result<OperationInstance<O>> {
@@ -270,15 +442,23 @@ impl Context<'_> {
         self.submit_caused::<O>(request, cause)?.await
     }
 
-    pub async fn call<O: OperationDeclaration>(
+    pub async fn call_as<O: OperationDeclaration>(
         &self,
         request: O::Request,
     ) -> Result<crate::operations::Response<O::Response>> {
-        self.submit::<O>(request)?.await
+        self.submit_as::<O>(request)?.await
     }
 }
 
 /* === Public Functions === */
+pub(crate) fn fresh_instance() -> Result<OperationInstanceId> {
+    NEXT_INSTANCE
+        .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+        .map(OperationInstanceId::new)
+        .map_err(|_| Error::ResourceExhausted {
+            resource: "operation instance identities",
+        })
+}
 
 /* === Private Functions === */
 

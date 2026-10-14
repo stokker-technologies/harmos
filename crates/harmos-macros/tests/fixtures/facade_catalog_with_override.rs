@@ -45,6 +45,7 @@ impl facade::__harmos::operations::OperationDeclaration for Export {
         timeout: std::time::Duration::from_secs(30),
         attempt_timeout: std::time::Duration::from_secs(1),
         retries: facade::__harmos::operations::RetryPolicy::Never,
+        restart: facade::__harmos::operations::RestartPolicy::Never,
     };
 }
 

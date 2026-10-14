@@ -274,7 +274,7 @@ impl OperationManager {
         #[cfg(feature = "plugin-sidecar")]
         for entry in &bindings.entries {
             if let Some(native) = &entry.native
-                && let Err(error) = native.capture_observer_controls()
+                && let Err(error) = native.capture_observer_control()
             {
                 self.fence(&bindings.entries, true);
                 self.remove_settled(&bindings.entries);
@@ -403,13 +403,6 @@ impl Bindings<'_> {
         )?;
         if let Some(projected) = projected {
             let original = Arc::get_mut(&mut entry).expect("new owned entry has one owner");
-            #[cfg(feature = "plugin-sidecar")]
-            {
-                original.observer_stop = self
-                    .scope
-                    .and_then(|scope| scope.observer_controls())
-                    .is_some_and(|pair| pair[1] == projected.contract);
-            }
             original.contract = Some(projected.contract);
             #[cfg(feature = "grpc")]
             {
@@ -536,13 +529,6 @@ impl Bindings<'_> {
             self.scope.cloned(),
         )?;
         let original = Arc::get_mut(&mut entry).expect("new owned entry has one owner");
-        #[cfg(feature = "plugin-sidecar")]
-        {
-            original.observer_stop = self
-                .scope
-                .and_then(|scope| scope.observer_controls())
-                .is_some_and(|pair| pair[1] == *contract);
-        }
         original.contract = Some(contract.clone());
         #[cfg(feature = "grpc")]
         {

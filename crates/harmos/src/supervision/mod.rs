@@ -53,6 +53,11 @@ use tokio::task::{JoinError, JoinHandle};
 /* === Type Aliases === */
 
 /* === Structs === */
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
 pub(crate) struct Backoff;
 
 struct Attempt<T>(JoinHandle<T>);
@@ -67,6 +72,11 @@ pub(crate) enum Failure {
 /* === Traits === */
 
 /* === Implementations === */
+#[cfg(any(
+    feature = "plugin",
+    feature = "plugin-guest",
+    feature = "plugin-sidecar"
+))]
 impl Backoff {
     pub(crate) fn duration(attempt: usize, base: Duration, cap: Duration) -> Duration {
         let shift = u32::try_from(attempt.min(16)).expect("the capped attempt fits u32");

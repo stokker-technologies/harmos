@@ -100,21 +100,10 @@ impl<A: Application> PluginHost<A> {
         let grants = settings.plugin.host_operations.iter().cloned().collect();
         let restart = settings.plugin.restart;
         let handles = self.shared.handles.clone();
+        let operations = self.shared.operations.clone();
         let driving = self.shared.driving.clone();
         let frozen = definition.clone();
         let factory: Factory = Arc::new(move || {
-            let (stopping, cancelled) = tokio::sync::watch::channel(false);
-            let context = Service {
-                state: handles.state.clone(),
-                records: handles.records.clone(),
-                operations: handles.operations.clone(),
-                streams: handles.streams.clone(),
-                evidence: handles.evidence.clone(),
-                observers: handles.observers.clone(),
-                stopping: cancelled,
-                ready: tokio::sync::watch::channel(false).0,
-                provider: Arc::new(crate::supervision::instance::Instance::queued(stopping)),
-            };
             let resident = Supervised::new(
                 executable.clone(),
                 diagnostics::<A> as fn(&Service<A>, Notice),
@@ -124,7 +113,8 @@ impl<A: Application> PluginHost<A> {
             let driver = RuntimeDriver::new::<C>(
                 resident,
                 &frozen,
-                context,
+                operations.clone(),
+                handles.streams.clone(),
                 lane.clone(),
                 settings.calls,
                 settings.plugin.encoding_memory_bytes,

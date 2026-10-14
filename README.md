@@ -43,10 +43,11 @@ your application defines what each change means.
   retry, and cancellation policies. Operation declarations can also generate
   protobuf contracts and expose gRPC methods through the runtime.
 
-- **Services**
+- **Services And Observers**
 
-  Run resident background work with managed startup, shutdown, and resource
-  ownership. Keep device handles and live clients with the work that owns them.
+  Run resident background work as operations that stay up until stopped:
+  services restart under a declared policy, observers tick at their declared
+  interval. Keep device handles and live clients with the work that owns them.
 
 - **Streams**
 
@@ -254,6 +255,15 @@ ledger; the loan is released when its last owner is dropped. Stream producers
 use `output.send_owned(response).await?` to retain the same owner through queueing
 and encoding; ordinary stream payloads keep their existing `Send` contract. Protobuf payloads and RPC paths remain unchanged.
 
+Harmos serves no built-in operation by default. `builtin::Catalog::register`
+serves `host.operations.status`, `host.operations.cancel` and
+`host.operations.watch` (gRPC `/harmos.host.v1.Operations/Status`, `/Cancel`
+and the server stream `/Watch`) over the manager's instances. Each answers only
+for active instances the caller submitted or holds a resident lease on; unknown,
+foreign and settled ids are refused alike. A watch streams every status change
+from the moment it starts until the instance stops or settles. Plugins reach them like any other operation,
+so they must declare them as requirements.
+
 Hosts can register `operations::discovery::Discovery` in their existing operation
 manager to serve `host.operations` (unary gRPC path
 `/harmos.host.v1.Host/Operations` when `grpc` is enabled). `OperationsRequest` accepts optional `after`,
@@ -325,11 +335,92 @@ producer and clears the disconnected deadline. Finish, abort and storage shutdow
 still retire production; existing file-count and memory budgets remain enforced.
 A viewer owns its subscription, while the original service owns production.
 
-Operations derive child context with `Context::with_value` for a declared
-`ContextValue`; sidecar `Supervisor` and guest `Context` expose the same method.
+One `operations::Host` capability serves operation bodies wherever they run: in
+process over `OperationManager` and `operations::Context`, in a sidecar over
+`Supervisor`, and in a guest over `Context`. `call` and `submit` take the
+declaration itself when it is its own request; `call_as::<O>` and
+`submit_as::<O>` name an operation with a separate request type. A submitted
+`OperationInstance` reports `status`, and supports `cancel`, `join` and
+`cancel_and_join`. Dropping an unsettled instance cancels it; `detach` keeps it
+running without a handle until its submitting attempt ends, which cancels and
+settles it like any other child.
+
+```rust,ignore
+use harmos::operations::{Host, Instance};
+
+async fn sample<H: Host>(host: &H) -> Result<u64, H::Error> {
+    let reading = host.call(Read { channel: 3 }).await?;
+    let pending = host.submit_as::<Calibrate>(Calibration::default()).await?;
+    let status = pending.status().await?;
+    let calibrated = pending.join().await?;
+    host.publish_on::<Progress>(&Progress { percent: 100 }).await?;
+    Ok(reading.value + calibrated.offset + u64::from(status.attempt))
+}
+```
+
+In process, the inherent `submit` and `submit_as` admit synchronously. Sidecars
+and guests submit unary children; streaming child sessions (`upload`,
+`download`, `exchange`) remain in-process for now.
+
+Operations derive child context with `with_value` for a declared
+`ContextValue`; every binding borrows its handle and returns the derived one.
 The child keeps the original caller, grants, cancellation and deadline while
 receiving the selected portable value. Read portable values with
 `CallContext::value`; overlays retain the 64-value, 64 KiB context budget.
+
+Operations, observers, services and plugins share lifecycle verbs. An
+operation's `async fn initialize(resources, context) -> Self` constructs it on
+its first attempt; queued instances cancelled before they start and cache hits
+construct nothing. `run` (operations, services) and `observe` (observers) do the
+work, `stop` ends domain activity, and `cleanup` releases physical resources
+after a successful initialization. Observers initialize from `&Resources`;
+plugins keep `prepare` and `initialize(&mut self, context)` and end with `stop`
+and `cleanup`.
+
+Observers and services are resident operations of the same `OperationManager`:
+request-scoped operations settle, residents run until stopped. Register them
+with `register_observer` or `register_service` and activate them with
+`submit_with_resources`; activations over the same resources share one instance,
+each `OperationInstance` holds one lease on it, and releasing or dropping the
+last lease stops it through `stop` and `cleanup`. `cancel` stops it for every
+holder. Residents report `Restarting` while a service backs off and end in
+`Stopped`, through the same status, `host.operations.status` and
+`host.operations.watch`. A service's context is the same `Host` as any other
+body and lends `records`, `state`, `streams` and `evidence`. Sidecar and guest
+bindings cannot lend process-local resources, so they refuse
+`submit_with_resources`.
+
+```rust,ignore
+use harmos::operations::{Backoff, Jitter, OperationPolicy, RestartPolicy};
+use harmos::services::{POLICY, ServiceDefinition};
+
+// `timeout` is a resident's stop deadline; `restart` is the resident half.
+let policy = OperationPolicy {
+    timeout: Duration::from_secs(2),
+    restart: RestartPolicy::OnTransient {
+        credit: 3,
+        sustained_health: Duration::from_secs(30),
+        backoff: Backoff::Exponential {
+            initial: Duration::from_millis(250),
+            maximum: Duration::from_secs(10),
+            jitter: Jitter::Deterministic,
+        },
+    },
+    ..POLICY
+};
+runtime.operations.register_service(
+    ServiceDefinition { id: "poller".into(), policy },
+    |device: Arc<Device>| Poller::new(device),
+)?;
+let poller = runtime.operations.submit_with_resources_at("poller", device).await?;
+poller.ready().await?;
+```
+
+Request-scoped declarations keep `restart: RestartPolicy::Never`; SDK lifecycle
+operations and listener callbacks refuse any other value. A sidecar serves its
+observers through one Host control declared with `observers::POLICY` and
+selected by `observer_control = Observe`; the host submits it per activation and
+cancels it to stop the observer, which runs on a thread of its own.
 
 Externally supplied settings and defaults live in each configurable crate's root
 `config.rs`. Composition passes each owner its relevant settings rather than

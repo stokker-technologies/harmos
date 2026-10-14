@@ -21,7 +21,7 @@ use std::time::Duration;
 use super::{Failed, Lanes, Owner, runtime};
 use harmos::operations::{
     Backoff, CacheKey, Context, Failure, Jitter, Operation, OperationDeclaration, OperationPolicy,
-    RetryPolicy, Visibility,
+    RestartPolicy, RetryPolicy, Visibility,
 };
 use harmos::{Error, Message, Refusal};
 
@@ -213,6 +213,7 @@ impl OperationDeclaration for Codec {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(1),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 }
 
@@ -224,6 +225,7 @@ impl OperationDeclaration for ShortCodec {
         timeout: Duration::from_millis(5),
         attempt_timeout: Duration::from_millis(5),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 }
 
@@ -238,7 +240,10 @@ impl Operation for Coding {
     type Resources = Owner;
     type Error = Failed;
 
-    fn new(resources: Arc<Owner>) -> Result<Self, Failed> {
+    async fn initialize<'ctx>(
+        resources: Arc<Owner>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Failed> {
         resources.prepared.fetch_add(1, Ordering::SeqCst);
         Ok(Self { resources })
     }
@@ -271,7 +276,10 @@ impl Operation for ShortCoding {
     type Resources = Owner;
     type Error = Failed;
 
-    fn new(resources: Arc<Owner>) -> Result<Self, Failed> {
+    async fn initialize<'ctx>(
+        resources: Arc<Owner>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Failed> {
         resources.prepared.fetch_add(1, Ordering::SeqCst);
         Ok(Self { resources })
     }
@@ -308,6 +316,7 @@ impl OperationDeclaration for Echo {
                 jitter: Jitter::None,
             },
         },
+        restart: RestartPolicy::Never,
     };
 
     fn key(request: &Text) -> Option<CacheKey> {
@@ -335,7 +344,10 @@ impl Operation for Echoing {
     type Resources = Owner;
     type Error = Failed;
 
-    fn new(resources: Arc<Owner>) -> Result<Self, Failed> {
+    async fn initialize<'ctx>(
+        resources: Arc<Owner>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Failed> {
         resources.prepared.fetch_add(1, Ordering::SeqCst);
         let state = State { attempts: 0 };
         Ok(Self { resources, state })
@@ -383,7 +395,10 @@ impl Operation for PrivateEchoing {
     type Resources = Owner;
     type Error = Failed;
 
-    fn new(resources: Arc<Owner>) -> Result<Self, Failed> {
+    async fn initialize<'ctx>(
+        resources: Arc<Owner>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Failed> {
         resources.prepared.fetch_add(1, Ordering::SeqCst);
         let state = State { attempts: 0 };
         Ok(Self { resources, state })
@@ -457,7 +472,10 @@ impl Operation for Nesting {
     type Resources = Owner;
     type Error = Failed;
 
-    fn new(resources: Arc<Owner>) -> Result<Self, Failed> {
+    async fn initialize<'ctx>(
+        resources: Arc<Owner>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Failed> {
         resources.prepared.fetch_add(1, Ordering::SeqCst);
         Ok(Self {
             _resources: resources,
@@ -492,7 +510,10 @@ impl Operation for SameLaneCall {
     type Resources = Owner;
     type Error = Failed;
 
-    fn new(resources: Arc<Owner>) -> Result<Self, Failed> {
+    async fn initialize<'ctx>(
+        resources: Arc<Owner>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Failed> {
         resources.prepared.fetch_add(1, Ordering::SeqCst);
         Ok(Self {
             _resources: resources,
@@ -527,7 +548,10 @@ impl Operation for Detaching {
     type Resources = Owner;
     type Error = Failed;
 
-    fn new(resources: Arc<Owner>) -> Result<Self, Failed> {
+    async fn initialize<'ctx>(
+        resources: Arc<Owner>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Failed> {
         Ok(Self { resources })
     }
 

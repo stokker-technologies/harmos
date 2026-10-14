@@ -123,7 +123,10 @@ impl harmos::operations::Operation for Selecting {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
     type Error = Failed;
-    fn new(resources: Arc<SelectedOwner>) -> std::result::Result<Self, Failed> {
+    async fn initialize<'ctx>(
+        resources: Arc<SelectedOwner>,
+        _: Self::Context<'ctx>,
+    ) -> std::result::Result<Self, Failed> {
         Ok(Self { resources })
     }
     async fn run<'ctx>(
@@ -215,7 +218,10 @@ impl harmos::operations::Operation for SharedCall {
     type Declaration = Shared;
     type Resources = Owner;
     type Error = Failed;
-    fn new(owner: Arc<Owner>) -> std::result::Result<Self, Failed> {
+    async fn initialize<'ctx>(
+        owner: Arc<Owner>,
+        _: Self::Context<'ctx>,
+    ) -> std::result::Result<Self, Failed> {
         owner.prepared.fetch_add(1, Ordering::SeqCst);
         let state = super::State { attempts: 0 };
         Ok(Self { owner, state })
@@ -259,7 +265,10 @@ impl harmos::operations::Operation for Cleaning {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
     type Error = Failed;
-    fn new(resources: Arc<CleanupOwner>) -> std::result::Result<Self, Failed> {
+    async fn initialize<'ctx>(
+        resources: Arc<CleanupOwner>,
+        _: Self::Context<'ctx>,
+    ) -> std::result::Result<Self, Failed> {
         // Exercise Deadline Expiry During Synchronous Construction.
         let wait_cleanup = resources.expire.load(Ordering::SeqCst);
         if wait_cleanup {
@@ -288,7 +297,7 @@ impl harmos::operations::Operation for Cleaning {
         .await;
         result.map(::core::convert::Into::into)
     }
-    async fn finalize(&mut self) -> std::result::Result<(), Failed> {
+    async fn cleanup(&mut self) -> std::result::Result<(), Failed> {
         self.resources.finalized.fetch_add(1, Ordering::SeqCst);
         if self.wait_cleanup {
             self.resources.finalizing.notify_one();
@@ -341,7 +350,7 @@ impl PluginLifecycle for Host {
                 assert_eq!(
                     self.operations
                         .caller(&caller)?
-                        .call::<Shared>(request())
+                        .call_as::<Shared>(request())
                         .await?
                         .value,
                     7
@@ -376,7 +385,7 @@ impl PluginLifecycle for Host {
             Err(Error::NotReady { .. })
         ));
         assert!(matches!(
-            self.operations.submit::<Compute>(request()),
+            self.operations.submit_as::<Compute>(request()),
             Err(Error::NotReady { .. })
         ));
         if self.unregister_before_commit {
@@ -823,7 +832,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         runtime
                             .operations
-                            .call::<Compute>(request())
+                            .call_as::<Compute>(request())
                             .await
                             .unwrap()
                             .value,
@@ -909,7 +918,7 @@ pub(super) fn contract_scenario() {
                     let gate = Arc::new(tokio::sync::Notify::new());
                     let invocation = runtime
                         .operations
-                        .submit::<Compute>(super::Request {
+                        .submit_as::<Compute>(super::Request {
                             gate: Some((opened.clone(), gate.clone())),
                             ..request()
                         })
@@ -964,7 +973,7 @@ pub(super) fn contract_scenario() {
                     let gate = Arc::new(tokio::sync::Notify::new());
                     let invocation = runtime
                         .operations
-                        .submit::<Compute>(super::Request {
+                        .submit_as::<Compute>(super::Request {
                             gate: Some((opened.clone(), gate.clone())),
                             ..request()
                         })
@@ -1019,9 +1028,9 @@ pub(super) fn contract_scenario() {
                     host.call_during_setup = true;
                     manager.initialize(&mut host).await.unwrap();
                     let caller = runtime.operations.caller(&host.callers["client"]).unwrap();
-                    assert_eq!(caller.call::<Shared>(request()).await.unwrap().value, 7);
+                    assert_eq!(caller.call_as::<Shared>(request()).await.unwrap().value, 7);
                     // Parent is shared; its resource-owner context can call its private child.
-                    assert_eq!(caller.call::<Parent>(request()).await.unwrap().value, 7);
+                    assert_eq!(caller.call_as::<Parent>(request()).await.unwrap().value, 7);
                     let (requests, mut decoded) =
                         harmos::operations::stream(harmos::operations::StreamSettings {
                             items: NonZeroUsize::new(1).unwrap(),
@@ -1072,7 +1081,7 @@ pub(super) fn contract_scenario() {
                     for source in ["client", "transitive", "unrelated"] {
                         let source = runtime.operations.caller(&host.callers[source]).unwrap();
                         assert!(matches!(
-                            source.submit::<Compute>(request()),
+                            source.submit_as::<Compute>(request()),
                             Err(Error::OperationUnauthorized { .. })
                         ));
                         let (output, input) =
@@ -1097,7 +1106,7 @@ pub(super) fn contract_scenario() {
                     for source in ["transitive", "unrelated"] {
                         let source = runtime.operations.caller(&host.callers[source]).unwrap();
                         assert!(matches!(
-                            source.submit::<Shared>(request()),
+                            source.submit_as::<Shared>(request()),
                             Err(Error::OperationUnauthorized { .. })
                         ));
                     }
@@ -1112,7 +1121,7 @@ pub(super) fn contract_scenario() {
                             .operations
                             .caller(&host.callers["fixture"])
                             .unwrap()
-                            .call::<Compute>(request())
+                            .call_as::<Compute>(request())
                             .await
                             .unwrap()
                             .value,
@@ -1120,7 +1129,7 @@ pub(super) fn contract_scenario() {
                     );
                     manager.shutdown(&mut host).await.unwrap();
                     assert!(matches!(
-                        caller.submit::<Shared>(request()),
+                        caller.submit_as::<Shared>(request()),
                         Err(Error::OperationCaller { .. })
                     ));
                     let (output, input) =
@@ -1170,9 +1179,10 @@ pub(super) fn contract_scenario() {
                         keyed: true,
                         ..request()
                     };
-                    let host_response = runtime.operations.call::<Shared>(keyed()).await.unwrap();
-                    let first = caller.call::<Shared>(keyed()).await.unwrap();
-                    let again = caller.call::<Shared>(keyed()).await.unwrap();
+                    let host_response =
+                        runtime.operations.call_as::<Shared>(keyed()).await.unwrap();
+                    let first = caller.call_as::<Shared>(keyed()).await.unwrap();
+                    let again = caller.call_as::<Shared>(keyed()).await.unwrap();
                     assert!(!host_response.ptr_eq(&first));
                     assert!(first.ptr_eq(&again));
                     assert_eq!(host.owner.runs.load(std::sync::atomic::Ordering::SeqCst), 2);
@@ -1191,15 +1201,15 @@ pub(super) fn contract_scenario() {
                         .await
                         .unwrap();
                     assert!(matches!(
-                        caller.submit::<Shared>(keyed()),
+                        caller.submit_as::<Shared>(keyed()),
                         Err(Error::OperationCaller { .. })
                     ));
                     let replacement = runtime.operations.caller(&host.callers["client"]).unwrap();
-                    let next = replacement.call::<Shared>(keyed()).await.unwrap();
+                    let next = replacement.call_as::<Shared>(keyed()).await.unwrap();
                     assert!(!first.ptr_eq(&next));
                     assert!(
                         host_response
-                            .ptr_eq(&runtime.operations.call::<Shared>(keyed()).await.unwrap())
+                            .ptr_eq(&runtime.operations.call_as::<Shared>(keyed()).await.unwrap())
                     );
                     manager.shutdown(&mut host).await.unwrap();
                     runtime.stop().await.unwrap();
@@ -1224,18 +1234,18 @@ pub(super) fn contract_scenario() {
                         .await
                         .unwrap();
                     assert!(matches!(
-                        old.submit::<Shared>(request()),
+                        old.submit_as::<Shared>(request()),
                         Err(Error::OperationCaller { .. })
                     ));
                     let replacement = runtime.operations.caller(&host.callers["client"]).unwrap();
                     assert!(matches!(
-                        replacement.submit::<Shared>(request()),
+                        replacement.submit_as::<Shared>(request()),
                         Err(Error::OperationUnauthorized { .. })
                     ));
                     assert_eq!(
                         runtime
                             .operations
-                            .call::<Shared>(request())
+                            .call_as::<Shared>(request())
                             .await
                             .unwrap()
                             .value,
@@ -1263,7 +1273,7 @@ pub(super) fn contract_scenario() {
                     let gate = Arc::new(tokio::sync::Notify::new());
                     let held = runtime
                         .operations
-                        .submit::<Shared>(Request {
+                        .submit_as::<Shared>(Request {
                             gate: Some((opened.clone(), gate.clone())),
                             ..request()
                         })
@@ -1271,7 +1281,7 @@ pub(super) fn contract_scenario() {
                     tokio::time::timeout(std::time::Duration::from_secs(2), opened.notified())
                         .await
                         .unwrap();
-                    let queued = source.submit::<Shared>(request()).unwrap();
+                    let queued = source.submit_as::<Shared>(request()).unwrap();
                     manager
                         .reload(with_clients(false), &mut host)
                         .await
@@ -1345,7 +1355,7 @@ pub(super) fn contract_scenario() {
                     );
                     // The client's shared parent invokes its own private child as the bound owner.
                     assert_eq!(
-                        &*client.call::<Nested>("nested".into()).await.unwrap(),
+                        &*client.call_as::<Nested>("nested".into()).await.unwrap(),
                         "nested:1"
                     );
                     let prepared = host
@@ -1589,7 +1599,7 @@ pub(super) fn contract_scenario() {
                     let old_client = runtime.operations.caller(&host.callers["client"]).unwrap();
                     assert_eq!(
                         old_client
-                            .call::<Selected>("before".into())
+                            .call_as::<Selected>("before".into())
                             .await
                             .unwrap()
                             .as_str(),
@@ -1598,7 +1608,7 @@ pub(super) fn contract_scenario() {
                     assert!(matches!(
                         runtime
                             .operations
-                            .call::<Selected>("ambiguous".into())
+                            .call_as::<Selected>("ambiguous".into())
                             .await,
                         Err(Error::InvalidInput {
                             field: "operation provider",
@@ -1613,7 +1623,7 @@ pub(super) fn contract_scenario() {
                         .await
                         .unwrap();
                     assert!(matches!(
-                        old_client.submit::<Selected>("stale".into()),
+                        old_client.submit_as::<Selected>("stale".into()),
                         Err(Error::OperationCaller { .. })
                     ));
                     assert_eq!(host.scopes["first"].generation(), first_generation);
@@ -1621,7 +1631,7 @@ pub(super) fn contract_scenario() {
                     let client = runtime.operations.caller(&host.callers["client"]).unwrap();
                     assert_eq!(
                         client
-                            .call::<Selected>("after".into())
+                            .call_as::<Selected>("after".into())
                             .await
                             .unwrap()
                             .as_str(),
@@ -1658,7 +1668,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(host.scopes["second"].generation(), second_generation);
                     assert_eq!(
                         client
-                            .call::<Selected>("unchanged".into())
+                            .call_as::<Selected>("unchanged".into())
                             .await
                             .unwrap()
                             .as_str(),

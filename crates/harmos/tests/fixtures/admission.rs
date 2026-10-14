@@ -44,6 +44,7 @@ impl harmos::operations::lifecycle::Policy for Program {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(2),
             retries: harmos::operations::RetryPolicy::Never,
+            restart: harmos::operations::RestartPolicy::Never,
         };
     const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
@@ -113,7 +114,7 @@ impl harmos::Plugin for Program {
     ) -> Result<(), harmos::operations::ServingError> {
         Ok(())
     }
-    async fn shutdown(&mut self, _: &Supervisor) -> Result<(), Refusal> {
+    async fn stop(&mut self, _: &Supervisor) -> Result<(), Refusal> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Refusal> {

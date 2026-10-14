@@ -112,7 +112,7 @@ async fn storage_uses_data() {
             )
             .unwrap(),
         );
-        storage.start(&runtime.services).await.unwrap();
+        storage.start(&runtime).await.unwrap();
         Operations::register(
             &runtime.operations,
             "storage",
@@ -223,7 +223,7 @@ async fn storage_uses_data() {
             .encode_to_vec();
         let saved = <StorageCursor as harmos::Protobuf>::decode(&saved).unwrap();
         assert_eq!(saved, storage.cursor_saved());
-        let local = runtime.operations.call::<Save>(save).await.unwrap();
+        let local = runtime.operations.call_as::<Save>(save).await.unwrap();
         assert_eq!(*local, saved);
         let encoded = harmos::Protobuf::encode_to_vec(&Selection::default());
         let query = storage_messages::query_files::Row1::decode(encoded.as_slice()).unwrap();

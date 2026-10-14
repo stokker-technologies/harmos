@@ -50,7 +50,10 @@ impl Operation for Egress {
     type Error = harmos::Error;
     type Endpoints = ();
     type Context<'a> = Context<'a>;
-    fn new(resources: Arc<Endpoint>) -> harmos::Result<Self> {
+    async fn initialize<'ctx>(
+        resources: Arc<Endpoint>,
+        _: Self::Context<'ctx>,
+    ) -> harmos::Result<Self> {
         resources.prepared.fetch_add(1, Ordering::SeqCst);
         Ok(Self { resources })
     }

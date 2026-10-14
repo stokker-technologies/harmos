@@ -44,13 +44,13 @@ macro_rules! serving {
             type Error = harmos::Error;
             type Endpoints = $endpoints;
             type Context<'a> = &'a harmos::plugin::sidecar::Supervisor;
-            fn new(counts: Arc<Counts>) -> Result<Self, Self::Error> {
+            async fn initialize<'a>(
+                counts: Arc<Counts>,
+                _: Self::Context<'a>,
+            ) -> Result<Self, Self::Error> {
                 counts.prepared.fetch_add(1, Ordering::SeqCst);
+                counts.operation_initialized.fetch_add(1, Ordering::SeqCst);
                 Ok(Self(counts))
-            }
-            async fn initialize<'a>(&mut self, _: Self::Context<'a>) -> Result<(), Self::Error> {
-                self.0.operation_initialized.fetch_add(1, Ordering::SeqCst);
-                Ok(())
             }
             async fn run<'a>(
                 &mut self,
@@ -69,7 +69,7 @@ macro_rules! serving {
                 self.0.stopped.fetch_add(1, Ordering::SeqCst);
                 Ok(())
             }
-            async fn finalize(&mut self) -> Result<(), Self::Error> {
+            async fn cleanup(&mut self) -> Result<(), Self::Error> {
                 self.0.finalized.fetch_add(1, Ordering::SeqCst);
                 Ok(())
             }

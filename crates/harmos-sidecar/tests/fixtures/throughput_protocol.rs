@@ -25,7 +25,7 @@ use harmos_contract::inventory::{contracts, listeners, observers, publications};
 use harmos_contract::operations::{ServingError, WireDeclaration, WireOperation, lifecycle};
 use harmos_contract::plugin::{Declared, Plugin};
 use harmos_sidecar::operations::{
-    Operation, OperationDeclaration, OperationPolicy, RetryPolicy, WireTable,
+    Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, WireTable,
 };
 use harmos_sidecar::{StreamSpec, Supervisor};
 
@@ -35,6 +35,7 @@ const SDK_POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(30),
     attempt_timeout: Duration::from_secs(30),
     retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
 };
 const SDK: [harmos_contract::operations::OperationPolicy; 2] = [SDK_POLICY, SDK_POLICY];
 
@@ -143,6 +144,7 @@ impl OperationDeclaration for Start {
         timeout: Duration::from_secs(30),
         attempt_timeout: Duration::from_secs(30),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 
     type Response = ();
@@ -162,6 +164,7 @@ impl OperationDeclaration for Echo {
         timeout: Duration::from_secs(5),
         attempt_timeout: Duration::from_secs(5),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 
     type Response = Self;
@@ -201,7 +204,10 @@ impl Operation for Echoing {
     type Error = harmos_sidecar::Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    fn new(resources: Arc<Handler>) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(
+        resources: Arc<Handler>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Self::Error> {
         Ok(Self {
             _resources: resources,
         })
@@ -228,7 +234,10 @@ impl Operation for Starting {
     type Error = harmos_sidecar::Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    fn new(resources: Arc<Handler>) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(
+        resources: Arc<Handler>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Self::Error> {
         Ok(Self { resources })
     }
     async fn run<'ctx>(
@@ -313,7 +322,7 @@ impl Plugin for TransportPlugin {
         table.bind_operation::<Echoing>(Arc::clone(&self.resources))?;
         table.bind_operation::<Starting>(Arc::clone(&self.resources))
     }
-    async fn shutdown(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
+    async fn stop(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Self::Error> {

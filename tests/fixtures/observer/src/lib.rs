@@ -23,7 +23,7 @@ pub use error::{Error, Result};
 // Third Party Imports
 
 // Local Imports
-use harmos::operations::{OperationPolicy, RetryPolicy, ServingError, WireTable};
+use harmos::operations::{OperationPolicy, RestartPolicy, RetryPolicy, ServingError, WireTable};
 use harmos::plugin::contract::{Attachment, Declared};
 use harmos::plugin::sidecar::{ObserverAttachment, Refusal, Supervisor};
 
@@ -59,6 +59,7 @@ impl harmos::operations::lifecycle::Policy for StandaloneBridge {
         timeout: std::time::Duration::from_secs(30),
         attempt_timeout: std::time::Duration::from_secs(5),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
@@ -71,7 +72,7 @@ impl harmos::operations::lifecycle::Policy for StandaloneBridge {
     requires(harmos::operations::host::Publish),
     observers = observers::Observers,
     listeners = listeners::Listeners,
-    observer_controls(observers::controls::Start, observers::controls::Stop),
+    observer_control = observers::controls::Observe,
     restart(
         credit = 3,
         sustained_health_ms = 30_000,
@@ -117,7 +118,7 @@ impl harmos::Plugin for StandaloneBridge {
         self.observers
             .as_ref()
             .ok_or(ServingError::Catalog)?
-            .bind::<observers::controls::Start, observers::controls::Stop>(table)
+            .bind::<observers::controls::Observe>(table)
     }
 
     fn attachment(&self) -> Option<std::sync::Arc<dyn Attachment<Supervisor>>> {
@@ -126,7 +127,7 @@ impl harmos::Plugin for StandaloneBridge {
             .map(|observers| observers.clone() as std::sync::Arc<dyn Attachment<Supervisor>>)
     }
 
-    async fn shutdown(&mut self, _: &Supervisor) -> std::result::Result<(), Refusal> {
+    async fn stop(&mut self, _: &Supervisor) -> std::result::Result<(), Refusal> {
         Ok(())
     }
     async fn cleanup(&mut self) -> std::result::Result<(), Refusal> {

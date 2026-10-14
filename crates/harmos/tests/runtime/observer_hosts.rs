@@ -29,7 +29,7 @@ use super::sidecar::operations::{Lanes, Managed};
 use super::support::Pulse;
 use harmos::Message;
 use harmos::operations::{
-    OperationDeclaration, OperationPolicy, RetryPolicy, Visibility, WireOperation,
+    OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireOperation,
 };
 use harmos::plugin::sidecar::inventory::publications;
 use harmos::plugin::sidecar::{
@@ -74,9 +74,7 @@ struct Bridge {
     attachment: Arc<ObserverAttachment<Settings, Host>>,
 }
 
-struct Start;
-
-struct Stop;
+struct Observe;
 
 struct Host(Publisher<Bridge>);
 
@@ -96,8 +94,7 @@ enum Observers {
 
 #[harmos::catalog]
 enum Operations {
-    Start(Start),
-    Stop(Stop),
+    Observe(Observe),
 }
 
 /* === Traits === */
@@ -119,40 +116,31 @@ impl Drop for Seed {
     }
 }
 
-impl OperationDeclaration for Start {
+impl OperationDeclaration for Observe {
     type Request = harmos_contract::observers::Control;
     type Response = ();
-    const ID: &'static str = "custom.observer.start";
+    const ID: &'static str = "custom.observer.observe";
     const VISIBILITY: Visibility = Visibility::Host;
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(2),
-        attempt_timeout: Duration::from_millis(500),
-        retries: RetryPolicy::Never,
-    };
+    const POLICY: OperationPolicy = harmos_contract::observers::POLICY;
 }
 
-impl OperationDeclaration for Stop {
-    type Request = harmos_contract::observers::Control;
-    type Response = harmos_contract::observers::Status;
-    const ID: &'static str = "custom.observer.stop";
-    const VISIBILITY: Visibility = Visibility::Host;
-    const POLICY: OperationPolicy = Start::POLICY;
-}
-
-impl WireOperation for Start {
+impl WireOperation for Observe {
     const VERSION: u32 = 1;
 }
 
-impl WireOperation for Stop {
-    const VERSION: u32 = 1;
-}
+const LIFECYCLE: OperationPolicy = OperationPolicy {
+    timeout: Duration::from_secs(2),
+    attempt_timeout: Duration::from_millis(500),
+    retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
+};
 
 impl harmos::operations::lifecycle::Policy for Bridge {
-    const INITIALIZATION_POLICY: OperationPolicy = Start::POLICY;
-    const SHUTDOWN_POLICY: OperationPolicy = Start::POLICY;
+    const INITIALIZATION_POLICY: OperationPolicy = LIFECYCLE;
+    const SHUTDOWN_POLICY: OperationPolicy = LIFECYCLE;
 }
 
-#[harmos::plugin(id = "custom-host", provides = Operations, requires(harmos::operations::host::Publish),  observers = Observers, observer_controls(Start, Stop), streams(Published))]
+#[harmos::plugin(id = "custom-host", provides = Operations, requires(harmos::operations::host::Publish),  observers = Observers, observer_control = Observe, streams(Published))]
 impl harmos::Plugin for Bridge {
     type Config = usize;
     type Resources = Settings;
@@ -192,12 +180,12 @@ impl harmos::Plugin for Bridge {
         &self,
         table: &mut harmos::operations::WireTable<Supervisor>,
     ) -> Result<(), harmos::operations::ServingError> {
-        self.attachment.bind::<Start, Stop>(table)
+        self.attachment.bind::<Observe>(table)
     }
     fn attachment(&self) -> Option<Arc<dyn harmos_contract::plugin::Attachment<Supervisor>>> {
         Some(self.attachment.clone())
     }
-    async fn shutdown(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
+    async fn stop(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
@@ -278,7 +266,7 @@ impl<const N: u64> Observer<Host> for Watch<N> {
     const INTERVAL: Duration = Duration::from_millis(5);
     const STREAMS: &'static [publications::Entry] = &[publications::Entry::of::<Published>()];
 
-    fn new(resources: &Settings) -> Result<Self, PublishError> {
+    async fn initialize(resources: &Settings) -> Result<Self, PublishError> {
         resources.state.initialized.fetch_add(1, Ordering::SeqCst);
         Ok(Self(resources.state.clone()))
     }
@@ -287,7 +275,7 @@ impl<const N: u64> Observer<Host> for Watch<N> {
         &mut self,
         ctx: &ObserverContext<'_, Settings, Host>,
     ) -> Result<(), PublishError> {
-        let value = ctx.call::<ReadValue>(N).await?;
+        let value = ctx.call_as::<ReadValue>(N).await?;
         ctx.publish(Pulse { sample: value }).await
     }
 
@@ -383,8 +371,10 @@ async fn exercise(panic_first: bool) {
         let error = stopped.expect_err("observer binding failure reaches root shutdown");
         let mut cause: &(dyn std::error::Error + 'static) = &error;
         loop {
-            if let Some(exit) = cause.downcast_ref::<harmos_sidecar::ObserverExit>() {
-                assert_eq!(*exit, harmos_sidecar::ObserverExit::BindingPanicked);
+            if cause
+                .to_string()
+                .contains("observer host or context factory panicked")
+            {
                 break;
             }
             if let Some(harmos::Error::TaskFailed { source, .. }) =

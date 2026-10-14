@@ -37,7 +37,7 @@ pub(crate) struct ProposeRoute;
 /* === Implementations === */
 #[harmos_sidecar::operation(declaration = schematic_contract::operations::ProposeRoute)]
 impl ProposeRoute {
-    fn new(_: Arc<()>) -> Self {
+    async fn initialize(_: Arc<()>, _: &harmos_sidecar::Supervisor) -> Self {
         Self
     }
 

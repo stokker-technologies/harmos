@@ -23,8 +23,8 @@ use tokio::sync::Notify;
 
 // Local Imports
 use harmos::operations::{
-    Operation, OperationDeclaration, OperationPolicy, RetryPolicy, Visibility, WireOperation,
-    WireTable,
+    Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility,
+    WireOperation, WireTable,
 };
 use harmos::plugin::sidecar::{Refusal, Supervisor};
 use harmos_contract::listeners::{Context as DeliveryContext, Delivery};
@@ -34,6 +34,7 @@ const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(30),
     attempt_timeout: Duration::from_secs(30),
     retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
 };
 
 /* === Macros === */
@@ -129,7 +130,7 @@ impl harmos::Plugin for Receiver {
         table.bind_operation::<Consumption>(self.resources())?;
         table.bind_operation::<Reporting>(self.resources())
     }
-    async fn shutdown(&mut self, _: &Supervisor) -> Result<(), Refusal> {
+    async fn stop(&mut self, _: &Supervisor) -> Result<(), Refusal> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Refusal> {
@@ -163,7 +164,7 @@ impl Operation for Consumption {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    fn new(state: Arc<State>) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(state: Arc<State>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
         Ok(Self { state })
     }
     async fn run<'a>(
@@ -204,7 +205,7 @@ impl Operation for Reporting {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    fn new(state: Arc<State>) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(state: Arc<State>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
         Ok(Self { state })
     }
     async fn run<'a>(

@@ -24,7 +24,8 @@ use std::time::Duration;
 use super::{Lanes, app::App};
 use harmos::operations::middleware::{Enter, Invocation, Middleware, Observation};
 use harmos::operations::{
-    CallContext, Context, Operation, OperationDeclaration, OperationPolicy, RetryPolicy,
+    CallContext, Context, Operation, OperationDeclaration, OperationPolicy, RestartPolicy,
+    RetryPolicy,
 };
 use harmos::{Error, Runtime};
 
@@ -70,6 +71,7 @@ impl<const CHILD: bool> OperationDeclaration for Overlay<CHILD> {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(1),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 }
 
@@ -79,7 +81,7 @@ impl<const CHILD: bool> Operation for Overlay<CHILD> {
     type Error = Error;
     type Endpoints = ();
     type Context<'a> = Context<'a>;
-    fn new(_: Arc<()>) -> harmos::Result<Self> {
+    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> harmos::Result<Self> {
         Ok(Self)
     }
     async fn run<'a>(
@@ -98,7 +100,7 @@ impl<const CHILD: bool> Operation for Overlay<CHILD> {
             let child = context.with_value(Stage { id: "child".into() })?;
             let stage = child.context().require::<Stage>()?;
             assert_eq!(stage.id, "child");
-            let answer = child.call::<Overlay<true>>(()).await?;
+            let answer = child.call_as::<Overlay<true>>(()).await?;
             Ok(format!("{actor}:{}:{answer}", "parent"))
         }
         .await;
@@ -121,6 +123,7 @@ impl<const CHILD: bool> OperationDeclaration for Declare<CHILD> {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(1),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 }
 
@@ -130,7 +133,7 @@ impl<const CHILD: bool> Operation for Read<CHILD> {
     type Error = Error;
     type Endpoints = ();
     type Context<'a> = Context<'a>;
-    fn new(_: Arc<()>) -> harmos::Result<Self> {
+    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> harmos::Result<Self> {
         Ok(Self)
     }
     async fn run<'a>(
@@ -144,7 +147,7 @@ impl<const CHILD: bool> Operation for Read<CHILD> {
             if CHILD {
                 return Ok(actor.into());
             }
-            let child = context.call::<Declare<true>>(()).await?;
+            let child = context.call_as::<Declare<true>>(()).await?;
             Ok(format!("{actor}:{child}"))
         }
         .await;
@@ -237,14 +240,16 @@ pub(super) fn contract_scenario() {
                 values: values.clone(),
                 operation: "overlay.child".into(),
                 payload: ().encode_to_vec(),
+                submit: true,
             };
             let encoded = call.encode().unwrap();
             let decoded = harmos::operations::WireChildCall::decode(&encoded).unwrap();
             assert_eq!(decoded.context, call.context);
             assert_eq!(decoded.generation_context, call.generation_context);
             assert_eq!(decoded.values, values);
+            assert!(decoded.submit);
             let mut obsolete = encoded.clone();
-            obsolete[0] = 4;
+            obsolete[0] = 5;
             assert!(matches!(
                 harmos::operations::WireChildCall::decode(&obsolete),
                 Err(harmos::operations::WireCodecError::Version)
@@ -318,12 +323,12 @@ pub(super) fn contract_scenario() {
                     .unwrap();
                 let operations = runtime.operations.with_context(original.clone());
                 assert_eq!(
-                    &*operations.call::<Overlay<false>>(()).await.unwrap(),
+                    &*operations.call_as::<Overlay<false>>(()).await.unwrap(),
                     "alice:parent:alice:child"
                 );
                 assert_eq!(original.require::<Stage>().unwrap().id, "parent");
                 assert_eq!(
-                    &*operations.call::<Overlay<true>>(()).await.unwrap(),
+                    &*operations.call_as::<Overlay<true>>(()).await.unwrap(),
                     "alice:parent"
                 );
                 runtime.stop().await.unwrap();
@@ -352,7 +357,7 @@ pub(super) fn contract_scenario() {
                     }
                     let alice = runtime.operations.with_context(context("alice"));
                     assert_eq!(
-                        &*alice.call::<Declare<false>>(()).await.unwrap(),
+                        &*alice.call_as::<Declare<false>>(()).await.unwrap(),
                         "alice:alice"
                     );
                     assert_eq!(
@@ -380,8 +385,8 @@ pub(super) fn contract_scenario() {
                     );
                     let bob = runtime.operations.with_context(context("bob"));
                     let (a, b) = tokio::join!(
-                        alice.call::<Declare<false>>(()),
-                        bob.call::<Declare<false>>(())
+                        alice.call_as::<Declare<false>>(()),
+                        bob.call_as::<Declare<false>>(())
                     );
                     assert_eq!(&*a.unwrap(), "alice:alice");
                     assert_eq!(&*b.unwrap(), "bob:bob");
@@ -414,7 +419,7 @@ pub(super) fn contract_scenario() {
                         runtime
                             .operations
                             .with_context(context("alice"))
-                            .call::<Declare<false>>(())
+                            .call_as::<Declare<false>>(())
                             .await
                             .is_err()
                     );
@@ -452,7 +457,7 @@ pub(super) fn contract_scenario() {
                     let invocation = runtime
                         .operations
                         .with_context(context("alice"))
-                        .submit::<Declare<false>>(())
+                        .submit_as::<Declare<false>>(())
                         .unwrap();
                     tokio::time::timeout(Duration::from_secs(1), entered.acquire())
                         .await
@@ -536,7 +541,7 @@ pub(super) fn contract_scenario() {
                     let answer = runtime
                         .operations
                         .with_context(context("alice"))
-                        .call::<Retry>(())
+                        .call_as::<Retry>(())
                         .await
                         .unwrap();
                     assert_eq!(&*answer, "alice:3");
@@ -584,7 +589,7 @@ impl Operation for Retry {
     type Error = std::io::Error;
     type Endpoints = ();
     type Context<'a> = Context<'a>;
-    fn new(_: Arc<()>) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, Self::Error> {
         Ok(Self { attempts: 0 })
     }
     fn classify(_: &Self::Error) -> harmos::operations::Failure {

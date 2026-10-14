@@ -30,9 +30,10 @@ use harmos_contract::catalog::Node;
 use harmos_contract::inventory::{contracts, listeners, observers, publications};
 use harmos_contract::plugin::{Declared, Plugin};
 use harmos_guest::Context;
+use harmos_guest::Host;
 use harmos_guest::operations::{
-    Failure, Operation, OperationPolicy, RetryPolicy, ServingError, WireDeclaration, WireTable,
-    lifecycle,
+    Failure, Operation, OperationPolicy, RestartPolicy, RetryPolicy, ServingError, WireDeclaration,
+    WireTable, lifecycle,
 };
 
 /* === Constants === */
@@ -40,6 +41,7 @@ const SDK_POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_millis(500),
     retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
 };
 const SDK: [harmos_guest::operations::OperationPolicy; 2] = [SDK_POLICY, SDK_POLICY];
 
@@ -123,34 +125,53 @@ impl Operation for ReadOperation {
     type Error = std::io::Error;
     type Endpoints = ();
     type Context<'a> = &'a Context;
-    fn new(owner: Arc<Owner>) -> Result<Self, Self::Error> {
-        Ok(Self {
-            owner,
-            initialized: false,
-            value: String::new(),
-            attempts: 0,
-            cleanups: 0,
-            saved: None,
-        })
-    }
-    async fn initialize<'ctx>(&mut self, context: Self::Context<'ctx>) -> Result<(), Self::Error> {
-        assert!(!self.initialized, "operation initialized only once");
-        self.initialized = true;
-        self.owner.initialized.fetch_add(1, Ordering::SeqCst);
-        if self.owner.fail_initialize.swap(false, Ordering::SeqCst) {
-            return Err(std::io::Error::other("partial initialization failed"));
+    async fn initialize<'ctx>(
+        owner: Arc<Owner>,
+        context: Self::Context<'ctx>,
+    ) -> Result<Self, Self::Error> {
+        let constructed: Result<Self, Self::Error> = async move {
+            Ok(Self {
+                owner,
+                initialized: false,
+                value: String::new(),
+                attempts: 0,
+                cleanups: 0,
+                saved: None,
+            })
         }
-        if self.owner.child_initialize.swap(false, Ordering::SeqCst) {
-            let child = context
-                .operation::<Read>(Value {
-                    value: "leaf".into(),
-                })
-                .await
-                .map_err(std::io::Error::other)?;
-            assert_eq!(child.value, "leaf:1");
-            self.saved = Some(context.clone());
+        .await;
+        let mut operation = constructed?;
+        let started: Result<(), Self::Error> = async {
+            let operation = &mut operation;
+            assert!(!operation.initialized, "operation initialized only once");
+            operation.initialized = true;
+            operation.owner.initialized.fetch_add(1, Ordering::SeqCst);
+            if operation
+                .owner
+                .fail_initialize
+                .swap(false, Ordering::SeqCst)
+            {
+                return Err(std::io::Error::other("partial initialization failed"));
+            }
+            if operation
+                .owner
+                .child_initialize
+                .swap(false, Ordering::SeqCst)
+            {
+                let child = context
+                    .call_as::<Read>(Value {
+                        value: "leaf".into(),
+                    })
+                    .await
+                    .map_err(std::io::Error::other)?;
+                assert_eq!(child.value, "leaf:1");
+                operation.saved = Some(context.clone());
+            }
+            Ok(())
         }
-        Ok(())
+        .await;
+        started?;
+        Ok(operation)
     }
     async fn run<'ctx>(
         &mut self,
@@ -168,7 +189,7 @@ impl Operation for ReadOperation {
                     .as_ref()
                     .expect("original initialization context");
                 if saved
-                    .operation::<Read>(Value {
+                    .call_as::<Read>(Value {
                         value: "leaf".into(),
                     })
                     .await
@@ -198,7 +219,7 @@ impl Operation for ReadOperation {
                     .with_value(contract::Stage { id: "child".into() })
                     .map_err(std::io::Error::other)?;
                 let child = caller
-                    .operation::<Read>(Value {
+                    .call_as::<Read>(Value {
                         value: "context-leaf".into(),
                     })
                     .await
@@ -221,7 +242,7 @@ impl Operation for ReadOperation {
             if self.value == "parent" {
                 if let Some(saved) = &self.saved
                     && saved
-                        .operation::<Read>(Value {
+                        .call_as::<Read>(Value {
                             value: "leaf".into(),
                         })
                         .await
@@ -230,7 +251,7 @@ impl Operation for ReadOperation {
                     return Err(std::io::Error::other("stale context was accepted"));
                 }
                 let child = context
-                    .operation::<Read>(Value {
+                    .call_as::<Read>(Value {
                         value: "leaf".into(),
                     })
                     .await
@@ -256,7 +277,7 @@ impl Operation for ReadOperation {
         self.owner.stopped.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
-    async fn finalize(&mut self) -> Result<(), Self::Error> {
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
         self.owner.finalized.fetch_add(1, Ordering::SeqCst);
         self.cleanups += 1;
         if self.value == "cleanup" && self.cleanups == 1 {
@@ -276,7 +297,10 @@ impl Operation for Counting {
     type Endpoints = ();
     type Context<'a> = &'a Context;
 
-    fn new(owner: Arc<Owner>) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(
+        owner: Arc<Owner>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Self::Error> {
         Ok(Self(owner))
     }
 
@@ -358,7 +382,7 @@ impl Plugin for Program {
         }
         Ok(())
     }
-    async fn shutdown(&mut self, _: &Context) -> Result<(), Self::Error> {
+    async fn stop(&mut self, _: &Context) -> Result<(), Self::Error> {
         if self.pending_shutdown {
             std::future::pending::<()>().await;
         }

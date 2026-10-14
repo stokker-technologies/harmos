@@ -29,7 +29,8 @@ use super::{Lanes, app::App};
 use harmos::Runtime;
 use harmos::grpc::Event;
 use harmos::operations::{
-    Context, Operation, OperationDeclaration, OperationPhase, OperationPolicy, RetryPolicy,
+    Context, Operation, OperationDeclaration, OperationPhase, OperationPolicy, RestartPolicy,
+    RetryPolicy,
 };
 
 /* === Constants === */
@@ -92,6 +93,7 @@ impl OperationDeclaration for Produce {
         timeout: Duration::from_secs(5),
         attempt_timeout: Duration::from_secs(5),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 }
 impl harmos::operations::OutputDeclaration for Produce {
@@ -103,7 +105,10 @@ impl Operation for Production {
     type Error = std::io::Error;
     type Endpoints = harmos::operations::StreamOutput<u32>;
     type Context<'a> = Context<'a>;
-    fn new(trace: Arc<Trace>) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(
+        trace: Arc<Trace>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Self::Error> {
         trace.constructed.fetch_add(1, Ordering::SeqCst);
         Ok(Self { trace })
     }
@@ -132,7 +137,7 @@ impl Operation for Production {
         .await;
         result.map(::core::convert::Into::into)
     }
-    async fn finalize(&mut self) -> Result<(), Self::Error> {
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
         self.trace.finalized.fetch_add(1, Ordering::SeqCst);
         self.trace.finalizing.add_permits(1);
         if self.trace.fail_cleanup.load(Ordering::SeqCst) {
@@ -308,7 +313,10 @@ pub(super) fn contract_scenario() {
                         )
                         .unwrap();
                     let id = instance.id();
-                    drop(harmos::grpc::stream(instance, receiver));
+                    // Only a constructed instance has cleanup to retain.
+                    let stream = harmos::grpc::stream(instance, receiver);
+                    trace.attempting.acquire().await.unwrap().forget();
+                    drop(stream);
                     trace.finalizing.acquire().await.unwrap().forget();
                     let status = runtime.operations.status(id).unwrap();
                     assert!(status.cancellation_requested());

@@ -18,7 +18,7 @@ use std::time::Duration;
 
 // Local Imports
 use harmos::operations::{
-    OperationDeclaration, OperationPolicy, RetryPolicy, Visibility, WireOperation,
+    OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireOperation,
 };
 
 /* === Constants === */
@@ -26,6 +26,7 @@ pub const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(10),
     attempt_timeout: Duration::from_secs(10),
     retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
 };
 
 /* === Macros === */

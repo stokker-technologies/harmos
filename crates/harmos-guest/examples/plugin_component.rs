@@ -21,8 +21,8 @@ use std::time::Duration;
 use harmos_contract::catalog::Node;
 use harmos_contract::inventory::{contracts, observers, publications};
 use harmos_contract::operations::{
-    Operation, OperationDeclaration, OperationPolicy, RetryPolicy, WireDeclaration, WireOperation,
-    WireTable, lifecycle,
+    Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, WireDeclaration,
+    WireOperation, WireTable, lifecycle,
 };
 use harmos_contract::plugin::{Declared, Plugin};
 use harmos_guest::Context;
@@ -32,6 +32,7 @@ const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(2),
     retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
 };
 const PROVIDED: &[Node<WireDeclaration>] = &[Node::Leaf(WireDeclaration::of::<Read>())];
 const SDK: [harmos_contract::operations::OperationPolicy; 2] = [POLICY, POLICY];
@@ -143,7 +144,7 @@ impl Plugin for Program {
     ) -> Result<(), harmos_contract::operations::ServingError> {
         table.bind_operation::<Reader>(self.resources())
     }
-    async fn shutdown(&mut self, _: &Context) -> Result<(), Self::Error> {
+    async fn stop(&mut self, _: &Context) -> Result<(), Self::Error> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
@@ -172,15 +173,26 @@ impl Operation for Reader {
     type Endpoints = ();
     type Context<'a> = &'a Context;
 
-    fn new(value: Arc<String>) -> Result<Self, Self::Error> {
-        Ok(Self {
-            value,
-            initializations: 0,
-        })
-    }
-    async fn initialize<'ctx>(&mut self, _: Self::Context<'ctx>) -> Result<(), Self::Error> {
-        self.initializations += 1;
-        Ok(())
+    async fn initialize<'ctx>(
+        value: Arc<String>,
+        _context: Self::Context<'ctx>,
+    ) -> Result<Self, Self::Error> {
+        let constructed: Result<Self, Self::Error> = async move {
+            Ok(Self {
+                value,
+                initializations: 0,
+            })
+        }
+        .await;
+        let mut operation = constructed?;
+        let started: Result<(), Self::Error> = async {
+            let operation = &mut operation;
+            operation.initializations += 1;
+            Ok(())
+        }
+        .await;
+        started?;
+        Ok(operation)
     }
     async fn run<'ctx>(
         &mut self,

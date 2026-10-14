@@ -19,7 +19,8 @@ use std::time::Duration;
 // Third Party Imports
 use tokio::sync::{Notify, mpsc};
 // Local Imports
-use harmos::plugin::sidecar::{ActivationId, Instance, ObserverContext};
+use super::Observing;
+use harmos::plugin::sidecar::{ActivationId, Instance, ObserverContext, ObserverError};
 
 /* === Constants === */
 
@@ -72,13 +73,18 @@ enum Event {
 /* === Implementations === */
 #[harmos::observer(id = "execution.watch", interval_ms = 5)]
 impl Watch {
-    fn new(resources: &Resources) -> Result<Self, std::io::Error> {
-        Ok(Self(resources.clone()))
-    }
-
-    async fn initialize(&mut self) -> Result<(), std::io::Error> {
-        self.0.events.send(Event::Opened).unwrap();
-        Ok(())
+    async fn initialize(resources: &Resources) -> Result<Self, std::io::Error> {
+        let constructed: Result<Self, std::io::Error> =
+            async move { Ok(Self(resources.clone())) }.await;
+        let mut observer = constructed?;
+        let started: Result<(), std::io::Error> = async {
+            let observer = &mut observer;
+            observer.0.events.send(Event::Opened).unwrap();
+            Ok(())
+        }
+        .await;
+        started?;
+        Ok(observer)
     }
 
     async fn observe(
@@ -138,14 +144,19 @@ impl std::io::Write for Diagnostics {
 
 #[harmos::observer(interval_ms = 5)]
 impl NeverStarts {
-    fn new(resources: &Resources) -> Result<Self, std::io::Error> {
-        Ok(Self(resources.clone()))
-    }
-
-    async fn initialize(&mut self) -> Result<(), std::io::Error> {
-        let _initializing = Callback(self.0.clone());
-        self.0.events.send(Event::Opened).unwrap();
-        std::future::pending().await
+    async fn initialize(resources: &Resources) -> Result<Self, std::io::Error> {
+        let constructed: Result<Self, std::io::Error> =
+            async move { Ok(Self(resources.clone())) }.await;
+        let mut observer = constructed?;
+        let started: Result<(), std::io::Error> = async {
+            let observer = &mut observer;
+            let _initializing = Callback(observer.0.clone());
+            observer.0.events.send(Event::Opened).unwrap();
+            std::future::pending().await
+        }
+        .await;
+        started?;
+        Ok(observer)
     }
 
     async fn observe(
@@ -159,23 +170,23 @@ impl NeverStarts {
 /* === Public Functions === */
 
 /* === Private Functions === */
+fn declaration() -> Instance<Resources, Capabilities> {
+    Instance::<Resources, Capabilities>::of::<Watch>()
+        .with_context(|capabilities| capabilities.token)
+}
+
 fn start(
     behavior: Behavior,
     stop_gate: Option<Arc<Notify>>,
-) -> (
-    harmos::plugin::sidecar::ObserverTask,
-    mpsc::UnboundedReceiver<Event>,
-) {
+) -> (Observing, mpsc::UnboundedReceiver<Event>) {
     let (events, received) = mpsc::unbounded_channel();
     let resources = Arc::new(Resources {
         events,
         stop_gate,
         identities: None,
     });
-    let instance = Instance::<Resources, Capabilities>::of::<Watch>()
-        .with_context(|capabilities| capabilities.token);
-    let task = instance
-        .start(
+    let activity = declaration()
+        .activate(
             resources,
             Capabilities {
                 token: 73,
@@ -183,7 +194,7 @@ fn start(
             },
         )
         .unwrap();
-    (task, received)
+    (Observing::start(activity), received)
 }
 
 async fn next(events: &mut mpsc::UnboundedReceiver<Event>) -> Event {
@@ -211,12 +222,12 @@ pub(super) fn contract_scenario() {
                     entered(&mut events).await;
                     assert_eq!(next(&mut events).await, Event::Dropped);
                     assert_eq!(next(&mut events).await, Event::Tick(2, 73));
-                    assert!(!task.is_finished());
+                    assert!(task.is_observing());
 
-                    task.stop().await.unwrap();
-                    assert!(task.is_finished());
-                    task.join().await.unwrap();
-                    task.stop().await.unwrap();
+                    task.shutdown().await.unwrap();
+                    assert!(!task.is_observing());
+                    assert!(!task.activity().is_initialized());
+                    task.shutdown().await.unwrap();
                 });
         });
     }
@@ -232,19 +243,23 @@ pub(super) fn contract_scenario() {
                     let (mut sibling, mut events) = start(Behavior::FailFirst, None);
                     entered(&mut failure).await;
                     assert_eq!(next(&mut failure).await, Event::Dropped);
+                    let ended = tokio::time::timeout(Duration::from_secs(2), failed.ended())
+                        .await
+                        .unwrap();
+                    assert!(matches!(ended, Some(ObserverError::CallbackPanicked)));
+                    assert!(!failed.is_observing());
+                    let activity = failed.activity();
+                    activity.stop().await.unwrap();
                     assert_eq!(next(&mut failure).await, Event::Stopping);
                     assert_eq!(next(&mut failure).await, Event::Stopped);
-                    tokio::time::timeout(Duration::from_secs(2), failed.join())
-                        .await
-                        .unwrap()
-                        .unwrap();
-                    assert!(failed.is_finished());
+                    activity.cleanup().await.unwrap();
+                    drop(failed);
                     assert_eq!(failure.recv().await, None);
 
                     entered(&mut events).await;
                     assert_eq!(next(&mut events).await, Event::Dropped);
                     assert_eq!(next(&mut events).await, Event::Tick(2, 73));
-                    sibling.stop().await.unwrap();
+                    sibling.shutdown().await.unwrap();
                 });
         });
     }
@@ -259,19 +274,26 @@ pub(super) fn contract_scenario() {
                     let gate = Arc::new(Notify::new());
                     let (mut task, mut events) = start(Behavior::Hang, Some(Arc::clone(&gate)));
                     entered(&mut events).await;
+                    assert!(task.interrupt().await.is_none());
+                    assert_eq!(next(&mut events).await, Event::Dropped);
+                    let activity = task.activity();
                     assert!(
-                        tokio::time::timeout(Duration::from_millis(20), task.stop())
+                        tokio::time::timeout(Duration::from_millis(20), activity.stop())
                             .await
                             .is_err()
                     );
-                    assert_eq!(next(&mut events).await, Event::Dropped);
                     assert_eq!(next(&mut events).await, Event::Stopping);
-                    assert!(!task.is_finished());
+                    assert!(activity.is_initialized());
 
+                    // An abandoned stop leaves the observer unstopped; the next
+                    // attempt enters the stop callback again.
                     gate.notify_one();
-                    task.stop().await.unwrap();
+                    activity.stop().await.unwrap();
+                    assert_eq!(next(&mut events).await, Event::Stopping);
                     assert_eq!(next(&mut events).await, Event::Stopped);
-                    assert!(task.is_finished());
+                    activity.cleanup().await.unwrap();
+                    assert!(!activity.is_initialized());
+                    drop(task);
                     assert_eq!(events.recv().await, None);
                 });
         });
@@ -284,13 +306,34 @@ pub(super) fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let (task, mut events) = start(Behavior::Hang, None);
-                    entered(&mut events).await;
-                    drop(task);
-                    assert_eq!(next(&mut events).await, Event::Dropped);
-                    assert_eq!(next(&mut events).await, Event::Stopping);
-                    assert_eq!(next(&mut events).await, Event::Stopped);
-                    assert_eq!(events.recv().await, None);
+                    // A host-run activation stops its observer when the last lease drops.
+                    let runtime = super::runtime().await;
+                    let manager = &runtime.operations;
+                    manager
+                        .register_native_observer(declaration(), |_| Capabilities {
+                            token: 73,
+                            behavior: Behavior::Hang,
+                        })
+                        .unwrap();
+                    let (events, mut received) = mpsc::unbounded_channel();
+                    let resources = Arc::new(Resources {
+                        events,
+                        identities: None,
+                        stop_gate: None,
+                    });
+                    let lease = manager
+                        .submit_with_resources_at("execution.watch", resources.clone())
+                        .await
+                        .unwrap();
+                    entered(&mut received).await;
+                    drop(lease);
+                    assert_eq!(next(&mut received).await, Event::Dropped);
+                    assert_eq!(next(&mut received).await, Event::Stopping);
+                    assert_eq!(next(&mut received).await, Event::Stopped);
+                    manager.retire_resources(&resources).await.unwrap();
+                    drop(resources);
+                    assert_eq!(received.recv().await, None);
+                    runtime.stop().await.unwrap();
                 });
         });
     }
@@ -308,15 +351,19 @@ pub(super) fn contract_scenario() {
                         identities: None,
                         stop_gate: None,
                     });
-                    let mut task = Instance::<Resources, ()>::of::<NeverStarts>()
-                        .start(resources, ())
-                        .unwrap();
+                    let mut task = Observing::start(
+                        Instance::<Resources, ()>::of::<NeverStarts>()
+                            .activate(resources, ())
+                            .unwrap(),
+                    );
                     assert_eq!(next(&mut received).await, Event::Opened);
-                    tokio::time::timeout(Duration::from_secs(2), task.stop())
+                    tokio::time::timeout(Duration::from_secs(2), task.shutdown())
                         .await
                         .unwrap()
                         .unwrap();
                     assert_eq!(next(&mut received).await, Event::Dropped);
+                    assert!(!task.activity().is_initialized());
+                    drop(task);
                     assert_eq!(received.recv().await, None);
                 });
         });
@@ -347,7 +394,7 @@ pub(super) fn contract_scenario() {
                         entered(&mut events).await;
                         assert_eq!(next(&mut events).await, Event::Dropped);
                         assert_eq!(next(&mut events).await, Event::Tick(2, 73));
-                        task.stop().await.unwrap();
+                        task.shutdown().await.unwrap();
 
                         let output =
                             String::from_utf8(diagnostics.0.lock().unwrap().clone()).unwrap();
@@ -361,7 +408,7 @@ pub(super) fn contract_scenario() {
                         assert!(output.contains("tick refused"), "{output}");
                         assert!(output.contains(r#"observer="execution.watch""#), "{output}");
                         assert!(
-                            output.contains(&format!("activation_id={}", task.activation_id())),
+                            output.contains(&format!("activation_id={}", task.activation)),
                             "{output}"
                         );
                     }
@@ -379,23 +426,30 @@ pub(super) fn contract_scenario() {
                     let gate = Arc::new(Notify::new());
                     let (mut task, mut events) = start(Behavior::Hang, Some(gate.clone()));
                     entered(&mut events).await;
-                    assert!(
-                        tokio::time::timeout(Duration::from_millis(1200), task.stop())
-                            .await
-                            .is_err()
-                    );
+                    assert!(task.interrupt().await.is_none());
                     assert_eq!(next(&mut events).await, Event::Dropped);
-                    assert_eq!(next(&mut events).await, Event::Stopping);
-                    assert!(!task.is_finished());
-                    assert!(matches!(
-                        events.try_recv(),
-                        Err(mpsc::error::TryRecvError::Empty)
-                    ));
-                    gate.notify_one();
-                    task.join().await.unwrap();
+                    let activity = task.activity();
+                    {
+                        let stopping = activity.stop();
+                        tokio::pin!(stopping);
+                        assert!(
+                            tokio::time::timeout(Duration::from_millis(1200), &mut stopping)
+                                .await
+                                .is_err()
+                        );
+                        assert_eq!(next(&mut events).await, Event::Stopping);
+                        assert!(matches!(
+                            events.try_recv(),
+                            Err(mpsc::error::TryRecvError::Empty)
+                        ));
+                        gate.notify_one();
+                        stopping.await.unwrap();
+                    }
                     assert_eq!(next(&mut events).await, Event::Stopped);
+                    activity.cleanup().await.unwrap();
+                    assert!(!activity.is_initialized());
+                    drop(task);
                     assert_eq!(events.recv().await, None);
-                    assert!(task.is_finished());
                 });
         });
     }
@@ -407,8 +461,7 @@ pub(super) fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let declaration = Instance::<Resources, Capabilities>::of::<Watch>()
-                        .with_context(|capabilities| capabilities.token);
+                    let declaration = declaration();
                     assert_eq!(declaration.id(), "execution.watch");
                     let mut previous = None;
                     for _ in 0..2 {
@@ -419,8 +472,8 @@ pub(super) fn contract_scenario() {
                             identities: Some(identities),
                             stop_gate: None,
                         });
-                        let mut task = declaration
-                            .start(
+                        let activity = declaration
+                            .activate(
                                 resources,
                                 Capabilities {
                                     token: 73,
@@ -428,9 +481,10 @@ pub(super) fn contract_scenario() {
                                 },
                             )
                             .unwrap();
-                        let activation = task.activation_id();
-                        assert_eq!(task.observer_id(), declaration.id());
+                        let activation = activity.activation_id();
+                        assert_eq!(activity.observer_id(), declaration.id());
                         assert_ne!(previous, Some(activation));
+                        let mut task = Observing::start(activity);
                         for ordinal in [1, 2] {
                             let identity =
                                 tokio::time::timeout(Duration::from_secs(2), observed.recv())
@@ -439,7 +493,7 @@ pub(super) fn contract_scenario() {
                                     .unwrap();
                             assert_eq!(identity, (declaration.id(), activation, ordinal));
                         }
-                        task.stop().await.unwrap();
+                        task.shutdown().await.unwrap();
                         previous = Some(activation);
                     }
                     assert_eq!(
@@ -461,12 +515,10 @@ pub(super) fn contract_scenario() {
                     let (mut right, mut right_events) = start(Behavior::Hang, None);
                     entered(&mut left_events).await;
                     entered(&mut right_events).await;
-                    assert_eq!(left.observer_id(), right.observer_id());
-                    assert_ne!(left.activation_id(), right.activation_id());
-                    left.cancel();
-                    right.cancel();
-                    left.join().await.unwrap();
-                    right.join().await.unwrap();
+                    assert_eq!(left.observer, right.observer);
+                    assert_ne!(left.activation, right.activation);
+                    left.shutdown().await.unwrap();
+                    right.shutdown().await.unwrap();
                 });
         });
     }

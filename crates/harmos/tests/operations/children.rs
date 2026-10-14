@@ -28,7 +28,7 @@ use tokio::sync::{Notify, Semaphore};
 // Local Imports
 use super::{Lanes, app::App};
 use harmos::operations::{
-    Backoff, Context, Failure, Jitter, Operation, OperationPolicy, RetryPolicy,
+    Backoff, Context, Failure, Jitter, Operation, OperationPolicy, RestartPolicy, RetryPolicy,
 };
 use harmos::{Error, Refusal, Runtime};
 
@@ -84,6 +84,7 @@ enum Failed {
                 max_retries: 1,
                 backoff: Backoff::Fixed { delay: Duration::from_millis(10), jitter: Jitter::None },
             },
+            restart: RestartPolicy::Never,
         },
     )]
 struct ParentContract;
@@ -96,6 +97,7 @@ struct ParentContract;
             timeout: Duration::from_secs(5),
             attempt_timeout: Duration::from_secs(5),
             retries: RetryPolicy::Never,
+            restart: RestartPolicy::Never,
         },
     )]
 struct ChildContract;
@@ -116,7 +118,7 @@ impl Operation for Parent {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    fn new(trace: Arc<Trace>) -> Result<Self, Failed> {
+    async fn initialize<'ctx>(trace: Arc<Trace>, _: Self::Context<'ctx>) -> Result<Self, Failed> {
         Ok(Self { trace })
     }
 
@@ -129,7 +131,7 @@ impl Operation for Parent {
         let result: ::core::result::Result<(), Self::Error> = async move {
             self.trace.attempts.fetch_add(1, Ordering::SeqCst);
             self.trace.events.lock().unwrap().push("parent-attempt");
-            let _child = context.submit::<ChildContract>(())?;
+            let _child = context.submit_as::<ChildContract>(())?;
             self.trace.child_started.notified().await;
             self.trace.parent_ready.notify_one();
             match exit {
@@ -158,7 +160,10 @@ impl Operation for Child {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    fn new(trace: Arc<Trace>) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(
+        trace: Arc<Trace>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Self::Error> {
         Ok(Self(trace))
     }
 
@@ -177,7 +182,7 @@ impl Operation for Child {
         result.map(::core::convert::Into::into)
     }
 
-    async fn finalize(&mut self) -> Result<(), Self::Error> {
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
         self.0.finalizing.notify_one();
         if self.0.block_cleanup {
             self.0.release.acquire().await.unwrap().forget();
@@ -224,7 +229,10 @@ async fn runtime(block_cleanup: bool) -> (Runtime<App>, Arc<Trace>) {
 
 async fn torn_down(exit: Exit, cancel: bool) -> Result<harmos::operations::Response<()>, Error> {
     let (runtime, trace) = runtime(false).await;
-    let parent = runtime.operations.submit::<ParentContract>(exit).unwrap();
+    let parent = runtime
+        .operations
+        .submit_as::<ParentContract>(exit)
+        .unwrap();
     if cancel {
         trace.parent_ready.notified().await;
         parent.cancel();
@@ -320,7 +328,7 @@ pub(super) fn contract_scenario() {
                     let (runtime, trace) = runtime(true).await;
                     let parent = runtime
                         .operations
-                        .submit::<ParentContract>(Exit::Retry)
+                        .submit_as::<ParentContract>(Exit::Retry)
                         .unwrap();
                     trace.finalizing.notified().await;
                     tokio::time::advance(Duration::from_millis(20)).await;
@@ -370,7 +378,10 @@ pub(super) fn contract_scenario() {
                     for exit in [Exit::Return, Exit::Fail] {
                         let succeeds = matches!(exit, Exit::Return);
                         let (runtime, trace) = runtime(true).await;
-                        let mut parent = runtime.operations.submit::<ParentContract>(exit).unwrap();
+                        let mut parent = runtime
+                            .operations
+                            .submit_as::<ParentContract>(exit)
+                            .unwrap();
                         trace.finalizing.notified().await;
                         assert!((&mut parent).now_or_never().is_none());
                         assert_eq!(

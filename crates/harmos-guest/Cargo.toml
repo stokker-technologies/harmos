@@ -54,7 +54,9 @@ semver = { workspace = true, default-features = true }
 # Serialization
 serde = { workspace = true, default-features = true }
 serde_json = { workspace = true, default-features = true }
-wit-bindgen = { workspace = true, default-features = true, optional = true }
+wit-bindgen = { workspace = true, default-features = true, features = [
+  "async-spawn",
+], optional = true }
 
 # Configuration
 

@@ -23,8 +23,8 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 // Local Imports
 use harmos::operations::{
-    Context, Operation, OperationDeclaration, OperationPolicy, PluginRegistration, RetryPolicy,
-    Visibility, WireDeclaration, WireOperation,
+    Context, Operation, OperationDeclaration, OperationPolicy, PluginRegistration, RestartPolicy,
+    RetryPolicy, Visibility, WireDeclaration, WireOperation,
 };
 use harmos::plugin::{
     PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions,
@@ -177,6 +177,7 @@ impl<const FIRST: bool> OperationDeclaration for Heard<FIRST> {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(1),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 }
 
@@ -201,7 +202,10 @@ impl<const FIRST: bool> Operation for Hearing<FIRST> {
     type Declaration = Heard<FIRST>;
     type Resources = Owner;
     type Error = Failed;
-    fn new(resources: Arc<Owner>) -> std::result::Result<Self, Failed> {
+    async fn initialize<'ctx>(
+        resources: Arc<Owner>,
+        _: Self::Context<'ctx>,
+    ) -> std::result::Result<Self, Failed> {
         Ok(Self {
             resources,
             wait_cleanup: false,
@@ -241,7 +245,7 @@ impl<const FIRST: bool> Operation for Hearing<FIRST> {
         .await;
         result.map(::core::convert::Into::into)
     }
-    async fn finalize(&mut self) -> std::result::Result<(), Failed> {
+    async fn cleanup(&mut self) -> std::result::Result<(), Failed> {
         self.resources.finalizations.fetch_add(1, Ordering::SeqCst);
         if self.wait_cleanup {
             self.resources.finalizing.notify_one();
@@ -613,11 +617,13 @@ fn contract_scenario() {
                         stopping: Notify::new(),
                         release: Notify::new(),
                     });
-                    runtime.observers.register(BlockedObserver).unwrap();
-                    let scope = runtime.observers.scope(gates.clone()).unwrap();
+                    runtime
+                        .operations
+                        .register_observer(BlockedObserver)
+                        .unwrap();
                     let lease = runtime
-                        .observers
-                        .activate("blocked-cleanup", &scope)
+                        .operations
+                        .submit_with_resources_at("blocked-cleanup", gates.clone())
                         .await
                         .unwrap();
                     tokio::time::timeout(Duration::from_secs(2), gates.running.notified())

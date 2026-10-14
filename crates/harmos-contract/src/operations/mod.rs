@@ -9,11 +9,13 @@
 
 /* === Modules === */
 mod authored;
+mod capability;
 mod catalog;
 mod context;
 mod contract;
 mod grpc;
 pub mod host;
+pub mod instance;
 mod key;
 pub mod lifecycle;
 mod policy;
@@ -25,6 +27,7 @@ pub mod streaming;
 /* === Re-Exports === */
 pub use crate::observers;
 pub use authored::{EndpointSet, InputEndpoint, Operation, OutputEndpoint};
+pub use capability::{Callable, Host};
 pub use catalog::{AuthoredDeclarations, Declarations, Entry};
 pub use context::{
     CallContext, CallValue, ContextError, ContextValue, PORTABLE_BYTES, PORTABLE_VALUES,
@@ -36,14 +39,16 @@ pub use contract::{
 pub use grpc::Grpc;
 #[cfg(feature = "grpc")]
 pub use grpc::GrpcVisitor;
+pub use instance::Instance;
 pub use key::{CacheKey, CacheKeyError, MAX_CACHE_KEY_BYTES};
 pub use policy::{
-    Backoff, Failure, Jitter, OperationPolicy, PolicyError, ReplaySafety, RetryPolicy,
+    Backoff, Failure, Jitter, OperationPolicy, PolicyError, ReplaySafety, RestartPolicy,
+    RetryPolicy,
 };
 pub use response::Response;
 pub use serving::{
-    CHILD_METHOD, Serves, ServingError, WIRE_METHOD, WireAnswer, WireBinding, WireChildCall,
-    WireCodecError, WireCommand, WireTable,
+    CHILD_METHOD, Serves, ServingError, WIRE_METHOD, WireAnswer, WireBinding, WireChild,
+    WireChildAction, WireChildCall, WireChildControl, WireCodecError, WireCommand, WireTable,
 };
 #[cfg(feature = "streaming")]
 pub use serving::{WireEndpoints, WireStreamLimits, WireStreams};
@@ -59,6 +64,8 @@ use serde::{Deserialize, Serialize};
 use crate::Identifier;
 
 /* === Constants === */
+// A deadline no caller reaches: resident and watch policies run until stopped.
+pub const UNBOUNDED: std::time::Duration = std::time::Duration::from_secs(1 << 32);
 
 /* === Macros === */
 

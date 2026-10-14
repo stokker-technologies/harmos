@@ -68,10 +68,7 @@ struct State {
 
 /* === Implementations === */
 impl GrpcManager {
-    pub(crate) fn new<A: Application>(
-        services: &crate::services::ServiceManager<A>,
-        operations: &crate::operations::OperationManager,
-    ) -> Self {
+    pub(crate) fn new<A: Application>(operations: &crate::operations::OperationManager) -> Self {
         Self {
             state: Arc::new(Mutex::new(State {
                 routes: tonic::service::Routes::default(),
@@ -79,7 +76,7 @@ impl GrpcManager {
                 middleware: Vec::new(),
                 closed: false,
             })),
-            host: Arc::new(listener::Owner::new(services.clone())),
+            host: Arc::new(listener::Owner::<A>::new(operations.clone())),
             operations: operations.clone(),
         }
     }

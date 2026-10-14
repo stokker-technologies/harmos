@@ -26,7 +26,7 @@ use tokio::sync::Notify;
 
 // Local Imports
 use super::{Lanes, app::App};
-use harmos::operations::{Context, Operation, OperationPolicy, RetryPolicy};
+use harmos::operations::{Context, Operation, OperationPolicy, RestartPolicy, RetryPolicy};
 use harmos::{Error, Runtime, operations::Lane};
 
 /* === Constants === */
@@ -34,6 +34,7 @@ const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(1),
     retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
 };
 
 /* === Macros === */
@@ -97,7 +98,7 @@ impl Operation for Parent {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    fn new(trace: Arc<Trace>) -> Result<Self, Error> {
+    async fn initialize<'ctx>(trace: Arc<Trace>, _: Self::Context<'ctx>) -> Result<Self, Error> {
         trace.parent_constructions.fetch_add(1, Ordering::SeqCst);
         Ok(Self { trace })
     }
@@ -112,19 +113,19 @@ impl Operation for Parent {
         match mode {
             Mode::Leaf => Ok(7),
             Mode::HandleCycle => {
-                assert!(matches!(context.submit::<ParentContract>(Mode::Leaf),
+                assert!(matches!(context.submit_as::<ParentContract>(Mode::Leaf),
                     Err(Error::OperationLaneCycle { parent, child }) if parent == self.trace.lane && child == self.trace.lane));
-                let free = context.submit::<FreeContract>(false)?.await?;
+                let free = context.submit_as::<FreeContract>(false)?.await?;
                 assert_eq!(*free, 1);
                 Ok(7)
             }
             Mode::PropagateCycle => {
-                let answer = context.submit::<ParentContract>(Mode::Leaf)?.await?;
+                let answer = context.submit_as::<ParentContract>(Mode::Leaf)?.await?;
                 Ok(*answer)
             }
             Mode::FullLane => {
-                let _queued = context.submit::<BoundContract>(false)?;
-                let _free = context.submit::<FreeContract>(true)?;
+                let _queued = context.submit_as::<BoundContract>(false)?;
+                let _free = context.submit_as::<FreeContract>(true)?;
                 self.trace.free_started.notified().await;
                 Ok(self.trace.queued_runs.load(Ordering::SeqCst))
             }
@@ -141,7 +142,10 @@ impl Operation for Bound {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    fn new(trace: Arc<Trace>) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(
+        trace: Arc<Trace>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Self::Error> {
         Ok(Self { trace })
     }
 
@@ -172,7 +176,10 @@ impl Operation for Free {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    fn new(trace: Arc<Trace>) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(
+        trace: Arc<Trace>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Self::Error> {
         Ok(Self { trace })
     }
 
@@ -248,7 +255,7 @@ pub(super) fn contract_scenario() {
                         let (runtime, trace) = runtime(lane).await;
                         let answer = runtime
                             .operations
-                            .submit::<ParentContract>(Mode::HandleCycle)
+                            .submit_as::<ParentContract>(Mode::HandleCycle)
                             .unwrap()
                             .await
                             .unwrap();
@@ -268,7 +275,7 @@ pub(super) fn contract_scenario() {
     let (runtime, trace) = runtime(Lanes::Serial).await;
     let error = runtime
         .operations
-        .submit::<ParentContract>(Mode::PropagateCycle)
+        .submit_as::<ParentContract>(Mode::PropagateCycle)
         .unwrap()
         .await
         .unwrap_err();
@@ -293,11 +300,11 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let (runtime, trace) = runtime(Lanes::Concurrent).await;
-                    let blocker = runtime.operations.submit::<BoundContract>(true).unwrap();
+                    let blocker = runtime.operations.submit_as::<BoundContract>(true).unwrap();
                     trace.bound_started.notified().await;
                     let answer = runtime
                         .operations
-                        .submit::<ParentContract>(Mode::FullLane)
+                        .submit_as::<ParentContract>(Mode::FullLane)
                         .unwrap()
                         .await
                         .unwrap();

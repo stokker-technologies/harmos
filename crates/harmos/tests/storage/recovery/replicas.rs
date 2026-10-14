@@ -37,14 +37,14 @@ struct Occupied;
 impl harmos::services::Resident<Bank> for Occupied {
     type Error = Error;
 
-    async fn attempt(
+    async fn run(
         &mut self,
         mut context: harmos::services::Service<Bank>,
     ) -> Result<(), harmos::services::Fault<Error>> {
         context.until_stopping(std::future::pending::<()>()).await;
         Ok(())
     }
-    async fn finalize(&mut self) -> Result<(), Self::Error> {
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
         Ok(())
     }
 }
@@ -378,7 +378,7 @@ pub(super) fn contract_scenario() {
                         policy,
                     )
                     .unwrap();
-                    storage.start(&f.runtime.services).await.unwrap();
+                    storage.start(&f.runtime).await.unwrap();
                     wait(&storage, "remote", &saved).await.unwrap();
                     write(&storage, "two").await;
                     let saved = storage.flush().await.unwrap();
@@ -543,20 +543,16 @@ pub(super) fn contract_scenario() {
                         .unwrap();
                     let name = "harmos-storage-replica-remote";
                     runtime
-                        .services
-                        .register(
+                        .operations
+                        .register_service(
                             harmos::services::ServiceDefinition {
                                 id: name.into(),
-                                policy: harmos::services::ServicePolicy::default(),
+                                policy: harmos::services::POLICY,
                             },
                             |_: Arc<()>| Occupied,
                         )
                         .unwrap();
-                    let _lease = runtime
-                        .services
-                        .activate(name, &runtime.services.root_scope())
-                        .await
-                        .unwrap();
+                    let _lease = runtime.operations.submit_resident(name).await.unwrap();
                     let data = Arc::new(Data::new(history()));
                     let recovery = Arc::new(Recovery::new(history()));
                     let storage = StorageManager::new(
@@ -568,12 +564,12 @@ pub(super) fn contract_scenario() {
                         policy,
                     )
                     .unwrap();
-                    assert!(storage.start(&runtime.services).await.is_err());
+                    assert!(storage.start(&runtime).await.is_err());
                     storage.close().await.unwrap();
                     assert!(
                         runtime
-                            .services
-                            .status(&harmos::services::ServiceKey::root(name))
+                            .operations
+                            .resident(&harmos::operations::resident::Key::root(name))
                             .is_some()
                     );
                     assert_eq!(target.control.closes.load(Ordering::SeqCst), 0);

@@ -30,7 +30,7 @@ use crate::support::Bank;
 use contract::{Marks, Probe, Step};
 use harmos::operations::OperationDeclaration;
 use harmos::plugin::sidecar::{Executable, Notice, Supervised};
-use harmos::{Message, services::Service, services::ServicePolicy, services::ServiceStatus};
+use harmos::{Message, services::Service, services::ServiceStatus};
 
 /* === Constants === */
 
@@ -129,13 +129,13 @@ pub(super) fn contract_scenario() {
                         .await
                         .unwrap();
                     runtime
-                        .services
-                        .register(
+                        .operations
+                        .register_service(
                             harmos::services::ServiceDefinition {
                                 id: "process-graph".into(),
-                                policy: ServicePolicy {
-                                    credit: 0,
-                                    ..ServicePolicy::default()
+                                policy: harmos::operations::OperationPolicy {
+                                    restart: harmos::operations::RestartPolicy::Never,
+                                    ..harmos::services::POLICY
                                 },
                             },
                             move |_: Arc<()>| {
@@ -151,8 +151,8 @@ pub(super) fn contract_scenario() {
                         )
                         .unwrap();
                     let lease = runtime
-                        .services
-                        .activate("process-graph", &runtime.services.root_scope())
+                        .operations
+                        .submit_resident("process-graph")
                         .await
                         .unwrap();
 
@@ -160,9 +160,12 @@ pub(super) fn contract_scenario() {
                     marked(&client_root, "dependency-initialized").await;
                     assert_eq!(count(&provider_root, "initialized"), 1);
                     assert_eq!(count(&provider_root, "read-finalized-1"), 1);
-                    let status =
-                        service_status(runtime.services.subscribe(), "process-graph", |_| true)
-                            .await;
+                    let status = service_status(
+                        runtime.operations.watch_residents(),
+                        "process-graph",
+                        |_| true,
+                    )
+                    .await;
                     assert_eq!(status, ServiceStatus::Starting);
                     assert!(matches!(
                         runtime
@@ -174,9 +177,11 @@ pub(super) fn contract_scenario() {
                     ));
                     assert!(!client_root.join("probe-initialized").exists());
                     client_marks.mark("release-initialization").unwrap();
-                    service_status(runtime.services.subscribe(), "process-graph", |status| {
-                        matches!(status, ServiceStatus::Running { .. })
-                    })
+                    service_status(
+                        runtime.operations.watch_residents(),
+                        "process-graph",
+                        |status| matches!(status, ServiceStatus::Running { .. }),
+                    )
                     .await;
                     let response = runtime
                         .operations

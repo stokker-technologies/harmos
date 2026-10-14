@@ -54,10 +54,14 @@ pub struct Heard {
         timeout: std::time::Duration::from_secs(30),
         attempt_timeout: std::time::Duration::from_secs(5),
         retries: harmos::operations::RetryPolicy::Never,
+        restart: harmos::operations::RestartPolicy::Never,
     }
 )]
 impl Heard {
-    pub fn new(resources: Arc<Resources>) -> Self {
+    pub async fn initialize(
+        resources: Arc<Resources>,
+        _: &harmos::plugin::sidecar::Supervisor,
+    ) -> Self {
         Self { resources }
     }
 

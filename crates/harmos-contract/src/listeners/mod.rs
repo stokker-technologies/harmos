@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use crate::catalog::{Catalog, Projection, Visitor};
 use crate::config::SchemaSettings;
 use crate::operations::{
-    Contract, ContractError, ReplaySafety, RetryPolicy, Visibility, WireDeclaration,
+    Contract, ContractError, ReplaySafety, RestartPolicy, RetryPolicy, Visibility, WireDeclaration,
 };
 use crate::schema::declaration::Definition as SchemaDefinition;
 use crate::schema::graph::Schema;
@@ -206,10 +206,11 @@ impl Definition {
         let operation = callback.operation();
         if operation.visibility != Visibility::Shared
             || operation.policy.retries != RetryPolicy::Never
+            || operation.policy.restart != RestartPolicy::Never
             || operation.replay != ReplaySafety::Unknown
         {
             return Err(Error::Callback {
-                reason: "callbacks must be Shared, Never retry, and Unknown replay safety",
+                reason: "callbacks must be Shared, Never retry or restart, and Unknown replay safety",
             });
         }
         let matches = delivery::matches(

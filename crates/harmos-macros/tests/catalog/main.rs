@@ -111,6 +111,9 @@ fn contract_scenario() {
                     "request and endpoints must be borrowed",
                 ),
                 ("operation_stream_item.rs", "type mismatch resolving"),
+                // Lifecycle verbs: `initialize` constructs, `cleanup` releases.
+                ("operation_new_renamed.rs", "operation `new` was renamed"),
+                ("observer_new_renamed.rs", "observer `new` was folded"),
                 // Direct artifact declaration failures.
                 ("explicit_version_plugin.rs", "remove `version`"),
                 (

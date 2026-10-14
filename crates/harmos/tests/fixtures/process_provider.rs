@@ -89,7 +89,7 @@ impl harmos::Plugin for Provider {
         table.bind_operation::<Reading>(self.resources())
     }
 
-    async fn shutdown(&mut self, _: &Supervisor) -> Result<(), Refusal> {
+    async fn stop(&mut self, _: &Supervisor) -> Result<(), Refusal> {
         self.resources.initialized.store(false, Ordering::SeqCst);
         self.resources.marks.mark("shutdown")
     }
@@ -106,15 +106,25 @@ impl Operation for Reading {
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
 
-    fn new(resources: Arc<Resources>) -> Result<Self, Refusal> {
-        Ok(Self {
-            resources,
-            phase: None,
-        })
-    }
-
-    async fn initialize<'ctx>(&mut self, _: Self::Context<'ctx>) -> Result<(), Refusal> {
-        self.resources.marks.mark("read-initialized")
+    async fn initialize<'ctx>(
+        resources: Arc<Resources>,
+        _context: Self::Context<'ctx>,
+    ) -> Result<Self, Refusal> {
+        let constructed: Result<Self, Refusal> = async move {
+            Ok(Self {
+                resources,
+                phase: None,
+            })
+        }
+        .await;
+        let mut operation = constructed?;
+        let started: Result<(), Refusal> = async {
+            let operation = &mut operation;
+            operation.resources.marks.mark("read-initialized")
+        }
+        .await;
+        started?;
+        Ok(operation)
     }
 
     async fn run<'ctx>(
@@ -145,7 +155,7 @@ impl Operation for Reading {
         result.map(::core::convert::Into::into)
     }
 
-    async fn finalize(&mut self) -> Result<(), Refusal> {
+    async fn cleanup(&mut self) -> Result<(), Refusal> {
         if !self.resources.initialized.load(Ordering::SeqCst) {
             return Err(Refusal::of(
                 "the provider retired before child finalization",

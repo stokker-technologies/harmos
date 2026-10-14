@@ -20,12 +20,12 @@ use std::sync::{
 };
 use std::time::Duration;
 // Third Party Imports
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 // Local Imports
 use super::support::Pulse;
 use harmos::plugin::sidecar::inventory::publications;
 use harmos::plugin::sidecar::{
-    ActivationId, Instance, ObserverCaller, ObserverContext, ObserverPublisher,
+    ActivationId, Activity, Instance, ObserverCaller, ObserverContext, ObserverPublisher,
     ObserverStreamPublisher, PublicationError, StreamSpec,
 };
 
@@ -59,6 +59,13 @@ struct Watch;
 
 #[derive(Default)]
 struct CheckGrants;
+
+// One activation driven until stopped, then stopped and cleaned up.
+struct Observing {
+    activation: ActivationId,
+    stop: oneshot::Sender<()>,
+    task: tokio::task::JoinHandle<Activity>,
+}
 
 /* === Enums === */
 #[derive(Debug, PartialEq, Eq)]
@@ -157,7 +164,7 @@ impl<S: StreamSpec<Row = Pulse>> ObserverStreamPublisher<u64, S> for Host {
 #[harmos::observer(id = "host.watch", interval_ms = 5, streams(Pulse))]
 impl Watch {
     async fn observe(&mut self, ctx: &ObserverContext<'_, u64, Host>) -> Result<(), Failure> {
-        let value = ctx.call::<Measure>(7).await?;
+        let value = ctx.call_as::<Measure>(7).await?;
         ctx.publish(Recorded(value)).await?;
         ctx.publish(Pulse { sample: value }).await?;
         ctx.publish_on::<Pulse>(&Pulse { sample: value + 1 }).await
@@ -181,6 +188,32 @@ impl CheckGrants {
             .await
             .unwrap();
         Ok(())
+    }
+}
+
+impl Observing {
+    fn start(mut activity: Activity) -> Self {
+        let activation = activity.activation_id();
+        let (stop, stopped) = oneshot::channel();
+        let task = tokio::spawn(async move {
+            tokio::select! {
+                failure = activity.observe(|| {}) => panic!("observation ended: {failure}"),
+                _ = stopped => {}
+            }
+            activity
+        });
+        Self {
+            activation,
+            stop,
+            task,
+        }
+    }
+
+    async fn stop(self) {
+        let _ = self.stop.send(());
+        let mut activity = self.task.await.unwrap();
+        activity.stop().await.unwrap();
+        activity.cleanup().await.unwrap();
     }
 }
 
@@ -228,10 +261,12 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let (host, mut events, _) = host(false);
-                    let mut task = Instance::<u64, Host>::of::<Watch>()
-                        .start(Arc::new(35), host)
-                        .unwrap();
-                    let activation = task.activation_id();
+                    let task = Observing::start(
+                        Instance::<u64, Host>::of::<Watch>()
+                            .activate(Arc::new(35), host)
+                            .unwrap(),
+                    );
+                    let activation = task.activation;
                     assert_eq!(
                         next(&mut events).await,
                         Event::Call(("host.watch", activation, 1), 7)
@@ -252,7 +287,7 @@ pub(super) fn contract_scenario() {
                         next(&mut events).await,
                         Event::Stream(("host.watch", activation, 2), 43)
                     );
-                    task.stop().await.unwrap();
+                    task.stop().await;
                 });
         });
     }
@@ -265,11 +300,13 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let (host, mut events, _) = host(false);
-                    let mut task = Instance::<u64, Host>::of::<CheckGrants>()
-                        .start(Arc::new(0), host)
-                        .unwrap();
+                    let task = Observing::start(
+                        Instance::<u64, Host>::of::<CheckGrants>()
+                            .activate(Arc::new(0), host)
+                            .unwrap(),
+                    );
                     assert_eq!(next(&mut events).await, Event::GrantsChecked);
-                    task.stop().await.unwrap();
+                    task.stop().await;
                 });
         });
     }
@@ -282,12 +319,14 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let (host, mut events, dropped) = host(true);
-                    let mut task = Instance::<u64, Host>::of::<Watch>()
-                        .start(Arc::new(0), host)
-                        .unwrap();
+                    let task = Observing::start(
+                        Instance::<u64, Host>::of::<Watch>()
+                            .activate(Arc::new(0), host)
+                            .unwrap(),
+                    );
                     assert!(matches!(next(&mut events).await, Event::Call(..)));
                     assert!(!dropped.load(Ordering::SeqCst));
-                    task.stop().await.unwrap();
+                    task.stop().await;
                     assert!(dropped.load(Ordering::SeqCst));
                     assert_eq!(events.recv().await, None);
                 });

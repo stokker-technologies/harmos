@@ -292,7 +292,7 @@ async fn import_replica(
         },
     )
     .unwrap();
-    storage.start(&f.runtime.services).await.unwrap();
+    storage.start(&f.runtime).await.unwrap();
     storage
 }
 
@@ -706,7 +706,7 @@ pub(super) fn contract_scenario() {
         },
     )
     .unwrap();
-    reopened.start(&f.runtime.services).await.unwrap();
+    reopened.start(&f.runtime).await.unwrap();
     let error = reopened
         .wait_replicas(&saved, &[Identifier::new("new").unwrap()])
         .await

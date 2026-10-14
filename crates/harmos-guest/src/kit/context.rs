@@ -85,33 +85,6 @@ impl Context {
         }
         Ok(self.context.unwrap_or([0; 32]))
     }
-
-    pub async fn operation<O>(
-        &self,
-        request: O::Request,
-    ) -> Result<O::Response, crate::OperationRefusal>
-    where
-        O: crate::operations::OperationDeclaration,
-        O::Request: crate::Message,
-        O::Response: crate::Message,
-    {
-        use crate::Message;
-        let context = self.calling_context()?;
-        let call = crate::operations::WireChildCall {
-            context,
-            generation_context: self.generation_context,
-            values: self.call.portable(),
-            operation: O::ID.to_owned(),
-            payload: request.encode_to_vec(),
-        };
-        let payload = call.encode().map_err(crate::OperationRefusal::of)?;
-        let reply = super::plugin::__bindings::harmos::guest::operation_context::child(payload)
-            .await
-            .map_err(|error| {
-                crate::OperationRefusal::new(error.code.parse().unwrap_or(UNKNOWN), error.message)
-            })?;
-        O::Response::decode(reply.as_slice()).map_err(crate::OperationRefusal::of)
-    }
 }
 
 /* === Public Functions === */

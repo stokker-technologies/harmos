@@ -215,8 +215,8 @@ mod unified_plugins {
 
     use harmos::__private::{PluginDeclared, PluginInventory};
     use harmos::operations::{
-        Contracts, OperationDeclaration, OperationPolicy, RetryPolicy, ServingError, WireOperation,
-        WireTable, lifecycle,
+        Contracts, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, ServingError,
+        WireOperation, WireTable, lifecycle,
     };
 
     struct Echo;
@@ -259,6 +259,7 @@ mod unified_plugins {
         timeout: Duration::from_secs(15),
         attempt_timeout: Duration::from_secs(5),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 
     struct Native;
@@ -292,7 +293,7 @@ mod unified_plugins {
         fn bind_operations(&self, _: &mut WireTable<Self::Context>) -> Result<(), ServingError> {
             Ok(())
         }
-        async fn shutdown(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+        async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
             Ok(())
         }
         async fn cleanup(&mut self) -> Result<(), Self::Error> {
@@ -300,34 +301,22 @@ mod unified_plugins {
         }
     }
 
-    struct ObserverStart;
-    impl OperationDeclaration for ObserverStart {
+    struct ObserverObserve;
+    impl OperationDeclaration for ObserverObserve {
         type Request = harmos::operations::observers::Control;
         type Response = ();
-        const ID: &'static str = "fixture.unified.observer-start";
-        const POLICY: OperationPolicy = POLICY;
+        const ID: &'static str = "fixture.unified.observer-observe";
+        const POLICY: OperationPolicy = harmos::operations::observers::POLICY;
         const VISIBILITY: harmos::operations::Visibility = harmos::operations::Visibility::Host;
     }
-    impl WireOperation for ObserverStart {
+    impl WireOperation for ObserverObserve {
         const VERSION: u32 = 2;
-    }
-    struct ObserverStop;
-    impl OperationDeclaration for ObserverStop {
-        type Request = harmos::operations::observers::Control;
-        type Response = harmos::operations::observers::Status;
-        const ID: &'static str = "fixture.unified.observer-stop";
-        const POLICY: OperationPolicy = POLICY;
-        const VISIBILITY: harmos::operations::Visibility = harmos::operations::Visibility::Host;
-    }
-    impl WireOperation for ObserverStop {
-        const VERSION: u32 = 3;
     }
     #[harmos::catalog]
     enum ObserverOperations {
         #[nested]
         Selected(Selected),
-        Start(ObserverStart),
-        Stop(ObserverStop),
+        Observe(ObserverObserve),
     }
 
     struct CustomHost;
@@ -339,7 +328,7 @@ mod unified_plugins {
     struct InertObserver;
     #[harmos::observer(id = "fixture.unified.inert-observer", interval_ms = 1000)]
     impl InertObserver {
-        fn new(_: &()) -> Result<Self, Infallible> {
+        async fn initialize(_: &()) -> Result<Self, Infallible> {
             panic!("metadata inspection must not initialize callback resources")
         }
         async fn observe(
@@ -379,7 +368,7 @@ mod unified_plugins {
             harmos::operations::host::Survey: survey("reading", "power")
         ),
         observers = ObserverCatalog,
-        observer_controls(ObserverStart, ObserverStop),
+        observer_control = ObserverObserve,
         context = harmos::plugin::sidecar::Supervisor,
         config = SdkInitialization,
         restart = "never"
@@ -449,10 +438,9 @@ mod unified_plugins {
                 assert_eq!(inert.id, physical.id);
                 assert_eq!(inert.interval, physical.interval);
                 assert_eq!(inert.streams.len(), physical.streams.len());
-                let controls = declaration.observer_controls().unwrap().clone();
-                assert_eq!(controls, [provides[1].clone(), provides[2].clone()]);
-                assert_eq!(controls[0].version(), 2);
-                assert_eq!(controls[1].version(), 3);
+                let control = declaration.observer_control().unwrap().clone();
+                assert_eq!(control, provides[1]);
+                assert_eq!(control.version(), 2);
             });
         }
         {
@@ -659,7 +647,7 @@ mod unified_plugins {
         fn bind_operations(&self, _: &mut WireTable<Self::Context>) -> Result<(), ServingError> {
             Ok(())
         }
-        async fn shutdown(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+        async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
             Ok(())
         }
         async fn cleanup(&mut self) -> Result<(), Self::Error> {
@@ -720,7 +708,7 @@ mod unified_plugins {
         fn bind_operations(&self, _: &mut WireTable<Self::Context>) -> Result<(), ServingError> {
             Ok(())
         }
-        async fn shutdown(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+        async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
             Ok(())
         }
         async fn cleanup(&mut self) -> Result<(), Self::Error> {
@@ -773,7 +761,7 @@ mod unified_plugins {
         fn bind_operations(&self, _: &mut WireTable<Self::Context>) -> Result<(), ServingError> {
             Ok(())
         }
-        async fn shutdown(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+        async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
             Ok(())
         }
         async fn cleanup(&mut self) -> Result<(), Self::Error> {
@@ -804,7 +792,7 @@ mod unified_plugins {
         fn bind_operations(&self, _: &mut WireTable<Self::Context>) -> Result<(), ServingError> {
             Ok(())
         }
-        async fn shutdown(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+        async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
             Ok(())
         }
         async fn cleanup(&mut self) -> Result<(), Self::Error> {

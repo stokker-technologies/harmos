@@ -10,11 +10,12 @@
 /* === Modules === */
 mod manifest {
     use harmos_sidecar::inventory::contracts::{encode_tree, encoded_tree_len};
-    use harmos_sidecar::operations::{OperationPolicy, RetryPolicy};
+    use harmos_sidecar::operations::{OperationPolicy, RestartPolicy, RetryPolicy};
     const POLICY: OperationPolicy = OperationPolicy {
         timeout: std::time::Duration::from_secs(3),
         attempt_timeout: std::time::Duration::from_secs(3),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
     const SDK: [harmos_sidecar::operations::OperationPolicy; 2] = [POLICY, POLICY];
     pub(super) const LEN: usize = encoded_tree_len("sidecar", "attach-fixture", &[], &[], &SDK);

@@ -23,8 +23,8 @@ use crate::PREFIX;
 use crate::catalog::Node;
 use crate::config::SchemaSettings;
 use crate::operations::{
-    Backoff, Contract, Entry, Jitter, OperationPolicy, ReplaySafety, RetryPolicy, Visibility,
-    WireDeclaration, lifecycle,
+    Backoff, Contract, Entry, Jitter, OperationPolicy, ReplaySafety, RestartPolicy, RetryPolicy,
+    Visibility, WireDeclaration, lifecycle,
 };
 use crate::plugin::{Grant, Requirement};
 use crate::schema::declaration::Named;
@@ -469,6 +469,23 @@ pub(crate) const fn policy<const N: usize>(out: &mut Encoder<N>, value: Operatio
         } => {
             out.raw(b"{\"on_transient\":{\"max_retries\":");
             out.number(max_retries as u64);
+            out.raw(b",\"backoff\":");
+            backoff(out, value);
+            out.raw(b"}}");
+        }
+    }
+    out.raw(b",\"restart\":");
+    match value.restart {
+        RestartPolicy::Never => out.quoted("never"),
+        RestartPolicy::OnTransient {
+            credit,
+            sustained_health,
+            backoff: value,
+        } => {
+            out.raw(b"{\"on_transient\":{\"credit\":");
+            out.number(credit as u64);
+            out.raw(b",\"sustained_health\":");
+            duration(out, sustained_health);
             out.raw(b",\"backoff\":");
             backoff(out, value);
             out.raw(b"}}");

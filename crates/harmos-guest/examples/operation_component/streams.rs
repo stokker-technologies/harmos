@@ -39,12 +39,12 @@ macro_rules! serving {
             type Error = std::io::Error;
             type Endpoints = $endpoints;
             type Context<'a> = &'a Context;
-            fn new(counts: Arc<Owner>) -> Result<Self, Self::Error> {
+            async fn initialize<'a>(
+                counts: Arc<Owner>,
+                _: Self::Context<'a>,
+            ) -> Result<Self, Self::Error> {
+                counts.initialized.fetch_add(1, Ordering::SeqCst);
                 Ok(Self(counts))
-            }
-            async fn initialize<'a>(&mut self, _: Self::Context<'a>) -> Result<(), Self::Error> {
-                self.0.initialized.fetch_add(1, Ordering::SeqCst);
-                Ok(())
             }
             async fn run<'a>(
                 &mut self,
@@ -63,7 +63,7 @@ macro_rules! serving {
                 self.0.stopped.fetch_add(1, Ordering::SeqCst);
                 Ok(())
             }
-            async fn finalize(&mut self) -> Result<(), Self::Error> {
+            async fn cleanup(&mut self) -> Result<(), Self::Error> {
                 self.0.finalized.fetch_add(1, Ordering::SeqCst);
                 Ok(())
             }

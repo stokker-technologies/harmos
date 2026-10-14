@@ -94,7 +94,11 @@ where
         _: &ObserverContext<'_, R, Self>,
         request: Self::Request,
     ) -> Result<Self::Response, Self::Error> {
-        Supervisor::operation::<C>(self, request).await
+        let bytes = self.child_call::<C>(&request, false).await?;
+        C::Response::decode(bytes.as_slice()).map_err(|error| CallError::Malformed {
+            method: C::ID,
+            message: error.to_string(),
+        })
     }
 }
 

@@ -62,6 +62,7 @@ impl facade::__harmos::operations::lifecycle::Policy for Publisher {
         timeout: std::time::Duration::from_secs(2),
         attempt_timeout: std::time::Duration::from_secs(1),
         retries: facade::__harmos::operations::RetryPolicy::Never,
+        restart: facade::__harmos::operations::RestartPolicy::Never,
     };
     const SHUTDOWN_POLICY: facade::__harmos::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }

@@ -27,8 +27,8 @@ use tokio::sync::Notify;
 use harmos::config::SchemaSettings;
 use harmos::listeners::{Delivery, Source};
 use harmos::operations::{
-    Context, Declarations, OperationPolicy, PluginRegistration, RetryPolicy, Visibility,
-    WireDeclaration,
+    Context, Declarations, OperationPolicy, PluginRegistration, RestartPolicy, RetryPolicy,
+    Visibility, WireDeclaration,
 };
 use harmos::plugin::StreamDeclaration;
 use harmos::plugin::{
@@ -107,10 +107,11 @@ enum Callbacks {
         timeout: Duration::from_secs(300),
         attempt_timeout: Duration::from_secs(300),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     }
 )]
 impl Receive {
-    fn new(trace: Arc<Trace>) -> Self {
+    async fn initialize(trace: Arc<Trace>, _: Context<'_>) -> Self {
         Self { trace }
     }
     async fn run(
@@ -127,7 +128,7 @@ impl Receive {
         self.trace.started.notify_one();
         std::future::pending().await
     }
-    async fn finalize(&mut self) -> Result<()> {
+    async fn cleanup(&mut self) -> Result<()> {
         self.trace.finalized.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }

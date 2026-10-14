@@ -36,9 +36,9 @@ use tonic::transport::server::{Connected, TcpConnectInfo};
 
 // Local Imports
 use super::{ingress::Ingress, manager::Settings, middleware::Middleware};
-use crate::services::{
-    Fault, Resident, Service, ServiceDefinition, ServiceLease, ServiceManager, ServicePolicy,
-};
+use crate::operations::resident::Activation;
+use crate::operations::{OperationInstance, OperationManager, OperationPolicy, RestartPolicy};
+use crate::services::{Fault, Resident, Service, ServiceDefinition};
 use crate::{Application, Error, Result};
 
 /* === Constants === */
@@ -59,7 +59,8 @@ pub(super) struct Resources {
 }
 
 pub(super) struct Owner<A: Application> {
-    services: ServiceManager<A>,
+    operations: OperationManager,
+    application: std::marker::PhantomData<fn() -> A>,
     closing: AtomicBool,
     generation: AtomicU64,
     current: Mutex<Option<Current<A>>>,
@@ -69,7 +70,8 @@ pub(super) struct Owner<A: Application> {
 struct Current<A: Application> {
     generation: u64,
     resources: Arc<Resources>,
-    lease: Option<Arc<ServiceLease<A>>>,
+    lease: Option<Arc<OperationInstance<Activation>>>,
+    application: std::marker::PhantomData<fn() -> A>,
 }
 
 struct Listener {
@@ -115,9 +117,10 @@ impl Resources {
 }
 
 impl<A: Application> Owner<A> {
-    pub(super) fn new(services: ServiceManager<A>) -> Self {
+    pub(super) fn new(operations: OperationManager) -> Self {
         Self {
-            services,
+            operations,
+            application: std::marker::PhantomData,
             closing: AtomicBool::new(false),
             generation: AtomicU64::new(0),
             current: Mutex::new(None),
@@ -128,10 +131,10 @@ impl<A: Application> Owner<A> {
     async fn retire(&self, current: Current<A>) -> Result<()> {
         current.resources.stopping.send_replace(true);
         if let Some(lease) = &current.lease {
-            lease.instance().cancel();
+            lease.cancel();
         }
         drop(current.lease);
-        match self.services.unregister(SERVICE).await {
+        match self.operations.unregister_resident(SERVICE).await {
             Ok(()) | Err(Error::NotRegistered { .. }) => Ok(()),
             Err(error) => Err(error),
         }
@@ -169,13 +172,13 @@ impl<A: Application> Host for Owner<A> {
                 self.retire(retiring).await?;
             }
             let generation = self.generation.fetch_add(1, Ordering::AcqRel) + 1;
-            self.services.register(
+            self.operations.register_service::<A, _, _, _>(
                 ServiceDefinition {
                     id: SERVICE.into(),
-                    policy: ServicePolicy {
-                        credit: 0,
-                        stop_timeout: resources.settings.shutdown_timeout,
-                        ..ServicePolicy::default()
+                    policy: OperationPolicy {
+                        timeout: resources.settings.shutdown_timeout,
+                        restart: RestartPolicy::Never,
+                        ..crate::services::POLICY
                     },
                 },
                 |resources: Arc<Resources>| Listener {
@@ -187,15 +190,19 @@ impl<A: Application> Host for Owner<A> {
                 generation,
                 resources: resources.clone(),
                 lease: None,
+                application: std::marker::PhantomData,
             });
             let started = async {
-                let scope = self.services.scope(resources.clone())?;
-                let lease = Arc::new(self.services.activate(SERVICE, &scope).await?);
+                let lease = self
+                    .operations
+                    .submit_with_resources_at(SERVICE, resources.clone())
+                    .await?;
+                let lease = Arc::new(lease);
                 if let Some(current) = self.current().as_mut() {
                     current.lease = Some(lease.clone());
                 }
                 if *resources.stopping.borrow() {
-                    lease.instance().cancel();
+                    lease.cancel();
                 }
                 lease.ready().await?;
                 resources
@@ -250,7 +257,7 @@ impl<A: Application> Host for Owner<A> {
         };
         current.resources.stopping.send_replace(true);
         if let Some(lease) = &current.lease {
-            lease.instance().cancel();
+            lease.cancel();
         }
     }
 
@@ -296,7 +303,7 @@ impl<A: Application> Host for Owner<A> {
 impl<A: Application> Resident<A> for Listener {
     type Error = Error;
 
-    async fn attempt(&mut self, mut context: Service<A>) -> std::result::Result<(), Fault<Error>> {
+    async fn run(&mut self, mut context: Service<A>) -> std::result::Result<(), Fault<Error>> {
         if *self.resources.stopping.borrow() {
             return Ok(());
         }
@@ -414,7 +421,7 @@ impl<A: Application> Resident<A> for Listener {
         Ok(())
     }
 
-    async fn finalize(&mut self) -> Result<()> {
+    async fn cleanup(&mut self) -> Result<()> {
         Ok(())
     }
 }

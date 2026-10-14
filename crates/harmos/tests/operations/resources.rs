@@ -26,7 +26,7 @@ use std::time::Duration;
 
 // Local Imports
 use super::{Lanes, app::App};
-use harmos::operations::{Context, Operation, OperationPolicy, RetryPolicy};
+use harmos::operations::{Context, Operation, OperationPolicy, RestartPolicy, RetryPolicy};
 use harmos::{Error, Runtime, state::Position};
 
 /* === Constants === */
@@ -56,6 +56,7 @@ struct Read {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
             retries: RetryPolicy::Never,
+            restart: RestartPolicy::Never,
         },
     )]
 struct ReadContract;
@@ -75,18 +76,28 @@ impl Operation for Read {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    fn new(resources: Arc<Bench>) -> Result<Self, Self::Error> {
-        Ok(Self { resources })
-    }
-
-    async fn initialize<'ctx>(&mut self, context: Self::Context<'ctx>) -> Result<(), Error> {
-        let scope = context.scope();
-        assert!(Arc::ptr_eq(
-            &self.resources,
-            scope.resources::<App<Arc<Bench>>>()
-        ));
-        self.resources.initialized.fetch_add(1, Ordering::SeqCst);
-        Ok(())
+    async fn initialize<'ctx>(
+        resources: Arc<Bench>,
+        context: Self::Context<'ctx>,
+    ) -> Result<Self, Self::Error> {
+        let constructed: Result<Self, Self::Error> = async move { Ok(Self { resources }) }.await;
+        let mut operation = constructed?;
+        let started: Result<(), Error> = async {
+            let operation = &mut operation;
+            let scope = context.scope();
+            assert!(Arc::ptr_eq(
+                &operation.resources,
+                scope.resources::<App<Arc<Bench>>>()
+            ));
+            operation
+                .resources
+                .initialized
+                .fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+        .await;
+        started?;
+        Ok(operation)
     }
 
     async fn run<'ctx>(
@@ -98,7 +109,7 @@ impl Operation for Read {
         let result: ::core::result::Result<(String, usize), Self::Error> = async move {
             let seen = self.resources.reads.fetch_add(1, Ordering::SeqCst);
             if *nested {
-                let child = context.submit::<ReadContract>(false)?.await?;
+                let child = context.submit_as::<ReadContract>(false)?.await?;
                 assert_eq!(child.0, self.resources.device);
                 assert_eq!(child.1, seen + 1);
             }
@@ -108,7 +119,7 @@ impl Operation for Read {
         result.map(::core::convert::Into::into)
     }
 
-    async fn finalize(&mut self) -> Result<(), Error> {
+    async fn cleanup(&mut self) -> Result<(), Error> {
         self.resources.finalized.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
@@ -160,7 +171,7 @@ pub(super) fn contract_scenario() {
 
                     let parent = runtime
                         .operations
-                        .submit::<ReadContract>(true)
+                        .submit_as::<ReadContract>(true)
                         .unwrap()
                         .await
                         .unwrap();
@@ -168,7 +179,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(parent.1, 0);
                     let following = runtime
                         .operations
-                        .submit::<ReadContract>(false)
+                        .submit_as::<ReadContract>(false)
                         .unwrap()
                         .await
                         .unwrap();

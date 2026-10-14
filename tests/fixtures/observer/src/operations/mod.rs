@@ -38,8 +38,7 @@ pub enum Implemented {
 pub enum Operations {
     #[nested]
     Implemented(Implemented),
-    Start(crate::observers::controls::Start),
-    Stop(crate::observers::controls::Stop),
+    Observe(crate::observers::controls::Observe),
 }
 
 /* === Traits === */

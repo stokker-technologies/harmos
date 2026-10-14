@@ -80,7 +80,7 @@ impl harmos::Plugin for Plugin {
     async fn initialize(&mut self, _: &Supervisor) -> Result<()> {
         Ok(())
     }
-    async fn shutdown(&mut self, _: &Supervisor) -> Result<()> {
+    async fn stop(&mut self, _: &Supervisor) -> Result<()> {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<()> {

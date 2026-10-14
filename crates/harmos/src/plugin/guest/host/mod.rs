@@ -230,21 +230,35 @@ impl<A: Application> Host<A> {
                 interface.func_wrap_concurrent("child", |accessor, (payload,): (Vec<u8>,)| {
                     Box::pin(async move {
                         let submitted = crate::supervision::executor::now();
-                        let call = crate::operations::WireChildCall::decode(&payload);
-                        let result = match call {
+                        let child = crate::operations::WireChild::decode(&payload);
+                        let result = match child {
                             Err(error) => Err(Bridge::<A>::refusal("-32602", error.to_string())),
-                            Ok(call) => {
+                            Ok(child) => {
                                 let scope = accessor.with(|mut access| {
                                     access
                                         .get()
                                         .children
                                         .lock()
                                         .expect("guest child context lock")
-                                        .get(&call.context)
+                                        .get(child.context())
                                         .cloned()
                                 });
-                                match scope {
-                                    None => {
+                                match (scope, child) {
+                                    (None, crate::operations::WireChild::Control(_)) => {
+                                        Err(Bridge::<A>::refusal(
+                                            "-32601",
+                                            "submitted children require an attempt context",
+                                        ))
+                                    }
+                                    (None, crate::operations::WireChild::Call(call))
+                                        if call.submit =>
+                                    {
+                                        Err(Bridge::<A>::refusal(
+                                            "-32601",
+                                            "submitted children require an attempt context",
+                                        ))
+                                    }
+                                    (None, crate::operations::WireChild::Call(call)) => {
                                         let endpoint = accessor.with(|mut access| {
                                             access
                                                 .get()
@@ -278,16 +292,22 @@ impl<A: Application> Host<A> {
                                             )),
                                         }
                                     }
-                                    Some(scope) => {
+                                    (Some(scope), child) => {
                                         let (_cancel, cancelled) = tokio::sync::oneshot::channel();
-                                        scope.call(call, submitted, cancelled).await.map_err(
-                                            |error| {
-                                                Bridge::<A>::refusal(
-                                                    &error.code().to_string(),
-                                                    error.message(),
-                                                )
-                                            },
-                                        )
+                                        let answer = match child {
+                                            crate::operations::WireChild::Call(call) => {
+                                                scope.call(call, submitted, cancelled).await
+                                            }
+                                            crate::operations::WireChild::Control(control) => {
+                                                scope.control(control, cancelled).await
+                                            }
+                                        };
+                                        answer.map_err(|error| {
+                                            Bridge::<A>::refusal(
+                                                &error.code().to_string(),
+                                                error.message(),
+                                            )
+                                        })
                                     }
                                 }
                             }

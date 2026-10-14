@@ -37,7 +37,7 @@ pub(crate) struct ValidateSchematic;
 /* === Implementations === */
 #[harmos_guest::operation(declaration = schematic_contract::operations::ValidateSchematic)]
 impl ValidateSchematic {
-    fn new(_: Arc<()>) -> Self {
+    async fn initialize(_: Arc<()>, _: &harmos_guest::Context) -> Self {
         Self
     }
 

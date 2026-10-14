@@ -147,7 +147,7 @@ fn contract_scenario() {
                     };
                     let response = runtime
                         .operations
-                        .call::<WriteObjects>(request.clone())
+                        .call_as::<WriteObjects>(request.clone())
                         .await
                         .unwrap();
                     assert_eq!(response.objects.len(), 2);
@@ -173,7 +173,7 @@ fn contract_scenario() {
                     assert!(
                         runtime
                             .operations
-                            .call::<WriteObjects>(conflict)
+                            .call_as::<WriteObjects>(conflict)
                             .await
                             .is_err()
                     );
@@ -191,7 +191,7 @@ fn contract_scenario() {
                     assert_eq!(
                         runtime
                             .operations
-                            .call::<WriteObjects>(request)
+                            .call_as::<WriteObjects>(request)
                             .await
                             .unwrap()
                             .objects,

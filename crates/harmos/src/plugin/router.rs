@@ -190,7 +190,7 @@ impl Router {
             .with_wire_contracts(&definition.contributions.wire_contracts)
             .with_observers(
                 &definition.contributions.observers,
-                definition.contributions.observer_controls.as_ref(),
+                definition.contributions.observer_control.as_ref(),
             )
             .with_streams(&definition.contributions.streams)
             .with_listeners(&definition.contributions.listeners)

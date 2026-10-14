@@ -18,7 +18,7 @@
 
 // Local Imports
 use harmos_contract::inventory::{contracts, listeners, observers, publications};
-use harmos_contract::operations::{OperationPolicy, RetryPolicy};
+use harmos_contract::operations::{OperationPolicy, RestartPolicy, RetryPolicy};
 use harmos_guest::kit::plugin::__bindings::{
     self as bindings,
     harmos::guest::capabilities::{Refusal, Registration},
@@ -30,6 +30,7 @@ const POLICY: OperationPolicy = OperationPolicy {
     timeout: std::time::Duration::from_secs(10),
     attempt_timeout: std::time::Duration::from_secs(10),
     retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
 };
 const SDK: [harmos_contract::operations::OperationPolicy; 2] = [POLICY, POLICY];
 

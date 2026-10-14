@@ -20,7 +20,7 @@
 use harmos_contract::inventory::{contracts, listeners, observers, publications};
 use harmos_contract::operations::lifecycle::Policy;
 use harmos_contract::operations::{
-    OperationPolicy, RetryPolicy, ServingError, WireTable, lifecycle,
+    OperationPolicy, RestartPolicy, RetryPolicy, ServingError, WireTable, lifecycle,
 };
 use harmos_contract::plugin::{Declared, Plugin};
 use harmos_sidecar::{Refusal, Registrar, RegistrationError, Supervisor};
@@ -95,6 +95,7 @@ impl lifecycle::Policy for Catalog {
         timeout: std::time::Duration::from_secs(30),
         attempt_timeout: std::time::Duration::from_secs(5),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
@@ -130,7 +131,7 @@ impl Plugin for Catalog {
     fn bind_operations(&self, _: &mut WireTable<Supervisor>) -> Result<(), ServingError> {
         panic!("export must never bind authored handlers")
     }
-    async fn shutdown(&mut self, _: &Supervisor) -> Result<(), Refusal> {
+    async fn stop(&mut self, _: &Supervisor) -> Result<(), Refusal> {
         panic!("export must never enter domain shutdown")
     }
     async fn cleanup(&mut self) -> Result<(), Refusal> {
