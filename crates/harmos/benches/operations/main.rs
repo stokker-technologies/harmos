@@ -26,7 +26,7 @@ use tokio::sync::{Semaphore, mpsc};
 
 // Local Imports
 use app::App;
-use harmos::operations::{Context, Operation, OperationPolicy, RetryPolicy};
+use harmos::operations::{Context, Operation, OperationPolicy, RestartPolicy, RetryPolicy};
 use harmos::{Error, Refusal, Runtime};
 
 /* === Constants === */
@@ -66,6 +66,7 @@ enum Lanes {
             timeout: Duration::from_secs(30),
             attempt_timeout: Duration::from_secs(30),
             retries: RetryPolicy::Never,
+            restart: RestartPolicy::Never,
         },
     )]
 struct Dispatch;

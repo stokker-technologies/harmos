@@ -290,16 +290,16 @@ fn contract_scenario() {
                         config(),
                     )
                     .unwrap();
-                    assert!(storage.start(&runtime.services).await.is_err());
+                    assert!(storage.start(&runtime).await.is_err());
                     assert!(data.control.open.load(Ordering::SeqCst));
                     storage.close().await.unwrap();
                     assert!(!data.control.open.load(Ordering::SeqCst));
                     assert!(!recovery.control.open.load(Ordering::SeqCst));
                     assert!(
                         runtime
-                            .services
-                            .status(&harmos::services::ServiceKey::root("harmos-storage"))
-                            .map(|item| item.status)
+                            .operations
+                            .resident(&harmos::operations::resident::Key::root("harmos-storage"))
+                            .and_then(|item| item.health)
                             .is_none()
                     );
                     runtime.stop().await.unwrap();

@@ -35,7 +35,7 @@ use crate::support::fixtures::component as load;
 use harmos::Message;
 use harmos::Runtime;
 use harmos::operations::Host as _;
-use harmos::operations::{OperationDeclaration, OperationPolicy, RetryPolicy};
+use harmos::operations::{OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
 use harmos::plugin::guest::{Error, Host};
 use harmos_sidecar::Attach;
 
@@ -76,6 +76,7 @@ impl OperationDeclaration for Reserved {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 
     type Response = Echoed;
@@ -1346,6 +1347,7 @@ impl OperationDeclaration for ProviderEcho {
         timeout: Duration::from_millis(100),
         attempt_timeout: Duration::from_millis(100),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
     const VISIBILITY: harmos::operations::Visibility = harmos::operations::Visibility::Shared;
 }
@@ -1724,14 +1726,14 @@ type NativeResident = harmos::plugin::sidecar::Supervised<
 >;
 #[derive(Default)]
 struct NativeResources {
-    services: Option<harmos::services::ServiceManager<Bank>>,
+    services: Option<harmos::operations::OperationManager>,
     sdk: Option<harmos::operations::PluginSdkRegistration>,
     initializing: Option<harmos::operations::EncodedInvocation>,
     shutting_down: Option<harmos::operations::EncodedInvocation>,
     initialized: bool,
     shutdown_attempted: bool,
     resident: Option<NativeResident>,
-    lease: Option<harmos::services::ServiceLease<Bank>>,
+    lease: Option<harmos::operations::OperationInstance<harmos::operations::resident::Activation>>,
     registration: Option<harmos::operations::PluginRegistration>,
     registered: bool,
 }
@@ -1748,7 +1750,6 @@ struct DependencyHost {
     guest: publications::Lifecycle,
     operations: harmos::operations::OperationManager,
     provider: std::sync::Arc<ProviderOwner>,
-    services: harmos::services::ServiceManager<Bank>,
 }
 impl DependencyHost {
     fn new(runtime: &Runtime<Bank>, provider: std::sync::Arc<ProviderOwner>) -> Self {
@@ -1757,7 +1758,6 @@ impl DependencyHost {
             guest: publications::Lifecycle::new(runtime),
             operations: runtime.operations.clone(),
             provider,
-            services: runtime.services.clone(),
         }
     }
 }
@@ -1781,7 +1781,7 @@ impl harmos::plugin::PluginLifecycle for DependencyHost {
             }
             harmos::plugin::PluginKind::Sidecar => {
                 harmos::plugin::PluginBackend::Sidecar(NativeResources {
-                    services: Some(self.services.clone()),
+                    services: Some(self.operations.clone()),
                     ..NativeResources::default()
                 })
             }
@@ -1839,19 +1839,15 @@ impl harmos::plugin::PluginLifecycle for DependencyHost {
                 .routed(router);
                 resources.resident = Some(resident.clone());
                 let mut ready = resident.ready();
-                self.services.register(
+                self.operations.register_service(
                     harmos::services::ServiceDefinition {
                         id: definition.id.clone(),
-                        policy: harmos::services::ServicePolicy::default(),
+                        policy: harmos::services::POLICY,
                     },
                     move |_: std::sync::Arc<()>| resident.clone(),
                 )?;
                 resources.registered = true;
-                resources.lease = Some(
-                    self.services
-                        .activate(&definition.id, &self.services.root_scope())
-                        .await?,
-                );
+                resources.lease = Some(self.operations.submit_resident(&definition.id).await?);
                 let handle = if definition.contributions.lifecycle.is_some() {
                     let native = tokio::time::timeout(
                         Duration::from_secs(2),
@@ -1966,7 +1962,7 @@ impl harmos::plugin::PluginLifecycle for DependencyHost {
                         .services
                         .as_ref()
                         .unwrap()
-                        .unregister(&definition.id)
+                        .unregister_resident(&definition.id)
                         .await?;
                 }
                 resources.registered = false;

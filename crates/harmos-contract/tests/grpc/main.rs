@@ -24,7 +24,7 @@ use prost_reflect::DescriptorPool;
 
 // Local Imports
 use harmos_contract::grpc::Artifacts;
-use harmos_contract::operations::{Contracts, OperationPolicy, RetryPolicy};
+use harmos_contract::operations::{Contracts, OperationPolicy, RestartPolicy, RetryPolicy};
 
 /* === Constants === */
 
@@ -50,6 +50,7 @@ const POLICY: OperationPolicy = OperationPolicy {
     timeout: std::time::Duration::from_secs(1),
     attempt_timeout: std::time::Duration::from_secs(1),
     retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
 };
 #[harmos_contract::message(harmos_path = ::harmos_contract)]
 struct Payload {

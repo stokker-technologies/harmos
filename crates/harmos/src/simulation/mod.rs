@@ -28,10 +28,10 @@ use tokio::sync::broadcast;
 use crate::{
     Application, Builder, DefinitionId, Error, Identified, Runtime, evidence::Vault,
     runtime::Catalog, runtime::Incompatible, runtime::Registration, services::Fault,
-    services::Resident, services::Service, services::ServicePolicy, state::At, state::Entry,
-    state::Envelope, state::Focus, state::Origin, state::Position, state::PrincipalId,
-    state::Receipt, state::Recorded, state::Transaction, storage::Cursor, storage::JournalConsumer,
-    storage::Payload, storage::Recovery, storage::Source, streams::Stream,
+    services::Resident, services::Service, state::At, state::Entry, state::Envelope, state::Focus,
+    state::Origin, state::Position, state::PrincipalId, state::Receipt, state::Recorded,
+    state::Transaction, storage::Cursor, storage::JournalConsumer, storage::Payload,
+    storage::Recovery, storage::Source, streams::Stream,
 };
 
 /* === Constants === */
@@ -234,13 +234,13 @@ impl<A: Application> Configuration<A> {
     where
         R: Resident<A> + Clone,
     {
-        self.service_with(name, ServicePolicy::default(), resident);
+        self.service_with(name, crate::services::POLICY, resident);
     }
 
     pub(crate) fn service_with<R>(
         &mut self,
         name: impl Into<String>,
-        policy: ServicePolicy,
+        policy: crate::operations::OperationPolicy,
         resident: R,
     ) where
         R: Resident<A> + Clone,
@@ -608,11 +608,11 @@ where
 {
     type Error = String;
 
-    async fn attempt(&mut self, context: Service<A>) -> Result<(), Fault<Self::Error>> {
+    async fn run(&mut self, context: Service<A>) -> Result<(), Fault<Self::Error>> {
         self.control.attempts.fetch_add(1, Ordering::AcqRel);
         let mut faults = self.control.faults.subscribe();
         let answer = tokio::select! {
-            answer = self.resident.attempt(context) => answer.map_err(|fault| match fault {
+            answer = self.resident.run(context) => answer.map_err(|fault| match fault {
                 Fault::Environmental(error) => Fault::Environmental(error.to_string()),
                 Fault::Application(error) => Fault::Application(error.to_string()),
             }),
@@ -635,9 +635,9 @@ where
             .map_err(|error| error.to_string())
     }
 
-    async fn finalize(&mut self) -> Result<(), Self::Error> {
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
         self.resident
-            .finalize()
+            .cleanup()
             .await
             .map_err(|error| error.to_string())
     }

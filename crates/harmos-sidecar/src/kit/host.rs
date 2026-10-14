@@ -90,6 +90,8 @@ pub enum CallError {
     },
     #[error(transparent)]
     Publication(#[from] PublicationError),
+    #[error("`{method}` needs process-local resources a connection cannot carry")]
+    LocalResources { method: &'static str },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
@@ -183,17 +185,6 @@ impl Drop for PendingCall<'_> {
 }
 
 impl Supervisor {
-    pub(crate) async fn observer_update(&self, update: crate::ObserverUpdate) -> bool {
-        let params = serde_json::to_vec(&update).expect("observer state serializes");
-        self.outgoing
-            .send(Outgoing::Frame(Frame::Push {
-                method: Frame::OBSERVER_STATUS.to_owned(),
-                params,
-            }))
-            .await
-            .is_ok()
-    }
-
     pub(crate) fn new(outgoing: mpsc::Sender<Outgoing>, clock: fn() -> Option<i64>) -> Self {
         Self {
             outgoing,
@@ -226,13 +217,6 @@ impl Supervisor {
 
     pub fn context(&self) -> &harmos_contract::operations::CallContext {
         &self.call
-    }
-
-    pub(crate) fn for_observer_context(&self, context: [u8; 32]) -> Result<Self, crate::Refusal> {
-        if context == [0; 32] {
-            return Err(crate::Refusal::of("observer context must be host-issued"));
-        }
-        Ok(self.for_operation(context))
     }
 
     pub fn with_value<T: harmos_contract::operations::ContextValue>(

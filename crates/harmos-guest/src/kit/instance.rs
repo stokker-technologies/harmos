@@ -221,6 +221,18 @@ impl Host for Context {
         })
     }
 
+    // Resident resources live in the host process; a guest cannot lend them.
+    async fn submit_with_resources<O: Callable<Response = ()>, R: Send + Sync + 'static>(
+        &self,
+        _: O::Request,
+        _: std::sync::Arc<R>,
+    ) -> Result<OperationInstance<O>, OperationRefusal> {
+        Err(OperationRefusal::of(format!(
+            "`{}` needs process-local resources a guest cannot carry",
+            O::ID
+        )))
+    }
+
     async fn call_as<O: Callable>(
         &self,
         request: O::Request,

@@ -47,6 +47,8 @@ pub struct Status {
 
 pub(crate) struct Instance {
     status: watch::Sender<Status>,
+    // Resident instances end Stopped; request-scoped ones end Settled.
+    terminal: Phase,
     finished: Once,
     on_settled: Option<Box<dyn Fn() + Send + Sync>>,
     cancellation: watch::Sender<bool>,
@@ -66,8 +68,10 @@ pub enum Phase {
     Initializing,
     Running,
     RetryWaiting,
+    Restarting,
     Stopping,
     Finalizing,
+    Stopped,
     Settled,
 }
 
@@ -131,8 +135,10 @@ impl Status {
             Phase::Initializing => instance::Phase::Initializing,
             Phase::Running => instance::Phase::Running,
             Phase::RetryWaiting => instance::Phase::RetryWaiting,
+            Phase::Restarting => instance::Phase::Restarting,
             Phase::Stopping => instance::Phase::Stopping,
             Phase::Finalizing => instance::Phase::CleaningUp,
+            Phase::Stopped => instance::Phase::Stopped,
             Phase::Settled => instance::Phase::Settled,
         };
         let outcome = self.outcome.map(|outcome| match outcome {
@@ -151,6 +157,12 @@ impl Status {
     }
 }
 
+impl Phase {
+    pub fn is_terminal(self) -> bool {
+        matches!(self, Self::Stopped | Self::Settled)
+    }
+}
+
 impl Instance {
     pub(crate) fn queued(cancellation: watch::Sender<bool>) -> Self {
         let status = Status {
@@ -166,6 +178,7 @@ impl Instance {
         };
         Self {
             status: watch::channel(status).0,
+            terminal: Phase::Settled,
             finished: Once::new(),
             on_settled: None,
             cancellation,
@@ -173,6 +186,12 @@ impl Instance {
             retained: Mutex::new(None),
             providers: Mutex::new(Vec::new()),
         }
+    }
+
+    // A resident instance runs until stopped and ends in `Stopped`.
+    pub(crate) fn resident(mut self) -> Self {
+        self.terminal = Phase::Stopped;
+        self
     }
 
     pub(crate) fn status(&self) -> Status {
@@ -185,18 +204,18 @@ impl Instance {
 
     pub(crate) fn transition(&self, phase: Phase) {
         assert!(
-            !matches!(phase, Phase::Queued | Phase::Settled),
+            !matches!(phase, Phase::Queued | Phase::Stopped | Phase::Settled),
             "admission and physical settlement own terminal transitions"
         );
         let now = executor::now();
         self.status.send_modify(|status| {
-            if status.phase == Phase::Settled {
+            if status.phase.is_terminal() {
                 return;
             }
             if status.cancellation_requested
                 && matches!(
                     phase,
-                    Phase::Initializing | Phase::Running | Phase::RetryWaiting
+                    Phase::Initializing | Phase::Running | Phase::RetryWaiting | Phase::Restarting
                 )
             {
                 return;
@@ -221,7 +240,7 @@ impl Instance {
         let now = executor::now();
         let mut admitted = false;
         self.status.send_modify(|status| {
-            if status.cancellation_requested || status.phase == Phase::Settled {
+            if status.cancellation_requested || status.phase.is_terminal() {
                 return;
             }
             status.phase = phase;
@@ -235,7 +254,7 @@ impl Instance {
 
     pub(crate) fn complete(&self, outcome: Outcome) {
         self.status.send_modify(|status| {
-            if status.phase != Phase::Settled {
+            if !status.phase.is_terminal() {
                 status.outcome = Some(outcome);
             }
         });
@@ -261,7 +280,7 @@ impl Instance {
             let now = executor::now();
             let mut failure = None;
             self.status.send_modify(|status| {
-                status.phase = Phase::Settled;
+                status.phase = self.terminal;
                 status.cleanup_pending = false;
                 failure = status.cleanup_failure.take();
                 status.settled_at = Some(now);
@@ -273,7 +292,7 @@ impl Instance {
     pub(crate) fn interrupted(&self, failure: Arc<Error>) {
         let mut previous = None;
         self.status.send_modify(|status| {
-            if status.phase != Phase::Settled {
+            if !status.phase.is_terminal() {
                 status.outcome.get_or_insert(Outcome::Unavailable);
                 status.cleanup_pending = true;
                 previous = status.cleanup_failure.replace(failure);
@@ -283,7 +302,7 @@ impl Instance {
     }
 
     pub(crate) fn is_settled(&self) -> bool {
-        self.status.borrow().phase == Phase::Settled
+        self.status.borrow().phase.is_terminal()
     }
 
     pub(crate) fn track(&self, child: &Arc<Self>) {
@@ -324,7 +343,7 @@ impl Instance {
         let mut admitted = false;
         let mut stopping_control = false;
         provider.status.send_modify(|status| {
-            if status.phase == Phase::Settled {
+            if status.phase.is_terminal() {
                 return;
             }
             if status.cancellation_requested {
@@ -410,7 +429,7 @@ impl Instance {
                     if let Err(failure) = retained.settle().await {
                         let mut previous = None;
                         self.status.send_modify(|status| {
-                            if status.phase != Phase::Settled {
+                            if !status.phase.is_terminal() {
                                 previous = status.cleanup_failure.replace(Arc::clone(&failure));
                             }
                         });
@@ -421,7 +440,7 @@ impl Instance {
                     return Ok(());
                 }
                 let status = self.status();
-                if status.phase == Phase::Settled {
+                if status.phase.is_terminal() {
                     return Ok(());
                 }
                 if let Some(failure) = status.cleanup_failure {
@@ -441,10 +460,10 @@ impl Instance {
         self.status.send_modify(|status| {
             interrupt = status.dependents == 0;
             status.cancellation_requested = true;
-            if status.phase != Phase::Settled {
+            if !status.phase.is_terminal() {
                 status.cleanup_pending = true;
             }
-            if !matches!(status.phase, Phase::Finalizing | Phase::Settled) {
+            if !matches!(status.phase, Phase::Finalizing) && !status.phase.is_terminal() {
                 status.phase = Phase::Stopping;
             }
         });

@@ -97,7 +97,7 @@ struct Independent {
 
 struct Fixture {
     runtime: Runtime<Bank>,
-    _lease: harmos::services::ServiceLease<Bank>,
+    _lease: harmos::operations::OperationInstance<harmos::operations::resident::Activation>,
     root: tempfile::TempDir,
     client: Arc<Gate>,
     provider: Arc<Gate>,
@@ -227,10 +227,8 @@ impl Attach for Joined {
     fn observers(&self) -> Vec<harmos_contract::inventory::observers::Declaration> {
         forwarded!(self, observers)
     }
-    fn observer_controls(
-        &self,
-    ) -> harmos_contract::Result<Option<[harmos::operations::Contract; 2]>> {
-        forwarded!(self, observer_controls)
+    fn observer_control(&self) -> harmos_contract::Result<Option<harmos::operations::Contract>> {
+        forwarded!(self, observer_control)
     }
     fn listener_declarations(
         &self,
@@ -316,13 +314,13 @@ impl Fixture {
             .await
             .unwrap();
         runtime
-            .services
-            .register(
+            .operations
+            .register_service(
                 harmos::services::ServiceDefinition {
                     id: "local-graph".into(),
-                    policy: harmos::services::ServicePolicy {
-                        credit: 0,
-                        ..Default::default()
+                    policy: harmos::operations::OperationPolicy {
+                        restart: harmos::operations::RestartPolicy::Never,
+                        ..harmos::services::POLICY
                     },
                 },
                 move |_: Arc<()>| {
@@ -338,13 +336,15 @@ impl Fixture {
             )
             .unwrap();
         let lease = runtime
-            .services
-            .activate("local-graph", &runtime.services.root_scope())
+            .operations
+            .submit_resident("local-graph")
             .await
             .unwrap();
-        service_status(runtime.services.subscribe(), "local-graph", |status| {
-            matches!(status, ServiceStatus::Running { .. })
-        })
+        service_status(
+            runtime.operations.watch_residents(),
+            "local-graph",
+            |status| matches!(status, ServiceStatus::Running { .. }),
+        )
         .await;
         Self {
             runtime,

@@ -7,6 +7,12 @@
  * ***
  */
 
+// Remote observers of one sidecar connection. Each activation submits the
+// plugin's observe control and holds that invocation for as long as the
+// activation runs; stopping cancels it, and the sidecar stops and cleans the
+// observer up through the invocation's ordinary cleanup. The activation keeps
+// the connection alive until its invocation settles.
+
 /* === Modules === */
 
 /* === Re-Exports === */
@@ -20,57 +26,38 @@ use tokio::sync::{mpsc, watch};
 // Local Imports
 use super::{Arrival, SidecarError};
 use crate::observers::{
-    ObserverActivation, ObserverBackend, ObserverDefinition, ObserverManager, ObserverScope,
+    ChildSettlement, ObserverActivation, ObserverBackend, ObserverDefinition, ObserverRegistration,
 };
+use crate::operations::{OperationManager, OperationPhase};
 use harmos_sidecar::inventory::observers::{Activation, Declaration};
-use harmos_sidecar::{ObserverControl, ObserverExit, ObserverStatus, ObserverUpdate};
 
 /* === Constants === */
 
 /* === Macros === */
 
 /* === Type Aliases === */
-type States = BTreeMap<String, State>;
 
 /* === Structs === */
-struct State {
-    generation: u64,
-    status: watch::Sender<ObserverStatus>,
-    context: [u8; 32],
-    children: Arc<crate::observers::ChildSettlement>,
-}
-
 struct ControlContext {
-    operations: crate::operations::OperationManager,
+    operations: OperationManager,
     scope: crate::plugin::PluginScope,
-    caller: crate::operations::Caller,
-    bindings: OnceLock<[crate::operations::PluginControl; 2]>,
+    binding: OnceLock<crate::operations::PluginControl>,
 }
 
 pub(super) struct Remote {
     pub(super) provider: Option<Arc<crate::supervision::instance::Instance>>,
     arrivals: mpsc::Sender<Arrival>,
-    states: Mutex<States>,
     control: OnceLock<ControlContext>,
     fenced: watch::Sender<bool>,
     retirement: OnceLock<Weak<Retirement>>,
     outcome: Arc<Mutex<Option<Arc<crate::Error>>>>,
 }
 
-struct GenerationContext {
-    remote: Arc<Remote>,
-    control: ObserverControl,
-}
-
-struct Retained {
-    context: GenerationContext,
-    status: watch::Receiver<ObserverStatus>,
-    children: Weak<crate::observers::ChildSettlement>,
-}
-
 struct Backend {
     definition: ObserverDefinition,
 }
+
+struct RetainedControl(Arc<crate::supervision::instance::Instance>);
 
 pub(super) struct Session {
     closing: Option<Closing>,
@@ -78,13 +65,13 @@ pub(super) struct Session {
 }
 
 struct Retirement {
-    manager: ObserverManager,
-    scope: ObserverScope<Remote>,
+    operations: OperationManager,
+    remote: Arc<Remote>,
 }
 
 struct Closing {
     remote: Arc<Remote>,
-    manager: ObserverManager,
+    operations: OperationManager,
     scope: Option<Arc<Retirement>>,
     end: Option<harmos_sidecar::attach::Ending>,
     ending_failure: Option<String>,
@@ -103,7 +90,6 @@ impl Remote {
         Arc::new(Self {
             provider,
             arrivals,
-            states: Mutex::new(BTreeMap::new()),
             control: OnceLock::new(),
             fenced: watch::channel(false).0,
             retirement: OnceLock::new(),
@@ -119,163 +105,83 @@ impl Remote {
         let Some(original) = self.retirement.get().and_then(Weak::upgrade) else {
             return Ok(());
         };
-        let retired = original.manager.retire_scope(&original.scope).await?;
-        *self.outcome.lock().expect("observer outcome is healthy") = retired.into_outcome().err();
+        let retired = original
+            .operations
+            .retire_scope_of(&original.remote)
+            .await?;
+        *self.outcome.lock().expect("observer outcome is healthy") =
+            retired.and_then(|retired| retired.into_outcome().err());
         Ok(())
-    }
-
-    pub(super) fn update(&self, update: ObserverUpdate) {
-        let states = self
-            .states
-            .lock()
-            .expect("remote observer states are healthy");
-        if let Some(state) = states.get(&update.control.observer)
-            && state.generation == update.control.generation
-        {
-            state.status.send_replace(update.status);
-        }
     }
 
     pub(super) fn configure(
         &self,
-        operations: crate::operations::OperationManager,
+        operations: OperationManager,
         scope: crate::plugin::PluginScope,
-        caller: crate::operations::Caller,
     ) -> crate::Result<()> {
         self.control
             .set(ControlContext {
                 operations,
                 scope,
-                caller,
-                bindings: OnceLock::new(),
+                binding: OnceLock::new(),
             })
             .map_err(|_| crate::Error::InvalidInput {
-                field: "observer controls",
+                field: "observer control",
                 reason: "original transport was already configured",
             })
     }
 
-    pub(super) fn capture_controls(&self) -> crate::Result<()> {
+    pub(super) fn capture_control(&self) -> crate::Result<()> {
         let original = self.control.get().ok_or(crate::Error::NotReady {
-            domain: "observer controls",
+            domain: "observer control",
         })?;
-        let Some(pair) = original.scope.observer_controls() else {
+        let Some(contract) = original.scope.observer_control() else {
             return Ok(());
         };
-        if original.bindings.get().is_some() {
+        if original.binding.get().is_some() {
             return Ok(());
         }
-        let bindings = [
-            original
-                .operations
-                .capture_host_control(&original.scope, &pair[0])?,
-            original
-                .operations
-                .capture_host_control(&original.scope, &pair[1])?,
-        ];
-        let _ = original.bindings.set(bindings);
+        let binding = original
+            .operations
+            .capture_host_control(&original.scope, contract)?;
+        let _ = original.binding.set(binding);
         Ok(())
     }
 
-    pub(super) fn owns_context(&self, context: &[u8; 32]) -> bool {
-        self.states
-            .lock()
-            .expect("remote observer states are healthy")
-            .values()
-            .any(|state| &state.context == context)
-    }
-
-    pub(super) fn submit_child(
+    // Submit the observe control for one activation, owned by its children.
+    fn observe(
         &self,
-        call: crate::operations::WireChildCall,
-        submitted: tokio::time::Instant,
+        children: &ChildSettlement,
+        control: &harmos_contract::observers::Control,
     ) -> crate::Result<crate::operations::EncodedInvocation> {
-        let control = self.control.get().ok_or(crate::Error::NotReady {
-            domain: "observer controls",
-        })?;
-        let states = self
-            .states
-            .lock()
-            .expect("remote observer states are healthy");
-        let state = states
-            .values()
-            .find(|state| state.context == call.context)
-            .ok_or(crate::Error::Closing {
-                domain: "observer generation context",
-            })?;
-        state.children.submit(|| {
-            control.caller.submit_observer_encoded_at(
-                &call.operation,
-                call.payload,
-                submitted,
-                call.values,
-            )
-        })
-    }
-
-    async fn call(&self, stopping: bool, control: &ObserverControl) -> crate::Result<Vec<u8>> {
         let original = self.control.get().ok_or(crate::Error::NotReady {
-            domain: "observer controls",
+            domain: "observer control",
         })?;
         original
             .scope
-            .observer_controls()
+            .observer_control()
             .ok_or(crate::Error::NotReady {
-                domain: "observer controls",
+                domain: "observer control",
             })?;
-        self.capture_controls()?;
-        let (context, children) = {
-            let states = self
-                .states
-                .lock()
-                .expect("remote observer states are healthy");
-            let state = states
-                .get(&control.observer)
-                .filter(|state| state.generation == control.generation)
-                .ok_or(crate::Error::Closing {
-                    domain: "observer generation context",
-                })?;
-            (state.context, Arc::clone(&state.children))
-        };
-        let binding = &original
-            .bindings
+        self.capture_control()?;
+        let binding = original
+            .binding
             .get()
-            .expect("original captured control pair")[usize::from(stopping)];
+            .expect("original captured observe control");
         let bytes = control
             .observer
             .len()
             .checked_mul(2)
-            .and_then(|bytes| bytes.checked_add(256))
+            .and_then(|bytes| bytes.checked_add(64))
             .and_then(std::num::NonZeroUsize::new)
             .ok_or(crate::Error::ResourceExhausted {
                 resource: "observer control encoding",
             })?;
-        // Retain The Original Control Before Any Cancellable Wait
-        let invocation = children.submit_control(stopping, || {
+        children.submit(false, || {
             binding.submit_with(bytes, |_| {
-                let request = harmos_contract::observers::Control {
-                    observer: control.observer.clone(),
-                    generation: control.generation,
-                    context: context.to_vec(),
-                };
-                Ok(harmos_contract::Message::encode_to_vec(&request))
+                Ok(harmos_contract::Message::encode_to_vec(control))
             })
-        })?;
-        let (_cancellation, cancelled) = tokio::sync::oneshot::channel();
-        crate::operations::children::lifecycle(invocation, cancelled).await
-    }
-
-    fn revoke(&self, control: &ObserverControl) {
-        let mut states = self
-            .states
-            .lock()
-            .expect("remote observer states are healthy");
-        if states
-            .get(&control.observer)
-            .is_some_and(|state| state.generation == control.generation)
-        {
-            states.remove(&control.observer);
-        }
+        })
     }
 
     async fn fence(&self) {
@@ -292,14 +198,20 @@ impl Remote {
     }
 }
 
-impl Drop for GenerationContext {
-    fn drop(&mut self) {
-        self.remote.revoke(&self.control);
+impl crate::supervision::cleanup::Resource for RetainedControl {
+    fn finalize(&mut self) -> crate::supervision::cleanup::Finalize<'_> {
+        Box::pin(async move {
+            self.0
+                .settle()
+                .await
+                .map_err(|source| Arc::new(crate::Error::OperationSettlement { source }))
+        })
     }
 }
 
 impl ObserverBackend for Backend {
     type Resources = Remote;
+
     fn definition(&self) -> crate::Result<ObserverDefinition> {
         Ok(self.definition.clone())
     }
@@ -312,143 +224,79 @@ impl ObserverBackend for Backend {
         if let Some(provider) = &remote.provider {
             activation.depend_on(provider)?;
         }
-        let control = ObserverControl {
+        let control = harmos_contract::observers::Control {
             observer: self.definition.id.clone(),
             generation: activation.id().value(),
         };
-        let (status, mut changed) = watch::channel(ObserverStatus::Starting);
-        let mut context = [0; 32];
-        getrandom::fill(&mut context).map_err(|source| crate::Error::OperationFailed {
-            operation: control.observer.clone(),
-            source: Arc::new(source),
-        })?;
-        if context == [0; 32] {
-            return Err(crate::Error::InvalidInput {
-                field: "observer context",
-                reason: "zero random capability",
+        let children = activation.child_settlement();
+        let mut invocation = match remote.observe(&children, &control) {
+            Ok(invocation) => invocation,
+            Err(error) => return Err(remote.failed(error).await),
+        };
+
+        // Follow The Remote Observer Until Stopped Or Ended
+        let control = Arc::clone(&invocation.control);
+        let mut status = control.settlement();
+        let ended = loop {
+            if status.borrow_and_update().phase() == OperationPhase::Running {
+                activation.ready();
+            }
+            tokio::select! {
+                () = activation.stopping() => break None,
+                () = remote.fence() => return Err(failure(SidecarError::Unavailable)),
+                result = &mut invocation => break Some(result),
+                changed = status.changed() => {
+                    if changed.is_err() {
+                        break Some((&mut invocation).await);
+                    }
+                }
+            }
+        };
+
+        // Cancel The Invocation; The Sidecar Stops And Cleans Up The Observer
+        activation.begin_stopping();
+        let stopped = ended.is_none();
+        let result = match ended {
+            Some(result) => result,
+            None => {
+                invocation.cancel();
+                tokio::select! {
+                    result = &mut invocation => result,
+                    () = remote.fence() => return Err(failure(SidecarError::Unavailable)),
+                }
+            }
+        };
+        activation.cleaning_up();
+
+        // A Failed Remote Cleanup Stays Retained For A Later Stop To Retry
+        if let Some(failure) = control.status().cleanup_failure().cloned() {
+            children.forget(&control);
+            activation.retain(RetainedControl(control), Arc::clone(&failure));
+            return Err(crate::Error::TaskFailed {
+                domain: "remote observer cleanup",
+                source: failure,
             });
         }
-        remote.states.lock().unwrap().insert(
-            control.observer.clone(),
-            State {
-                generation: control.generation,
-                status,
-                context,
-                children: activation.child_settlement(),
-            },
-        );
-        let context = GenerationContext {
-            remote: remote.clone(),
-            control: control.clone(),
-        };
-        let started = tokio::select! {
-            result = remote.call(false, &control) => Some(result),
-            _ = activation.stopping() => None,
-            _ = remote.fence() => return Err(failure(SidecarError::Unavailable)),
-        };
-        if let Some(Err(error)) = started {
-            return Err(remote.failed(error).await);
+        match result {
+            Ok(_) => Ok(()),
+            Err(_) if stopped => Ok(()),
+            // Cancelled from outside, as runtime admission closes.
+            Err(crate::Error::OperationRefused(crate::Refusal::Cancelled)) => Ok(()),
+            Err(error) => Err(error),
         }
-        if started.is_some() {
-            loop {
-                let current = *changed.borrow_and_update();
-                match current {
-                    ObserverStatus::Running => activation.ready(),
-                    ObserverStatus::Stopping | ObserverStatus::Finalizing => {
-                        activation.begin_stopping()
-                    }
-                    ObserverStatus::Stopped(_) | ObserverStatus::Retained(_) => break,
-                    ObserverStatus::Starting => {}
-                }
-                tokio::select! {
-                    _ = activation.stopping() => break,
-                    _ = remote.fence() => return Err(failure(SidecarError::Unavailable)),
-                    result = changed.changed() => { if result.is_err() { break; } }
-                }
-            }
-        }
-        activation.begin_stopping();
-        let children = activation.child_settlement();
-        let bytes = tokio::select! {
-            result = children.cleanup(&mut changed, async {
-                // A start abandoned by retirement still owns native capacity.
-                children.settle_controls().await?;
-                remote.call(true, &control).await
-            }) => match result {
-                Ok(bytes) => bytes,
-                Err(error) => return Err(remote.failed(error).await),
-            },
-            _ = remote.fence() => return Err(failure(SidecarError::Unavailable)),
-        };
-        let result = receipt(&bytes);
-        let exit = match result {
-            Ok((exit, true)) => exit,
-            result => {
-                let error = match result {
-                    Ok((exit, false)) => {
-                        children.cleanup_phase(ObserverStatus::Retained(exit));
-                        failure(exit)
-                    }
-                    Err(error) => error,
-                    _ => unreachable!(),
-                };
-                let error = Arc::new(error);
-                activation.retain(
-                    Retained {
-                        context,
-                        status: changed,
-                        children: Arc::downgrade(&children),
-                    },
-                    error.clone(),
-                );
-                return Err(crate::Error::TaskFailed {
-                    domain: "remote observer cleanup",
-                    source: error,
-                });
-            }
-        };
-        if exit == ObserverExit::Cancelled {
-            Ok(())
-        } else {
-            Err(failure(exit))
-        }
-    }
-}
-
-impl crate::supervision::cleanup::Resource for Retained {
-    fn finalize(&mut self) -> crate::supervision::cleanup::Finalize<'_> {
-        Box::pin(async move {
-            let children = self.children.upgrade().ok_or_else(|| {
-                Arc::new(crate::Error::NotReady {
-                    domain: "observer cleanup owner",
-                })
-            })?;
-            let closing = self.context.remote.call(true, &self.context.control);
-            let bytes = children
-                .cleanup(&mut self.status, closing)
-                .await
-                .map_err(Arc::new)?;
-            let (exit, settled) = receipt(&bytes).map_err(Arc::new)?;
-            if settled {
-                Ok(())
-            } else {
-                children.cleanup_phase(ObserverStatus::Retained(exit));
-                Err(Arc::new(failure(exit)))
-            }
-        })
     }
 }
 
 impl Session {
     pub(super) fn new(
         remote: Arc<Remote>,
-        manager: ObserverManager,
+        operations: OperationManager,
         end: Option<harmos_sidecar::attach::Ending>,
     ) -> Self {
         Self {
             closing: Some(Closing {
                 remote,
-                manager,
+                operations,
                 scope: None,
                 end,
                 ending_failure: None,
@@ -457,7 +305,8 @@ impl Session {
         }
     }
 
-    pub(super) fn set_scope(&mut self, scope: ObserverScope<Remote>) -> Result<(), String> {
+    // Bind retirement of this connection's observers to the session.
+    pub(super) fn bind(&mut self) -> Result<(), String> {
         let closing = self
             .closing
             .as_mut()
@@ -466,8 +315,8 @@ impl Session {
             return Err("native observer scope already bound".to_owned());
         }
         let original = Arc::new(Retirement {
-            manager: closing.manager.clone(),
-            scope,
+            operations: closing.operations.clone(),
+            remote: Arc::clone(&closing.remote),
         });
         closing
             .remote
@@ -538,22 +387,16 @@ impl Closing {
             self.end.take();
         }
         self.remote.fenced.send_replace(true);
-        self.remote
-            .states
-            .lock()
-            .expect("remote observer states are healthy")
-            .clear();
         Ok(())
     }
 
     async fn finish(&mut self) -> Result<Option<Arc<crate::Error>>, String> {
         self.end().await?;
         if let Some(scope) = &self.scope {
-            let retirement: crate::Result<crate::observers::ObserverRetirement> =
-                scope.manager.retire_scope(&scope.scope).await;
+            let retirement = scope.operations.retire_scope_of(&scope.remote).await;
             match retirement {
                 Ok(retirement) => {
-                    let outcome = retirement.into_outcome().err();
+                    let outcome = retirement.and_then(|retirement| retirement.into_outcome().err());
                     *self
                         .remote
                         .outcome
@@ -572,12 +415,12 @@ impl Closing {
 
 /* === Public Functions === */
 pub(super) fn stage(
-    manager: &ObserverManager,
-    scope: &ObserverScope<Remote>,
+    operations: &OperationManager,
+    remote: &Arc<Remote>,
     plugin: Option<&crate::plugin::PluginScope>,
     definitions: &[Declaration],
     publications: &[harmos_sidecar::StreamDeclaration],
-) -> crate::Result<crate::observers::ObserverRegistration> {
+) -> crate::Result<ObserverRegistration> {
     let backends = definitions.iter().map(|entry| Backend {
         definition: ObserverDefinition {
             id: entry.id.clone(),
@@ -591,14 +434,15 @@ pub(super) fn stage(
         },
     });
     match plugin {
-        Some(plugin) => manager.stage_plugin(scope, plugin, backends),
-        None => manager.stage(scope, backends),
+        Some(plugin) => operations.stage_plugin_observers(remote, plugin, backends),
+        None => operations.stage_observers(remote, backends),
     }
 }
 
+// Hold one activation lease per observer whose plugin or demand wants it.
 pub(super) async fn demand(
-    manager: ObserverManager,
-    scope: ObserverScope<Remote>,
+    operations: OperationManager,
+    remote: Arc<Remote>,
     plugin: Option<crate::plugin::PluginScope>,
     definitions: Vec<Declaration>,
     mut changes: watch::Receiver<BTreeMap<String, bool>>,
@@ -623,7 +467,10 @@ pub(super) async fn demand(
             if !active {
                 leases.remove(&definition.id);
             } else if !leases.contains_key(&definition.id) {
-                match manager.activate(&definition.id, &scope).await {
+                match operations
+                    .submit_with_resources_at(&definition.id, Arc::clone(&remote))
+                    .await
+                {
                     Ok(lease) => {
                         leases.insert(definition.id.clone(), lease);
                     }
@@ -644,13 +491,6 @@ pub(super) async fn demand(
 }
 
 /* === Private Functions === */
-fn receipt(bytes: &[u8]) -> crate::Result<(ObserverExit, bool)> {
-    use harmos_contract::Message;
-    let status = harmos_contract::observers::Status::decode(bytes).map_err(failure)?;
-    let exit = ObserverExit::try_from(status.exit).map_err(failure)?;
-    Ok((exit, status.settled))
-}
-
 fn failure(error: impl std::error::Error + Send + Sync + 'static) -> crate::Error {
     crate::Error::TaskFailed {
         domain: "remote observer",

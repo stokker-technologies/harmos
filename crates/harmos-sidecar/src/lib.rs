@@ -27,10 +27,9 @@ mod wire;
 pub use attach::{Attach, Attached, Executable, ExecutableError};
 pub use error::{Error, Result};
 pub use harmos_contract::inventory;
-pub use harmos_contract::observers::{Exit as ObserverExit, State as ObserverStatus};
 pub use harmos_contract::operations::Host;
 pub use harmos_contract::operations::{
-    CacheKey, OperationDeclaration, OperationPolicy, RetryPolicy,
+    CacheKey, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy,
 };
 pub use harmos_contract::{
     ConfigError, Plugin, RESERVED, Refusal, Registrar, Registration, RegistrationError, StreamSpec,
@@ -41,14 +40,15 @@ pub use harmos_contract::{builtin, catalog, listeners, operations};
 pub use harmos_contract::StreamDeclaration;
 #[cfg(feature = "kit")]
 pub use kit::{
-    Activation, ActivationId, CATALOG_EXPORT_FLAG, CATALOG_EXPORT_LIMIT, CallError, DemandKey,
-    Instance, Observer, ObserverAttachment, ObserverCaller, ObserverContext, ObserverHost,
-    ObserverPublisher, ObserverStreamPublisher, ObserverTask, OperationInstance, PluginNative,
-    PublicationError, PublishError, Publisher, Supervisor, Tick, run_plugin, serve_plugin_channels,
+    Activation, ActivationId, Activity, CATALOG_EXPORT_FLAG, CATALOG_EXPORT_LIMIT, CallError,
+    DemandKey, Instance, Observer, ObserverAttachment, ObserverCaller, ObserverContext,
+    ObserverError, ObserverHost, ObserverPublisher, ObserverStreamPublisher, OperationInstance,
+    PluginNative, PublicationError, PublishError, Publisher, Supervisor, Tick, run_plugin,
+    serve_plugin_channels,
 };
 
 #[cfg(feature = "transport")]
-pub use wire::{Frame, ObserverControl, ObserverUpdate, PluginCatalog, Publication};
+pub use wire::{Frame, PluginCatalog, Publication};
 
 #[cfg(feature = "derive")]
 pub use harmos_contract::observer;

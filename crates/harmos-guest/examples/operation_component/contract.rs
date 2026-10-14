@@ -18,7 +18,8 @@ use std::time::Duration;
 
 // Local Imports
 use harmos_contract::operations::{
-    Backoff, Jitter, OperationDeclaration, OperationPolicy, RetryPolicy, WireOperation,
+    Backoff, Jitter, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy,
+    WireOperation,
 };
 
 /* === Constants === */
@@ -100,6 +101,7 @@ impl OperationDeclaration for Read {
                 jitter: Jitter::None,
             },
         },
+        restart: RestartPolicy::Never,
     };
 }
 

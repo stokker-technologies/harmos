@@ -23,9 +23,9 @@ use std::time::Duration;
 // Third Party Imports
 use tokio::sync::Semaphore;
 // Local Imports
-use super::{phase, runtime};
-use harmos::observers::{ObserverLifecyclePhase, ObserverPhase};
-use harmos::plugin::sidecar::{Instance, Observer, ObserverContext, ObserverExit};
+use super::{RUNNING, STOPPING, key, phase, runtime};
+use harmos::operations::OperationPhase;
+use harmos::plugin::sidecar::{Instance, Observer, ObserverContext, ObserverError};
 
 /* === Constants === */
 
@@ -114,6 +114,9 @@ impl<const PANIC: bool> Drop for Watch<PANIC> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+fn watch<const PANIC: bool>() -> Instance<Arc<Counts>, ()> {
+    Instance::<Arc<Counts>, ()>::of::<Watch<PANIC>>()
+}
 
 pub(super) fn contract_scenario() {
     {
@@ -125,21 +128,25 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let runtime = runtime().await;
+                    let manager = &runtime.operations;
+                    // Native observers run on the runtime executor, not a dedicated thread.
                     let owner_thread = std::thread::current().id();
-                    runtime
-                        .observers
-                        .register_native(
-                            Instance::<Arc<Counts>, ()>::of::<Watch<false>>(),
-                            move |_| {
-                                assert_ne!(std::thread::current().id(), owner_thread);
-                            },
-                        )
+                    manager
+                        .register_native_observer(watch::<false>(), move |_| {
+                            assert_eq!(std::thread::current().id(), owner_thread);
+                        })
                         .unwrap();
                     let counts = Counts::new();
-                    let scope = runtime.observers.scope(Arc::new(counts.clone())).unwrap();
-                    let first = runtime.observers.activate("native", &scope).await.unwrap();
-                    let second = runtime.observers.activate("native", &scope).await.unwrap();
-                    phase(&runtime.observers, first.key(), ObserverPhase::Running).await;
+                    let resources = Arc::new(counts.clone());
+                    let first = manager
+                        .submit_with_resources_at("native", resources.clone())
+                        .await
+                        .unwrap();
+                    let second = manager
+                        .submit_with_resources_at("native", resources.clone())
+                        .await
+                        .unwrap();
+                    phase(manager, &key(manager, &first), RUNNING).await;
                     tokio::time::timeout(Duration::from_secs(2), async {
                         while counts.ticks.load(Ordering::SeqCst) < 2 {
                             tokio::task::yield_now().await;
@@ -168,18 +175,21 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let runtime = runtime().await;
-                    runtime
-                        .observers
-                        .register_native(Instance::<Arc<Counts>, ()>::of::<Watch<true>>(), |_| ())
+                    let manager = &runtime.operations;
+                    manager
+                        .register_native_observer(watch::<true>(), |_| ())
                         .unwrap();
                     let counts = Counts::new();
-                    let scope = runtime.observers.scope(Arc::new(counts.clone())).unwrap();
-                    let lease = runtime.observers.activate("native", &scope).await.unwrap();
-                    phase(&runtime.observers, lease.key(), ObserverPhase::Stopping).await;
+                    let resources = Arc::new(counts.clone());
+                    let lease = manager
+                        .submit_with_resources_at("native", resources.clone())
+                        .await
+                        .unwrap();
+                    phase(manager, &key(manager, &lease), STOPPING).await;
                     assert!(
                         tokio::time::timeout(
                             Duration::from_millis(10),
-                            runtime.observers.activate("native", &scope)
+                            manager.submit_with_resources_at("native", resources.clone())
                         )
                         .await
                         .is_err()
@@ -195,10 +205,10 @@ pub(super) fn contract_scenario() {
                     else {
                         panic!("native failure remains a root error");
                     };
-                    assert_eq!(
-                        source.downcast_ref::<ObserverExit>(),
-                        Some(&ObserverExit::CallbackPanicked)
-                    );
+                    assert!(matches!(
+                        source.downcast_ref::<ObserverError>(),
+                        Some(ObserverError::CallbackPanicked)
+                    ));
                     assert_eq!(counts.stopped.load(Ordering::SeqCst), 1);
                     assert!(runtime.stop().await.is_err());
                 });
@@ -213,37 +223,39 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let runtime = runtime().await;
+                    let manager = &runtime.operations;
                     let counts = Counts::new();
-                    let scope = runtime.observers.scope(Arc::new(counts.clone())).unwrap();
+                    let resources = Arc::new(counts.clone());
                     let bindings = Arc::new(AtomicUsize::new(0));
                     let bound = bindings.clone();
                     let owner_thread = std::thread::current().id();
-                    let candidate = runtime
-                        .observers
-                        .stage_native(
-                            &scope,
-                            [Instance::<Arc<Counts>, ()>::of::<Watch<false>>()],
-                            move |_| {
-                                assert_ne!(std::thread::current().id(), owner_thread);
-                                bound.fetch_add(1, Ordering::SeqCst);
-                            },
-                        )
+                    let candidate = manager
+                        .stage_native_observers(&resources, [watch::<false>()], move |_| {
+                            assert_eq!(std::thread::current().id(), owner_thread);
+                            bound.fetch_add(1, Ordering::SeqCst);
+                        })
                         .unwrap();
                     candidate.commit().unwrap();
                     assert_eq!(bindings.load(Ordering::SeqCst), 0);
                     assert_eq!(counts.initialized.load(Ordering::SeqCst), 0);
-                    let first = runtime.observers.activate("native", &scope).await.unwrap();
-                    let second = runtime.observers.activate("native", &scope).await.unwrap();
-                    phase(&runtime.observers, first.key(), ObserverPhase::Running).await;
+                    let first = manager
+                        .submit_with_resources_at("native", resources.clone())
+                        .await
+                        .unwrap();
+                    let second = manager
+                        .submit_with_resources_at("native", resources.clone())
+                        .await
+                        .unwrap();
+                    phase(manager, &key(manager, &first), RUNNING).await;
                     assert_eq!(first.id(), second.id());
                     assert_eq!(bindings.load(Ordering::SeqCst), 1);
                     assert_eq!(counts.initialized.load(Ordering::SeqCst), 1);
                     counts.cleanup.add_permits(1);
-                    runtime.observers.stop_scope(&scope).await.unwrap();
+                    manager.retire_resources(&resources).await.unwrap();
                     first.release().await.unwrap();
                     second.release().await.unwrap();
                     assert_eq!(counts.stopped.load(Ordering::SeqCst), 1);
-                    assert!(runtime.observers.definition("native").is_none());
+                    assert!(manager.resident_definition("native").is_none());
                     runtime.stop().await.unwrap();
                 });
         });
@@ -281,26 +293,27 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let runtime = runtime().await;
-                    runtime
-                        .observers
-                        .register_native(Instance::<Arc<Counts>, ()>::of::<Watch<false>>(), |_| ())
+                    let manager = &runtime.operations;
+                    manager
+                        .register_native_observer(watch::<false>(), |_| ())
                         .unwrap();
                     let counts = Counts::new();
                     counts.refuse_stop.store(true, Ordering::SeqCst);
-                    let scope = runtime.observers.scope(Arc::new(counts.clone())).unwrap();
-                    let lease = runtime.observers.activate("native", &scope).await.unwrap();
-                    phase(&runtime.observers, lease.key(), ObserverPhase::Running).await;
-                    let instance = lease.instance();
-                    instance.cancel();
-                    assert!(instance.join().await.is_err());
-                    drop(instance);
+                    let resources = Arc::new(counts.clone());
+                    let lease = manager
+                        .submit_with_resources_at("native", resources.clone())
+                        .await
+                        .unwrap();
+                    phase(manager, &key(manager, &lease), RUNNING).await;
+                    lease.cancel();
+                    assert!(lease.settle().await.is_err());
                     drop(lease);
-                    drop(scope);
+                    drop(resources);
                     assert_eq!(counts.dropped.load(Ordering::SeqCst), 0);
                     assert_eq!(counts.stop_attempts.load(Ordering::SeqCst), 1);
 
                     counts.cleanup.add_permits(1);
-                    assert!(runtime.observers.shutdown().await.is_err());
+                    assert!(manager.stop_observers().await.is_err());
                     assert_eq!(counts.initialized.load(Ordering::SeqCst), 1);
                     assert_eq!(counts.stop_attempts.load(Ordering::SeqCst), 2);
                     assert_eq!(counts.stopped.load(Ordering::SeqCst), 1);
@@ -314,34 +327,41 @@ pub(super) fn contract_scenario() {
 
 async fn cleanup_recovery(finalizing: bool) {
     let runtime = runtime().await;
-    runtime
-        .observers
-        .register_native(Instance::<Arc<Counts>, ()>::of::<Watch<false>>(), |_| ())
+    let manager = &runtime.operations;
+    manager
+        .register_native_observer(watch::<false>(), |_| ())
         .unwrap();
     let counts = Counts::new();
-    let expected = if finalizing {
+    if finalizing {
         counts.cleanup.add_permits(1);
         counts.finalization.try_acquire().unwrap().forget();
         counts.refuse_finalize.store(true, Ordering::SeqCst);
-        ObserverLifecyclePhase::Finalizing
     } else {
         counts.refuse_stop.store(true, Ordering::SeqCst);
-        ObserverLifecyclePhase::Stopping
+    }
+    // A refused stop is retained while stopping; a refused cleanup while
+    // finalizing.
+    let expected = if finalizing {
+        OperationPhase::Finalizing
+    } else {
+        OperationPhase::Stopping
     };
-    let scope = runtime.observers.scope(Arc::new(counts.clone())).unwrap();
-    let lease = runtime.observers.activate("native", &scope).await.unwrap();
-    phase(&runtime.observers, lease.key(), ObserverPhase::Running).await;
-    let instance = lease.instance();
-    instance.cancel();
-    assert!(instance.join().await.is_err());
-    assert!(!instance.is_settled());
-    assert!(instance.lifecycle().cleanup_pending());
-    assert!(instance.lifecycle().cleanup_failure().is_some());
-    assert_eq!(instance.lifecycle().phase(), expected);
+    let resources = Arc::new(counts.clone());
+    let lease = manager
+        .submit_with_resources_at("native", resources.clone())
+        .await
+        .unwrap();
+    phase(manager, &key(manager, &lease), RUNNING).await;
+    lease.cancel();
+    assert!(lease.settle().await.is_err());
+    assert!(!lease.status().phase().is_terminal());
+    assert!(lease.status().cleanup_pending());
+    assert!(lease.status().cleanup_failure().is_some());
+    assert_eq!(lease.status().phase(), expected);
     assert_eq!(counts.dropped.load(Ordering::SeqCst), 0);
     assert_eq!(counts.stop_attempts.load(Ordering::SeqCst), 1);
     assert!(
-        tokio::time::timeout(Duration::from_millis(20), instance.join())
+        tokio::time::timeout(Duration::from_millis(20), lease.settle())
             .await
             .is_err()
     );
@@ -353,7 +373,7 @@ async fn cleanup_recovery(finalizing: bool) {
         counts.finalizations.load(Ordering::SeqCst),
         if finalizing { 2 } else { 0 }
     );
-    assert_eq!(instance.lifecycle().phase(), expected);
+    assert_eq!(lease.status().phase(), expected);
     assert_eq!(counts.initialized.load(Ordering::SeqCst), 1);
     assert_eq!(counts.dropped.load(Ordering::SeqCst), 0);
     if finalizing {
@@ -362,11 +382,11 @@ async fn cleanup_recovery(finalizing: bool) {
         counts.cleanup.add_permits(1);
     }
     assert!(
-        instance.join().await.is_err(),
+        lease.settle().await.is_err(),
         "the original logical failure remains observable"
     );
-    assert!(instance.is_settled());
-    assert!(!instance.lifecycle().cleanup_pending());
+    assert!(lease.status().phase().is_terminal());
+    assert!(!lease.status().cleanup_pending());
     assert_eq!(counts.dropped.load(Ordering::SeqCst), 1);
     assert_eq!(counts.stopped.load(Ordering::SeqCst), 1);
     assert!(lease.release().await.is_err());

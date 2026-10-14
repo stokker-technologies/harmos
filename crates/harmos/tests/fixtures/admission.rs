@@ -44,6 +44,7 @@ impl harmos::operations::lifecycle::Policy for Program {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(2),
             retries: harmos::operations::RetryPolicy::Never,
+            restart: harmos::operations::RestartPolicy::Never,
         };
     const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }

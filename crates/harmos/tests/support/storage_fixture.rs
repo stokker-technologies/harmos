@@ -75,7 +75,7 @@ impl Fixture {
             config,
         )
         .unwrap();
-        storage.start(&runtime.services).await.unwrap();
+        storage.start(&runtime).await.unwrap();
         Self {
             runtime,
             storage,
@@ -89,8 +89,8 @@ impl Fixture {
         self.storage.close().await.unwrap();
         assert!(
             self.runtime
-                .services
-                .status(&harmos::services::ServiceKey::root("harmos-storage"))
+                .operations
+                .resident(&harmos::operations::resident::Key::root("harmos-storage"))
                 .is_none()
         );
         self.runtime.stop().await.unwrap();

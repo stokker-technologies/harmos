@@ -18,10 +18,12 @@
 
 // Standard Library Imports
 use std::future::Future;
+use std::sync::Arc;
 
 // Third Party Imports
 
 // Local Imports
+use super::caller::Identity;
 use super::{
     CallContext, Callable, Context, ContextError, ContextValue, OperationInstance,
     OperationManager, Response,
@@ -68,6 +70,14 @@ impl harmos_contract::operations::Host for OperationManager {
         let submitted = OperationManager::submit_as::<O>(self, request);
         async move { submitted?.await }
     }
+
+    fn submit_with_resources<O: Callable<Response = ()>, R: Send + Sync + 'static>(
+        &self,
+        _: O::Request,
+        resources: Arc<R>,
+    ) -> impl Future<Output = Result<OperationInstance<O>>> + Send {
+        self.activate_resident::<O, R>(O::ID, resources, Identity::Host)
+    }
 }
 
 impl harmos_contract::operations::Host for Context<'_> {
@@ -98,6 +108,17 @@ impl harmos_contract::operations::Host for Context<'_> {
     ) -> impl Future<Output = Result<Response<O::Response>>> + Send {
         let submitted = Context::submit_as::<O>(self, request);
         async move { submitted?.await }
+    }
+
+    // A resident outlives the attempt that activated it; its lease names the
+    // attempt's caller.
+    fn submit_with_resources<O: Callable<Response = ()>, R: Send + Sync + 'static>(
+        &self,
+        _: O::Request,
+        resources: Arc<R>,
+    ) -> impl Future<Output = Result<OperationInstance<O>>> + Send {
+        self.operations
+            .activate_resident::<O, R>(O::ID, resources, self.origin.identity.clone())
     }
 }
 

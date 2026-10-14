@@ -83,7 +83,7 @@ pub enum Facility {
 pub enum CarrierSection {
     Sidecar {
         restart: Option<RestartPolicy>,
-        observer_controls: Option<Box<[Contract; 2]>>,
+        observer_control: Option<Box<Contract>>,
     },
     Guest,
 }
@@ -245,14 +245,14 @@ impl Declaration {
             Facility::Sidecar => {
                 let restart = restart(restart_policies, &id)?;
                 let selected = observers::select_manifest(observer_manifests, name, &id, &streams)?;
-                observers::validate_controls(
+                observers::validate_control(
                     &selected.observers,
-                    selected.observer_controls.as_ref(),
+                    selected.observer_control.as_ref(),
                     &contracts.provides,
                 )?;
                 let carrier = CarrierSection::Sidecar {
                     restart,
-                    observer_controls: selected.observer_controls.map(Box::new),
+                    observer_control: selected.observer_control.map(Box::new),
                 };
                 (selected.observers, carrier)
             }
@@ -263,7 +263,7 @@ impl Declaration {
                 {
                     let selected =
                         observers::select_manifest(observer_manifests, name, &id, &streams)?;
-                    if !selected.observers.is_empty() || selected.observer_controls.is_some() {
+                    if !selected.observers.is_empty() || selected.observer_control.is_some() {
                         return Err(DeclarationError::UnsupportedObservers);
                     }
                 }
@@ -298,11 +298,11 @@ impl Declaration {
         }
     }
 
-    pub fn observer_controls(&self) -> Option<&[Contract; 2]> {
+    pub fn observer_control(&self) -> Option<&Contract> {
         match &self.carrier {
             CarrierSection::Sidecar {
-                observer_controls, ..
-            } => observer_controls.as_deref(),
+                observer_control, ..
+            } => observer_control.as_deref(),
             CarrierSection::Guest => None,
         }
     }

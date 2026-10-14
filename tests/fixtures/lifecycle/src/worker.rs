@@ -27,8 +27,8 @@ use sha2::{Digest, Sha256};
 use crate::contract::{Exchange, Operations, PAYLOAD_BYTES, Payload};
 use harmos::plugin::sidecar::{Executable, Managed, ManagedError, Notice, Supervised};
 use harmos::plugin::{PluginArtifact, PluginContributions, PluginDefinition};
-use harmos::services::{Resident, ServiceDefinition, ServiceLease};
-use harmos::{Error, Result, services::Fault, services::Service, services::ServicePolicy};
+use harmos::services::{Resident, ServiceDefinition};
+use harmos::{Error, Result, services::Fault, services::Service};
 use schematic_app::app::{Runtime, SchematicEditor};
 use schematic_app::lanes::Lanes;
 
@@ -51,8 +51,8 @@ struct Traffic {
 }
 
 pub struct Workload {
-    provider: ServiceLease<SchematicEditor>,
-    traffic: ServiceLease<SchematicEditor>,
+    provider: harmos::operations::OperationInstance<harmos::operations::resident::Activation>,
+    traffic: harmos::operations::OperationInstance<harmos::operations::resident::Activation>,
     completed: Arc<AtomicU64>,
 }
 
@@ -63,7 +63,7 @@ pub struct Workload {
 /* === Implementations === */
 impl Resident<SchematicEditor> for Provider {
     type Error = Arc<ManagedError>;
-    async fn attempt(
+    async fn run(
         &mut self,
         context: Service<SchematicEditor>,
     ) -> std::result::Result<(), Fault<Self::Error>> {
@@ -71,7 +71,7 @@ impl Resident<SchematicEditor> for Provider {
             .driver
             .as_mut()
             .map_err(|error| Fault::Application(Arc::clone(error)))?;
-        driver.attempt(context).await.map_err(|error| match error {
+        driver.run(context).await.map_err(|error| match error {
             Fault::Environmental(error) => Fault::Environmental(Arc::new(error)),
             Fault::Application(error) => Fault::Application(Arc::new(error)),
         })
@@ -82,9 +82,9 @@ impl Resident<SchematicEditor> for Provider {
             Err(_) => Ok(()),
         }
     }
-    async fn finalize(&mut self) -> std::result::Result<(), Self::Error> {
+    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
         match &mut self.driver {
-            Ok(driver) => driver.finalize().await.map_err(Arc::new),
+            Ok(driver) => driver.cleanup().await.map_err(Arc::new),
             Err(_) => Ok(()),
         }
     }
@@ -92,11 +92,11 @@ impl Resident<SchematicEditor> for Provider {
 
 impl Resident<SchematicEditor> for Traffic {
     type Error = Error;
-    async fn attempt(
+    async fn run(
         &mut self,
         mut context: Service<SchematicEditor>,
     ) -> std::result::Result<(), Fault<Error>> {
-        let operations = context.operations().clone();
+        let host = context.host();
         loop {
             let sequence = self.completed.load(Ordering::SeqCst);
             let request = Payload {
@@ -104,7 +104,7 @@ impl Resident<SchematicEditor> for Traffic {
                 bytes: vec![sequence as u8; PAYLOAD_BYTES],
             };
             let Some(response) = context
-                .until_stopping(operations.call_as::<Exchange>(request))
+                .until_stopping(host.call_as::<Exchange>(request))
                 .await
             else {
                 return Ok(());
@@ -130,15 +130,15 @@ impl Resident<SchematicEditor> for Traffic {
             context.ready();
         }
     }
-    async fn finalize(&mut self) -> Result<()> {
+    async fn cleanup(&mut self) -> Result<()> {
         Ok(())
     }
 }
 
 impl Workload {
     pub async fn verify(&self) -> Result<u64> {
-        self.traffic.instance().join().await?;
-        self.provider.instance().join().await?;
+        self.traffic.settle().await?;
+        self.provider.settle().await?;
         let completed = self.completed.load(Ordering::SeqCst);
         if completed == 0 {
             return Err(Error::NotReady {
@@ -180,17 +180,17 @@ pub async fn start(runtime: &Runtime, path: &Path) -> Result<Workload> {
             sections: declaration.sections.clone(),
             streams: declaration.streams.clone(),
             observers: declaration.observers.clone(),
-            observer_controls: declaration.observer_controls().cloned(),
+            observer_control: declaration.observer_control().cloned(),
             listeners: declaration.listeners.clone(),
             ..PluginContributions::default()
         },
     };
     let original: Supervised<SchematicEditor, _, fn(&Service<SchematicEditor>, Notice)> =
         Supervised::new(executable, diagnostics);
-    runtime.services.register(
+    runtime.operations.register_service(
         ServiceDefinition {
             id: NAME.into(),
-            policy: ServicePolicy::default(),
+            policy: harmos::services::POLICY,
         },
         move |_: Arc<()>| Provider {
             driver: Managed::new_executable_catalog::<Operations>(
@@ -203,28 +203,22 @@ pub async fn start(runtime: &Runtime, path: &Path) -> Result<Workload> {
             .map_err(|error| Arc::new(ManagedError::Lifecycle(error))),
         },
     )?;
-    let provider = runtime
-        .services
-        .activate(NAME, &runtime.services.root_scope())
-        .await?;
+    let provider = runtime.operations.submit_resident(NAME).await?;
     tokio::time::timeout(Duration::from_secs(5), provider.ready())
         .await
         .map_err(failed)??;
     let completed = Arc::new(AtomicU64::new(0));
     let counts = Arc::clone(&completed);
-    runtime.services.register(
+    runtime.operations.register_service(
         ServiceDefinition {
             id: TRAFFIC.into(),
-            policy: ServicePolicy::default(),
+            policy: harmos::services::POLICY,
         },
         move |_: Arc<()>| Traffic {
             completed: Arc::clone(&counts),
         },
     )?;
-    let traffic = runtime
-        .services
-        .activate(TRAFFIC, &runtime.services.root_scope())
-        .await?;
+    let traffic = runtime.operations.submit_resident(TRAFFIC).await?;
     tokio::time::timeout(Duration::from_secs(5), traffic.ready())
         .await
         .map_err(failed)??;

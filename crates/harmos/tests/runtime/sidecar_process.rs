@@ -31,7 +31,7 @@ use crate::support::Bank;
 use contract::{Blob, Echo, Nested, Operations, Probe};
 use harmos::operations::{Context, Operation};
 use harmos::plugin::sidecar::{Executable, Notice, Supervised};
-use harmos::{Runtime, services::Service, services::ServicePolicy, services::ServiceStatus};
+use harmos::{Runtime, services::Service, services::ServiceStatus};
 
 /* === Constants === */
 const CAPACITY: usize = 2;
@@ -52,7 +52,7 @@ struct Callback {
 
 struct Fixture {
     runtime: Runtime<Bank>,
-    _lease: harmos::services::ServiceLease<Bank>,
+    _lease: harmos::operations::OperationInstance<harmos::operations::resident::Activation>,
     mode: Arc<AtomicUsize>,
     calls: Arc<AtomicUsize>,
     root: tempfile::TempDir,
@@ -146,13 +146,13 @@ impl Fixture {
             )
             .unwrap();
         runtime
-            .services
-            .register(
+            .operations
+            .register_service(
                 harmos::services::ServiceDefinition {
                     id: "process".into(),
-                    policy: ServicePolicy {
-                        credit: 0,
-                        ..ServicePolicy::default()
+                    policy: harmos::operations::OperationPolicy {
+                        restart: harmos::operations::RestartPolicy::Never,
+                        ..harmos::services::POLICY
                     },
                 },
                 move |_: Arc<()>| {
@@ -167,12 +167,8 @@ impl Fixture {
                 },
             )
             .unwrap();
-        let lease = runtime
-            .services
-            .activate("process", &runtime.services.root_scope())
-            .await
-            .unwrap();
-        service_status(runtime.services.subscribe(), "process", |status| {
+        let lease = runtime.operations.submit_resident("process").await.unwrap();
+        service_status(runtime.operations.watch_residents(), "process", |status| {
             matches!(status, ServiceStatus::Running { .. })
         })
         .await;
@@ -419,9 +415,11 @@ fn contract_scenario() {
                         .unwrap()
                         .is_err()
                     );
-                    service_status(fixture.runtime.services.subscribe(), "process", |status| {
-                        matches!(status, ServiceStatus::Inactive { .. })
-                    })
+                    service_status(
+                        fixture.runtime.operations.watch_residents(),
+                        "process",
+                        |status| matches!(status, ServiceStatus::Inactive { .. }),
+                    )
                     .await;
                     assert_eq!(count(fixture.path(), "started"), 1);
                     assert_eq!(
@@ -494,14 +492,11 @@ fn contract_scenario() {
                         )
                         .unwrap();
                     runtime
-                        .services
-                        .register(
+                        .operations
+                        .register_service(
                             harmos::services::ServiceDefinition {
                                 id: "process".into(),
-                                policy: ServicePolicy {
-                                    credit: 0,
-                                    ..ServicePolicy::default()
-                                },
+                                policy: harmos::operations::OperationPolicy { restart: harmos::operations::RestartPolicy::Never, ..harmos::services::POLICY },
                             },
                             move |_: Arc<()>| {
                                 harmos::plugin::sidecar::Managed::new_executable_catalog::<Operations>(
@@ -516,11 +511,11 @@ fn contract_scenario() {
                         )
                         .unwrap();
                     let _lease = runtime
-                        .services
-                        .activate("process", &runtime.services.root_scope())
+                        .operations
+                        .submit_resident("process")
                         .await
                         .unwrap();
-                    service_status(runtime.services.subscribe(), "process", |status| {
+                    service_status(runtime.operations.watch_residents(), "process", |status| {
                         matches!(status, ServiceStatus::Running { .. })
                     })
                     .await;

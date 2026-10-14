@@ -160,6 +160,15 @@ impl Host for Supervisor {
         })
     }
 
+    // Resident resources live in the host process; a sidecar cannot lend them.
+    async fn submit_with_resources<O: Callable<Response = ()>, R: Send + Sync + 'static>(
+        &self,
+        _: O::Request,
+        _: std::sync::Arc<R>,
+    ) -> Result<OperationInstance<O>, CallError> {
+        Err(CallError::LocalResources { method: O::ID })
+    }
+
     async fn call_as<O: Callable>(
         &self,
         request: O::Request,

@@ -25,7 +25,7 @@ pub(crate) use tokio::sync::Notify;
 use super::support;
 pub(crate) use harmos::operations::{
     Backoff, CacheKey, Context, Failure, Jitter, Operation, OperationDeclaration,
-    OperationInstanceId, OperationPolicy, RetryPolicy,
+    OperationInstanceId, OperationPolicy, RestartPolicy, RetryPolicy,
 };
 pub(crate) use harmos::{Error, Refusal, Runtime};
 pub(crate) use support::{Bank, Ledger, catalog};
@@ -144,6 +144,7 @@ impl OperationDeclaration for Compute {
                 jitter: Jitter::None,
             },
         },
+        restart: RestartPolicy::Never,
     };
     fn key(request: &Request) -> Option<CacheKey> {
         (request.keyed && request.valid)
@@ -159,6 +160,7 @@ impl OperationDeclaration for Slow {
         timeout: Duration::from_millis(50),
         attempt_timeout: Duration::from_millis(10),
         retries: Compute::POLICY.retries,
+        restart: RestartPolicy::Never,
     };
 }
 

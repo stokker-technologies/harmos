@@ -234,6 +234,7 @@ pub(super) fn factory<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>>(
     let instances = operations.instances.clone();
     let lanes = operations.lanes.clone();
     let preparation_budget = operations.preparation.clone();
+    let resident = operations.resident.clone();
     Typed {
         prepare: Box::new(
             move |(request, endpoints),
@@ -258,6 +259,7 @@ pub(super) fn factory<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>>(
                     instances: instances.clone(),
                     lanes: lanes.clone(),
                     preparation: preparation_budget.clone(),
+                    resident: resident.clone(),
                 };
                 let key = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     if operations

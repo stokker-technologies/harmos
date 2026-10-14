@@ -254,13 +254,13 @@ impl Vault for Counted {
 impl Resident<Bank> for Idle {
     type Error = String;
 
-    async fn attempt(&mut self, mut context: Service<Bank>) -> Result<(), Fault<String>> {
+    async fn run(&mut self, mut context: Service<Bank>) -> Result<(), Fault<String>> {
         context.ready();
         context.stopping().await;
 
         Ok(())
     }
-    async fn finalize(&mut self) -> Result<(), Self::Error> {
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
         Ok(())
     }
 }

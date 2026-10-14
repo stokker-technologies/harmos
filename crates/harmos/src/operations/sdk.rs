@@ -26,7 +26,7 @@ use crate::operations::lifecycle::{Action, InitializeRequest};
 use crate::plugin::{PluginKind, PluginLifecycleAuthority, PluginLifecyclePhase, PluginScope};
 
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-use crate::operations::{OperationDeclaration, OperationPolicy, RetryPolicy};
+use crate::operations::{OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
 use crate::supervision::executor;
 use crate::{Error, Message, Result};
 
@@ -61,6 +61,7 @@ impl OperationDeclaration for Encoded {
         timeout: std::time::Duration::ZERO,
         attempt_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 }
 

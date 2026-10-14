@@ -23,8 +23,8 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 // Local Imports
 use harmos::operations::{
-    Context, Operation, OperationDeclaration, OperationPolicy, PluginRegistration, RetryPolicy,
-    Visibility, WireDeclaration, WireOperation,
+    Context, Operation, OperationDeclaration, OperationPolicy, PluginRegistration, RestartPolicy,
+    RetryPolicy, Visibility, WireDeclaration, WireOperation,
 };
 use harmos::plugin::{
     PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions,
@@ -203,6 +203,7 @@ impl<const FIRST: bool> OperationDeclaration for Heard<FIRST> {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(1),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 }
 
@@ -751,11 +752,13 @@ fn contract_scenario() {
                         stopping: Notify::new(),
                         release: Notify::new(),
                     });
-                    runtime.observers.register(BlockedObserver).unwrap();
-                    let scope = runtime.observers.scope(gates.clone()).unwrap();
+                    runtime
+                        .operations
+                        .register_observer(BlockedObserver)
+                        .unwrap();
                     let lease = runtime
-                        .observers
-                        .activate("blocked-cleanup", &scope)
+                        .operations
+                        .submit_with_resources_at("blocked-cleanup", gates.clone())
                         .await
                         .unwrap();
                     tokio::time::timeout(Duration::from_secs(2), gates.running.notified())

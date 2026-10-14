@@ -23,10 +23,9 @@ use std::time::Duration;
 use tokio::sync::Notify;
 // Local Imports
 use super::{Bank, assembly};
-use harmos::services::{ServiceDefinition, ServiceManager};
-use harmos::{
-    Error, services::Fault, services::Service, services::ServicePolicy, services::ServiceStatus,
-};
+use harmos::operations::OperationManager;
+use harmos::services::ServiceDefinition;
+use harmos::{Error, services::Fault, services::Service, services::ServiceStatus};
 
 /* === Constants === */
 
@@ -52,12 +51,12 @@ struct Resources {
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn register(manager: &ServiceManager<Bank>) {
+fn register(manager: &OperationManager) {
     manager
-        .register(
+        .register_service(
             ServiceDefinition {
                 id: "scoped".into(),
-                policy: ServicePolicy::default(),
+                policy: harmos::services::POLICY,
             },
             |resources: Arc<Resources>| {
                 move |mut service: Service<Bank>| {
@@ -87,31 +86,45 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let runtime = assembly().runtime().await.unwrap();
-                    let manager = &runtime.services;
+                    let manager = &runtime.operations;
                     register(manager);
                     let resources = Arc::new(Resources::default());
-                    let scope = manager.scope(resources.clone()).unwrap();
-                    let first = manager.activate("scoped", &scope).await.unwrap();
-                    let second = manager.activate("scoped", &scope).await.unwrap();
+                    let first = manager
+                        .submit_with_resources_at("scoped", resources.clone())
+                        .await
+                        .unwrap();
+                    let second = manager
+                        .submit_with_resources_at("scoped", resources.clone())
+                        .await
+                        .unwrap();
                     first.ready().await.unwrap();
-                    let instance = first.instance();
-                    let retained = instance.clone();
-                    assert_eq!(instance.id(), second.id());
-                    assert_eq!(instance.key(), second.key());
-                    drop(instance);
-                    assert_eq!(manager.status(second.key()).unwrap().leases, 2);
+                    assert_eq!(first.id(), second.id());
+                    assert_eq!(
+                        manager.resident_key(first.id()),
+                        manager.resident_key(second.id())
+                    );
+                    assert_eq!(
+                        manager
+                            .resident(&manager.resident_key(second.id()).unwrap())
+                            .unwrap()
+                            .leases,
+                        2
+                    );
 
-                    retained.cancel();
-                    retained.cancel();
+                    first.cancel();
+                    first.cancel();
                     assert!(matches!(
-                        manager.status(second.key()).unwrap().status,
-                        ServiceStatus::Stopping
+                        manager
+                            .resident(&manager.resident_key(second.id()).unwrap())
+                            .unwrap()
+                            .health,
+                        Some(ServiceStatus::Stopping)
                     ));
                     tokio::time::timeout(Duration::from_secs(1), resources.stopping.notified())
                         .await
                         .unwrap();
                     {
-                        let joining = retained.join();
+                        let joining = first.settle();
                         tokio::pin!(joining);
                         std::future::poll_fn(|cx| {
                             assert!(std::future::Future::poll(joining.as_mut(), cx).is_pending());
@@ -121,25 +134,37 @@ pub(super) fn contract_scenario() {
                     }
                     assert_eq!(resources.finished.load(SeqCst), 0);
                     resources.cleanup.notify_one();
-                    tokio::time::timeout(Duration::from_secs(1), retained.join())
+                    tokio::time::timeout(Duration::from_secs(1), first.settle())
                         .await
                         .unwrap()
                         .unwrap();
-                    retained.join().await.unwrap();
+                    first.settle().await.unwrap();
                     assert_eq!(resources.finished.load(SeqCst), 1);
-                    assert!(retained.status().settled_at().is_some());
+                    assert!(first.status().settled_at().is_some());
 
-                    let replacement = manager.activate("scoped", &scope).await.unwrap();
+                    let replacement = manager
+                        .submit_with_resources_at("scoped", resources.clone())
+                        .await
+                        .unwrap();
                     replacement.ready().await.unwrap();
-                    assert_ne!(replacement.id(), retained.id());
-                    retained.cancel();
-                    retained.join().await.unwrap();
+                    assert_ne!(replacement.id(), first.id());
+                    first.cancel();
+                    first.settle().await.unwrap();
                     first.release().await.unwrap();
                     second.release().await.unwrap();
-                    assert_eq!(manager.status(replacement.key()).unwrap().leases, 1);
+                    assert_eq!(
+                        manager
+                            .resident(&manager.resident_key(replacement.id()).unwrap())
+                            .unwrap()
+                            .leases,
+                        1
+                    );
                     assert!(matches!(
-                        manager.status(replacement.key()).unwrap().status,
-                        ServiceStatus::Running { .. }
+                        manager
+                            .resident(&manager.resident_key(replacement.id()).unwrap())
+                            .unwrap()
+                            .health,
+                        Some(ServiceStatus::Running { .. })
                     ));
                     resources.cleanup.notify_one();
                     replacement.release().await.unwrap();
@@ -156,26 +181,46 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let runtime = assembly().runtime().await.unwrap();
-                    let manager = &runtime.services;
+                    let manager = &runtime.operations;
                     register(manager);
                     let resources = Arc::new(Resources::default());
-                    let scope = manager.scope(resources.clone()).unwrap();
                     let (first, second) = tokio::join!(
-                        manager.activate("scoped", &scope),
-                        manager.activate("scoped", &scope)
+                        manager.submit_with_resources_at("scoped", resources.clone()),
+                        manager.submit_with_resources_at("scoped", resources.clone())
                     );
                     let first = first.unwrap();
                     let second = second.unwrap();
                     first.ready().await.unwrap();
                     assert_eq!(first.id(), second.id());
-                    assert_eq!(manager.status(first.key()).unwrap().id, first.id());
+                    assert_eq!(
+                        manager
+                            .resident(&manager.resident_key(first.id()).unwrap())
+                            .unwrap()
+                            .instance,
+                        first.id()
+                    );
                     assert_eq!(resources.started.load(SeqCst), 1);
-                    assert_eq!(manager.status(first.key()).unwrap().leases, 2);
+                    assert_eq!(
+                        manager
+                            .resident(&manager.resident_key(first.id()).unwrap())
+                            .unwrap()
+                            .leases,
+                        2
+                    );
                     first.release().await.unwrap();
-                    assert_eq!(manager.status(second.key()).unwrap().leases, 1);
+                    assert_eq!(
+                        manager
+                            .resident(&manager.resident_key(second.id()).unwrap())
+                            .unwrap()
+                            .leases,
+                        1
+                    );
                     assert!(matches!(
-                        manager.status(second.key()).unwrap().status,
-                        ServiceStatus::Running { .. }
+                        manager
+                            .resident(&manager.resident_key(second.id()).unwrap())
+                            .unwrap()
+                            .health,
+                        Some(ServiceStatus::Running { .. })
                     ));
 
                     let release = second.release();
@@ -201,44 +246,62 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let runtime = assembly().runtime().await.unwrap();
                     let foreign = assembly().runtime().await.unwrap();
-                    let manager = &runtime.services;
+                    let manager = &runtime.operations;
                     register(manager);
                     let a = Arc::new(Resources::default());
                     let b = Arc::new(Resources::default());
-                    let sa = manager.scope(a.clone()).unwrap();
-                    let sb = manager.scope(b.clone()).unwrap();
-                    let first = manager.activate("scoped", &sa).await.unwrap();
-                    let second = manager.activate("scoped", &sb).await.unwrap();
+                    let first = runtime
+                        .operations
+                        .submit_with_resources_at("scoped", a.clone())
+                        .await
+                        .unwrap();
+                    let second = runtime
+                        .operations
+                        .submit_with_resources_at("scoped", b.clone())
+                        .await
+                        .unwrap();
                     first.ready().await.unwrap();
                     second.ready().await.unwrap();
-                    assert_ne!(first.key(), second.key());
+                    assert_ne!(
+                        manager.resident_key(first.id()),
+                        manager.resident_key(second.id())
+                    );
                     assert_eq!(a.started.load(SeqCst), 1);
                     assert_eq!(b.started.load(SeqCst), 1);
                     assert!(matches!(
-                        manager.activate("scoped", &manager.root_scope()).await,
+                        manager.submit_resident("scoped").await,
                         Err(Error::InvalidInput { .. })
                     ));
-                    let other = foreign
-                        .services
-                        .scope(Arc::new(Resources::default()))
-                        .unwrap();
                     assert!(matches!(
-                        manager.activate("scoped", &other).await,
-                        Err(Error::InvalidInput { .. })
-                    ));
-                    a.cleanup.notify_one();
-                    manager.stop_scope(&sa).await.unwrap();
-                    assert!(matches!(
-                        manager.activate("scoped", &sa).await,
-                        Err(Error::Closing {
-                            domain: "service scope"
+                        foreign
+                            .operations
+                            .submit_with_resources_at("scoped", a.clone())
+                            .await,
+                        Err(Error::NotRegistered {
+                            domain: "resident",
+                            ..
                         })
                     ));
+                    a.cleanup.notify_one();
+                    manager.retire_resources(&a).await.unwrap();
+                    assert!(manager.resident_key(first.id()).is_none());
+                    let revived = manager
+                        .submit_with_resources_at("scoped", a.clone())
+                        .await
+                        .unwrap();
+                    revived.ready().await.unwrap();
+                    assert_ne!(revived.id(), first.id());
+                    assert_eq!(a.started.load(SeqCst), 2);
                     assert!(matches!(
-                        manager.status(second.key()).unwrap().status,
-                        ServiceStatus::Running { .. }
+                        manager
+                            .resident(&manager.resident_key(second.id()).unwrap())
+                            .unwrap()
+                            .health,
+                        Some(ServiceStatus::Running { .. })
                     ));
                     first.release().await.unwrap();
+                    a.cleanup.notify_one();
+                    revived.release().await.unwrap();
                     b.cleanup.notify_one();
                     second.release().await.unwrap();
                     runtime.stop().await.unwrap();
@@ -255,16 +318,18 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let runtime = assembly().runtime().await.unwrap();
-                    let manager = &runtime.services;
+                    let manager = &runtime.operations;
                     register(manager);
                     let resources = Arc::new(Resources::default());
-                    let scope = manager.scope(resources.clone()).unwrap();
-                    let first = manager.activate("scoped", &scope).await.unwrap();
+                    let first = manager
+                        .submit_with_resources_at("scoped", resources.clone())
+                        .await
+                        .unwrap();
                     first.ready().await.unwrap();
                     let generation = first.id();
                     drop(first);
                     resources.stopping.notified().await;
-                    let next = manager.activate("scoped", &scope);
+                    let next = manager.submit_with_resources_at("scoped", resources.clone());
                     tokio::pin!(next);
                     assert!(
                         tokio::time::timeout(Duration::from_millis(10), &mut next)
@@ -293,14 +358,16 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let runtime = assembly().runtime().await.unwrap();
-                    let manager = &runtime.services;
+                    let manager = &runtime.operations;
                     register(manager);
                     let resources = Arc::new(Resources::default());
-                    let scope = manager.scope(resources.clone()).unwrap();
-                    let lease = manager.activate("scoped", &scope).await.unwrap();
+                    let lease = manager
+                        .submit_with_resources_at("scoped", resources.clone())
+                        .await
+                        .unwrap();
                     lease.ready().await.unwrap();
                     {
-                        let stop = manager.stop_scope(&scope);
+                        let stop = manager.retire_resources(&resources);
                         tokio::pin!(stop);
                         tokio::select! {
                             _ = &mut stop => panic!("cleanup is gated"),
@@ -308,14 +375,19 @@ pub(super) fn contract_scenario() {
                         }
                     }
                     assert!(matches!(
-                        manager.activate("scoped", &scope).await,
-                        Err(Error::Closing {
-                            domain: "service scope"
-                        })
+                        manager.submit_with_resources_at("scoped", resources.clone()).await,
+                        Err(Error::Closing { domain })
+                            if domain.ends_with("scope")
                     ));
-                    assert_eq!(manager.status(lease.key()).unwrap().leases, 0);
+                    assert_eq!(
+                        manager
+                            .resident(&manager.resident_key(lease.id()).unwrap())
+                            .unwrap()
+                            .leases,
+                        0
+                    );
                     resources.cleanup.notify_one();
-                    manager.stop_scope(&scope).await.unwrap();
+                    manager.retire_resources(&resources).await.unwrap();
                     assert_eq!(resources.finished.load(SeqCst), 1);
                     lease.release().await.unwrap();
                     runtime.stop().await.unwrap();
@@ -331,30 +403,31 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let runtime = assembly().runtime().await.unwrap();
-                    let manager = &runtime.services;
+                    let manager = &runtime.operations;
                     register(manager);
                     let resources = Arc::new(Resources::default());
-                    let scope = manager.scope(resources.clone()).unwrap();
-                    let stale = manager.activate("scoped", &scope).await.unwrap();
+                    let stale = manager
+                        .submit_with_resources_at("scoped", resources.clone())
+                        .await
+                        .unwrap();
                     stale.ready().await.unwrap();
                     {
-                        let remove = manager.unregister("scoped");
+                        let remove = manager.unregister_resident("scoped");
                         tokio::pin!(remove);
                         tokio::select! {
                             _ = &mut remove => panic!("cleanup is gated"),
                             _ = resources.stopping.notified() => {}
                         }
                         assert!(matches!(
-                            manager.activate("scoped", &scope).await,
-                            Err(Error::Closing {
-                                domain: "service definition"
-                            })
+                            manager.submit_with_resources_at("scoped", resources.clone()).await,
+                            Err(Error::Closing { domain })
+                                if domain.ends_with("definition")
                         ));
                         assert!(matches!(
-                            manager.register(
+                            manager.register_service(
                                 ServiceDefinition {
                                     id: "scoped".into(),
-                                    policy: ServicePolicy::default()
+                                    policy: harmos::services::POLICY
                                 },
                                 |_: Arc<Resources>| super::resident
                             ),
@@ -364,14 +437,26 @@ pub(super) fn contract_scenario() {
                         remove.await.unwrap();
                     }
                     register(manager);
-                    let replacement = manager.activate("scoped", &scope).await.unwrap();
+                    let replacement = manager
+                        .submit_with_resources_at("scoped", resources.clone())
+                        .await
+                        .unwrap();
                     replacement.ready().await.unwrap();
                     assert_ne!(replacement.id(), stale.id());
                     stale.release().await.unwrap();
-                    assert_eq!(manager.status(replacement.key()).unwrap().leases, 1);
+                    assert_eq!(
+                        manager
+                            .resident(&manager.resident_key(replacement.id()).unwrap())
+                            .unwrap()
+                            .leases,
+                        1
+                    );
                     assert!(matches!(
-                        manager.status(replacement.key()).unwrap().status,
-                        ServiceStatus::Running { .. }
+                        manager
+                            .resident(&manager.resident_key(replacement.id()).unwrap())
+                            .unwrap()
+                            .health,
+                        Some(ServiceStatus::Running { .. })
                     ));
                     resources.cleanup.notify_one();
                     replacement.release().await.unwrap();
@@ -407,11 +492,11 @@ pub(super) fn contract_scenario() {
 
                     let runtime = assembly().runtime().await.unwrap();
                     runtime
-                        .services
-                        .register(
+                        .operations
+                        .register_service(
                             ServiceDefinition {
                                 id: "broken".into(),
-                                policy: ServicePolicy::default(),
+                                policy: harmos::services::POLICY,
                             },
                             |_: Arc<()>| {
                                 |_service: Service<Bank>| async {
@@ -420,11 +505,7 @@ pub(super) fn contract_scenario() {
                             },
                         )
                         .unwrap();
-                    let lease = runtime
-                        .services
-                        .activate("broken", &runtime.services.root_scope())
-                        .await
-                        .unwrap();
+                    let lease = runtime.operations.submit_resident("broken").await.unwrap();
                     let error = lease.ready().await.unwrap_err();
                     assert!(typed(&error), "{error:?}");
                     assert!(typed(&lease.release().await.unwrap_err()));
@@ -440,13 +521,11 @@ pub(super) fn contract_scenario() {
             scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
 
     let runtime = assembly().runtime().await.unwrap();
-    register(&runtime.services);
+    register(&runtime.operations);
     let a = Arc::new(Resources::default());
     let b = Arc::new(Resources::default());
-    let sa = runtime.services.scope(a.clone()).unwrap();
-    let sb = runtime.services.scope(b.clone()).unwrap();
-    let first = runtime.services.activate("scoped", &sa).await.unwrap();
-    let second = runtime.services.activate("scoped", &sb).await.unwrap();
+    let first = runtime.operations.submit_with_resources_at("scoped", a.clone()).await.unwrap();
+    let second = runtime.operations.submit_with_resources_at("scoped", b.clone()).await.unwrap();
     first.ready().await.unwrap();
     second.ready().await.unwrap();
     let stop = runtime.stop();
@@ -473,27 +552,27 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     struct Reentrant {
-                        manager: ServiceManager<Bank>,
+                        manager: OperationManager,
                         dropped: Arc<AtomicUsize>,
                     }
                     impl Drop for Reentrant {
                         fn drop(&mut self) {
-                            assert!(self.manager.definition("unused").is_none());
+                            assert!(self.manager.resident_definition("unused").is_none());
                             self.dropped.fetch_add(1, SeqCst);
                         }
                     }
                     let runtime = assembly().runtime().await.unwrap();
                     let dropped = Arc::new(AtomicUsize::new(0));
                     let resource = Arc::new(Reentrant {
-                        manager: runtime.services.clone(),
+                        manager: runtime.operations.clone(),
                         dropped: dropped.clone(),
                     });
                     runtime
-                        .services
-                        .register(
+                        .operations
+                        .register_service(
                             ServiceDefinition {
                                 id: "unused".into(),
-                                policy: ServicePolicy::default(),
+                                policy: harmos::services::POLICY,
                             },
                             move |_: Arc<()>| {
                                 let _owner = resource.clone();
@@ -501,7 +580,11 @@ pub(super) fn contract_scenario() {
                             },
                         )
                         .unwrap();
-                    runtime.services.unregister("unused").await.unwrap();
+                    runtime
+                        .operations
+                        .unregister_resident("unused")
+                        .await
+                        .unwrap();
                     assert_eq!(dropped.load(SeqCst), 1);
                     runtime.stop().await.unwrap();
                 });
@@ -520,29 +603,26 @@ pub(super) fn contract_scenario() {
                         .runtime()
                         .await
                         .unwrap();
-                    let key = harmos::services::ServiceKey::root("one-shot");
+                    let key = harmos::operations::resident::Key::root("one-shot");
                     runtime
-                        .services
-                        .subscribe()
+                        .operations
+                        .watch_residents()
                         .wait_for(|values| {
-                            values
-                                .get(&key)
-                                .is_some_and(|instance| instance.status == ServiceStatus::Stopped)
+                            values.get(&key).is_some_and(|instance| {
+                                instance.health == Some(ServiceStatus::Stopped)
+                            })
                         })
                         .await
                         .unwrap();
                     assert!(matches!(
-                        runtime
-                            .services
-                            .activate("one-shot", &runtime.services.root_scope())
-                            .await,
+                        runtime.operations.submit_resident("one-shot").await,
                         Err(Error::NotReady {
                             domain: "retired assembly service"
                         })
                     ));
                     assert_eq!(
-                        runtime.services.status(&key).unwrap().status,
-                        ServiceStatus::Stopped
+                        runtime.operations.resident(&key).unwrap().health,
+                        Some(ServiceStatus::Stopped)
                     );
                     runtime.stop().await.unwrap();
                 });
@@ -558,11 +638,11 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let runtime = assembly().runtime().await.unwrap();
                     runtime
-                        .services
-                        .register(
+                        .operations
+                        .register_service(
                             ServiceDefinition {
                                 id: "factory".into(),
-                                policy: ServicePolicy::default(),
+                                policy: harmos::services::POLICY,
                             },
                             |fail: Arc<bool>| {
                                 assert!(!*fail, "factory initialization failed");
@@ -570,15 +650,22 @@ pub(super) fn contract_scenario() {
                             },
                         )
                         .unwrap();
-                    let scope = runtime.services.scope(Arc::new(true)).unwrap();
-                    let lease = runtime.services.activate("factory", &scope).await.unwrap();
+                    let lease = runtime
+                        .operations
+                        .submit_with_resources_at("factory", Arc::new(true))
+                        .await
+                        .unwrap();
                     assert!(matches!(lease.ready().await, Err(Error::TaskFailed { .. })));
                     assert!(matches!(
-                        runtime.services.status(lease.key()).unwrap().status,
-                        ServiceStatus::Inactive {
+                        runtime
+                            .operations
+                            .resident(&runtime.operations.resident_key(lease.id()).unwrap())
+                            .unwrap()
+                            .health,
+                        Some(ServiceStatus::Inactive {
                             cause: harmos::services::ServiceExit::Panicked,
                             ..
-                        }
+                        })
                     ));
                     assert!(matches!(
                         runtime.stop().await,

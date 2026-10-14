@@ -38,7 +38,8 @@ use harmos::grpc::authentication::{Authenticate, Authentication, Authenticator};
 use harmos::grpc::middleware::{Enter, Invocation, Middleware, Observation};
 use harmos::grpc::{Codec, DecodeSettings, EncodeSettings};
 use harmos::operations::{
-    Context, Operation, OperationDeclaration, OperationPolicy, RetryPolicy, StreamSettings,
+    Context, Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy,
+    StreamSettings,
 };
 use harmos::{Error, Runtime};
 
@@ -157,6 +158,7 @@ impl OperationDeclaration for Who {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 }
 impl Operation for Read {
@@ -1047,6 +1049,7 @@ pub(super) fn contract_scenario() {
                             timeout: Duration::from_secs(5),
                             attempt_timeout: Duration::from_secs(5),
                             retries: RetryPolicy::Never,
+                            restart: RestartPolicy::Never,
                         },
                     )]
                     struct ParkedContract;

@@ -30,7 +30,7 @@ use super::{
     support::{Bank, Ledger, catalog},
 };
 use harmos::operations::{
-    Backoff, Context, Failure, Jitter, Operation, OperationPolicy, RetryPolicy,
+    Backoff, Context, Failure, Jitter, Operation, OperationPolicy, RestartPolicy, RetryPolicy,
 };
 use harmos::{Error, Refusal, Runtime, state::FactSource, state::Position, state::SystemFact};
 
@@ -87,6 +87,7 @@ enum Failed {
                 max_retries: 2,
                 backoff: Backoff::Fixed { delay: Duration::from_millis(10), jitter: Jitter::None },
             },
+            restart: RestartPolicy::Never,
         },
     )]
 struct ComputeContract;
@@ -99,6 +100,7 @@ struct ComputeContract;
             timeout: Duration::from_secs(3),
             attempt_timeout: Duration::from_secs(3),
             retries: RetryPolicy::Never,
+            restart: RestartPolicy::Never,
         },
     )]
 struct ParentContract;

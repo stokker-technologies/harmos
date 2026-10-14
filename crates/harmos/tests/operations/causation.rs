@@ -26,7 +26,7 @@ use super::{
     Lanes,
     support::{self, Bank, Fact, Ledger, Noted, catalog},
 };
-use harmos::operations::{Context, Operation, OperationPolicy, RetryPolicy};
+use harmos::operations::{Context, Operation, OperationPolicy, RestartPolicy, RetryPolicy};
 use harmos::{Error, Runtime, state::CausationId, state::Position};
 
 /* === Constants === */
@@ -34,6 +34,7 @@ const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(1),
     retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
 };
 
 /* === Macros === */

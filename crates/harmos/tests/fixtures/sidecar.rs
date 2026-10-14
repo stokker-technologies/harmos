@@ -25,6 +25,7 @@ pub mod linked {
             timeout: std::time::Duration::from_millis(100),
             attempt_timeout: std::time::Duration::from_millis(100),
             retries: harmos::operations::RetryPolicy::Never,
+            restart: harmos::operations::RestartPolicy::Never,
         };
     }
     #[harmos::catalog]
@@ -44,6 +45,7 @@ pub mod linked {
                 timeout: std::time::Duration::from_secs(2),
                 attempt_timeout: std::time::Duration::from_secs(2),
                 retries: harmos::operations::RetryPolicy::Never,
+                restart: harmos::operations::RestartPolicy::Never,
             };
         const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
     }
@@ -91,7 +93,7 @@ use std::time::Duration;
 // Local Imports
 use harmos::operations::Host as _;
 use harmos::operations::{
-    Operation, OperationDeclaration, OperationPolicy, RetryPolicy, WireTable,
+    Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, WireTable,
 };
 use harmos::plugin::sidecar::{Refusal, Supervisor};
 
@@ -155,11 +157,13 @@ impl harmos::operations::lifecycle::Policy for Stubborn {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
     const SHUTDOWN_POLICY: OperationPolicy = OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 }
 
@@ -224,6 +228,7 @@ impl OperationDeclaration for Ask {
         timeout: Duration::from_millis(25),
         attempt_timeout: Duration::from_millis(25),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 }
 
@@ -237,6 +242,7 @@ impl OperationDeclaration for Echo {
         timeout: Duration::from_millis(80),
         attempt_timeout: Duration::from_millis(80),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 }
 

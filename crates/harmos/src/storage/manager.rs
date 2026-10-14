@@ -30,7 +30,8 @@ use super::{
     ReadLimits, RecoveryPosition, SchemaKey, StorageBackends, StorageCursor, StorageFuture,
     StorageSchema, StorageSettings, StoredRecord, StoredRow,
 };
-use crate::services::{ServiceLease, ServiceManager};
+use crate::operations::{OperationManager, resident::Lease};
+use crate::services::{Once, ServiceDefinition};
 use crate::supervision::executor;
 use crate::{Application, Error, Identifier, Result, state::Timestamp};
 
@@ -112,8 +113,8 @@ pub(super) struct Lifecycle {
     owner: Option<Box<dyn WorkerOwner>>,
 }
 
-struct Owner<A: Application> {
-    leases: Mutex<Vec<ServiceLease<A>>>,
+struct Owner {
+    leases: Mutex<Vec<Lease>>,
 }
 
 pub(super) struct State {
@@ -321,8 +322,16 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
 }
 
 impl<C> StorageManager<C> {
-    pub async fn start<A: Application>(&self, services: &ServiceManager<A>) -> Result<()> {
-        self.claim_owner(services.identity())?;
+    // Start the storage workers as infrastructure services of this runtime.
+    pub async fn start<A: Application>(&self, runtime: &crate::Runtime<A>) -> Result<()> {
+        self.start_on::<A>(&runtime.operations).await
+    }
+
+    pub(crate) async fn start_on<A: Application>(
+        &self,
+        operations: &OperationManager,
+    ) -> Result<()> {
+        self.claim_owner(operations.resident_identity())?;
         let mut lifecycle = self.inner.lifecycle.lock().await;
         {
             let state = self.inner.state.lock().unwrap();
@@ -344,10 +353,10 @@ impl<C> StorageManager<C> {
         if state.status.closing {
             return Err(Error::Closing { domain: "storage" });
         }
-        let primary = services.activate_internal(
-            WORKER_NAME.to_owned(),
-            crate::services::ServicePolicy::default(),
-            Worker(self.erased()),
+        let primary = operations.start_service::<A>(
+            Once::new(ServiceDefinition::new(WORKER_NAME), Worker(self.erased())),
+            true,
+            false,
         )?;
         state.ready = true;
         state.status.running = true;
@@ -358,14 +367,15 @@ impl<C> StorageManager<C> {
         for replica in &self.inner.replicas {
             let name = format!("harmos-storage-replica-{}", replica.config.id);
             replica.started();
-            match services.activate_internal(
-                name.clone(),
-                crate::services::ServicePolicy::default(),
-                super::replication::Worker {
-                    manager: self.erased(),
-                    replica: replica.clone(),
-                    reservation: None,
-                },
+            let worker = super::replication::Worker {
+                manager: self.erased(),
+                replica: replica.clone(),
+                reservation: None,
+            };
+            match operations.start_service::<A>(
+                Once::new(ServiceDefinition::new(name.clone()), worker),
+                true,
+                false,
             ) {
                 Ok(lease) => {
                     owner.leases.get_mut().unwrap().push(lease);
@@ -1258,7 +1268,7 @@ impl Inner {
     }
 }
 
-impl<A: Application> WorkerOwner for Owner<A> {
+impl WorkerOwner for Owner {
     fn stop(&self) -> StorageFuture<'_, ()> {
         Box::pin(async move {
             let receipts: Vec<_> = self
@@ -1266,7 +1276,7 @@ impl<A: Application> WorkerOwner for Owner<A> {
                 .lock()
                 .unwrap()
                 .iter_mut()
-                .map(ServiceLease::retire)
+                .map(Lease::retire)
                 .collect();
             let mut failure = None;
             for receipt in receipts {

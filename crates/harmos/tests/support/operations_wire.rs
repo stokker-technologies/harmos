@@ -21,7 +21,7 @@ use std::time::Duration;
 use super::{Failed, Lanes, Owner, runtime};
 use harmos::operations::{
     Backoff, CacheKey, Context, Failure, Jitter, Operation, OperationDeclaration, OperationPolicy,
-    RetryPolicy, Visibility,
+    RestartPolicy, RetryPolicy, Visibility,
 };
 use harmos::{Error, Message, Refusal};
 
@@ -213,6 +213,7 @@ impl OperationDeclaration for Codec {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(1),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 }
 
@@ -224,6 +225,7 @@ impl OperationDeclaration for ShortCodec {
         timeout: Duration::from_millis(5),
         attempt_timeout: Duration::from_millis(5),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 }
 
@@ -314,6 +316,7 @@ impl OperationDeclaration for Echo {
                 jitter: Jitter::None,
             },
         },
+        restart: RestartPolicy::Never,
     };
 
     fn key(request: &Text) -> Option<CacheKey> {

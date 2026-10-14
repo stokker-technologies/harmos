@@ -498,7 +498,7 @@ where
 {
     type Error = String;
 
-    async fn attempt(&mut self, mut context: Service<A>) -> Result<(), Fault<String>> {
+    async fn run(&mut self, mut context: Service<A>) -> Result<(), Fault<String>> {
         self.calls.close();
         let _attempt = Attempt(&self.calls);
         if context.is_stopping() {
@@ -558,9 +558,9 @@ where
                 "native SDK pair differs from the original admitted generation".to_owned(),
             ));
         }
-        let controls = self
+        let control = self
             .attach
-            .observer_controls()
+            .observer_control()
             .map_err(|error| Fault::Application(error.to_string()))?;
         let mut required = self
             .attach
@@ -574,7 +574,7 @@ where
                 "native required contracts differ from the original admitted generation".to_owned(),
             ));
         }
-        if controls.as_ref() != scope.and_then(|scope| scope.observer_controls())
+        if control.as_ref() != scope.and_then(|scope| scope.observer_control())
             || scope.is_some_and(|scope| {
                 normalized_observers(scope.observers().to_vec())
                     != normalized_observers(observers.clone())
@@ -689,7 +689,7 @@ where
         Ok(())
     }
 
-    async fn finalize(&mut self) -> Result<(), String> {
+    async fn cleanup(&mut self) -> Result<(), String> {
         self.cleanup.get_mut().take();
         Ok(())
     }
@@ -1174,21 +1174,7 @@ where
                 Absorbed::Carried
             }
             Arrival::Frame(Frame::Push { method, params }) => {
-                if method == Frame::OBSERVER_STATUS {
-                    let update =
-                        match serde_json::from_slice::<harmos_sidecar::ObserverUpdate>(&params) {
-                            Ok(update) => update,
-                            Err(error) => return Absorbed::Malformed(error.to_string()),
-                        };
-                    if !self
-                        .observers
-                        .iter()
-                        .any(|entry| entry.id == update.control.observer)
-                    {
-                        return Absorbed::Malformed("undeclared observer status".to_owned());
-                    }
-                    self.remote_observers.update(update);
-                } else if method == Frame::EXITING {
+                if method == Frame::EXITING {
                     self.announced = Some(reason(&params));
                 } else {
                     return Absorbed::Malformed(
@@ -1283,15 +1269,11 @@ where
                                                 );
                                         }
                                     };
-                                    match if self.remote_observers.owns_context(&call.context) {
-                                        self.remote_observers.submit_child(call, submitted)
-                                    } else if call.generation_context.as_ref().is_some_and(
-                                        |token| {
-                                            self.plugin.as_ref().is_some_and(|scope| {
-                                                scope.accepts_generation_context(token)
-                                            })
-                                        },
-                                    ) {
+                                    match if call.generation_context.as_ref().is_some_and(|token| {
+                                        self.plugin.as_ref().is_some_and(|scope| {
+                                            scope.accepts_generation_context(token)
+                                        })
+                                    }) {
                                         self.caller
                                             .as_ref()
                                             .ok_or(crate::Error::Closing {
@@ -1538,22 +1520,19 @@ where
     let (live, mut requests) = mpsc::unbounded_channel();
     let (ended, physical_end) = tokio::sync::watch::channel(false);
     let (arrivals, inbound) = mpsc::channel(ARRIVALS);
-    let manager = context.observers().clone();
+    let operations = context.operations.clone();
     let remote = observers::Remote::new(arrivals.clone(), Some(context.provider.clone()));
     cleanup.session = Some(observers::Session::new(
         remote.clone(),
-        manager.clone(),
+        operations.clone(),
         end,
     ));
     cleanup.ended = Some(ended);
-    let scope = manager
-        .scope(remote.clone())
-        .map_err(|error| Fault::Application(error.to_string()))?;
     cleanup
         .session
         .as_mut()
         .expect("the attempt owns its session")
-        .set_scope(scope.clone())
+        .bind()
         .map_err(Fault::Application)?;
     let plugin = cleanup
         .instance
@@ -1561,8 +1540,8 @@ where
         .and_then(|endpoint| endpoint.scope())
         .cloned();
     let candidate = observers::stage(
-        &manager,
-        &scope,
+        &operations,
+        &remote,
         plugin.as_ref(),
         settling.observers,
         settling.publications,
@@ -1621,15 +1600,16 @@ where
     let caller = cleanup
         .instance
         .as_ref()
-        .map(|instance| context.operations().caller(&instance.caller()))
+        .map(|instance| context.operations.caller(&instance.caller()))
         .transpose()
         .map_err(|error| Fault::Application(error.to_string()))?;
-    if let (Some(plugin), Some(caller)) = (&plugin, &caller) {
+    if let (Some(plugin), Some(_)) = (&plugin, &caller) {
         remote
-            .configure(context.operations().clone(), plugin.clone(), caller.clone())
+            .configure(context.operations.clone(), plugin.clone())
             .map_err(|error| Fault::Application(error.to_string()))?;
     }
     let (returns, returned) = mpsc::channel(CHILD_REQUESTS);
+    let observing = Arc::clone(&remote);
     let mut exchange = Exchange {
         outgoing,
         inbound,
@@ -1689,8 +1669,8 @@ where
                 cleanup
                     .readers
                     .push(Reader(executor::task(observers::demand(
-                        manager,
-                        scope,
+                        operations,
+                        observing,
                         plugin,
                         settling.observers.to_vec(),
                         changes,

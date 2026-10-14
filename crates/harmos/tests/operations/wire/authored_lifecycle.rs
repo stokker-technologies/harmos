@@ -41,7 +41,7 @@ use crate::scenario_runtime;
 /* === Tests === */
 
 use harmos::operations::*;
-use harmos::operations::{Backoff, Jitter, OperationPolicy, RetryPolicy};
+use harmos::operations::{Backoff, Jitter, OperationPolicy, RestartPolicy, RetryPolicy};
 use std::sync::Arc;
 use std::{cell::Cell, sync::Mutex, time::Duration};
 
@@ -75,6 +75,7 @@ impl OperationDeclaration for Declaration {
                 jitter: Jitter::None,
             },
         },
+        restart: RestartPolicy::Never,
     };
 }
 struct Read {

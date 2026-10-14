@@ -29,7 +29,8 @@ use super::{Lanes, app::App};
 use harmos::Runtime;
 use harmos::grpc::Event;
 use harmos::operations::{
-    Context, Operation, OperationDeclaration, OperationPhase, OperationPolicy, RetryPolicy,
+    Context, Operation, OperationDeclaration, OperationPhase, OperationPolicy, RestartPolicy,
+    RetryPolicy,
 };
 
 /* === Constants === */
@@ -92,6 +93,7 @@ impl OperationDeclaration for Produce {
         timeout: Duration::from_secs(5),
         attempt_timeout: Duration::from_secs(5),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 }
 impl harmos::operations::OutputDeclaration for Produce {

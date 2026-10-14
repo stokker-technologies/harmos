@@ -24,8 +24,8 @@ use super::{
     config, history, write,
 };
 use harmos::{
-    Error, services::Fault, services::Service, services::ServicePolicy, state::Entry,
-    state::Position, state::Recorded, storage::JournalConsumer,
+    Error, services::Fault, services::Service, state::Entry, state::Position, state::Recorded,
+    storage::JournalConsumer,
 };
 
 /* === Constants === */
@@ -108,10 +108,7 @@ fn contract_scenario() {
                     f.runtime.start_storage(f.storage.clone()).await.unwrap();
                     f.runtime.start_storage(f.storage.clone()).await.unwrap();
                     assert!(matches!(
-                        f.runtime
-                            .services
-                            .activate("harmos-storage", &f.runtime.services.root_scope())
-                            .await,
+                        f.runtime.operations.submit_resident("harmos-storage").await,
                         Err(Error::InvalidInput {
                             field: "service definition",
                             ..
@@ -143,11 +140,11 @@ fn contract_scenario() {
                     let entered = Arc::new(tokio::sync::Notify::new());
                     let started = entered.clone();
                     f.runtime
-                        .services
-                        .register(
+                        .operations
+                        .register_service(
                             harmos::services::ServiceDefinition {
                                 id: "final-evidence".into(),
-                                policy: ServicePolicy::default(),
+                                policy: harmos::services::POLICY,
                             },
                             move |_: Arc<()>| {
                                 let storage = storage.clone();
@@ -168,8 +165,8 @@ fn contract_scenario() {
                         .unwrap();
                     let _lease = f
                         .runtime
-                        .services
-                        .activate("final-evidence", &f.runtime.services.root_scope())
+                        .operations
+                        .submit_resident("final-evidence")
                         .await
                         .unwrap();
                     entered.notified().await;
@@ -508,9 +505,9 @@ fn contract_scenario() {
                     assert!(!status.running);
                     assert!(
                         f.runtime
-                            .services
-                            .status(&harmos::services::ServiceKey::root("harmos-storage"))
-                            .map(|item| item.status)
+                            .operations
+                            .resident(&harmos::operations::resident::Key::root("harmos-storage"))
+                            .and_then(|item| item.health)
                             .is_none()
                     );
                 });

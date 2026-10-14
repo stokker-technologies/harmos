@@ -7,6 +7,12 @@
  * ***
  */
 
+// The restart driver of one service instance. Each run is stopped and cleaned
+// up before the next; environmental faults spend restart credit and restart
+// after backoff, and a run that stays healthy for the sustained window refills
+// the credit. Application faults, panics, exhausted credit and missed stop
+// deadlines deactivate the service and publish a work fact saying why.
+
 /* === Modules === */
 
 /* === Re-Exports === */
@@ -18,13 +24,16 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::task::Poll;
+use std::time::Duration;
 // Third Party Imports
 use serde::Serialize;
 use tokio::sync::watch;
 // Local Imports
-use super::manager::{Activation, Cleanup, ErasedResident, Failure};
-use super::{Fault, Service, ServiceExit, ServicePolicy, ServiceStatus};
-use crate::supervision::{Backoff, executor};
+use super::runner::{Cleanup, ErasedResident, Failure};
+use super::{Fault, ServiceDefinition, ServiceExit, ServiceStatus};
+use crate::operations::resident::Report;
+use crate::operations::{OperationManager, OperationPhase, RestartPolicy};
+use crate::supervision::executor;
 use crate::{Application, Error, Result, state::FactSource, state::SystemFact};
 
 /* === Constants === */
@@ -59,63 +68,61 @@ enum AttemptEvent<T> {
 
 /* === Implementations === */
 impl Health {
-    fn under(policy: &ServicePolicy) -> Self {
+    fn under(restart: RestartPolicy) -> Self {
         Self {
-            credit: policy.credit,
+            credit: restart.credit(),
             failures: 0,
             history: Vec::new(),
         }
     }
 
-    fn refill(&mut self, policy: &ServicePolicy) {
-        self.credit = policy.credit;
+    fn refill(&mut self, restart: RestartPolicy) {
+        self.credit = restart.credit();
         self.failures = 0;
     }
 }
 
 /* === Public Functions === */
 pub(super) async fn run<A: Application>(
-    name: String,
-    policy: ServicePolicy,
+    definition: &ServiceDefinition,
     resident: &mut dyn ErasedResident<A>,
     cleanup: &Cleanup<A>,
-    services: Activation<A>,
+    report: &Report,
+    operations: &OperationManager,
     stopping: watch::Sender<bool>,
 ) -> Result<()> {
-    let mut health = Health::under(&policy);
+    let name = definition.id.as_str();
+    let policy = definition.policy;
+    let handles = operations.handles::<A>();
+    let mut health = Health::under(policy.restart);
     let mut attempt_index = 0;
 
     loop {
         if !cleanup.lifecycle.initialize_attempt(attempt_index) {
-            services.quiesce();
+            report.quiesce();
             cleanup.record(Ok(()));
-            services.cleaning();
+            report.transition(OperationPhase::Stopping);
             if !cleanup.finalized.load(Ordering::Acquire) {
-                finalize(resident).await?;
+                super::runner::cleanup(resident).await?;
                 cleanup.finalized.store(true, Ordering::Release);
             }
-            services.set(&name, ServiceStatus::Stopped);
+            report.health(ServiceStatus::Stopped);
             return Ok(());
         }
         cleanup.finalized.store(false, Ordering::Release);
-        services.set(&name, ServiceStatus::Starting);
+        report.health(ServiceStatus::Starting);
         let (ready, mut readiness) = watch::channel(false);
-        let context = Service {
-            state: services.state.clone(),
-            records: services.records.clone(),
-            operations: services.operations.clone(),
-            streams: services.streams.clone(),
-            evidence: services.evidence.clone(),
-            observers: services.observers.clone(),
-            stopping: stopping.subscribe(),
+        let context = handles.context(
+            operations.clone(),
+            stopping.subscribe(),
             ready,
             #[cfg(feature = "plugin-sidecar")]
-            provider: cleanup.lifecycle.clone(),
-        };
+            Arc::clone(&cleanup.lifecycle),
+        );
         let mut attempt = Box::pin(crate::supervision::attempt(
-            async { resident.attempt(context).await },
+            async { resident.run(context).await },
             stopping.subscribe(),
-            policy.stop_timeout,
+            policy.timeout,
         ));
 
         let mut readiness_observed = false;
@@ -133,14 +140,15 @@ pub(super) async fn run<A: Application>(
                 AttemptEvent::Ready => {
                     readiness_observed = true;
                     if !*stopping.borrow() {
-                        services.set(
-                            &name,
-                            ServiceStatus::Running {
-                                credit: health.credit,
-                            },
-                        );
-                        if health.credit < policy.credit {
-                            health_wait = Some(Box::pin(executor::sleep(policy.sustained_health)));
+                        report.health(ServiceStatus::Running {
+                            credit: health.credit,
+                        });
+                        if health.credit < policy.restart.credit()
+                            && let RestartPolicy::OnTransient {
+                                sustained_health, ..
+                            } = policy.restart
+                        {
+                            health_wait = Some(Box::pin(executor::sleep(sustained_health)));
                         }
                     }
                 }
@@ -148,13 +156,10 @@ pub(super) async fn run<A: Application>(
                 AttemptEvent::Healthy => {
                     health_wait = None;
                     if !*stopping.borrow() {
-                        health.refill(&policy);
-                        services.set(
-                            &name,
-                            ServiceStatus::Running {
-                                credit: health.credit,
-                            },
-                        );
+                        health.refill(policy.restart);
+                        report.health(ServiceStatus::Running {
+                            credit: health.credit,
+                        });
                     }
                 }
             }
@@ -185,18 +190,18 @@ pub(super) async fn run<A: Application>(
             Ok(Err(Fault::Environmental(_))) => None,
         };
         if let Some(terminal) = terminal {
-            services.quiesce();
+            report.quiesce();
             cleanup.record(terminal);
         }
-        services.cleaning();
-        if let Err(error) = finalize(resident).await {
+        report.transition(OperationPhase::Stopping);
+        if let Err(error) = super::runner::cleanup(resident).await {
             if let Ok(Err(Fault::Environmental(failure))) = &answer {
                 cleanup.record(Err(Arc::new(Error::TaskFailed {
                     domain: "service attempt",
                     source: failure.source.clone(),
                 })));
             }
-            services.quiesce();
+            report.quiesce();
             return Err(error);
         }
         cleanup.finalized.store(true, Ordering::Release);
@@ -204,13 +209,13 @@ pub(super) async fn run<A: Application>(
         match answer {
             Ok(answer) => {
                 if let Some(result) = settle(
-                    &name,
+                    name,
                     answer,
                     &mut health,
-                    &policy,
-                    &services,
+                    policy.restart,
+                    report,
+                    &handles,
                     &stopping,
-                    &cleanup.lifecycle,
                 )
                 .await
                 {
@@ -219,7 +224,7 @@ pub(super) async fn run<A: Application>(
             }
             Err(cause) => {
                 let source = Arc::new(cause.clone());
-                return deactivate(&name, cause, health.history, source, &services).await;
+                return deactivate(name, cause, health.history, source, report, &handles).await;
             }
         }
         attempt_index = attempt_index
@@ -228,27 +233,6 @@ pub(super) async fn run<A: Application>(
                 resource: "service attempt identities",
             })?;
     }
-}
-
-pub(super) async fn finalize<A: Application>(resident: &mut dyn ErasedResident<A>) -> Result<()> {
-    let mut future = std::pin::pin!(async { resident.finalize().await });
-    std::future::poll_fn(|context| {
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            future.as_mut().poll(context)
-        })) {
-            Ok(poll) => poll.map(|result| {
-                result.map_err(|failure| Error::TaskFailed {
-                    domain: "service cleanup",
-                    source: failure.source,
-                })
-            }),
-            Err(_) => Poll::Ready(Err(Error::TaskFailed {
-                domain: "service cleanup",
-                source: Arc::new(ServiceExit::Panicked),
-            })),
-        }
-    })
-    .await
 }
 
 /* === Private Functions === */
@@ -284,14 +268,14 @@ async fn settle<A: Application>(
     name: &str,
     answer: std::result::Result<(), Fault<Failure>>,
     health: &mut Health,
-    policy: &ServicePolicy,
-    services: &Activation<A>,
+    restart: RestartPolicy,
+    report: &Report,
+    handles: &super::Handles<A>,
     stopping: &watch::Sender<bool>,
-    _provider: &Arc<crate::supervision::instance::Instance>,
 ) -> Option<Result<()>> {
     match answer {
         Ok(()) => {
-            services.set(name, ServiceStatus::Stopped);
+            report.health(ServiceStatus::Stopped);
             Some(Ok(()))
         }
         Err(Fault::Application(error)) => Some(
@@ -300,51 +284,45 @@ async fn settle<A: Application>(
                 ServiceExit::Application(error.message),
                 std::mem::take(&mut health.history),
                 error.source,
-                services,
+                report,
+                handles,
             )
             .await,
         ),
         Err(Fault::Environmental(error)) => {
             if *stopping.borrow() {
-                services.set(name, ServiceStatus::Stopped);
+                report.health(ServiceStatus::Stopped);
                 return Some(Ok(()));
             }
             health.history.push(error.message);
-            if health.credit == 0 {
-                return Some(
-                    deactivate(
-                        name,
-                        ServiceExit::CreditExhausted,
-                        std::mem::take(&mut health.history),
-                        error.source,
-                        services,
-                    )
-                    .await,
-                );
-            }
-            health.credit -= 1;
-            services.set(name, ServiceStatus::BackingOff);
-            let mut context = Service {
-                state: services.state.clone(),
-                records: services.records.clone(),
-                operations: services.operations.clone(),
-                streams: services.streams.clone(),
-                evidence: services.evidence.clone(),
-                observers: services.observers.clone(),
-                stopping: stopping.subscribe(),
-                ready: watch::channel(false).0,
-                #[cfg(feature = "plugin-sidecar")]
-                provider: _provider.clone(),
+            let backoff = match restart {
+                RestartPolicy::OnTransient { backoff, .. } if health.credit > 0 => backoff,
+                _ => {
+                    return Some(
+                        deactivate(
+                            name,
+                            ServiceExit::CreditExhausted,
+                            std::mem::take(&mut health.history),
+                            error.source,
+                            report,
+                            handles,
+                        )
+                        .await,
+                    );
+                }
             };
-            if context
-                .rest(Backoff::duration(
-                    health.failures,
-                    policy.backoff_base,
-                    policy.backoff_cap,
-                ))
-                .await
-            {
-                services.set(name, ServiceStatus::Stopped);
+            health.credit -= 1;
+            report.health(ServiceStatus::BackingOff);
+            let delay = backoff
+                .delay(health.failures, report.id().value())
+                .unwrap_or(Duration::ZERO);
+            let mut waiting = stopping.subscribe();
+            let interrupted =
+                crate::supervision::interruptible(executor::sleep(delay), &mut waiting)
+                    .await
+                    .is_none();
+            if interrupted {
+                report.health(ServiceStatus::Stopped);
                 return Some(Ok(()));
             }
             health.failures += 1;
@@ -358,14 +336,15 @@ async fn deactivate<A: Application>(
     cause: ServiceExit,
     history: Vec<String>,
     source: Arc<dyn std::error::Error + Send + Sync>,
-    services: &Activation<A>,
+    report: &Report,
+    handles: &super::Handles<A>,
 ) -> Result<()> {
     let payload = serde_json::to_vec(&Deactivation {
         cause: describe(&cause),
         history: &history,
     })
     .expect("the fixed work fact shape serializes");
-    let _ = services
+    let _ = handles
         .records
         .publish_system(SystemFact {
             source: FactSource::Work(name.to_owned()),
@@ -374,7 +353,7 @@ async fn deactivate<A: Application>(
             payload,
         })
         .await;
-    services.set(name, ServiceStatus::Inactive { cause, history });
+    report.health(ServiceStatus::Inactive { cause, history });
     Err(Error::TaskFailed {
         domain: "service attempt",
         source,

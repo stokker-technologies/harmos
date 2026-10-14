@@ -20,6 +20,9 @@ use tokio::sync::Semaphore;
 // Local Imports
 
 /* === Constants === */
+// The lane resident controls run in: unbounded, so a control that runs until
+// cancelled never holds a slot another call is waiting for.
+pub(crate) const RESIDENT: &str = "harmos.resident";
 
 /* === Macros === */
 
@@ -106,7 +109,14 @@ impl Admission {
 
 impl Lanes {
     pub(crate) fn freeze(declared: LaneSet) -> Result<Self, String> {
-        let mut lanes = BTreeMap::new();
+        let mut lanes = BTreeMap::from([(
+            RESIDENT,
+            Admission {
+                name: RESIDENT,
+                width: usize::MAX,
+                semaphore: Arc::new(Semaphore::new(Semaphore::MAX_PERMITS)),
+            },
+        )]);
 
         for (name, capacity) in declared.entries() {
             if name.is_empty() {

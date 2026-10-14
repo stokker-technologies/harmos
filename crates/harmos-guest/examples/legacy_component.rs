@@ -27,11 +27,12 @@ static IDENTITY: [u8; 148] = *b"\0HARMOS:ARTIFACT:V3:{\"kind\":\"guest\",\"id\":
 // Current Companion Fragments Cannot Make The Retired Identity Admissible
 const _: () = {
     use harmos_contract::inventory::contracts::{encode_tree, encoded_tree_len};
-    use harmos_contract::operations::{OperationPolicy, RetryPolicy};
+    use harmos_contract::operations::{OperationPolicy, RestartPolicy, RetryPolicy};
     const POLICY: OperationPolicy = OperationPolicy {
         timeout: std::time::Duration::from_secs(2),
         attempt_timeout: std::time::Duration::from_secs(1),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
     const SDK: &[harmos_contract::operations::OperationPolicy; 2] = &[POLICY, POLICY];
     #[used]

@@ -24,8 +24,8 @@ use std::time::Duration;
 
 // Local Imports
 use harmos::operations::{
-    Backoff, Declarations, OperationDeclaration, OperationPolicy, ReplaySafety, RetryPolicy,
-    Visibility,
+    Backoff, Declarations, OperationDeclaration, OperationPolicy, ReplaySafety, RestartPolicy,
+    RetryPolicy, Visibility,
 };
 
 /* === Constants === */
@@ -38,6 +38,7 @@ macro_rules! inert_plugin {
                 timeout: Duration::from_secs(2),
                 attempt_timeout: Duration::from_secs(2),
                 retries: RetryPolicy::Never,
+                restart: RestartPolicy::Never,
             };
             const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
         }
@@ -179,6 +180,7 @@ impl OperationDeclaration for Selected {
                 jitter: harmos::operations::Jitter::Deterministic,
             },
         },
+        restart: RestartPolicy::Never,
     };
 }
 

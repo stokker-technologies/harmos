@@ -7,8 +7,9 @@
  * ***
  */
 
-// The in-process binding of the portable host capability and the built-in
-// status and cancel operations it shares with the remote bindings.
+// The in-process binding of the portable host capability, resident activation
+// through it, and the built-in status, cancel and watch operations it shares
+// with the remote bindings.
 
 /* === Modules === */
 use crate::scenario_runtime;
@@ -30,7 +31,8 @@ use super::{Lanes, app::App};
 use harmos::builtin;
 use harmos::operations::instance::{Outcome, Phase};
 use harmos::operations::{
-    Context, Host, Instance, Operation, OperationDeclaration, OperationPolicy, RetryPolicy,
+    Context, Host, Instance, Operation, OperationDeclaration, OperationPolicy, RestartPolicy,
+    RetryPolicy,
 };
 use harmos::{Error, Refusal, Runtime};
 
@@ -39,6 +41,7 @@ const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(5),
     attempt_timeout: Duration::from_secs(5),
     retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
 };
 
 /* === Macros === */
@@ -62,6 +65,9 @@ struct Gate {
 
 struct Holding(Arc<Gate>);
 
+// A resident service activated through the host capability by its identity.
+struct Ticker;
+
 /* === Enums === */
 
 /* === Traits === */
@@ -72,6 +78,13 @@ impl OperationDeclaration for Hold {
     type Response = u64;
     const ID: &'static str = "capability.hold";
     const POLICY: OperationPolicy = POLICY;
+}
+
+impl OperationDeclaration for Ticker {
+    type Request = ();
+    type Response = ();
+    const ID: &'static str = "capability.ticker";
+    const POLICY: OperationPolicy = harmos::services::POLICY;
 }
 
 impl Operation for Holding {
@@ -266,6 +279,84 @@ pub(super) fn contract_scenario() {
                     assert!(hidden(refused.err()));
                     let status = harmos::operations::instance::Status::try_from(&*cancelled);
                     assert_ne!(status.unwrap().outcome, Some(Outcome::Succeeded));
+                    runtime.stop().await.unwrap();
+                });
+        });
+    }
+    {
+        scenario_runtime::check("resident_lease_watch", || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    let (runtime, gate) = runtime().await;
+                    let operations = &runtime.operations;
+                    operations
+                        .register_service::<App, Gate, _, _>(
+                            harmos::services::ServiceDefinition::new(Ticker::ID),
+                            |gate: Arc<Gate>| {
+                                move |mut context: harmos::services::Service<App>| {
+                                    let gate = gate.clone();
+                                    async move {
+                                        context.ready();
+                                        context.stopping().await;
+                                        gate.cleaned.fetch_add(1, Ordering::SeqCst);
+                                        Ok::<(), harmos::services::Fault<&str>>(())
+                                    }
+                                }
+                            },
+                        )
+                        .unwrap();
+
+                    // Activations Over The Same Resources Share One Instance
+                    let first = operations
+                        .submit_with_resources::<Ticker, Gate>((), gate.clone())
+                        .await
+                        .unwrap();
+                    let second = operations
+                        .submit_with_resources::<Ticker, Gate>((), gate.clone())
+                        .await
+                        .unwrap();
+                    assert_eq!(first.id(), second.id());
+                    first.ready().await.unwrap();
+                    let id = first.id();
+                    let key = operations.resident_key(id).unwrap();
+                    assert_eq!(operations.resident(&key).unwrap().leases, 2);
+                    let status = operations.call(builtin::Status::of(id)).await.unwrap();
+                    assert_eq!(status.phase, Phase::Running.as_str());
+
+                    // A Watch Streams Every Change Until The Instance Stops
+                    let settings = harmos::operations::StreamSettings {
+                        items: std::num::NonZeroUsize::new(16).unwrap(),
+                        bytes: std::num::NonZeroUsize::new(4096).unwrap(),
+                    };
+                    let mut watch = operations
+                        .download::<builtin::Watch>(builtin::Watch::of(id), settings)
+                        .unwrap();
+                    let current = watch.next().await.unwrap().unwrap();
+                    assert_eq!(current.phase, Phase::Running.as_str());
+                    drop(first);
+                    assert_eq!(operations.resident(&key).unwrap().leases, 1);
+                    assert_eq!(gate.cleaned.load(Ordering::SeqCst), 0);
+                    second.cancel();
+                    let mut phases = Vec::new();
+                    while let Some(state) = watch.next().await.unwrap() {
+                        phases.push(state.phase.clone());
+                    }
+                    let last = watch.join().await.unwrap();
+                    assert_eq!(last.phase, Phase::Stopped.as_str());
+                    assert_eq!(
+                        phases.last().map(String::as_str),
+                        Some(Phase::Stopped.as_str())
+                    );
+                    assert!(phases.iter().any(|phase| phase == Phase::Stopping.as_str()));
+                    second.settle().await.unwrap();
+                    assert_eq!(gate.cleaned.load(Ordering::SeqCst), 1);
+
+                    // A Stopped Resident Leaves The Index Like A Settled Request
+                    let stopped = operations.call(builtin::Status::of(id)).await;
+                    assert!(hidden(stopped.err()));
                     runtime.stop().await.unwrap();
                 });
         });

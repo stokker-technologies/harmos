@@ -26,8 +26,8 @@ use harmos_contract::StreamSpec;
 use harmos_contract::catalog::Node;
 use harmos_contract::inventory::{contracts, listeners, observers, publications};
 use harmos_contract::operations::{
-    Operation, OperationPolicy, RetryPolicy, ServingError, WireDeclaration, WireTable, host,
-    lifecycle,
+    Operation, OperationPolicy, RestartPolicy, RetryPolicy, ServingError, WireDeclaration,
+    WireTable, host, lifecycle,
 };
 use harmos_contract::plugin::{Declared, Grant, Plugin, Requirement};
 use harmos_contract::schema::Described;
@@ -39,6 +39,7 @@ const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(2),
     retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
 };
 const PROVIDED: &[Node<WireDeclaration>] = &[
     Node::Leaf(WireDeclaration::of::<Echo>()),

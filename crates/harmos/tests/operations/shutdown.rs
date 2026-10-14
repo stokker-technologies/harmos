@@ -27,7 +27,7 @@ use tokio::sync::Notify;
 
 // Local Imports
 use super::{Lanes, app::App};
-use harmos::operations::{Context, Operation, OperationPolicy, RetryPolicy};
+use harmos::operations::{Context, Operation, OperationPolicy, RestartPolicy, RetryPolicy};
 use harmos::{Error, Refusal, Runtime};
 
 /* === Constants === */
@@ -68,6 +68,7 @@ enum Mode {
             timeout: Duration::from_secs(3),
             attempt_timeout: Duration::from_secs(2),
             retries: RetryPolicy::Never,
+            restart: RestartPolicy::Never,
         },
     )]
 struct WaitContract;
@@ -233,11 +234,8 @@ pub(super) fn contract_scenario() {
                     for _ in 0..2 {
                         assert!(runtime.stop().now_or_never().is_none());
                         assert!(matches!(
-                            runtime
-                                .services
-                                .activate("late", &runtime.services.root_scope())
-                                .await,
-                            Err(Error::Closing { domain: "service" })
+                            runtime.operations.submit_resident("late").await,
+                            Err(Error::Closing { domain: "resident" })
                         ));
                         assert_eq!(trace.finalizations.load(Ordering::SeqCst), 1);
                         assert_eq!(trace.dropped.load(Ordering::SeqCst), 0);

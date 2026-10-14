@@ -77,10 +77,10 @@ impl<A: Application> Runtime<A> {
                     name: "primary".to_owned(),
                 });
             }
-            storage.claim_owner(self.services.identity())?;
+            storage.claim_owner(self.operations.resident_identity())?;
             self.storage.get_or_init(|| storage)
         };
-        storage.start(&self.services).await
+        storage.start_on::<A>(&self.operations).await
     }
 
     pub fn storage(&self) -> Option<&StorageManager<crate::storage::ErasedCatalog>> {
@@ -122,9 +122,8 @@ impl<A: Application> Runtime<A> {
         #[cfg(not(all(feature = "plugin", not(target_arch = "wasm32"))))]
         {
             // Notify Residents Before Cancelling Their In-Flight Calls
-            self.services.close_admission();
+            self.operations.close_resident_admission();
             self.operations.close_admission();
-            self.observers.close_admission();
             #[cfg(any(
                 feature = "plugin",
                 feature = "plugin-guest",
@@ -191,9 +190,8 @@ impl<A: Application> Shutdown<A> {
                 self.progress.send_replace("plugins");
                 self.handles.plugin.shutdown().await?;
             }
-            self.handles.services.close_admission();
+            self.handles.operations.close_resident_admission();
             self.handles.operations.close_admission();
-            self.handles.observers.close_admission();
             #[cfg(any(
                 feature = "plugin",
                 feature = "plugin-guest",
@@ -204,7 +202,7 @@ impl<A: Application> Shutdown<A> {
                 self.handles.streams.stop_listeners();
             }
             self.progress.send_replace("observers and listeners");
-            let observers = self.handles.observers.shutdown();
+            let observers = self.handles.operations.shutdown_observers();
             #[cfg(any(
                 feature = "plugin",
                 feature = "plugin-guest",
@@ -221,7 +219,7 @@ impl<A: Application> Shutdown<A> {
                 feature = "plugin-sidecar"
             )))]
             let observers = observers.await;
-            if self.handles.observers.cleanup_pending() {
+            if self.handles.operations.observer_cleanup_pending() {
                 return Err(observers.err().unwrap_or(Error::NotReady {
                     domain: "observer cleanup",
                 }));
@@ -239,8 +237,12 @@ impl<A: Application> Shutdown<A> {
             ))]
             streams?;
             self.progress.send_replace("application services");
-            let services = self.handles.services.shutdown_application().await;
-            if self.handles.services.cleanup_pending(false) {
+            let services = self
+                .handles
+                .operations
+                .shutdown_application_services()
+                .await;
+            if self.handles.operations.service_cleanup_pending(false) {
                 return Err(services.err().unwrap_or(Error::NotReady {
                     domain: "service cleanup",
                 }));
@@ -281,8 +283,8 @@ impl<A: Application> Shutdown<A> {
             storage.close().await?;
         }
         self.progress.send_replace("infrastructure services");
-        let services = self.handles.services.shutdown().await;
-        if self.handles.services.cleanup_pending(true) {
+        let services = self.handles.operations.shutdown_residents().await;
+        if self.handles.operations.service_cleanup_pending(true) {
             return Err(services.err().unwrap_or(Error::NotReady {
                 domain: "service cleanup",
             }));

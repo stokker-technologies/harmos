@@ -71,7 +71,7 @@ pub struct Manifest {
     pub owner: String,
     pub observers: Vec<Declaration>,
     #[serde(default)]
-    pub observer_controls: Option<[Contract; 2]>,
+    pub observer_control: Option<Contract>,
 }
 
 #[derive(Deserialize)]
@@ -81,7 +81,7 @@ pub struct NamedManifest {
     pub owner: String,
     pub observers: Vec<Declaration>,
     #[serde(default)]
-    pub observer_controls: Option<[contracts::NamedContract; 2]>,
+    pub observer_control: Option<contracts::NamedContract>,
 }
 
 /* === Enums === */
@@ -130,18 +130,15 @@ impl NamedManifest {
         declarations: &[Named],
         settings: &mut SchemaSettings,
     ) -> Result<Manifest, Error> {
-        let observer_controls = match self.observer_controls {
-            Some([start, stop]) => Some([
-                start.resolve(declarations, settings)?,
-                stop.resolve(declarations, settings)?,
-            ]),
-            None => None,
-        };
+        let observer_control = self
+            .observer_control
+            .map(|control| control.resolve(declarations, settings))
+            .transpose()?;
         Ok(Manifest {
             facility: self.facility,
             owner: self.owner,
             observers: self.observers,
-            observer_controls,
+            observer_control,
         })
     }
 }
@@ -281,55 +278,47 @@ pub const fn encode<const N: usize>(facility: &str, owner: &str, entries: &[Entr
     encoded::<N>(facility, owner, entries).bytes
 }
 
-pub fn validate_controls(
+pub fn validate_control(
     observers: &[Declaration],
-    controls: Option<&[Contract; 2]>,
+    control: Option<&Contract>,
     provides: &[Contract],
 ) -> Result<(), Error> {
     if observers.is_empty() {
-        return if controls.is_none() {
+        return if control.is_none() {
             Ok(())
         } else {
-            Err(Error::Controls("empty observers have no control roles"))
+            Err(Error::Controls("empty observers have no observe control"))
         };
     }
-    let controls = controls.ok_or(Error::Controls(
-        "nonempty observers require authored start and stop roles",
+    let control = control.ok_or(Error::Controls(
+        "nonempty observers require an authored observe control",
     ))?;
-    if controls[0].operation().id == controls[1].operation().id {
-        return Err(Error::Controls("control roles must be distinct"));
+    if control.operation().visibility != Visibility::Host || !provides.contains(control) {
+        return Err(Error::Controls(
+            "the observe control is an exact Host member of provides",
+        ));
     }
-    for (index, contract) in controls.iter().enumerate() {
-        if contract.operation().visibility != Visibility::Host || !provides.contains(contract) {
-            return Err(Error::Controls(
-                "each control is an exact Host member of provides",
-            ));
-        }
-        let settings = SchemaSettings::default();
-        let request = Schema::from_declaration(crate::observers::Control::DEFINITION, &settings)?;
-        let response = Schema::from_declaration(
-            if index == 0 {
-                <()>::DEFINITION
-            } else {
-                crate::observers::Status::DEFINITION
-            },
-            &settings,
-        )?;
-        if !contract.schema().equivalent(
-            contract.request().index(),
-            &request,
-            request.root,
-            &settings,
-        )? || !contract.schema().equivalent(
-            contract.response().index(),
+    if control.operation().policy != crate::observers::POLICY {
+        return Err(Error::Controls(
+            "the observe control declares the resident observers::POLICY",
+        ));
+    }
+    let settings = SchemaSettings::default();
+    let request = Schema::from_declaration(crate::observers::Control::DEFINITION, &settings)?;
+    let response = Schema::from_declaration(<()>::DEFINITION, &settings)?;
+    if !control
+        .schema()
+        .equivalent(control.request().index(), &request, request.root, &settings)?
+        || !control.schema().equivalent(
+            control.response().index(),
             &response,
             response.root,
             &settings,
-        )? {
-            return Err(Error::Controls(
-                "control request or response schema differs",
-            ));
-        }
+        )?
+    {
+        return Err(Error::Controls(
+            "observe control request or response schema differs",
+        ));
     }
     Ok(())
 }
@@ -432,12 +421,9 @@ const fn encoded_tree<const N: usize>(
     tree(&mut out, entries, &mut first, 0);
     out.raw(b"]");
     if !controls.is_empty() {
-        assert!(controls.len() == 2);
-        out.raw(b",\"observer_controls\":[");
+        assert!(controls.len() == 1);
+        out.raw(b",\"observer_control\":");
         contracts::wire(&mut out, &controls[0]);
-        out.raw(b",");
-        contracts::wire(&mut out, &controls[1]);
-        out.raw(b"]");
     }
     out.raw(b"}\0");
     out

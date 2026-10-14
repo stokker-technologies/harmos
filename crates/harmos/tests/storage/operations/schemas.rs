@@ -407,7 +407,7 @@ pub(super) fn contract_scenario() {
                         settings.clone(),
                     )
                     .unwrap();
-                    storage.start(&runtime.services).await.unwrap();
+                    storage.start(&runtime).await.unwrap();
                     let f = Fixture {
                         runtime,
                         storage,

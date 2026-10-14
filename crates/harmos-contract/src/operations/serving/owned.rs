@@ -105,6 +105,31 @@ impl<C: Send + Sync + 'static> WireTable<C> {
         )
     }
 
+    // Bind a resident control: it runs until the host cancels it and is not
+    // charged against the ordinary invocation capacity.
+    pub fn bind_resident_operation<T>(
+        &mut self,
+        resources: Arc<T::Resources>,
+    ) -> Result<(), ServingError>
+    where
+        T: for<'a> Operation<Context<'a> = &'a C, Endpoints = ()>,
+        T::Declaration: WireOperation,
+        <T::Declaration as OperationDeclaration>::Request: Message + Described,
+        <T::Declaration as OperationDeclaration>::Response: Message + Described,
+    {
+        let policy = T::Declaration::POLICY;
+        if policy.timeout != crate::operations::UNBOUNDED
+            || policy.attempt_timeout != crate::operations::UNBOUNDED
+        {
+            return Err(ServingError::Catalog);
+        }
+        self.bind_operation::<T>(resources)?;
+        if let Some(handler) = self.handlers.get_mut(T::Declaration::ID) {
+            handler.resident = true;
+        }
+        Ok(())
+    }
+
     #[cfg(feature = "streaming")]
     pub fn bind_streaming_operation<T>(
         &mut self,
@@ -319,6 +344,7 @@ impl<C: Send + Sync + 'static> WireTable<C> {
         });
         let handler = Handler {
             lifecycle,
+            resident: false,
             definition: contract.operation().clone(),
             contract: Some(contract),
             prepare,

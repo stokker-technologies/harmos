@@ -29,7 +29,7 @@ use tokio::sync::Notify;
 use super::{Lanes, app::App};
 use harmos::operations::{
     Backoff, CacheKey, Context, Failure, Jitter, Operation, OperationInstanceId, OperationPhase,
-    OperationPolicy, ReplaySafety, RetryPolicy,
+    OperationPolicy, ReplaySafety, RestartPolicy, RetryPolicy,
 };
 use harmos::{Error, Refusal, Runtime};
 
@@ -94,6 +94,7 @@ enum Mode {
                 max_retries: 1,
                 backoff: Backoff::Fixed { delay: Duration::from_millis(1), jitter: Jitter::None },
             },
+            restart: RestartPolicy::Never,
         },
         replay = ReplaySafety::Idempotent,
         key = cache_key,
@@ -825,13 +826,15 @@ mod listed {
     use std::time::Duration;
 
     use harmos::operations::{
-        AuthoredDeclarations, Context, Contracts, Declarations, OperationPolicy, RetryPolicy,
+        AuthoredDeclarations, Context, Contracts, Declarations, OperationPolicy, RestartPolicy,
+        RetryPolicy,
     };
 
     const POLICY: OperationPolicy = OperationPolicy {
         timeout: Duration::from_secs(1),
         attempt_timeout: Duration::from_secs(1),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 
     pub struct Doubling;

@@ -47,7 +47,7 @@ mod scenario_runtime;
 use harmos::catalog::{Catalog, Member};
 use harmos::operations::{
     Bindings, Context, Definition, Operation, OperationDeclaration, OperationManager,
-    OperationPolicy, PluginRegistration, RetryPolicy, Visibility,
+    OperationPolicy, PluginRegistration, RestartPolicy, RetryPolicy, Visibility,
 };
 use harmos::plugin::*;
 use harmos::plugin::{PluginEndpoint, PluginKind, Requirement};
@@ -206,6 +206,7 @@ impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> OperationDeclar
         timeout: Duration::from_millis(MILLIS),
         attempt_timeout: Duration::from_millis(MILLIS),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 }
 

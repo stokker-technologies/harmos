@@ -42,7 +42,8 @@ pub use grpc::GrpcVisitor;
 pub use instance::Instance;
 pub use key::{CacheKey, CacheKeyError, MAX_CACHE_KEY_BYTES};
 pub use policy::{
-    Backoff, Failure, Jitter, OperationPolicy, PolicyError, ReplaySafety, RetryPolicy,
+    Backoff, Failure, Jitter, OperationPolicy, PolicyError, ReplaySafety, RestartPolicy,
+    RetryPolicy,
 };
 pub use response::Response;
 pub use serving::{
@@ -63,6 +64,8 @@ use serde::{Deserialize, Serialize};
 use crate::Identifier;
 
 /* === Constants === */
+// A deadline no caller reaches: resident and watch policies run until stopped.
+pub const UNBOUNDED: std::time::Duration = std::time::Duration::from_secs(1 << 32);
 
 /* === Macros === */
 

@@ -99,9 +99,9 @@ struct Attachment {
 
 #[derive(Default)]
 struct Resources {
-    services: Option<harmos::services::ServiceManager<Bank>>,
+    services: Option<harmos::operations::OperationManager>,
     resident: Option<Resident>,
-    lease: Option<harmos::services::ServiceLease<Bank>>,
+    lease: Option<harmos::operations::OperationInstance<harmos::operations::resident::Activation>>,
     registration: Option<PluginRegistration>,
     sdk: Option<PluginSdkRegistration>,
     initializing: Option<harmos::operations::EncodedInvocation>,
@@ -113,7 +113,6 @@ struct Resources {
 
 struct Host {
     operations: harmos::operations::OperationManager,
-    services: harmos::services::ServiceManager<Bank>,
     streams: harmos::streams::StreamManager<Bank>,
     // Keeps The Original Resources Alive For The Weak Configuration Seed.
     _provider: Arc<Provider>,
@@ -300,6 +299,7 @@ impl harmos::operations::lifecycle::Policy for Publishing {
         timeout: Duration::from_secs(5),
         attempt_timeout: Duration::from_secs(5),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
@@ -383,6 +383,7 @@ impl harmos::operations::lifecycle::Policy for Dependent {
         timeout: Duration::from_secs(5),
         attempt_timeout: Duration::from_secs(5),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
@@ -502,6 +503,7 @@ impl OperationDeclaration for Retry {
                 jitter: harmos::operations::Jitter::None,
             },
         },
+        restart: RestartPolicy::Never,
     };
 }
 
@@ -758,7 +760,7 @@ impl PluginLifecycle for Host {
     }
     fn prepare(&mut self, _: &PluginDefinition) -> harmos::Result<Backends> {
         Ok(PluginBackend::Sidecar(Resources {
-            services: Some(self.services.clone()),
+            services: Some(self.operations.clone()),
             ..Resources::default()
         }))
     }
@@ -800,8 +802,8 @@ impl PluginLifecycle for Host {
             .routed(router)
         };
         resources.resident = Some(resident.clone());
-        let policy = ServicePolicy::default();
-        self.services.register(
+        let policy = harmos::services::POLICY;
+        self.operations.register_service(
             harmos::services::ServiceDefinition {
                 id: definition.id.clone(),
                 policy,
@@ -809,11 +811,7 @@ impl PluginLifecycle for Host {
             move |_: Arc<()>| resident.clone(),
         )?;
         resources.registered = true;
-        resources.lease = Some(
-            self.services
-                .activate(&definition.id, &self.services.root_scope())
-                .await?,
-        );
+        resources.lease = Some(self.operations.submit_resident(&definition.id).await?);
         let native = tokio::time::timeout(
             Duration::from_secs(2),
             resources.resident.as_ref().unwrap().staged_operations(),
@@ -970,7 +968,7 @@ impl PluginLifecycle for Host {
                 .services
                 .as_ref()
                 .unwrap()
-                .unregister(&definition.id)
+                .unregister_resident(&definition.id)
                 .await;
             resources.registered = false;
             retired?;
@@ -1035,7 +1033,6 @@ fn host(runtime: &Runtime<Bank>, provider: Arc<Provider>, lifecycle: bool) -> Ho
         .insert(id, Arc::downgrade(&provider));
     Host {
         operations: runtime.operations.clone(),
-        services: runtime.services.clone(),
         streams: runtime.streams.clone(),
         _provider: provider,
         seed: ProviderSeed { id },

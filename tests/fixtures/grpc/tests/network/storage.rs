@@ -112,7 +112,7 @@ async fn storage_uses_data() {
             )
             .unwrap(),
         );
-        storage.start(&runtime.services).await.unwrap();
+        storage.start(&runtime).await.unwrap();
         Operations::register(
             &runtime.operations,
             "storage",

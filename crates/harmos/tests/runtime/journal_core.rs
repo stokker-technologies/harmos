@@ -25,7 +25,7 @@ use super::{HostLanes, assembly, operations, service_status};
 use crate::core_journal::OriginalJournal;
 use crate::support::{Bank, DEPOSIT, Deposit, HOUSE};
 use harmos::operations::Host as _;
-use harmos::operations::{OperationPolicy, RetryPolicy};
+use harmos::operations::{OperationPolicy, RestartPolicy, RetryPolicy};
 use harmos::plugin::sidecar::{Notice, Refusal, Supervised, Supervisor};
 use harmos::{services::Service, services::ServiceStatus};
 
@@ -34,6 +34,7 @@ const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(10),
     attempt_timeout: Duration::from_secs(10),
     retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
 };
 /* === Macros === */
 
@@ -176,13 +177,13 @@ pub(super) fn contract_scenario() {
                         operations::definition(&source, serde_json::to_vec(&()).unwrap());
                     let resident = Supervised::new(source, notices as fn(&Service<Bank>, Notice));
                     runtime
-                        .services
-                        .register(
+                        .operations
+                        .register_service(
                             harmos::services::ServiceDefinition {
                                 id: "journal-carrier".into(),
-                                policy: harmos::services::ServicePolicy {
-                                    credit: 0,
-                                    ..Default::default()
+                                policy: harmos::operations::OperationPolicy {
+                                    restart: harmos::operations::RestartPolicy::Never,
+                                    ..harmos::services::POLICY
                                 },
                             },
                             move |_: Arc<()>| {
@@ -198,13 +199,15 @@ pub(super) fn contract_scenario() {
                         )
                         .unwrap();
                     let lease = runtime
-                        .services
-                        .activate("journal-carrier", &runtime.services.root_scope())
+                        .operations
+                        .submit_resident("journal-carrier")
                         .await
                         .unwrap();
-                    service_status(runtime.services.subscribe(), "journal-carrier", |status| {
-                        matches!(status, ServiceStatus::Running { .. })
-                    })
+                    service_status(
+                        runtime.operations.watch_residents(),
+                        "journal-carrier",
+                        |status| matches!(status, ServiceStatus::Running { .. }),
+                    )
                     .await;
                     // No Grant Names Transactions: The Provider Refuses The Two Withdrawals Itself
                     assert_eq!(original.prepared.load(Ordering::SeqCst), 5);

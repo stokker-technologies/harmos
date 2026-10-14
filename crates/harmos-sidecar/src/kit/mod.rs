@@ -39,8 +39,8 @@ pub use host::{CallError, PublicationError, Supervisor};
 pub use identity::ActivationId;
 pub use instance::OperationInstance;
 pub use observer::{
-    Activation, DemandKey, Instance, Observer, ObserverAttachment, ObserverContext, ObserverExit,
-    ObserverStatus, ObserverTask, Tick,
+    Activation, Activity, DemandKey, Instance, Observer, ObserverAttachment, ObserverContext,
+    ObserverError, Tick,
 };
 pub use plugin::{PluginNative, run_plugin, serve_plugin_channels};
 pub use publisher::{PublishError, Publisher};

@@ -20,7 +20,7 @@ pub mod kit;
 pub use error::{Error, Result};
 pub use harmos_contract::operations::Host;
 pub use harmos_contract::operations::{
-    CacheKey, OperationDeclaration, OperationPolicy, RetryPolicy,
+    CacheKey, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy,
 };
 pub use harmos_contract::{builtin, catalog, listeners, operations};
 

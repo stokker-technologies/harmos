@@ -125,11 +125,11 @@ impl Endpoint {
         }
     }
 
-    pub(crate) fn capture_observer_controls(&self) -> crate::Result<()> {
+    pub(crate) fn capture_observer_control(&self) -> crate::Result<()> {
         if !self
             .plugin
             .as_ref()
-            .is_some_and(|scope| scope.observer_controls().is_some())
+            .is_some_and(|scope| scope.observer_control().is_some())
         {
             return Ok(());
         }
@@ -140,7 +140,7 @@ impl Endpoint {
                 .ok_or(crate::Error::Closing {
                     domain: "native observer owner",
                 })?;
-        original.capture_controls()
+        original.capture_control()
     }
 
     pub(crate) fn bind_capacity(&self, limit: NonZeroUsize) -> crate::Result<Arc<Semaphore>> {

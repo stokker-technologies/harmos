@@ -24,9 +24,10 @@ use std::time::Duration;
 
 // Local Imports
 use super::sidecar::operations::{Lanes, Managed};
-use harmos::observers::ObserverPhase;
+use harmos::operations::OperationPhase;
+use harmos::operations::resident::{Key, Kind, Snapshot};
 use harmos::operations::{
-    OperationDeclaration, OperationPolicy, RetryPolicy, Visibility, WireOperation,
+    OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireOperation,
 };
 use harmos::plugin::sidecar::{
     Attach, DemandKey, ObserverAttachment, ObserverContext, PublicationError, PublishError,
@@ -75,9 +76,7 @@ struct Producer {
     attachment: Arc<ObserverAttachment<Resources, Publisher<Producer>>>,
 }
 
-struct Start;
-
-struct Stop;
+struct Observe;
 
 struct RecordOnly(Arc<Counts>);
 
@@ -92,8 +91,7 @@ enum Observers {
 
 #[harmos::catalog]
 enum Operations {
-    Start(Start),
-    Stop(Stop),
+    Observe(Observe),
 }
 
 /* === Traits === */
@@ -115,40 +113,31 @@ impl Drop for Seed {
     }
 }
 
-impl OperationDeclaration for Start {
+impl OperationDeclaration for Observe {
     type Request = harmos_contract::observers::Control;
     type Response = ();
-    const ID: &'static str = "demand.observer.start";
+    const ID: &'static str = "demand.observer.observe";
     const VISIBILITY: Visibility = Visibility::Host;
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(2),
-        attempt_timeout: Duration::from_millis(500),
-        retries: RetryPolicy::Never,
-    };
+    const POLICY: OperationPolicy = harmos_contract::observers::POLICY;
 }
 
-impl OperationDeclaration for Stop {
-    type Request = harmos_contract::observers::Control;
-    type Response = harmos_contract::observers::Status;
-    const ID: &'static str = "demand.observer.stop";
-    const VISIBILITY: Visibility = Visibility::Host;
-    const POLICY: OperationPolicy = Start::POLICY;
-}
-
-impl WireOperation for Start {
+impl WireOperation for Observe {
     const VERSION: u32 = 1;
 }
 
-impl WireOperation for Stop {
-    const VERSION: u32 = 1;
-}
+const LIFECYCLE: OperationPolicy = OperationPolicy {
+    timeout: Duration::from_secs(2),
+    attempt_timeout: Duration::from_millis(500),
+    retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
+};
 
 impl harmos::operations::lifecycle::Policy for Producer {
-    const INITIALIZATION_POLICY: OperationPolicy = Start::POLICY;
-    const SHUTDOWN_POLICY: OperationPolicy = Start::POLICY;
+    const INITIALIZATION_POLICY: OperationPolicy = LIFECYCLE;
+    const SHUTDOWN_POLICY: OperationPolicy = LIFECYCLE;
 }
 
-#[harmos::plugin(id = "demand-authoring", provides = Operations, requires(harmos::operations::host::Publish),  observers = Observers, observer_controls(Start, Stop), streams(Row))]
+#[harmos::plugin(id = "demand-authoring", provides = Operations, requires(harmos::operations::host::Publish),  observers = Observers, observer_control = Observe, streams(Row))]
 impl harmos::Plugin for Producer {
     type Config = usize;
     type Resources = Resources;
@@ -185,7 +174,7 @@ impl harmos::Plugin for Producer {
         &self,
         table: &mut harmos::operations::WireTable<Supervisor>,
     ) -> Result<(), harmos::operations::ServingError> {
-        self.attachment.bind::<Start, Stop>(table)
+        self.attachment.bind::<Observe>(table)
     }
     fn attachment(&self) -> Option<Arc<dyn harmos_contract::plugin::Attachment<Supervisor>>> {
         Some(self.attachment.clone())
@@ -266,6 +255,17 @@ impl Mixed {
 /* === Public Functions === */
 
 /* === Private Functions === */
+fn observers(
+    runtime: &harmos::Runtime<crate::support::Bank>,
+) -> std::collections::BTreeMap<Key, Snapshot> {
+    runtime
+        .operations
+        .residents()
+        .into_iter()
+        .filter(|(_, status)| status.kind == Kind::Observer)
+        .collect()
+}
+
 async fn until(predicate: impl Fn() -> bool) {
     tokio::time::timeout(Duration::from_secs(2), async {
         while !predicate() {
@@ -320,7 +320,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(counts.initialized.load(SeqCst), 1);
                     assert_eq!(counts.started[0].load(SeqCst), 1);
                     assert_eq!(counts.started[1].load(SeqCst), 1);
-                    let first_statuses = fixture.runtime.observers.statuses();
+                    let first_statuses = observers(&fixture.runtime);
                     assert_eq!(first_statuses.len(), 2);
 
                     let second = demands.hold(&RECORD.name()).unwrap();
@@ -344,20 +344,24 @@ pub(super) fn contract_scenario() {
                     until(|| counts.observed[1].load(SeqCst) >= before + 3).await;
                     assert_eq!(counts.started[1].load(SeqCst), 1);
                     assert_eq!(counts.stopped[1].load(SeqCst), 0);
-                    let current = fixture.runtime.observers.statuses();
+                    let current = observers(&fixture.runtime);
                     for (key, status) in &first_statuses {
-                        assert_eq!(current[key].id, status.id);
+                        assert_eq!(current[key].instance, status.instance);
                     }
                     drop(auxiliary);
                     until(|| counts.stopped.iter().all(|count| count.load(SeqCst) == 1)).await;
-                    let mut statuses = fixture.runtime.observers.subscribe();
+                    let mut statuses = fixture.runtime.operations.watch_residents();
                     tokio::time::timeout(
                         Duration::from_secs(2),
                         statuses.wait_for(|values| {
-                            values.len() == 2
-                                && values
-                                    .values()
-                                    .all(|status| status.phase == ObserverPhase::Stopped)
+                            let observers: Vec<_> = values
+                                .values()
+                                .filter(|status| status.kind == Kind::Observer)
+                                .collect();
+                            observers.len() == 2
+                                && observers.iter().all(|status| {
+                                    status.lifecycle.phase() == OperationPhase::Stopped
+                                })
                         }),
                     )
                     .await
@@ -367,7 +371,14 @@ pub(super) fn contract_scenario() {
                     let held = demands.hold(&RECORD.name()).unwrap();
                     until(|| counts.started.iter().all(|count| count.load(SeqCst) == 2)).await;
                     fixture.shutdown().await.unwrap();
-                    assert!(fixture.runtime.observers.definitions().is_empty());
+                    assert!(
+                        fixture
+                            .runtime
+                            .operations
+                            .resident_definitions()
+                            .iter()
+                            .all(|definition| definition.kind() != Kind::Observer)
+                    );
                     assert_eq!(counts.stopped[0].load(SeqCst), 2);
                     assert_eq!(counts.stopped[1].load(SeqCst), 2);
                     let replacement_seed = Seed::new(&counts);
@@ -378,7 +389,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(counts.prepared.load(SeqCst), 2);
                     until(|| counts.started.iter().all(|count| count.load(SeqCst) == 3)).await;
                     assert_eq!(counts.initialized.load(SeqCst), 2);
-                    let replacement = fixture.runtime.observers.statuses();
+                    let replacement = observers(&fixture.runtime);
                     assert!(
                         replacement
                             .keys()

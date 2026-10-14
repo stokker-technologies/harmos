@@ -26,8 +26,8 @@ use std::time::Duration;
 // Local Imports
 use super::{assembly, service_status, support::Bank};
 use harmos::{
-    Runtime, services::Fault, services::Resident, services::ServiceExit, services::ServicePolicy,
-    services::ServiceStatus, state::FactSource, state::Position, state::SystemFact,
+    Runtime, services::Fault, services::Resident, services::ServiceExit, services::ServiceStatus,
+    state::FactSource, state::Position, state::SystemFact,
 };
 
 /* === Constants === */
@@ -54,7 +54,7 @@ enum AdapterExit {
 impl Resident<Bank> for MutableAdapter {
     type Error = String;
 
-    async fn attempt(
+    async fn run(
         &mut self,
         mut context: harmos::services::Service<Bank>,
     ) -> Result<(), Fault<Self::Error>> {
@@ -72,7 +72,7 @@ impl Resident<Bank> for MutableAdapter {
             Some(None) => Err(Fault::Application("exit channel closed".to_owned())),
         }
     }
-    async fn finalize(&mut self) -> Result<(), Self::Error> {
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
         Ok(())
     }
 }
@@ -110,11 +110,12 @@ fn contract_scenario() {
                         .runtime()
                         .await
                         .expect("the service declaration is valid");
-                    let status =
-                        service_status(application.services.subscribe(), "analysis", |status| {
-                            matches!(status, ServiceStatus::Inactive { .. })
-                        })
-                        .await;
+                    let status = service_status(
+                        application.operations.watch_residents(),
+                        "analysis",
+                        |status| matches!(status, ServiceStatus::Inactive { .. }),
+                    )
+                    .await;
                     assert!(matches!(
                         status,
                         ServiceStatus::Inactive {
@@ -140,11 +141,12 @@ fn contract_scenario() {
                         .runtime()
                         .await
                         .expect("the service declaration is valid");
-                    let status =
-                        service_status(panicked.services.subscribe(), "capture", |status| {
-                            matches!(status, ServiceStatus::Inactive { .. })
-                        })
-                        .await;
+                    let status = service_status(
+                        panicked.operations.watch_residents(),
+                        "capture",
+                        |status| matches!(status, ServiceStatus::Inactive { .. }),
+                    )
+                    .await;
                     assert!(matches!(
                         status,
                         ServiceStatus::Inactive {
@@ -185,7 +187,7 @@ fn contract_scenario() {
                         .await
                         .expect("the service declaration is valid");
                     let status =
-                        service_status(runtime.services.subscribe(), "adapter", |status| {
+                        service_status(runtime.operations.watch_residents(), "adapter", |status| {
                             matches!(status, ServiceStatus::Inactive { .. })
                         })
                         .await;
@@ -218,12 +220,17 @@ fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let (exits, receiver) = tokio::sync::mpsc::unbounded_channel();
-                    let policy = ServicePolicy {
-                        credit: 1,
-                        sustained_health: Duration::from_millis(20),
-                        backoff_base: Duration::from_millis(1),
-                        backoff_cap: Duration::from_millis(1),
-                        ..ServicePolicy::default()
+                    let policy = harmos::operations::OperationPolicy {
+                        restart: harmos::operations::RestartPolicy::OnTransient {
+                            credit: 1,
+                            sustained_health: Duration::from_millis(20),
+                            backoff: harmos::operations::Backoff::Exponential {
+                                initial: Duration::from_millis(1),
+                                maximum: Duration::from_millis(1),
+                                jitter: harmos::operations::Jitter::Deterministic,
+                            },
+                        },
+                        ..harmos::services::POLICY
                     };
                     let runtime = assembly()
                         .service_with(
@@ -237,14 +244,14 @@ fn contract_scenario() {
                         .runtime()
                         .await
                         .expect("the mutable resident declaration is valid");
-                    let mut statuses = runtime.services.subscribe();
+                    let mut statuses = runtime.operations.watch_residents();
                     service_status(statuses.clone(), "adapter", |status| {
                         *status == ServiceStatus::Running { credit: 1 }
                     })
                     .await;
 
-                    let key = harmos::services::ServiceKey::root("adapter");
-                    let instance_id = runtime.services.status(&key).unwrap().id;
+                    let key = harmos::operations::resident::Key::root("adapter");
+                    let instance_id = runtime.operations.resident(&key).unwrap().instance;
 
                     exits
                         .send(AdapterExit::Environmental)
@@ -253,11 +260,14 @@ fn contract_scenario() {
                         *status == ServiceStatus::Running { credit: 0 }
                     })
                     .await;
-                    assert_eq!(runtime.services.status(&key).unwrap().id, instance_id);
+                    assert_eq!(
+                        runtime.operations.resident(&key).unwrap().instance,
+                        instance_id
+                    );
                     statuses
                         .wait_for(|all| {
-                            all.get(&harmos::services::ServiceKey::root("adapter"))
-                                .map(|item| &item.status)
+                            all.get(&harmos::operations::resident::Key::root("adapter"))
+                                .and_then(|item| item.health.as_ref())
                                 == Some(&ServiceStatus::Running { credit: 1 })
                         })
                         .await
@@ -302,7 +312,7 @@ fn contract_scenario() {
                         .runtime()
                         .await
                         .expect("the service declaration is valid");
-                    service_status(runtime.services.subscribe(), "analysis", |status| {
+                    service_status(runtime.operations.watch_residents(), "analysis", |status| {
                         matches!(status, ServiceStatus::Inactive { .. })
                     })
                     .await;

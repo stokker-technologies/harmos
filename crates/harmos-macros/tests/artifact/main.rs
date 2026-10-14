@@ -95,7 +95,7 @@ fn operation_inventory(bytes: &[u8], facility: &str, owner: &str) {
         .as_array()
         .expect("provided wire contracts");
     let expected_ids: &[&str] = if facility == "sidecar" {
-        &["selected.read", "fixture.start", "fixture.stop"]
+        &["selected.read", "fixture.observe"]
     } else {
         &["selected.read"]
     };
@@ -121,7 +121,8 @@ fn operation_inventory(bytes: &[u8], facility: &str, owner: &str) {
                         "delay": {"secs": 0, "nanos": 7},
                         "jitter": "deterministic"
                     }}
-                }}
+                }},
+                "restart": "never"
             },
             "visibility": "shared",
             "replay": "idempotent"
@@ -146,7 +147,7 @@ fn operation_inventory(bytes: &[u8], facility: &str, owner: &str) {
         assert_eq!(
             contract["policy"],
             serde_json::json!({
-                "timeout": {"secs": 2, "nanos": 0}, "attempt_timeout": {"secs": 1, "nanos": 0}, "retries": "never"
+                "timeout": {"secs": 2, "nanos": 0}, "attempt_timeout": {"secs": 1, "nanos": 0}, "retries": "never", "restart": "never"
             })
         );
     }
@@ -173,10 +174,7 @@ fn retention(version: &str) {
     assert_eq!(observers[0]["streams"], serde_json::json!(["reading"]));
     assert_eq!(observers[0]["interval"]["nanos"], 17_000_000);
     let contracts = identity(&embedded, "contracts");
-    assert_eq!(
-        inventory["observer_controls"],
-        serde_json::json!([contracts["provides"][1], contracts["provides"][2]])
-    );
+    assert_eq!(inventory["observer_control"], contracts["provides"][1]);
     assert_eq!(
         observers[0]["demand_keys"],
         serde_json::json!(["fixture:record"])

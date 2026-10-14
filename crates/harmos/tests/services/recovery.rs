@@ -26,10 +26,9 @@ use tokio::sync::Notify;
 
 // Local Imports
 use super::{app::App, service_status};
-use harmos::services::{ServiceOutcome, ServicePhase};
+use harmos::operations::{OperationOutcome, OperationPhase};
 use harmos::{
-    Runtime, services::Fault, services::Resident, services::ServiceExit, services::ServicePolicy,
-    services::ServiceStatus,
+    Runtime, services::Fault, services::Resident, services::ServiceExit, services::ServiceStatus,
 };
 
 /* === Constants === */
@@ -64,10 +63,7 @@ enum CleanupRequest {
 impl Resident<App> for RetainedCleanup {
     type Error = String;
 
-    async fn attempt(
-        &mut self,
-        context: harmos::services::Service<App>,
-    ) -> Result<(), Fault<String>> {
+    async fn run(&mut self, context: harmos::services::Service<App>) -> Result<(), Fault<String>> {
         let gate = self.gate.take().expect("one original blocking worker");
         let completed = self.completed.clone();
         self.join = Some(tokio::task::spawn_blocking(move || {
@@ -81,7 +77,7 @@ impl Resident<App> for RetainedCleanup {
         std::future::pending().await
     }
 
-    async fn finalize(&mut self) -> Result<(), String> {
+    async fn cleanup(&mut self) -> Result<(), String> {
         if self.attempts.fetch_add(1, Ordering::AcqRel) == 0 {
             if self.panic_first {
                 panic!("first original cleanup panics");
@@ -102,18 +98,22 @@ impl Resident<App> for RetainedCleanup {
 /* === Private Functions === */
 async fn stop_cleanup(
     runtime: &Runtime<App>,
-    scope: &harmos::services::ServiceScope<()>,
+    scope: &Arc<()>,
     request: CleanupRequest,
-    lease: &harmos::services::ServiceLease<App>,
+    lease: &harmos::operations::OperationInstance<harmos::operations::resident::Activation>,
 ) -> harmos::Result<()> {
     match request {
         CleanupRequest::Instance => {
-            let instance = lease.instance();
-            instance.cancel();
-            instance.join().await
+            lease.cancel();
+            lease.settle().await
         }
-        CleanupRequest::Definition => runtime.services.unregister("retained-cleanup").await,
-        CleanupRequest::Scope => runtime.services.stop_scope(scope).await,
+        CleanupRequest::Definition => {
+            runtime
+                .operations
+                .unregister_resident("retained-cleanup")
+                .await
+        }
+        CleanupRequest::Scope => runtime.operations.retire_resources(scope).await,
         CleanupRequest::Runtime => runtime.stop().await.map(|_| ()),
     }
 }
@@ -136,11 +136,11 @@ pub(super) fn contract_scenario() {
                         let cleaned = Arc::new(AtomicBool::new(false));
                         let signals = (entered.clone(), release.clone(), cleaned.clone());
                         runtime
-                            .services
-                            .register(
+                            .operations
+                            .register_service(
                                 harmos::services::ServiceDefinition {
                                     id: "reload".into(),
-                                    policy: ServicePolicy::default(),
+                                    policy: harmos::services::POLICY,
                                 },
                                 move |_: Arc<()>| {
                                     let signals = signals.clone();
@@ -158,18 +158,14 @@ pub(super) fn contract_scenario() {
                                 },
                             )
                             .unwrap();
-                        let _lease = runtime
-                            .services
-                            .activate("reload", &runtime.services.root_scope())
-                            .await
-                            .unwrap();
-                        service_status(runtime.services.subscribe(), "reload", |status| {
+                        let _lease = runtime.operations.submit_resident("reload").await.unwrap();
+                        service_status(runtime.operations.watch_residents(), "reload", |status| {
                             matches!(status, ServiceStatus::Running { .. })
                         })
                         .await;
 
                         {
-                            let stopping = runtime.services.unregister("reload");
+                            let stopping = runtime.operations.unregister_resident("reload");
                             tokio::pin!(stopping);
                             tokio::select! {
                                 _ = &mut stopping => panic!("cleanup has not been released"),
@@ -179,7 +175,7 @@ pub(super) fn contract_scenario() {
                         assert!(!cleaned.load(Ordering::SeqCst));
                         if retry {
                             {
-                                let stopping = runtime.services.unregister("reload");
+                                let stopping = runtime.operations.unregister_resident("reload");
                                 tokio::pin!(stopping);
                                 let pending = std::future::poll_fn(|cx| {
                                     std::task::Poll::Ready(
@@ -194,11 +190,9 @@ pub(super) fn contract_scenario() {
                             }
                             assert!(cleaned.load(Ordering::SeqCst));
                             assert!(
-                                !runtime
-                                    .services
-                                    .subscribe()
-                                    .borrow()
-                                    .contains_key(&harmos::services::ServiceKey::root("reload"))
+                                !runtime.operations.watch_residents().borrow().contains_key(
+                                    &harmos::operations::resident::Key::root("reload")
+                                )
                             );
                             runtime.stop().await.unwrap();
                         } else {
@@ -247,22 +241,17 @@ pub(super) fn contract_scenario() {
                         let runtime = if tenant {
                             let runtime = Runtime::<App>::builder((), ()).runtime().await.unwrap();
                             runtime
-                                .services
-                                .register(
+                                .operations
+                                .register_service(
                                     harmos::services::ServiceDefinition {
                                         id: "cleanup".into(),
-                                        policy: ServicePolicy::default(),
+                                        policy: harmos::services::POLICY,
                                     },
                                     move |_: Arc<()>| resident.clone(),
                                 )
                                 .unwrap();
-                            lease = Some(
-                                runtime
-                                    .services
-                                    .activate("cleanup", &runtime.services.root_scope())
-                                    .await
-                                    .unwrap(),
-                            );
+                            lease =
+                                Some(runtime.operations.submit_resident("cleanup").await.unwrap());
                             runtime
                         } else {
                             Runtime::<App>::builder((), ())
@@ -271,7 +260,7 @@ pub(super) fn contract_scenario() {
                                 .await
                                 .unwrap()
                         };
-                        service_status(runtime.services.subscribe(), "cleanup", |status| {
+                        service_status(runtime.operations.watch_residents(), "cleanup", |status| {
                             matches!(status, ServiceStatus::Running { .. })
                         })
                         .await;
@@ -284,13 +273,7 @@ pub(super) fn contract_scenario() {
                                 _ = entered.notified() => {}
                             }
                         }
-                        assert!(
-                            runtime
-                                .services
-                                .activate("late", &runtime.services.root_scope())
-                                .await
-                                .is_err()
-                        );
+                        assert!(runtime.operations.submit_resident("late").await.is_err());
                         let stop = runtime.stop();
                         tokio::pin!(stop);
                         assert!(
@@ -336,14 +319,11 @@ pub(super) fn contract_scenario() {
             finalizing.clone(),
         );
         runtime
-            .services
-            .register(
+            .operations
+            .register_service(
                 harmos::services::ServiceDefinition {
                     id: "retained-cleanup".into(),
-                    policy: ServicePolicy {
-                        stop_timeout: Duration::from_millis(10),
-                        ..ServicePolicy::default()
-                    },
+                    policy: harmos::operations::OperationPolicy { timeout: Duration::from_millis(10), ..harmos::services::POLICY },
                 },
                 move |_: Arc<()>| {
                     let (gate, factories, attempts, completed, finalizing) = &resources;
@@ -360,10 +340,10 @@ pub(super) fn contract_scenario() {
                 },
             )
             .unwrap();
-        let scope = runtime.services.root_scope();
+        let scope = runtime.operations.root_resources();
         let lease = runtime
-            .services
-            .activate("retained-cleanup", &scope)
+            .operations
+            .submit_resident("retained-cleanup")
             .await
             .unwrap();
         lease.ready().await.unwrap();
@@ -372,15 +352,15 @@ pub(super) fn contract_scenario() {
                 .await
                 .is_err()
         );
-        assert_eq!(lease.lifecycle().phase(), ServicePhase::Finalizing);
-        assert_eq!(lease.lifecycle().outcome(), Some(ServiceOutcome::TimedOut));
-        assert!(lease.lifecycle().cleanup_pending());
-        assert!(lease.lifecycle().settled_at().is_none());
+        assert_eq!(lease.status().phase(), OperationPhase::Finalizing);
+        assert_eq!(lease.status().outcome(), Some(OperationOutcome::TimedOut));
+        assert!(lease.status().cleanup_pending());
+        assert!(lease.status().settled_at().is_none());
         assert!(!completed.load(Ordering::Acquire));
         assert_eq!(attempts.load(Ordering::Acquire), 1);
         if !matches!(request, CleanupRequest::Instance) {
             assert!(matches!(
-                runtime.services.activate("retained-cleanup", &scope).await,
+                runtime.operations.submit_resident("retained-cleanup").await,
                 Err(harmos::Error::Closing { .. })
             ));
         }
@@ -414,17 +394,17 @@ pub(super) fn contract_scenario() {
                 .expect("original structured service cause");
         }
         assert!(completed.load(Ordering::Acquire));
-        assert_eq!(lease.lifecycle().phase(), ServicePhase::Settled);
-        assert_eq!(lease.lifecycle().outcome(), Some(ServiceOutcome::TimedOut));
-        assert!(!lease.lifecycle().cleanup_pending());
-        assert!(lease.lifecycle().settled_at().is_some());
+        assert_eq!(lease.status().phase(), OperationPhase::Stopped);
+        assert_eq!(lease.status().outcome(), Some(OperationOutcome::TimedOut));
+        assert!(!lease.status().cleanup_pending());
+        assert!(lease.status().settled_at().is_some());
         assert_eq!(attempts.load(Ordering::Acquire), 2);
         assert_eq!(factories.load(Ordering::Acquire), 1);
         if matches!(request, CleanupRequest::Definition | CleanupRequest::Scope) {
             assert!(
                 runtime
-                    .services
-                    .status(&harmos::services::ServiceKey::root("retained-cleanup"))
+                    .operations
+                    .resident(&harmos::operations::resident::Key::root("retained-cleanup"))
                     .is_none()
             );
         }
@@ -451,11 +431,11 @@ pub(super) fn contract_scenario() {
     let completed = Arc::new(AtomicBool::new(false));
     let observed = completed.clone();
     runtime
-        .services
-        .register(
+        .operations
+        .register_service(
             harmos::services::ServiceDefinition {
                 id: "environmental-cleanup".into(),
-                policy: ServicePolicy::default(),
+                policy: harmos::services::POLICY,
             },
             move |_: Arc<()>| RetainedCleanup {
                 gate: gate.lock().unwrap().take(),
@@ -469,16 +449,16 @@ pub(super) fn contract_scenario() {
         )
         .unwrap();
     let lease = runtime
-        .services
-        .activate("environmental-cleanup", &runtime.services.root_scope())
+        .operations
+        .submit_resident("environmental-cleanup")
         .await
         .unwrap();
     assert!(lease.ready().await.is_err());
     assert!(!observed.load(Ordering::Acquire));
     release.send(()).unwrap();
     let error = runtime
-        .services
-        .unregister("environmental-cleanup")
+        .operations
+        .unregister_resident("environmental-cleanup")
         .await
         .unwrap_err();
     let harmos::Error::TaskFailed { source, .. } = error else {

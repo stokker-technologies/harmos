@@ -104,7 +104,7 @@ pub(super) async fn restart(source: &Fixture) -> Fixture {
         settings,
     )
     .unwrap();
-    storage.start(&runtime.services).await.unwrap();
+    storage.start(&runtime).await.unwrap();
     Fixture {
         runtime,
         storage,
@@ -296,7 +296,7 @@ pub(super) fn contract_scenario() {
                         config(),
                     )
                     .unwrap();
-                    restored.start(&f.runtime.services).await.unwrap();
+                    restored.start(&f.runtime).await.unwrap();
                     let mut resumed = restored.resume_file(&token).await.unwrap();
                     assert_eq!(resumed.length(), 17);
                     resumed.abort().await.unwrap();
@@ -444,7 +444,7 @@ pub(super) fn contract_scenario() {
                             settings,
                         )
                         .unwrap();
-                        assert!(storage.start(&runtime.services).await.is_err());
+                        assert!(storage.start(&runtime).await.is_err());
                         storage.close().await.unwrap();
                         assert_eq!(storage.status().read_bytes, 0);
                         assert_eq!(storage.status().pending_bytes, 0);

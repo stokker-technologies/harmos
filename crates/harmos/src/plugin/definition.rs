@@ -48,7 +48,7 @@ pub struct PluginContributions {
     pub wire_contracts: Vec<harmos_contract::operations::Contract>,
     pub required_contracts: Option<Vec<harmos_contract::inventory::contracts::Required>>,
     pub observers: Vec<harmos_contract::inventory::observers::Declaration>,
-    pub observer_controls: Option<[harmos_contract::operations::Contract; 2]>,
+    pub observer_control: Option<harmos_contract::operations::Contract>,
     pub streams: Vec<StreamDeclaration>,
     pub listeners: Vec<harmos_contract::listeners::Definition>,
     pub registrations: Vec<Registration>,
@@ -149,7 +149,7 @@ impl fmt::Debug for PluginContributions {
             .field("required_contracts", &self.required_contracts)
             .field("sections", &self.sections)
             .field("observers", &self.observers)
-            .field("observer_controls", &self.observer_controls)
+            .field("observer_control", &self.observer_control)
             .field("streams", &self.streams)
             .field("listeners", &self.listeners)
             .field("registrations", &registrations)
@@ -303,7 +303,7 @@ impl PluginDefinition {
                 wire_contracts: declaration.contracts.provides.clone(),
                 required_contracts: Some(declaration.contracts.requires.clone()),
                 observers: declaration.observers.clone(),
-                observer_controls: declaration.observer_controls().cloned(),
+                observer_control: declaration.observer_control().cloned(),
                 streams: declaration.streams.clone(),
                 listeners: declaration.listeners.clone(),
                 sections: declaration.sections.clone(),
@@ -401,9 +401,9 @@ impl PluginDefinition {
                 "invalid observer inventory or publication grant",
             )
         })?;
-        harmos_contract::inventory::observers::validate_controls(
+        harmos_contract::inventory::observers::validate_control(
             &self.contributions.observers,
-            self.contributions.observer_controls.as_ref(),
+            self.contributions.observer_control.as_ref(),
             &self.contributions.wire_contracts,
         )
         .map_err(|_| {

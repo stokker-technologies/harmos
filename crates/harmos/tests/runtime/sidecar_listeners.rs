@@ -23,8 +23,8 @@ use std::time::Duration;
 use super::operations::{Calling, Lanes, Managed};
 use harmos::Message;
 use harmos::operations::{
-    Operation, OperationDeclaration, OperationPolicy, RetryPolicy, Visibility, WireOperation,
-    WireTable,
+    Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility,
+    WireOperation, WireTable,
 };
 use harmos_contract::listeners::{Context as DeliveryContext, Delivery};
 use harmos_sidecar::{Refusal, Supervisor};
@@ -101,6 +101,7 @@ impl harmos::operations::lifecycle::Policy for Receiver {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
@@ -151,6 +152,7 @@ impl OperationDeclaration for Observe {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_millis(100),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 }
 

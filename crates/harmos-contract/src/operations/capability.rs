@@ -65,6 +65,16 @@ pub trait Host: Send + Sync + Sized {
         request: O::Request,
     ) -> impl Future<Output = Result<Response<O::Response>, Self::Error>> + Send;
 
+    // Activate a resident declaration (an observer or a service) over
+    // caller-owned resources. Activations sharing the same resources share one
+    // instance and each handle holds its own lease; releasing the last lease
+    // stops it. Bindings that cannot carry process-local resources refuse.
+    fn submit_with_resources<O: Callable<Response = ()>, R: Send + Sync + 'static>(
+        &self,
+        request: O::Request,
+        resources: std::sync::Arc<R>,
+    ) -> impl Future<Output = Result<Self::Instance<O>, Self::Error>> + Send;
+
     fn submit<O: Callable<Request = O>>(
         &self,
         request: O,

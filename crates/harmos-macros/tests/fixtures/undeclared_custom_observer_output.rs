@@ -62,7 +62,7 @@ impl Watch {
 
 #[harmos::plugin(id = "missing-output", context = harmos::plugin::sidecar::Supervisor, config = (),
     provides = controls::Operations, requires = (), observers = Observers,
-    observer_controls(controls::Start, controls::Stop), restart = "never")]
+    observer_control = controls::Observe, restart = "never")]
 impl ProductPlugin for Bridge {}
 
 /* === Public Functions === */

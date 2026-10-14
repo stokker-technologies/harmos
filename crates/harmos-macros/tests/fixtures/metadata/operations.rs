@@ -23,6 +23,7 @@ pub const SDK_POLICY: harmos::operations::OperationPolicy = harmos::operations::
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(1),
     retries: harmos::operations::RetryPolicy::Never,
+    restart: harmos::operations::RestartPolicy::Never,
 };
 
 /* === Macros === */
@@ -35,10 +36,7 @@ pub struct Selected;
 pub struct Unselected;
 
 #[cfg(feature = "native")]
-pub struct Start;
-
-#[cfg(feature = "native")]
-pub struct Stop;
+pub struct Observe;
 
 #[harmos::message]
 pub struct Request {
@@ -61,8 +59,7 @@ pub enum Operations {
 pub enum NativeOperations {
     #[nested]
     Plugin(Operations),
-    Start(Start),
-    Stop(Stop),
+    Observe(Observe),
 }
 
 /* === Traits === */
@@ -85,6 +82,7 @@ impl harmos::operations::OperationDeclaration for Selected {
                 jitter: harmos::operations::Jitter::Deterministic,
             },
         },
+        restart: harmos::operations::RestartPolicy::Never,
     };
 }
 
@@ -105,30 +103,16 @@ impl harmos::operations::WireOperation for Unselected {
 }
 
 #[cfg(feature = "native")]
-impl harmos::operations::OperationDeclaration for Start {
+impl harmos::operations::OperationDeclaration for Observe {
     type Request = harmos::operations::observers::Control;
     type Response = ();
-    const ID: &'static str = "fixture.start";
-    const POLICY: harmos::operations::OperationPolicy = SDK_POLICY;
+    const ID: &'static str = "fixture.observe";
+    const POLICY: harmos::operations::OperationPolicy = harmos::operations::observers::POLICY;
     const VISIBILITY: harmos::operations::Visibility = harmos::operations::Visibility::Host;
 }
 
 #[cfg(feature = "native")]
-impl harmos::operations::WireOperation for Start {
-    const VERSION: u32 = 1;
-}
-
-#[cfg(feature = "native")]
-impl harmos::operations::OperationDeclaration for Stop {
-    type Request = harmos::operations::observers::Control;
-    type Response = harmos::operations::observers::Status;
-    const ID: &'static str = "fixture.stop";
-    const POLICY: harmos::operations::OperationPolicy = SDK_POLICY;
-    const VISIBILITY: harmos::operations::Visibility = harmos::operations::Visibility::Host;
-}
-
-#[cfg(feature = "native")]
-impl harmos::operations::WireOperation for Stop {
+impl harmos::operations::WireOperation for Observe {
     const VERSION: u32 = 1;
 }
 

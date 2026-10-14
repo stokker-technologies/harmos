@@ -27,8 +27,8 @@ use super::children::{CHILD_REQUESTS, ChildRequest, Children};
 use super::{Context, Operation, OperationManager};
 use crate::catalog::{Catalog, Member, Visitor};
 use crate::operations::{
-    Definition, Failure, OperationDeclaration, OperationPolicy, RetryPolicy, WireAnswer,
-    WireCommand, WireOperation,
+    Definition, Failure, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy,
+    WireAnswer, WireCommand, WireOperation,
 };
 use crate::schema::Described;
 use crate::services::{NativeEndpoint, SidecarError};
@@ -691,6 +691,7 @@ impl<E: super::StreamEndpoints> OperationDeclaration for Encoded<E> {
         timeout: Duration::ZERO,
         attempt_timeout: Duration::ZERO,
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 }
 
@@ -868,8 +869,16 @@ impl Binding {
         self.native.endpoint.observer_outcome()
     }
 
-    pub(super) fn capture_observer_controls(&self) -> Result<()> {
-        self.native.endpoint.capture_observer_controls()
+    pub(super) fn capture_observer_control(&self) -> Result<()> {
+        self.native.endpoint.capture_observer_control()
+    }
+
+    // A slot of its own: resident controls are not charged against the
+    // plugin's call capacity.
+    pub(super) fn resident_slot() -> OwnedSemaphorePermit {
+        Arc::new(Semaphore::new(1))
+            .try_acquire_owned()
+            .expect("a fresh resident slot is free")
     }
 
     pub(super) fn reserve(&self) -> std::result::Result<OwnedSemaphorePermit, NativeError> {
@@ -1035,9 +1044,10 @@ pub(super) fn bindings(
             }?;
             let entry_mut = Arc::get_mut(&mut entry).expect("new native entry has one owner");
             entry_mut.native = Some(handler);
-            entry_mut.observer_stop = scope
-                .observer_controls()
-                .is_some_and(|pair| exact_contract.as_ref() == Some(&pair[1]));
+            // The observe control runs until cancelled outside any bounded lane.
+            if exact_contract.is_some() && scope.observer_control() == exact_contract.as_ref() {
+                entry_mut.resident();
+            }
             #[cfg(feature = "grpc")]
             if exact_contract
                 .as_ref()

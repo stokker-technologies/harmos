@@ -92,7 +92,7 @@ struct Backend<A: Application, S, H> {
 struct Host<A: Application, S, H, L> {
     progress: Option<crate::plugin::Driving>,
     residents: BTreeMap<String, Supervised<A, S, H>>,
-    context: Service<A>,
+    streams: crate::streams::StreamManager<A>,
     polling: Vec<(String, Polling<A, S, H>)>,
     dependencies: BTreeMap<String, BTreeSet<String>>,
     operations: OperationManager,
@@ -127,10 +127,12 @@ where
     A: Application,
     L: Lane + Clone,
 {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new<C>(
         resident: Supervised<A, Executable, Diagnostics<A>>,
         definition: &PluginDefinition,
-        context: Service<A>,
+        operations: OperationManager,
+        streams: crate::streams::StreamManager<A>,
         lane: L,
         capacity: NonZeroUsize,
         encoding_memory_bytes: NonZeroUsize,
@@ -141,11 +143,10 @@ where
             + crate::catalog::Catalog<crate::operations::NativeBindings>,
     {
         verify_executable_inputs(&resident.attach, definition)?;
-        let operations = context.operations().clone();
         let mut host = Host {
             progress: Some(progress),
             residents: BTreeMap::from([(definition.id.clone(), resident)]),
-            context,
+            streams,
             polling: Vec::new(),
             dependencies: BTreeMap::from([(definition.id.clone(), BTreeSet::new())]),
             operations,
@@ -169,7 +170,6 @@ where
         router: &Router,
         authority: &PluginLifecycleAuthority<'_>,
     ) -> Result<()> {
-        self.host.context.provider.initialize_attempt(0);
         if let Err(error) = self
             .host
             .start(definition, router, authority, &mut self.backend)
@@ -186,10 +186,6 @@ where
                 None => Err(error),
             };
         }
-        self.host
-            .context
-            .provider
-            .transition(crate::supervision::instance::Phase::Running);
         Ok(())
     }
 
@@ -199,13 +195,7 @@ where
         authority: &PluginLifecycleAuthority<'_>,
     ) -> Result<()> {
         Host::<A, Executable, Diagnostics<A>, L>::stop(definition, authority, &mut self.backend)
-            .await?;
-        self.host
-            .context
-            .provider
-            .complete(crate::supervision::instance::Outcome::Succeeded);
-        self.host.context.provider.finished();
-        Ok(())
+            .await
     }
 
     pub(crate) fn poll(&mut self, context: &mut std::task::Context<'_>) -> Poll<Result<()>> {
@@ -401,10 +391,7 @@ where
     L: Lane + Clone,
 {
     type Error = ManagedError;
-    async fn attempt(
-        &mut self,
-        context: Service<A>,
-    ) -> std::result::Result<(), Fault<ManagedError>> {
+    async fn run(&mut self, context: Service<A>) -> std::result::Result<(), Fault<ManagedError>> {
         if context.is_stopping() {
             return Ok(());
         }
@@ -440,11 +427,11 @@ where
             }
             dependencies.insert(definition.id.clone(), selected);
         }
-        let operations = context.operations().clone();
+        let operations = context.operations.clone();
         self.host = Some(Host {
             progress: None,
             residents: self.residents.clone(),
-            context,
+            streams: context.streams().clone(),
             polling: Vec::with_capacity(self.residents.len()),
             dependencies,
             operations,
@@ -466,7 +453,7 @@ where
                 _ => Err(Fault::Application(ManagedError::Lifecycle(error))),
             };
         }
-        let mut stopping = host.context.shared_attempt();
+        let mut stopping = context.shared_attempt();
         let readiness = async {
             for resident in host.residents.values() {
                 let mut ready = resident.ready();
@@ -480,17 +467,17 @@ where
         };
         let mut readiness = std::pin::pin!(readiness);
         let mut ready = false;
-        let running = std::future::poll_fn(|context| {
+        let running = std::future::poll_fn(|task| {
             for (_, physical) in &host.polling {
-                if let Poll::Ready(outcome) = physical.poll(context) {
+                if let Poll::Ready(outcome) = physical.poll(task) {
                     return Poll::Ready(outcome);
                 }
             }
-            if !ready && let Poll::Ready(outcome) = readiness.as_mut().poll(context) {
+            if !ready && let Poll::Ready(outcome) = readiness.as_mut().poll(task) {
                 if let Err(fault) = outcome {
                     return Poll::Ready(Err(fault));
                 }
-                host.context.ready();
+                context.ready();
                 ready = true;
             }
             Poll::Pending
@@ -512,7 +499,7 @@ where
             .map_err(ManagedError::Lifecycle)
     }
 
-    async fn finalize(&mut self) -> std::result::Result<(), ManagedError> {
+    async fn cleanup(&mut self) -> std::result::Result<(), ManagedError> {
         self.host.take();
         Ok(())
     }
@@ -575,7 +562,7 @@ where
         let mut resident = original.clone().routed(router);
         // The Original Manager Acknowledges SDK Shutdown Before Physical Stop.
         resident.manager_owned_stop = true;
-        backend.physical = Some(Physical::new(resident, self.context.shared_attempt()));
+        backend.physical = Some(Physical::new(resident, &self.operations)?);
         let physical = backend
             .physical
             .as_mut()
@@ -623,7 +610,7 @@ where
                     (self.catalog)(bindings, self.lane.clone(), native.clone(), self.capacity)
                 },
             )?);
-        backend.stream_listeners = Some(self.context.streams().stage_listeners(
+        backend.stream_listeners = Some(self.streams.stage_listeners(
             native.scope().expect("original native scope"),
             &self.operations,
             |bindings| (self.stream_listeners)(definition, bindings),
@@ -648,6 +635,7 @@ where
         .await?;
         backend.initializing.take();
         result?;
+        physical.ready();
         Ok(())
     }
 

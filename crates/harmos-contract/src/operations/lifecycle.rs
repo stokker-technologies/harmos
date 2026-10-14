@@ -24,8 +24,8 @@ use std::marker::PhantomData;
 use serde::{Deserialize, Serialize};
 // Local Imports
 use super::{
-    Contract, ContractError, OperationDeclaration, OperationPolicy, PolicyError, RetryPolicy,
-    WireOperation,
+    Contract, ContractError, OperationDeclaration, OperationPolicy, PolicyError, RestartPolicy,
+    RetryPolicy, WireOperation,
 };
 use crate::catalog::{self, Member};
 use crate::schema::declaration::{Field, Kind};
@@ -86,6 +86,8 @@ pub enum Error {
     Policy(#[from] PolicyError),
     #[error("SDK lifecycle operations require explicit retry, never automatic replay")]
     AutomaticRetry,
+    #[error("SDK lifecycle operations are request-scoped and never restart")]
+    Resident,
     #[error("unsupported SDK lifecycle semantic version {0}")]
     Version(u32),
     #[error("invalid SDK lifecycle contract: {0}")]
@@ -186,6 +188,9 @@ impl Descriptor {
         policy.validate()?;
         if policy.retries != RetryPolicy::Never {
             return Err(Error::AutomaticRetry);
+        }
+        if policy.restart != RestartPolicy::Never {
+            return Err(Error::Resident);
         }
         let contract = Contract::lifecycle(action, policy)?;
         Ok(Self { action, contract })

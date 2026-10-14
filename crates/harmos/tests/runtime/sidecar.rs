@@ -145,13 +145,13 @@ use support::{Bank, Ledger, catalog, streams};
 use crate::support;
 use harmos::Message;
 use harmos::operations::{
-    OperationDeclaration, OperationPolicy, RetryPolicy, Visibility, WireTable,
+    OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireTable,
 };
 use harmos::plugin::sidecar::inventory::{Declaration, Facility};
 use harmos::plugin::sidecar::{Executable, Frame, Notice, SidecarError, Supervised};
 use harmos::{
-    Runtime, services::Service, services::ServiceExit, services::ServicePolicy,
-    services::ServiceStatus, state::FactSource, state::Position, state::SystemFact,
+    Runtime, services::Service, services::ServiceExit, services::ServiceStatus, state::FactSource,
+    state::Position, state::SystemFact,
 };
 use harmos_sidecar::{Attach, Refusal, Supervisor};
 
@@ -161,6 +161,7 @@ const GAUGE_POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(1),
     attempt_timeout: Duration::from_secs(1),
     retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
 };
 
 /* === Macros === */
@@ -348,6 +349,7 @@ impl OperationDeclaration for Amplify {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
     const VISIBILITY: Visibility = Visibility::Shared;
 
@@ -361,6 +363,7 @@ impl OperationDeclaration for Sample {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
     const VISIBILITY: Visibility = Visibility::Host;
 
@@ -374,6 +377,7 @@ impl OperationDeclaration for Emit {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
     const VISIBILITY: Visibility = Visibility::Shared;
 
@@ -387,6 +391,7 @@ impl OperationDeclaration for PublishPulse {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
     const VISIBILITY: Visibility = Visibility::Shared;
 
@@ -400,6 +405,7 @@ impl OperationDeclaration for Collapse {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
     const VISIBILITY: Visibility = Visibility::Shared;
 
@@ -413,6 +419,7 @@ impl OperationDeclaration for Finish {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
     const VISIBILITY: Visibility = Visibility::Shared;
 
@@ -428,6 +435,7 @@ impl OperationDeclaration for Ask {
         timeout: Duration::from_millis(25),
         attempt_timeout: Duration::from_millis(25),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 
     type Response = ();
@@ -440,6 +448,7 @@ impl OperationDeclaration for BudgetedRoute {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
     const VISIBILITY: Visibility = Visibility::Shared;
 
@@ -611,6 +620,7 @@ impl OperationDeclaration for MeterEcho {
         timeout: Duration::from_millis(80),
         attempt_timeout: Duration::from_millis(80),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 }
 
@@ -1031,6 +1041,7 @@ impl harmos::operations::lifecycle::Policy for Meter {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
@@ -1118,10 +1129,8 @@ impl Attach for MeterSource {
     fn observers(&self) -> Vec<harmos_sidecar::inventory::observers::Declaration> {
         self.source.observers()
     }
-    fn observer_controls(
-        &self,
-    ) -> harmos_contract::Result<Option<[harmos::operations::Contract; 2]>> {
-        self.source.observer_controls()
+    fn observer_control(&self) -> harmos_contract::Result<Option<harmos::operations::Contract>> {
+        self.source.observer_control()
     }
     fn listener_declarations(
         &self,
@@ -1166,7 +1175,7 @@ fn assert_transport_refusal(error: harmos::Error, code: i64, detail: &str) {
 
 async fn service_status(
     mut services: tokio::sync::watch::Receiver<
-        BTreeMap<harmos::services::ServiceKey, harmos::services::ServiceSnapshot>,
+        BTreeMap<harmos::operations::resident::Key, harmos::operations::resident::Snapshot>,
     >,
     name: &str,
     wanted: impl Fn(&ServiceStatus) -> bool,
@@ -1175,8 +1184,8 @@ async fn service_status(
         loop {
             if let Some(status) = services
                 .borrow()
-                .get(&harmos::services::ServiceKey::root(name))
-                .map(|item| item.status.clone())
+                .get(&harmos::operations::resident::Key::root(name))
+                .and_then(|item| item.health.clone())
                 && wanted(&status)
             {
                 return status;
@@ -1279,12 +1288,17 @@ fn own_contract() {
                         source,
                         (|_: &Service<Bank>, _: Notice| {}) as fn(&Service<Bank>, Notice),
                     );
-                    let policy = ServicePolicy {
-                        credit: 2,
-                        sustained_health: Duration::from_secs(30),
-                        backoff_base: Duration::from_millis(1),
-                        backoff_cap: Duration::from_millis(2),
-                        ..ServicePolicy::default()
+                    let policy = harmos::operations::OperationPolicy {
+                        restart: harmos::operations::RestartPolicy::OnTransient {
+                            credit: 2,
+                            sustained_health: Duration::from_secs(30),
+                            backoff: harmos::operations::Backoff::Exponential {
+                                initial: Duration::from_millis(1),
+                                maximum: Duration::from_millis(2),
+                                jitter: harmos::operations::Jitter::Deterministic,
+                            },
+                        },
+                        ..harmos::services::POLICY
                     };
                     let runtime = assembly()
                         .register(operations::Lanes::catalog())
@@ -1315,8 +1329,8 @@ fn own_contract() {
                         .unwrap();
                     let resident = calls.clone();
                     runtime
-                        .services
-                        .register(
+                        .operations
+                        .register_service(
                             harmos::services::ServiceDefinition {
                                 id: "meter".into(),
                                 policy,
@@ -1333,13 +1347,9 @@ fn own_contract() {
                             },
                         )
                         .unwrap();
-                    let lease = runtime
-                        .services
-                        .activate("meter", &runtime.services.root_scope())
-                        .await
-                        .unwrap();
+                    let lease = runtime.operations.submit_resident("meter").await.unwrap();
 
-                    let statuses = runtime.services.subscribe();
+                    let statuses = runtime.operations.watch_residents();
                     service_status(statuses.clone(), "meter", |status| {
                         *status == ServiceStatus::Running { credit: 2 }
                     })
@@ -1408,7 +1418,11 @@ fn own_contract() {
                         Amplified { value: 10 }
                     );
                     lease.release().await.unwrap();
-                    runtime.services.unregister("meter").await.unwrap();
+                    runtime
+                        .operations
+                        .unregister_resident("meter")
+                        .await
+                        .unwrap();
                     runtime.stop().await.unwrap();
                 });
         });
@@ -1516,11 +1530,11 @@ fn own_contract() {
                         )
                         .unwrap();
                     runtime
-                        .services
-                        .register(
+                        .operations
+                        .register_service(
                             harmos::services::ServiceDefinition {
                                 id: "meter".into(),
-                                policy: ServicePolicy::default(),
+                                policy: harmos::services::POLICY,
                             },
                             move |_: Arc<()>| {
                                 harmos::plugin::sidecar::Managed::new(
@@ -1534,12 +1548,8 @@ fn own_contract() {
                             },
                         )
                         .unwrap();
-                    let _lease = runtime
-                        .services
-                        .activate("meter", &runtime.services.root_scope())
-                        .await
-                        .unwrap();
-                    service_status(runtime.services.subscribe(), "meter", |status| {
+                    let _lease = runtime.operations.submit_resident("meter").await.unwrap();
+                    service_status(runtime.operations.watch_residents(), "meter", |status| {
                         matches!(status, ServiceStatus::Running { .. })
                     })
                     .await;
@@ -1563,10 +1573,11 @@ fn own_contract() {
                         "a reply from the closed generation is revoked: {outcome:?}"
                     );
 
-                    let status = service_status(runtime.services.subscribe(), "meter", |status| {
-                        matches!(status, ServiceStatus::Inactive { .. })
-                    })
-                    .await;
+                    let status =
+                        service_status(runtime.operations.watch_residents(), "meter", |status| {
+                            matches!(status, ServiceStatus::Inactive { .. })
+                        })
+                        .await;
 
                     assert!(
                         matches!(
@@ -1749,11 +1760,11 @@ fn own_contract() {
     // Retain The Exact Managed Artifact Frozen Before The File Changed.
     let original = Mutex::new(Some(managed));
     runtime
-        .services
-        .register(
+        .operations
+        .register_service(
             harmos::services::ServiceDefinition {
                 id: "meter".into(),
-                policy: ServicePolicy::default(),
+                policy: harmos::services::POLICY,
             },
             move |_: Arc<()>| {
                 original
@@ -1765,11 +1776,11 @@ fn own_contract() {
         )
         .unwrap();
     let _lease = runtime
-        .services
-        .activate("meter", &runtime.services.root_scope())
+        .operations
+        .submit_resident("meter")
         .await
         .unwrap();
-    let status = service_status(runtime.services.subscribe(), "meter", |status| {
+    let status = service_status(runtime.operations.watch_residents(), "meter", |status| {
         matches!(status, ServiceStatus::Inactive { .. })
     })
     .await;
@@ -1810,8 +1821,8 @@ fn own_contract() {
                         });
 
                     let (runtime, _lease) =
-                        process_runtime(meter, definition, ServicePolicy::default()).await;
-                    service_status(runtime.services.subscribe(), "meter", |status| {
+                        process_runtime(meter, definition, harmos::services::POLICY).await;
+                    service_status(runtime.operations.watch_residents(), "meter", |status| {
                         matches!(status, ServiceStatus::Running { .. })
                     })
                     .await;
@@ -1842,11 +1853,11 @@ fn own_contract() {
                     assert!(
                         matches!(
                             runtime
-                                .services
-                                .subscribe()
+                                .operations
+                                .watch_residents()
                                 .borrow()
-                                .get(&harmos::services::ServiceKey::root("meter"))
-                                .map(|item| &item.status),
+                                .get(&harmos::operations::resident::Key::root("meter"))
+                                .and_then(|item| item.health.as_ref()),
                             Some(ServiceStatus::Running { .. })
                         ),
                         "the native exchange remains live after the diagnostic"
@@ -1870,8 +1881,8 @@ fn own_contract() {
                             .grace(Duration::from_millis(50));
                     let mut ready = meter.ready();
                     let (runtime, _lease) =
-                        process_runtime(meter, definition, ServicePolicy::default()).await;
-                    service_status(runtime.services.subscribe(), "meter", |status| {
+                        process_runtime(meter, definition, harmos::services::POLICY).await;
+                    service_status(runtime.operations.watch_residents(), "meter", |status| {
                         matches!(status, ServiceStatus::Running { .. })
                     })
                     .await;
@@ -1952,8 +1963,8 @@ fn own_contract() {
                         Supervised::new(source, |_context: &Service<Bank>, _notice: Notice| {})
                             .grace(Duration::from_millis(50));
                     let (runtime, _lease) =
-                        process_runtime(meter, definition, ServicePolicy::default()).await;
-                    service_status(runtime.services.subscribe(), "meter", |status| {
+                        process_runtime(meter, definition, harmos::services::POLICY).await;
+                    service_status(runtime.operations.watch_residents(), "meter", |status| {
                         matches!(status, ServiceStatus::Running { .. })
                     })
                     .await;
@@ -1975,11 +1986,11 @@ fn own_contract() {
                     assert!(
                         matches!(
                             runtime
-                                .services
-                                .subscribe()
+                                .operations
+                                .watch_residents()
                                 .borrow()
-                                .get(&harmos::services::ServiceKey::root("meter"))
-                                .map(|item| &item.status),
+                                .get(&harmos::operations::resident::Key::root("meter"))
+                                .and_then(|item| item.health.as_ref()),
                             Some(ServiceStatus::Running { .. })
                         ),
                         "a deadline refuses the caller; it does not fault the service"
@@ -1998,16 +2009,10 @@ fn own_contract() {
     let meter = Supervised::new(source, |_context: &Service<Bank>, _notice: Notice| {})
         .handshake(Duration::from_millis(50))
         .grace(Duration::from_millis(50));
-    let policy = ServicePolicy {
-        credit: 1,
-        sustained_health: Duration::from_secs(30),
-        backoff_base: Duration::from_millis(1),
-        backoff_cap: Duration::from_millis(2),
-        ..ServicePolicy::default()
-    };
+    let policy = harmos::operations::OperationPolicy { restart: harmos::operations::RestartPolicy::OnTransient { credit: 1, sustained_health: Duration::from_secs(30), backoff: harmos::operations::Backoff::Exponential { initial: Duration::from_millis(1), maximum: Duration::from_millis(2), jitter: harmos::operations::Jitter::Deterministic } }, ..harmos::services::POLICY };
     let (runtime, _lease) = process_runtime(meter, definition, policy).await;
 
-    let status = service_status(runtime.services.subscribe(), "meter", |status| {
+    let status = service_status(runtime.operations.watch_residents(), "meter", |status| {
         matches!(status, ServiceStatus::Inactive { .. })
     })
     .await;
@@ -2178,10 +2183,7 @@ fn own_contract() {
     let (runtime, _lease) = process_runtime(
         sidecar,
         definition,
-        ServicePolicy {
-            credit: 0,
-            ..ServicePolicy::default()
-        },
+        harmos::operations::OperationPolicy { restart: harmos::operations::RestartPolicy::Never, ..harmos::services::POLICY },
     )
     .await;
     tokio::time::timeout(Duration::from_secs(5), async {
@@ -2209,9 +2211,9 @@ fn own_contract() {
     assert!(
         matches!(
             runtime
-                .services
-                .status(&harmos::services::ServiceKey::root("meter"))
-                .map(|instance| instance.status),
+                .operations
+                .resident(&harmos::operations::resident::Key::root("meter"))
+                .and_then(|instance| instance.health),
             Some(ServiceStatus::Running { .. })
         ),
         "a refused publication keeps the original carrier usable"
@@ -2370,10 +2372,8 @@ fn own_contract() {
         fn observers(&self) -> Vec<harmos_sidecar::inventory::observers::Declaration> {
             self.source.observers()
         }
-        fn observer_controls(
-            &self,
-        ) -> harmos_contract::Result<Option<[harmos::operations::Contract; 2]>> {
-            self.source.observer_controls()
+        fn observer_control(&self) -> harmos_contract::Result<Option<harmos::operations::Contract>> {
+            self.source.observer_control()
         }
         fn listener_declarations(
             &self,
@@ -2513,8 +2513,11 @@ fn process_definition(source: &Executable) -> harmos::plugin::PluginDefinition {
 async fn process_runtime<H>(
     resident: Supervised<Bank, Executable, H>,
     definition: harmos::plugin::PluginDefinition,
-    policy: ServicePolicy,
-) -> (Runtime<Bank>, harmos::services::ServiceLease<Bank>)
+    policy: harmos::operations::OperationPolicy,
+) -> (
+    Runtime<Bank>,
+    harmos::operations::OperationInstance<harmos::operations::resident::Activation>,
+)
 where
     H: Fn(&Service<Bank>, Notice) + Send + Sync + 'static,
 {
@@ -2548,8 +2551,8 @@ where
         .unwrap();
     let id = definition.id.clone();
     runtime
-        .services
-        .register(
+        .operations
+        .register_service(
             harmos::services::ServiceDefinition {
                 id: id.clone(),
                 policy,
@@ -2566,11 +2569,7 @@ where
             },
         )
         .unwrap();
-    let lease = runtime
-        .services
-        .activate(&id, &runtime.services.root_scope())
-        .await
-        .unwrap();
+    let lease = runtime.operations.submit_resident(&id).await.unwrap();
     (runtime, lease)
 }
 

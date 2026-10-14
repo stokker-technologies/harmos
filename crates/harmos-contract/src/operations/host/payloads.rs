@@ -367,6 +367,10 @@ pub(crate) mod builtin {
         instance: u64 => (1, Kind::U64, Required),
     }
 
+    payload! { Watch,
+        instance: u64 => (1, Kind::U64, Required),
+    }
+
     payload! { InstanceState,
         phase: String => (1, Kind::String, Required),
         outcome: String => (2, Kind::String, Required),

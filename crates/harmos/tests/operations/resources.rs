@@ -26,7 +26,7 @@ use std::time::Duration;
 
 // Local Imports
 use super::{Lanes, app::App};
-use harmos::operations::{Context, Operation, OperationPolicy, RetryPolicy};
+use harmos::operations::{Context, Operation, OperationPolicy, RestartPolicy, RetryPolicy};
 use harmos::{Error, Runtime, state::Position};
 
 /* === Constants === */
@@ -56,6 +56,7 @@ struct Read {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
             retries: RetryPolicy::Never,
+            restart: RestartPolicy::Never,
         },
     )]
 struct ReadContract;

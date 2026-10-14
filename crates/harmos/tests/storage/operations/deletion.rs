@@ -339,7 +339,7 @@ pub(super) fn contract_scenario() {
                             config(),
                         )
                         .unwrap();
-                        storage.start(&f.runtime.services).await.unwrap();
+                        storage.start(&f.runtime).await.unwrap();
                         storage
                             .wait_replicas(&saved, &[Identifier::new("new").unwrap()])
                             .await

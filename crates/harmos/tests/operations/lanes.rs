@@ -38,7 +38,7 @@ use tokio::sync::{Semaphore, mpsc};
 
 // Local Imports
 use super::app::App;
-use harmos::operations::{Context, Operation, OperationPolicy, RetryPolicy};
+use harmos::operations::{Context, Operation, OperationPolicy, RestartPolicy, RetryPolicy};
 use harmos::{Runtime, operations::Capacity, operations::Lane};
 
 /* === Constants === */
@@ -79,6 +79,7 @@ enum Lanes {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
             retries: RetryPolicy::Never,
+            restart: RestartPolicy::Never,
         },
     )]
 struct MeasureContract;

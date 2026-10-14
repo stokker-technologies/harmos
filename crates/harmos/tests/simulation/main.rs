@@ -225,13 +225,15 @@ use std::time::{Duration, Instant};
 
 // Local Imports
 use harmos::operations::WireTable;
-use harmos::operations::{Context, Operation, OperationDeclaration, OperationPolicy, RetryPolicy};
+use harmos::operations::{
+    Context, Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy,
+};
 use harmos::plugin::sidecar::{Notice, Supervised};
 use harmos::simulation::entropy;
 use harmos::{
     Application, Builder, DefinitionId, Identified, Runtime, evidence::EvidenceKind,
-    runtime::Catalog, runtime::Registration, services::Fault, services::ServicePolicy,
-    simulation::SimulatedRuntime, state::Focus, state::Kind, state::Transaction,
+    runtime::Catalog, runtime::Registration, services::Fault, simulation::SimulatedRuntime,
+    state::Focus, state::Kind, state::Transaction,
 };
 use harmos_sidecar::{Attach, PluginNative, Supervisor};
 use support::{Bank, DEPOSIT, Deposit, Ledger, NOTED, Noted, alice, catalog, pulse, streams};
@@ -344,6 +346,7 @@ impl OperationDeclaration for Pending {
         timeout: Duration::from_secs(30),
         attempt_timeout: Duration::from_millis(5),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 }
 
@@ -378,6 +381,7 @@ impl OperationDeclaration for Answering {
         timeout: Duration::from_secs(30),
         attempt_timeout: Duration::from_millis(50),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 }
 
@@ -414,6 +418,7 @@ impl OperationDeclaration for Drawing {
         timeout: Duration::from_secs(30),
         attempt_timeout: Duration::from_millis(100),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 }
 
@@ -502,6 +507,7 @@ impl OperationDeclaration for TimingItsOwnWait {
         timeout: Duration::from_secs(30),
         attempt_timeout: Duration::from_millis(10000),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 }
 
@@ -591,7 +597,7 @@ impl EvidenceKind for Capture {
 impl harmos::services::Resident<Bank> for Capturing {
     type Error = String;
 
-    async fn attempt(
+    async fn run(
         &mut self,
         mut context: harmos::services::Service<Bank>,
     ) -> Result<(), Fault<String>> {
@@ -635,7 +641,7 @@ impl harmos::services::Resident<Bank> for Capturing {
 
         Ok(())
     }
-    async fn finalize(&mut self) -> Result<(), Self::Error> {
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
         Ok(())
     }
 }
@@ -668,6 +674,7 @@ impl harmos::operations::lifecycle::Policy for Idle {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(2),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
@@ -723,7 +730,7 @@ impl IdleResident {
                 lifecycle: source.sdk_lifecycle().unwrap(),
                 streams: source.publications(),
                 observers: source.observers(),
-                observer_controls: source.observer_controls().unwrap(),
+                observer_control: source.observer_control().unwrap(),
                 listeners: source.listener_declarations().unwrap().unwrap_or_default(),
                 ..Default::default()
             },
@@ -753,17 +760,17 @@ impl Clone for IdleResident {
 
 impl harmos::services::Resident<Bank> for IdleResident {
     type Error = harmos::plugin::sidecar::ManagedError;
-    async fn attempt(
+    async fn run(
         &mut self,
         context: harmos::services::Service<Bank>,
     ) -> Result<(), Fault<Self::Error>> {
-        harmos::services::Resident::attempt(&mut self.managed, context).await
+        harmos::services::Resident::run(&mut self.managed, context).await
     }
     async fn stop(&mut self) -> Result<(), Self::Error> {
         harmos::services::Resident::stop(&mut self.managed).await
     }
-    async fn finalize(&mut self) -> Result<(), Self::Error> {
-        harmos::services::Resident::finalize(&mut self.managed).await
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
+        harmos::services::Resident::cleanup(&mut self.managed).await
     }
 }
 
@@ -901,10 +908,17 @@ fn contract_scenario() {
             let mut sim = bank(7)
                 .simulated_service_with(
                     "adapter",
-                    ServicePolicy {
-                        backoff_base: Duration::from_millis(5),
-                        backoff_cap: Duration::from_millis(5),
-                        ..ServicePolicy::default()
+                    harmos::operations::OperationPolicy {
+                        restart: harmos::operations::RestartPolicy::OnTransient {
+                            credit: 3,
+                            sustained_health: Duration::from_millis(250),
+                            backoff: harmos::operations::Backoff::Exponential {
+                                initial: Duration::from_millis(5),
+                                maximum: Duration::from_millis(5),
+                                jitter: harmos::operations::Jitter::Deterministic,
+                            },
+                        },
+                        ..harmos::services::POLICY
                     },
                     resident,
                 )
@@ -1086,10 +1100,17 @@ fn contract_scenario() {
     {
         scenario_runtime::check("sidecar_fault_scripted", || {
             let script = |seed: u64| {
-                let policy = ServicePolicy {
-                    backoff_base: Duration::from_millis(1),
-                    backoff_cap: Duration::from_millis(1),
-                    ..ServicePolicy::default()
+                let policy = harmos::operations::OperationPolicy {
+                    restart: harmos::operations::RestartPolicy::OnTransient {
+                        credit: 3,
+                        sustained_health: Duration::from_millis(250),
+                        backoff: harmos::operations::Backoff::Exponential {
+                            initial: Duration::from_millis(1),
+                            maximum: Duration::from_millis(1),
+                            jitter: harmos::operations::Jitter::Deterministic,
+                        },
+                    },
+                    ..harmos::services::POLICY
                 };
                 let mut sim = bank(seed)
                     .operation_settings(harmos::operations::Settings {

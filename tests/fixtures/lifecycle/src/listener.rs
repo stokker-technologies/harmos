@@ -27,8 +27,8 @@ use tokio::sync::Notify;
 use harmos::config::SchemaSettings;
 use harmos::listeners::{Delivery, Source};
 use harmos::operations::{
-    Context, Declarations, OperationPolicy, PluginRegistration, RetryPolicy, Visibility,
-    WireDeclaration,
+    Context, Declarations, OperationPolicy, PluginRegistration, RestartPolicy, RetryPolicy,
+    Visibility, WireDeclaration,
 };
 use harmos::plugin::StreamDeclaration;
 use harmos::plugin::{
@@ -107,6 +107,7 @@ enum Callbacks {
         timeout: Duration::from_secs(300),
         attempt_timeout: Duration::from_secs(300),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     }
 )]
 impl Receive {

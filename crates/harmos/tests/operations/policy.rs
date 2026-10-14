@@ -25,7 +25,7 @@ use tokio::sync::Notify;
 use super::{Lanes, runtime};
 use harmos::operations::{
     Backoff, Context, Failure, Jitter, Operation, OperationDeclaration, OperationPolicy,
-    ReplaySafety, RetryPolicy,
+    ReplaySafety, RestartPolicy, RetryPolicy,
 };
 use harmos::{Error, Refusal};
 
@@ -117,6 +117,7 @@ impl<
                 },
             }
         },
+        restart: RestartPolicy::Never,
     };
 }
 
@@ -142,6 +143,7 @@ impl OperationDeclaration for Exponential {
                 jitter: Jitter::None,
             },
         },
+        restart: RestartPolicy::Never,
     };
 }
 

@@ -71,7 +71,7 @@ enum Completed {
 impl<A: Application> Resident<A> for Worker {
     type Error = Error;
 
-    async fn finalize(&mut self) -> Result<()> {
+    async fn cleanup(&mut self) -> Result<()> {
         // StorageManager owns physical backend teardown before this worker's
         // lease retires. An early stop cannot claim that teardown completed.
         if !self.0.inner.state.lock().unwrap().status.closed {
@@ -82,7 +82,7 @@ impl<A: Application> Resident<A> for Worker {
         Ok(())
     }
 
-    async fn attempt(&mut self, mut context: Service<A>) -> std::result::Result<(), Fault<Error>> {
+    async fn run(&mut self, mut context: Service<A>) -> std::result::Result<(), Fault<Error>> {
         let inner = &self.0.inner;
         let _running = Running(inner.clone());
         let mut changed = inner.changed.subscribe();

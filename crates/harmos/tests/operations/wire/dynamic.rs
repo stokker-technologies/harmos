@@ -20,13 +20,14 @@ use std::time::Duration;
 use harmos::Protobuf;
 use harmos::grpc::dynamic::{Event, Operation};
 use harmos::grpc::{InputEnvelope, OutputEnvelope};
-use harmos::operations::{OperationPolicy, RetryPolicy, WireDeclaration};
+use harmos::operations::{OperationPolicy, RestartPolicy, RetryPolicy, WireDeclaration};
 
 /* === Constants === */
 const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(1),
     attempt_timeout: Duration::from_secs(1),
     retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
 };
 
 /* === Macros === */

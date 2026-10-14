@@ -28,7 +28,7 @@ use tokio::sync::{Notify, Semaphore};
 // Local Imports
 use super::{Lanes, app::App};
 use harmos::operations::{
-    Backoff, Context, Failure, Jitter, Operation, OperationPolicy, RetryPolicy,
+    Backoff, Context, Failure, Jitter, Operation, OperationPolicy, RestartPolicy, RetryPolicy,
 };
 use harmos::{Error, Refusal, Runtime};
 
@@ -84,6 +84,7 @@ enum Failed {
                 max_retries: 1,
                 backoff: Backoff::Fixed { delay: Duration::from_millis(10), jitter: Jitter::None },
             },
+            restart: RestartPolicy::Never,
         },
     )]
 struct ParentContract;
@@ -96,6 +97,7 @@ struct ParentContract;
             timeout: Duration::from_secs(5),
             attempt_timeout: Duration::from_secs(5),
             retries: RetryPolicy::Never,
+            restart: RestartPolicy::Never,
         },
     )]
 struct ChildContract;

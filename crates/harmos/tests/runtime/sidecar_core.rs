@@ -30,7 +30,7 @@ use crate::core_egress::Endpoint;
 use crate::support::Bank;
 use contract::{Inspect, Queries};
 use harmos::plugin::sidecar::{Executable, Notice, Supervised};
-use harmos::{Runtime, services::Service, services::ServicePolicy, services::ServiceStatus};
+use harmos::{Runtime, services::Service, services::ServiceStatus};
 
 /* === Constants === */
 
@@ -42,7 +42,7 @@ use harmos::{Runtime, services::Service, services::ServicePolicy, services::Serv
 struct DeadlineRead;
 struct Fixture {
     runtime: Runtime<Bank>,
-    _lease: harmos::services::ServiceLease<Bank>,
+    _lease: harmos::operations::OperationInstance<harmos::operations::resident::Activation>,
     root: tempfile::TempDir,
     prepared: Arc<AtomicUsize>,
     calls: Arc<AtomicUsize>,
@@ -75,6 +75,7 @@ impl harmos::operations::OperationDeclaration for DeadlineRead {
         timeout: Duration::from_millis(400),
         attempt_timeout: Duration::from_millis(300),
         retries: harmos::operations::RetryPolicy::Never,
+        restart: harmos::operations::RestartPolicy::Never,
     };
 }
 impl harmos::operations::Operation for DeadlineRead {
@@ -142,13 +143,13 @@ impl Fixture {
         let resident = Supervised::new(source, notices as fn(&Service<Bank>, Notice))
             .grace(Duration::from_millis(50));
         runtime
-            .services
-            .register(
+            .operations
+            .register_service(
                 harmos::services::ServiceDefinition {
                     id: "native-core".into(),
-                    policy: ServicePolicy {
-                        credit: 0,
-                        ..Default::default()
+                    policy: harmos::operations::OperationPolicy {
+                        restart: harmos::operations::RestartPolicy::Never,
+                        ..harmos::services::POLICY
                     },
                 },
                 move |_: Arc<()>| {
@@ -164,8 +165,8 @@ impl Fixture {
             )
             .unwrap();
         let lease = runtime
-            .services
-            .activate("native-core", &runtime.services.root_scope())
+            .operations
+            .submit_resident("native-core")
             .await
             .unwrap();
         Self {
@@ -188,9 +189,11 @@ pub(super) fn contract_scenario() {
         let mut executor = tokio::runtime::Builder::new_current_thread();
         executor.enable_all().build().unwrap().block_on(async {
             let f = Fixture::new(true).await;
-            service_status(f.runtime.services.subscribe(), "native-core", |status| {
-                matches!(status, ServiceStatus::Running { .. })
-            })
+            service_status(
+                f.runtime.operations.watch_residents(),
+                "native-core",
+                |status| matches!(status, ServiceStatus::Running { .. }),
+            )
             .await;
             let mut context = harmos::operations::CallContext::default();
             context.insert(73u64).unwrap();
@@ -219,9 +222,11 @@ pub(super) fn contract_scenario() {
         executor.enable_all().build().unwrap().block_on(async {
             for deadline in [false, true] {
                 let f = Fixture::new(true).await;
-                service_status(f.runtime.services.subscribe(), "native-core", |status| {
-                    matches!(status, ServiceStatus::Running { .. })
-                })
+                service_status(
+                    f.runtime.operations.watch_residents(),
+                    "native-core",
+                    |status| matches!(status, ServiceStatus::Running { .. }),
+                )
                 .await;
                 f.runtime
                     .operations
@@ -1146,7 +1151,7 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let fixture = Fixture::new(true).await;
                     service_status(
-                        fixture.runtime.services.subscribe(),
+                        fixture.runtime.operations.watch_residents(),
                         "native-core",
                         |status| matches!(status, ServiceStatus::Running { .. }),
                     )
@@ -1190,7 +1195,7 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let fixture = Fixture::new(false).await;
                     service_status(
-                        fixture.runtime.services.subscribe(),
+                        fixture.runtime.operations.watch_residents(),
                         "native-core",
                         |status| matches!(status, ServiceStatus::Inactive { .. }),
                     )

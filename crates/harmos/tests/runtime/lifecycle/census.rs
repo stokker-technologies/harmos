@@ -31,9 +31,9 @@ mod probe {
         runtime::Handle as Grouping, runtime::Incompatible, runtime::Inspection,
         runtime::Inspector, runtime::Registration, runtime::StopParticipant, services::Fault,
         services::Resident as ResidentContract, services::Service, services::ServiceExit,
-        services::ServicePolicy, services::ServiceStatus, state::At, state::CausationId,
-        state::CorrelationId, state::DecodeError, state::Entry, state::Envelope, state::FactSource,
-        state::Focus, state::Invert, state::Kind, state::Link, state::ManagedState,
+        services::ServiceStatus, state::At, state::CausationId, state::CorrelationId,
+        state::DecodeError, state::Entry, state::Envelope, state::FactSource, state::Focus,
+        state::Invert, state::Kind, state::Link, state::ManagedState,
         state::Metadata as JournalMetadata, state::Never, state::Origin, state::Position,
         state::PrincipalId, state::Receipt, state::Recorded, state::RequestKey, state::Reversals,
         state::StateManager, state::SystemFact, state::Timestamp, state::Transaction,
@@ -97,7 +97,7 @@ mod probe {
     pub type DeclaredLanes = LaneSet;
     pub type AttemptSeam<'a> = Scope<'a>;
     pub type Resident = Service<Bank>;
-    pub type ResidentPolicy = ServicePolicy;
+    pub type ResidentPolicy = harmos::operations::OperationPolicy;
     pub type Regime = Fault<Refusal>;
     pub type ResidentExit = ServiceExit;
     pub type ResidentStatus = ServiceStatus;
@@ -450,7 +450,7 @@ const AUTHORING: [&str; 13] = [
     "operation",
 ];
 
-const GUEST_CENSUS: [&str; 52] = [
+const GUEST_CENSUS: [&str; 53] = [
     "Host",
     "OperationInstance",
     "builtin",
@@ -469,6 +469,7 @@ const GUEST_CENSUS: [&str; 52] = [
     "Registration",
     "RegistrationError",
     "Result",
+    "RestartPolicy",
     "RetryPolicy",
     "RowMetadata",
     "Storable",
@@ -505,12 +506,13 @@ const GUEST_CENSUS: [&str; 52] = [
     "streams",
 ];
 
-const SIDECAR_KIT_CENSUS: [&str; 83] = [
+const SIDECAR_KIT_CENSUS: [&str; 81] = [
     "Host",
     "OperationInstance",
     "builtin",
     "Activation",
     "ActivationId",
+    "Activity",
     "Attach",
     "Attached",
     "CATALOG_EXPORT_FLAG",
@@ -531,14 +533,10 @@ const SIDECAR_KIT_CENSUS: [&str; 83] = [
     "ObserverAttachment",
     "ObserverCaller",
     "ObserverContext",
-    "ObserverControl",
-    "ObserverExit",
+    "ObserverError",
     "ObserverHost",
     "ObserverPublisher",
-    "ObserverStatus",
     "ObserverStreamPublisher",
-    "ObserverTask",
-    "ObserverUpdate",
     "OperationDeclaration",
     "OperationPolicy",
     "Plugin",
@@ -552,6 +550,7 @@ const SIDECAR_KIT_CENSUS: [&str; 83] = [
     "Registration",
     "RegistrationError",
     "Result",
+    "RestartPolicy",
     "RetryPolicy",
     "RowMetadata",
     "Storable",
@@ -591,7 +590,7 @@ const SIDECAR_KIT_CENSUS: [&str; 83] = [
     "streams",
 ];
 
-const DELETED: [&str; 48] = [
+const DELETED: [&str; 54] = [
     "Journal",
     "RouteError",
     "RouteRefusal",
@@ -656,6 +655,14 @@ const DELETED: [&str; 48] = [
     // receives its original operation context, so no second contract remains.
     "ScopedErrand",
     "Sealed",
+    // Observers and services are resident operations of the one OperationManager;
+    // neither separate manager nor the kit's observer task comes back.
+    "ObserverManager",
+    "ObserverLease",
+    "ObserverTask",
+    "ServiceManager",
+    "ServiceLease",
+    "ServicePolicy",
 ];
 
 const UNSPEAKABLE: [&str; 13] = [
@@ -1231,15 +1238,15 @@ fn operation_facility_gate(path: &str, attribute: &str) -> bool {
                 "grpc/server.rs",
                 "error.rs",
                 "state/manager.rs",
-                "observers/manager.rs",
-                "observers/manager/registration.rs",
                 "operations/caller.rs",
                 "operations/handler.rs",
                 "operations/manager.rs",
                 "operations/manager/discovery.rs",
+                "operations/manager/residents.rs",
                 "operations/middleware.rs",
                 "operations/mod.rs",
                 "operations/registration.rs",
+                "operations/resident.rs",
                 "operations/scope.rs",
                 "operations/wire.rs",
                 "records/mod.rs",
@@ -1272,9 +1279,11 @@ fn operation_facility_gate(path: &str, attribute: &str) -> bool {
             "operations/children.rs",
             "operations/wire.rs",
         ],
-        "#[cfg(not(feature=\"plugin-sidecar\"))]" => {
-            &["operations/manager.rs", "operations/caller.rs"]
-        }
+        "#[cfg(not(feature=\"plugin-sidecar\"))]" => &[
+            "operations/manager.rs",
+            "operations/caller.rs",
+            "operations/wire.rs",
+        ],
         "#[cfg(all(feature=\"plugin\",not(target_arch=\"wasm32\")))]" => {
             &["runtime.rs", "runtime/lifecycle.rs"]
         }
@@ -1300,9 +1309,11 @@ fn operation_facility_gate(path: &str, attribute: &str) -> bool {
             "operations/authored.rs",
             "operations/caller.rs",
             "operations/handler.rs",
-            "services/supervisor.rs",
+            "services/restart.rs",
             "streams/publications.rs",
-            "observers/manager.rs",
+            "observers/driver.rs",
+            "operations/manager/residents.rs",
+            "operations/resident.rs",
             "operations/sdk.rs",
             "operations/mod.rs",
             "operations/children.rs",

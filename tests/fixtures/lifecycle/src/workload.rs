@@ -26,9 +26,10 @@ use tokio::sync::Notify;
 
 // Local Imports
 use super::listener::Listener;
-use harmos::observers::{ObserverActivation, ObserverBackend, ObserverDefinition, ObserverLease};
+use harmos::observers::{ObserverActivation, ObserverBackend, ObserverDefinition};
 use harmos::operations::{
-    Context, OperationInstance, OperationOutcome, OperationPhase, OperationPolicy, RetryPolicy,
+    Context, OperationInstance, OperationOutcome, OperationPhase, OperationPolicy, RestartPolicy,
+    RetryPolicy,
 };
 use schematic_app::{
     app::Runtime,
@@ -67,6 +68,7 @@ struct Trace {
         timeout: Duration::from_secs(300),
         attempt_timeout: Duration::from_secs(300),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     }
 )]
 struct HoldDeclaration;
@@ -87,7 +89,7 @@ pub(super) struct Verified {
 pub(super) struct Workload {
     listener: Listener,
     expected: (harmos::state::Position, Schematic),
-    observer: ObserverLease,
+    observer: OperationInstance<harmos::operations::resident::Activation>,
     trace: Arc<Trace>,
     running: OperationInstance<HoldDeclaration>,
     queued: OperationInstance<HoldDeclaration>,
@@ -164,11 +166,10 @@ impl Workload {
         let running = runtime.operations.submit_as::<HoldDeclaration>(false)?;
         trace.started.notified().await;
         let queued = runtime.operations.submit_as::<HoldDeclaration>(true)?;
-        runtime.observers.register(Watch)?;
-        let scope = runtime.observers.scope(trace.clone())?;
+        runtime.operations.register_observer(Watch)?;
         let observer = runtime
-            .observers
-            .activate("shutdown-exercise.watch", &scope)
+            .operations
+            .submit_with_resources_at("shutdown-exercise.watch", trace.clone())
             .await?;
         trace.observer_ready.notified().await;
         // Bound Accepted Edits Without Waiting For A Storage Barrier
@@ -233,7 +234,7 @@ impl Workload {
         let listener = self.listener.verify();
         self.listener.shutdown().await?;
         listener?;
-        if !self.observer.instance().is_settled()
+        if !self.observer.status().phase().is_terminal()
             || self.trace.observer_stopped.load(Ordering::SeqCst) != 1
         {
             return Err(harmos::Error::NotReady {

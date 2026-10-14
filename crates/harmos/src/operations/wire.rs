@@ -267,15 +267,20 @@ impl PluginCallback {
             Source::for_callback(&self.entry),
             encoding_memory_bytes,
             encode,
+            false,
         )
     }
 
+    // A resident control runs until cancelled; it holds no native call slot.
     fn submit_with_as(
         &self,
         source: Source,
         encoding_memory_bytes: std::num::NonZeroUsize,
         encode: impl FnOnce(usize) -> Result<Vec<u8>>,
+        resident: bool,
     ) -> Result<EncodedInvocation> {
+        #[cfg(not(feature = "plugin-sidecar"))]
+        let _ = resident;
         let submitted = executor::now();
         let origin = source.check()?;
         self.entry.available()?;
@@ -288,7 +293,13 @@ impl PluginCallback {
             .entry
             .native
             .as_ref()
-            .map(|binding| binding.reserve())
+            .map(|binding| {
+                if resident {
+                    Ok(super::native::Binding::resident_slot())
+                } else {
+                    binding.reserve()
+                }
+            })
             .transpose()
             .map_err(|source| Error::OperationFailed {
                 operation: self.entry.id().to_owned(),
@@ -343,30 +354,12 @@ impl PluginControl {
         bytes: std::num::NonZeroUsize,
         encode: impl FnOnce(usize) -> Result<Vec<u8>>,
     ) -> Result<EncodedInvocation> {
-        self.0.submit_with_as(Source::Host, bytes, encode)
+        self.0.submit_with_as(Source::Host, bytes, encode, true)
     }
 }
 
 #[cfg(any(feature = "plugin-sidecar", feature = "plugin-guest"))]
 impl super::Caller {
-    #[cfg(feature = "plugin-sidecar")]
-    pub(crate) fn submit_observer_encoded_at(
-        &self,
-        operation: &str,
-        payload: Vec<u8>,
-        submitted: tokio::time::Instant,
-        values: Vec<super::CallValue>,
-    ) -> Result<EncodedInvocation> {
-        let context = self.operations.call_context().with_values(values)?;
-        self.operations.with_context(context).submit_encoded_at_as(
-            operation,
-            payload,
-            Source::Observer(self.source.clone()),
-            None,
-            submitted,
-        )
-    }
-
     pub(crate) fn submit_encoded_at(
         &self,
         operation: &str,

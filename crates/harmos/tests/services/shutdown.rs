@@ -24,10 +24,10 @@ use super::{
     Lanes, assembly, service_status,
     support::{Bank, Noted},
 };
-use harmos::operations::{Context, Operation, OperationPolicy, RetryPolicy};
+use harmos::operations::{Context, Operation, OperationPolicy, RestartPolicy, RetryPolicy};
 use harmos::{
-    Error, Refusal, services::Fault, services::ServiceExit, services::ServicePolicy,
-    services::ServiceStatus, state::Position,
+    Error, Refusal, services::Fault, services::ServiceExit, services::ServiceStatus,
+    state::Position,
 };
 
 /* === Constants === */
@@ -74,6 +74,7 @@ struct StopWait(Arc<Cleanup>);
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
             retries: RetryPolicy::Never,
+            restart: RestartPolicy::Never,
         },
     )]
 struct OrderedContract;
@@ -135,7 +136,7 @@ impl Operation for Ordered {
 impl harmos::services::Resident<super::Bank> for Owned {
     type Error = std::io::Error;
 
-    async fn attempt(
+    async fn run(
         &mut self,
         mut context: harmos::services::Service<super::Bank>,
     ) -> Result<(), Fault<Self::Error>> {
@@ -145,7 +146,7 @@ impl harmos::services::Resident<super::Bank> for Owned {
         Ok(())
     }
 
-    async fn finalize(&mut self) -> Result<(), Self::Error> {
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
         self.0.attempts.fetch_add(1, Ordering::SeqCst);
         if self.0.failed.load(Ordering::SeqCst) {
             return Err(std::io::Error::other("physical cleanup failed"));
@@ -159,7 +160,7 @@ impl harmos::services::Resident<super::Bank> for Owned {
 impl harmos::services::Resident<Bank> for PhysicalStop {
     type Error = std::io::Error;
 
-    async fn attempt(
+    async fn run(
         &mut self,
         mut context: harmos::services::Service<Bank>,
     ) -> Result<(), Fault<Self::Error>> {
@@ -177,7 +178,7 @@ impl harmos::services::Resident<Bank> for PhysicalStop {
         Ok(())
     }
 
-    async fn finalize(&mut self) -> Result<(), Self::Error> {
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
         self.0.finalized.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
@@ -254,11 +255,10 @@ pub(super) fn contract_scenario() {
                         .await
                         .unwrap();
                     service.running.notified().await;
-                    runtime.observers.register(Blocked).unwrap();
-                    let scope = runtime.observers.scope(observer.clone()).unwrap();
+                    runtime.operations.register_observer(Blocked).unwrap();
                     let _lease = runtime
-                        .observers
-                        .activate("blocked-observer", &scope)
+                        .operations
+                        .submit_with_resources_at("blocked-observer", observer.clone())
                         .await
                         .unwrap();
                     observer.running.notified().await;
@@ -317,7 +317,7 @@ pub(super) fn contract_scenario() {
                     assert!(!cleanup.stop_future_dropped.load(Ordering::SeqCst));
                     assert!(!cleanup.dropped.load(Ordering::SeqCst));
                     assert_eq!(cleanup.finalized.load(Ordering::SeqCst), 0);
-                    let statuses = runtime.services.statuses();
+                    let statuses = runtime.operations.residents();
                     let state = statuses
                         .iter()
                         .find(|(key, _)| key.definition == "physical-stop")
@@ -325,7 +325,7 @@ pub(super) fn contract_scenario() {
                         .1;
                     assert_eq!(
                         state.lifecycle.phase(),
-                        harmos::services::ServicePhase::Stopping
+                        harmos::operations::OperationPhase::Stopping
                     );
                     assert!(state.lifecycle.settled_at().is_none());
 
@@ -448,9 +448,9 @@ pub(super) fn contract_scenario() {
                     let runtime = assembly()
                         .service_with(
                             "stalled",
-                            ServicePolicy {
-                                stop_timeout: Duration::from_millis(10),
-                                ..ServicePolicy::default()
+                            harmos::operations::OperationPolicy {
+                                timeout: Duration::from_millis(10),
+                                ..harmos::services::POLICY
                             },
                             {
                                 let entered = entered.clone();
@@ -470,7 +470,7 @@ pub(super) fn contract_scenario() {
                         .await
                         .unwrap();
                     entered.notified().await;
-                    let statuses = runtime.services.subscribe();
+                    let statuses = runtime.operations.watch_residents();
 
                     assert!(matches!(
                         tokio::time::timeout(Duration::from_secs(1), runtime.stop())
@@ -489,8 +489,8 @@ pub(super) fn contract_scenario() {
                     assert!(matches!(
                         statuses
                             .borrow()
-                            .get(&harmos::services::ServiceKey::root("stalled"))
-                            .map(|item| &item.status),
+                            .get(&harmos::operations::resident::Key::root("stalled"))
+                            .and_then(|item| item.health.as_ref()),
                         Some(ServiceStatus::Inactive {
                             cause: ServiceExit::StopTimedOut,
                             ..
@@ -513,9 +513,9 @@ pub(super) fn contract_scenario() {
                     let runtime = assembly()
                         .service_with(
                             "cleanup",
-                            ServicePolicy {
-                                stop_timeout: Duration::from_millis(50),
-                                ..ServicePolicy::default()
+                            harmos::operations::OperationPolicy {
+                                timeout: Duration::from_millis(50),
+                                ..harmos::services::POLICY
                             },
                             {
                                 let entered = entered.clone();
@@ -537,7 +537,7 @@ pub(super) fn contract_scenario() {
                         .await
                         .unwrap();
                     entered.notified().await;
-                    let statuses = runtime.services.subscribe();
+                    let statuses = runtime.operations.watch_residents();
 
                     runtime.stop().await.unwrap();
 
@@ -545,8 +545,8 @@ pub(super) fn contract_scenario() {
                     assert!(matches!(
                         statuses
                             .borrow()
-                            .get(&harmos::services::ServiceKey::root("cleanup"))
-                            .map(|item| &item.status),
+                            .get(&harmos::operations::resident::Key::root("cleanup"))
+                            .and_then(|item| item.health.as_ref()),
                         Some(ServiceStatus::Stopped)
                     ));
                 });
@@ -566,13 +566,13 @@ pub(super) fn contract_scenario() {
                     let dropped = Arc::new(AtomicBool::new(false));
                     let runtime = Arc::new(assembly().runtime().await.unwrap());
                     runtime
-                        .services
-                        .register(
+                        .operations
+                        .register_service(
                             harmos::services::ServiceDefinition {
                                 id: "tenant".into(),
-                                policy: ServicePolicy {
-                                    stop_timeout: Duration::from_millis(10),
-                                    ..ServicePolicy::default()
+                                policy: harmos::operations::OperationPolicy {
+                                    timeout: Duration::from_millis(10),
+                                    ..harmos::services::POLICY
                                 },
                             },
                             {
@@ -599,16 +599,16 @@ pub(super) fn contract_scenario() {
                             },
                         )
                         .unwrap();
-                    let _lease = runtime
-                        .services
-                        .activate("tenant", &runtime.services.root_scope())
-                        .await
-                        .unwrap();
+                    let _lease = runtime.operations.submit_resident("tenant").await.unwrap();
                     entered.notified().await;
                     let waiter = tokio::spawn({
                         let runtime = runtime.clone();
                         async move {
-                            runtime.services.unregister("tenant").await.unwrap_err();
+                            runtime
+                                .operations
+                                .unregister_resident("tenant")
+                                .await
+                                .unwrap_err();
                         }
                     });
                     stopping.notified().await;
@@ -617,7 +617,7 @@ pub(super) fn contract_scenario() {
 
                     tokio::time::timeout(
                         Duration::from_secs(1),
-                        runtime.services.unregister("tenant"),
+                        runtime.operations.unregister_resident("tenant"),
                     )
                     .await
                     .unwrap()
@@ -626,10 +626,10 @@ pub(super) fn contract_scenario() {
                     assert!(dropped.load(Ordering::SeqCst));
                     assert!(
                         !runtime
-                            .services
-                            .subscribe()
+                            .operations
+                            .watch_residents()
                             .borrow()
-                            .contains_key(&harmos::services::ServiceKey::root("tenant"))
+                            .contains_key(&harmos::operations::resident::Key::root("tenant"))
                     );
                     runtime.stop().await.unwrap();
                 });
@@ -670,7 +670,7 @@ pub(super) fn contract_scenario() {
                         .runtime()
                         .await
                         .expect("the work declarations are valid");
-                    service_status(runtime.services.subscribe(), "resident", |status| {
+                    service_status(runtime.operations.watch_residents(), "resident", |status| {
                         matches!(status, ServiceStatus::Running { .. })
                     })
                     .await;

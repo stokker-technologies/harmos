@@ -28,16 +28,15 @@ use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 // Local Imports
 use crate::evidence::{Declaration, Evidence, Vault};
-use crate::observers::ObserverManager;
-use crate::services::{Definition as ServiceDefinition, ServiceManager};
+use crate::services::{Once as DeclaredService, ServiceDefinition};
 use crate::state::dispatch::Dispatch;
 use crate::state::{Feed, Inverting, Origin, ReadRequest, Tail, Undos, replay};
 use crate::storage::attachments::{Attachments, Consumers, Horizon, Payload, Source, declare};
 use crate::storage::consumer::{JournalConsumer, Series, StreamConsumer};
 use crate::streams::{Definition, Holding, Request, StreamManager, Table, Tier};
 use crate::{
-    Application, DefinitionId, Error, operations::LaneSet, services::Resident,
-    services::ServicePolicy, state::At, state::CaptureLimits, state::DecodeError, state::Entry,
+    Application, DefinitionId, Error, operations::LaneSet, operations::OperationPolicy,
+    services::Resident, state::At, state::CaptureLimits, state::DecodeError, state::Entry,
     state::JournalCapture, state::Kind, state::Position, state::StateManager, storage::Cursor,
 };
 
@@ -70,8 +69,6 @@ pub struct Runtime<A: Application> {
     pub plugin: crate::plugin::PluginHost<A>,
     #[cfg(feature = "grpc")]
     grpc: crate::grpc::GrpcManager,
-    pub services: ServiceManager<A>,
-    pub observers: ObserverManager,
     pub evidence: Evidence<A>,
     stopping: Mutex<Stopping<A>>,
     closing: AtomicBool,
@@ -90,8 +87,6 @@ pub struct Handle<A: Application> {
     pub plugin: crate::plugin::PluginHost<A>,
     #[cfg(feature = "grpc")]
     grpc: crate::grpc::GrpcManager,
-    pub services: ServiceManager<A>,
-    pub observers: ObserverManager,
     pub evidence: Evidence<A>,
     storage: Arc<OnceLock<crate::storage::StorageManager<crate::storage::ErasedCatalog>>>,
 }
@@ -112,7 +107,7 @@ pub struct Builder<A: Application> {
     operations: Vec<crate::operations::CatalogBinding>,
     operation_settings: crate::operations::Settings,
     operation_middleware: Vec<Arc<dyn crate::operations::middleware::Middleware>>,
-    services: Vec<ServiceDefinition<A>>,
+    services: Vec<DeclaredService<A>>,
     evidence: Option<Declaration>,
     #[cfg(feature = "simulation")]
     simulation: crate::simulation::Configuration<A>,
@@ -303,8 +298,6 @@ impl<A: Application> Clone for Handle<A> {
             plugin: self.plugin.clone(),
             #[cfg(feature = "grpc")]
             grpc: self.grpc.clone(),
-            services: self.services.clone(),
-            observers: self.observers.clone(),
             evidence: self.evidence.clone(),
             storage: self.storage.clone(),
         }
@@ -413,8 +406,6 @@ impl<A: Application> Runtime<A> {
             plugin: self.plugin.clone(),
             #[cfg(feature = "grpc")]
             grpc: self.grpc.clone(),
-            services: self.services.clone(),
-            observers: self.observers.clone(),
             evidence: self.evidence.clone(),
             storage: self.storage.clone(),
         }
@@ -537,13 +528,13 @@ impl<A: Application> Builder<A> {
     where
         R: Resident<A>,
     {
-        self.service_with(name, ServicePolicy::default(), resident)
+        self.service_with(name, crate::services::POLICY, resident)
     }
 
     pub fn service_with<R>(
         mut self,
         name: impl Into<String>,
-        policy: ServicePolicy,
+        policy: OperationPolicy,
         resident: R,
     ) -> Self
     where
@@ -552,8 +543,12 @@ impl<A: Application> Builder<A> {
         #[cfg(feature = "simulation")]
         self.live_only.push("resident services");
 
+        let definition = ServiceDefinition {
+            id: name.into(),
+            policy,
+        };
         self.services
-            .push(ServiceDefinition::new(name.into(), policy, resident));
+            .push(DeclaredService::new(definition, resident));
         self
     }
 
@@ -645,7 +640,7 @@ impl<A: Application> Builder<A> {
     pub fn simulated_service_with<R>(
         mut self,
         name: impl Into<String>,
-        policy: ServicePolicy,
+        policy: OperationPolicy,
         resident: R,
     ) -> Self
     where
@@ -951,13 +946,35 @@ impl<A: Application> Builder<A> {
                 cleanup: None,
             })?;
         let lanes = crate::operations::lane::Lanes::freeze(lanes).map_err(Incompatible::work)?;
+        let handles = crate::services::Handles {
+            state: journal.clone(),
+            records: records.clone(),
+            streams: streams.clone(),
+            evidence: evidence.clone(),
+        };
         let instances = crate::operations::instances::Instances::start(
             lanes,
-            Box::new(journal.clone()),
+            Box::new(handles.clone()),
             resources,
             &operation_settings,
         );
-        let operations = crate::operations::OperationManager::new(instances, &operation_settings);
+        let mut reserved = std::collections::BTreeSet::new();
+        for service in &services {
+            crate::services::validate(&service.definition()).map_err(Incompatible::work)?;
+            if !reserved.insert(service.id().to_owned()) {
+                let duplicate: crate::Error = crate::Error::AlreadyRegistered {
+                    domain: "service",
+                    name: service.id().to_owned(),
+                };
+                return Err(Incompatible::work(duplicate));
+            }
+        }
+        let operations = crate::operations::OperationManager::new(
+            instances,
+            &operation_settings,
+            reserved,
+            boot.identity.clone(),
+        );
         for middleware in operation_middleware {
             operations
                 .register_middleware(middleware)
@@ -969,23 +986,9 @@ impl<A: Application> Builder<A> {
                 cleanup: None,
             })?;
         }
-        let observers = ObserverManager::new();
-        let service_manager = ServiceManager::new(
-            crate::services::Handles {
-                state: journal.clone(),
-                records: records.clone(),
-                operations: operations.clone(),
-                streams: streams.clone(),
-                evidence: evidence.clone(),
-                observers: observers.clone(),
-            },
-            &services,
-            boot.identity.clone(),
-        )
-        .map_err(Incompatible::work)?;
         if let Some(storage) = &boot.storage {
             storage
-                .start(&service_manager)
+                .start_on::<A>(&operations)
                 .await
                 .map_err(Incompatible::work)?;
         }
@@ -1005,19 +1008,12 @@ impl<A: Application> Builder<A> {
             ready,
         }));
         #[cfg(feature = "grpc")]
-        let grpc = crate::grpc::GrpcManager::new(&service_manager, &operations);
+        let grpc = crate::grpc::GrpcManager::new::<A>(&operations);
         #[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
         let plugin = crate::plugin::PluginHost::new(
             operations.clone(),
             #[cfg(feature = "plugin-sidecar")]
-            crate::services::Handles {
-                state: journal.clone(),
-                records: records.clone(),
-                operations: operations.clone(),
-                streams: streams.clone(),
-                evidence: evidence.clone(),
-                observers: observers.clone(),
-            },
+            handles,
         )
         .map_err(Incompatible::work)?;
         boot.runtime = Some(Runtime {
@@ -1027,10 +1023,8 @@ impl<A: Application> Builder<A> {
             operations,
             #[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
             plugin,
-            services: service_manager,
             #[cfg(feature = "grpc")]
             grpc,
-            observers,
             evidence,
             stopping: Mutex::new(Stopping::Running(Some(supervisor))),
             closing: AtomicBool::new(false),
@@ -1056,12 +1050,17 @@ impl<A: Application> Builder<A> {
                 .await
                 .map_err(Incompatible::reconciliation)?;
         }
-        boot.runtime
+        let operations = &boot
+            .runtime
             .as_ref()
             .expect("runtime is owned during boot")
-            .services
-            .start(services)
-            .map_err(Incompatible::work)?;
+            .operations;
+        for service in services {
+            let lease = operations
+                .start_service(service, false, true)
+                .map_err(Incompatible::work)?;
+            operations.hold_resident(lease);
+        }
         for initializer in initializers {
             let handle = boot
                 .runtime

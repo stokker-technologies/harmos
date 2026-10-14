@@ -27,12 +27,9 @@ use tokio::sync::{Notify, Semaphore, watch};
 
 // Local Imports
 use super::app::App;
-use harmos::services::{
-    ServiceDefinition, ServiceKey, ServiceLease, ServiceLifecycle, ServiceOutcome, ServicePhase,
-};
-use harmos::{
-    Runtime, services::Fault, services::Resident, services::Service, services::ServicePolicy,
-};
+use harmos::operations::{OperationOutcome, OperationPhase, OperationStatus};
+use harmos::services::ServiceDefinition;
+use harmos::{Runtime, services::Fault, services::Resident, services::Service};
 
 /* === Constants === */
 
@@ -68,7 +65,7 @@ enum Mode {
 impl Resident<App> for Worker {
     type Error = std::io::Error;
 
-    async fn attempt(&mut self, mut context: Service<App>) -> Result<(), Fault<Self::Error>> {
+    async fn run(&mut self, mut context: Service<App>) -> Result<(), Fault<Self::Error>> {
         let attempt = self.0.attempts.fetch_add(1, Ordering::SeqCst);
         context.ready();
         match self.0.mode {
@@ -83,7 +80,7 @@ impl Resident<App> for Worker {
         }
     }
 
-    async fn finalize(&mut self) -> Result<(), Self::Error> {
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
         self.0.finalizers.fetch_add(1, Ordering::SeqCst);
         self.0.cleanup_entered.notify_one();
         if self.0.fail_cleanup.load(Ordering::SeqCst) {
@@ -124,18 +121,29 @@ async fn runtime(
     block_cleanup: bool,
     fail_cleanup: bool,
     backoff: Duration,
-) -> (Runtime<App>, ServiceLease<App>, Arc<Trace>) {
+) -> (
+    Runtime<App>,
+    harmos::operations::OperationInstance<harmos::operations::resident::Activation>,
+    Arc<Trace>,
+) {
     let runtime = Runtime::<App>::builder((), ()).runtime().await.unwrap();
     let trace = trace(mode, block_cleanup, fail_cleanup);
     runtime
-        .services
-        .register(
+        .operations
+        .register_service(
             ServiceDefinition {
                 id: "worker".into(),
-                policy: ServicePolicy {
-                    backoff_base: backoff,
-                    backoff_cap: backoff,
-                    ..ServicePolicy::default()
+                policy: harmos::operations::OperationPolicy {
+                    restart: harmos::operations::RestartPolicy::OnTransient {
+                        credit: 3,
+                        sustained_health: Duration::from_millis(250),
+                        backoff: harmos::operations::Backoff::Exponential {
+                            initial: backoff,
+                            maximum: backoff,
+                            jitter: harmos::operations::Jitter::Deterministic,
+                        },
+                    },
+                    ..harmos::services::POLICY
                 },
             },
             {
@@ -147,18 +155,14 @@ async fn runtime(
             },
         )
         .unwrap();
-    let lease = runtime
-        .services
-        .activate("worker", &runtime.services.root_scope())
-        .await
-        .unwrap();
+    let lease = runtime.operations.submit_resident("worker").await.unwrap();
     (runtime, lease, trace)
 }
 
 async fn observed(
-    receiver: &mut watch::Receiver<ServiceLifecycle>,
-    wanted: impl Fn(&ServiceLifecycle) -> bool,
-) -> ServiceLifecycle {
+    receiver: &mut watch::Receiver<OperationStatus>,
+    wanted: impl Fn(&OperationStatus) -> bool,
+) -> OperationStatus {
     tokio::time::timeout(Duration::from_secs(1), receiver.wait_for(wanted))
         .await
         .unwrap()
@@ -178,15 +182,15 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let (runtime, lease, trace) =
-                        runtime(Mode::Complete, false, false, Duration::ZERO).await;
-                    assert_eq!(lease.lifecycle().phase(), ServicePhase::Queued);
-                    let mut lifecycle = lease.subscribe_lifecycle();
+                        runtime(Mode::Complete, false, false, Duration::from_millis(1)).await;
+                    assert_eq!(lease.status().phase(), OperationPhase::Queued);
+                    let mut lifecycle = lease.subscribe();
                     lease.release().await.unwrap();
                     let status = observed(&mut lifecycle, |status| {
-                        status.phase() == ServicePhase::Settled
+                        status.phase() == OperationPhase::Stopped
                     })
                     .await;
-                    assert_eq!(status.outcome(), Some(ServiceOutcome::Cancelled));
+                    assert_eq!(status.outcome(), Some(OperationOutcome::Cancelled));
                     assert!(status.cancellation_requested());
                     assert!(status.started_at().is_none());
                     assert!(status.settled_at().is_some());
@@ -204,44 +208,44 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let (runtime, lease, trace) =
-                        runtime(Mode::Complete, true, false, Duration::ZERO).await;
-                    let snapshots = runtime.services.subscribe();
+                        runtime(Mode::Complete, true, false, Duration::from_millis(1)).await;
+                    let snapshots = runtime.operations.watch_residents();
                     trace.cleanup_entered.notified().await;
-                    let pending = lease.lifecycle();
-                    assert_eq!(pending.phase(), ServicePhase::Finalizing);
-                    assert_eq!(pending.outcome(), Some(ServiceOutcome::Succeeded));
+                    let pending = lease.status();
+                    assert_eq!(pending.phase(), OperationPhase::Finalizing);
+                    assert_eq!(pending.outcome(), Some(OperationOutcome::Succeeded));
                     assert!(pending.cleanup_pending());
                     assert!(pending.settled_at().is_none());
                     let snapshot = runtime
-                        .services
-                        .status(&ServiceKey::root("worker"))
+                        .operations
+                        .resident(&harmos::operations::resident::Key::root("worker"))
                         .unwrap();
-                    assert_eq!(snapshot.lifecycle.phase(), ServicePhase::Finalizing);
+                    assert_eq!(snapshot.lifecycle.phase(), OperationPhase::Finalizing);
                     assert_eq!(
                         snapshots
                             .borrow()
-                            .get(&ServiceKey::root("worker"))
+                            .get(&harmos::operations::resident::Key::root("worker"))
                             .unwrap()
                             .lifecycle
                             .phase(),
-                        ServicePhase::Finalizing
+                        OperationPhase::Finalizing
                     );
-                    let mut lifecycle = lease.subscribe_lifecycle();
+                    let mut lifecycle = lease.subscribe();
                     assert!(runtime.stop().now_or_never().is_none());
                     // The Original Driver Continues After Its Waiter Is Dropped.
                     // Plugin Shutdown Settles Before Application Services Are Signalled.
                     let cancelled =
                         observed(&mut lifecycle, |status| status.cancellation_requested()).await;
-                    assert!(lease.lifecycle().cancellation_requested());
-                    assert_eq!(cancelled.phase(), ServicePhase::Finalizing);
-                    assert_eq!(cancelled.outcome(), Some(ServiceOutcome::Succeeded));
+                    assert!(lease.status().cancellation_requested());
+                    assert_eq!(cancelled.phase(), OperationPhase::Finalizing);
+                    assert_eq!(cancelled.outcome(), Some(OperationOutcome::Succeeded));
                     assert!(cancelled.cleanup_pending());
                     assert_eq!(trace.drops.load(Ordering::SeqCst), 0);
                     trace.cleanup_release.add_permits(1);
                     runtime.stop().await.unwrap();
-                    let settled = lease.lifecycle();
-                    assert_eq!(settled.phase(), ServicePhase::Settled);
-                    assert_eq!(settled.outcome(), Some(ServiceOutcome::Succeeded));
+                    let settled = lease.status();
+                    assert_eq!(settled.phase(), OperationPhase::Stopped);
+                    assert_eq!(settled.outcome(), Some(OperationOutcome::Succeeded));
                     assert!(!settled.cleanup_pending());
                     assert!(settled.settled_at().is_some());
                     assert_eq!(trace.drops.load(Ordering::SeqCst), 1);
@@ -257,21 +261,21 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let (runtime, lease, trace) =
-                        runtime(Mode::Complete, false, true, Duration::ZERO).await;
-                    let mut lifecycle = lease.subscribe_lifecycle();
+                        runtime(Mode::Complete, false, true, Duration::from_millis(1)).await;
+                    let mut lifecycle = lease.subscribe();
                     let failed =
                         observed(&mut lifecycle, |status| status.cleanup_failure().is_some()).await;
-                    assert_eq!(failed.phase(), ServicePhase::Finalizing);
-                    assert_eq!(failed.outcome(), Some(ServiceOutcome::Succeeded));
+                    assert_eq!(failed.phase(), OperationPhase::Finalizing);
+                    assert_eq!(failed.outcome(), Some(OperationOutcome::Succeeded));
                     assert!(failed.cleanup_pending());
                     assert!(failed.settled_at().is_none());
                     assert_eq!(trace.drops.load(Ordering::SeqCst), 0);
                     assert!(runtime.stop().await.is_err());
                     trace.fail_cleanup.store(false, Ordering::SeqCst);
                     runtime.stop().await.unwrap();
-                    assert_eq!(lease.lifecycle().phase(), ServicePhase::Settled);
-                    assert_eq!(lease.lifecycle().outcome(), Some(ServiceOutcome::Succeeded));
-                    assert!(lease.lifecycle().cleanup_failure().is_none());
+                    assert_eq!(lease.status().phase(), OperationPhase::Stopped);
+                    assert_eq!(lease.status().outcome(), Some(OperationOutcome::Succeeded));
+                    assert!(lease.status().cleanup_failure().is_none());
                     assert_eq!(trace.factories.load(Ordering::SeqCst), 1);
                     assert_eq!(trace.finalizers.load(Ordering::SeqCst), 2);
                     assert_eq!(trace.drops.load(Ordering::SeqCst), 1);
@@ -289,9 +293,9 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let (runtime, lease, trace) =
                         runtime(Mode::Retry, false, false, Duration::from_secs(100)).await;
-                    let mut lifecycle = lease.subscribe_lifecycle();
+                    let mut lifecycle = lease.subscribe();
                     let waiting = observed(&mut lifecycle, |status| {
-                        status.phase() == ServicePhase::RetryWaiting
+                        status.phase() == OperationPhase::Restarting
                     })
                     .await;
                     assert_eq!(waiting.attempt(), 0);
@@ -301,8 +305,8 @@ pub(super) fn contract_scenario() {
                         .await
                         .unwrap()
                         .unwrap();
-                    assert_eq!(lease.lifecycle().outcome(), Some(ServiceOutcome::Cancelled));
-                    assert_eq!(lease.lifecycle().phase(), ServicePhase::Settled);
+                    assert_eq!(lease.status().outcome(), Some(OperationOutcome::Cancelled));
+                    assert_eq!(lease.status().phase(), OperationPhase::Stopped);
                     assert_eq!(trace.attempts.load(Ordering::SeqCst), 1);
                     assert_eq!(trace.finalizers.load(Ordering::SeqCst), 1);
                     assert_eq!(trace.drops.load(Ordering::SeqCst), 1);
@@ -320,9 +324,9 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let (runtime, lease, trace) =
                         runtime(Mode::Retry, false, false, Duration::from_millis(1)).await;
-                    let mut lifecycle = lease.subscribe_lifecycle();
+                    let mut lifecycle = lease.subscribe();
                     let running = observed(&mut lifecycle, |status| {
-                        status.phase() == ServicePhase::Running
+                        status.phase() == OperationPhase::Running
                     })
                     .await;
                     assert_eq!(running.attempt(), 1);
@@ -330,17 +334,21 @@ pub(super) fn contract_scenario() {
                     assert_eq!(trace.factories.load(Ordering::SeqCst), 1);
                     assert_eq!(trace.attempts.load(Ordering::SeqCst), 2);
                     assert!(matches!(
-                        runtime.services.status(lease.key()).unwrap().status,
-                        harmos::services::ServiceStatus::Running { credit: 2 }
+                        runtime
+                            .operations
+                            .resident(&runtime.operations.resident_key(lease.id()).unwrap())
+                            .unwrap()
+                            .health,
+                        Some(harmos::services::ServiceStatus::Running { credit: 2 })
                     ));
                     // Cancellation Must Not Wait For The Pending 250 ms Health Refill.
                     tokio::time::timeout(Duration::from_millis(50), runtime.stop())
                         .await
                         .unwrap()
                         .unwrap();
-                    assert_eq!(lease.lifecycle().outcome(), Some(ServiceOutcome::Cancelled));
-                    assert_eq!(lease.lifecycle().attempt(), 1);
-                    assert_eq!(lease.lifecycle().phase(), ServicePhase::Settled);
+                    assert_eq!(lease.status().outcome(), Some(OperationOutcome::Cancelled));
+                    assert_eq!(lease.status().attempt(), 1);
+                    assert_eq!(lease.status().phase(), OperationPhase::Stopped);
                     assert_eq!(trace.finalizers.load(Ordering::SeqCst), 2);
                 });
         });
@@ -355,12 +363,15 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let trace = trace(Mode::Complete, false, false);
                     let runtime = Runtime::<App>::builder((), ())
-                        .service_with("owned", ServicePolicy::default(), Worker(trace.clone()))
+                        .service_with("owned", harmos::services::POLICY, Worker(trace.clone()))
                         .runtime()
                         .await
                         .unwrap();
-                    let snapshot = runtime.services.status(&ServiceKey::root("owned")).unwrap();
-                    assert_eq!(snapshot.lifecycle.phase(), ServicePhase::Queued);
+                    let snapshot = runtime
+                        .operations
+                        .resident(&harmos::operations::resident::Key::root("owned"))
+                        .unwrap();
+                    assert_eq!(snapshot.lifecycle.phase(), OperationPhase::Queued);
                     runtime.stop().await.unwrap();
                     assert_eq!(trace.attempts.load(Ordering::SeqCst), 0);
                     assert_eq!(trace.finalizers.load(Ordering::SeqCst), 1);

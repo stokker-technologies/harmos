@@ -97,12 +97,13 @@ pub(super) struct Origin {
         feature = "plugin-sidecar"
     ))]
     pub(super) lifecycle: Option<LifecycleLoan>,
+    // Calls made by a resident control, which may publish while it retires.
     #[cfg(any(
         feature = "plugin",
         feature = "plugin-guest",
         feature = "plugin-sidecar"
     ))]
-    pub(super) observer_publication: bool,
+    pub(super) resident: bool,
 }
 
 #[cfg(any(
@@ -131,9 +132,6 @@ pub(super) enum Source {
         feature = "plugin-sidecar"
     ))]
     Plugin(PluginCaller),
-    // Issued Only By The Original Remote Observer Child Owner.
-    #[cfg(feature = "plugin-sidecar")]
-    Observer(PluginCaller),
     #[cfg(any(
         feature = "plugin",
         feature = "plugin-guest",
@@ -331,12 +329,6 @@ impl Source {
             Self::Host => None,
             #[cfg(feature = "grpc")]
             Self::External { .. } => unreachable!("external origin was checked"),
-            #[cfg(feature = "plugin-sidecar")]
-            Self::Observer(source) => Some(
-                source
-                    .operation_scope()
-                    .map_err(|source| Error::OperationCaller { source })?,
-            ),
             Self::Plugin(source) => Some(
                 source
                     .operation_scope()
@@ -411,15 +403,11 @@ impl Source {
                 feature = "plugin-guest",
                 feature = "plugin-sidecar"
             ))]
-            observer_publication: {
-                #[cfg(feature = "plugin-sidecar")]
-                {
-                    matches!(self, Self::Observer(_))
-                }
-                #[cfg(not(feature = "plugin-sidecar"))]
-                {
-                    false
-                }
+            resident: match self {
+                Self::Binding(binding) | Self::Callback(binding) => binding
+                    .upgrade()
+                    .is_some_and(|binding| binding.retires_late()),
+                _ => false,
             },
         })
     }

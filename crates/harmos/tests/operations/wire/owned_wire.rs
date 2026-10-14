@@ -28,7 +28,7 @@ use std::time::Duration;
 use super::{Lanes, app::App};
 use harmos::operations::{
     Backoff, Context, Failure, Jitter, Operation, OperationDeclaration, OperationInstanceId,
-    OperationPhase, OperationPolicy, RetryPolicy,
+    OperationPhase, OperationPolicy, RestartPolicy, RetryPolicy,
 };
 use harmos::{Message, Runtime};
 
@@ -72,6 +72,7 @@ struct Text {
                 max_retries: 1,
                 backoff: Backoff::Fixed { delay: Duration::from_millis(1), jitter: Jitter::None },
             },
+            restart: RestartPolicy::Never,
         },
     )]
 struct ReadContract;

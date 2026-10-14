@@ -36,6 +36,7 @@ pub(crate) mod lane;
 mod manager;
 pub mod middleware;
 pub(crate) mod refusal;
+pub mod resident;
 pub(crate) mod scope;
 mod session;
 mod streaming;
@@ -79,8 +80,8 @@ pub use harmos_contract::operations::{
     CallValue, Codec, ContextError, ContextValue, Contract, ContractError, Contracts, Declarations,
     Declares, Definition, Entry, Failure, Grpc, InputDeclaration, Jitter, MAX_CACHE_KEY_BYTES,
     Operation, OperationDeclaration, OperationPolicy, OutputDeclaration, PORTABLE_BYTES,
-    PORTABLE_VALUES, PolicyError, ReplaySafety, RetryPolicy, Serves, ServingError, Visibility,
-    WIRE_METHOD, WireAnswer, WireBinding, WireChild, WireChildAction, WireChildCall,
+    PORTABLE_VALUES, PolicyError, ReplaySafety, RestartPolicy, RetryPolicy, Serves, ServingError,
+    Visibility, WIRE_METHOD, WireAnswer, WireBinding, WireChild, WireChildAction, WireChildCall,
     WireChildControl, WireCodecError, WireCommand, WireDeclaration, WireEndpoints, WireOperation,
     WireStreamLimits, WireStreams, WireTable,
 };

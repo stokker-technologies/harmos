@@ -199,7 +199,7 @@ where
 
 /* === Private Functions === */
 fn supported_observers<P: Declared>() -> Result<(), String> {
-    if harmos_contract::catalog::count(P::OBSERVERS) != 0 || !P::OBSERVER_CONTROLS.is_empty() {
+    if harmos_contract::catalog::count(P::OBSERVERS) != 0 || !P::OBSERVER_CONTROL.is_empty() {
         return Err("guest observer callbacks are unsupported".into());
     }
     Ok(())

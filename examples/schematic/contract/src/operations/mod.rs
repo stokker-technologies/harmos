@@ -30,6 +30,7 @@ pub const POLICY: harmos_contract::operations::OperationPolicy =
         timeout: std::time::Duration::from_secs(10),
         attempt_timeout: std::time::Duration::from_secs(10),
         retries: harmos_contract::operations::RetryPolicy::Never,
+        restart: harmos_contract::operations::RestartPolicy::Never,
     };
 
 /* === Macros === */

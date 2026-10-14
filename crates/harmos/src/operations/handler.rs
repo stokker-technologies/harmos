@@ -44,15 +44,29 @@ static NEXT_GENERATION: AtomicU64 = AtomicU64::new(1);
 pub struct OperationGeneration(u64);
 
 // Dropping an instance before its outcome is delivered requests cancellation;
-// `detach` keeps the operation running without a handle.
+// `detach` keeps the operation running without a handle. A resident handle
+// (an observer or service activation) holds one lease on its shared instance:
+// dropping it releases that lease and the last release stops the instance.
 #[must_use = "dropping an unsettled operation instance requests its cancellation"]
 pub struct OperationInstance<O: OperationDeclaration> {
     pub(crate) id: OperationInstanceId,
     pub(super) generation: OperationGeneration,
-    pub(crate) outcome: oneshot::Receiver<Result<crate::operations::Response<O::Response>>>,
+    pub(crate) outcome: Outcome<O::Response>,
     pub(super) control: Arc<crate::supervision::instance::Instance>,
     pub(super) released: bool,
 }
+
+pub(crate) enum Outcome<T: Send + Sync + 'static> {
+    Request(oneshot::Receiver<Result<crate::operations::Response<T>>>),
+    Resident {
+        lease: Option<super::resident::Lease>,
+        // Polled only through `&mut`; the lock makes a shared handle `Sync`.
+        settled: std::sync::Mutex<Settling<T>>,
+    },
+}
+
+pub(crate) type Settling<T> =
+    Pin<Box<dyn Future<Output = Result<crate::operations::Response<T>>> + Send>>;
 
 #[derive(Clone)]
 pub struct Context<'a> {
@@ -96,12 +110,50 @@ impl<O: OperationDeclaration> OperationInstance<O> {
         self.generation
     }
 
+    // A resident instance stops for every lease holder.
     pub fn cancel(&self) {
-        self.control.cancel();
+        match &self.outcome {
+            Outcome::Resident {
+                lease: Some(lease), ..
+            } => lease.stop(),
+            _ => self.control.cancel(),
+        }
     }
 
     pub fn status(&self) -> super::OperationStatus {
         self.control.status()
+    }
+
+    pub fn subscribe(&self) -> tokio::sync::watch::Receiver<super::OperationStatus> {
+        self.control.settlement()
+    }
+
+    // Wait until the instance runs; a resident that stops or fails first
+    // reports why once its cleanup settles.
+    pub async fn ready(&self) -> Result<()> {
+        let mut status = self.control.settlement();
+        loop {
+            let current = status.borrow_and_update().clone();
+            match current.phase() {
+                super::OperationPhase::Running => return Ok(()),
+                phase
+                    if phase.is_terminal()
+                        || current.cancellation_requested()
+                        || current.outcome().is_some() =>
+                {
+                    self.settle().await?;
+                    return Err(Error::NotReady {
+                        domain: "operation activation",
+                    });
+                }
+                _ => {}
+            }
+            if status.changed().await.is_err() {
+                return Err(Error::NotReady {
+                    domain: "operation activation",
+                });
+            }
+        }
     }
 
     pub async fn join(self) -> Result<crate::operations::Response<O::Response>> {
@@ -114,13 +166,45 @@ impl<O: OperationDeclaration> OperationInstance<O> {
     }
 
     // Keep the operation running without a handle until its submitting
-    // attempt ends, which cancels and settles it like any other child.
+    // attempt ends, which cancels and settles it like any other child. A
+    // detached resident lease is held until its resources retire.
     pub fn detach(mut self) -> OperationInstanceId {
         self.released = true;
+        if let Outcome::Resident { lease, .. } = &mut self.outcome
+            && let Some(lease) = lease.take()
+        {
+            lease.detach();
+        }
         self.id
     }
 
+    // Release this handle. A resident lease that was the last one stops its
+    // instance and waits for it; a request-scoped instance is cancelled and
+    // settled.
+    pub async fn release(mut self) -> Result<()> {
+        self.released = true;
+        let lease = match &mut self.outcome {
+            Outcome::Resident { lease, .. } => lease.take(),
+            Outcome::Request(_) => None,
+        };
+        match lease {
+            Some(lease) => lease.release().await,
+            None => {
+                self.control.cancel();
+                self.settle().await
+            }
+        }
+    }
+
+    // Wait for the instance to settle without consuming the handle. A
+    // resident reports its outcome and retries a retained cleanup.
     pub async fn settle(&self) -> Result<()> {
+        if let Outcome::Resident {
+            lease: Some(lease), ..
+        } = &self.outcome
+        {
+            return lease.settlement().await;
+        }
         self.control
             .settle()
             .await
@@ -141,10 +225,21 @@ impl<O: OperationDeclaration> Future for OperationInstance<O> {
     type Output = Result<crate::operations::Response<O::Response>>;
     fn poll(self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<Self::Output> {
         let instance = self.get_mut();
-        let answer = match Pin::new(&mut instance.outcome).poll(cx) {
-            Poll::Ready(Ok(answer)) => answer,
-            Poll::Ready(Err(_)) => Err(crate::Refusal::Unavailable.into()),
-            Poll::Pending => return Poll::Pending,
+        let answer = match &mut instance.outcome {
+            Outcome::Request(outcome) => match Pin::new(outcome).poll(cx) {
+                Poll::Ready(Ok(answer)) => answer,
+                Poll::Ready(Err(_)) => Err(crate::Refusal::Unavailable.into()),
+                Poll::Pending => return Poll::Pending,
+            },
+            Outcome::Resident { settled, .. } => match settled
+                .get_mut()
+                .expect("resident settlement is healthy")
+                .as_mut()
+                .poll(cx)
+            {
+                Poll::Ready(answer) => answer,
+                Poll::Pending => return Poll::Pending,
+            },
         };
         instance.released = true;
         Poll::Ready(answer)
@@ -153,7 +248,11 @@ impl<O: OperationDeclaration> Future for OperationInstance<O> {
 
 impl<O: OperationDeclaration> Drop for OperationInstance<O> {
     fn drop(&mut self) {
-        if !self.released && !self.control.is_settled() {
+        // A resident lease releases itself when dropped.
+        if matches!(self.outcome, Outcome::Request(_))
+            && !self.released
+            && !self.control.is_settled()
+        {
             self.control.cancel();
         }
     }
@@ -176,7 +275,7 @@ where
     }
 
     fn cancel(&self) -> impl Future<Output = Result<()>> + Send {
-        self.control.cancel();
+        OperationInstance::cancel(self);
         std::future::ready(Ok(()))
     }
 
@@ -243,7 +342,7 @@ impl Context<'_> {
     ))]
     pub(crate) fn retains_publication(&self, scope: &crate::plugin::PluginScope) -> bool {
         self.source.check().is_ok_and(|origin| {
-            (origin.has_lifecycle_loan() || origin.observer_publication)
+            (origin.has_lifecycle_loan() || origin.resident)
                 && origin
                     .scope
                     .as_ref()

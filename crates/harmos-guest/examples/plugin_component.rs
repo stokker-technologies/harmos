@@ -21,8 +21,8 @@ use std::time::Duration;
 use harmos_contract::catalog::Node;
 use harmos_contract::inventory::{contracts, observers, publications};
 use harmos_contract::operations::{
-    Operation, OperationDeclaration, OperationPolicy, RetryPolicy, WireDeclaration, WireOperation,
-    WireTable, lifecycle,
+    Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, WireDeclaration,
+    WireOperation, WireTable, lifecycle,
 };
 use harmos_contract::plugin::{Declared, Plugin};
 use harmos_guest::Context;
@@ -32,6 +32,7 @@ const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_secs(2),
     retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
 };
 const PROVIDED: &[Node<WireDeclaration>] = &[Node::Leaf(WireDeclaration::of::<Read>())];
 const SDK: [harmos_contract::operations::OperationPolicy; 2] = [POLICY, POLICY];

@@ -14,7 +14,7 @@
 /* === Modules === */
 
 /* === Re-Exports === */
-pub use crate::operations::host::builtin::{Cancel, InstanceState, Status};
+pub use crate::operations::host::builtin::{Cancel, InstanceState, Status, Watch};
 
 /* === Imports === */
 
@@ -24,9 +24,18 @@ pub use crate::operations::host::builtin::{Cancel, InstanceState, Status};
 
 // Local Imports
 use crate::operations::instance::{self, Id, Outcome, Phase};
-use crate::operations::{OperationDeclaration, OperationPolicy, Visibility, WireOperation};
+use crate::operations::{
+    OperationDeclaration, OperationPolicy, OutputDeclaration, Visibility, WireOperation,
+};
+use crate::schema::Described;
 
 /* === Constants === */
+// A watch lasts until its instance settles or the caller cancels it.
+const WATCH_POLICY: OperationPolicy = OperationPolicy {
+    timeout: crate::operations::UNBOUNDED,
+    attempt_timeout: crate::operations::UNBOUNDED,
+    ..crate::operations::host::POLICY
+};
 
 /* === Macros === */
 
@@ -40,6 +49,14 @@ use crate::operations::{OperationDeclaration, OperationPolicy, Visibility, WireO
 
 /* === Implementations === */
 impl Status {
+    pub fn of(instance: Id) -> Self {
+        Self {
+            instance: instance.value(),
+        }
+    }
+}
+
+impl Watch {
     pub fn of(instance: Id) -> Self {
         Self {
             instance: instance.value(),
@@ -102,6 +119,40 @@ impl WireOperation for Cancel {
     #[cfg(feature = "grpc")]
     fn visit_grpc<V: crate::operations::GrpcVisitor>(visitor: V) -> Option<V::Entry> {
         Some(visitor.unary::<Self>())
+    }
+}
+
+impl OperationDeclaration for Watch {
+    type Request = Self;
+    type Response = InstanceState;
+    const ID: &'static str = "host.operations.watch";
+    const POLICY: OperationPolicy = WATCH_POLICY;
+    const VISIBILITY: Visibility = Visibility::Shared;
+    const DESCRIPTION: &'static str =
+        "Stream the status changes of an operation instance the caller submitted until it settles";
+
+    fn endpoint_types() -> (Option<std::any::TypeId>, Option<std::any::TypeId>) {
+        (None, Some(std::any::TypeId::of::<InstanceState>()))
+    }
+}
+
+impl OutputDeclaration for Watch {
+    type Item = InstanceState;
+}
+
+impl WireOperation for Watch {
+    const VERSION: u32 = 1;
+    const OUTPUT: Option<crate::schema::declaration::Definition> = Some(InstanceState::DEFINITION);
+    #[cfg(feature = "grpc")]
+    const GRPC: Option<crate::operations::Grpc> = Some(crate::operations::Grpc::new(
+        "harmos.host.v1",
+        "Operations",
+        "Watch",
+    ));
+
+    #[cfg(feature = "grpc")]
+    fn visit_grpc<V: crate::operations::GrpcVisitor>(visitor: V) -> Option<V::Entry> {
+        Some(visitor.download::<Self>())
     }
 }
 

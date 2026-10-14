@@ -73,13 +73,14 @@ fn executable(facility: Facility) -> Executable {
 
 fn fragments(facility: &str, owner: &str) -> Vec<u8> {
     use harmos::operations::{
-        OperationPolicy, RetryPolicy,
+        OperationPolicy, RestartPolicy, RetryPolicy,
         lifecycle::{Action, Descriptor},
     };
     let policy = OperationPolicy {
         timeout: std::time::Duration::from_secs(2),
         attempt_timeout: std::time::Duration::from_secs(2),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
     let lifecycle = [
         Descriptor::new(Action::Initialize, policy).unwrap(),

@@ -34,11 +34,8 @@ use std::time::Duration;
 // Third Party Imports
 use tokio::sync::{Barrier, Notify};
 // Local Imports
-use harmos::operations::{Context, Operation, OperationPolicy, RetryPolicy};
-use harmos::{
-    Error, Runtime, services::Fault, services::Service, services::ServicePolicy,
-    services::ServiceStatus,
-};
+use harmos::operations::{Context, Operation, OperationPolicy, RestartPolicy, RetryPolicy};
+use harmos::{Error, Runtime, services::Fault, services::Service, services::ServiceStatus};
 use support::{Bank, Ledger, catalog};
 
 /* === Constants === */
@@ -59,6 +56,7 @@ struct Ping;
             timeout: Duration::from_secs(30),
             attempt_timeout: Duration::from_secs(1),
             retries: RetryPolicy::Never,
+            restart: RestartPolicy::Never,
         },
     )]
 struct PingContract;
@@ -109,7 +107,7 @@ impl Operation for Ping {
 /* === Private Functions === */
 async fn service_status(
     mut services: tokio::sync::watch::Receiver<
-        BTreeMap<harmos::services::ServiceKey, harmos::services::ServiceSnapshot>,
+        BTreeMap<harmos::operations::resident::Key, harmos::operations::resident::Snapshot>,
     >,
     name: &str,
     wanted: impl Fn(&ServiceStatus) -> bool,
@@ -118,8 +116,8 @@ async fn service_status(
         loop {
             if let Some(status) = services
                 .borrow()
-                .get(&harmos::services::ServiceKey::root(name))
-                .map(|item| item.status.clone())
+                .get(&harmos::operations::resident::Key::root(name))
+                .and_then(|item| item.health.clone())
                 && wanted(&status)
             {
                 return status;
@@ -157,49 +155,49 @@ fn own_contract() {
         .runtime()
         .await
         .unwrap();
-    let manager = runtime.handle().services;
+    let manager = runtime.handle().operations;
     manager
-        .register(
+        .register_service(
             harmos::services::ServiceDefinition {
                 id: "dynamic".into(),
-                policy: ServicePolicy::default(),
+                policy: harmos::services::POLICY,
             },
             |_: Arc<()>| resident,
         )
         .unwrap();
     let dynamic = manager
-        .activate("dynamic", &manager.root_scope())
+        .submit_resident("dynamic")
         .await
         .unwrap();
-    assert_eq!(runtime.services.statuses().len(), 2);
+    assert_eq!(runtime.operations.residents().len(), 2);
     assert!(
-        matches!(manager.register(harmos::services::ServiceDefinition { id: "boot".into(), policy: ServicePolicy::default() }, |_: Arc<()>| resident), Err(Error::AlreadyRegistered { domain: "service", name }) if name == "boot")
+        matches!(manager.register_service(harmos::services::ServiceDefinition { id: "boot".into(), policy: harmos::services::POLICY }, |_: Arc<()>| resident), Err(Error::AlreadyRegistered { domain: "service", name }) if name == "boot")
     );
     let boot = manager
-        .activate("boot", &manager.root_scope())
+        .submit_resident("boot")
         .await
         .unwrap();
-    assert_eq!(manager.status(boot.key()).unwrap().leases, 2);
+    assert_eq!(manager.resident(&manager.resident_key(boot.id()).unwrap()).unwrap().leases, 2);
     boot.release().await.unwrap();
     assert_eq!(
         manager
-            .status(&harmos::services::ServiceKey::root("boot"))
+            .resident(&harmos::operations::resident::Key::root("boot"))
             .unwrap()
             .leases,
         1
     );
-    assert_eq!(manager.status(dynamic.key()).unwrap().leases, 1);
+    assert_eq!(manager.resident(&manager.resident_key(dynamic.id()).unwrap()).unwrap().leases, 1);
     runtime.stop().await.unwrap();
     assert_eq!(
         manager
-            .status(&harmos::services::ServiceKey::root("boot"))
-            .map(|item| item.status),
+            .resident(&harmos::operations::resident::Key::root("boot"))
+            .and_then(|item| item.health),
         Some(ServiceStatus::Stopped)
     );
     assert_eq!(
         manager
-            .status(&harmos::services::ServiceKey::root("dynamic"))
-            .map(|item| item.status),
+            .resident(&harmos::operations::resident::Key::root("dynamic"))
+            .and_then(|item| item.health),
         Some(ServiceStatus::Stopped)
     );
 
@@ -219,14 +217,11 @@ fn own_contract() {
                         .runtime()
                         .await
                         .unwrap();
-                    let manager = runtime.services.clone();
-                    manager.shutdown().await.unwrap();
+                    let manager = runtime.operations.clone();
+                    manager.shutdown_residents().await.unwrap();
                     assert!(matches!(
-                        runtime
-                            .services
-                            .activate("late", &manager.root_scope())
-                            .await,
-                        Err(Error::Closing { domain: "service" })
+                        manager.submit_resident("late").await,
+                        Err(Error::Closing { .. })
                     ));
                     runtime
                         .operations
@@ -255,10 +250,10 @@ fn own_contract() {
                     let runtime = assembly().runtime().await.unwrap();
                     for name in ["", "artifact"] {
                         assert!(matches!(
-                            runtime.services.register(
+                            runtime.operations.register_service(
                                 harmos::services::ServiceDefinition {
                                     id: name.into(),
-                                    policy: ServicePolicy::default()
+                                    policy: harmos::services::POLICY
                                 },
                                 |_: Arc<()>| resident
                             ),
@@ -268,7 +263,7 @@ fn own_contract() {
                             })
                         ));
                     }
-                    assert!(runtime.services.statuses().is_empty());
+                    assert!(runtime.operations.residents().is_empty());
                     runtime.stop().await.unwrap();
                 });
         });
@@ -288,17 +283,17 @@ fn own_contract() {
                     let exited = Arc::new(AtomicUsize::new(0));
                     let mut producers = Vec::new();
                     for index in 0..8 {
-                        let manager = runtime.services.clone();
+                        let manager = runtime.operations.clone();
                         let barrier = barrier.clone();
                         let entered = entered.clone();
                         let exited = exited.clone();
                         producers.push(tokio::spawn(async move {
                             barrier.wait().await;
                             let id = format!("resident-{index}");
-                            manager.register(
+                            manager.register_service(
                                 harmos::services::ServiceDefinition {
                                     id: id.clone(),
-                                    policy: ServicePolicy::default(),
+                                    policy: harmos::services::POLICY,
                                 },
                                 move |_: Arc<()>| {
                                     let entered = entered.clone();
@@ -315,15 +310,15 @@ fn own_contract() {
                                     }
                                 },
                             )?;
-                            manager.activate(&id, &manager.root_scope()).await
+                            manager.submit_resident(&id).await
                         }));
                     }
                     barrier.wait().await;
-                    runtime.services.shutdown().await.unwrap();
+                    runtime.operations.shutdown_residents().await.unwrap();
                     for producer in producers {
                         match producer.await.unwrap() {
                             Ok(_lease) => {}
-                            Err(Error::Closing { domain: "service" }) => {}
+                            Err(Error::Closing { .. }) => {}
                             Err(error) => panic!("unexpected admission: {error:?}"),
                         }
                     }
@@ -333,10 +328,10 @@ fn own_contract() {
                     );
                     assert!(
                         runtime
-                            .services
-                            .statuses()
+                            .operations
+                            .residents()
                             .values()
-                            .all(|instance| instance.status == ServiceStatus::Stopped)
+                            .all(|instance| instance.health == Some(ServiceStatus::Stopped))
                     );
                     runtime.stop().await.unwrap();
                 });
@@ -376,13 +371,13 @@ fn own_contract() {
                         .unwrap();
                     entered.notified().await;
                     let first = tokio::spawn({
-                        let manager = runtime.services.clone();
-                        async move { manager.shutdown().await }
+                        let manager = runtime.operations.clone();
+                        async move { manager.shutdown_residents().await }
                     });
                     stopping.notified().await;
                     let second = tokio::spawn({
-                        let manager = runtime.services.clone();
-                        async move { manager.shutdown().await }
+                        let manager = runtime.operations.clone();
+                        async move { manager.shutdown_residents().await }
                     });
                     tokio::task::yield_now().await;
                     assert!(!first.is_finished());
@@ -392,9 +387,9 @@ fn own_contract() {
                     second.await.unwrap().unwrap();
                     assert_eq!(
                         runtime
-                            .services
-                            .status(&harmos::services::ServiceKey::root("boot"))
-                            .map(|item| item.status),
+                            .operations
+                            .resident(&harmos::operations::resident::Key::root("boot"))
+                            .and_then(|item| item.health),
                         Some(ServiceStatus::Stopped)
                     );
                     runtime.stop().await.unwrap();

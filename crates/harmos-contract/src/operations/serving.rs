@@ -95,6 +95,7 @@ pub struct WireTable<C> {
 
 struct Slot<C> {
     lifecycle: bool,
+    resident: bool,
     #[cfg(feature = "streaming")]
     streams: Option<WireStreams>,
     state: Mutex<SlotState<C>>,
@@ -114,6 +115,9 @@ struct Loan<C> {
 
 struct Handler<C> {
     lifecycle: bool,
+    // A resident control runs until cancelled and is not charged against the
+    // ordinary invocation capacity.
+    resident: bool,
     definition: Definition,
     contract: Option<Contract>,
     prepare: Prepare<C>,
@@ -447,7 +451,7 @@ impl<C: Send + Sync + 'static> WireTable<C> {
         let occupied = self
             .prepared
             .values()
-            .filter(|slot| slot.lifecycle == handler.lifecycle)
+            .filter(|slot| slot.lifecycle == handler.lifecycle && !slot.resident)
             .count();
         // One accounted reserved lifecycle slot remains available even when
         // ordinary admission is full. Failed SDK finalization retains that slot.
@@ -456,7 +460,7 @@ impl<C: Send + Sync + 'static> WireTable<C> {
         } else {
             self.capacity.get()
         };
-        if occupied >= capacity {
+        if occupied >= capacity && !handler.resident {
             return Err(ServingError::Capacity);
         }
         let prepared = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -465,6 +469,7 @@ impl<C: Send + Sync + 'static> WireTable<C> {
         .map_err(|_| ServingError::Panicked)??;
         let slot = Slot {
             lifecycle: handler.lifecycle,
+            resident: handler.resident,
             #[cfg(feature = "streaming")]
             streams: prepared.streams(),
             state: Mutex::new(SlotState {

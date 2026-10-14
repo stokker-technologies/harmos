@@ -28,7 +28,7 @@ use tokio::sync::Notify;
 // Local Imports
 use super::{Lanes, app::App};
 use harmos::operations::{
-    Context, Operation, OperationPhase, OperationPolicy, RetryPolicy, Settings,
+    Context, Operation, OperationPhase, OperationPolicy, RestartPolicy, RetryPolicy, Settings,
 };
 use harmos::{Error, Refusal, Runtime};
 
@@ -64,6 +64,7 @@ struct Counts {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
             retries: RetryPolicy::Never,
+            restart: RestartPolicy::Never,
         },
     )]
 struct HoldContract;

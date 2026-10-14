@@ -32,8 +32,8 @@ use harmos_contract::plugin::{Declared, Plugin};
 use harmos_guest::Context;
 use harmos_guest::Host;
 use harmos_guest::operations::{
-    Failure, Operation, OperationPolicy, RetryPolicy, ServingError, WireDeclaration, WireTable,
-    lifecycle,
+    Failure, Operation, OperationPolicy, RestartPolicy, RetryPolicy, ServingError, WireDeclaration,
+    WireTable, lifecycle,
 };
 
 /* === Constants === */
@@ -41,6 +41,7 @@ const SDK_POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_millis(500),
     retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
 };
 const SDK: [harmos_guest::operations::OperationPolicy; 2] = [SDK_POLICY, SDK_POLICY];
 

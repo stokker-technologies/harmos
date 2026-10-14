@@ -83,14 +83,14 @@ impl<P: Plugin<Context = Supervisor> + Declared> PluginNative<P> {
             observers.push(entry.declaration());
             Ok::<(), std::io::Error>(())
         })?;
-        let controls = P::OBSERVER_CONTROLS
+        let controls = P::OBSERVER_CONTROL
             .iter()
             .map(|entry| entry.contract())
             .collect::<std::result::Result<Vec<_>, _>>()
             .map_err(std::io::Error::other)?;
         let inspected_controls = declaration
-            .observer_controls()
-            .map_or(&[][..], |pair| pair.as_slice());
+            .observer_control()
+            .map_or(&[][..], std::slice::from_ref);
         if declaration.observers != observers || inspected_controls != controls.as_slice() {
             return Err(std::io::Error::other(
                 "observer manifest differs from authored selection",
@@ -156,10 +156,8 @@ impl<P: Plugin<Context = Supervisor> + Declared> Attach for PluginNative<P> {
         self.declaration.observers.clone()
     }
 
-    fn observer_controls(
-        &self,
-    ) -> harmos_contract::Result<Option<[crate::operations::Contract; 2]>> {
-        Ok(self.declaration.observer_controls().cloned())
+    fn observer_control(&self) -> harmos_contract::Result<Option<crate::operations::Contract>> {
+        Ok(self.declaration.observer_control().cloned())
     }
 
     fn listener_declarations(

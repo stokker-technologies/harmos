@@ -23,7 +23,7 @@ Use the original runtime and resource owners. Consult the relevant section only;
   metadata on a unit struct in its vertical operation file, including unshared
   declarations. Never put operation metadata on catalog enum entries. Catalogs
   assemble already-declared leaf types.
-- Lifecycle verbs are shared by operations, observers and plugins:
+- Lifecycle verbs are shared by operations, observers, services and plugins:
   `initialize` constructs, the work verb (`run`, `observe`) works, `stop` ends
   domain activity and `cleanup` releases physical resources. An operation's
   `async fn initialize(Arc<Resources>, context) -> Result<Self, Error>` runs once
@@ -69,6 +69,27 @@ Use the original runtime and resource owners. Consult the relevant section only;
   Child values travel in operation envelope version 6; rebuild both SDK and host
   together. This transient protocol revision does not change persisted records
   or public WIT namespaces.
+- Observers and services are resident operation kinds of the one
+  `OperationManager`; never add another manager or supervisor for background
+  work. Register with `register_observer`/`stage_observers` or
+  `register_service(ServiceDefinition { id, policy }, factory)` and activate with
+  `submit_with_resources` (`submit_with_resources_at(id, resources)` by id,
+  `submit_resident(id)` over the runtime's own resources). Activations over the
+  same resources share one instance; each `OperationInstance` holds a lease,
+  release or drop frees it and the last one stops the instance, `cancel` stops
+  it for every holder, `detach` keeps the lease until its resources retire.
+  `retire_resources` stops everything over those resources. Residents report
+  `Restarting` while backing off and end in `Stopped`; read them through
+  `residents()`/`watch_residents()` or the `status`/`watch` built-ins.
+- `OperationPolicy` has a request half (`timeout`, `attempt_timeout`,
+  `retries`) and a resident half (`restart`). Request-scoped declarations use
+  `restart: RestartPolicy::Never`; SDK lifecycle and listener callbacks refuse
+  anything else. A service's `timeout` is its stop deadline and
+  `RestartPolicy::OnTransient { credit, sustained_health, backoff }` restarts it
+  after environmental faults; `services::POLICY` is the default. Services
+  implement `Resident` with `run`, `stop` and `cleanup`; their context is the
+  same `Host` as any body (`host()` for an owned handle) and lends `records`,
+  `state`, `streams` and `evidence`.
 - Write operation bodies against one `operations::Host` capability, bound in
   process (`OperationManager`, `operations::Context`), in sidecars (`Supervisor`)
   and in guests (`Context`). Reach host services as declared operations through
@@ -152,10 +173,10 @@ declare operation metadata.
 
 - Harmos serves no built-in operation by default. Register
   `builtin::Catalog::register(&operations, owner, lane)` to serve
-  `host.operations.status` and `host.operations.cancel`
-  (`/harmos.host.v1.Operations/{Status,Cancel}`). Both resolve only active
-  instances the caller submitted; unknown, foreign and settled ids are refused
-  alike. Plugins must declare them as requirements; a live handle reports its
+  `host.operations.status`, `host.operations.cancel` and the server stream
+  `host.operations.watch` (`/harmos.host.v1.Operations/{Status,Cancel,Watch}`).
+  All resolve only active instances the caller submitted or holds a resident
+  lease on; unknown, foreign and settled ids are refused alike. Plugins must declare them as requirements; a live handle reports its
   own child through child controls instead.
 - Explicitly register `operations::discovery::Discovery` with the original
   manager to expose `host.operations`; it is not an automatic second catalog.
@@ -458,8 +479,11 @@ layouts for guests and sidecars.
   Result<Self, Error>` (or `Default`), work in `observe`, and end with `stop`
   and `cleanup`; a failed initialization drops its partial owner and retries on
   the next cadence without cleanup.
-  Native observers select `observers = Catalog` and actual ordinary Host
-  `observer_controls(Start, Stop)` leaves with explicit authored policies. Bind
-  the same `ObserverAttachment<Resources, Host>` to initialized resources through the original
-  operation table; stop/join it before resource cleanup. Guest observer callbacks
-  remain unsupported and nonempty selections are rejected.
+  Native observers select `observers = Catalog` and one Host
+  `observer_control = Observe` leaf (request `observers::Control`, response `()`,
+  `POLICY = observers::POLICY`). Bind the same `ObserverAttachment<Resources, Host>`
+  to initialized resources with `bind::<Observe>(table)`; the host submits the
+  control per activation and cancels it to stop and clean up the observer, which
+  runs on a thread of its own. In process, `Instance::activate(resources, host)`
+  yields an `Activity` to drive with `observe`, `stop` and `cleanup`. Guest
+  observer callbacks remain unsupported and nonempty selections are rejected.

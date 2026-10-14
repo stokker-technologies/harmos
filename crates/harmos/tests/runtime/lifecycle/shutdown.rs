@@ -79,6 +79,7 @@ struct PendingCall(Arc<Cancellation>);
             timeout: Duration::from_secs(3),
             attempt_timeout: Duration::from_secs(2),
             retries: harmos::operations::RetryPolicy::Never,
+            restart: harmos::operations::RestartPolicy::Never,
         },
     )]
 struct PendingContract;
@@ -167,11 +168,11 @@ fn contract_scenario() {
                     let operation = runtime.operations.submit_as::<PendingContract>(()).unwrap();
                     trace.started.notified().await;
                     runtime
-                        .services
-                        .register(
+                        .operations
+                        .register_service(
                             harmos::services::ServiceDefinition {
                                 id: "caller".into(),
-                                policy: harmos::services::ServicePolicy::default(),
+                                policy: harmos::services::POLICY,
                             },
                             |_: Arc<()>| {
                                 |mut context: harmos::services::Service<Editor>| async move {
@@ -182,14 +183,9 @@ fn contract_scenario() {
                             },
                         )
                         .unwrap();
-                    let lease = runtime
-                        .services
-                        .activate("caller", &runtime.services.root_scope())
-                        .await
-                        .unwrap();
+                    let lease = runtime.operations.submit_resident("caller").await.unwrap();
                     lease.ready().await.unwrap();
-                    let service = lease.instance();
-                    let mut status = service.subscribe();
+                    let mut status = lease.subscribe();
                     status.borrow_and_update();
                     let cancelled = Arc::new(std::sync::OnceLock::new());
                     let waker = std::task::Waker::from(Arc::new(StopNotification {
@@ -204,13 +200,13 @@ fn contract_scenario() {
                     // Observe The Stop Notification Synchronously, Before Scheduling Cleanup
                     runtime.stop().await.unwrap();
                     assert_eq!(cancelled.get(), Some(&false));
-                    assert!(service.status().cancellation_requested());
+                    assert!(lease.status().cancellation_requested());
                     assert!(matches!(
                         operation.await,
                         Err(Error::OperationRefused(harmos::Refusal::Cancelled))
                     ));
                     assert_eq!(trace.finalized.load(Ordering::SeqCst), 1);
-                    service.join().await.unwrap();
+                    lease.settle().await.unwrap();
                 });
         });
     }

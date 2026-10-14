@@ -50,7 +50,7 @@ pub struct Model;
 
 pub struct Fixture {
     pub runtime: Runtime<Model>,
-    _lease: harmos::services::ServiceLease<Model>,
+    _lease: harmos::operations::OperationInstance<harmos::operations::resident::Activation>,
 }
 
 /* === Enums === */
@@ -138,7 +138,7 @@ impl Fixture {
                 lifecycle: source.sdk_lifecycle().unwrap(),
                 streams: source.publications(),
                 observers: source.observers(),
-                observer_controls: source.observer_controls().unwrap(),
+                observer_control: source.observer_control().unwrap(),
                 listeners: source.listener_declarations().unwrap().unwrap(),
                 ..PluginContributions::default()
             },
@@ -155,13 +155,13 @@ impl Fixture {
             .await
             .unwrap();
         runtime
-            .services
-            .register(
+            .operations
+            .register_service(
                 harmos::services::ServiceDefinition {
                     id: "consumer".into(),
-                    policy: harmos::services::ServicePolicy {
-                        credit: 0,
-                        ..Default::default()
+                    policy: harmos::operations::OperationPolicy {
+                        restart: harmos::operations::RestartPolicy::Never,
+                        ..harmos::services::POLICY
                     },
                 },
                 move |_: Arc<()>| {
@@ -178,17 +178,17 @@ impl Fixture {
             )
             .unwrap();
         let lease = runtime
-            .services
-            .activate("consumer", &runtime.services.root_scope())
+            .operations
+            .submit_resident("consumer")
             .await
             .unwrap();
-        let mut statuses = runtime.services.subscribe();
+        let mut statuses = runtime.operations.watch_residents();
         tokio::time::timeout(Duration::from_secs(5), async {
             loop {
                 let status = statuses
                     .borrow_and_update()
-                    .get(&harmos::services::ServiceKey::root("consumer"))
-                    .map(|item| item.status.clone());
+                    .get(&harmos::operations::resident::Key::root("consumer"))
+                    .and_then(|item| item.health.clone());
                 match status {
                     Some(ServiceStatus::Running { .. }) => break,
                     Some(ServiceStatus::Stopped) => {

@@ -38,20 +38,6 @@ pub struct PluginCatalog {
     pub operations: Vec<crate::operations::Definition>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct ObserverControl {
-    pub observer: String,
-    pub generation: u64,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct ObserverUpdate {
-    pub control: ObserverControl,
-    pub status: crate::ObserverStatus,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Publication {
     pub stream: String,
@@ -94,7 +80,6 @@ pub enum Frame {
 impl Frame {
     pub const REGISTER: &'static str = "harmos.register";
     pub const EXITING: &'static str = "harmos.exiting";
-    pub const OBSERVER_STATUS: &'static str = "harmos.observer.status";
     pub const LIMIT: usize = 16 * 1024 * 1024;
     pub const OVERSIZED: i64 = -32_603;
 

@@ -145,6 +145,7 @@ fn contract_scenario() {
                         timeout: Duration::from_millis(200),
                         attempt_timeout: Duration::from_millis(200),
                         retries: RetryPolicy::Never,
+                        restart: RestartPolicy::Never,
                     };
                     session
                         .reload_parts(next, inventory, [], &mut host)

@@ -30,8 +30,8 @@ use super::{assembly, service_status};
 use crate::support::Bank;
 use harmos::operations::Host as _;
 use harmos::operations::{
-    Declarations, Definition, Operation, OperationDeclaration, OperationPolicy, RetryPolicy,
-    Visibility,
+    Declarations, Definition, Operation, OperationDeclaration, OperationPolicy, RestartPolicy,
+    RetryPolicy, Visibility,
 };
 use harmos::plugin::sidecar::{Attach, Attached, Notice, Supervised};
 use harmos::plugin::{
@@ -122,10 +122,10 @@ struct Advertised<S> {
 }
 
 struct Backend<A: Attach> {
-    services: Option<harmos::services::ServiceManager<Bank>>,
+    services: Option<harmos::operations::OperationManager>,
     retirement_gate: RetirementGate,
     resident: Option<Resident<A>>,
-    lease: Option<harmos::services::ServiceLease<Bank>>,
+    lease: Option<harmos::operations::OperationInstance<harmos::operations::resident::Activation>>,
     registration: Option<harmos::operations::PluginRegistration>,
     sdk: Option<harmos::operations::PluginSdkRegistration>,
     initializing: Option<harmos::operations::EncodedInvocation>,
@@ -140,8 +140,7 @@ struct Host<A: Attach> {
     resident: Resident<A>,
     lane: Lanes,
     capacity: std::num::NonZeroUsize,
-    supervision: harmos::services::ServicePolicy,
-    services: harmos::services::ServiceManager<Bank>,
+    supervision: harmos::operations::OperationPolicy,
     operations: harmos::operations::OperationManager,
     retirement_gate: RetirementGate,
 }
@@ -215,6 +214,7 @@ impl OperationDeclaration for Read {
                 jitter: harmos::operations::Jitter::None,
             },
         },
+        restart: RestartPolicy::Never,
     };
 }
 
@@ -389,6 +389,7 @@ impl harmos::operations::lifecycle::Policy for Endpoint {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_millis(500),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
@@ -534,7 +535,7 @@ impl<A: Attach> Managed<A> {
             resident,
             lane,
             capacity,
-            harmos::services::ServicePolicy::default(),
+            harmos::services::POLICY,
         )
     }
     pub(crate) fn from_runtime(
@@ -543,7 +544,7 @@ impl<A: Attach> Managed<A> {
         resident: Resident<A>,
         lane: Lanes,
         capacity: std::num::NonZeroUsize,
-        supervision: harmos::services::ServicePolicy,
+        supervision: harmos::operations::OperationPolicy,
     ) -> Self {
         let host = Host {
             ready: None,
@@ -551,7 +552,6 @@ impl<A: Attach> Managed<A> {
             lane,
             capacity,
             supervision,
-            services: runtime.services.clone(),
             operations: runtime.operations.clone(),
             retirement_gate: Arc::default(),
         };
@@ -705,7 +705,7 @@ impl<A: Attach> PluginLifecycle for Host<A> {
     }
     fn prepare(&mut self, _: &PluginDefinition) -> harmos::Result<Backends<A>> {
         Ok(PluginBackend::Sidecar(Backend {
-            services: Some(self.services.clone()),
+            services: Some(self.operations.clone()),
             retirement_gate: self.retirement_gate.clone(),
             ..Backend::default()
         }))
@@ -726,7 +726,7 @@ impl<A: Attach> PluginLifecycle for Host<A> {
         let resident = self.resident.clone().routed(router);
         self.ready = Some(resident.ready());
         backend.resident = Some(resident.clone());
-        self.services.register(
+        self.operations.register_service(
             harmos::services::ServiceDefinition {
                 id: definition.id.clone(),
                 policy: self.supervision,
@@ -734,11 +734,7 @@ impl<A: Attach> PluginLifecycle for Host<A> {
             move |_: Arc<()>| resident.clone(),
         )?;
         backend.registered = true;
-        backend.lease = Some(
-            self.services
-                .activate(&definition.id, &self.services.root_scope())
-                .await?,
-        );
+        backend.lease = Some(self.operations.submit_resident(&definition.id).await?);
         let native = tokio::time::timeout(
             Duration::from_secs(5),
             backend.resident.as_ref().unwrap().staged_operations(),
@@ -822,7 +818,7 @@ impl<A: Attach> PluginLifecycle for Host<A> {
                 .services
                 .as_ref()
                 .unwrap()
-                .unregister(&definition.id)
+                .unregister_resident(&definition.id)
                 .await?;
         }
         backend.registered = false;
@@ -868,10 +864,8 @@ impl<S: Attach> Attach for Advertised<S> {
     fn observers(&self) -> Vec<harmos_contract::inventory::observers::Declaration> {
         self.source.observers()
     }
-    fn observer_controls(
-        &self,
-    ) -> harmos_contract::Result<Option<[harmos::operations::Contract; 2]>> {
-        self.source.observer_controls()
+    fn observer_control(&self) -> harmos_contract::Result<Option<harmos::operations::Contract>> {
+        self.source.observer_control()
     }
     fn listener_declarations(
         &self,
@@ -906,7 +900,7 @@ pub(crate) fn definition<A: Attach>(source: &A, configuration: Vec<u8>) -> Plugi
             lifecycle: source.sdk_lifecycle().unwrap(),
             streams: source.publications(),
             observers: source.observers(),
-            observer_controls: source.observer_controls().unwrap(),
+            observer_control: source.observer_control().unwrap(),
             listeners: source.listener_declarations().unwrap().unwrap_or_default(),
             ..PluginContributions::default()
         },
@@ -1026,7 +1020,7 @@ fn contract_scenario() {
                         let mut fixture = Managed::new(source, Lanes::NativeOpen).await;
                         assert!(fixture.initialize().await.is_err());
                         let status = service_status(
-                            fixture.runtime.services.subscribe(),
+                            fixture.runtime.operations.watch_residents(),
                             "operation-handshake",
                             |status| matches!(status, ServiceStatus::Inactive { .. }),
                         )

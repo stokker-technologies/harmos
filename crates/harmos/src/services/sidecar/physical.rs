@@ -7,6 +7,12 @@
  * ***
  */
 
+// One sidecar connection, run as a resident service instance the plugin
+// manager owns. The instance runs the connection once and holds its cleanup
+// until the plugin manager stops it; the manager polls the connection's
+// outcome and, during settlement, the instance's cleanup inline with its own
+// lifecycle steps.
+
 /* === Modules === */
 
 /* === Re-Exports === */
@@ -14,46 +20,56 @@
 /* === Imports === */
 // Standard Library Imports
 use std::future::Future;
+use std::panic::AssertUnwindSafe;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use std::task::{Context, Poll, Wake, Waker};
 // Third Party Imports
-
+use futures_util::FutureExt;
+use tokio::sync::watch;
 // Local Imports
 use super::{Notice, Supervised};
-use crate::services::Resident;
-use crate::{Application, services::Fault, services::Service};
+use crate::operations::resident::Lease;
+use crate::operations::{OperationManager, OperationPolicy, RestartPolicy};
+use crate::services::{Fault, Once, Resident, Service, ServiceDefinition};
+use crate::{Application, Result};
 use harmos_sidecar::Attach;
 
 /* === Constants === */
+static NEXT_CONNECTION: AtomicU64 = AtomicU64::new(1);
 
 /* === Macros === */
 
 /* === Type Aliases === */
-type Attempt = Pin<Box<dyn Future<Output = Result<(), Fault<String>>> + Send>>;
-type Ending = Pin<Box<dyn Future<Output = Result<(), String>> + Send>>;
+type Outcome = std::result::Result<(), Fault<String>>;
+type Running = Pin<Box<dyn Future<Output = Outcome> + Send>>;
+type Ending = Pin<Box<dyn Future<Output = std::result::Result<(), String>> + Send>>;
+type Owner<A, S, H> = std::marker::PhantomData<fn() -> (A, S, H)>;
 
 /* === Structs === */
 pub(super) struct Physical<A: Application, S, H> {
-    original: Arc<Mutex<Original<A, S, H>>>,
+    original: Arc<Mutex<Original>>,
+    marker: Owner<A, S, H>,
 }
 
 pub(super) struct Polling<A: Application, S, H> {
-    original: Weak<Mutex<Original<A, S, H>>>,
+    original: Weak<Mutex<Original>>,
+    marker: Owner<A, S, H>,
 }
 
-struct Original<A: Application, S, H> {
+struct Original {
     signals: Arc<Signals>,
+    lease: Option<Lease>,
+    end: watch::Sender<bool>,
     running_busy: bool,
     ending_busy: bool,
     cancelled: bool,
-    running: Option<Attempt>,
+    running: Option<Running>,
     ending: Option<Ending>,
     settled: bool,
     ending_failure: Option<String>,
-    recovery: Arc<Mutex<Option<Supervised<A, S, H>>>>,
-    outcome: Option<Result<(), Fault<String>>>,
+    outcome: Option<Outcome>,
 }
 
 #[derive(Default)]
@@ -62,9 +78,14 @@ struct Signals {
     waiting: Mutex<Vec<Waker>>,
 }
 
-struct Owned<A: Application, S, H> {
-    resident: Option<Supervised<A, S, H>>,
-    recovery: Arc<Mutex<Option<Supervised<A, S, H>>>>,
+// The resident the connection's service instance runs: the connection once,
+// then nothing until the plugin manager stops the instance.
+struct Connection<A: Application, S, H> {
+    supervised: Supervised<A, S, H>,
+    outcome: watch::Sender<Option<Outcome>>,
+    // Set by the plugin manager. Instance cancellation waits for every
+    // dependent observer, which retires only in this connection's cleanup.
+    end: watch::Receiver<bool>,
 }
 
 /* === Enums === */
@@ -111,33 +132,47 @@ impl<A: Application, S, H> Clone for Polling<A, S, H> {
     fn clone(&self) -> Self {
         Self {
             original: self.original.clone(),
+            marker: std::marker::PhantomData,
         }
     }
 }
 
-impl<A: Application, S, H> Owned<A, S, H> {
-    // Borrow Through The Guard So The Future Captures Its Recovery Owner.
-    fn resident(&mut self) -> &mut Supervised<A, S, H> {
-        self.resident
-            .as_mut()
-            .expect("original physical resident retained")
-    }
-}
+impl<A, S, H> Resident<A> for Connection<A, S, H>
+where
+    A: Application,
+    S: Attach,
+    H: Fn(&Service<A>, Notice) + Send + Sync + 'static,
+{
+    type Error = String;
 
-impl<A: Application, S, H> Drop for Owned<A, S, H> {
-    fn drop(&mut self) {
-        let Some(resident) = self.resident.take() else {
-            return;
+    async fn run(&mut self, context: Service<A>) -> Outcome {
+        let mut stopping = context.shared_attempt();
+        let mut end = self.end.clone();
+        // Ending Drops The Connection Attempt; Its Cleanup Runs Afterwards
+        let running = AssertUnwindSafe(self.supervised.run(context)).catch_unwind();
+        let ended = tokio::select! {
+            ended = running => Some(ended.unwrap_or_else(|_| {
+                Err(Fault::Application("native physical attempt panicked".into()))
+            })),
+            _ = end.wait_for(|ended| *ended) => None,
+            () = stopping.stopping() => None,
         };
-        let mut recovery = self
-            .recovery
-            .lock()
-            .expect("physical owner recovery poisoned");
-        assert!(
-            recovery.is_none(),
-            "the original physical resident has one owner"
-        );
-        *recovery = Some(resident);
+        if let Some(outcome) = ended {
+            self.outcome.send_replace(Some(outcome));
+            tokio::select! {
+                _ = end.wait_for(|ended| *ended) => {}
+                () = stopping.stopping() => {}
+            }
+        }
+        Ok(())
+    }
+
+    async fn stop(&mut self) -> std::result::Result<(), String> {
+        self.supervised.stop().await
+    }
+
+    async fn cleanup(&mut self) -> std::result::Result<(), String> {
+        self.supervised.cleanup().await
     }
 }
 
@@ -147,16 +182,44 @@ where
     S: Attach,
     H: Fn(&Service<A>, Notice) + Send + Sync + 'static,
 {
-    pub(super) fn new(resident: Supervised<A, S, H>, context: Service<A>) -> Self {
-        let recovery = Arc::new(Mutex::new(None));
-        let mut owner = Owned {
-            resident: Some(resident),
-            recovery: Arc::clone(&recovery),
+    // Start the connection as a service instance; the plugin manager restarts
+    // plugins, so the instance itself never restarts.
+    pub(super) fn new(
+        resident: Supervised<A, S, H>,
+        operations: &OperationManager,
+    ) -> Result<Self> {
+        let number = NEXT_CONNECTION.fetch_add(1, Ordering::Relaxed);
+        let definition = ServiceDefinition {
+            id: format!("harmos.sidecar.{}.{number}", resident.attach.owner()),
+            policy: OperationPolicy {
+                restart: RestartPolicy::Never,
+                ..crate::services::POLICY
+            },
         };
-        let running = Box::pin(async move { owner.resident().attempt(context).await });
-        Self {
+        let (outcome, mut finished) = watch::channel(None);
+        let (end, ending) = watch::channel(false);
+        let connection = Connection {
+            supervised: resident,
+            outcome,
+            end: ending,
+        };
+        let lease =
+            operations.start_service::<A>(Once::new(definition, connection), true, false)?;
+        let running: Running = Box::pin(async move {
+            match finished.wait_for(Option::is_some).await {
+                Ok(outcome) => outcome
+                    .clone()
+                    .expect("a finished connection has an outcome"),
+                Err(_) => Err(Fault::Application(
+                    "native physical attempt was interrupted".into(),
+                )),
+            }
+        });
+        Ok(Self {
             original: Arc::new(Mutex::new(Original {
                 signals: Arc::default(),
+                lease: Some(lease),
+                end,
                 running_busy: false,
                 ending_busy: false,
                 cancelled: false,
@@ -164,15 +227,16 @@ where
                 ending: None,
                 settled: false,
                 ending_failure: None,
-                recovery,
                 outcome: None,
             })),
-        }
+            marker: std::marker::PhantomData,
+        })
     }
 
     pub(super) fn polling(&self) -> Polling<A, S, H> {
         Polling {
             original: Arc::downgrade(&self.original),
+            marker: std::marker::PhantomData,
         }
     }
 
@@ -187,7 +251,7 @@ where
         signals
     }
 
-    pub(super) fn poll(&mut self, context: &mut Context<'_>) -> Poll<Result<(), Fault<String>>> {
+    pub(super) fn poll(&mut self, context: &mut Context<'_>) -> Poll<Outcome> {
         let signals = self.signals(context);
         let mut running = {
             let mut original = self
@@ -211,59 +275,41 @@ where
         let revision = signals.revision.load(Ordering::Acquire);
         let waker = Waker::from(signals.clone());
         let mut polling = Context::from_waker(&waker);
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            running.as_mut().poll(&mut polling)
-        }));
+        let result = running.as_mut().poll(&mut polling);
+        let mut original = self
+            .original
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        original.running_busy = false;
         match result {
-            Ok(Poll::Pending) => {
-                let mut original = self
-                    .original
-                    .lock()
-                    .unwrap_or_else(|error| error.into_inner());
-                let cancelled = original.cancelled;
-                if cancelled {
-                    drop(original);
-                    drop(running);
-                    self.original
-                        .lock()
-                        .unwrap_or_else(|error| error.into_inner())
-                        .running_busy = false;
-                } else {
+            Poll::Pending => {
+                if !original.cancelled {
                     original.running = Some(running);
-                    original.running_busy = false;
-                    drop(original);
                 }
-                if cancelled || signals.revision.load(Ordering::Acquire) != revision {
+                drop(original);
+                if signals.revision.load(Ordering::Acquire) != revision {
                     signals.notify();
                 }
                 Poll::Pending
             }
-            Ok(Poll::Ready(outcome)) => {
-                drop(running);
-                let mut original = self
-                    .original
-                    .lock()
-                    .unwrap_or_else(|error| error.into_inner());
-                original.running_busy = false;
+            Poll::Ready(outcome) => {
                 original.outcome = Some(outcome.clone());
                 drop(original);
+                drop(running);
                 signals.notify();
                 Poll::Ready(outcome)
             }
-            Err(panic) => {
-                drop(running);
-                let mut original = self
-                    .original
-                    .lock()
-                    .unwrap_or_else(|error| error.into_inner());
-                original.running_busy = false;
-                original.outcome = Some(Err(Fault::Application(
-                    "native physical attempt panicked".into(),
-                )));
-                drop(original);
-                signals.notify();
-                std::panic::resume_unwind(panic)
-            }
+        }
+    }
+
+    // The plugin started: its connection instance runs.
+    pub(super) fn ready(&self) {
+        let original = self
+            .original
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if let Some(lease) = &original.lease {
+            lease.transition(crate::operations::OperationPhase::Running);
         }
     }
 
@@ -275,26 +321,18 @@ where
         original.running.is_some() || original.running_busy
     }
 
+    // Stop the connection's instance; its cleanup settles through `poll_ending`.
     pub(super) fn cancel(&mut self) {
-        let (running, signals) = {
+        let signals = {
             let mut original = self
                 .original
                 .lock()
                 .unwrap_or_else(|error| error.into_inner());
             original.cancelled = true;
-            let running = original.running.take();
-            if running.is_some() {
-                original.running_busy = true;
-            }
-            (running, original.signals.clone())
+            original.running.take();
+            original.end.send_replace(true);
+            original.signals.clone()
         };
-        if let Some(running) = running {
-            drop(running);
-            self.original
-                .lock()
-                .unwrap_or_else(|error| error.into_inner())
-                .running_busy = false;
-        }
         signals.notify();
     }
 
@@ -306,9 +344,12 @@ where
             .take();
     }
 
-    pub(super) fn poll_ending(&mut self, context: &mut Context<'_>) -> Poll<Result<(), String>> {
+    pub(super) fn poll_ending(
+        &mut self,
+        context: &mut Context<'_>,
+    ) -> Poll<std::result::Result<(), String>> {
         let signals = self.signals(context);
-        let (ending, recovery) = {
+        let mut ending = {
             let mut original = self
                 .original
                 .lock()
@@ -323,36 +364,31 @@ where
                 return Poll::Pending;
             }
             original.ending_busy = true;
-            (original.ending.take(), Arc::clone(&original.recovery))
+            match original.ending.take() {
+                Some(ending) => ending,
+                None => {
+                    original.end.send_replace(true);
+                    let Some(lease) = original.lease.as_mut() else {
+                        original.ending_busy = false;
+                        original.settled = true;
+                        return Poll::Ready(Ok(()));
+                    };
+                    let retiring = lease.retire();
+                    Box::pin(async move { retiring.await.map_err(|error| error.to_string()) })
+                }
+            }
         };
-        let mut ending = ending.unwrap_or_else(|| {
-            let resident = recovery
-                .lock()
-                .expect("physical owner recovery poisoned")
-                .take()
-                .expect("physical future returned its original resident");
-            let mut owner = Owned {
-                resident: Some(resident),
-                recovery,
-            };
-            Box::pin(async move {
-                owner.resident().stop().await?;
-                owner.resident().finalize().await
-            })
-        });
         let revision = signals.revision.load(Ordering::Acquire);
         let waker = Waker::from(signals.clone());
         let mut polling = Context::from_waker(&waker);
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            ending.as_mut().poll(&mut polling)
-        }));
+        let result = ending.as_mut().poll(&mut polling);
+        let mut original = self
+            .original
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        original.ending_busy = false;
         match result {
-            Ok(Poll::Pending) => {
-                let mut original = self
-                    .original
-                    .lock()
-                    .unwrap_or_else(|error| error.into_inner());
-                original.ending_busy = false;
+            Poll::Pending => {
                 original.ending = Some(ending);
                 drop(original);
                 if signals.revision.load(Ordering::Acquire) != revision {
@@ -360,32 +396,18 @@ where
                 }
                 Poll::Pending
             }
-            Ok(Poll::Ready(outcome)) => {
-                drop(ending);
-                let mut original = self
-                    .original
-                    .lock()
-                    .unwrap_or_else(|error| error.into_inner());
-                original.ending_busy = false;
+            Poll::Ready(outcome) => {
                 match &outcome {
-                    Ok(()) => original.settled = true,
+                    Ok(()) => {
+                        original.settled = true;
+                        original.lease.take();
+                    }
                     Err(failure) => original.ending_failure = Some(failure.clone()),
                 }
                 drop(original);
+                drop(ending);
                 signals.notify();
                 Poll::Ready(outcome)
-            }
-            Err(panic) => {
-                drop(ending);
-                let mut original = self
-                    .original
-                    .lock()
-                    .unwrap_or_else(|error| error.into_inner());
-                original.ending_busy = false;
-                original.ending_failure = Some("native physical cleanup panicked".into());
-                drop(original);
-                signals.notify();
-                std::panic::resume_unwind(panic)
             }
         }
     }
@@ -397,11 +419,14 @@ where
     S: Attach,
     H: Fn(&Service<A>, Notice) + Send + Sync + 'static,
 {
-    pub(super) fn poll(&self, context: &mut Context<'_>) -> Poll<Result<(), Fault<String>>> {
+    pub(super) fn poll(&self, context: &mut Context<'_>) -> Poll<Outcome> {
         let Some(original) = self.original.upgrade() else {
             return Poll::Pending;
         };
-        let mut physical = Physical { original };
+        let mut physical = Physical::<A, S, H> {
+            original,
+            marker: std::marker::PhantomData,
+        };
         if physical.is_running() {
             physical.poll(context)
         } else {
@@ -411,15 +436,25 @@ where
 
     pub(super) fn retry_ending(&self) {
         if let Some(original) = self.original.upgrade() {
-            Physical { original }.retry_ending();
+            Physical::<A, S, H> {
+                original,
+                marker: std::marker::PhantomData,
+            }
+            .retry_ending();
         }
     }
 
-    pub(super) fn poll_ending(&self, context: &mut Context<'_>) -> Poll<Result<(), String>> {
+    pub(super) fn poll_ending(
+        &self,
+        context: &mut Context<'_>,
+    ) -> Poll<std::result::Result<(), String>> {
         let Some(original) = self.original.upgrade() else {
             return Poll::Pending;
         };
-        let mut physical = Physical { original };
+        let mut physical = Physical::<A, S, H> {
+            original,
+            marker: std::marker::PhantomData,
+        };
         if physical.is_running()
             || physical
                 .original

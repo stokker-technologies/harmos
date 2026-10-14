@@ -14,7 +14,7 @@
 /* === Modules === */
 
 /* === Re-Exports === */
-pub use harmos_contract::builtin::{Cancel, InstanceState, Status};
+pub use harmos_contract::builtin::{Cancel, InstanceState, Status, Watch};
 
 /* === Imports === */
 
@@ -24,8 +24,9 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
+use crate::MemorySize;
 use crate::operations::{
-    Context, Lane, Operation, OperationInstanceId, OperationManager, Response,
+    Context, Lane, Operation, OperationInstanceId, OperationManager, Response, StreamOutput,
 };
 use crate::{Error, Result};
 
@@ -36,8 +37,8 @@ use crate::{Error, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
-// The built-in operations served in this slice: `host.operations.status` and
-// `host.operations.cancel`.
+// The built-in operations served so far: `host.operations.status`,
+// `host.operations.cancel` and `host.operations.watch`.
 pub struct Catalog;
 
 // Reports an instance the caller submitted. Settled instances leave the index,
@@ -46,6 +47,10 @@ pub struct Reporting;
 
 // Requests cancellation of an instance the caller submitted.
 pub struct Cancelling;
+
+// Streams each status change of an instance the caller submitted, from its
+// status when the watch begins until it stops or settles.
+pub struct Watching;
 
 /* === Enums === */
 
@@ -60,7 +65,8 @@ impl Catalog {
     ) -> Result<()> {
         let owner = owner.into();
         operations.register_wire_operation::<Reporting>(owner.clone(), lane, Arc::new(()))?;
-        operations.register_wire_operation::<Cancelling>(owner, lane, Arc::new(()))
+        operations.register_wire_operation::<Cancelling>(owner.clone(), lane, Arc::new(()))?;
+        operations.register_wire_operation::<Watching>(owner, lane, Arc::new(()))
     }
 }
 
@@ -110,6 +116,44 @@ impl Operation for Cancelling {
         instance.cancel();
         let state = InstanceState::from(instance.status().portable());
         Ok(state.into())
+    }
+}
+
+impl Operation for Watching {
+    type Declaration = Watch;
+    type Resources = ();
+    type Error = Error;
+    type Context<'a> = Context<'a>;
+    type Endpoints = StreamOutput<InstanceState>;
+
+    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self> {
+        Ok(Self)
+    }
+
+    async fn run<'ctx>(
+        &mut self,
+        context: Self::Context<'ctx>,
+        request: &mut Watch,
+        output: &mut Self::Endpoints,
+    ) -> Result<Response<InstanceState>> {
+        let id = OperationInstanceId::new(request.instance);
+        let instance = context.owned_instance(id).ok_or_else(|| unknown(id))?;
+        // Subscribe before reading so no change between them is lost.
+        let mut changes = instance.settlement();
+        drop(instance);
+        loop {
+            let status = changes.borrow_and_update().portable();
+            let state = InstanceState::from(status);
+            output
+                .send_with(state.memory_size(), || Ok(state.clone()))
+                .await?;
+            if status.is_settled() {
+                return Ok(state.into());
+            }
+            if changes.changed().await.is_err() {
+                return Ok(state.into());
+            }
+        }
     }
 }
 

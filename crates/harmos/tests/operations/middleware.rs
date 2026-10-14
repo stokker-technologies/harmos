@@ -24,7 +24,8 @@ use std::time::Duration;
 use super::{Lanes, app::App};
 use harmos::operations::middleware::{Enter, Invocation, Middleware, Observation};
 use harmos::operations::{
-    CallContext, Context, Operation, OperationDeclaration, OperationPolicy, RetryPolicy,
+    CallContext, Context, Operation, OperationDeclaration, OperationPolicy, RestartPolicy,
+    RetryPolicy,
 };
 use harmos::{Error, Runtime};
 
@@ -70,6 +71,7 @@ impl<const CHILD: bool> OperationDeclaration for Overlay<CHILD> {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(1),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 }
 
@@ -121,6 +123,7 @@ impl<const CHILD: bool> OperationDeclaration for Declare<CHILD> {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(1),
         retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
     };
 }
 

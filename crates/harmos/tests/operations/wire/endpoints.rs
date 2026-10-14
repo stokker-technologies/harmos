@@ -32,7 +32,7 @@ use tokio::sync::Notify;
 use super::{Lanes, app::App};
 use harmos::operations::{
     Backoff, CacheKey, Context, Jitter, Operation, OperationDeclaration, OperationPolicy,
-    RetryPolicy, StreamInput, StreamOutput, StreamSettings, stream,
+    RestartPolicy, RetryPolicy, StreamInput, StreamOutput, StreamSettings, stream,
 };
 use harmos::{Error, Runtime};
 
@@ -150,6 +150,7 @@ impl<const N: u8> OperationDeclaration for Declaration<N> {
         } else {
             RetryPolicy::Never
         },
+        restart: RestartPolicy::Never,
     };
     fn key(_: &bool) -> Option<CacheKey> {
         (N == 2).then(|| CacheKey::new(vec![1]).unwrap())

@@ -25,7 +25,7 @@ use std::time::{Duration, Instant};
 // Local Imports
 use super::{Lanes, app::App};
 use harmos::Runtime;
-use harmos::operations::{Context, Operation, OperationPolicy, RetryPolicy};
+use harmos::operations::{Context, Operation, OperationPolicy, RestartPolicy, RetryPolicy};
 
 /* === Constants === */
 
@@ -45,6 +45,7 @@ struct Measure;
             timeout: Duration::from_secs(600),
             attempt_timeout: Duration::from_secs(600),
             retries: RetryPolicy::Never,
+            restart: RestartPolicy::Never,
         },
     )]
 struct MeasureContract;

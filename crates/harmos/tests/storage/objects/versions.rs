@@ -83,7 +83,7 @@ fn contract_scenario() {
                         StorageSettings::default(),
                     )
                     .unwrap();
-                    reopened.start(&f.runtime.services).await.unwrap();
+                    reopened.start(&f.runtime).await.unwrap();
                     let found = reopened
                         .read_object::<Document>(
                             &"document-1".to_owned(),

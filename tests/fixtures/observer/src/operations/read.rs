@@ -19,7 +19,7 @@ use std::time::Duration;
 
 // Local Imports
 use crate::Resources;
-use harmos::operations::{OperationPolicy, ReplaySafety, RetryPolicy, Visibility};
+use harmos::operations::{OperationPolicy, ReplaySafety, RestartPolicy, RetryPolicy, Visibility};
 use harmos::plugin::sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
@@ -27,6 +27,7 @@ const POLICY: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(30),
     attempt_timeout: Duration::from_secs(5),
     retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
 };
 
 /* === Macros === */
