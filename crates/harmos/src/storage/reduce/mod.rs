@@ -18,10 +18,11 @@ pub use crate::storage::reduce::scalar::{Agg, ExactNumber, ScalarKind, ScalarVal
 use std::{cmp::Ordering, num::NonZeroU128};
 
 // Third Party Imports
+use harmos_signal::{Series, Summary};
 
 // Local Imports
-
-use crate::{Error, Result};
+use crate::aggregate;
+use crate::{Aggregate, Error, Result};
 
 /* === Constants === */
 
@@ -30,6 +31,12 @@ use crate::{Error, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+// Exact columns (signed, unsigned and exact fractions) keep `Sum`, `Mean` and
+// `Median` exact in rational arithmetic, and `Min`, `Max` and `Last` select by
+// scalar ordering over any comparable kind; neither is floating statistics.
+// Every floating statistic is answered by the signal `Summary` (mergeable
+// members) or `Series` (median and percentiles); `Rms`, `Std` and
+// percentiles of exact columns read their values as the nearest float.
 #[derive(Clone, Debug)]
 pub struct Accumulator {
     agg: Agg,
@@ -38,7 +45,7 @@ pub struct Accumulator {
     kind: Option<ScalarKind>,
     selected: Option<(u64, ScalarValue)>,
     total: ExactNumber,
-    floating_mean: f64,
+    running: Summary,
     scratch: Vec<ScalarValue>,
 }
 #[derive(Clone, Debug)]
@@ -69,7 +76,7 @@ impl Accumulator {
             kind: None,
             selected: None,
             total: ExactNumber::new(false, 0, NonZeroU128::MIN),
-            floating_mean: 0.0,
+            running: Summary::new(),
             scratch: Vec::new(),
         }
     }
@@ -107,7 +114,10 @@ impl Accumulator {
             .count
             .checked_add(1)
             .ok_or(invalid("value count overflow"))?;
-        if matches!(self.agg, Agg::Len | Agg::Count | Agg::Last) {
+        let Agg::Of(statistic) = self.agg else {
+            return Ok(());
+        };
+        if statistic == Aggregate::Count {
             return Ok(());
         }
         let value_kind = value.kind().expect("checked non-missing scalar has a kind");
@@ -120,13 +130,13 @@ impl Accumulator {
             Some(_) => {}
             None => self.kind = Some(value_kind),
         }
-        match self.agg {
-            Agg::Min | Agg::Max => {
+        match statistic {
+            Aggregate::Min | Aggregate::Max => {
                 let replace = match &self.selected {
                     None => true,
                     Some((_, previous)) => {
                         let order = value.compare(previous)?;
-                        if self.agg == Agg::Min {
+                        if statistic == Aggregate::Min {
                             order.is_lt()
                         } else {
                             order.is_gt()
@@ -137,65 +147,102 @@ impl Accumulator {
                     self.selected = Some((capture, value.clone()));
                 }
             }
-            Agg::Mean => {
+            Aggregate::Sum | Aggregate::Mean => {
                 if let ScalarValue::Float(value) = value {
-                    let n = self.count as f64;
-                    self.floating_mean = if self.count == 1 {
-                        *value
-                    } else if self.floating_mean.signum() == value.signum() {
-                        self.floating_mean + (*value - self.floating_mean) / n
-                    } else {
-                        self.floating_mean * ((n - 1.0) / n) + *value / n
-                    };
-                    if !self.floating_mean.is_finite() {
-                        return Err(invalid("mean exceeds finite range"));
+                    self.running.push(*value);
+                    let answered = aggregate::of_summary(&self.running, statistic);
+                    if !answered.is_some_and(f64::is_finite) {
+                        return Err(invalid("aggregate exceeds finite range"));
                     }
                 } else {
-                    let exact = scalar::exact(value).ok_or(invalid("mean requires numbers"))?;
+                    let exact =
+                        scalar::exact(value).ok_or(invalid("aggregate requires numbers"))?;
                     self.total = self.total.checked_add(exact)?;
                 }
             }
-            Agg::Median => {
-                if !matches!(
-                    value_kind,
-                    ScalarKind::Signed
-                        | ScalarKind::Unsigned
-                        | ScalarKind::Float
-                        | ScalarKind::Exact
-                ) {
-                    return Err(invalid("median requires numbers"));
+            Aggregate::Rms | Aggregate::Std => {
+                self.running
+                    .push(approximate(value).ok_or(invalid("aggregate requires numbers"))?);
+            }
+            Aggregate::Median | Aggregate::Percentile(_) => {
+                if !numeric_kind(value_kind) {
+                    return Err(invalid("order statistic requires numbers"));
                 }
                 if self.scratch.len() == self.scratch.capacity() {
                     let slots = self.scratch.capacity().max(4).min(scratch.remaining);
                     if slots == 0 {
-                        return Err(invalid("median values exceed admitted scratch"));
+                        return Err(invalid("order statistic values exceed admitted scratch"));
                     }
                     self.scratch
                         .try_reserve_exact(slots)
-                        .map_err(|_| invalid("median scratch allocation failed"))?;
+                        .map_err(|_| invalid("order statistic scratch allocation failed"))?;
                     scratch.remaining -= slots;
                 }
                 self.scratch.push(value.clone());
             }
-            Agg::Len | Agg::Count | Agg::Last => unreachable!("handled before type checks"),
+            Aggregate::Count => unreachable!("handled before type checks"),
         }
         Ok(())
     }
 
+    // Median and percentiles through `Series`, polling cancellation around
+    // the one sort that orders every retained value.
+    fn ordered(
+        &mut self,
+        statistic: Aggregate,
+        check: &mut impl FnMut() -> Result<()>,
+    ) -> Result<ScalarValue> {
+        let mut values: Vec<f64> = Vec::new();
+        values
+            .try_reserve_exact(self.scratch.len())
+            .map_err(|_| invalid("order statistic allocation failed"))?;
+        values.extend(
+            self.scratch
+                .iter()
+                .map(|value| approximate(value).expect("order statistic values are numeric")),
+        );
+        self.scratch = Vec::new();
+        check()?;
+        let mut series = Series::from(values);
+        series.sort();
+        check()?;
+        Ok(ScalarValue::Float(finite(aggregate::of_series(
+            &series, statistic,
+        ))?))
+    }
+
     pub fn finish(mut self, check: &mut impl FnMut() -> Result<()>) -> Result<ScalarValue> {
-        Ok(match self.agg {
-            Agg::Len => ScalarValue::Unsigned(self.rows),
-            Agg::Count => ScalarValue::Unsigned(self.count),
-            Agg::Min | Agg::Max | Agg::Last => self
+        let statistic = match self.agg {
+            Agg::Len => return Ok(ScalarValue::Unsigned(self.rows)),
+            Agg::Last => {
+                return Ok(self
+                    .selected
+                    .map_or(ScalarValue::Missing, |(_, value)| value));
+            }
+            Agg::Of(statistic) => statistic,
+        };
+        let floating = self.kind == Some(ScalarKind::Float);
+        Ok(match statistic {
+            Aggregate::Count => ScalarValue::Unsigned(self.count),
+            Aggregate::Min | Aggregate::Max => self
                 .selected
                 .map_or(ScalarValue::Missing, |(_, value)| value),
-            Agg::Mean if self.count == 0 => ScalarValue::Missing,
-            Agg::Mean if self.kind == Some(ScalarKind::Float) => {
-                ScalarValue::Float(self.floating_mean)
+            // The empty sum is zero, as `Summary` answers it.
+            Aggregate::Sum if self.count == 0 => ScalarValue::Unsigned(0),
+            Aggregate::Sum | Aggregate::Mean if floating => {
+                ScalarValue::Float(finite(aggregate::of_summary(&self.running, statistic))?)
             }
-            Agg::Mean => integral(self.total.divide(u128::from(self.count))?, self.kind),
-            Agg::Median if self.count == 0 => ScalarValue::Missing,
-            Agg::Median => {
+            Aggregate::Sum => integral(self.total, self.kind),
+            Aggregate::Mean if self.count == 0 => ScalarValue::Missing,
+            Aggregate::Mean => integral(self.total.divide(u128::from(self.count))?, self.kind),
+            Aggregate::Rms | Aggregate::Std if self.count == 0 => ScalarValue::Missing,
+            Aggregate::Rms | Aggregate::Std => {
+                ScalarValue::Float(finite(aggregate::of_summary(&self.running, statistic))?)
+            }
+            Aggregate::Median | Aggregate::Percentile(_) if self.count == 0 => ScalarValue::Missing,
+            Aggregate::Percentile(_) => self.ordered(statistic, check)?,
+            Aggregate::Median if floating => self.ordered(statistic, check)?,
+            Aggregate::Median => {
                 let mut order: Vec<usize> = Vec::new();
                 order
                     .try_reserve_exact(self.scratch.len())
@@ -208,23 +255,12 @@ impl Accumulator {
                 })?;
                 let lower = &scratch[order[(order.len() - 1) / 2]];
                 let upper = &scratch[order[order.len() / 2]];
-                let value = if let (ScalarValue::Float(a), ScalarValue::Float(b)) = (lower, upper) {
-                    ScalarValue::Float(if a == b {
-                        *a
-                    } else if a.signum() == b.signum() {
-                        *a + (*b - *a) / 2.0
-                    } else {
-                        *a / 2.0 + *b / 2.0
-                    })
-                } else {
-                    let midpoint = scalar::exact(lower)
-                        .expect("median values are numeric")
-                        .checked_add(scalar::exact(upper).expect("median values are numeric"))?
-                        .divide(2)?;
-                    integral(midpoint, self.kind)
-                };
+                let midpoint = scalar::exact(lower)
+                    .expect("median values are numeric")
+                    .checked_add(scalar::exact(upper).expect("median values are numeric"))?
+                    .divide(2)?;
                 self.scratch.clear();
-                value
+                integral(midpoint, self.kind)
             }
         })
     }
@@ -266,6 +302,30 @@ pub fn sort_values<T: Copy>(
 }
 
 /* === Private Functions === */
+fn numeric_kind(kind: ScalarKind) -> bool {
+    matches!(
+        kind,
+        ScalarKind::Signed | ScalarKind::Unsigned | ScalarKind::Float | ScalarKind::Exact
+    )
+}
+// The nearest float to a numeric scalar, for statistics that are not exact.
+fn approximate(value: &ScalarValue) -> Option<f64> {
+    if let ScalarValue::Float(value) = value {
+        return Some(*value);
+    }
+    let exact = scalar::exact(value)?;
+    let magnitude = exact.numerator as f64 / exact.denominator.get() as f64;
+    Some(if exact.negative {
+        -magnitude
+    } else {
+        magnitude
+    })
+}
+fn finite(answer: Option<f64>) -> Result<f64> {
+    answer
+        .filter(|value| value.is_finite())
+        .ok_or(invalid("aggregate exceeds finite range"))
+}
 fn exact_kind(kind: ScalarKind) -> bool {
     matches!(
         kind,

@@ -23,10 +23,10 @@ use serde::{Deserialize, Serialize};
 // Local Imports
 use crate::MessageError;
 use crate::storage::codec::{
-    Flag, Float, Nested, Signed as SignedInt, Text, Unsigned, Wide, WideNonZero, WideSigned, coded,
-    product, variants,
+    Flag, Float, Nested, Percent, Signed as SignedInt, Text, Unsigned, Wide, WideNonZero,
+    WideSigned, coded, product, variants,
 };
-use crate::{Error, MemorySize, Result};
+use crate::{Aggregate, Error, MemorySize, Result};
 
 /* === Constants === */
 
@@ -66,15 +66,16 @@ pub enum ScalarKind {
     Datetime,
     Exact,
 }
+// What a storage group-by reduces a column to. `Len` and `Last` are row
+// selections rather than statistics: `Len` counts rows including missing and
+// null values, and `Last` keeps the value captured latest, so they stay here.
+// Every statistic is a member of the contract `Aggregate` vocabulary.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Agg {
     Len,
-    Count,
-    Min,
-    Max,
-    Mean,
-    Median,
     Last,
+    Of(Aggregate),
 }
 
 /* === Traits === */
@@ -231,6 +232,26 @@ impl MemorySize for ScalarValue {
     }
 }
 
+impl Agg {
+    // Statistics answered from the ordered values, which hold scratch per
+    // accumulator; every other reduction runs in constant space.
+    pub fn retains_values(&self) -> bool {
+        matches!(self, Self::Of(kind) if !kind.mergeable())
+    }
+}
+
+impl From<Aggregate> for Agg {
+    fn from(kind: Aggregate) -> Self {
+        Self::Of(kind)
+    }
+}
+
+impl MemorySize for Agg {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+    }
+}
+
 impl MemorySize for ExactNumber {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
@@ -262,14 +283,18 @@ coded!(ScalarKind {
     Datetime,
     Exact
 });
-coded!(Agg {
-    Len,
-    Count,
-    Min,
-    Max,
-    Mean,
-    Median,
-    Last
+variants!(Agg {
+    0, 1, "len": Self::Len => {} => Self::Len;
+    1, 2, "last": Self::Last => {} => Self::Last;
+    2, 3, "count": Self::Of(Aggregate::Count) => {} => Self::Of(Aggregate::Count);
+    3, 4, "sum": Self::Of(Aggregate::Sum) => {} => Self::Of(Aggregate::Sum);
+    4, 5, "mean": Self::Of(Aggregate::Mean) => {} => Self::Of(Aggregate::Mean);
+    5, 6, "median": Self::Of(Aggregate::Median) => {} => Self::Of(Aggregate::Median);
+    6, 7, "min": Self::Of(Aggregate::Min) => {} => Self::Of(Aggregate::Min);
+    7, 8, "max": Self::Of(Aggregate::Max) => {} => Self::Of(Aggregate::Max);
+    8, 9, "rms": Self::Of(Aggregate::Rms) => {} => Self::Of(Aggregate::Rms);
+    9, 10, "std": Self::Of(Aggregate::Std) => {} => Self::Of(Aggregate::Std);
+    10, 11, "percentile": Self::Of(Aggregate::Percentile(rank)) => { rank: Percent => 1 } => Self::Of(Aggregate::Percentile(rank));
 });
 
 variants!(ScalarValue {

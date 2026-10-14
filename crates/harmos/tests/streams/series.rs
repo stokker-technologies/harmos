@@ -22,8 +22,8 @@ use support::{Bank, Capture, Ledger, capture, catalog, deposit, streams};
 // Local Imports
 use crate::support;
 use harmos::{
-    Runtime, state::At, state::Position, storage::Batch, storage::Cursor, storage::Series,
-    storage::StreamConsumer, streams::Aggregate, streams::Aggregated, streams::Axial,
+    Aggregate, Runtime, state::At, state::Position, storage::Batch, storage::Cursor,
+    storage::Series, storage::StreamConsumer, streams::Aggregated, streams::Axial,
     streams::BeneathWindow, streams::Bucket, streams::Definition, streams::Point, streams::Prefix,
     streams::Stream, streams::Tracked,
 };
@@ -189,10 +189,10 @@ impl Series<Bank> for Tape {
             .expect("the tape is never poisoned")
             .push((stream.id().to_owned(), track.to_vec()));
 
-        // One measured field, answered the two ways the vocabulary prices: a
-        // level-folded kind goes through a merged bucket, a percentile through
-        // the values themselves.
-        let mut values: Vec<f64> = self
+        // One measured field folded into one bucket. A bucket answers the
+        // mergeable members; median and percentiles need the values, which
+        // this tape does not serve, so they answer nothing.
+        let answer = self
             .rows
             .lock()
             .expect("the tape is never poisoned")
@@ -200,17 +200,9 @@ impl Series<Bank> for Tape {
             .filter(|At { position, .. }| *position <= self.sealed)
             .filter(|At { value, .. }| within(start, end, value.axis()))
             .filter(|At { value, .. }| narrowed(track, value))
-            .map(|At { value, .. }| value.value as f64)
-            .collect();
-        let answer = if kind.folds_levels() {
-            values
-                .iter()
-                .map(|value| at(0, *value))
-                .reduce(|held, next| held.merge(&next))
-                .and_then(|folded| kind.folded(&folded))
-        } else {
-            kind.scanned(&mut values)
-        };
+            .map(|At { value, .. }| one(value))
+            .reduce(|held, next| held.merge(&next))
+            .and_then(|folded| folded.aggregate(kind));
 
         Ok(answer
             .map(|value| Aggregated {
@@ -247,18 +239,7 @@ fn one(row: &Capture) -> Bucket {
 }
 
 fn at(axis: u64, value: f64) -> Bucket {
-    let point = Point { axis, value };
-
-    Bucket {
-        field: "value".to_owned(),
-        first: point,
-        last: point,
-        min: point,
-        max: point,
-        count: 1,
-        sum: point.value,
-        sum_sq: point.value * point.value,
-    }
+    Bucket::point("value", Point { axis, value })
 }
 
 fn within(start: Bound<u64>, end: Bound<u64>, at: u64) -> bool {
@@ -614,9 +595,24 @@ fn contract_scenario() {
                     );
                     assert_eq!(buckets.len(), 3, "twelve points of budget is three buckets");
                     assert_eq!(
-                        buckets.iter().map(|bucket| bucket.count).sum::<u64>(),
+                        buckets.iter().map(Bucket::count).sum::<u64>(),
                         12,
                         "every sealed row is folded into exactly one bucket"
+                    );
+                    let whole = buckets
+                        .iter()
+                        .skip(1)
+                        .fold(buckets[0].clone(), |held, next| held.merge(next));
+                    assert_eq!(whole.aggregate(Aggregate::Count), Some(12.0));
+                    assert_eq!(
+                        whole.aggregate(Aggregate::Min),
+                        Some(whole.min.value),
+                        "the summary and the drawn points agree"
+                    );
+                    assert_eq!(
+                        whole.aggregate(Aggregate::Median),
+                        None,
+                        "a bucket keeps no values to order"
                     );
                     assert_eq!(
                         buckets[0].first,

@@ -109,8 +109,8 @@ pub async fn raw_and_summary_delivery() {
             "observers share the one computation"
         );
         assert_eq!(a.count, 4);
-        assert_eq!(a.fields[0].statistics.unwrap().mean, 2.0);
-        assert_eq!(a.fields[1].statistics.unwrap().mean, 9.0);
+        assert_eq!(a.fields[0].aggregate(harmos::Aggregate::Mean), Some(2.0));
+        assert_eq!(a.fields[1].aggregate(harmos::Aggregate::Mean), Some(9.0));
     }
     runtime.stop().await.unwrap();
     let Some(BatchItem::Summary(tail)) = first.next().await else {

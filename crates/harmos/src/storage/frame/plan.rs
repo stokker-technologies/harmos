@@ -27,7 +27,7 @@ use crate::storage::codec::{
 };
 use crate::storage::read_selection::{ReadKind, ReadSelection};
 use crate::storage::reduce::scalar::{Agg, ScalarKind, ScalarValue};
-use crate::{Error, Identifier, MemorySize, Result, schema};
+use crate::{Aggregate, Error, Identifier, MemorySize, Result, schema};
 
 /* === Constants === */
 pub(crate) const MAX_SCANS: usize = 16;
@@ -314,9 +314,16 @@ impl Frame {
             }
             for ((expr, inner), &agg) in group_by.aggs.iter().zip(outer) {
                 let kind = match inner {
-                    Agg::Len | Agg::Count => ScalarKind::Unsigned,
-                    Agg::Mean | Agg::Median => ScalarKind::Exact,
-                    _ => self.expr_kind(group_by.source, expr),
+                    Agg::Len | Agg::Of(Aggregate::Count) => ScalarKind::Unsigned,
+                    Agg::Of(Aggregate::Sum | Aggregate::Mean | Aggregate::Median) => {
+                        ScalarKind::Exact
+                    }
+                    Agg::Of(Aggregate::Rms | Aggregate::Std | Aggregate::Percentile(_)) => {
+                        ScalarKind::Float
+                    }
+                    Agg::Last | Agg::Of(Aggregate::Min | Aggregate::Max) => {
+                        self.expr_kind(group_by.source, expr)
+                    }
                 };
                 check_agg(agg, kind)?;
             }
@@ -430,8 +437,8 @@ impl GroupBy {
         self
     }
 
-    pub fn agg(mut self, expr: Expr, agg: Agg) -> Self {
-        self.aggs.push((expr, agg));
+    pub fn agg(mut self, expr: Expr, agg: impl Into<Agg>) -> Self {
+        self.aggs.push((expr, agg.into()));
         self
     }
 
@@ -780,8 +787,8 @@ product!(GroupBy {
     keys: Many<Index> => 3,
     groups: Optional<Wrap<Many<Repeated<ScalarValue>>>> => 4,
     last_by: Optional<Nested<LastBy>> => 5,
-    aggs: Many<Both<Nested<Expr>, Code<Agg>>> => 6,
-    outer: Optional<Wrap<Many<Code<Agg>>>> => 7,
+    aggs: Many<Both<Nested<Expr>, Nested<Agg>>> => 6,
+    outer: Optional<Wrap<Many<Nested<Agg>>>> => 7,
 });
 product!(Frame {
     scans: Repeated<Scan> => 1,
@@ -815,12 +822,19 @@ pub(crate) fn invalid(reason: &'static str) -> Error {
     }
 }
 fn check_agg(agg: Agg, kind: ScalarKind) -> Result<()> {
-    if matches!(agg, Agg::Mean | Agg::Median)
-        && !matches!(
-            kind,
-            ScalarKind::Signed | ScalarKind::Unsigned | ScalarKind::Float | ScalarKind::Exact
-        )
-    {
+    let Agg::Of(statistic) = agg else {
+        return Ok(());
+    };
+    if !statistic.answerable() {
+        return Err(invalid("percentile rank exceeds 100"));
+    }
+    if !matches!(
+        statistic,
+        Aggregate::Count | Aggregate::Min | Aggregate::Max
+    ) && !matches!(
+        kind,
+        ScalarKind::Signed | ScalarKind::Unsigned | ScalarKind::Float | ScalarKind::Exact
+    ) {
         return Err(invalid("numeric aggregate requires numeric expression"));
     }
     Ok(())
@@ -828,8 +842,8 @@ fn check_agg(agg: Agg, kind: ScalarKind) -> Result<()> {
 fn check_output(value: &ScalarValue, agg: Agg) -> Result<()> {
     value.check()?;
     let valid = match agg {
-        Agg::Len | Agg::Count => matches!(value, ScalarValue::Unsigned(_)),
-        Agg::Mean | Agg::Median => matches!(
+        Agg::Len | Agg::Of(Aggregate::Count) => matches!(value, ScalarValue::Unsigned(_)),
+        Agg::Of(Aggregate::Sum | Aggregate::Mean | Aggregate::Median) => matches!(
             value,
             ScalarValue::Missing
                 | ScalarValue::Signed(_)
@@ -837,7 +851,10 @@ fn check_output(value: &ScalarValue, agg: Agg) -> Result<()> {
                 | ScalarValue::Float(_)
                 | ScalarValue::Exact(_)
         ),
-        _ => true,
+        Agg::Of(Aggregate::Rms | Aggregate::Std | Aggregate::Percentile(_)) => {
+            matches!(value, ScalarValue::Missing | ScalarValue::Float(_))
+        }
+        Agg::Last | Agg::Of(Aggregate::Min | Aggregate::Max) => true,
     };
     if !valid {
         return Err(invalid("aggregate output type differs"));

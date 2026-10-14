@@ -22,12 +22,13 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 // Third Party Imports
+use harmos_contract::Aggregate;
 use tokio::sync::watch;
 // Local Imports
 use super::window::Window;
 use super::{
-    Aggregate, Aggregated, Axial, Batched, Batches, BeneathWindow, Bucket, Definition, Demand,
-    Holding, Item, Prefix, Stream, Table, Tier, Tracked, Wired, demand, window,
+    Aggregated, Axial, Batched, Batches, BeneathWindow, Bucket, Definition, Demand, Holding, Item,
+    Prefix, Stream, Table, Tier, Tracked, Wired, demand, window,
 };
 use crate::{Application, state::At, state::Position, storage::Batch, storage::Cursor};
 
@@ -359,7 +360,7 @@ impl<S> Survey<S> {
                 self.track,
                 self.start,
                 self.end,
-                kind.checked(),
+                checked(kind),
             )
             .await
     }
@@ -391,6 +392,14 @@ impl<S> IntoFuture for Seal<S> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+fn checked(kind: Aggregate) -> Aggregate {
+    assert!(
+        kind.answerable(),
+        "a percentile rank is a percentage, and {kind:?} names none"
+    );
+    kind
+}
+
 fn narrowed<S>(partition: Option<&Partition<S>>) -> Vec<String> {
     partition
         .map(|partition| partition.labels.clone())

@@ -106,7 +106,8 @@ grpc = [
 ]
 # Descriptor Projection (`harmos::grpc::Artifacts`) Without The gRPC Server.
 reflection = ["harmos-contract/reflection"]
-signal = ["dep:harmos-signal"]
+# Hands Out The Signal Kernels; Core Reductions Use Them Regardless.
+signal = []
 signal-fft = ["signal", "harmos-signal/fft"]
 simulation = ["tokio/test-util"]
 
@@ -118,7 +119,7 @@ harmos-bundle = { workspace = true, optional = true }
 harmos-contract = { workspace = true, features = ["derive", "streaming"] }
 harmos-guest = { workspace = true, optional = true }
 harmos-macros = { workspace = true, default-features = true }
-harmos-signal = { workspace = true, default-features = false, optional = true }
+harmos-signal = { workspace = true, default-features = false }
 
 # Git
 

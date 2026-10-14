@@ -1057,6 +1057,7 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
+                    use harmos::Aggregate;
                     use harmos::storage::frame::{
                         Expr, FrameQuery, GroupBy, ScalarField, ScalarPath,
                     };
@@ -1085,7 +1086,9 @@ fn contract_scenario() {
                         ],
                     );
                     let shift = frame.shift(scan, vec![0], 1);
-                    frame.group_by(GroupBy::new(scan).agg(Expr::diff(shift), Agg::Mean));
+                    frame.group_by(
+                        GroupBy::new(scan).agg(Expr::diff(shift), Agg::Of(Aggregate::Mean)),
+                    );
                     let query = FrameQuery {
                         frame,
                         options: QueryOptions::default(),

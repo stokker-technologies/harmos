@@ -21,9 +21,12 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 // Third Party Imports
+use harmos_contract::Aggregate;
+use harmos_signal::Summary as Running;
 use tokio::sync::watch;
 // Local Imports
 use super::demand::Holding;
+use crate::aggregate;
 use crate::streams::BatchDefinition;
 
 /* === Constants === */
@@ -34,22 +37,12 @@ use crate::streams::BatchDefinition;
 type Next = Pin<Box<dyn Future<Output = (Cursor, Option<BatchItem>)> + Send>>;
 
 /* === Structs === */
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Statistics {
-    pub count: u64,
-    pub sum: f64,
-    pub mean: f64,
-    pub min: f64,
-    pub max: f64,
-    pub variance: f64,
-    pub stddev: f64,
-    pub rms: f64,
-}
-
+// One measured field of a batch. `statistics` is the field's running
+// summary, absent when no finite value arrived or a statistic overflowed.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Measurement {
     pub field: &'static str,
-    pub statistics: Option<Statistics>,
+    pub statistics: Option<Running>,
     pub invalid: u64,
     pub overflow: bool,
 }
@@ -97,15 +90,8 @@ pub(crate) struct State {
 
 #[derive(Clone, Default)]
 struct Accumulator {
-    count: u64,
+    running: Running,
     invalid: u64,
-    sum: f64,
-    mean: f64,
-    min: f64,
-    max: f64,
-    m2: f64,
-    scale: f64,
-    squares: f64,
 }
 
 /* === Enums === */
@@ -293,46 +279,35 @@ impl State {
     }
 }
 
+impl Measurement {
+    // Mergeable members only, as `Running` answers them; a batch keeps no
+    // values, so median and percentiles answer `None`.
+    pub fn aggregate(&self, kind: Aggregate) -> Option<f64> {
+        aggregate::of_summary(self.statistics.as_ref()?, kind)
+    }
+}
+
 impl Accumulator {
     fn push(&mut self, value: f64) {
-        if !value.is_finite() {
+        if value.is_finite() {
+            self.running.push(value);
+        } else {
             self.invalid += 1;
-            return;
-        }
-        self.count += 1;
-        self.sum += value;
-        if self.count == 1 {
-            self.min = value;
-            self.max = value;
-        }
-        self.min = self.min.min(value);
-        self.max = self.max.max(value);
-        let delta = value - self.mean;
-        self.mean += delta / self.count as f64;
-        self.m2 += delta * (value - self.mean);
-        let abs = value.abs();
-        if abs > self.scale {
-            self.squares = 1.0 + self.squares * (self.scale / abs).powi(2);
-            self.scale = abs;
-        } else if abs > 0.0 {
-            self.squares += (abs / self.scale).powi(2);
         }
     }
 
     fn finish(&self, field: &'static str) -> Measurement {
-        let variance = (self.m2 / self.count as f64).max(0.0);
-        let overflow = self.count > 0
-            && (!self.sum.is_finite() || !self.mean.is_finite() || !self.m2.is_finite());
-        let statistics = (self.count > 0 && !overflow).then(|| Statistics {
-            count: self.count,
-            sum: self.sum,
-            mean: self.mean,
-            min: self.min,
-            max: self.max,
-            variance,
-            stddev: variance.sqrt(),
-            rms: self.scale * (self.squares / self.count as f64).sqrt(),
-        });
+        let running = self.running;
+        let overflow = !running.is_empty()
+            && [
+                Some(running.sum()),
+                running.mean(),
+                running.variance(),
+                running.rms(),
+            ]
+            .into_iter()
+            .any(|statistic| !statistic.is_some_and(f64::is_finite));
+        let statistics = (!running.is_empty() && !overflow).then_some(running);
         Measurement {
             field,
             statistics,

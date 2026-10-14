@@ -14,6 +14,10 @@ mod scenario_runtime;
 #[path = "../support/mod.rs"]
 mod support;
 
+#[cfg(feature = "signal")]
+#[path = "aggregates.rs"]
+mod aggregates;
+
 #[path = "retention.rs"]
 mod retention;
 
@@ -112,6 +116,13 @@ fn ready<S: Clone + 'static>(
 
 #[test]
 fn contract_scenario() {
+    #[cfg(feature = "signal")]
+    {
+        scenario_runtime::check("aggregate_wire_names", aggregates::wire_names);
+        scenario_runtime::check("series_answers_all", aggregates::series_answers_all);
+        scenario_runtime::check("aggregate_empty_input", aggregates::empty_input);
+        scenario_runtime::check("summary_refuses_order", aggregates::summary_refuses_order);
+    }
     {
         scenario_runtime::check("overrunning_window_yields", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();

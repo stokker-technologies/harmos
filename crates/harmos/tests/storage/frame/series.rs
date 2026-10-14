@@ -20,6 +20,8 @@ use crate::scenario_runtime;
 
 // Local Imports
 use super::*;
+use harmos::Aggregate;
+use harmos::signal::{Aggregates, Series};
 use harmos::storage::frame::{ScalarField, ScalarPath};
 use harmos::storage::reduce::{Agg, ExactNumber, ScalarKind, ScalarValue};
 use harmos::storage::series::SeriesPoint;
@@ -130,7 +132,9 @@ fn contract_scenario() {
                     seed(&f, 4).await;
                     let series = f.storage.query(series(16)).await.unwrap();
                     assert_eq!(f.data.control.frame_decodes.load(Ordering::SeqCst), 0);
-                    let mut aggregate = series.aggregate(vec![Agg::Mean, Agg::Median]).unwrap();
+                    let mut aggregate = series
+                        .aggregate(vec![Agg::Of(Aggregate::Mean), Agg::Of(Aggregate::Median)])
+                        .unwrap();
                     let result = aggregate.read().await.unwrap();
                     assert_eq!(
                         result.outputs[0].groups[0].values,
@@ -146,6 +150,54 @@ fn contract_scenario() {
                     assert_eq!(
                         series.view().unwrap().saved().unwrap(),
                         aggregate.view().saved().unwrap()
+                    );
+                    drop(result);
+                    drop(aggregate);
+                    drop(series);
+                    f.finish().await;
+                });
+        });
+    }
+    {
+        scenario_runtime::check("series_answers_vocabulary", || {
+            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
+            scenario_executor
+                .enable_all()
+                .build()
+                .expect("scenario runtime is valid")
+                .block_on(async {
+                    let f = Fixture::new(config()).await;
+                    seed(&f, 4).await;
+                    let series = f.storage.query(series(16)).await.unwrap();
+                    let kinds = [
+                        Aggregate::Count,
+                        Aggregate::Sum,
+                        Aggregate::Rms,
+                        Aggregate::Std,
+                        Aggregate::Percentile(0),
+                        Aggregate::Percentile(50),
+                        Aggregate::Percentile(100),
+                    ];
+                    let mut aggregate = series
+                        .aggregate(kinds.iter().copied().map(Agg::from).collect())
+                        .unwrap();
+                    let result = aggregate.read().await.unwrap();
+                    // Exact columns keep count and sum exact; the floating
+                    // statistics are the signal Series answers over the same
+                    // values.
+                    let exact = Series::new(&[0.0, 1.0, 2.0, 3.0]);
+                    let floating = |kind| ScalarValue::Float(exact.aggregate(kind).unwrap());
+                    assert_eq!(
+                        result.outputs[0].groups[0].values,
+                        vec![
+                            ScalarValue::Unsigned(4),
+                            ScalarValue::Unsigned(6),
+                            floating(Aggregate::Rms),
+                            floating(Aggregate::Std),
+                            ScalarValue::Float(0.0),
+                            ScalarValue::Float(1.5),
+                            ScalarValue::Float(3.0),
+                        ]
                     );
                     drop(result);
                     drop(aggregate);

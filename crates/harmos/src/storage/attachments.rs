@@ -497,7 +497,7 @@ impl<A: Application> Consumers<A> {
         track: &[String],
         start: std::ops::Bound<u64>,
         end: std::ops::Bound<u64>,
-        kind: crate::streams::Aggregate,
+        kind: crate::Aggregate,
     ) -> Result<Vec<crate::streams::Aggregated>, crate::streams::BeneathWindow> {
         match &mut self.series {
             Some(series) => series.aggregate(stream, track, start, end, kind).await,

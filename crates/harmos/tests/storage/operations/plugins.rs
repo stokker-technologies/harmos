@@ -21,6 +21,7 @@ use std::sync::Arc;
 
 // Local Imports
 use super::{Fixture, Lanes, Operations, config};
+use harmos::Aggregate;
 use harmos::Message;
 use harmos::operations::{OperationManager, WireDeclaration, WireOperation};
 use harmos::plugin::{
@@ -168,10 +169,12 @@ fn frame(schemas: &[SchemaKey], max_groups: usize) -> ReductionsRequest {
             }],
         );
         let group_by = GroupBy::new(scan)
-            .agg(Expr::Col(0), Agg::Mean)
+            .agg(Expr::Col(0), Agg::Of(Aggregate::Mean))
             .agg(Expr::Col(0), Agg::Len);
         frame.group_by(if max_groups > 1 {
-            group_by.keys(vec![0]).agg(Expr::Col(0), Agg::Median)
+            group_by
+                .keys(vec![0])
+                .agg(Expr::Col(0), Agg::Of(Aggregate::Median))
         } else {
             group_by
         });
