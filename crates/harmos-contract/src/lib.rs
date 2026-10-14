@@ -9,6 +9,7 @@
 
 /* === Modules === */
 mod answer;
+pub mod artifacts;
 #[cfg(feature = "bindings-python")]
 pub mod bindings;
 pub mod builtin;
@@ -21,7 +22,7 @@ mod identity;
 pub mod inventory;
 pub mod journal;
 pub mod listeners;
-mod message;
+pub mod message;
 mod metadata;
 pub mod observers;
 pub mod operations;
@@ -29,7 +30,6 @@ pub mod plugin;
 mod presentation;
 mod refusal;
 mod registration;
-mod scan;
 pub mod schema;
 pub mod streams;
 mod value;
@@ -64,19 +64,21 @@ pub mod __private {
     }
 
     pub use crate::answer::Answer;
+    pub use crate::message::MessageError;
     #[cfg(feature = "grpc")]
     pub use crate::message::Protobuf;
-    pub use crate::message::{
-        DecodeField, DecodeInput, DecodeScalar, DecodeValue, MessageError, decoding_add,
-        decoding_multiply, decoding_vector,
+    pub use crate::message::input::{
+        DecodeField, DecodeInput, DecodeScalar, DecodeValue, add as decoding_add,
+        multiply as decoding_multiply, vector as decoding_vector,
     };
-    pub use crate::message::{PostcardReader, PostcardValue};
+    pub use crate::message::postcard::{Reader as PostcardReader, Value as PostcardValue};
     pub use crate::with_protobuf;
     #[cfg(feature = "grpc")]
     pub use prost;
 }
 
 /* === Re-Exports === */
+pub use artifacts::{FRAGMENT_LIMIT, KINDS, PREFIX, ScanError, fragments};
 pub use config::{ConfigError, decode_config, encode_config, validate_config};
 pub use error::{Error, Result};
 pub use identity::{
@@ -88,7 +90,6 @@ pub use metadata::{Identifier, IdentifierError, Metadata};
 pub use plugin::Plugin;
 pub use refusal::{RESERVED, Refusal, UNKNOWN, UNREADABLE, reserved};
 pub use registration::{Registrar, Registration, RegistrationError};
-pub use scan::{FRAGMENT_LIMIT, KINDS, PREFIX, ScanError, fragments};
 pub use value::{VALUE_DEPTH, Value, ValueError};
 
 #[cfg(feature = "derive")]

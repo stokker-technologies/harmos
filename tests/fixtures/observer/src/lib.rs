@@ -24,8 +24,8 @@ pub use error::{Error, Result};
 
 // Local Imports
 use harmos::operations::{OperationPolicy, RestartPolicy, RetryPolicy, ServingError, WireTable};
-use harmos::plugin::contract::{Attachment, Declared};
-use harmos::plugin::sidecar::{ObserverAttachment, Refusal, Supervisor};
+use harmos::plugin::{Attachment, Declared};
+use harmos::sidecar::{ObserverAttachment, Refusal, Supervisor};
 
 /* === Constants === */
 
@@ -45,9 +45,8 @@ pub struct Resources {
 
 pub struct StandaloneBridge {
     resources: std::sync::Arc<Resources>,
-    observers: Option<
-        std::sync::Arc<ObserverAttachment<Resources, harmos::plugin::sidecar::Publisher<Self>>>,
-    >,
+    observers:
+        Option<std::sync::Arc<ObserverAttachment<Resources, harmos::sidecar::Publisher<Self>>>>,
 }
 
 /* === Enums === */

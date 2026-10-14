@@ -176,7 +176,7 @@ impl Declaration {
         let mut restart_policies = Vec::new();
         let mut settings = crate::config::SchemaSettings::default();
         for fragment in
-            crate::scan::fragments_with_settings::<Fragment>(artifact, &OWNED, &mut settings)?
+            crate::artifacts::fragments_with_settings::<Fragment>(artifact, &OWNED, &mut settings)?
         {
             match fragment {
                 Fragment::Plugin(common) => {

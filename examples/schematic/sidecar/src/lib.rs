@@ -22,8 +22,8 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use harmos_sidecar::Supervisor;
-use harmos_sidecar::operations::{
+use harmos::sidecar::Supervisor;
+use harmos::sidecar::operations::{
     OperationPolicy, ServingError, StreamSettings, WireStreamLimits, WireTable,
 };
 
@@ -43,13 +43,13 @@ pub struct Plugin {
 /* === Traits === */
 
 /* === Implementations === */
-impl harmos_sidecar::operations::lifecycle::Policy for Plugin {
+impl harmos::sidecar::operations::lifecycle::Policy for Plugin {
     const INITIALIZATION_POLICY: OperationPolicy = schematic_contract::operations::POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos_sidecar::plugin(id = "schematic-tools", provides = schematic_contract::native::Operations, requires = ())]
-impl harmos_sidecar::Plugin for Plugin {
+#[harmos::plugin(id = "schematic-tools", provides = schematic_contract::native::Operations, requires = ())]
+impl harmos::sidecar::Plugin for Plugin {
     type Config = ();
     type Error = Error;
     type Context = Supervisor;

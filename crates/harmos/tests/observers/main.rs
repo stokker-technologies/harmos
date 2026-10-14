@@ -38,7 +38,7 @@ use harmos::observers::{ObserverActivation, ObserverBackend, ObserverDefinition}
 use harmos::operations::resident::{Activation, Definition, Key, Kind};
 use harmos::operations::{OperationInstance, OperationManager, OperationOutcome, OperationPhase};
 #[cfg(feature = "plugin-sidecar")]
-use harmos::plugin::sidecar::{ActivationId, Activity, ObserverError};
+use harmos::sidecar::{ActivationId, Activity, ObserverError};
 use harmos::{Error, Runtime};
 use support::{Bank, Ledger, catalog};
 

@@ -43,7 +43,7 @@ impl harmos::operations::lifecycle::Policy for Program {
 }
 
 #[harmos::plugin(id = "invalid-requirement", provides = (), requires(harmos::operations::host::Invoke: invoke("ledger.deposit")),
-    context = harmos::plugin::sidecar::Supervisor, config = ())]
+    context = harmos::sidecar::Supervisor, config = ())]
 impl ProductPlugin for Program {}
 
 /* === Public Functions === */

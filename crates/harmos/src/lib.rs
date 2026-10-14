@@ -30,6 +30,12 @@ pub mod records;
 #[cfg(all(not(target_arch = "wasm32"), feature = "plugin"))]
 pub mod plugin;
 
+#[cfg(all(not(target_arch = "wasm32"), feature = "plugin-sidecar"))]
+pub mod sidecar;
+
+#[cfg(all(not(target_arch = "wasm32"), feature = "plugin-guest"))]
+pub mod guest;
+
 pub mod operations;
 
 pub mod runtime;
@@ -53,8 +59,8 @@ pub mod __private {
     pub use crate::with_protobuf;
     pub use harmos_contract::__private::CarrierContext;
     pub use harmos_contract::__private::{
-        DecodeField, DecodeInput, DecodeScalar, DecodeValue, MessageError, PostcardReader,
-        PostcardValue, decoding_add, decoding_multiply, decoding_vector,
+        DecodeInput, DecodeScalar, DecodeValue, MessageError, PostcardReader, PostcardValue,
+        decoding_add, decoding_multiply, decoding_vector,
     };
     #[cfg(feature = "grpc")]
     pub use harmos_contract::__private::{Protobuf, prost};
@@ -91,9 +97,6 @@ pub mod __private {
     }
 }
 
-#[cfg(feature = "signal")]
-pub use harmos_signal as signal;
-
 /* === Re-Exports === */
 pub use application::Application;
 pub use error::{BackendFailure, Error};
@@ -110,10 +113,18 @@ pub use harmos_contract::{
     Identifier, IdentifierError, MemorySize, Message, MessageError, Metadata, RowMetadata,
     Storable, StreamField, StreamSpec, Value, ValueError, btree_map_memory,
 };
-pub use harmos_contract::{catalog, listeners, schema};
+// Contract Namespaces The Host Does Not Extend, Re-Exported Whole.
+#[cfg(any(feature = "plugin", feature = "packaging"))]
+pub use harmos_bundle as bundle;
+#[cfg(all(feature = "reflection", not(feature = "grpc")))]
+pub use harmos_contract::grpc;
+#[cfg(feature = "signal")]
+pub use harmos_signal as signal;
+// `message` Names Both The Contract Module And Its Same-Named Attribute.
+pub use harmos_contract::{artifacts, catalog, listeners, message, schema};
 pub use harmos_macros::{
-    lanes, listener, message, observer, operation, plugin, record, records, stream, streams,
-    transaction, transactions,
+    lanes, listener, observer, operation, plugin, record, records, stream, streams, transaction,
+    transactions,
 };
 
 /* === Imports === */

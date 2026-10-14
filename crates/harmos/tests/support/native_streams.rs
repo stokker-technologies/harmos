@@ -26,8 +26,8 @@ use sha2::{Digest, Sha256};
 
 // Local Imports
 use harmos::operations::OperationDeclaration;
-use harmos::plugin::sidecar::{Attach, Executable, Notice, Supervised};
 use harmos::plugin::{PluginArtifact, PluginContributions, PluginDefinition};
+use harmos::sidecar::{Attach, Executable, Notice, Supervised};
 use harmos::{Message, Runtime, services::Service, services::ServiceStatus};
 use plugin::{Progress, Receiver};
 
@@ -36,7 +36,7 @@ use plugin::{Progress, Receiver};
 
 /* === Type Aliases === */
 type Resident<T> = Supervised<Model, T, fn(&Service<Model>, Notice)>;
-type Managed<T> = harmos::plugin::sidecar::Managed<Model, T, fn(&Service<Model>, Notice), Lanes>;
+type Managed<T> = harmos::sidecar::Managed<Model, T, fn(&Service<Model>, Notice), Lanes>;
 type Constructor<T> = fn(
     Resident<T>,
     PluginDefinition,
@@ -86,7 +86,7 @@ impl Fixture {
                 revision: "stream-consumption".into(),
             },
             "1.0.0".parse().unwrap(),
-            harmos::plugin::sidecar::Managed::new,
+            harmos::sidecar::Managed::new,
             None,
         )
         .await
@@ -111,7 +111,7 @@ impl Fixture {
             source,
             artifact,
             version,
-            harmos::plugin::sidecar::Managed::new_executable,
+            harmos::sidecar::Managed::new_executable,
             pause_after,
         )
         .await

@@ -19,9 +19,9 @@ mod scenario_runtime;
 // Third Party Imports
 
 // Local Imports
-use harmos_sidecar::inventory::{Declaration, Facility};
-use harmos_sidecar::operations::{Declarations, OperationDeclaration};
-use harmos_sidecar::plugin::Declared;
+use harmos::plugin::Declared;
+use harmos::sidecar::inventory::{Declaration, Facility};
+use harmos::sidecar::operations::{Declarations, OperationDeclaration};
 use schematic_contract::{native::ListDirectories, operations::Operations};
 
 /* === Constants === */
@@ -63,11 +63,11 @@ fn contract_scenario() {
                 .all(|operation| operation.id.as_str() != ListDirectories::ID)
         );
         assert_eq!(
-            harmos_sidecar::catalog::count(<schematic_guest::Plugin as Declared>::PROVIDES),
+            harmos::catalog::count(<schematic_guest::Plugin as Declared>::PROVIDES),
             3
         );
         assert_eq!(
-            harmos_sidecar::catalog::count(<schematic_sidecar::Plugin as Declared>::PROVIDES),
+            harmos::catalog::count(<schematic_sidecar::Plugin as Declared>::PROVIDES),
             4
         );
     });

@@ -142,6 +142,10 @@ Use the original runtime and resource owners. Consult the relevant section only;
   need shape-aware `visit_wire`/`visit_grpc` projections or explicit bindings.
 
 
+A shared contract crate compiled into WebAssembly guests depends on
+`harmos-contract`; host-only crates write the same declarations with
+`#[harmos::operation]` and `#[harmos::catalog]`.
+
 ```rust
 // operations/validate.rs
 #[harmos_contract::operation(
@@ -226,7 +230,10 @@ declare operation metadata.
   its shared contract crate as a build dependency with the intended explicit
   features and calls
   `Artifacts::new(&Contracts::of::<Operations>()?)?.export_build("operations")`
-  from `harmos-contract` with `reflection`. Build scripts cannot import their
+  through `harmos::operations::Contracts` and `harmos::grpc::Artifacts`, with
+  `harmos` as a build dependency enabling `reflection`; WebAssembly guests keep
+  the host out of their graph and use `harmos-contract` with `reflection`
+  instead. Build scripts cannot import their
   own not-yet-built crate.
 - Generated bundles live under that producer's `OUT_DIR/grpc/<catalog>/`,
   containing package-relative `.proto` files, `descriptors.bin`, canonical
@@ -235,7 +242,7 @@ declare operation metadata.
   messages and preserves producer/catalog ownership. Never glob stale Cargo
   output directories or generate schemas during componentization. Static bundles
   describe known catalogs; runtime reflection describes currently ready methods.
-- Generate Python bindings through `harmos_contract::bindings::python::export`
+- Generate Python bindings through `harmos::bindings::python::export`
   with the `bindings-python` feature, or the thin `cargo harmos bindings python`
   adapter. Supply explicit distribution/module/version/description/license
   metadata and an exact `Artifacts` export. CLI selection uses an exact export
@@ -398,8 +405,9 @@ layouts for guests and sidecars.
   partial setup or EOF. Acknowledged domain stop is not replayed while
   physical cleanup resumes. The SDK lifecycle leaves keep their wire ids
   (`harmos.initialize`, `harmos.shutdown`).
-- Author portable guests with `harmos-guest` and native plugins with
-  `harmos-sidecar`; neither authoring crate depends on the host runtime.
+- Author native plugins through `harmos::sidecar` (`plugin-sidecar`), naming
+  `harmos::` paths only. WebAssembly guests author with `harmos-guest`, which
+  must build without the host runtime; the host loads them through `harmos::guest`.
   The SDK context identifies its carrier. Host features `plugin-guest` and
   `plugin-sidecar` enable execution and imply the shared `plugin` manager.
   `harmos::packaging` exposes reusable build, inspection, bundle and componentization

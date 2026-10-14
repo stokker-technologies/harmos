@@ -34,9 +34,9 @@ use crate::support;
 use crate::support::fixtures::component as load;
 use harmos::Message;
 use harmos::Runtime;
+use harmos::guest::{Error, Host};
 use harmos::operations::Host as _;
 use harmos::operations::{OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
-use harmos::plugin::guest::{Error, Host};
 use harmos_sidecar::Attach;
 
 /* === Constants === */
@@ -603,8 +603,8 @@ fn contract_scenario() {
                     };
                     assert!(matches!(
                         error,
-                        harmos::plugin::guest::Error::Declaration(
-                            harmos::plugin::guest::inventory::DeclarationError::IncompatiblePayload
+                        harmos::guest::Error::Declaration(
+                            harmos::guest::inventory::DeclarationError::IncompatiblePayload
                         )
                     ));
                     assert!(runtime.operations.definitions().is_empty());
@@ -646,7 +646,7 @@ fn contract_scenario() {
                         let component = load("catalog-component", "componentize,kit", Some(case));
                         let result = tokio::time::timeout(
                             Duration::from_secs(30),
-                            harmos::plugin::guest::registrations(&component),
+                            harmos::guest::registrations(&component),
                         )
                         .await
                         .expect("collection and runtime cleanup finish");
@@ -695,7 +695,7 @@ fn contract_scenario() {
                         }
                     }
                     assert!(
-                        harmos::plugin::guest::registrations(b"not a component")
+                        harmos::guest::registrations(b"not a component")
                             .await
                             .is_err()
                     );
@@ -1718,11 +1718,11 @@ fn native_client() -> harmos_sidecar::PluginNative<NativeClientPlugin> {
     harmos_sidecar::PluginNative::new(std::num::NonZeroUsize::new(NATIVE_CAPACITY).unwrap())
         .unwrap()
 }
-fn dependency_notice(_: &harmos::services::Service<Bank>, _: harmos::plugin::sidecar::Notice) {}
-type NativeResident = harmos::plugin::sidecar::Supervised<
+fn dependency_notice(_: &harmos::services::Service<Bank>, _: harmos::sidecar::Notice) {}
+type NativeResident = harmos::sidecar::Supervised<
     Bank,
     NativeAttachment,
-    fn(&harmos::services::Service<Bank>, harmos::plugin::sidecar::Notice),
+    fn(&harmos::services::Service<Bank>, harmos::sidecar::Notice),
 >;
 #[derive(Default)]
 struct NativeResources {
@@ -1824,7 +1824,7 @@ impl harmos::plugin::PluginLifecycle for DependencyHost {
                     .await?;
             }
             harmos::plugin::PluginBackend::Sidecar(resources) => {
-                let resident: NativeResident = harmos::plugin::sidecar::Supervised::new(
+                let resident: NativeResident = harmos::sidecar::Supervised::new(
                     NativeAttachment {
                         id: definition.id.clone(),
                         _seed: if definition.id == "provider" {
@@ -1834,7 +1834,7 @@ impl harmos::plugin::PluginLifecycle for DependencyHost {
                         },
                     },
                     dependency_notice
-                        as fn(&harmos::services::Service<Bank>, harmos::plugin::sidecar::Notice),
+                        as fn(&harmos::services::Service<Bank>, harmos::sidecar::Notice),
                 )
                 .routed(router);
                 resources.resident = Some(resident.clone());

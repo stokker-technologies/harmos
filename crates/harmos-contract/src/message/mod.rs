@@ -8,15 +8,17 @@
  */
 
 /* === Modules === */
-mod input;
-mod postcard;
+pub(crate) mod input;
+pub mod postcard;
 
 /* === Re-Exports === */
-pub use input::{
+// Codec Internals For This Crate; Generated Code Reaches Them Through `__private`.
+#[cfg_attr(not(feature = "grpc"), allow(unused_imports))]
+pub(crate) use input::{
     DecodeField, DecodeInput, DecodeScalar, DecodeValue, add as decoding_add,
     multiply as decoding_multiply, vector as decoding_vector,
 };
-pub use postcard::{Reader as PostcardReader, Value as PostcardValue};
+pub(crate) use postcard::{Reader as PostcardReader, Value as PostcardValue};
 
 /* === Imports === */
 // Standard Library Imports

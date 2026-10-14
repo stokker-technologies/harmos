@@ -10,7 +10,8 @@ Project contracts take precedence over generic architecture defaults. Read curre
 ## Application And Contract Layout
 
 - `contract/` owns shared message types, operation declarations and portable
-  catalogs used by the application and plugins. Depend on `harmos-contract`;
+  catalogs used by the application and plugins. Because guests compile it to
+  WebAssembly, it depends on `harmos-contract` rather than the host facade;
   default declarations need no Tokio, Tonic, Prost or host engine. Enable `grpc`
   for explicit protobuf codecs, `reflection` for schema export, and `streaming`
   only where portable endpoint execution is needed.
@@ -66,16 +67,22 @@ Project contracts take precedence over generic architecture defaults. Read curre
 
 The host runtime, managed state, streams, and authoring are unconditional.
 Features select optional facilities: `plugin`, `plugin-sidecar`, `plugin-guest`,
-`grpc`, `signal`, `signal-fft`, `simulation`, and host-independent `packaging`. Sidecar and guest hosting imply
-`plugin`; FFT implies `signal`. TLS and Web behavior is configured through the
-single gRPC manager's settings.
+`grpc`, `reflection`, `signal`, `signal-fft`, `simulation`, and host-independent
+`packaging`. Sidecar and guest hosting imply `plugin`; `grpc` implies
+`reflection`; FFT implies `signal`. TLS and Web behavior is configured through
+the single gRPC manager's settings.
 
-Portable contracts and plugin SDKs are deliberate exceptions to facade-only
-consumption: shared contracts depend on `harmos-contract`, guests on
-`harmos-guest`, and native plugins on `harmos-sidecar`. They must not import the
-host library merely to author declarations. `harmos-bundle` owns standalone
-bundle packaging; the facade re-exports it as `harmos::packaging::bundle`
-without execution backends, and as `harmos::plugin::bundle` for hosts.
+Consumers depend on `harmos` alone. The facade exposes qualified namespaces, not
+flattened aliases: `operations`, `message`, `schema`, `artifacts`, `catalog`,
+`listeners`, `config`, `plugin` (host plugin management merged with the contract's
+plugin declarations), `sidecar` (`plugin-sidecar`), `guest` (`plugin-guest`),
+`bundle` (`plugin` or `packaging`), `builtin`, `signal` (`signal`) and `grpc`
+(descriptor projection with `reflection`, the server with `grpc`). Native plugins
+author through `harmos::sidecar`; build scripts project descriptors through
+`harmos::grpc` with `reflection`. `__private` holds only what generated code
+reaches. Crates compiled to WebAssembly (shared declaration crates and guest
+components) are the one exception: they must build without the host runtime, so
+they depend on `harmos-contract` and `harmos-guest`.
 
 Each configurable crate owns externally supplied settings and their defaults in
 root `src/config.rs`. Internal state and live resources remain with their domains.

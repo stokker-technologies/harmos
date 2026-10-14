@@ -12,7 +12,7 @@
 /* === Modules === */
 
 /* === Re-Exports === */
-pub use harmos_contract::config::SchemaSettings;
+pub use harmos_contract::config::*;
 
 /* === Imports === */
 

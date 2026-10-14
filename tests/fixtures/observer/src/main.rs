@@ -39,10 +39,8 @@ use harmos_observer_fixture::StandaloneBridge;
 #[tokio::main]
 #[tracing::instrument(level = "debug", skip_all)]
 async fn main() -> harmos_observer_fixture::Result<()> {
-    harmos::plugin::sidecar::run_plugin::<StandaloneBridge>(
-        std::num::NonZeroUsize::new(64).unwrap(),
-    )
-    .await?;
+    harmos::sidecar::run_plugin::<StandaloneBridge>(std::num::NonZeroUsize::new(64).unwrap())
+        .await?;
     Ok(())
 }
 

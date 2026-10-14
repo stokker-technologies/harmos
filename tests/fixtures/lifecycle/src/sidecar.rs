@@ -38,7 +38,7 @@
 /* === Private Functions === */
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    harmos::plugin::sidecar::run_plugin::<harmos_lifecycle_fixture::native::Plugin>(
+    harmos::sidecar::run_plugin::<harmos_lifecycle_fixture::native::Plugin>(
         std::num::NonZeroUsize::new(4).unwrap(),
     )
     .await?;

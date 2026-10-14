@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 // Local Imports
 use crate::Resources;
-use harmos::plugin::sidecar::Refusal;
+use harmos::sidecar::Refusal;
 
 /* === Constants === */
 
@@ -58,16 +58,13 @@ pub struct Heard {
     }
 )]
 impl Heard {
-    pub async fn initialize(
-        resources: Arc<Resources>,
-        _: &harmos::plugin::sidecar::Supervisor,
-    ) -> Self {
+    pub async fn initialize(resources: Arc<Resources>, _: &harmos::sidecar::Supervisor) -> Self {
         Self { resources }
     }
 
     async fn run(
         &mut self,
-        _: &harmos::plugin::sidecar::Supervisor,
+        _: &harmos::sidecar::Supervisor,
         delivery: &harmos::listeners::Delivery<Recalibration>,
     ) -> Result<(), Refusal> {
         eprintln!(

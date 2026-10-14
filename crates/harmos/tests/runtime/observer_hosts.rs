@@ -31,8 +31,8 @@ use harmos::Message;
 use harmos::operations::{
     OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireOperation,
 };
-use harmos::plugin::sidecar::inventory::publications;
-use harmos::plugin::sidecar::{
+use harmos::sidecar::inventory::publications;
+use harmos::sidecar::{
     Observer, ObserverAttachment, ObserverCaller, ObserverContext, ObserverHost, ObserverPublisher,
     PublishError, Publisher, Supervisor,
 };
@@ -145,7 +145,7 @@ impl harmos::Plugin for Bridge {
     type Config = usize;
     type Resources = Settings;
     type Context = Supervisor;
-    type Error = harmos::plugin::sidecar::Refusal;
+    type Error = harmos::sidecar::Refusal;
     fn prepare(id: usize) -> Result<Self, Self::Error> {
         let resources = SEEDS
             .lock()
@@ -153,7 +153,7 @@ impl harmos::Plugin for Bridge {
             .remove(&id)
             .and_then(|resources| resources.upgrade())
             .ok_or_else(|| {
-                harmos::plugin::sidecar::Refusal::of("original fixture resources unavailable")
+                harmos::sidecar::Refusal::of("original fixture resources unavailable")
             })?;
         let attachment = ObserverAttachment::<Settings, Host>::from_catalog::<Observers>(
             resources.clone(),
@@ -201,7 +201,7 @@ impl harmos::Plugin for Bridge {
 // The Inert Descriptor Uses The Same Custom Host Projection As The Callback.
 impl<const N: u64> harmos_contract::inventory::observers::Declared for Watch<N> {
     const ENTRY: harmos_contract::inventory::observers::Entry =
-        <harmos::plugin::sidecar::__private::ObserverInventory<Host> as harmos::catalog::Member<
+        <harmos::sidecar::__private::ObserverInventory<Host> as harmos::catalog::Member<
             Self,
         >>::ENTRY;
 }

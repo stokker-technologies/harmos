@@ -53,7 +53,7 @@ pub mod linked {
     impl harmos::Plugin for LinkedGuest {
         type Config = String;
         type Error = std::convert::Infallible;
-        type Context = harmos::plugin::guest::Context;
+        type Context = harmos::guest::Context;
         type Resources = ();
         fn prepare(_: String) -> Result<Self, Self::Error> {
             Ok(Self {
@@ -95,7 +95,7 @@ use harmos::operations::Host as _;
 use harmos::operations::{
     Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, WireTable,
 };
-use harmos::plugin::sidecar::{Refusal, Supervisor};
+use harmos::sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
 
@@ -331,8 +331,8 @@ fn main() {
     // executable reads, and `#[used]` reaches the compiler rather than the
     // linker: an MSVC link dropped all three of its fragments, leaving the
     // executable inspectable as a sidecar and not as the guest it also
-    // declares. `harmos::plugin::guest::export_plugin!` roots them from a component's first
-    // export the same way `harmos::plugin::sidecar::run_plugin` roots the native ones; a
+    // declares. `harmos::guest::export_plugin!` roots them from a component's first
+    // export the same way `harmos::sidecar::run_plugin` roots the native ones; a
     // native binary reaches no such export, so it states the reference here.
     std::hint::black_box(
         <linked::LinkedGuest as harmos_contract::plugin::Declared>::markers().unwrap(),
@@ -348,7 +348,7 @@ fn main() {
         .build()
         .expect("the fixture runtime builds");
     runtime
-        .block_on(harmos::plugin::sidecar::run_plugin::<Stubborn>(
+        .block_on(harmos::sidecar::run_plugin::<Stubborn>(
             NonZeroUsize::new(8).unwrap(),
         ))
         .expect("the fixture serves its gRPC boundary");

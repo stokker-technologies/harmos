@@ -67,7 +67,7 @@ impl facade::__harmos::operations::lifecycle::Policy for Publisher {
     const SHUTDOWN_POLICY: facade::__harmos::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[facade::plugin(id = "facade-publisher", context = facade::__harmos::plugin::sidecar::Supervisor, config = (),
+#[facade::plugin(id = "facade-publisher", context = facade::__harmos::sidecar::Supervisor, config = (),
     provides = (), requires(facade::__harmos::operations::host::Publish), streams(Portable), harmos_path = ::facade::__harmos)]
 impl ProductPlugin for Publisher {}
 
@@ -75,8 +75,8 @@ impl ProductPlugin for Publisher {}
 impl Stateless {
     async fn observe(
         &mut self,
-        context: &facade::__harmos::plugin::sidecar::ObserverContext<'_, (), facade::__harmos::plugin::sidecar::Publisher<Publisher>>,
-    ) -> Result<(), facade::__harmos::plugin::sidecar::PublishError> {
+        context: &facade::__harmos::sidecar::ObserverContext<'_, (), facade::__harmos::sidecar::Publisher<Publisher>>,
+    ) -> Result<(), facade::__harmos::sidecar::PublishError> {
         let _ = context.resources();
         context.publish_on::<Portable>(&Portable { value: context.tick().elapsed().as_secs_f64() }).await
     }

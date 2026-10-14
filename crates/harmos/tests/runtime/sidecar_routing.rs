@@ -749,7 +749,7 @@ impl PluginLifecycle for Host {
                 resident = resident.ingest::<MeterPulse>();
             }
             self.operations
-                .register_wire_operation::<harmos::plugin::sidecar::Publish<_, _, _>>(
+                .register_wire_operation::<harmos::sidecar::Publish<_, _, _>>(
                     "routing-publication-core",
                     HostLanes::Open,
                     Arc::new(resident.clone()),

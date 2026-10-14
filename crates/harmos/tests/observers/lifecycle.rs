@@ -23,7 +23,7 @@ use std::time::Duration;
 use tokio::sync::Semaphore;
 // Local Imports
 use super::{Observing, RUNNING, STOPPED, STOPPING, phase};
-use harmos::plugin::sidecar::{Activity, Instance, Observer, ObserverContext, ObserverError};
+use harmos::sidecar::{Activity, Instance, Observer, ObserverContext, ObserverError};
 
 /* === Constants === */
 

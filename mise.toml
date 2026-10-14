@@ -207,6 +207,7 @@ run = [
   "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features plugin-sidecar",
   "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features plugin-guest",
   "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features grpc",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features reflection",
   "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features signal",
   "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features signal-fft",
   "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features simulation",

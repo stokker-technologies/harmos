@@ -25,7 +25,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 // Local Imports
 use crate::contract::{Operations, POLICY};
 use harmos::operations::{OperationPolicy, ServingError, WireTable};
-use harmos::plugin::sidecar::Supervisor;
+use harmos::sidecar::Supervisor;
 
 /* === Constants === */
 

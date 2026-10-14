@@ -84,7 +84,7 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     use std::time::Duration;
                     let runtime = runtime().await;
-                    let host = harmos::plugin::guest::Host::new(&runtime).unwrap();
+                    let host = harmos::guest::Host::new(&runtime).unwrap();
                     let loaded = host.load(&component()).unwrap();
                     let settings = harmos::config::PluginSettings {
                         configuration: serde_json::to_vec("shutdown-pending").unwrap(),

@@ -42,7 +42,7 @@ impl Level {
         Ok(Self)
     }
 
-    async fn observe(&mut self, _context: &harmos::plugin::sidecar::ObserverContext<'_, Resources>) -> Result<(), String> {
+    async fn observe(&mut self, _context: &harmos::sidecar::ObserverContext<'_, Resources>) -> Result<(), String> {
         Ok(())
     }
 

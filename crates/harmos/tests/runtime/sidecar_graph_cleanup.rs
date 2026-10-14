@@ -37,7 +37,7 @@ use super::graph::{contract, marked};
 use super::{HostLanes, assembly, operations, service_status};
 use crate::support::Bank;
 use harmos::operations::OperationPolicy;
-use harmos::plugin::sidecar::{Attach, Attached, Notice, Refusal, Supervised, Supervisor};
+use harmos::sidecar::{Attach, Attached, Notice, Refusal, Supervised, Supervisor};
 use harmos::{Runtime, services::Service, services::ServiceStatus};
 use harmos_sidecar::attach::{End, Ending};
 
@@ -324,7 +324,7 @@ impl Fixture {
                     },
                 },
                 move |_: Arc<()>| {
-                    harmos::plugin::sidecar::Managed::new_graph(
+                    harmos::sidecar::Managed::new_graph(
                         residents.clone(),
                         definitions.clone(),
                         HostLanes::Open,

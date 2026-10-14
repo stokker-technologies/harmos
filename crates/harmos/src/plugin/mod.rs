@@ -10,11 +10,6 @@
 /* === Modules === */
 mod host;
 
-#[cfg(feature = "plugin-guest")]
-pub mod guest;
-#[cfg(feature = "plugin-sidecar")]
-pub mod sidecar;
-
 mod backend;
 mod definition;
 mod definitions;
@@ -32,12 +27,12 @@ pub use definition::{
 };
 pub use definitions::PluginDefinitions;
 pub use events::{PluginEvent, PluginEventKind, PluginEvents};
-pub use harmos_bundle as bundle;
-pub use harmos_contract::Requirement;
-pub use harmos_contract::plugin::{self as contract, Attachment, Declared, Plugin};
+// Explicit Items Shadow The Contract's Same-Named Ones: `Error` Is The Host's,
+// `Requirement` The Plugin Dependency; Grant Requirements Are
+// `catalog::RequirementEntry`.
+pub use harmos_contract::plugin::*;
 pub use harmos_contract::{
-    ConfigError, Refusal, Registrar, Registration, RegistrationError, StreamDeclaration,
-    decode_config, encode_config, inventory, validate_config,
+    Refusal, Registrar, Registration, RegistrationError, Requirement, StreamDeclaration, inventory,
 };
 pub use host::PluginHost;
 #[cfg(feature = "plugin-sidecar")]

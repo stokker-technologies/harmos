@@ -24,11 +24,11 @@ use tokio::sync::mpsc;
 use super::children::{CHILD_REQUESTS, ChildRequest, Children};
 use super::{Context, Operation};
 use crate::catalog::{Catalog, Member, Visitor};
+use crate::guest::Error as GuestError;
+use crate::guest::host::session::Endpoint;
 use crate::operations::{
     Declarations, Definition, Failure, OperationDeclaration, WireAnswer, WireCommand, WireOperation,
 };
-use crate::plugin::guest::Error as GuestError;
-use crate::plugin::guest::host::session::Endpoint;
 use crate::schema::Described;
 use crate::{Error, Identifier, Message, operations::Lane};
 

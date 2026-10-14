@@ -31,7 +31,7 @@ mod validate;
 /* === Structs === */
 
 /* === Enums === */
-#[harmos_sidecar::catalog]
+#[harmos::catalog]
 pub(crate) enum Operations {
     Validate(validate::ValidateSchematic),
     Route(propose::ProposeRoute),

@@ -35,16 +35,16 @@ pub(crate) struct ValidateSchematic;
 /* === Traits === */
 
 /* === Implementations === */
-#[harmos_sidecar::operation(declaration = schematic_contract::operations::ValidateSchematic)]
+#[harmos::operation(declaration = schematic_contract::operations::ValidateSchematic)]
 impl ValidateSchematic {
-    async fn initialize(_: Arc<()>, _: &harmos_sidecar::Supervisor) -> Self {
+    async fn initialize(_: Arc<()>, _: &harmos::sidecar::Supervisor) -> Self {
         Self
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
     async fn run(
         &mut self,
-        _context: &harmos_sidecar::Supervisor,
+        _context: &harmos::sidecar::Supervisor,
         request: &mut Request,
     ) -> Result<Response, Error> {
         let symbols: std::collections::BTreeSet<_> =

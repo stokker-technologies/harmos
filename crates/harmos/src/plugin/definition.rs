@@ -273,7 +273,7 @@ impl PluginDefinition {
 
     #[cfg(feature = "plugin-guest")]
     pub fn guest<A: crate::Application>(
-        loaded: &super::guest::Loaded<A>,
+        loaded: &crate::guest::Loaded<A>,
         configuration: Vec<u8>,
     ) -> Result<Self, PluginDefinitionError> {
         Self::inspected(

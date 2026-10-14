@@ -45,7 +45,7 @@ impl Error {
         match self {
             Self::Packaging(
                 Packaging::Declaration(harmos::packaging::DeclarationError::OversizedFragment)
-                | Packaging::Bundle(harmos::packaging::bundle::Error::Limit(_)),
+                | Packaging::Bundle(harmos::bundle::Error::Limit(_)),
             )
             | Self::Bindings(Bindings::Limit) => 4,
             Self::Packaging(

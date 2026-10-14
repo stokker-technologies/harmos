@@ -29,7 +29,7 @@ use super::{HostLanes, assembly, process_definition, service_status};
 use crate::support::Bank;
 use contract::{Marks, Probe, Step};
 use harmos::operations::OperationDeclaration;
-use harmos::plugin::sidecar::{Executable, Notice, Supervised};
+use harmos::sidecar::{Executable, Notice, Supervised};
 use harmos::{Message, services::Service, services::ServiceStatus};
 
 /* === Constants === */
@@ -139,7 +139,7 @@ pub(super) fn contract_scenario() {
                                 },
                             },
                             move |_: Arc<()>| {
-                                harmos::plugin::sidecar::Managed::new_executable_graph(
+                                harmos::sidecar::Managed::new_executable_graph(
                                     residents.clone(),
                                     definitions.clone(),
                                     HostLanes::Open,

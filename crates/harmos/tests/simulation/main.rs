@@ -228,7 +228,7 @@ use harmos::operations::WireTable;
 use harmos::operations::{
     Context, Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy,
 };
-use harmos::plugin::sidecar::{Notice, Supervised};
+use harmos::sidecar::{Notice, Supervised};
 use harmos::simulation::entropy;
 use harmos::{
     Application, Builder, DefinitionId, Identified, Runtime, evidence::EvidenceKind,
@@ -244,7 +244,7 @@ static DIVERGENCE: AtomicUsize = AtomicUsize::new(0);
 /* === Macros === */
 
 /* === Type Aliases === */
-type IdleManaged = harmos::plugin::sidecar::Managed<
+type IdleManaged = harmos::sidecar::Managed<
     Bank,
     PluginNative<Idle>,
     fn(&harmos::services::Service<Bank>, Notice),
@@ -740,7 +740,7 @@ impl IdleResident {
             (|_: &harmos::services::Service<Bank>, _: Notice| {})
                 as fn(&harmos::services::Service<Bank>, Notice),
         );
-        let managed = harmos::plugin::sidecar::Managed::new(
+        let managed = harmos::sidecar::Managed::new(
             resident,
             definition,
             Lanes::Open,
@@ -759,7 +759,7 @@ impl Clone for IdleResident {
 }
 
 impl harmos::services::Resident<Bank> for IdleResident {
-    type Error = harmos::plugin::sidecar::ManagedError;
+    type Error = harmos::sidecar::ManagedError;
     async fn run(
         &mut self,
         context: harmos::services::Service<Bank>,

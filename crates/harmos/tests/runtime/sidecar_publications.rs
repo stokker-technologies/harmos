@@ -1505,17 +1505,17 @@ pub(super) fn contract_scenario() {
             assert_eq!(observers.len(), 1);
             assert_eq!(observers[0].streams.len(), 2);
 
-            let empty = harmos::plugin::sidecar::inventory::Declaration::inspect(
+            let empty = harmos::sidecar::inventory::Declaration::inspect(
                 &<Twins as harmos_contract::plugin::Declared>::markers()
                     .unwrap()
                     .concat(),
-                harmos::plugin::sidecar::inventory::Facility::Sidecar,
+                harmos::sidecar::inventory::Facility::Sidecar,
             )
             .unwrap();
             assert!(empty.observers.is_empty());
-            let selected = harmos::plugin::sidecar::inventory::Declaration::inspect(
+            let selected = harmos::sidecar::inventory::Declaration::inspect(
                 &MultiStream::markers().unwrap().concat(),
-                harmos::plugin::sidecar::inventory::Facility::Sidecar,
+                harmos::sidecar::inventory::Facility::Sidecar,
             )
             .unwrap();
             assert_eq!(selected.observers.len(), 1);
@@ -1524,7 +1524,7 @@ pub(super) fn contract_scenario() {
             assert_eq!(selected.observers[0].interval, observers[0].interval);
             assert_eq!(
                 selected.observers[0].activation,
-                harmos::plugin::sidecar::Activation::Demand
+                harmos::sidecar::Activation::Demand
             );
             assert_eq!(
                 selected.observers[0].streams,
@@ -1542,11 +1542,11 @@ pub(super) fn contract_scenario() {
                 })
                 .collect();
             assert!(matches!(
-                harmos::plugin::sidecar::inventory::Declaration::inspect(
+                harmos::sidecar::inventory::Declaration::inspect(
                     &missing.concat(),
-                    harmos::plugin::sidecar::inventory::Facility::Sidecar
+                    harmos::sidecar::inventory::Facility::Sidecar
                 ),
-                Err(harmos::plugin::sidecar::inventory::DeclarationError::ObserverInventory(_))
+                Err(harmos::sidecar::inventory::DeclarationError::ObserverInventory(_))
             ));
         });
     }

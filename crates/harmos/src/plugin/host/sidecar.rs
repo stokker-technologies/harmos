@@ -26,9 +26,9 @@ use super::{Execution, Factory, LifecycleFuture, PluginHost};
 use crate::catalog::Catalog;
 use crate::config::PluginSidecarSettings;
 use crate::operations::{Declarations, Lane, NativeBindings};
-use crate::plugin::sidecar::{Executable, Notice, Supervised};
 use crate::plugin::{PluginDefinition, PluginLifecycleAuthority, Router};
 use crate::services::{RuntimeDriver, Service};
+use crate::sidecar::{Executable, Notice, Supervised};
 use crate::{Application, Error, Result};
 
 /* === Constants === */

@@ -437,11 +437,15 @@ fn leaf_code(error: &Error) -> tonic::Code {
         _ => tonic::Code::Internal,
     }
 }
-fn explicit_status(mut error: &Error) -> Option<&Status> {
+fn explicit_status(mut error: &Error) -> Option<Status> {
     for _ in 0..32 {
         match error {
             Error::TaskFailed { source, .. } | Error::OperationFailed { source, .. } => {
                 if let Some(status) = source.downcast_ref::<Status>() {
+                    return Some(status.clone());
+                }
+                #[cfg(feature = "plugin-sidecar")]
+                if let Some(status) = refused_request(source.as_ref()) {
                     return Some(status);
                 }
                 error = source.downcast_ref::<Error>()?;
@@ -452,9 +456,23 @@ fn explicit_status(mut error: &Error) -> Option<&Status> {
     None
 }
 
+// A Sidecar That Rejects The Request During Preparation (An Unreadable Or
+// Wrong-Shape Payload) Names The Caller's Fault In Its Own Words.
+#[cfg(feature = "plugin-sidecar")]
+fn refused_request(source: &(dyn std::error::Error + Send + Sync + 'static)) -> Option<Status> {
+    let crate::operations::NativeError::Preparation {
+        failure: crate::operations::Failure::Invalid,
+        message,
+    } = source.downcast_ref()?
+    else {
+        return None;
+    };
+
+    Some(Status::invalid_argument(message.clone()))
+}
+
 pub(super) fn status(error: Error) -> Status {
     let mut status = explicit_status(&error)
-        .cloned()
         .unwrap_or_else(|| Status::new(code(&error), "operation request failed"));
     status.set_source(Arc::new(error));
     status
@@ -474,8 +492,7 @@ fn input_status(error: InputError) -> Status {
         }
         InputError::Forward { .. } => None,
     };
-    if let Some(explicit) = explicit {
-        let mut status = explicit.clone();
+    if let Some(mut status) = explicit {
         status.set_source(Arc::new(error));
         return status;
     }

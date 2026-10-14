@@ -22,7 +22,7 @@ use super::contract;
 use contract::{Marks, POLICY, Probe, Queries, Read, Readings, Step};
 use harmos::operations::Host as _;
 use harmos::operations::{Operation, OperationPolicy, WireTable};
-use harmos::plugin::sidecar::{Refusal, Supervisor};
+use harmos::sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
 

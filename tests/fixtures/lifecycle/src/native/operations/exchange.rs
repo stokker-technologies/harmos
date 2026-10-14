@@ -22,7 +22,7 @@ use std::sync::atomic::Ordering;
 // Local Imports
 use super::super::{Error, Resources, Result};
 use crate::contract::{self as worker, PAYLOAD_BYTES, Payload};
-use harmos::plugin::sidecar::Supervisor;
+use harmos::sidecar::Supervisor;
 
 /* === Constants === */
 

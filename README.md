@@ -150,24 +150,37 @@ are always available. Optional facilities are disabled by default.
 | `plugin` | Shared plugin management, activation, routing, and reload. |
 | `plugin-sidecar` | Native process hosting; includes `plugin`. |
 | `plugin-guest` | Sandboxed Wasmtime hosting; includes `plugin`. |
-| `grpc` | gRPC, reflection, TLS, and Web support; settings select their use. |
+| `grpc` | gRPC, reflection, TLS, and Web support; settings select their use. Includes `reflection`. |
+| `reflection` | Descriptor projection (`harmos::grpc::Artifacts`) for build scripts, without the gRPC server. |
 | `signal` | Signal-processing kernels. |
 | `signal-fft` | FFT support; includes `signal`. |
 | `simulation` | Deterministic runtime simulation. |
 | `packaging` | Cargo build discovery, inert inspection, bundle construction, and Wasm componentization without hosting engines. |
-| `bindings-python` | Shared producer-owned Python binding generation; also available through `harmos-contract`. |
+| `bindings-python` | Shared producer-owned Python binding generation (`harmos::bindings`). |
 
-Portable declarations use `harmos-contract`. Plugin authors use the dedicated
-`harmos-sidecar` or `harmos-guest` SDK, without importing the host runtime:
+Applications, native plugins, build scripts and tooling depend on `harmos` alone
+and reach every surface through its namespaces: `harmos::operations`,
+`harmos::message`, `harmos::schema`, `harmos::artifacts`, `harmos::catalog`,
+`harmos::plugin`, `harmos::sidecar`, `harmos::guest`, `harmos::bundle`,
+`harmos::builtin`, `harmos::signal` and `harmos::grpc`. A native plugin authors
+through `harmos::sidecar` with `plugin-sidecar`; its build script projects
+descriptors through `harmos::grpc` with `reflection`:
 
 ```toml
 [dependencies]
-harmos-guest = { git = "https://github.com/stokker-technologies/harmos", rev = "<tested-commit>", features = ["kit", "streaming"] }
+harmos = { git = "https://github.com/stokker-technologies/harmos", rev = "<tested-commit>", features = ["plugin-sidecar"] }
+
+[build-dependencies]
+harmos = { git = "https://github.com/stokker-technologies/harmos", rev = "<tested-commit>", features = ["reflection"] }
 ```
 
+Crates compiled to WebAssembly, shared declaration crates and guest components,
+must build without the host runtime, so they still depend on `harmos-contract`
+and `harmos-guest` (`features = ["kit", "streaming"]`) directly.
+
 Tooling consumers use `harmos::packaging` with the `packaging` feature. It reuses
-`harmos-bundle` and guest componentization without enabling Wasmtime or native
-process hosting. Host consumers also reach bundle support at `harmos::plugin::bundle`.
+`harmos::bundle` and guest componentization without enabling Wasmtime or native
+process hosting.
 
 ```sh
 cargo run --locked -p cargo-harmos -- harmos sidecar build -p schematic-sidecar --json
@@ -199,8 +212,8 @@ those exact directories. Schematic bundles use package `schematic.v1` and servic
 and start their runtime transport separately; dynamic plugins appear in runtime
 reflection when their operations become ready.
 
-`harmos-contract`'s `bindings-python` feature exposes the shared
-`bindings::python::export` generator. It emits a producer-owned `src/` Python
+The `bindings-python` feature exposes the shared
+`harmos::bindings::python::export` generator. It emits a producer-owned `src/` Python
 package with standard protobuf messages, `.pyi` stubs, `py.typed`, canonical
 contracts and descriptors. Producer build scripts export contracts normally;
 explicit binding generation needs `protoc`, while installing the resulting

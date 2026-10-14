@@ -25,7 +25,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 // Local Imports
 use contract::{Blob, Echo, Nested, Operations, POLICY, Probe};
 use harmos::operations::{Operation, OperationPolicy, WireTable};
-use harmos::plugin::sidecar::{Refusal, Supervisor};
+use harmos::sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
 
@@ -324,7 +324,7 @@ fn main() {
         .build()
         .unwrap();
     runtime
-        .block_on(harmos::plugin::sidecar::run_plugin::<Process>(
+        .block_on(harmos::sidecar::run_plugin::<Process>(
             NonZeroUsize::new(2).unwrap(),
         ))
         .unwrap();

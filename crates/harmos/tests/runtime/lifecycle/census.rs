@@ -18,8 +18,8 @@ mod support;
 
 #[allow(dead_code)]
 mod probe {
-    use harmos::plugin::sidecar::inventory::{Declaration, DeclarationError};
-    use harmos::plugin::sidecar::{
+    use harmos::sidecar::inventory::{Declaration, DeclarationError};
+    use harmos::sidecar::{
         Attach, Attached, Executable, Frame, Notice, SidecarError, StreamDeclaration, StreamSpec,
         Supervised,
     };
@@ -117,8 +117,8 @@ mod probe {
 
     // One portable operation policy and key type across host and plugin facades.
     pub type OperationPolicy = harmos::operations::OperationPolicy;
-    pub type GuestOperationPolicy = harmos::plugin::guest::OperationPolicy;
-    pub type SidecarOperationPolicy = harmos::plugin::sidecar::OperationPolicy;
+    pub type GuestOperationPolicy = harmos::guest::OperationPolicy;
+    pub type SidecarOperationPolicy = harmos::sidecar::OperationPolicy;
     pub type OperationCacheKey = harmos::operations::CacheKey;
 
     pub fn operation_policy_identity(
@@ -284,10 +284,8 @@ mod probe {
 
 #[allow(dead_code)]
 mod guest_probe {
-    use harmos::plugin::guest::inventory::{Declaration, DeclarationError};
-    use harmos::plugin::guest::{
-        Error, Host, Loaded, OperationRefusal, Registered, Registration, Serving,
-    };
+    use harmos::guest::inventory::{Declaration, DeclarationError};
+    use harmos::guest::{Error, Host, Loaded, OperationRefusal, Registered, Registration, Serving};
 
     use crate::support::Bank;
 
@@ -311,8 +309,7 @@ mod guest_probe {
 
     // The route surface the guest facility gained, named through the traits it
     // carries and the table a guest serves it from.
-    pub type ServedOperations =
-        harmos::plugin::guest::operations::WireTable<harmos::plugin::guest::Context>;
+    pub type ServedOperations = harmos::guest::operations::WireTable<harmos::guest::Context>;
     pub type RouteEnvelope = OperationRefusal;
 
     pub fn implements<G: harmos::Plugin>(config: G::Config) -> G::Config {
@@ -321,7 +318,7 @@ mod guest_probe {
 
     pub fn declared_guest<D: harmos_contract::plugin::Declared>() {}
 
-    pub fn calls<O: harmos::plugin::guest::operations::OperationDeclaration>(operation: O) -> O {
+    pub fn calls<O: harmos::guest::operations::OperationDeclaration>(operation: O) -> O {
         operation
     }
 }
@@ -355,9 +352,14 @@ use std::path::{Path, PathBuf};
 // Local Imports
 
 /* === Constants === */
-const CENSUS: [&str; 27] = [
+const CENSUS: [&str; 30] = [
     "bindings",
     "signal",
+    // Contract namespaces re-exported whole: artifact scanning, standalone
+    // bundles, and descriptor projection when only `reflection` is enabled.
+    "artifacts",
+    "bundle",
+    "grpc",
     "Plugin",
     "listeners",
     "btree_map_memory",
@@ -397,7 +399,7 @@ const CENSUS: [&str; 27] = [
     "Protobuf",
 ];
 
-const HIDDEN: [&str; 31] = [
+const HIDDEN: [&str; 30] = [
     "SchemaSettings",
     "PluginSchemaMarkers",
     "prost",
@@ -419,7 +421,6 @@ const HIDDEN: [&str; 31] = [
     "PluginRequirement",
     "PluginRequirements",
     // Native Decoding Preserves Fragment Merging And Charges Memory Before Allocation.
-    "DecodeField",
     "DecodeInput",
     "DecodeScalar",
     "DecodeValue",
@@ -968,8 +969,7 @@ const ALLOWANCE: [(&str, &[&str]); 17] = [
     (
         "schematic-sidecar",
         &[
-            "harmos-contract",
-            "harmos-sidecar",
+            "harmos",
             "schematic-contract",
             "schematic-guest",
             "thiserror",
@@ -1771,9 +1771,17 @@ fn contract_scenario() {
                 let leaf = locked_dependencies(plugin).expect("the plugin is a workspace member");
                 assert!(leaf.contains(contract));
                 assert!(!leaf.contains(application));
+                // Native plugins author through the facade's kit; guests compile
+                // to WebAssembly and keep the host runtime out entirely.
+                let native = plugin == "schematic-sidecar";
+                assert_eq!(
+                    leaf.contains("harmos"),
+                    native,
+                    "only native plugins depend on the facade"
+                );
                 assert!(
-                    !leaf.contains("harmos"),
-                    "plugins use their independent SDKs"
+                    !leaf.contains("harmos-sidecar"),
+                    "native plugins reach the kit through the facade"
                 );
             }
         });
@@ -2012,6 +2020,19 @@ fn contract_scenario() {
                         && !packaging_facility_gate(&path, line)
                         && !(line == "#[cfg(all(not(target_arch = \"wasm32\"), feature = \"plugin\"))]"
                             && path.ends_with("/crates/harmos/src/lib.rs"))
+                        // The facade's carrier kits, bundles and descriptor
+                        // projection are namespaces selected by facility, not
+                        // by durability.
+                        && !((line
+                            == "#[cfg(all(not(target_arch = \"wasm32\"), feature = \"plugin-sidecar\"))]"
+                            || line
+                                == "#[cfg(all(not(target_arch = \"wasm32\"), feature = \"plugin-guest\"))]"
+                            || line == "#[cfg(any(feature = \"plugin\", feature = \"packaging\"))]"
+                            || line == "#[cfg(all(feature = \"reflection\", not(feature = \"grpc\")))]")
+                            && path.ends_with("/crates/harmos/src/lib.rs"))
+                        // A sidecar's own request refusal maps to a caller status.
+                        && !(line == "#[cfg(feature = \"plugin-sidecar\")]"
+                            && path.ends_with("/crates/harmos/src/grpc/server.rs"))
                         // Console flags and SystemRoot belong to native process
                         // startup, not to memory/persistence selection.
                         && !(line == "#[cfg(windows)]"
@@ -2091,7 +2112,7 @@ fn contract_scenario() {
                             || line
                                 == "#[cfg(all(not(target_arch = \"wasm32\"), feature = \"componentize\"))]")
                             && (path.ends_with("/crates/harmos-guest/src/lib.rs")
-                                || path.ends_with("/crates/harmos/src/plugin/guest/mod.rs")))
+                                || path.ends_with("/crates/harmos/src/guest/mod.rs")))
                 })
                 .map(|(line, _)| format!("{path}: {line}"))
                 .collect::<Vec<_>>()

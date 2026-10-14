@@ -62,47 +62,32 @@ macro_rules! inert_plugin {
 inert_plugin!(
     Native,
     "selected-native",
-    harmos::plugin::sidecar::Supervisor,
+    harmos::sidecar::Supervisor,
     Operations
 );
 
 #[cfg(feature = "plugin-sidecar")]
-inert_plugin!(
-    EmptyNative,
-    "empty-native",
-    harmos::plugin::sidecar::Supervisor,
-    ()
-);
+inert_plugin!(EmptyNative, "empty-native", harmos::sidecar::Supervisor, ());
 
 #[cfg(feature = "plugin-sidecar")]
 inert_plugin!(
     ExplicitEmptyNative,
     "explicit-empty-native",
-    harmos::plugin::sidecar::Supervisor,
+    harmos::sidecar::Supervisor,
     ()
 );
 
 #[cfg(feature = "plugin-guest")]
-inert_plugin!(
-    Guest,
-    "selected-guest",
-    harmos::plugin::guest::Context,
-    Operations
-);
+inert_plugin!(Guest, "selected-guest", harmos::guest::Context, Operations);
 
 #[cfg(feature = "plugin-guest")]
-inert_plugin!(
-    EmptyGuest,
-    "empty-guest",
-    harmos::plugin::guest::Context,
-    ()
-);
+inert_plugin!(EmptyGuest, "empty-guest", harmos::guest::Context, ());
 
 #[cfg(feature = "plugin-guest")]
 inert_plugin!(
     ExplicitEmptyGuest,
     "explicit-empty-guest",
-    harmos::plugin::guest::Context,
+    harmos::guest::Context,
     ()
 );
 

@@ -278,7 +278,7 @@ mod unified_plugins {
     impl harmos::Plugin for Native {
         type Config = ();
         type Error = Infallible;
-        type Context = harmos::plugin::sidecar::Supervisor;
+        type Context = harmos::sidecar::Supervisor;
         type Resources = ();
         fn resources(&self) -> std::sync::Arc<()> {
             std::sync::Arc::new(())
@@ -320,8 +320,8 @@ mod unified_plugins {
     }
 
     struct CustomHost;
-    impl harmos::plugin::sidecar::ObserverHost<()> for CustomHost {
-        fn bind(_: std::sync::Arc<()>, _: harmos::plugin::sidecar::Supervisor) -> Self {
+    impl harmos::sidecar::ObserverHost<()> for CustomHost {
+        fn bind(_: std::sync::Arc<()>, _: harmos::sidecar::Supervisor) -> Self {
             Self
         }
     }
@@ -333,7 +333,7 @@ mod unified_plugins {
         }
         async fn observe(
             &mut self,
-            _: &harmos::plugin::sidecar::ObserverContext<'_, (), CustomHost>,
+            _: &harmos::sidecar::ObserverContext<'_, (), CustomHost>,
         ) -> Result<(), Infallible> {
             panic!("metadata inspection must not start a callback")
         }
@@ -369,7 +369,7 @@ mod unified_plugins {
         ),
         observers = ObserverCatalog,
         observer_control = ObserverObserve,
-        context = harmos::plugin::sidecar::Supervisor,
+        context = harmos::sidecar::Supervisor,
         config = SdkInitialization,
         restart = "never"
     )]
@@ -395,9 +395,9 @@ mod unified_plugins {
                 assert!(initialization.settings.is_empty());
                 assert!(initialization.snapshot.is_empty());
                 let markers = SdkAuthored::markers().unwrap();
-                let declaration = harmos::plugin::sidecar::inventory::Declaration::inspect(
+                let declaration = harmos::sidecar::inventory::Declaration::inspect(
                     &markers.concat(),
-                    harmos::plugin::sidecar::inventory::Facility::Sidecar,
+                    harmos::sidecar::inventory::Facility::Sidecar,
                 )
                 .unwrap();
                 assert_eq!(declaration.id, SdkAuthored::ID);
@@ -420,7 +420,7 @@ mod unified_plugins {
                 assert_eq!(declaration.contracts.provides, provides);
                 assert_eq!(
                     declaration.restart().unwrap(),
-                    harmos::plugin::sidecar::inventory::RestartPolicy {
+                    harmos::sidecar::inventory::RestartPolicy {
                         credit: 0,
                         sustained_health_ms: 30_000,
                         backoff_base_ms: 250,
@@ -434,7 +434,7 @@ mod unified_plugins {
                 );
                 let inert =
                     <InertObserver as harmos_contract::inventory::observers::Declared>::ENTRY;
-                let physical = <harmos::plugin::sidecar::__private::ObserverInventory<CustomHost> as harmos::catalog::Member<InertObserver>>::ENTRY;
+                let physical = <harmos::sidecar::__private::ObserverInventory<CustomHost> as harmos::catalog::Member<InertObserver>>::ENTRY;
                 assert_eq!(inert.id, physical.id);
                 assert_eq!(inert.interval, physical.interval);
                 assert_eq!(inert.streams.len(), physical.streams.len());
@@ -478,7 +478,7 @@ mod unified_plugins {
                         ("studio.panels".to_owned(), 2)
                     ]
                 );
-                harmos::plugin::sidecar::PluginNative::<Contributing>::new(
+                harmos::sidecar::PluginNative::<Contributing>::new(
                     std::num::NonZeroUsize::new(1).unwrap(),
                 )
                 .expect("the native owner accepts the inspected sections");
@@ -510,9 +510,9 @@ mod unified_plugins {
                     .find(|part| part["kind"] == "listeners")
                     .unwrap()["listeners"][0]["callback"]["version"] = 5.into();
                 assert!(
-                    harmos::plugin::sidecar::inventory::Declaration::inspect(
+                    harmos::sidecar::inventory::Declaration::inspect(
                         &bytes(&parts),
-                        harmos::plugin::sidecar::inventory::Facility::Sidecar
+                        harmos::sidecar::inventory::Facility::Sidecar
                     )
                     .is_err()
                 );
@@ -525,9 +525,9 @@ mod unified_plugins {
                     .find(|part| part["kind"] == "contracts")
                     .unwrap()["provides"] = serde_json::json!([]);
                 assert!(
-                    harmos::plugin::sidecar::inventory::Declaration::inspect(
+                    harmos::sidecar::inventory::Declaration::inspect(
                         &bytes(&parts),
-                        harmos::plugin::sidecar::inventory::Facility::Sidecar
+                        harmos::sidecar::inventory::Facility::Sidecar
                     )
                     .is_err()
                 );
@@ -541,9 +541,9 @@ mod unified_plugins {
                     .flatten()
                     .copied()
                     .collect();
-                let declaration = harmos::plugin::sidecar::inventory::Declaration::inspect(
+                let declaration = harmos::sidecar::inventory::Declaration::inspect(
                     &bytes,
-                    harmos::plugin::sidecar::inventory::Facility::Sidecar,
+                    harmos::sidecar::inventory::Facility::Sidecar,
                 )
                 .unwrap();
                 let selected = declaration.listeners;
@@ -559,9 +559,9 @@ mod unified_plugins {
                     .flatten()
                     .copied()
                     .collect();
-                let guest = harmos::plugin::guest::inventory::Declaration::inspect(
+                let guest = harmos::guest::inventory::Declaration::inspect(
                     &guest_markers,
-                    harmos::plugin::guest::inventory::Facility::Guest,
+                    harmos::guest::inventory::Facility::Guest,
                 )
                 .unwrap();
                 assert_eq!(&guest.listeners, &selected);
@@ -574,9 +574,9 @@ mod unified_plugins {
                     .copied()
                     .collect();
                 assert_eq!(
-                    harmos::plugin::guest::inventory::Declaration::inspect(
+                    harmos::guest::inventory::Declaration::inspect(
                         &guest_markers,
-                        harmos::plugin::guest::inventory::Facility::Guest
+                        harmos::guest::inventory::Facility::Guest
                     )
                     .unwrap()
                     .listeners,
@@ -587,17 +587,17 @@ mod unified_plugins {
         {
             super::scenario_runtime::check("context_selects_native", || {
                 inspect::<Native>("sidecar", 2, 1);
-                let native = harmos::plugin::sidecar::PluginNative::<Native>::new(
+                let native = harmos::sidecar::PluginNative::<Native>::new(
                     std::num::NonZeroUsize::new(1).unwrap(),
                 )
                 .unwrap();
                 assert_eq!(
-                    harmos::plugin::sidecar::Attach::operation_contracts(&native)
+                    harmos::sidecar::Attach::operation_contracts(&native)
                         .unwrap()
                         .unwrap(),
                     Contracts::of::<Selected>().unwrap()
                 );
-                let required = harmos::plugin::sidecar::Attach::required_contracts(&native)
+                let required = harmos::sidecar::Attach::required_contracts(&native)
                     .unwrap()
                     .unwrap()
                     .into_iter()
@@ -632,7 +632,7 @@ mod unified_plugins {
     impl harmos::Plugin for Guest {
         type Config = ();
         type Error = Infallible;
-        type Context = harmos::plugin::guest::Context;
+        type Context = harmos::guest::Context;
         type Resources = ();
         fn resources(&self) -> std::sync::Arc<()> {
             std::sync::Arc::new(())
@@ -694,7 +694,7 @@ mod unified_plugins {
     impl harmos::Plugin for Contributing {
         type Config = ();
         type Error = Infallible;
-        type Context = harmos::plugin::sidecar::Supervisor;
+        type Context = harmos::sidecar::Supervisor;
         type Resources = ();
         fn resources(&self) -> std::sync::Arc<()> {
             std::sync::Arc::new(())
@@ -747,7 +747,7 @@ mod unified_plugins {
     impl harmos::Plugin for Listening {
         type Config = ();
         type Error = Infallible;
-        type Context = harmos::plugin::sidecar::Supervisor;
+        type Context = harmos::sidecar::Supervisor;
         type Resources = ();
         fn resources(&self) -> std::sync::Arc<()> {
             std::sync::Arc::new(())
@@ -778,7 +778,7 @@ mod unified_plugins {
     impl harmos::Plugin for ListeningGuest {
         type Config = ();
         type Error = Infallible;
-        type Context = harmos::plugin::guest::Context;
+        type Context = harmos::guest::Context;
         type Resources = ();
         fn resources(&self) -> std::sync::Arc<()> {
             std::sync::Arc::new(())
@@ -845,9 +845,9 @@ mod unified_plugins {
 
         let inspected = match facility {
             "sidecar" => {
-                let declaration = harmos::plugin::sidecar::inventory::Declaration::inspect(
+                let declaration = harmos::sidecar::inventory::Declaration::inspect(
                     &bytes,
-                    harmos::plugin::sidecar::inventory::Facility::Sidecar,
+                    harmos::sidecar::inventory::Facility::Sidecar,
                 )
                 .unwrap();
                 assert_eq!(declaration.restart(), None);
@@ -856,9 +856,9 @@ mod unified_plugins {
                 declaration.contracts
             }
             "guest" => {
-                let declaration = harmos::plugin::guest::inventory::Declaration::inspect(
+                let declaration = harmos::guest::inventory::Declaration::inspect(
                     &bytes,
-                    harmos::plugin::guest::inventory::Facility::Guest,
+                    harmos::guest::inventory::Facility::Guest,
                 )
                 .unwrap();
                 assert_eq!(declaration.operations.len(), contracts.provides.len());

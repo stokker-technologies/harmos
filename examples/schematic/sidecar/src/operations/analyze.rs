@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 // Local Imports
 use crate::Error;
-use harmos_sidecar::MemorySize;
+use harmos::MemorySize;
 use schematic_contract::operations::analyze::Finding;
 use schematic_contract::operations::analyze::{Request, Response};
 
@@ -37,18 +37,18 @@ pub(crate) struct AnalyzeSchematic;
 /* === Traits === */
 
 /* === Implementations === */
-#[harmos_sidecar::operation(declaration = schematic_contract::operations::AnalyzeSchematic, output = Finding)]
+#[harmos::operation(declaration = schematic_contract::operations::AnalyzeSchematic, output = Finding)]
 impl AnalyzeSchematic {
-    async fn initialize(_: Arc<()>, _: &harmos_sidecar::Supervisor) -> Self {
+    async fn initialize(_: Arc<()>, _: &harmos::sidecar::Supervisor) -> Self {
         Self
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
     async fn run(
         &mut self,
-        _context: &harmos_sidecar::Supervisor,
+        _context: &harmos::sidecar::Supervisor,
         request: &mut Request,
-        output: &mut harmos_sidecar::operations::StreamOutput<Finding>,
+        output: &mut harmos::sidecar::operations::StreamOutput<Finding>,
     ) -> Result<Response, Error> {
         let findings = [
             format!("{} symbols", request.schematic.symbols.len()),

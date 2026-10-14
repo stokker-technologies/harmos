@@ -27,11 +27,11 @@ use std::time::Duration;
 use super::{Execution, Factory, LifecycleFuture, PluginHost};
 use crate::catalog::Catalog;
 use crate::config::PluginSettings;
+use crate::guest::{Loaded, Serving};
 use crate::operations::{
     ComponentBindings, Declarations, EncodedInvocation, Lane, OperationManager, PluginRegistration,
     PluginSdkRegistration,
 };
-use crate::plugin::guest::{Loaded, Serving};
 use crate::plugin::{PluginDefinition, PluginLifecycleAuthority, Router};
 use crate::{Application, Error, Result};
 

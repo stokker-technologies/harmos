@@ -92,6 +92,7 @@ plugin-guest = [
   "dep:wasmtime",
 ]
 grpc = [
+  "reflection",
   "dep:tonic-reflection",
   "dep:http-body",
   "dep:heck",
@@ -102,8 +103,9 @@ grpc = [
   "dep:tower",
   "dep:tower-http",
   "tonic/tls-ring",
-  "harmos-contract/reflection",
 ]
+# Descriptor Projection (`harmos::grpc::Artifacts`) Without The gRPC Server.
+reflection = ["harmos-contract/reflection"]
 signal = ["dep:harmos-signal"]
 signal-fft = ["signal", "harmos-signal/fft"]
 simulation = ["tokio/test-util"]

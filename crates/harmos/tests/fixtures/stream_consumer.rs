@@ -45,7 +45,7 @@ fn main() {
         .build()
         .unwrap();
     runtime
-        .block_on(harmos::plugin::sidecar::run_plugin::<plugin::Receiver>(
+        .block_on(harmos::sidecar::run_plugin::<plugin::Receiver>(
             std::num::NonZeroUsize::new(8).unwrap(),
         ))
         .unwrap();

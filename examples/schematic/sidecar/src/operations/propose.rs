@@ -35,16 +35,16 @@ pub(crate) struct ProposeRoute;
 /* === Traits === */
 
 /* === Implementations === */
-#[harmos_sidecar::operation(declaration = schematic_contract::operations::ProposeRoute)]
+#[harmos::operation(declaration = schematic_contract::operations::ProposeRoute)]
 impl ProposeRoute {
-    async fn initialize(_: Arc<()>, _: &harmos_sidecar::Supervisor) -> Self {
+    async fn initialize(_: Arc<()>, _: &harmos::sidecar::Supervisor) -> Self {
         Self
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
     async fn run(
         &mut self,
-        _context: &harmos_sidecar::Supervisor,
+        _context: &harmos::sidecar::Supervisor,
         request: &mut Request,
     ) -> Result<Response, Error> {
         let corner = schematic_contract::model::Point {

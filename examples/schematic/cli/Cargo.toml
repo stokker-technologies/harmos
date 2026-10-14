@@ -68,7 +68,7 @@ tokio = { workspace = true, default-features = true, features = [
 
 [build-dependencies]
 # Local
-harmos-contract = { workspace = true, features = ["reflection"] }
+harmos = { workspace = true, features = ["reflection"] }
 schematic-contract = { path = "../contract", features = ["grpc"] }
 
 # Git

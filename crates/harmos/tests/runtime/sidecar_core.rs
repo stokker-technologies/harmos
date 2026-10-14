@@ -29,7 +29,7 @@ use super::{HostLanes, assembly, process_definition, service_status};
 use crate::core_egress::Endpoint;
 use crate::support::Bank;
 use contract::{Inspect, Queries};
-use harmos::plugin::sidecar::{Executable, Notice, Supervised};
+use harmos::sidecar::{Executable, Notice, Supervised};
 use harmos::{Runtime, services::Service, services::ServiceStatus};
 
 /* === Constants === */
@@ -153,7 +153,7 @@ impl Fixture {
                     },
                 },
                 move |_: Arc<()>| {
-                    harmos::plugin::sidecar::Managed::new_executable_catalog::<Queries>(
+                    harmos::sidecar::Managed::new_executable_catalog::<Queries>(
                         resident.clone(),
                         definition.clone(),
                         HostLanes::Open,
@@ -696,7 +696,7 @@ pub(super) fn contract_scenario() {
                     },
                     None,
                 );
-                let guest = harmos::plugin::guest::Host::new(&runtime).unwrap();
+                let guest = harmos::guest::Host::new(&runtime).unwrap();
                 runtime
                     .plugin
                     .register_guest::<GuestOperations>(

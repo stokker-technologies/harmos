@@ -20,7 +20,7 @@ use std::time::Duration;
 use tokio::sync::{Notify, mpsc};
 // Local Imports
 use super::Observing;
-use harmos::plugin::sidecar::{ActivationId, Instance, ObserverContext, ObserverError};
+use harmos::sidecar::{ActivationId, Instance, ObserverContext, ObserverError};
 
 /* === Constants === */
 

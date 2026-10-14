@@ -24,7 +24,7 @@ version.workspace = true
 
 [dependencies]
 # Local
-harmos-sidecar = { workspace = true, features = ["derive", "kit", "streaming"] }
+harmos = { workspace = true, features = ["plugin-sidecar"] }
 schematic-contract = { path = "../contract" }
 
 # Git
@@ -62,7 +62,7 @@ tokio = { workspace = true, default-features = true, features = ["macros", "rt-m
 
 [build-dependencies]
 # Local
-harmos-contract = { workspace = true, features = ["reflection"] }
+harmos = { workspace = true, features = ["reflection"] }
 schematic-contract = { path = "../contract", features = ["grpc"] }
 
 # Git

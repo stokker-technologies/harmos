@@ -23,8 +23,8 @@ use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
 // Local Imports
 use super::support::Pulse;
-use harmos::plugin::sidecar::inventory::publications;
-use harmos::plugin::sidecar::{
+use harmos::sidecar::inventory::publications;
+use harmos::sidecar::{
     ActivationId, Activity, Instance, ObserverCaller, ObserverContext, ObserverPublisher,
     ObserverStreamPublisher, PublicationError, StreamSpec,
 };

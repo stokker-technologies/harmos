@@ -18,7 +18,6 @@ mod process;
 /* === Re-Exports === */
 pub use build::{Artifact, Build, PackageOutput, Schema, build, build_with_cancellation};
 pub use dev::{DevEvent, dev};
-pub use harmos_bundle as bundle;
 pub use harmos_contract::inventory::{Declaration, DeclarationError, Facility};
 #[cfg(feature = "packaging-guest")]
 pub use harmos_guest::componentize;

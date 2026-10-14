@@ -17,7 +17,7 @@ use std::{fs, io::Write, path::PathBuf, time::Duration};
 // Third Party Imports
 
 // Local Imports
-use harmos::plugin::sidecar::{Refusal, RegistrationError};
+use harmos::sidecar::{Refusal, RegistrationError};
 use harmos_sidecar::{Registrar, Supervisor};
 
 /* === Constants === */
@@ -147,7 +147,7 @@ fn main() {
         .build()
         .expect("the admission fixture runtime builds");
     runtime
-        .block_on(harmos::plugin::sidecar::run_plugin::<Program>(
+        .block_on(harmos::sidecar::run_plugin::<Program>(
             std::num::NonZeroUsize::new(1).unwrap(),
         ))
         .expect("the admission fixture serves its declared catalog");

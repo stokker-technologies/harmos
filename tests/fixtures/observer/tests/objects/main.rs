@@ -46,7 +46,7 @@ use harmos_observer_fixture::objects::{Calibration, Objects};
 #[test]
 fn contract_scenario() {
     scenario_runtime::check("observer_executable_preserves_stream_inventory", || {
-        use harmos::plugin::contract::Declared;
+        use harmos::plugin::Declared;
         use harmos::plugin::inventory::{Declaration, Facility};
         let bytes = std::fs::read(env!("CARGO_BIN_EXE_harmos-observer-fixture")).unwrap();
         let declaration = Declaration::inspect(&bytes, Facility::Sidecar).unwrap();

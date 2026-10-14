@@ -38,7 +38,7 @@ use std::num::NonZeroUsize;
 /* === Private Functions === */
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    harmos_sidecar::run_plugin::<schematic_sidecar::Plugin>(NonZeroUsize::new(4).unwrap()).await?;
+    harmos::sidecar::run_plugin::<schematic_sidecar::Plugin>(NonZeroUsize::new(4).unwrap()).await?;
     Ok(())
 }
 

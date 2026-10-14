@@ -22,7 +22,7 @@ use std::time::Duration;
 use harmos::operations::{
     OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireOperation,
 };
-use harmos::plugin::sidecar::Refusal;
+use harmos::sidecar::Refusal;
 
 /* === Constants === */
 pub const POLICY: OperationPolicy = OperationPolicy {

@@ -18,7 +18,7 @@
 
 // Local Imports
 use crate::Resources;
-use harmos::plugin::sidecar::{ObserverContext, PublishError, Publisher};
+use harmos::sidecar::{ObserverContext, PublishError, Publisher};
 
 /* === Constants === */
 

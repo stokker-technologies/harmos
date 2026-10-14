@@ -298,7 +298,7 @@ fn package(
     components: BTreeMap<PathBuf, Vec<u8>>,
     cancellation: &BuildCancellation,
 ) -> Result<Vec<PackageOutput>, Error> {
-    use super::bundle::{Bundle, Executable, Facility, Identity, Limits, Source};
+    use crate::bundle::{Bundle, Executable, Facility, Identity, Limits, Source};
     let facility = match backend {
         BuildBackend::Sidecar => Facility::Sidecar,
         BuildBackend::Guest => Facility::Guest,

@@ -33,11 +33,11 @@ use harmos::operations::{
     Declarations, Definition, Operation, OperationDeclaration, OperationPolicy, RestartPolicy,
     RetryPolicy, Visibility,
 };
-use harmos::plugin::sidecar::{Attach, Attached, Notice, Supervised};
 use harmos::plugin::{
     PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions,
     PluginLifecycle, PluginLifecycleAuthority, PluginManager, PluginTransition, Router,
 };
+use harmos::sidecar::{Attach, Attached, Notice, Supervised};
 use harmos::{services::Service, services::ServiceExit, services::ServiceStatus};
 
 /* === Constants === */
@@ -67,7 +67,7 @@ struct Counts {
     block_initialize: AtomicBool,
     initialization_child: AtomicBool,
     initialization_entered: Notify,
-    initialization_saved: Mutex<Option<harmos::plugin::sidecar::Supervisor>>,
+    initialization_saved: Mutex<Option<harmos::sidecar::Supervisor>>,
     runs: AtomicUsize,
     finalized: AtomicUsize,
     fail_cleanup: AtomicBool,
@@ -75,7 +75,7 @@ struct Counts {
     call_child: AtomicBool,
     children: AtomicUsize,
     stale_refused: AtomicUsize,
-    saved: Mutex<Option<harmos::plugin::sidecar::Supervisor>>,
+    saved: Mutex<Option<harmos::sidecar::Supervisor>>,
     tenants: Mutex<Vec<Option<String>>>,
     submit_child: AtomicBool,
     refresh_hold: AtomicBool,
@@ -227,7 +227,7 @@ impl Operation for ReadOperation {
     type Resources = Counts;
     type Error = std::io::Error;
     type Endpoints = ();
-    type Context<'a> = &'a harmos::plugin::sidecar::Supervisor;
+    type Context<'a> = &'a harmos::sidecar::Supervisor;
     async fn initialize<'ctx>(
         counts: Arc<Counts>,
         context: Self::Context<'ctx>,
@@ -346,7 +346,7 @@ impl Operation for RefreshOperation {
     type Resources = Counts;
     type Error = std::io::Error;
     type Endpoints = ();
-    type Context<'a> = &'a harmos::plugin::sidecar::Supervisor;
+    type Context<'a> = &'a harmos::sidecar::Supervisor;
     async fn initialize<'ctx>(
         counts: Arc<Counts>,
         _: Self::Context<'ctx>,
@@ -397,7 +397,7 @@ impl harmos::operations::lifecycle::Policy for Endpoint {
 #[harmos::plugin(id = "operation-handshake", provides = Operations, requires = ())]
 impl harmos::Plugin for Endpoint {
     type Config = usize;
-    type Context = harmos::plugin::sidecar::Supervisor;
+    type Context = harmos::sidecar::Supervisor;
     type Error = std::io::Error;
     type Resources = Counts;
     fn prepare(id: usize) -> Result<Self, Self::Error> {
@@ -591,7 +591,7 @@ impl<A: Attach> Managed<A> {
         }
         self.runtime
             .operations
-            .register_wire_operation::<harmos::plugin::sidecar::Publish<_, _, _>>(
+            .register_wire_operation::<harmos::sidecar::Publish<_, _, _>>(
                 "native-publication-core",
                 self.host.lane,
                 Arc::new(self.host.resident.clone()),
@@ -673,7 +673,7 @@ impl<A: Attach> Managed<A> {
             .as_mut()
             .expect("the original resident was staged")
     }
-    pub(crate) fn demands(&self) -> harmos::plugin::sidecar::DemandSource {
+    pub(crate) fn demands(&self) -> harmos::sidecar::DemandSource {
         self.host.resident.demands()
     }
 }
@@ -912,7 +912,7 @@ fn notices(_: &Service<Bank>, _: Notice) {}
 
 // Drives submitted children through the sidecar binding of the host capability.
 async fn submitted(
-    host: &harmos::plugin::sidecar::Supervisor,
+    host: &harmos::sidecar::Supervisor,
     counts: &Counts,
 ) -> Result<(), harmos_sidecar::CallError> {
     use harmos::operations::instance::Phase;

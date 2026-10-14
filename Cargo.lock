@@ -2046,7 +2046,6 @@ dependencies = [
  "criterion",
  "futures-core",
  "harmos",
- "harmos-guest",
  "jsonl-adapter",
  "schematic-contract",
  "serde",
@@ -2064,7 +2063,6 @@ version = "0.2.0"
 dependencies = [
  "clap",
  "harmos",
- "harmos-contract",
  "schematic-app",
  "schematic-contract",
  "tempfile",
@@ -2099,8 +2097,7 @@ dependencies = [
 name = "schematic-sidecar"
 version = "0.2.0"
 dependencies = [
- "harmos-contract",
- "harmos-sidecar",
+ "harmos",
  "schematic-contract",
  "schematic-guest",
  "thiserror",

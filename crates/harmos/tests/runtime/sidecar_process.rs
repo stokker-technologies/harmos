@@ -30,7 +30,7 @@ use super::{HostLanes, assembly, process_definition, service_status};
 use crate::support::Bank;
 use contract::{Blob, Echo, Nested, Operations, Probe};
 use harmos::operations::{Context, Operation};
-use harmos::plugin::sidecar::{Executable, Notice, Supervised};
+use harmos::sidecar::{Executable, Notice, Supervised};
 use harmos::{Runtime, services::Service, services::ServiceStatus};
 
 /* === Constants === */
@@ -40,8 +40,7 @@ const CAPACITY: usize = 2;
 
 /* === Type Aliases === */
 type Resident = Supervised<Bank, Executable, fn(&Service<Bank>, Notice)>;
-type PublicationCall =
-    harmos::plugin::sidecar::Publish<Bank, Executable, fn(&Service<Bank>, Notice)>;
+type PublicationCall = harmos::sidecar::Publish<Bank, Executable, fn(&Service<Bank>, Notice)>;
 
 /* === Structs === */
 struct Callback {
@@ -80,7 +79,7 @@ impl Operation for CallbackPublication {
         context: Self::Context<'ctx>,
     ) -> harmos::Result<Self> {
         let resident = Arc::clone(&owner.resident);
-        let publication = harmos::plugin::sidecar::Publish::initialize(resident, context).await?;
+        let publication = harmos::sidecar::Publish::initialize(resident, context).await?;
         Ok(Self { owner, publication })
     }
     async fn run<'ctx>(
@@ -156,7 +155,7 @@ impl Fixture {
                     },
                 },
                 move |_: Arc<()>| {
-                    harmos::plugin::sidecar::Managed::new_executable_catalog::<Operations>(
+                    harmos::sidecar::Managed::new_executable_catalog::<Operations>(
                         resident.clone(),
                         definition.clone(),
                         HostLanes::Open,
@@ -479,13 +478,16 @@ fn contract_scenario() {
                         });
                     let calls = resident.clone();
                     let runtime = assembly()
-                        .operation_settings(harmos::operations::Settings { preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()), ..Default::default() })
+                        .operation_settings(harmos::operations::Settings {
+                            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+                            ..Default::default()
+                        })
                         .runtime()
                         .await
                         .unwrap();
                     runtime
                         .operations
-                        .register_wire_operation::<harmos::plugin::sidecar::Publish<_, _, _>>(
+                        .register_wire_operation::<harmos::sidecar::Publish<_, _, _>>(
                             "shutdown-core",
                             HostLanes::Open,
                             Arc::new(resident.clone()),
@@ -496,10 +498,13 @@ fn contract_scenario() {
                         .register_service(
                             harmos::services::ServiceDefinition {
                                 id: "process".into(),
-                                policy: harmos::operations::OperationPolicy { restart: harmos::operations::RestartPolicy::Never, ..harmos::services::POLICY },
+                                policy: harmos::operations::OperationPolicy {
+                                    restart: harmos::operations::RestartPolicy::Never,
+                                    ..harmos::services::POLICY
+                                },
                             },
                             move |_: Arc<()>| {
-                                harmos::plugin::sidecar::Managed::new_executable_catalog::<Operations>(
+                                harmos::sidecar::Managed::new_executable_catalog::<Operations>(
                                     resident.clone(),
                                     definition.clone(),
                                     HostLanes::Open,
@@ -510,11 +515,7 @@ fn contract_scenario() {
                             },
                         )
                         .unwrap();
-                    let _lease = runtime
-                        .operations
-                        .submit_resident("process")
-                        .await
-                        .unwrap();
+                    let _lease = runtime.operations.submit_resident("process").await.unwrap();
                     service_status(runtime.operations.watch_residents(), "process", |status| {
                         matches!(status, ServiceStatus::Running { .. })
                     })

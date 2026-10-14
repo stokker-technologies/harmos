@@ -22,7 +22,7 @@ use std::sync::Arc;
 use crate::app::Runtime;
 use crate::lanes::Lanes;
 use harmos::config::PluginSidecarSettings;
-use harmos::plugin::sidecar::Executable;
+use harmos::sidecar::Executable;
 use harmos::{Error, Result};
 use schematic_contract::native::Operations;
 

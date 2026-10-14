@@ -56,8 +56,8 @@ struct Publish {
 
 #[derive(Default)]
 pub(super) struct Resources {
-    registered: Option<harmos::plugin::guest::Registered<Bank>>,
-    serving: Option<harmos::plugin::guest::Serving<Bank>>,
+    registered: Option<harmos::guest::Registered<Bank>>,
+    serving: Option<harmos::guest::Serving<Bank>>,
     endpoint: Option<harmos::plugin::PluginEndpoint>,
     registration: Option<PluginRegistration>,
     sdk: Option<PluginSdkRegistration>,
@@ -71,7 +71,7 @@ pub(super) struct Lifecycle<C = GuestOperations, L = super::GuestLanes> {
     pub(super) state: Option<Arc<OriginalJournal>>,
     loader: Host<Bank>,
     operations: harmos::operations::OperationManager,
-    prepared: Option<harmos::plugin::guest::Registered<Bank>>,
+    prepared: Option<harmos::guest::Registered<Bank>>,
     bytes: Vec<u8>,
     lane: L,
     provider: Option<PluginDefinition>,
@@ -485,7 +485,7 @@ impl<C, L> Lifecycle<C, L> {
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn guest_error(source: harmos::plugin::guest::Error) -> harmos::Error {
+fn guest_error(source: harmos::guest::Error) -> harmos::Error {
     harmos::Error::OperationFailed {
         operation: "route-guest".into(),
         source: Arc::new(source),

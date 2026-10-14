@@ -21,7 +21,7 @@ use std::{fs, path::Path};
 
 // Local Imports
 use super::*;
-use harmos::plugin::sidecar::{Registrar, Registration};
+use harmos::sidecar::{Registrar, Registration};
 
 /* === Constants === */
 const NAME: &str = "admission-fixture";
@@ -317,7 +317,7 @@ pub(super) fn contract_scenario() {
                                     policy,
                                 },
                                 move |_: Arc<()>| {
-                                    harmos::plugin::sidecar::Managed::new_executable(
+                                    harmos::sidecar::Managed::new_executable(
                                         resident.clone(),
                                         definition.clone(),
                                         HostLanes::Open,

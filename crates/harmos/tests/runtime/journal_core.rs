@@ -26,7 +26,7 @@ use crate::core_journal::OriginalJournal;
 use crate::support::{Bank, DEPOSIT, Deposit, HOUSE};
 use harmos::operations::Host as _;
 use harmos::operations::{OperationPolicy, RestartPolicy, RetryPolicy};
-use harmos::plugin::sidecar::{Notice, Refusal, Supervised, Supervisor};
+use harmos::sidecar::{Notice, Refusal, Supervised, Supervisor};
 use harmos::{services::Service, services::ServiceStatus};
 
 /* === Constants === */
@@ -187,7 +187,7 @@ pub(super) fn contract_scenario() {
                                 },
                             },
                             move |_: Arc<()>| {
-                                harmos::plugin::sidecar::Managed::new(
+                                harmos::sidecar::Managed::new(
                                     resident.clone(),
                                     definition.clone(),
                                     HostLanes::Open,

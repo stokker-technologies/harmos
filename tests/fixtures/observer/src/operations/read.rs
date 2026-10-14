@@ -20,7 +20,7 @@ use std::time::Duration;
 // Local Imports
 use crate::Resources;
 use harmos::operations::{OperationPolicy, ReplaySafety, RestartPolicy, RetryPolicy, Visibility};
-use harmos::plugin::sidecar::{Refusal, Supervisor};
+use harmos::sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
 const POLICY: OperationPolicy = OperationPolicy {

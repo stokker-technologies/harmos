@@ -74,11 +74,11 @@ impl facade::__harmos::operations::lifecycle::Policy for Guest {
     const SHUTDOWN_POLICY: OperationPolicy = Echo::POLICY;
 }
 
-#[facade::plugin(id = "alias", context = facade::__harmos::plugin::guest::Context, config = String,
+#[facade::plugin(id = "alias", context = facade::__harmos::guest::Context, config = String,
     streams(self::rows::Reading), provides = Operations, requires = ())]
 impl ProductPlugin for Guest {}
 
-#[facade::plugin(id = "alias", context = facade::__harmos::plugin::sidecar::Supervisor, config = String,
+#[facade::plugin(id = "alias", context = facade::__harmos::sidecar::Supervisor, config = String,
     restart = "never", streams(self::rows::Reading), provides = Operations, requires = ())]
 impl ProductPlugin for State {}
 

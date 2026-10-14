@@ -71,8 +71,7 @@ tokio = { workspace = true, default-features = true, features = ["time"] }
 
 [dev-dependencies]
 # Local
-harmos = { workspace = true, features = ["plugin-guest"] }
-harmos-guest = { workspace = true, features = ["componentize"] }
+harmos = { workspace = true, features = ["packaging-guest", "plugin-guest"] }
 
 # Git
 

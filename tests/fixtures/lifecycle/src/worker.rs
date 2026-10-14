@@ -25,9 +25,9 @@ use sha2::{Digest, Sha256};
 
 // Local Imports
 use crate::contract::{Exchange, Operations, PAYLOAD_BYTES, Payload};
-use harmos::plugin::sidecar::{Executable, Managed, ManagedError, Notice, Supervised};
 use harmos::plugin::{PluginArtifact, PluginContributions, PluginDefinition};
 use harmos::services::{Resident, ServiceDefinition};
+use harmos::sidecar::{Executable, Managed, ManagedError, Notice, Supervised};
 use harmos::{Error, Result, services::Fault, services::Service};
 use schematic_app::app::{Runtime, SchematicEditor};
 use schematic_app::lanes::Lanes;

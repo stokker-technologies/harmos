@@ -33,7 +33,7 @@
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
-    Output(#[from] harmos_sidecar::operations::streaming::Error),
+    Output(#[from] harmos::sidecar::operations::streaming::Error),
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error("Directory name is not UTF-8: {0:?}")]
