@@ -105,6 +105,6 @@ fn operation_settlement() {
 }
 
 #[test]
-fn host_capability() {
+fn host() {
     host::contract_scenario();
 }

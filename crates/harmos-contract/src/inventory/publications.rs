@@ -479,8 +479,7 @@ pub const fn encode<const N: usize>(facility: &str, owner: &str, streams: &[Entr
     output
 }
 
-/* === Private Functions === */
-const fn same_bytes(left: &str, right: &str) -> bool {
+pub(crate) const fn same_bytes(left: &str, right: &str) -> bool {
     let left = left.as_bytes();
     let right = right.as_bytes();
     if left.len() != right.len() {
@@ -496,6 +495,7 @@ const fn same_bytes(left: &str, right: &str) -> bool {
     true
 }
 
+/* === Private Functions === */
 const fn metadata_len(entry: &Entry) -> usize {
     if entry.metadata_json.is_empty() {
         METADATA_ID.len() + quoted_len(entry.id) + METADATA_LABEL.len() + quoted_len(entry.id) + 1

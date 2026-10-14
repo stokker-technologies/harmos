@@ -44,7 +44,7 @@ impl ListDirectories {
 
     #[tracing::instrument(level = "debug", skip_all)]
     async fn run(&mut self, _: &Supervisor, _: &mut Request) -> Result<Response, Error> {
-        // Native Filesystem Access: The Guest Has No Such Capability.
+        // Native Filesystem Access: The Guest Has No Such Access.
         let entries = std::fs::read_dir(".")?;
         let mut directories = Vec::new();
         for entry in entries {

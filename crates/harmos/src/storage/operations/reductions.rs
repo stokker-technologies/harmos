@@ -85,8 +85,10 @@ impl OperationDeclaration for Reductions {
             .map(|scan| scan.selection.schema.as_ref().map(|schema| &schema.id));
         let first = schemas.next().flatten();
         Some(match first {
-            Some(id) if schemas.all(|schema| schema == Some(id)) => super::survey(id),
-            _ => Grant::Survey(super::EVERY_SCHEMA.into()),
+            Some(id) if schemas.all(|schema| schema == Some(id)) => {
+                Grant::of(Self::ID, id.as_str().to_owned())
+            }
+            _ => Grant::of(Self::ID, super::EVERY_SCHEMA),
         })
     }
 }

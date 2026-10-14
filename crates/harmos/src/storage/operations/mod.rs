@@ -188,10 +188,6 @@ const fn grpc(method: &'static str) -> crate::operations::Grpc {
     crate::operations::Grpc::new("harmos.storage.v1", "Storage", method)
 }
 
-fn survey(selector: &crate::Identifier) -> harmos_contract::plugin::Grant {
-    harmos_contract::plugin::Grant::Survey(selector.as_str().to_owned().into())
-}
-
 fn classify(error: &crate::Error) -> crate::operations::Failure {
     let mut cause = error;
     while let crate::Error::Persistence { source } = cause {

@@ -200,7 +200,7 @@ run = [
 
 [tasks."check:features"]
 description = "Check / Every Facility Feature On Its Own"
-# Resolve Every Optional Host Capability Independently.
+# Resolve Every Optional Host Facility Independently.
 run = [
   "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features",
   "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features plugin",

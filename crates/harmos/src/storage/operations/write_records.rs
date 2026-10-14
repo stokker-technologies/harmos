@@ -69,7 +69,7 @@ impl OperationDeclaration for WriteRecords {
     const VISIBILITY: Visibility = Visibility::Shared;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
     fn grant(request: &WriteRecordsRequest) -> Option<Grant> {
-        Some(Grant::Source(request.source.as_str().to_owned().into()))
+        Some(Grant::of(Self::ID, request.source.as_str().to_owned()))
     }
 }
 impl WireOperation for WriteRecords {

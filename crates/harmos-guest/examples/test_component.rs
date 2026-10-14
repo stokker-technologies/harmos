@@ -25,7 +25,8 @@ use contract::{Heard, Metrics, NOTE, Note, POLICY, Progress};
 use harmos_contract::catalog::Node;
 use harmos_contract::inventory::{contracts, listeners, observers, publications};
 use harmos_contract::operations::{
-    Operation, OperationPolicy, ServingError, WireDeclaration, WireTable, host, lifecycle,
+    Operation, OperationDeclaration, OperationPolicy, ServingError, WireDeclaration, WireTable,
+    host, lifecycle,
 };
 use harmos_contract::plugin::{Declared, Grant, Plugin, Requirement};
 use harmos_contract::schema::Described;
@@ -39,12 +40,14 @@ const REQUIRED: &[Node<Requirement>] = &[
     Node::Leaf(Requirement::of::<host::RecordSelf>(&[])),
     Node::Leaf(Requirement::of::<host::RecallSelf>(&[])),
     Node::Leaf(Requirement::of::<host::Invoke>(&[])),
-    Node::Leaf(Requirement::of::<host::Egress>(&[Grant::Egress(
-        Cow::Borrowed("vendor"),
-    )])),
-    Node::Leaf(Requirement::of::<host::Survey>(&[Grant::Survey(
-        Cow::Borrowed("capture"),
-    )])),
+    Node::Leaf(Requirement::of::<host::Egress>(&[Grant {
+        operation: Cow::Borrowed(host::Egress::ID),
+        scope: Some(Cow::Borrowed("vendor")),
+    }])),
+    Node::Leaf(Requirement::of::<host::Survey>(&[Grant {
+        operation: Cow::Borrowed(host::Survey::ID),
+        scope: Some(Cow::Borrowed("capture")),
+    }])),
 ];
 const PROVIDED: &[Node<WireDeclaration>] = &[Node::Leaf(WireDeclaration::of::<Heard>())];
 const STREAMS: &[publications::Entry] = &[
@@ -392,7 +395,7 @@ impl TestComponent {
 impl Declared for TestComponent {
     const ID: &'static str = "test-component";
     const VERSION: &'static str = "1.0.0";
-    const DESCRIPTION: &'static str = "Guest capability and lifecycle fixture.";
+    const DESCRIPTION: &'static str = "Guest host-call and lifecycle fixture.";
     const PROVIDES: &'static [Node<WireDeclaration>] = PROVIDED;
     const REQUIRES: &'static [Node<Requirement>] = REQUIRED;
     const LISTENERS: &'static [Node<harmos_contract::listeners::Entry>] = LISTENERS;

@@ -61,7 +61,8 @@ struct Principal(&'static str);
 
 struct Bearers;
 
-// Selects The Egress Grants Each Bearer Holds; Unknown Bearers Are Denied.
+// Selects The Scoped Grants Each Bearer Holds On The Called Operation; Unknown
+// Bearers Are Denied.
 struct Holdings;
 
 struct Provider {
@@ -137,7 +138,10 @@ impl harmos::operations::authorization::Authorizer for Holdings {
         provider: harmos::operations::authorization::Provider<'_>,
     ) -> harmos::Result<Option<harmos::operations::authorization::Required>> {
         let grants = match context.get::<Principal>().map(|principal| principal.0) {
-            Some("holder") => vec![Grant::Egress(ALLOWED.into())],
+            Some("holder") => vec![Grant::of(
+                provider.contract.operation().id.as_str().to_owned(),
+                ALLOWED,
+            )],
             Some("lacking") => vec![],
             _ => return Ok(None),
         };
@@ -198,7 +202,7 @@ impl OperationDeclaration for RemoteFetch {
         Some(visitor.unary::<Self>())
     }
     fn grant(request: &Fetch) -> Option<Grant> {
-        egress(request)
+        scoped(Self::ID, request)
     }
 }
 
@@ -247,7 +251,7 @@ impl OperationDeclaration for LocalFetch {
         Some(visitor.unary::<Self>())
     }
     fn grant(request: &Fetch) -> Option<Grant> {
-        egress(request)
+        scoped(Self::ID, request)
     }
 }
 
@@ -289,11 +293,13 @@ impl Operation for LocalFetching {
 /* === Public Functions === */
 
 /* === Private Functions === */
-// Value 20 needs the held destination, 21 one nobody holds, anything else none.
-fn egress(request: &Fetch) -> Option<Grant> {
+// Value 20 needs the held scope, 21 one nobody holds, 22 the held scope on
+// another operation, anything else no grant.
+fn scoped(operation: &'static str, request: &Fetch) -> Option<Grant> {
     match request.value {
-        20 => Some(Grant::Egress(ALLOWED.into())),
-        21 => Some(Grant::Egress(REFUSED.into())),
+        20 => Some(Grant::of(operation, ALLOWED)),
+        21 => Some(Grant::of(operation, REFUSED)),
+        22 => Some(Grant::of("gated.elsewhere", ALLOWED)),
         _ => None,
     }
 }
@@ -349,6 +355,9 @@ async fn enforced(channel: &tonic::transport::Channel, path: &'static str, runs:
         21
     );
     denied(fetch(channel.clone(), "Bearer holder", path, 21).await);
+    // A grant is permission to call one operation: the held scope does not
+    // carry over to a grant the request resolves on another operation.
+    denied(fetch(channel.clone(), "Bearer holder", path, 22).await);
     assert_eq!(runs.0.load(Ordering::SeqCst), 2, "refusals never run");
 }
 

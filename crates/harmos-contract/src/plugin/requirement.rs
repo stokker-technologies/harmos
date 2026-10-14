@@ -28,6 +28,17 @@ use crate::schema::Described;
 /* === Type Aliases === */
 
 /* === Structs === */
+// Permission to call one operation. An operation whose request names a channel,
+// stream or source resolves it to `scope`; any other operation is granted by
+// its id alone, which holding its requirement already confers.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub struct Grant {
+    pub operation: Cow<'static, str>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<Cow<'static, str>>,
+}
+
 pub struct Requirement {
     pub declaration: WireDeclaration,
     pub grants: &'static [Grant],
@@ -36,13 +47,6 @@ pub struct Requirement {
 pub struct Requirements;
 
 /* === Enums === */
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
-pub enum Grant {
-    Survey(Cow<'static, str>),
-    Egress(Cow<'static, str>),
-    Source(Cow<'static, str>),
-}
 
 /* === Traits === */
 
@@ -62,27 +66,35 @@ impl Requirement {
 }
 
 impl Grant {
-    pub const fn kind(&self) -> &'static str {
-        match self {
-            Self::Survey(_) => "survey",
-            Self::Egress(_) => "egress",
-            Self::Source(_) => "source",
+    pub fn of(
+        operation: impl Into<Cow<'static, str>>,
+        scope: impl Into<Cow<'static, str>>,
+    ) -> Self {
+        Self {
+            operation: operation.into(),
+            scope: Some(scope.into()),
         }
     }
 
-    pub fn selector(&self) -> &str {
-        match self {
-            Self::Survey(value) | Self::Egress(value) | Self::Source(value) => value,
-        }
+    pub fn operation(&self) -> &str {
+        &self.operation
     }
 
-    pub(crate) const fn borrowed(&self) -> &'static str {
-        match self {
-            Self::Survey(Cow::Borrowed(value))
-            | Self::Egress(Cow::Borrowed(value))
-            | Self::Source(Cow::Borrowed(value)) => value,
-            _ => panic!("const grants must be borrowed"),
-        }
+    pub fn scope(&self) -> Option<&str> {
+        self.scope.as_deref()
+    }
+
+    pub(crate) const fn borrowed(&self) -> (&'static str, Option<&'static str>) {
+        let operation = match &self.operation {
+            Cow::Borrowed(value) => *value,
+            Cow::Owned(_) => panic!("const grants must be borrowed"),
+        };
+        let scope = match &self.scope {
+            None => None,
+            Some(Cow::Borrowed(value)) => Some(*value),
+            Some(Cow::Owned(_)) => panic!("const grants must be borrowed"),
+        };
+        (operation, scope)
     }
 }
 

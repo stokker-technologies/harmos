@@ -40,7 +40,7 @@ mod plugin;
 mod sidecar;
 
 #[cfg(feature = "plugin-sidecar")]
-mod observer_capabilities;
+mod observer_host_accessor;
 
 #[cfg(all(feature = "plugin-sidecar", feature = "plugin-guest"))]
 mod observer_demand;
@@ -83,7 +83,7 @@ mod stream_consumption;
 #[test]
 fn observer_binding() {
     #[cfg(feature = "plugin-sidecar")]
-    observer_capabilities::contract_scenario();
+    observer_host_accessor::contract_scenario();
     #[cfg(all(feature = "plugin-sidecar", feature = "plugin-guest"))]
     observer_demand::contract_scenario();
     #[cfg(all(feature = "plugin-sidecar", feature = "plugin-guest"))]

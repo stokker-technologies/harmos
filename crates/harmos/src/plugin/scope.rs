@@ -98,7 +98,7 @@ impl PluginScope {
         if context == [0; 32] {
             return Err(Error::InvalidInput {
                 field: "plugin generation context",
-                reason: "zero random capability",
+                reason: "zero random context",
             });
         }
         let _ = self.generation_context.set(context);

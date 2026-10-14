@@ -2108,6 +2108,16 @@ fn contract_scenario() {
                         // whole point of splitting them.
                         && !(line == "#[cfg(feature = \"simulation\")]"
                             && path.ends_with("/examples/schematic/app/src/app.rs"))
+                        // An encoded provider's prepared grant is checked where
+                        // the host executes guests or sidecars; the gate selects
+                        // the provider carrier, not durable storage.
+                        && !((line
+                            == "#[cfg(all(feature = \"plugin-guest\", not(target_arch = \"wasm32\")))]"
+                            && path.ends_with("/crates/harmos/src/grpc/server.rs"))
+                            || (line.starts_with("#[cfg(any(\n")
+                                && line.contains("all(feature = \"plugin-guest\", not(target_arch = \"wasm32\"))")
+                                && line.contains("feature = \"plugin-sidecar\"")
+                                && path.ends_with("/crates/harmos/src/operations/handler.rs")))
                         && !((line == "#[cfg(not(target_arch = \"wasm32\"))]"
                             || line
                                 == "#[cfg(all(not(target_arch = \"wasm32\"), feature = \"componentize\"))]")

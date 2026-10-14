@@ -13,9 +13,9 @@ mod authored;
 pub mod authorization;
 mod binding;
 mod caller;
-mod capability;
 mod catalog;
 pub(crate) mod context;
+mod surface;
 
 #[cfg(any(
     feature = "plugin-sidecar",

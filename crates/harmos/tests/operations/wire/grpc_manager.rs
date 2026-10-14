@@ -222,7 +222,7 @@ impl harmos::operations::authorization::Authorizer for ExternalAccess {
                     _ => (),
                 }
                 match principal.0.as_str() {
-                    "alice" | "carol" => grants.push(Grant::Survey("reading".into())),
+                    "alice" | "carol" => grants.push(Grant::of("grpc.guarded", "reading")),
                     "limited" => (),
                     _ => return Ok(None),
                 }
@@ -245,7 +245,7 @@ impl OperationDeclaration for Guarded {
         Some(visitor.unary::<Self>())
     }
     fn grant(_: &Ask) -> Option<harmos_contract::plugin::Grant> {
-        Some(harmos_contract::plugin::Grant::Survey("reading".into()))
+        Some(harmos_contract::plugin::Grant::of(Self::ID, "reading"))
     }
     fn key(_: &Ask) -> Option<harmos::operations::CacheKey> {
         Some(harmos::operations::CacheKey::new(b"same-request".to_vec()).unwrap())
@@ -1234,7 +1234,7 @@ pub(super) fn contract_scenario() {
                         .iter()
                         .find(|entry| entry.contract.operation().id.as_str() == "grpc.guarded")
                         .unwrap();
-                    assert_eq!(guarded.grants, [Grant::Survey("reading".into())]);
+                    assert_eq!(guarded.grants, [Grant::of("grpc.guarded", "reading")]);
                     let bob = external_catalog(channel.clone(), Some("Bearer bob"))
                         .await
                         .unwrap();

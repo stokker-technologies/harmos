@@ -22,7 +22,7 @@ use std::sync::Arc;
 // Local Imports
 use super::{Fixture, Lanes, Operations, config};
 use harmos::Message;
-use harmos::operations::{OperationManager, WireDeclaration, WireOperation};
+use harmos::operations::{OperationDeclaration, OperationManager, WireDeclaration, WireOperation};
 use harmos::plugin::{
     PluginArtifact, PluginBackend, PluginCaller, PluginContributions, PluginDefinition,
     PluginDefinitions, PluginEndpoint, PluginLifecycle, PluginLifecycleAuthority, PluginManager,
@@ -244,7 +244,10 @@ pub(super) fn contract_scenario() {
                             plugin(
                                 "writer",
                                 vec![
-                                    required::<WriteRecords>(vec![Grant::Source("bench".into())]),
+                                    required::<WriteRecords>(vec![Grant::of(
+                                        WriteRecords::ID,
+                                        "bench",
+                                    )]),
                                     required::<Acknowledge>(Vec::new()),
                                 ],
                             ),
@@ -340,7 +343,7 @@ pub(super) fn contract_scenario() {
                         version: NonZeroU32::MIN,
                         ..schema.clone()
                     };
-                    let survey = |id: &str| Grant::Survey(id.to_owned().into());
+                    let survey = |id: &str| Grant::of(Reductions::ID, id.to_owned());
                     let definitions = PluginDefinitions::new(
                         [
                             plugin(

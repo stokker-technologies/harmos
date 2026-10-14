@@ -90,7 +90,7 @@ Use the original runtime and resource owners. Consult the relevant section only;
   implement `Resident` with `run`, `stop` and `cleanup`; their context is the
   same `Host` as any body (`host()` for an owned handle) and lends `records`,
   `state`, `streams` and `evidence`.
-- Write operation bodies against one `operations::Host` capability, bound in
+- Write operation bodies against one `operations::Host`, bound in
   process (`OperationManager`, `operations::Context`), in sidecars (`Supervisor`)
   and in guests (`Context`). Reach host services as declared operations through
   `call` and `submit`, never as per-kit methods; the one-shot `operation` call is
@@ -350,8 +350,8 @@ declare operation metadata.
 ## Canonical Guest And Sidecar Layout
 
 Use vertical feature folders, with one implementation per leaf and catalog
-assembly in each domain's `mod.rs`. Omit folders for capabilities the plugin does
-not contribute; do not create empty placeholders.
+assembly in each domain's `mod.rs`. Omit folders for contributions the plugin does
+not make; do not create empty placeholders.
 
 ```text
 src/
@@ -382,7 +382,7 @@ src/
 
 Use `operations/` and `observers/` for new contributions; obsolete `jobs/`,
 `routes/` and `samplers/` examples do not establish a competing convention.
-Folder names do not imply that a guest supports every sidecar capability. Keep
+Folder names do not imply that a guest supports every sidecar contribution. Keep
 unsupported callbacks absent until the guest lifecycle implements them.
 
 A shared portable declaration belongs in the product contract; its resource-bound
@@ -448,16 +448,31 @@ layouts for guests and sidecars.
 - Keep SDK initialization/shutdown leaves separate from ordinary provides and
   requires. Their explicit policies belong to the authored lifecycle owner;
   the host owns admission, generation and physical settlement.
-- Select host Core requirements with `core = Catalog` and semantic grants with
-  `capabilities = CONSTANT`. Core leaves use an explicitly authored shared
-  `operations::core::Policy<Leaf<Self>>` with one `POLICY` constant per selected
-  service. Unselected leaves need no policy; host and consumer contracts must
-  match exactly.
-  Stream and listener inventories retain their existing narrower grants.
-  A requested Core ID alone grants no transaction, endpoint or stream access.
-- `Supervisor::core::<AuthoredPlugin>()` and `Context::core::<AuthoredPlugin>()`
-  project that selected policy around the original carrier. Typed publications
-  await host admission without promising readiness or durability. Native rows
+- Grants are operations. A `plugin::Grant { operation, scope }` is permission to
+  call one operation. An operation whose request names a channel, stream or
+  source declares it through `OperationDeclaration::grant(&request)`, resolving
+  to `Grant { operation: Self::ID, scope: Some(name) }` (`host.egress` the
+  destination, `host.survey` the stream, storage reads the schema or file,
+  `storage.write_records` the source). Every other operation, including each
+  plugin-provided one, is granted by its id with no scope: holding the
+  requirement on a `Shared` operation confers it, and its `grant` stays `None`.
+
+  ```rust
+  #[harmos::plugin(id = "meter", provides = Operations, requires(
+      host::Egress: scope("vendor"),
+      host::Survey: scope("reading", "power"),
+      acme::charger::Measure,
+  ))]
+  ```
+
+  Requirement grants serialize as `{"operation": "host.survey", "scope":
+  "reading"}`, name their requirement's own operation and always carry a scope.
+  Admission refuses a request grant the caller lacks, and a provider-prepared
+  grant on any other operation. The `survey`/`egress`/`source` grant kinds and
+  the `core`/`capabilities` selectors are retired and refused. Stream and
+  listener inventories retain their existing narrower grants.
+- Typed publications await host admission without promising readiness or
+  durability. Native rows
   preserve original producer sequences; guests leave sequence absent so the
   original guest publication lease derives it. Never replay an uncertain call.
 - Preserve the distinct generation calling token supplied by SDK initialization.

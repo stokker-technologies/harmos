@@ -88,8 +88,8 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
         observing,
         "a observe awaits its instrument without blocking the executor",
     )?;
-    let (resources, capabilities) = resources(observing)?;
-    let capabilities = capabilities
+    let (resources, host) = resources(observing)?;
+    let host = host
         .map(|ty| quote!(#ty))
         .unwrap_or_else(|| quote!(#harmos::__private::sidecar::Supervisor));
     let observed = returned(observing)?;
@@ -178,7 +178,7 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
         }
 
         #[automatically_derived]
-        impl #harmos::__private::sidecar::Observer<#capabilities> for #name {
+        impl #harmos::__private::sidecar::Observer<#host> for #name {
             type Resources = #resources;
             type Error = <#observed as #answer>::Err;
             const ID: &'static str = <Self as #harmos::__private::PluginInventory::observers::Declared>::ENTRY.id;
@@ -201,7 +201,7 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
 
             fn observe(
                 &mut self,
-                context: &#harmos::__private::sidecar::ObserverContext<'_, Self::Resources, #capabilities>,
+                context: &#harmos::__private::sidecar::ObserverContext<'_, Self::Resources, #host>,
             ) -> impl ::core::future::Future<
                 Output = ::core::result::Result<(), Self::Error>,
             > + Send {

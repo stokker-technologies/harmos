@@ -65,7 +65,7 @@ enum Finalization<A: Application> {
 impl<A: Application> Active<A> {
     pub fn serve(mut self) -> Result<Serving<A>, Error> {
         if !self.store.data().active {
-            return Err(Error::Capability {
+            return Err(Error::Denied {
                 code: "revoked",
                 message: "serve".to_owned(),
             });

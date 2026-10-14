@@ -58,7 +58,7 @@ impl OperationDeclaration for ReadRecords {
     const POLICY: crate::operations::OperationPolicy = super::STREAM_POLICY;
     const VISIBILITY: Visibility = Visibility::Shared;
     fn grant(selection: &DataSelection) -> Option<Grant> {
-        Some(super::survey(&selection.schema.id))
+        Some(Grant::of(Self::ID, selection.schema.id.as_str().to_owned()))
     }
 
     fn endpoint_types() -> (Option<TypeId>, Option<TypeId>) {

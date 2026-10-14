@@ -406,7 +406,7 @@ fn digest(world: &str) -> u64 {
 #[test]
 fn contract_scenario() {
     {
-        scenario_runtime::check("capabilities_cross_arguments", || {
+        scenario_runtime::check("host_calls_cross_arguments", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor
                 .enable_all()

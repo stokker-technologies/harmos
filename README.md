@@ -71,7 +71,7 @@ your application defines what each change means.
 - **Guests**
 
   Extend your application with sandboxed WebAssembly components. The host
-  controls admitted capabilities and execution budgets, including fuel and
+  controls admitted grants and execution budgets, including fuel and
   memory limits, through the Wasmtime boundary.
 
 - **Sidecars**
@@ -131,7 +131,7 @@ mise run run:schematic:guest
 Both plugins implement `ValidateSchematic`, `ProposeRoute`, and the streaming
 `AnalyzeSchematic`. The native sidecar additionally implements `ListDirectories`,
 which lists immediate subdirectories of its explicitly configured working
-directory. The guest has no filesystem capability and omits that operation.
+directory. The guest has no filesystem access and omits that operation.
 
 The [advanced follow-on](examples/schematic/cli/src/advanced.rs) demonstrates
 bounded streaming, cancellation with settlement, and native directory access.
@@ -348,7 +348,7 @@ producer and clears the disconnected deadline. Finish, abort and storage shutdow
 still retire production; existing file-count and memory budgets remain enforced.
 A viewer owns its subscription, while the original service owns production.
 
-One `operations::Host` capability serves operation bodies wherever they run: in
+One `operations::Host` serves operation bodies wherever they run: in
 process over `OperationManager` and `operations::Context`, in a sidecar over
 `Supervisor`, and in a guest over `Context`. `call` and `submit` take the
 declaration itself when it is its own request; `call_as::<O>` and

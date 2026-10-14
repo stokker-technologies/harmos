@@ -7,7 +7,7 @@
  * ***
  */
 
-// In-process binding of the portable host capability: a thin layer over the
+// In-process binding of the portable host: a thin layer over the
 // manager's own submission, so in-process and remote bodies share one shape.
 
 /* === Modules === */

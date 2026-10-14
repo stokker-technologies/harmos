@@ -353,7 +353,7 @@ pub(super) fn contract_scenario() {
                             WireDeclaration::of::<Operations>().contract().unwrap(),
                             vec![],
                         ),
-                        required(survey.clone(), vec![Grant::Survey("reading".into())]),
+                        required(survey.clone(), vec![Grant::of(Survey::ID, "reading")]),
                     ]);
                     let mut host = Host {
                         operations: runtime.operations.clone(),
@@ -418,7 +418,7 @@ pub(super) fn contract_scenario() {
                         .find(|entry| entry.contract.operation().id.as_str() == Survey::ID)
                         .unwrap();
                     assert_eq!(discovered.contract, survey);
-                    assert_eq!(discovered.grants, vec![Grant::Survey("reading".into())]);
+                    assert_eq!(discovered.grants, vec![Grant::of(Survey::ID, "reading")]);
                     assert_eq!(discovered.owner.as_str(), "host");
                     assert!(discovered.generation > 0 && discovered.conditional_access);
                     assert!(!discovered.grpc_available);
@@ -636,7 +636,7 @@ pub(super) fn contract_scenario() {
                     let contract = WireDeclaration::of::<Survey>().contract().unwrap();
                     let candidate = requiring(vec![required(
                         contract,
-                        vec![Grant::Survey("reading".into())],
+                        vec![Grant::of(Survey::ID, "reading")],
                     )]);
                     let mut manager = PluginManager::new(candidate).unwrap();
                     manager.initialize(&mut host).await.unwrap();

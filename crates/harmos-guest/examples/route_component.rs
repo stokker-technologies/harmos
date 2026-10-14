@@ -26,8 +26,8 @@ use harmos_contract::StreamSpec;
 use harmos_contract::catalog::Node;
 use harmos_contract::inventory::{contracts, listeners, observers, publications};
 use harmos_contract::operations::{
-    Operation, OperationPolicy, RestartPolicy, RetryPolicy, ServingError, WireDeclaration,
-    WireTable, host, lifecycle,
+    Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, ServingError,
+    WireDeclaration, WireTable, host, lifecycle,
 };
 use harmos_contract::plugin::{Declared, Grant, Plugin, Requirement};
 use harmos_contract::schema::Described;
@@ -52,9 +52,10 @@ const REQUIRED: &[Node<Requirement>] = &[
     Node::Leaf(Requirement::of::<ProviderEcho>(&[])),
     Node::Leaf(Requirement::of::<host::Invoke>(&[])),
     Node::Leaf(Requirement::of::<host::Publish>(&[])),
-    Node::Leaf(Requirement::of::<host::Egress>(&[Grant::Egress(
-        Cow::Borrowed("vendor"),
-    )])),
+    Node::Leaf(Requirement::of::<host::Egress>(&[Grant {
+        operation: Cow::Borrowed(host::Egress::ID),
+        scope: Some(Cow::Borrowed("vendor")),
+    }])),
 ];
 const STREAMS: &[publications::Entry] = &[publications::Entry {
     id: Echoed::ID,

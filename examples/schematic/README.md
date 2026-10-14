@@ -51,7 +51,7 @@ Only the sidecar exposes `ListDirectories`. Its empty request returns sorted
 names of immediate subdirectories in the caller's current working directory,
 which the host explicitly supplies to the child. The guest catalog omits this
 operation because this guest has no filesystem grant. WebAssembly can support
-filesystem capabilities when a host provides them; this example does not.
+filesystem access when a host provides it; this example does not.
 
 The CLI accepts `--sidecar <executable>` or `--guest <component>`. Without either,
 it selects `plugins/schematic-sidecar` relative to its own executable, falling

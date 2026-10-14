@@ -158,7 +158,7 @@ fn contract_scenario() {
         });
     }
     {
-        scenario_runtime::check("scalar_query_capability", || {
+        scenario_runtime::check("scalar_query_support", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor
                 .enable_all()

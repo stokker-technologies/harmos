@@ -67,7 +67,7 @@ pub struct ObserverContext<'a, R, H = Supervisor> {
     identity: Identity,
     resources: &'a R,
     tick: &'a Tick,
-    capabilities: &'a H,
+    host: &'a H,
     streams: &'static [publications::Entry],
     extension: Option<&'a (dyn Any + Send + Sync)>,
 }
@@ -235,8 +235,8 @@ impl<R, H> ObserverContext<'_, R, H> {
         self.tick
     }
 
-    pub fn capabilities(&self) -> &H {
-        self.capabilities
+    pub fn host(&self) -> &H {
+        self.host
     }
 
     pub fn extension<T: Send + Sync + 'static>(&self) -> Option<&T> {
@@ -247,7 +247,7 @@ impl<R, H> ObserverContext<'_, R, H> {
 
 impl<R> ObserverContext<'_, R, Supervisor> {
     pub fn supervisor(&self) -> &Supervisor {
-        self.capabilities
+        self.host
     }
 }
 
@@ -259,7 +259,7 @@ impl<R: Sync, H> ObserverContext<'_, R, H> {
         if let Some(stream) = H::STREAM {
             self.check_stream(stream.id, stream.schema)?;
         }
-        self.capabilities.publish(self, value).await
+        self.host.publish(self, value).await
     }
 
     pub async fn publish_on<S: harmos_contract::StreamSpec>(
@@ -271,14 +271,14 @@ impl<R: Sync, H> ObserverContext<'_, R, H> {
         H: ObserverStreamPublisher<R, S>,
     {
         self.check_stream(S::ID, S::VERSION)?;
-        self.capabilities.publish_on(self, row).await
+        self.host.publish_on(self, row).await
     }
 
     pub async fn call_as<C>(&self, request: H::Request) -> Result<H::Response, H::Error>
     where
         H: ObserverCaller<R, C>,
     {
-        self.capabilities.call(self, request).await
+        self.host.call(self, request).await
     }
 
     fn check_stream(&self, id: &'static str, version: u32) -> Result<(), PublicationError> {
@@ -473,7 +473,7 @@ impl<S: Observer<H>, H: Send + Sync + 'static> Body for Bound<S, H> {
                     identity: self.identity,
                     resources: self.resources.as_ref(),
                     tick: &tick,
-                    capabilities: &self.host,
+                    host: &self.host,
                     extension: self.extension.as_deref(),
                     streams: S::STREAMS,
                 };

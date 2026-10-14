@@ -42,7 +42,7 @@ impl harmos::operations::lifecycle::Policy for Program {
     const SHUTDOWN_POLICY: OperationPolicy = controls::POLICY;
 }
 
-#[harmos::plugin(id = "invalid-requirement", provides = (), requires(harmos::operations::host::Egress: egress("")),
+#[harmos::plugin(id = "invalid-requirement", provides = (), requires(harmos::operations::host::Egress: scope("")),
     context = harmos::sidecar::Supervisor, config = ())]
 impl ProductPlugin for Program {}
 

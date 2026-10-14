@@ -15,7 +15,6 @@ pub use payloads::*;
 
 /* === Imports === */
 // Standard Library Imports
-use std::borrow::Cow;
 use std::time::Duration;
 // Third Party Imports
 
@@ -139,7 +138,7 @@ impl OperationDeclaration for Egress {
     const VISIBILITY: Visibility = Visibility::Shared;
 
     fn grant(request: &EgressRequest) -> Option<Grant> {
-        Some(Grant::Egress(Cow::Owned(request.name.clone())))
+        Some(Grant::of(Self::ID, request.name.clone()))
     }
 }
 
@@ -151,7 +150,7 @@ impl OperationDeclaration for Survey {
     const VISIBILITY: Visibility = Visibility::Shared;
 
     fn grant(request: &SurveyRequest) -> Option<Grant> {
-        Some(Grant::Survey(Cow::Owned(request.stream.clone())))
+        Some(Grant::of(Self::ID, request.stream.clone()))
     }
 }
 

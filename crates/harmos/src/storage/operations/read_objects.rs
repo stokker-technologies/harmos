@@ -79,8 +79,8 @@ impl OperationDeclaration for ReadObjects {
     const VISIBILITY: Visibility = Visibility::Shared;
     fn grant(request: &ReadObjectsRequest) -> Option<Grant> {
         Some(match &request.selection.schema {
-            Some(schema) => super::survey(&schema.id),
-            None => Grant::Survey(super::EVERY_SCHEMA.into()),
+            Some(schema) => Grant::of(Self::ID, schema.id.as_str().to_owned()),
+            None => Grant::of(Self::ID, super::EVERY_SCHEMA),
         })
     }
 

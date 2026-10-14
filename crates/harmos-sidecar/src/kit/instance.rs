@@ -7,7 +7,7 @@
  * ***
  */
 
-// Sidecar binding of the portable host capability over the connection frames.
+// Sidecar binding of the portable host over the connection frames.
 // A submitted child stays owned by the calling attempt; its handle drives it
 // through child controls and releases it when dropped unsettled.
 

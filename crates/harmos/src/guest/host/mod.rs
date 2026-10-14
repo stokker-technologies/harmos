@@ -120,8 +120,8 @@ pub enum Error {
     Component { id: String, message: String },
     #[error("the guest refused activation: {message}")]
     Refused { message: String },
-    #[error("the guest capability was refused ({code}): {message}")]
-    Capability { code: &'static str, message: String },
+    #[error("the guest host call was denied ({code}): {message}")]
+    Denied { code: &'static str, message: String },
     #[error("the guest refused an operation: {refusal}")]
     Operation { refusal: OperationRefusal },
     #[error("the guest cannot answer `{method}`: {discarded}")]

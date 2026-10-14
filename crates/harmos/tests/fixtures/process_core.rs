@@ -70,7 +70,7 @@ impl harmos::operations::lifecycle::Policy for Process {
 #[harmos::plugin(
     id = "process-core",
     provides = Queries,
-    requires(host::Egress: egress("vendor"))
+    requires(host::Egress: scope("vendor"))
 )]
 impl harmos::Plugin for Process {
     type Context = Supervisor;

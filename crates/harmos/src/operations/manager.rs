@@ -2030,13 +2030,18 @@ impl State {
 }
 
 impl GrantAuthority {
-    // Refuse a request whose grant the caller does not hold.
+    // Refuse a request whose grant the caller does not hold. A request resolves
+    // only to a grant on the operation it calls; a provider preparing a grant on
+    // another operation is refused for every caller.
     pub(super) fn admit(&self, grant: Option<&harmos_contract::plugin::Grant>) -> Result<()> {
         let denied = |caller: &str| Error::OperationUnauthorized {
             caller: caller.to_owned(),
             owner: self.owner.clone(),
             operation: self.operation.clone(),
         };
+        if grant.is_some_and(|grant| grant.operation() != self.operation) {
+            return Err(Error::PermissionDenied);
+        }
         #[cfg(any(
             feature = "plugin",
             feature = "plugin-guest",

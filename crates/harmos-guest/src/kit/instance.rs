@@ -7,7 +7,7 @@
  * ***
  */
 
-// Guest binding of the portable host capability over the `child` Wasm import.
+// Guest binding of the portable host over the `child` Wasm import.
 // Unary operations support submit with status, cancel and join; streaming
 // sessions are not available to guests yet.
 

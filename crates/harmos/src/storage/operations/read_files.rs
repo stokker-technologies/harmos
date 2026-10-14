@@ -58,7 +58,7 @@ impl OperationDeclaration for ReadFiles {
     const POLICY: crate::operations::OperationPolicy = super::STREAM_POLICY;
     const VISIBILITY: Visibility = Visibility::Shared;
     fn grant(selection: &FileSelection) -> Option<Grant> {
-        Some(super::survey(&selection.file.id))
+        Some(Grant::of(Self::ID, selection.file.id.as_str().to_owned()))
     }
 
     fn endpoint_types() -> (Option<TypeId>, Option<TypeId>) {

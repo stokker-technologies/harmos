@@ -37,7 +37,7 @@ struct Resources {
     stop_gate: Option<Arc<Notify>>,
 }
 
-struct Capabilities {
+struct Host {
     token: u64,
     behavior: Behavior,
 }
@@ -89,7 +89,7 @@ impl Watch {
 
     async fn observe(
         &mut self,
-        ctx: &ObserverContext<'_, Resources, Capabilities>,
+        ctx: &ObserverContext<'_, Resources, Host>,
     ) -> Result<(), std::io::Error> {
         let _callback = Callback(self.0.clone());
         if let Some(identities) = &self.0.identities {
@@ -98,13 +98,13 @@ impl Watch {
                 .unwrap();
         }
         assert!(ctx.tick().elapsed() >= Duration::from_millis(5));
-        assert_eq!(ctx.extension::<u64>(), Some(&ctx.capabilities().token));
+        assert_eq!(ctx.extension::<u64>(), Some(&ctx.host().token));
         ctx.resources()
             .events
-            .send(Event::Tick(ctx.tick().ordinal(), ctx.capabilities().token))
+            .send(Event::Tick(ctx.tick().ordinal(), ctx.host().token))
             .unwrap();
 
-        match ctx.capabilities().behavior {
+        match ctx.host().behavior {
             Behavior::FailFirst if ctx.tick().ordinal() == 1 => {
                 Err(std::io::Error::other("tick refused"))
             }
@@ -170,9 +170,8 @@ impl NeverStarts {
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn declaration() -> Instance<Resources, Capabilities> {
-    Instance::<Resources, Capabilities>::of::<Watch>()
-        .with_context(|capabilities| capabilities.token)
+fn declaration() -> Instance<Resources, Host> {
+    Instance::<Resources, Host>::of::<Watch>().with_context(|host| host.token)
 }
 
 fn start(
@@ -188,7 +187,7 @@ fn start(
     let activity = declaration()
         .activate(
             resources,
-            Capabilities {
+            Host {
                 token: 73,
                 behavior,
             },
@@ -310,7 +309,7 @@ pub(super) fn contract_scenario() {
                     let runtime = super::runtime().await;
                     let manager = &runtime.operations;
                     manager
-                        .register_native_observer(declaration(), |_| Capabilities {
+                        .register_native_observer(declaration(), |_| Host {
                             token: 73,
                             behavior: Behavior::Hang,
                         })
@@ -475,7 +474,7 @@ pub(super) fn contract_scenario() {
                         let activity = declaration
                             .activate(
                                 resources,
-                                Capabilities {
+                                Host {
                                     token: 73,
                                     behavior: Behavior::FailFirst,
                                 },

@@ -993,7 +993,7 @@ impl Registry {
                 state.retired_failure.clone(),
             )
         };
-        // Capability factories may retain runtime handles. Drop them outside
+        // Context factories may retain runtime handles. Drop them outside
         // the registry lock after every active use has joined.
         drop((definitions, scopes));
         result?;

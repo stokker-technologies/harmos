@@ -342,9 +342,12 @@ pub fn validate(manifest: &Manifest) -> Result<(), Error> {
     }
     for required in &manifest.requires {
         let mut seen = BTreeSet::new();
+        let operation = &required.contract.operation().id;
         for grant in &required.grants {
-            if grant.selector().is_empty()
-                || grant.selector().len() > GRANT_LIMIT
+            if grant.operation() != operation.as_str()
+                || grant
+                    .scope()
+                    .is_none_or(|scope| scope.is_empty() || scope.len() > GRANT_LIMIT)
                 || !seen.insert(grant)
             {
                 return Err(Error::Grant {
@@ -574,16 +577,22 @@ const fn required<const N: usize>(
                     if grant > 0 {
                         out.raw(b",");
                     }
-                    let value = &entry.grants[grant];
-                    let selector = value.borrowed();
+                    let (operation, scope) = entry.grants[grant].borrowed();
                     assert!(
-                        !selector.is_empty() && selector.len() <= GRANT_LIMIT,
-                        "grant selectors are nonempty and bounded"
+                        super::publications::same_bytes(operation, entry.declaration.operation.id),
+                        "a requirement grants only its own operation"
                     );
-                    out.raw(b"{");
-                    out.quoted(value.kind());
-                    out.raw(b":");
-                    out.quoted(selector);
+                    let Some(scope) = scope else {
+                        panic!("a requirement grant names its scope");
+                    };
+                    assert!(
+                        !scope.is_empty() && scope.len() <= GRANT_LIMIT,
+                        "grant scopes are nonempty and bounded"
+                    );
+                    out.raw(b"{\"operation\":");
+                    out.quoted(operation);
+                    out.raw(b",\"scope\":");
+                    out.quoted(scope);
                     out.raw(b"}");
                     grant += 1;
                 }

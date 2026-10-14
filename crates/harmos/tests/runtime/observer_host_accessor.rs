@@ -182,11 +182,7 @@ impl CheckGrants {
             ctx.publish_on::<WrongVersion>(&Pulse { sample: 0 }).await,
             Err(Failure::Publication(PublicationError::Undeclared { .. }))
         ));
-        ctx.capabilities()
-            .events
-            .send(Event::GrantsChecked)
-            .await
-            .unwrap();
+        ctx.host().events.send(Event::GrantsChecked).await.unwrap();
         Ok(())
     }
 }

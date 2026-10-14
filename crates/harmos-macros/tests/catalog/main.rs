@@ -131,10 +131,15 @@ fn contract_scenario() {
                     "undeclared_custom_observer_output.rs",
                     "observer outputs must be a subset",
                 ),
-                // Grants name what a requirement reaches; an empty or unknown grant
-                // declares nothing a planner could read, and core is retired.
-                ("empty_grant.rs", "grant selectors are nonempty"),
-                ("unknown_grant.rs", "a requirement grants"),
+                // A requirement grants its own operation, scoped by name; an empty
+                // or unknown scope declares nothing a planner could read, and the
+                // grant kinds and core are retired.
+                ("empty_grant.rs", "grant scopes are nonempty"),
+                (
+                    "unknown_grant.rs",
+                    "a requirement scopes its operation's grant",
+                ),
+                ("retired_grant.rs", "grant kinds are retired"),
                 ("retired_core.rs", "`core` and `capabilities` are retired"),
                 (
                     "malformed_harmos_path.rs",

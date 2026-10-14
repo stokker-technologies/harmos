@@ -365,7 +365,7 @@ mod unified_plugins {
         provides = ObserverOperations,
         requires(
             harmos::operations::host::Invoke,
-            harmos::operations::host::Survey: survey("reading", "power")
+            harmos::operations::host::Survey: scope("reading", "power")
         ),
         observers = ObserverCatalog,
         observer_control = ObserverObserve,
@@ -411,9 +411,21 @@ mod unified_plugins {
                 assert_eq!(
                     required[1].grants,
                     [
-                        harmos_contract::plugin::Grant::Survey("reading".into()),
-                        harmos_contract::plugin::Grant::Survey("power".into()),
+                        harmos_contract::plugin::Grant::of("host.survey", "reading"),
+                        harmos_contract::plugin::Grant::of("host.survey", "power"),
                     ]
+                );
+                // A grant names the operation it permits and, for a scoped
+                // operation, the stream; the retired kinded shape is refused.
+                assert_eq!(
+                    serde_json::to_string(&required[1].grants[0]).unwrap(),
+                    r#"{"operation":"host.survey","scope":"reading"}"#
+                );
+                assert!(
+                    serde_json::from_str::<harmos_contract::plugin::Grant>(
+                        r#"{"survey":"reading"}"#
+                    )
+                    .is_err()
                 );
                 assert_eq!(declaration.config, "SdkInitialization");
                 let provides = Contracts::of::<ObserverOperations>().unwrap();

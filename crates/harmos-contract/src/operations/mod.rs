@@ -9,7 +9,6 @@
 
 /* === Modules === */
 mod authored;
-mod capability;
 mod catalog;
 mod context;
 mod contract;
@@ -23,11 +22,11 @@ pub(crate) mod response;
 mod serving;
 #[cfg(feature = "streaming")]
 pub mod streaming;
+mod surface;
 
 /* === Re-Exports === */
 pub use crate::observers;
 pub use authored::{EndpointSet, InputEndpoint, Operation, OutputEndpoint};
-pub use capability::{Callable, Host};
 pub use catalog::{AuthoredDeclarations, Declarations, Entry};
 pub use context::{
     CallContext, CallValue, ContextError, ContextValue, PORTABLE_BYTES, PORTABLE_VALUES,
@@ -55,6 +54,7 @@ pub use serving::{
 pub use serving::{WireEndpoints, WireStreamLimits, WireStreams};
 #[cfg(feature = "streaming")]
 pub use streaming::{StreamInput, StreamItem, StreamOutput, StreamPermit, StreamSettings, stream};
+pub use surface::{Callable, Host};
 
 /* === Imports === */
 // Standard Library Imports

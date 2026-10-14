@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-mod capabilities;
 mod carrier;
 mod catalog;
 mod connection;
@@ -17,6 +16,7 @@ mod identity;
 mod instance;
 mod local;
 mod observer;
+mod observer_host;
 mod plugin;
 mod publisher;
 mod task;
@@ -33,7 +33,6 @@ pub mod __private {
 }
 
 /* === Re-Exports === */
-pub use capabilities::{ObserverCaller, ObserverHost, ObserverPublisher, ObserverStreamPublisher};
 pub use catalog::{CATALOG_EXPORT_FLAG, CATALOG_EXPORT_LIMIT};
 pub use host::{CallError, PublicationError, Supervisor};
 pub use identity::ActivationId;
@@ -42,6 +41,7 @@ pub use observer::{
     Activation, Activity, DemandKey, Instance, Observer, ObserverAttachment, ObserverContext,
     ObserverError, Tick,
 };
+pub use observer_host::{ObserverCaller, ObserverHost, ObserverPublisher, ObserverStreamPublisher};
 pub use plugin::{PluginNative, run_plugin, serve_plugin_channels};
 pub use publisher::{PublishError, Publisher};
 

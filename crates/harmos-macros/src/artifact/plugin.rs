@@ -51,7 +51,7 @@ struct Declaration {
 
 struct Listed {
     member: Type,
-    grants: Vec<(Ident, LitStr)>,
+    scopes: Vec<LitStr>,
 }
 
 /* === Enums === */
@@ -235,7 +235,7 @@ fn declaration(attribute: TokenStream) -> Result<Declaration, Error> {
             other if other.path().is_ident("core") || other.path().is_ident("capabilities") => {
                 return Err(Error::new(
                     other.span(),
-                    "`core` and `capabilities` are retired; require host operations with grants: `requires(Op: survey(\"stream\"), Other)`",
+                    "`core` and `capabilities` are retired; require host operations, scoping their grants: `requires(Op: scope(\"stream\"), Other)`",
                 ));
             }
             other if other.path().is_ident("operations") => {
@@ -301,54 +301,43 @@ fn requirements(input: ParseStream) -> Result<Vec<Listed>, Error> {
     let mut listed = Vec::new();
     while !input.is_empty() {
         let member = input.parse::<Type>()?;
-        let mut grants = Vec::new();
+        let mut scopes = Vec::new();
         if input.peek(Token![:]) && !input.peek(Token![::]) {
             input.parse::<Token![:]>()?;
-            loop {
-                let kind = input.parse::<Ident>()?;
-                if !matches!(kind.to_string().as_str(), "survey" | "egress" | "source") {
-                    return Err(Error::new(
-                        kind.span(),
-                        "a requirement grants `survey(\"stream\")`, `egress(\"destination\")` or `source(\"tag\")`",
-                    ));
+            let keyword = input.parse::<Ident>()?;
+            if keyword != "scope" {
+                return Err(Error::new(
+                    keyword.span(),
+                    if matches!(keyword.to_string().as_str(), "survey" | "egress" | "source") {
+                        "grant kinds are retired; a requirement grants its own operation, scoped with `scope(\"name\", ...)`"
+                    } else {
+                        "a requirement scopes its operation's grant with `scope(\"name\", ...)`"
+                    },
+                ));
+            }
+            let content;
+            syn::parenthesized!(content in input);
+            let named = Punctuated::<LitStr, Token![,]>::parse_terminated(&content)?;
+            if named.is_empty() {
+                return Err(Error::new(
+                    keyword.span(),
+                    "a scope names at least one channel, stream or source",
+                ));
+            }
+            for scope in named {
+                if scope.value().is_empty() {
+                    return Err(Error::new(scope.span(), "grant scopes are nonempty"));
                 }
-                let content;
-                syn::parenthesized!(content in input);
-                let selectors = Punctuated::<LitStr, Token![,]>::parse_terminated(&content)?;
-                if selectors.is_empty() {
-                    return Err(Error::new(
-                        kind.span(),
-                        "a grant names at least one selector",
-                    ));
-                }
-                for selector in selectors {
-                    if selector.value().is_empty() {
-                        return Err(Error::new(selector.span(), "grant selectors are nonempty"));
-                    }
-                    grants.push((kind.clone(), selector));
-                }
-                if !grant_follows(input) {
-                    break;
-                }
-                input.parse::<Token![,]>()?;
+                scopes.push(scope);
             }
         }
-        listed.push(Listed { member, grants });
+        listed.push(Listed { member, scopes });
         if input.is_empty() {
             break;
         }
         input.parse::<Token![,]>()?;
     }
     Ok(listed)
-}
-
-fn grant_follows(input: ParseStream) -> bool {
-    let fork = input.fork();
-    fork.parse::<Token![,]>().is_ok()
-        && fork
-            .parse::<Ident>()
-            .is_ok_and(|kind| matches!(kind.to_string().as_str(), "survey" | "egress" | "source"))
-        && fork.peek(syn::token::Paren)
 }
 
 fn implemented(block: &ItemImpl, projection: bool) -> Result<&Type, Error> {
@@ -438,16 +427,14 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
         Required::Listed(listed) => {
             let leaves = listed.iter().map(|entry| {
                 let member = &entry.member;
-                let grants = entry.grants.iter().map(|(kind, selector)| {
-                    let variant = format_ident!(
-                        "{}",
-                        match kind.to_string().as_str() {
-                            "survey" => "Survey",
-                            "egress" => "Egress",
-                            _ => "Source",
-                        }
-                    );
-                    quote!(#harmos::__private::PluginGrant::#variant(::std::borrow::Cow::Borrowed(#selector)))
+                let grants = entry.scopes.iter().map(|scope| {
+                    quote!(#harmos::__private::PluginGrant {
+                        operation: ::std::borrow::Cow::Borrowed(
+                            <<#member as #harmos::operations::Declares>::Declaration
+                                as #harmos::operations::OperationDeclaration>::ID,
+                        ),
+                        scope: ::core::option::Option::Some(::std::borrow::Cow::Borrowed(#scope)),
+                    })
                 });
                 quote! {
                     #harmos::catalog::Node::Leaf(#requirement::of::<

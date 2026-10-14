@@ -7,7 +7,7 @@
  * ***
  */
 
-// The in-process binding of the portable host capability, resident activation
+// The in-process binding of the portable host, resident activation
 // through it, and the built-in status, cancel and watch operations it shares
 // with the remote bindings.
 
@@ -65,7 +65,7 @@ struct Gate {
 
 struct Holding(Arc<Gate>);
 
-// A resident service activated through the host capability by its identity.
+// A resident service activated through the host by its identity.
 struct Ticker;
 
 /* === Enums === */
@@ -76,14 +76,14 @@ struct Ticker;
 impl OperationDeclaration for Hold {
     type Request = Self;
     type Response = u64;
-    const ID: &'static str = "capability.hold";
+    const ID: &'static str = "fixture.hold";
     const POLICY: OperationPolicy = POLICY;
 }
 
 impl OperationDeclaration for Ticker {
     type Request = ();
     type Response = ();
-    const ID: &'static str = "capability.ticker";
+    const ID: &'static str = "fixture.ticker";
     const POLICY: OperationPolicy = harmos::services::POLICY;
 }
 
@@ -141,7 +141,7 @@ async fn runtime() -> (Runtime<App>, Arc<Gate>) {
     (runtime, gate)
 }
 
-// Generic over the capability, as a body shared by every binding would be.
+// Generic over the host, as a body shared by every binding would be.
 async fn joined<H: Host>(host: &H, gate: &Gate) -> Result<u64, H::Error> {
     let instance = host.submit(Hold { value: 21 }).await?;
     gate.started.notified().await;

@@ -910,7 +910,7 @@ pub(crate) fn definition<A: Attach>(source: &A, configuration: Vec<u8>) -> Plugi
 /* === Private Functions === */
 fn notices(_: &Service<Bank>, _: Notice) {}
 
-// Drives submitted children through the sidecar binding of the host capability.
+// Drives submitted children through the sidecar binding of the host.
 async fn submitted(
     host: &harmos::sidecar::Supervisor,
     counts: &Counts,
