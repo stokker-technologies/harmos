@@ -11,6 +11,7 @@
 #[path = "../../../../tests/support/scenarios.rs"]
 mod scenario_runtime;
 
+mod aggregate;
 mod allocation;
 mod boxed;
 mod enums;
@@ -192,6 +193,7 @@ fn contract_scenario() {
     graph::check();
     boxed::check();
     enums::check();
+    aggregate::check();
     {
         scenario_runtime::check("names_never_shadow", || {
             let value = DecoderNames {
