@@ -133,6 +133,27 @@ pub(super) struct Submission {
     pub(super) preparation: Option<OwnedSemaphorePermit>,
 }
 
+// The caller's grant authority for one admitted request. Typed bindings check
+// the request grant at admission; encoded bindings learn it from the provider
+// while preparing and check it before any attempt runs.
+#[derive(Clone, Debug)]
+pub(super) struct GrantAuthority {
+    owner: String,
+    operation: String,
+    // A cross-owner plugin caller and its declared requirement for this operation.
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
+    plugin: Option<(
+        String,
+        Option<harmos_contract::inventory::contracts::Required>,
+    )>,
+    // The grants an external caller's authorizer selected for this operation.
+    external: Option<harmos_contract::inventory::contracts::Required>,
+}
+
 struct Cached {
     target: Weak<Entry>,
     key: CacheKey,
@@ -911,18 +932,14 @@ impl OperationManager {
         }
         entry.available_to(&origin)?;
         entry.authorize(&origin)?;
-        let grant = O::grant(&request.value);
-        entry.authorize_grant(grant.clone(), &origin)?;
         let required = self.required_external(&entry, &origin)?;
-        if let Some(required) = required.as_ref()
-            && grant.as_ref().is_some_and(|grant| !required.grants(grant))
-        {
-            return Err(Error::OperationUnauthorized {
-                caller: "external".to_owned(),
-                owner: entry.owner.to_string(),
-                operation: entry.id().to_owned(),
-            });
-        }
+        let authority = entry.grant_authority(&origin, required);
+        authority.admit(O::grant(&request.value).as_ref())?;
+        // Encoded bindings carry the authority to the provider's prepared grant.
+        let origin = Origin {
+            grants: Some(Arc::new(authority)),
+            ..origin
+        };
         // Authoring Callbacks Run Outside Registry/Pending Locks. Recheck The Provider.
         source.check()?;
         entry.available_to(&origin)?;
@@ -1711,27 +1728,31 @@ impl Entry {
         self.plugin.as_ref()
     }
 
-    fn authorize_grant(
+    fn grant_authority(
         &self,
-        _grant: Option<harmos_contract::plugin::Grant>,
         _origin: &Origin,
-    ) -> Result<()> {
-        #[cfg(any(
-            feature = "plugin",
-            feature = "plugin-guest",
-            feature = "plugin-sidecar"
-        ))]
-        if let Some(caller) = &_origin.scope
-            && caller.owner() != self.owner.as_str()
-            && !grant_allowed(caller.requirement(&self.definition.id), _grant.as_ref())
-        {
-            return Err(Error::OperationUnauthorized {
-                caller: caller.owner().to_owned(),
-                owner: self.owner.to_string(),
-                operation: self.id().to_owned(),
-            });
+        external: Option<harmos_contract::inventory::contracts::Required>,
+    ) -> GrantAuthority {
+        GrantAuthority {
+            owner: self.owner.to_string(),
+            operation: self.id().to_owned(),
+            #[cfg(any(
+                feature = "plugin",
+                feature = "plugin-guest",
+                feature = "plugin-sidecar"
+            ))]
+            plugin: _origin
+                .scope
+                .as_ref()
+                .filter(|caller| caller.owner() != self.owner.as_str())
+                .map(|caller| {
+                    (
+                        caller.owner().to_owned(),
+                        caller.requirement(&self.definition.id).cloned(),
+                    )
+                }),
+            external,
         }
-        Ok(())
     }
 
     pub(super) fn authorize(&self, _origin: &Origin) -> Result<()> {
@@ -2005,6 +2026,33 @@ impl State {
             }
         }
         retired
+    }
+}
+
+impl GrantAuthority {
+    // Refuse a request whose grant the caller does not hold.
+    pub(super) fn admit(&self, grant: Option<&harmos_contract::plugin::Grant>) -> Result<()> {
+        let denied = |caller: &str| Error::OperationUnauthorized {
+            caller: caller.to_owned(),
+            owner: self.owner.clone(),
+            operation: self.operation.clone(),
+        };
+        #[cfg(any(
+            feature = "plugin",
+            feature = "plugin-guest",
+            feature = "plugin-sidecar"
+        ))]
+        if let Some((caller, required)) = &self.plugin
+            && !grant_allowed(required.as_ref(), grant)
+        {
+            return Err(denied(caller));
+        }
+        if let Some(required) = &self.external
+            && grant.is_some_and(|grant| !required.grants(grant))
+        {
+            return Err(denied("external"));
+        }
+        Ok(())
     }
 }
 

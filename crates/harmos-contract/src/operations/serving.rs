@@ -274,6 +274,10 @@ trait Prepared<C>: Send {
     fn streams(&self) -> Option<WireStreams> {
         None
     }
+    // The grant the prepared request needs, answered to the host with Prepare.
+    fn grant(&self) -> Option<crate::plugin::Grant> {
+        None
+    }
     fn initialize<'a>(&'a mut self, context: &'a C) -> Finished<'a>;
     fn attempt<'a>(&'a mut self, context: &'a C) -> Answer<'a>;
     fn finalize(&mut self) -> Finished<'_>;
@@ -416,12 +420,13 @@ impl<C: Send + Sync + 'static> WireTable<C> {
         Ok(())
     }
 
+    // Answers the request's grant as the Prepare payload.
     pub fn prepare(
         &mut self,
         invocation: u64,
         operation: &str,
         payload: Vec<u8>,
-    ) -> Result<(), ServingError> {
+    ) -> Result<Vec<u8>, ServingError> {
         self.prepare_codec(invocation, operation, payload, false)
     }
 
@@ -431,7 +436,7 @@ impl<C: Send + Sync + 'static> WireTable<C> {
         operation: &str,
         payload: Vec<u8>,
         grpc: bool,
-    ) -> Result<(), ServingError> {
+    ) -> Result<Vec<u8>, ServingError> {
         if self.closed {
             return Err(ServingError::Closing);
         }
@@ -467,6 +472,7 @@ impl<C: Send + Sync + 'static> WireTable<C> {
             (handler.prepare)(payload, grpc)
         }))
         .map_err(|_| ServingError::Panicked)??;
+        let answer = encode_prepared_grant(prepared.grant().as_ref());
         let slot = Slot {
             lifecycle: handler.lifecycle,
             resident: handler.resident,
@@ -479,7 +485,7 @@ impl<C: Send + Sync + 'static> WireTable<C> {
             }),
         };
         self.prepared.insert(invocation, Arc::new(slot));
-        Ok(())
+        Ok(answer)
     }
 
     #[cfg(feature = "streaming")]
@@ -603,9 +609,7 @@ impl<C: Send + Sync + 'static> WireTable<C> {
                 operation,
                 payload,
             } => {
-                let result = self
-                    .prepare_codec(invocation, &operation, payload, true)
-                    .map(|()| Vec::new());
+                let result = self.prepare_codec(invocation, &operation, payload, true);
                 return Box::pin(async move { wire_answer(result) });
             }
             WireCommand::Prepare {
@@ -613,9 +617,7 @@ impl<C: Send + Sync + 'static> WireTable<C> {
                 operation,
                 payload,
             } => {
-                let result = self
-                    .prepare(invocation, &operation, payload)
-                    .map(|()| Vec::new());
+                let result = self.prepare(invocation, &operation, payload);
                 return Box::pin(async move { wire_answer(result) });
             }
             command => command,
@@ -791,16 +793,12 @@ impl<C: Send + Sync + 'static> WireTable<C> {
                 invocation,
                 operation,
                 payload,
-            } => self
-                .prepare_codec(invocation, &operation, payload, true)
-                .map(|()| Vec::new()),
+            } => self.prepare_codec(invocation, &operation, payload, true),
             WireCommand::Prepare {
                 invocation,
                 operation,
                 payload,
-            } => self
-                .prepare(invocation, &operation, payload)
-                .map(|()| Vec::new()),
+            } => self.prepare(invocation, &operation, payload),
             WireCommand::Initialize { invocation, .. } => self
                 .initialize(invocation, context)
                 .await
@@ -1006,6 +1004,21 @@ where
 }
 
 /* === Public Functions === */
+// A Prepare answer is empty when the request needs no grant, else the grant as JSON.
+pub fn encode_prepared_grant(grant: Option<&crate::plugin::Grant>) -> Vec<u8> {
+    grant.map_or_else(Vec::new, |grant| {
+        serde_json::to_vec(grant).expect("a grant serializes to JSON")
+    })
+}
+
+pub fn decode_prepared_grant(
+    payload: &[u8],
+) -> Result<Option<crate::plugin::Grant>, serde_json::Error> {
+    if payload.is_empty() {
+        return Ok(None);
+    }
+    serde_json::from_slice(payload).map(Some)
+}
 
 /* === Private Functions === */
 fn wire_answer(result: Result<Vec<u8>, ServingError>) -> WireAnswer {

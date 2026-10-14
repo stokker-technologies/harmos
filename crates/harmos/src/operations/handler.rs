@@ -326,6 +326,19 @@ impl Context<'_> {
         self.origin.identity == super::caller::Identity::Host
     }
 
+    // Refuse a provider-prepared grant the admitted caller does not hold.
+    #[cfg(any(
+        all(feature = "plugin-guest", not(target_arch = "wasm32")),
+        feature = "plugin-sidecar"
+    ))]
+    pub(super) fn admit_grant(&self, grant: Option<&harmos_contract::plugin::Grant>) -> Result<()> {
+        match (&self.origin.grants, grant) {
+            (Some(authority), grant) => authority.admit(grant),
+            (None, None) => Ok(()),
+            (None, Some(_)) => Err(Error::PermissionDenied),
+        }
+    }
+
     #[cfg(any(
         feature = "plugin",
         feature = "plugin-guest",

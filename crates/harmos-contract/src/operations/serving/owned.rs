@@ -44,6 +44,8 @@ struct State<T: Operation> {
     finalization: Option<Finalization<Physical<T>>>,
     #[cfg(feature = "grpc")]
     protobuf: Option<super::protobuf::Codec>,
+    // The grant the decoded request needs; the host checks it before any attempt.
+    grant: Option<crate::plugin::Grant>,
 }
 
 struct Physical<T: Operation> {
@@ -315,6 +317,7 @@ impl<C: Send + Sync + 'static> WireTable<C> {
             #[cfg(not(feature = "grpc"))]
             let request = <T::Declaration as OperationDeclaration>::Request::decode(&payload)
                 .map_err(ServingError::Codec)?;
+            let grant = <T::Declaration as OperationDeclaration>::grant(&request);
             let endpoints = endpoints()?;
             #[cfg(all(feature = "grpc", feature = "streaming"))]
             let endpoints = Endpoints {
@@ -339,6 +342,7 @@ impl<C: Send + Sync + 'static> WireTable<C> {
                 finalization: None,
                 #[cfg(feature = "grpc")]
                 protobuf: selected,
+                grant,
             };
             Ok(Box::new(state))
         });
@@ -363,6 +367,10 @@ where
     #[cfg(feature = "streaming")]
     fn streams(&self) -> Option<super::WireStreams> {
         self.streams.clone()
+    }
+
+    fn grant(&self) -> Option<crate::plugin::Grant> {
+        self.grant.clone()
     }
 
     fn initialize<'a>(&'a mut self, context: &'a C) -> Finished<'a> {

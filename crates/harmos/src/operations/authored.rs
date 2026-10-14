@@ -59,6 +59,8 @@ struct Bound<T: Operation> {
     attempt: usize,
     admission: Admission,
     source: Source,
+    // The admitted caller's grant authority; each attempt context carries it.
+    grants: Option<Arc<super::manager::GrantAuthority>>,
     preparation: Option<OwnedSemaphorePermit>,
 }
 
@@ -98,8 +100,9 @@ impl<T: Operation> Physical<T> {
 
 impl<T: Operation> Bound<T> {
     fn context<'s>(&self, scope: Scope<'s>, attempt: usize) -> Result<Context<'s>> {
-        let origin = self.source.check()?;
+        let mut origin = self.source.check()?;
         self.entry.available_to(&origin)?;
+        origin.grants = self.grants.clone();
         Ok(Context {
             id: self.id,
             attempt,
@@ -303,6 +306,7 @@ pub(super) fn factory<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>>(
                     attempt: 0,
                     admission,
                     source: source.clone(),
+                    grants: origin.grants.clone(),
                     preparation,
                 };
                 let mut prepared = super::binding::prepared(&entry, id, Box::new(bound));

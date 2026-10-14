@@ -383,7 +383,10 @@ fn code(error: &Error) -> tonic::Code {
                 if let Some(status) = source.downcast_ref::<Status>() {
                     return status.code();
                 }
-                if let Some(inner) = source.downcast_ref::<Error>() {
+                if let Some(inner) = source
+                    .downcast_ref::<Error>()
+                    .or_else(|| ungranted(source.as_ref()))
+                {
                     error = inner;
                     wrapped = true;
                 } else {
@@ -453,6 +456,20 @@ fn explicit_status(mut error: &Error) -> Option<Status> {
             _ => return None,
         }
     }
+    None
+}
+
+// An Encoded Provider's Prepared Grant The Caller Lacks Keeps Its Runtime Denial.
+fn ungranted<'a>(source: &'a (dyn std::error::Error + Send + Sync + 'static)) -> Option<&'a Error> {
+    #[cfg(feature = "plugin-sidecar")]
+    if let Some(crate::operations::NativeError::Unauthorized(inner)) = source.downcast_ref() {
+        return Some(inner);
+    }
+    #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
+    if let Some(crate::operations::ComponentError::Unauthorized(inner)) = source.downcast_ref() {
+        return Some(inner);
+    }
+    let _ = source;
     None
 }
 

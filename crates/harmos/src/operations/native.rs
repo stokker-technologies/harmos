@@ -133,6 +133,8 @@ pub enum NativeError {
     Payload(#[from] crate::MessageError),
     #[error("native operation preparation failed: {message}")]
     Preparation { failure: Failure, message: String },
+    #[error("native operation request is not granted: {0}")]
+    Unauthorized(#[source] crate::Error),
     #[error("native operation failed: {message}")]
     Remote { failure: Failure, message: String },
 }
@@ -570,7 +572,15 @@ impl Native {
                 }
                 answer => answer,
             };
-            acknowledged(answer)?;
+            // The provider decoded the request; refuse it before any attempt runs.
+            let payload = ready(answer)?;
+            let grant =
+                harmos_contract::operations::decode_prepared_grant(&payload).map_err(|error| {
+                    SidecarError::Malformed(format!("prepared grant is malformed: {error}"))
+                })?;
+            context
+                .admit_grant(grant.as_ref())
+                .map_err(NativeError::Unauthorized)?;
         }
         let answer = self
             .phase_encoded(state, context, Phase::Initialize)
@@ -1234,6 +1244,7 @@ fn classify(error: &NativeError) -> Failure {
     match error {
         NativeError::Stream(source) => source.classification(),
         NativeError::Remote { failure, .. } => *failure,
+        NativeError::Unauthorized(_) => Failure::Unauthorized,
         NativeError::Preparation { failure, .. } => match failure {
             Failure::Invalid | Failure::Unauthorized | Failure::Cancelled => *failure,
             _ => Failure::Permanent,

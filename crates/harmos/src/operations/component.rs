@@ -101,6 +101,8 @@ pub enum ComponentError {
     Payload(#[from] crate::MessageError),
     #[error("guest operation preparation failed: {message}")]
     Preparation { failure: Failure, message: String },
+    #[error("guest operation request is not granted: {0}")]
+    Unauthorized(#[source] crate::Error),
     #[error("guest operation failed: {message}")]
     Remote { failure: Failure, message: String },
 }
@@ -363,7 +365,18 @@ impl Component {
                 }
                 answer => answer,
             };
-            acknowledged(answer)?;
+            // The guest decoded the request; refuse it before any attempt runs.
+            let payload = ready(answer)?;
+            let grant =
+                harmos_contract::operations::decode_prepared_grant(&payload).map_err(|error| {
+                    GuestError::Malformed {
+                        method: "operate".to_owned(),
+                        message: format!("prepared grant is malformed: {error}"),
+                    }
+                })?;
+            context
+                .admit_grant(grant.as_ref())
+                .map_err(ComponentError::Unauthorized)?;
         }
         let answer = self
             .phase_encoded(state, context, Phase::Initialize)
@@ -663,6 +676,7 @@ fn classify(error: &ComponentError) -> Failure {
     match error {
         ComponentError::Stream(source) => source.classification(),
         ComponentError::Remote { failure, .. } => *failure,
+        ComponentError::Unauthorized(_) => Failure::Unauthorized,
         ComponentError::Preparation { failure, .. } => match failure {
             Failure::Invalid | Failure::Unauthorized | Failure::Cancelled => *failure,
             _ => Failure::Permanent,

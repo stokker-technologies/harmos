@@ -104,6 +104,8 @@ pub(super) struct Origin {
         feature = "plugin-sidecar"
     ))]
     pub(super) resident: bool,
+    // The grant authority admission recorded for the request this origin made.
+    pub(super) grants: Option<std::sync::Arc<super::manager::GrantAuthority>>,
 }
 
 #[cfg(any(
@@ -409,6 +411,7 @@ impl Source {
                     .is_some_and(|binding| binding.retires_late()),
                 _ => false,
             },
+            grants: None,
         })
     }
 

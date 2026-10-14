@@ -23,6 +23,10 @@ mod routing;
 #[path = "sidecar_listeners.rs"]
 mod listeners;
 
+#[cfg(feature = "grpc")]
+#[path = "sidecar_grants.rs"]
+mod grants;
+
 #[path = "sidecar_publications.rs"]
 mod publications;
 
@@ -2603,6 +2607,8 @@ fn native_dispatch() {
     routing::contract_scenario();
     graph::contract_scenario();
     graph_cleanup::contract_scenario();
+    #[cfg(feature = "grpc")]
+    grants::contract_scenario();
 }
 
 #[test]
