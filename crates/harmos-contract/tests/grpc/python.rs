@@ -25,23 +25,50 @@ use std::{
 // Local Imports
 use super::{Payload, Routes, scenario_runtime};
 use harmos_contract::{
-    Identifier, Protobuf,
+    Aggregate, Identifier, Protobuf,
     bindings::python::{self, Settings},
+    config::SchemaSettings,
     grpc::Artifacts,
     operations::{Codec, Contract, Contracts, Grpc},
     schema::{
-        Cardinality,
+        Cardinality, Described,
         graph::{Field, Kind, Schema},
     },
 };
 
 /* === Constants === */
+// Read A Rust Summary, Check Its Typed Members, Then Rebuild It From Python
+const AGGREGATE_SCRIPT: &str = r#"
+import sys
+
+sys.path.insert(0, sys.argv[1])
+import bindings_aggregate as bindings
+
+received = bindings.FixtureAggregateRequest.FromString(sys.stdin.buffer.read())
+assert received.aggregate.WhichOneof("_harmos_variant") == "Percentile"
+assert received.aggregate.Percentile.rank == 95
+assert [item.WhichOneof("_harmos_variant") for item in received.aggregates] == ["Count", "Percentile"]
+built = bindings.FixtureAggregateRequest()
+built.aggregate.Percentile.rank = 95
+built.aggregates.add().Count.SetInParent()
+built.aggregates.add().Percentile.rank = 99
+sys.stdout.buffer.write(built.SerializeToString())
+"#;
+
+// The Generated Python Surface Of A Request Carrying Aggregates
+const AGGREGATE_SNAPSHOT: &str = include_str!("../fixtures/aggregate-bindings.pyi");
 
 /* === Macros === */
 
 /* === Type Aliases === */
 
 /* === Structs === */
+#[harmos_contract::message(harmos_path = ::harmos_contract)]
+#[derive(PartialEq)]
+struct Summary {
+    aggregate: Aggregate,
+    aggregates: Vec<Aggregate>,
+}
 
 /* === Enums === */
 
@@ -170,6 +197,43 @@ pub fn check() {
         assert_eq!(decoded.values, value.values);
         run(&script, target.path(), &alpha, &beta, true);
     });
+    scenario_runtime::check("python_bindings_aggregate_typed", || {
+        let template = Contracts::of::<Routes>().unwrap()[0].clone();
+        let schema =
+            Schema::from_declaration(Summary::DEFINITION, &SchemaSettings::default()).unwrap();
+        let summary = contract(&template, "fixture.aggregate", "Aggregate", schema);
+        let artifacts = Artifacts::new([&summary]).unwrap();
+        let target = tempfile::tempdir().unwrap();
+        let package = target.path().join("package");
+        python::export(
+            &artifacts,
+            &settings("bindings_aggregate"),
+            &package,
+            &protoc(),
+        )
+        .unwrap();
+        let module = package.join("src/bindings_aggregate");
+        let messages = module.join("_wire/test/v1/ShapesMessages/Aggregate/messages_pb2.pyi");
+        let generated = format!(
+            "{}\n{}",
+            fs::read_to_string(module.join("__init__.pyi")).unwrap(),
+            fs::read_to_string(messages).unwrap()
+        );
+        assert_eq!(generated, AGGREGATE_SNAPSHOT, "{generated}");
+        // Python Selects The Percentile Member And Its Rank As Typed Fields
+        let value = Summary {
+            aggregate: Aggregate::Percentile(95),
+            aggregates: vec![Aggregate::Count, Aggregate::Percentile(99)],
+        };
+        let script = target.path().join("aggregate.py");
+        fs::write(&script, AGGREGATE_SCRIPT).unwrap();
+        let output = python(
+            &script,
+            &package.join("src"),
+            &Protobuf::encode_to_vec(&value),
+        );
+        assert!(<Summary as Protobuf>::decode(&output).unwrap() == value);
+    });
 }
 
 /* === Private Functions === */
@@ -226,6 +290,32 @@ fn contract(template: &Contract, id: &str, method: &'static str, mut schema: Sch
         .unwrap()
         .with_grpc(Some(Grpc::new("test.v1", "Shapes", method)))
         .unwrap()
+}
+
+fn python(script: &Path, source: &Path, input: &[u8]) -> Vec<u8> {
+    use std::io::Write;
+    let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let interpreter = repository.join(if cfg!(windows) {
+        ".venv/Scripts/python.exe"
+    } else {
+        ".venv/bin/python"
+    });
+    let mut child = Command::new(interpreter)
+        .arg(script)
+        .arg(source)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(input).unwrap();
+    let result = child.wait_with_output().unwrap();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    result.stdout
 }
 
 fn protoc() -> PathBuf {
