@@ -393,6 +393,12 @@ name = "streams"
 path = "benches/streams/main.rs"
 harness = false
 
+[[bench]]
+name = "sidecar"
+path = "benches/sidecar/main.rs"
+harness = false
+required-features = ["plugin-sidecar"]
+
 # === Example Targets ===
 
 # === Workspace Lints ===

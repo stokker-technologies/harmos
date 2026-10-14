@@ -398,6 +398,7 @@ impl Operation for Echoing {
                         published_unix_micros: None,
                         context: None,
                         payload: ().encode_to_vec(),
+                        following: Vec::new(),
                     })
                     .await
                     .expect_err("co-linked declarations grant nothing");

@@ -118,6 +118,13 @@ Use the original runtime and resource owners. Consult the relevant section only;
   cancel, release, detach) on the existing child call path. Guests submit unary
   children only; streaming child sessions stay in process. In-process inherent
   `submit`/`submit_as` admit synchronously; the trait forms are asynchronous.
+- A sidecar `Publisher` publishes an ordered batch on one stream with
+  `publish_batch_on_context::<S>(&rows, context)` (or `publish_batch_on`): each
+  `host.publish` call carries the longest run of rows that fits the frame and a
+  1 MiB batch budget, with contiguous sequences and per-row admission. Rows
+  before a refused row stay published; the refused row and the rest of its call
+  count as missed. `publish_on_context` is the one-row batch. Coalesce
+  high-rate rows per tick rather than overlapping calls, which do not order.
 - Declare `input = Item` and/or `output = Item` explicitly. Context has no optional
   stream handles. Caller APIs are `upload`, `download`, and `exchange`, with
   `send`, `next`, synchronous `finish_input`, `split`, `join`, and

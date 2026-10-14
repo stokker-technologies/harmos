@@ -152,10 +152,11 @@ impl Operation for Publish {
             if row.sequence.is_some()
                 || row.published_unix_micros.is_some()
                 || row.context.is_some()
+                || !row.following.is_empty()
             {
                 return Err(harmos::Error::InvalidInput {
                     field: "guest publication",
-                    reason: "sequence and publication metadata are host-derived",
+                    reason: "sequence, batch and publication metadata are host-derived",
                 });
             }
             let lease = scope.publication(&row.stream, row.schema)?;

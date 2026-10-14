@@ -104,6 +104,7 @@ pub trait Host: Send + Sync + Sized {
             published_unix_micros: None,
             context: None,
             payload: row.encode_to_vec(),
+            following: Vec::new(),
         };
         let published = self.call_as::<Publish>(publication);
         async move {

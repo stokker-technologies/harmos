@@ -215,39 +215,71 @@ impl Endpoint {
             });
         }
         let lease = scope.publication_in(context, &request.stream, request.schema)?;
-        let sequence = request.sequence.ok_or(crate::Error::InvalidInput {
+        let first = request.sequence.ok_or(crate::Error::InvalidInput {
             field: "native publication",
             reason: "the original producer sequence is required",
         })?;
-        let receipt = {
+        let rows = 1 + request.following.len() as u64;
+        first
+            .checked_add(rows - 1)
+            .ok_or(crate::Error::InvalidInput {
+                field: "native publication",
+                reason: "the producer sequence must not overflow",
+            })?;
+        let head = (
+            std::mem::take(&mut request.payload),
+            request.published_unix_micros,
+        );
+        let following = std::mem::take(&mut request.following)
+            .into_iter()
+            .map(|row| (row.payload, row.published_unix_micros));
+        let mut batch: Vec<_> = std::iter::once(head)
+            .chain(following)
+            .map(
+                |(payload, published_unix_micros)| crate::streams::PublicationRow {
+                    payload,
+                    published_unix_micros,
+                    context: None,
+                },
+            )
+            .collect();
+        // Every Row Carries The Call Context; The Last Row Takes The Original.
+        if let Some((last, rest)) = batch.split_last_mut() {
+            for row in rest {
+                row.context.clone_from(&request.context);
+            }
+            last.context = request.context.take();
+        }
+        let staged = {
             let mut sequences = self
                 .sequences
                 .lock()
                 .expect("native publication sequence poisoned");
             let previous = sequences.get(&request.stream).copied().unwrap_or(0);
-            let missed = sequence
+            let missed = first
                 .checked_sub(previous)
                 .and_then(|advance| advance.checked_sub(1))
                 .ok_or(crate::Error::InvalidInput {
                     field: "native publication",
                     reason: "the producer sequence must strictly advance",
                 })?;
-            let row = crate::streams::PublicationRow {
-                payload: std::mem::take(&mut request.payload),
-                published_unix_micros: request.published_unix_micros,
-                context: request.context.take(),
-            };
-            let receipt = lease
-                .stage_row_in(context, row, sequence, missed)
-                .map_err(|source| crate::Error::OperationFailed {
-                    operation: "host.publish".into(),
-                    source: std::sync::Arc::new(source),
-                })?;
-            sequences.insert(request.stream.clone(), sequence);
-            receipt
+            let staged = lease.stage_rows_in(context, batch, first, missed);
+            // Rows Before A Refused Row Stay Staged; The Rest Count As Missed.
+            if let Some(advanced) = (staged.staged.len() as u64).checked_sub(1) {
+                sequences.insert(request.stream.clone(), first + advanced);
+            }
+            staged
         };
-        permit.send(Arrival::Publication(receipt));
-        Ok(())
+        if !staged.staged.is_empty() {
+            permit.send(Arrival::Publications(staged.staged));
+        }
+        match staged.refused {
+            Some(source) => Err(crate::Error::OperationFailed {
+                operation: "host.publish".into(),
+                source: std::sync::Arc::new(source),
+            }),
+            None => Ok(()),
+        }
     }
 
     pub(crate) fn initialized(&self) -> watch::Receiver<bool> {

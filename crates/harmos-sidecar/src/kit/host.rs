@@ -27,6 +27,8 @@ use harmos_contract::operations::{
 
 /* === Constants === */
 const PENDING_CALLS: usize = 256;
+// One Batched Call Claims No More Host Preparation Than One Maximal Row.
+const PUBLICATION_BATCH_BYTES: usize = 1024 * 1024;
 
 /* === Macros === */
 
@@ -415,9 +417,11 @@ impl Supervisor {
         self.pending.close();
     }
 
+    // Publish rows in order through as few `host.publish` calls as fit the
+    // frame and batch limits; each call awaits its answer before the next.
     pub(super) async fn publication<S>(
         &self,
-        row: &S::Row,
+        rows: &[S::Row],
         context: Option<&str>,
     ) -> Result<(), super::PublishError>
     where
@@ -425,71 +429,117 @@ impl Supervisor {
         S::Row: Message,
     {
         use harmos_contract::operations::host;
+        if rows.is_empty() {
+            return Ok(());
+        }
         if self.operation_context.is_none() && self.generation_context.is_none() {
             return Err(CallError::Unavailable.into());
         }
-        let bytes = self
-            .exchange_with(|id, call| {
-                self.with_publication::<S, _, super::PublishError>(row, context, |request| {
-                    let params = self.child::<host::Publish>(&request, false)?;
-                    let frame = Self::request_frame(id, CHILD_METHOD, params)?;
-                    call.send(Outgoing::Frame(frame));
-                    Ok(())
+        let mut rest = rows;
+        while !rest.is_empty() {
+            let mut sent = 0;
+            let bytes = self
+                .exchange_with(|id, call| {
+                    sent = self.with_publication::<S, super::PublishError>(
+                        rest,
+                        context,
+                        |request| {
+                            let params = self.child::<host::Publish>(&request, false)?;
+                            let frame = Self::request_frame(id, CHILD_METHOD, params)?;
+                            call.send(Outgoing::Frame(frame));
+                            Ok(())
+                        },
+                    )?;
+                    Ok::<(), super::PublishError>(())
                 })
-            })
-            .await?;
-        <() as Message>::decode(bytes.as_slice()).map_err(|source| {
-            CallError::Malformed {
+                .await?;
+            <() as Message>::decode(bytes.as_slice()).map_err(|source| CallError::Malformed {
                 method: host::Publish::ID,
                 message: source.to_string(),
-            }
-            .into()
-        })
+            })?;
+            rest = &rest[sent..];
+        }
+        Ok(())
     }
 
-    fn with_publication<S: crate::StreamSpec, T, E: From<PublicationError>>(
+    // Take the longest leading run of rows that fits one call, reserve its
+    // contiguous sequences and send it under the sequence lock, so frames
+    // leave in sequence order. A row too large on its own still spends its
+    // sequence, exactly as a single-row publication does.
+    fn with_publication<S: crate::StreamSpec, E: From<PublicationError>>(
         &self,
-        row: &S::Row,
+        rows: &[S::Row],
         context: Option<&str>,
-        finish: impl FnOnce(harmos_contract::operations::host::Publication) -> Result<T, E>,
-    ) -> Result<T, E>
+        send: impl FnOnce(harmos_contract::operations::host::Publication) -> Result<(), E>,
+    ) -> Result<usize, E>
     where
         S::Row: Message,
     {
+        use harmos_contract::operations::host;
+        let fits = |body: usize| {
+            Frame::request_payload_encoded_len(host::Publish::ID, body) <= Frame::LIMIT
+        };
         let mut sequences = self
             .sequences
             .lock()
             .expect("the publication sequence lock is healthy");
         let next = sequences.entry(S::ID).or_insert(0);
-        let sequence = next
+        let first = next
             .checked_add(1)
             .ok_or(PublicationError::SequenceExhausted { stream: S::ID })?;
-        *next = sequence;
+        *next = first;
         let published_unix_micros = (self.clock)();
-        let body = crate::wire::publication_encoded_len(
+        let head = crate::wire::publication_encoded_len(
             S::ID,
             S::VERSION,
-            sequence,
-            row.encoded_len(),
+            first,
+            rows[0].encoded_len(),
             published_unix_micros,
             context,
         );
-        let encoded = body;
-        if encoded > Frame::LIMIT {
+        let encoded = |count: usize, following: usize| {
+            head.saturating_add(crate::wire::varint_len(count as u64))
+                .saturating_add(following)
+        };
+        if !fits(encoded(0, 0)) {
             return Err(PublicationError::Oversized {
-                encoded,
+                encoded: encoded(0, 0),
                 limit: Frame::LIMIT,
             }
             .into());
         }
-        finish(harmos_contract::operations::host::Publication {
+        let mut following = 0_usize;
+        let mut taken = 1;
+        for row in &rows[1..] {
+            let grown = following.saturating_add(crate::wire::following_encoded_len(
+                row.encoded_len(),
+                published_unix_micros,
+            ));
+            let total = encoded(taken, grown);
+            if total > PUBLICATION_BATCH_BYTES || !fits(total) || *next == u64::MAX {
+                break;
+            }
+            following = grown;
+            taken += 1;
+            *next += 1;
+        }
+        let rows = &rows[..taken];
+        send(host::Publication {
             stream: S::ID.to_owned(),
             schema: S::VERSION,
-            sequence: Some(sequence),
+            sequence: Some(first),
             published_unix_micros,
             context: context.map(str::to_owned),
-            payload: row.encode_to_vec(),
-        })
+            payload: rows[0].encode_to_vec(),
+            following: rows[1..]
+                .iter()
+                .map(|row| host::FollowingRow {
+                    payload: row.encode_to_vec(),
+                    published_unix_micros,
+                })
+                .collect(),
+        })?;
+        Ok(taken)
     }
 
     pub fn exiting(&self, reason: impl Into<String>) -> bool {

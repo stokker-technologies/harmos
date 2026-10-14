@@ -79,7 +79,7 @@ pub(crate) use staging::Activation;
     feature = "plugin-guest",
     feature = "plugin-sidecar"
 ))]
-pub use staging::StagedPublication;
+pub use staging::{StagedPublication, StagedRows};
 
 pub(crate) use definition::{Refused, Table, Wired};
 pub use demand::Demand;

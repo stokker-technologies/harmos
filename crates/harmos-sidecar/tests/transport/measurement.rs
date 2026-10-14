@@ -348,6 +348,7 @@ mod sdk {
                     });
             });
         }
+        super::super::publication::contract_scenario();
     }
 }
 

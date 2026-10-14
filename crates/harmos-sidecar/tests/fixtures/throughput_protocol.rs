@@ -97,6 +97,9 @@ pub struct Start {
     pub payload_bytes: u32,
 
     pub pace_bytes_per_second: u64,
+
+    // Rows Per `host.publish` Call; Zero And One Publish Row By Row.
+    pub batch: u32,
 }
 
 #[harmos_sidecar::message(harmos_path = ::harmos_sidecar)]
@@ -185,9 +188,10 @@ impl Start {
             || self.payload_bytes > 1024 * 1024
             || u64::from(self.samples) * u64::from(self.payload_bytes) > 8 * 1024 * 1024 * 1024
             || self.pace_bytes_per_second > 4096 * 1024 * 1024
+            || self.batch > 4096
         {
             return Err(harmos_sidecar::Refusal::of(
-                "expected 1..=2000000 samples, 1..=1048576 bytes/sample, at most 8 GiB/case and 4096 MiB/s",
+                "expected 1..=2000000 samples, 1..=1048576 bytes/sample, at most 8 GiB/case, 4096 MiB/s and 4096 rows/call",
             ));
         }
         Ok(())
@@ -385,16 +389,20 @@ async fn publish(
     let mut accepted = 0_u64;
     let mut attempted = 0_u64;
     let publisher = host.publisher::<TransportPlugin>();
+    let batch = vec![sample; start.batch.max(1) as usize];
     while accepted < u64::from(start.samples) {
         if *closing.borrow() {
             return Ok(());
         }
-        attempted += 1;
+        let rows = &batch[..batch
+            .len()
+            .min((u64::from(start.samples) - accepted) as usize)];
+        attempted += rows.len() as u64;
         tokio::select! {
             _ = closing.changed() => return Ok(()),
-            result = publisher.publish_on::<Sample>(&sample) => result.map_err(harmos_sidecar::Refusal::of)?,
+            result = publisher.publish_batch_on::<Sample>(rows) => result.map_err(harmos_sidecar::Refusal::of)?,
         }
-        accepted += 1;
+        accepted += rows.len() as u64;
         tokio::select! {
             _ = closing.changed() => return Ok(()),
             _ = pace(&start, accepted, began) => {}

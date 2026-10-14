@@ -34,6 +34,7 @@ use protocol::{Done, Echo, Sample, Start, TransportPlugin};
 
 /* === Constants === */
 const LATENCY_SAMPLES: u64 = 200;
+const BATCH_ROWS: u32 = 100;
 const CASES: [Case; 4] = [
     Case {
         name: "tiny burst",
@@ -330,6 +331,7 @@ async fn timed_case(
         throughput_case(
             "child process capacity",
             case,
+            1,
             id,
             outgoing,
             incoming,
@@ -364,6 +366,7 @@ async fn measure(label: &str, outgoing: Sender, mut incoming: Receiver) {
         throughput_case(
             label,
             case,
+            1,
             call_id,
             &outgoing,
             &mut incoming,
@@ -371,6 +374,18 @@ async fn measure(label: &str, outgoing: Sender, mut incoming: Receiver) {
         )
         .await;
     }
+    // The Same Rows As Ordered `host.publish` Batches Of 100 Rows Per Call
+    call_id += 1;
+    throughput_case(
+        label,
+        CASES[0],
+        BATCH_ROWS,
+        call_id,
+        &outgoing,
+        &mut incoming,
+        &mut reception,
+    )
+    .await;
 
     call_id += 1;
     latency(label, call_id, &outgoing, &mut incoming).await;
@@ -381,6 +396,7 @@ async fn measure(label: &str, outgoing: Sender, mut incoming: Receiver) {
 async fn throughput_case(
     label: &str,
     case: Case,
+    batch: u32,
     call_id: u64,
     outgoing: &Sender,
     incoming: &mut Receiver,
@@ -392,6 +408,7 @@ async fn throughput_case(
         samples: case.samples,
         payload_bytes: case.payload_bytes,
         pace_bytes_per_second: case.pace_bytes_per_second,
+        batch,
     };
     phase(
         outgoing,
@@ -429,6 +446,7 @@ async fn throughput_case(
         .expect("the publication case is requested");
 
     let mut samples = 0_usize;
+    let mut calls = 0_usize;
     let mut bytes = 0_usize;
     let mut answered = false;
     let mut done = None;
@@ -444,21 +462,31 @@ async fn throughput_case(
                 assert_eq!(call.generation_context, Some([2; 32]));
                 let row = harmos_contract::operations::host::Publication::decode(&call.payload)
                     .expect("typed publication");
+                calls += 1;
                 if row.stream == Done::ID {
                     done = Some(Done::decode(&row.payload).expect("typed completion stream"));
                 } else {
                     assert_eq!(row.stream, Sample::ID);
-                    let publication = harmos_sidecar::Publication {
-                        stream: row.stream,
-                        schema: row.schema,
-                        sequence: row.sequence.expect("native source sequence is explicit"),
-                        published_unix_micros: row.published_unix_micros,
-                        context: row.context,
-                        payload: row.payload,
-                    };
-                    reception.accept(&publication, case.payload_bytes);
-                    samples += 1;
-                    bytes += publication.payload.len();
+                    let first = row.sequence.expect("native source sequence is explicit");
+                    let following = row
+                        .following
+                        .into_iter()
+                        .map(|following| (following.payload, following.published_unix_micros));
+                    let rows =
+                        std::iter::once((row.payload, row.published_unix_micros)).chain(following);
+                    for (sequence, (payload, published_unix_micros)) in (first..).zip(rows) {
+                        let publication = harmos_sidecar::Publication {
+                            stream: row.stream.clone(),
+                            schema: row.schema,
+                            sequence,
+                            published_unix_micros,
+                            context: row.context.clone(),
+                            payload,
+                        };
+                        reception.accept(&publication, case.payload_bytes);
+                        samples += 1;
+                        bytes += publication.payload.len();
+                    }
                 }
                 // This Bench Exercises The Direct Carrier, Not Root Authorization
                 outgoing
@@ -513,9 +541,10 @@ async fn throughput_case(
     assert_eq!(samples, case.samples as usize);
     assert_eq!(done.accepted, u64::from(case.samples));
     eprintln!(
-        "SIDECAR ({label}, {}): {samples} samples, {mib:.2} MiB Postcard payload, \
-         {mib_per_second:.2} encoded MiB/s, {useful_mib_per_second:.2} useful MiB/s, {samples_per_second:.0} samples/s, {rejected} queue rejected attempts in {elapsed:?}",
+        "SIDECAR ({label}, {}, {batch} row(s)/call): {samples} samples, {mib:.2} MiB Postcard payload, \
+         {mib_per_second:.2} encoded MiB/s, {useful_mib_per_second:.2} useful MiB/s, {samples_per_second:.0} samples/s, {rejected} queue rejected attempts in {elapsed:?}; {calls} host.publish calls, {:?}/call",
         case.name,
+        elapsed / u32::try_from(calls.max(1)).unwrap_or(u32::MAX),
     );
     Observation {
         useful_mib_s: useful_mib_per_second,

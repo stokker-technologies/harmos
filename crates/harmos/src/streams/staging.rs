@@ -34,6 +34,13 @@ pub struct StagedPublication {
     pub(super) committed: watch::Receiver<bool>,
 }
 
+// Rows staged before a refusal stay staged; the refusal covers the rest.
+#[derive(Debug)]
+pub struct StagedRows {
+    pub staged: Vec<StagedPublication>,
+    pub refused: Option<StreamPublicationError>,
+}
+
 pub(crate) struct Activation {
     table: Weak<Table>,
     state: Mutex<State>,
@@ -90,6 +97,29 @@ impl StagedPublication {
                 .changed()
                 .await
                 .map_err(|_| StreamPublicationError::Revoked)?;
+        }
+    }
+}
+
+impl StagedRows {
+    pub(super) fn staged(staged: Vec<StagedPublication>) -> Self {
+        Self {
+            staged,
+            refused: None,
+        }
+    }
+
+    pub(super) fn refused(staged: Vec<StagedPublication>, refused: StreamPublicationError) -> Self {
+        Self {
+            staged,
+            refused: Some(refused),
+        }
+    }
+
+    pub(super) fn single(mut self) -> Result<StagedPublication, StreamPublicationError> {
+        match self.refused {
+            Some(error) => Err(error),
+            None => Ok(self.staged.pop().expect("one staged row")),
         }
     }
 }

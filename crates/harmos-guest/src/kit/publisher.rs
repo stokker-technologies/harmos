@@ -82,6 +82,7 @@ impl<P: Declared> Publisher<P> {
             published_unix_micros: None,
             context: None,
             payload: row.encode_to_vec(),
+            following: Vec::new(),
         };
         let published = Host::call_as::<host::Publish>(&self.context, request).await?;
         drop(published);

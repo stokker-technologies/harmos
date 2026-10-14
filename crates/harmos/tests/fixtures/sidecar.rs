@@ -311,6 +311,7 @@ impl Operation for Echoing {
                         published_unix_micros: None,
                         context: None,
                         payload: harmos::Message::encode_to_vec(&linked::Foreign { value: 1 }),
+                        following: Vec::new(),
                     },
                 )
                 .await

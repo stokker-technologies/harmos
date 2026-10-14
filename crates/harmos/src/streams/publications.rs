@@ -331,7 +331,24 @@ impl PublicationLease {
         wire_sequence: u64,
         missed: u64,
     ) -> Result<super::StagedPublication, StreamPublicationError> {
-        self.stage_sequence(row, Some(wire_sequence), missed, None)
+        self.stage_sequence(vec![row], Some(wire_sequence), missed, None)
+            .single()
+    }
+
+    // An ordered batch takes contiguous sequences from `first_wire_sequence`;
+    // `missed` applies before the first row only.
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
+    pub fn stage_rows(
+        &self,
+        rows: Vec<PublicationRow>,
+        first_wire_sequence: u64,
+        missed: u64,
+    ) -> super::StagedRows {
+        self.stage_sequence(rows, Some(first_wire_sequence), missed, None)
     }
 
     #[cfg(any(
@@ -344,20 +361,22 @@ impl PublicationLease {
         row: PublicationRow,
         missed: u64,
     ) -> Result<super::StagedPublication, StreamPublicationError> {
-        self.stage_sequence(row, None, missed, None)
+        self.stage_sequence(vec![row], None, missed, None).single()
     }
 
     #[cfg(feature = "plugin-sidecar")]
-    pub(crate) fn stage_row_in(
+    pub(crate) fn stage_rows_in(
         &self,
         context: &crate::operations::Context<'_>,
-        row: PublicationRow,
-        wire_sequence: u64,
+        rows: Vec<PublicationRow>,
+        first_wire_sequence: u64,
         missed: u64,
-    ) -> Result<super::StagedPublication, StreamPublicationError> {
-        self.stage_sequence(row, Some(wire_sequence), missed, Some(context))
+    ) -> super::StagedRows {
+        self.stage_sequence(rows, Some(first_wire_sequence), missed, Some(context))
     }
 
+    // One visibility fence and one scope phase cover the whole batch, so no
+    // reader or commit observes it half staged.
     #[cfg(any(
         feature = "plugin",
         feature = "plugin-guest",
@@ -365,17 +384,14 @@ impl PublicationLease {
     ))]
     fn stage_sequence(
         &self,
-        row: PublicationRow,
+        rows: Vec<PublicationRow>,
         wire_sequence: Option<u64>,
         missed: u64,
         context: Option<&crate::operations::Context<'_>>,
-    ) -> Result<super::StagedPublication, StreamPublicationError> {
-        let staged = self
-            .stream
-            .wired
-            .staged
-            .as_ref()
-            .ok_or(StreamPublicationError::NotReady)?;
+    ) -> super::StagedRows {
+        let Some(staged) = self.stream.wired.staged.as_ref() else {
+            return super::StagedRows::refused(Vec::new(), StreamPublicationError::NotReady);
+        };
         let _visibility = self
             .stream
             .wired
@@ -383,30 +399,52 @@ impl PublicationLease {
             .visibility
             .write()
             .expect("stream visibility poisoned");
-        let (receipt, ready, evicted) = staged.scope.prepare_publication_in(context, |ready| {
+        let mut evicted = Vec::new();
+        let prepared = staged.scope.prepare_publication_in(context, |ready| {
             let activation = staged
                 .activation
                 .upgrade()
                 .ok_or(StreamPublicationError::Revoked)?;
-            let (publication, evicted) = self.admit_locked(row, wire_sequence, missed, ready)?;
-            let receipt = if ready {
-                let (_, committed) = watch::channel(true);
-                super::StagedPublication {
-                    publication,
-                    committed,
-                }
-            } else {
-                activation.push(&self.stream.wired, *self.applied.borrow(), publication)
-            };
-            Ok((receipt, ready, evicted))
-        })?;
+            let mut receipts = Vec::with_capacity(rows.len());
+            for (offset, row) in (0_u64..).zip(rows) {
+                let sequence = match wire_sequence.map(|first| first.checked_add(offset)) {
+                    Some(None) => {
+                        return Ok((receipts, ready, Some(StreamPublicationError::Sequence)));
+                    }
+                    sequence => sequence.flatten(),
+                };
+                let missed = if offset == 0 { missed } else { 0 };
+                let (publication, dropped) = match self.admit_locked(row, sequence, missed, ready) {
+                    Ok(admitted) => admitted,
+                    Err(error) => return Ok((receipts, ready, Some(error))),
+                };
+                evicted.extend(dropped);
+                receipts.push(if ready {
+                    let (_, committed) = watch::channel(true);
+                    super::StagedPublication {
+                        publication,
+                        committed,
+                    }
+                } else {
+                    activation.push(&self.stream.wired, *self.applied.borrow(), publication)
+                });
+            }
+            Ok((receipts, ready, None))
+        });
         drop(_visibility);
         drop(evicted);
-        if ready {
+        let (receipts, ready, refused) = match prepared {
+            Ok(prepared) => prepared,
+            Err(error) => return super::StagedRows::refused(Vec::new(), error),
+        };
+        if ready && !receipts.is_empty() {
             self.stream.wired.window.knock();
             self.stream.wired.window.wake_delivery();
         }
-        Ok(receipt)
+        match refused {
+            Some(error) => super::StagedRows::refused(receipts, error),
+            None => super::StagedRows::staged(receipts),
+        }
     }
 
     fn admit(

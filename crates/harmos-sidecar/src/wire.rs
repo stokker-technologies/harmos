@@ -87,20 +87,26 @@ impl Frame {
     where
         O::Request: Message,
     {
-        if O::ID.len() > Self::LIMIT {
+        Self::request_payload_encoded_len(O::ID, request.encoded_len())
+    }
+
+    // The largest frame carrying an encoded request of `payload` bytes for
+    // `operation`, as a routed call or as a child call.
+    pub fn request_payload_encoded_len(operation: &str, payload: usize) -> usize {
+        if operation.len() > Self::LIMIT {
             return usize::MAX;
         }
-        let payload = binary_payload_growth(request.encoded_len());
+        let payload = binary_payload_growth(payload);
         let prepare = WireCommand::Prepare {
             invocation: u64::MAX,
-            operation: O::ID.to_owned(),
+            operation: operation.to_owned(),
             payload: Vec::new(),
         };
         let child = WireChildCall {
             context: [u8::MAX; 32],
             generation_context: Some([u8::MAX; 32]),
             values: Vec::new(),
-            operation: O::ID.to_owned(),
+            operation: operation.to_owned(),
             payload: Vec::new(),
             submit: true,
         };
@@ -204,6 +210,7 @@ impl Frame {
 }
 
 /* === Public Functions === */
+// Postcard Length Of A Publication Without Its Following Rows Field.
 #[cfg(feature = "kit")]
 pub(crate) fn publication_encoded_len(
     stream: &str,
@@ -216,13 +223,19 @@ pub(crate) fn publication_encoded_len(
     binary_bytes_len(stream.len())
         .saturating_add(varint_len(u64::from(schema)))
         .saturating_add(1 + varint_len(sequence))
-        .saturating_add(
-            1 + published_unix_micros.map_or(0, |value| {
-                varint_len(((value as u64) << 1) ^ ((value >> 63) as u64))
-            }),
-        )
+        .saturating_add(1 + published_unix_micros.map_or(0, zigzag_len))
         .saturating_add(1 + context.map_or(0, |value| binary_bytes_len(value.len())))
         .saturating_add(binary_bytes_len(payload))
+}
+
+// Postcard Length Of One Following Row.
+#[cfg(feature = "kit")]
+pub(crate) fn following_encoded_len(payload: usize, published_unix_micros: Option<i64>) -> usize {
+    binary_bytes_len(payload).saturating_add(1 + published_unix_micros.map_or(0, zigzag_len))
+}
+
+pub(crate) fn varint_len(value: u64) -> usize {
+    ((64 - value.leading_zeros()).max(1) as usize).div_ceil(7)
 }
 
 /* === Private Functions === */
@@ -251,8 +264,9 @@ fn refusal_encoded_len(id: u64, code: i64, message_len: usize) -> usize {
         .saturating_add(binary_bytes_len(message_len))
 }
 
-fn varint_len(value: u64) -> usize {
-    ((64 - value.leading_zeros()).max(1) as usize).div_ceil(7)
+#[cfg(feature = "kit")]
+fn zigzag_len(value: i64) -> usize {
+    varint_len(((value as u64) << 1) ^ ((value >> 63) as u64))
 }
 
 fn binary_bytes_len(length: usize) -> usize {

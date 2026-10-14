@@ -20,8 +20,8 @@ use crate::scenario_runtime;
 // Local Imports
 use harmos_contract::__private::DecodeInput;
 use harmos_contract::operations::host::{
-    EgressRequest, Fetched, Header, Measured, Publication, RecallResponse, Remembered,
-    SurveyResponse,
+    EgressRequest, Fetched, FollowingRow, Header, Measured, Publication, RecallResponse,
+    Remembered, SurveyResponse,
 };
 use harmos_contract::{MemorySize, Protobuf};
 
@@ -47,6 +47,27 @@ struct PreviousPublication {
     context: Option<String>,
     #[prost(bytes = "vec", tag = "6")]
     payload: Vec<u8>,
+}
+
+// A Batch Appends Following Rows As Repeated Tag 7 To The Single-Row Shape
+#[derive(Clone, PartialEq, prost::Message)]
+struct BatchedPublication {
+    #[prost(string, tag = "1")]
+    stream: String,
+    #[prost(uint64, optional, tag = "3")]
+    sequence: Option<u64>,
+    #[prost(bytes = "vec", tag = "6")]
+    payload: Vec<u8>,
+    #[prost(message, repeated, tag = "7")]
+    following: Vec<BatchedRow>,
+}
+
+#[derive(Clone, PartialEq, prost::Message)]
+struct BatchedRow {
+    #[prost(bytes = "vec", tag = "1")]
+    payload: Vec<u8>,
+    #[prost(int64, optional, tag = "2")]
+    published_unix_micros: Option<i64>,
 }
 
 #[derive(Clone, PartialEq, prost::Message)]
@@ -107,6 +128,7 @@ fn contract_scenario() {
                     published_unix_micros: Some(i64::MIN),
                     context: Some(String::new()),
                     payload: vec![0, 128, 255],
+                    following: Vec::new(),
                 },
             ] {
                 let previous = PreviousPublication {
@@ -126,6 +148,39 @@ fn contract_scenario() {
                 );
                 roundtrip(value);
             }
+        });
+    }
+    {
+        scenario_runtime::check("batch_rows_follow", || {
+            let value = Publication {
+                stream: "records".into(),
+                sequence: Some(7),
+                payload: vec![1],
+                following: vec![
+                    FollowingRow {
+                        payload: vec![2],
+                        published_unix_micros: Some(-1),
+                    },
+                    FollowingRow::default(),
+                ],
+                ..Publication::default()
+            };
+            let oracle = BatchedPublication {
+                stream: value.stream.clone(),
+                sequence: value.sequence,
+                payload: value.payload.clone(),
+                following: vec![
+                    BatchedRow {
+                        payload: vec![2],
+                        published_unix_micros: Some(-1),
+                    },
+                    BatchedRow::default(),
+                ],
+            };
+            let bytes = prost::Message::encode_to_vec(&oracle);
+            assert_eq!(value.encode_to_vec(), bytes);
+            assert_eq!(Publication::decode(&bytes).unwrap(), value);
+            roundtrip(value);
         });
     }
     {

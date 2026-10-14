@@ -196,7 +196,7 @@ pub enum SidecarError {
 }
 
 enum Arrival {
-    Publication(crate::streams::StagedPublication),
+    Publications(Vec<crate::streams::StagedPublication>),
     Frame(Frame),
     Binary(harmos_sidecar::transport::Received),
     Reply(Frame, Arc<()>),
@@ -1154,8 +1154,12 @@ where
     async fn absorb_frame(&mut self, arrival: Arrival) -> Absorbed {
         match arrival {
             Arrival::Binary(_) => unreachable!("binary ownership is consumed by absorb"),
-            Arrival::Publication(receipt) => {
-                self.deliveries.push_back(Box::pin(receipt.committed()));
+            Arrival::Publications(receipts) => {
+                self.deliveries.extend(
+                    receipts
+                        .into_iter()
+                        .map(|receipt| Box::pin(receipt.committed()) as _),
+                );
                 Absorbed::Carried
             }
             Arrival::ObserverFailed(error) => Absorbed::Malformed(error),

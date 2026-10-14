@@ -154,6 +154,7 @@ impl Settings {
             samples,
             payload_bytes: size as u32,
             pace_bytes_per_second: rate * MIB as u64,
+            batch: 1,
         };
         start
             .validate()

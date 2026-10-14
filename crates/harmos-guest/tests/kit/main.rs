@@ -194,6 +194,7 @@ impl Stub {
                 );
                 assert_eq!(request.published_unix_micros, None);
                 assert_eq!(request.context, None);
+                assert!(request.following.is_empty());
                 self.calls.push(Call::Publish {
                     stream: request.stream,
                     payload: request.payload,

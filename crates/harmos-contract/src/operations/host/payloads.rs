@@ -263,6 +263,8 @@ repeated!(Remembered);
 
 repeated!(Measured);
 
+repeated!(FollowingRow);
+
 }
 
 payload! { OperationsRequest,
@@ -277,6 +279,8 @@ payload! { OperationsResponse,
     next: Option<String> => (2, Kind::String, Optional),
 }
 
+// One Ordered Batch On One Stream: The Head Row Carries `sequence`; Each
+// Following Row Takes The Next Sequence. A Single Row Has No Following Rows.
 payload! { Publication,
     stream: String => (1, Kind::String, Required),
     schema: u32 => (2, Kind::U32, Required),
@@ -284,6 +288,12 @@ payload! { Publication,
     published_unix_micros: Option<i64> => (4, Kind::I64, Optional),
     context: Option<String> => (5, Kind::String, Optional),
     payload: Vec<u8> => (6, Kind::Bytes, Required),
+    following: Vec<FollowingRow> => (7, Kind::Message { definition: FollowingRow::DEFINITION }, Repeated),
+}
+
+payload! { FollowingRow,
+    payload: Vec<u8> => (1, Kind::Bytes, Required),
+    published_unix_micros: Option<i64> => (2, Kind::I64, Optional),
 }
 
 payload! { RecordRequest,

@@ -86,13 +86,34 @@ impl<P: Declared> Publisher<P> {
     where
         S::Row: Message,
     {
+        self.publish_batch_on_context::<S>(std::slice::from_ref(row), context)
+            .await
+    }
+
+    pub async fn publish_batch_on<S: StreamSpec>(&self, rows: &[S::Row]) -> Result<(), PublishError>
+    where
+        S::Row: Message,
+    {
+        self.publish_batch_on_context::<S>(rows, None).await
+    }
+
+    // Publish rows in order with contiguous sequences, as one `host.publish`
+    // call where they fit. Rows before a refused row stay published.
+    pub async fn publish_batch_on_context<S: StreamSpec>(
+        &self,
+        rows: &[S::Row],
+        context: Option<&str>,
+    ) -> Result<(), PublishError>
+    where
+        S::Row: Message,
+    {
         if !P::STREAMS
             .iter()
             .any(|entry| entry.id == S::ID && entry.schema == S::VERSION)
         {
             return Err(PublicationError::Undeclared { stream: S::ID }.into());
         }
-        self.supervisor.publication::<S>(row, context).await
+        self.supervisor.publication::<S>(rows, context).await
     }
 }
 

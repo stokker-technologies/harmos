@@ -80,6 +80,16 @@ struct Twins {
     resources: Arc<()>,
 }
 
+#[harmos::stream(id = "batches.rows", window = 16, row = support::Pulse)]
+struct BatchedRows;
+
+#[harmos::stream(id = "batches.raw", window = 16, row = support::Pulse)]
+struct RawRows;
+
+struct Batches {
+    resources: Arc<()>,
+}
+
 #[derive(Clone, Default, serde::Deserialize)]
 struct ObserverCounts {
     #[serde(skip)]
@@ -356,6 +366,115 @@ impl harmos::Plugin for Twins {
             .publish_on_context::<Left>(&support::pulse(11), Some("execution-b"))
             .await
             .map_err(harmos_sidecar::Refusal::of)?;
+        Ok(())
+    }
+    fn resources(&self) -> Arc<()> {
+        self.resources.clone()
+    }
+    fn bind_operations(
+        &self,
+        _: &mut harmos::operations::WireTable<Self::Context>,
+    ) -> Result<(), harmos::operations::ServingError> {
+        Ok(())
+    }
+    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+impl harmos::operations::lifecycle::Policy for Batches {
+    const INITIALIZATION_POLICY: harmos::operations::OperationPolicy = Twins::INITIALIZATION_POLICY;
+    const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
+}
+
+#[harmos::plugin(description = "Publishes Ordered Row Batches.", id = "batches", provides = (), requires(harmos::operations::host::Publish), observers = (), streams(BatchedRows, RawRows))]
+impl harmos::Plugin for Batches {
+    type Config = ();
+    type Context = harmos_sidecar::Supervisor;
+    type Resources = ();
+    type Error = harmos_sidecar::Refusal;
+    fn prepare(_: ()) -> Result<Self, Self::Error> {
+        Ok(Self {
+            resources: Arc::new(()),
+        })
+    }
+    async fn initialize(&mut self, context: &Self::Context) -> Result<(), Self::Error> {
+        let publisher = context.publisher::<Self>();
+        let pulses = |samples: std::ops::RangeInclusive<u64>| -> Vec<_> {
+            samples.map(support::pulse).collect()
+        };
+        publisher
+            .publish_batch_on_context::<BatchedRows>(&pulses(1..=3), Some("execution-a"))
+            .await
+            .map_err(harmos_sidecar::Refusal::of)?;
+        publisher
+            .publish_on::<BatchedRows>(&support::pulse(4))
+            .await
+            .map_err(harmos_sidecar::Refusal::of)?;
+        publisher
+            .publish_batch_on::<BatchedRows>(&[])
+            .await
+            .map_err(harmos_sidecar::Refusal::of)?;
+        publisher
+            .publish_batch_on_context::<BatchedRows>(&pulses(5..=6), Some("execution-b"))
+            .await
+            .map_err(harmos_sidecar::Refusal::of)?;
+        let undeclared = publisher.publish_batch_on::<Left>(&pulses(1..=2)).await;
+        if !matches!(
+            undeclared,
+            Err(harmos_sidecar::PublishError::Publication(
+                harmos_sidecar::PublicationError::Undeclared {
+                    stream: "twins.left"
+                }
+            ))
+        ) {
+            return Err(harmos_sidecar::Refusal::of(
+                "undeclared batch was not refused",
+            ));
+        }
+        // A Refused Row Ends Its Batch; The Rows Before It Stay Published.
+        let raw = |sequence: u64, following: Vec<Vec<u8>>| harmos::operations::host::Publication {
+            stream: <RawRows as harmos::StreamSpec>::ID.to_owned(),
+            schema: 1,
+            sequence: Some(sequence),
+            published_unix_micros: None,
+            context: None,
+            payload: harmos::Message::encode_to_vec(&support::pulse(sequence)),
+            following: following
+                .into_iter()
+                .map(|payload| harmos::operations::host::FollowingRow {
+                    payload,
+                    published_unix_micros: None,
+                })
+                .collect(),
+        };
+        let refused = harmos::operations::Host::call_as::<harmos::operations::host::Publish>(
+            context,
+            raw(
+                1,
+                vec![
+                    harmos::Message::encode_to_vec(&support::pulse(2)),
+                    vec![0xff; 3],
+                    harmos::Message::encode_to_vec(&support::pulse(4)),
+                ],
+            ),
+        )
+        .await;
+        if refused.is_ok() {
+            return Err(harmos_sidecar::Refusal::of(
+                "a malformed batch row was admitted",
+            ));
+        }
+        // Only The Staged Prefix Advanced The Producer Sequence.
+        harmos::operations::Host::call_as::<harmos::operations::host::Publish>(
+            context,
+            raw(3, Vec::new()),
+        )
+        .await
+        .map_err(harmos_sidecar::Refusal::of)?;
         Ok(())
     }
     fn resources(&self) -> Arc<()> {
@@ -876,6 +995,62 @@ pub(super) fn contract_scenario() {
     fixture.runtime.stop().await.unwrap();
 
 });
+        });
+    }
+    {
+        scenario_runtime::check("batches_keep_order", || {
+            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
+            scenario_executor
+                .enable_all()
+                .build()
+                .expect("scenario runtime is valid")
+                .block_on(async {
+                    let capacity = std::num::NonZeroUsize::new(2).unwrap();
+                    let source = harmos_sidecar::PluginNative::<Batches>::new(capacity).unwrap();
+                    let mut fixture = Managed::attach(
+                        source,
+                        serde_json::to_vec(&()).unwrap(),
+                        Lanes::NativeOpen,
+                        capacity,
+                        vec![],
+                        std::convert::identity,
+                    )
+                    .await;
+                    fixture.publication().unwrap();
+                    fixture.initialize().await.unwrap();
+                    ready(fixture.ready().clone()).await;
+                    fixture.shutdown().await.unwrap();
+
+                    let rows = |id: &str| {
+                        let stream = fixture.runtime.streams.publication(id, 1).unwrap();
+                        async move {
+                            stream
+                                .query(..)
+                                .await
+                                .unwrap()
+                                .map(|row| {
+                                    (
+                                        support::Pulse::decode(row.value.payload.as_slice())
+                                            .unwrap()
+                                            .sample,
+                                        row.value.context.clone(),
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                        }
+                    };
+                    let a = || Some("execution-a".to_owned());
+                    let b = || Some("execution-b".to_owned());
+                    assert_eq!(
+                        rows("batches.rows").await,
+                        vec![(1, a()), (2, a()), (3, a()), (4, None), (5, b()), (6, b())]
+                    );
+                    assert_eq!(
+                        rows("batches.raw").await,
+                        vec![(1, None), (2, None), (3, None)]
+                    );
+                    fixture.runtime.stop().await.unwrap();
+                });
         });
     }
     {
