@@ -173,6 +173,12 @@ attribute belongs on its implementation. Catalog-level composition remains on
 the catalog. Rust helper attributes for lane/default or nested selection do not
 declare operation metadata.
 
+- Catalog variants are grouped under `// <Group> Operations` comment lines
+  (`// Navigation Operations`, `// Measurement Operations`) with a blank line
+  between groups, and each variant is named after the operation type it wraps.
+  Consumers' catalogs (Dokime's `Required`, `Subscriptions`, `Streams`,
+  `Prompts`) follow the same grouping.
+
 ## gRPC Composition And Discovery
 
 - Harmos serves no built-in operation by default. Register
