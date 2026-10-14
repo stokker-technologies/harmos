@@ -182,7 +182,7 @@ impl Host for Supervisor {
     where
         S::Row: Message,
     {
-        self.publication::<S>(std::slice::from_ref(row), None)
+        self.publication::<S>(std::slice::from_ref(row), &[self.now()], None)
             .await
             .map_err(|error| match error {
                 super::PublishError::Publication(error) => CallError::Publication(error),

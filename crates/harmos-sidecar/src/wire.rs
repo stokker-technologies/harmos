@@ -230,8 +230,8 @@ pub(crate) fn publication_encoded_len(
 
 // Postcard Length Of One Following Row.
 #[cfg(feature = "kit")]
-pub(crate) fn following_encoded_len(payload: usize, published_unix_micros: Option<i64>) -> usize {
-    binary_bytes_len(payload).saturating_add(1 + published_unix_micros.map_or(0, zigzag_len))
+pub(crate) fn following_encoded_len(payload: usize, published_delta_micros: Option<i64>) -> usize {
+    binary_bytes_len(payload).saturating_add(1 + published_delta_micros.map_or(0, zigzag_len))
 }
 
 pub(crate) fn varint_len(value: u64) -> usize {

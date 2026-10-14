@@ -417,11 +417,22 @@ impl Supervisor {
         self.pending.close();
     }
 
+    // The kit clock that stamps rows when they are produced.
+    pub(super) fn clock(&self) -> fn() -> Option<i64> {
+        self.clock
+    }
+
+    pub(super) fn now(&self) -> Option<i64> {
+        (self.clock)()
+    }
+
     // Publish rows in order through as few `host.publish` calls as fit the
     // frame and batch limits; each call awaits its answer before the next.
+    // `stamps[i]` is the production time of `rows[i]`.
     pub(super) async fn publication<S>(
         &self,
         rows: &[S::Row],
+        stamps: &[Option<i64>],
         context: Option<&str>,
     ) -> Result<(), super::PublishError>
     where
@@ -429,19 +440,21 @@ impl Supervisor {
         S::Row: Message,
     {
         use harmos_contract::operations::host;
+        debug_assert_eq!(rows.len(), stamps.len());
         if rows.is_empty() {
             return Ok(());
         }
         if self.operation_context.is_none() && self.generation_context.is_none() {
             return Err(CallError::Unavailable.into());
         }
-        let mut rest = rows;
-        while !rest.is_empty() {
+        let mut rest = (rows, stamps);
+        while !rest.0.is_empty() {
             let mut sent = 0;
             let bytes = self
                 .exchange_with(|id, call| {
                     sent = self.with_publication::<S, super::PublishError>(
-                        rest,
+                        rest.0,
+                        rest.1,
                         context,
                         |request| {
                             let params = self.child::<host::Publish>(&request, false)?;
@@ -457,7 +470,7 @@ impl Supervisor {
                 method: host::Publish::ID,
                 message: source.to_string(),
             })?;
-            rest = &rest[sent..];
+            rest = (&rest.0[sent..], &rest.1[sent..]);
         }
         Ok(())
     }
@@ -465,10 +478,13 @@ impl Supervisor {
     // Take the longest leading run of rows that fits one call, reserve its
     // contiguous sequences and send it under the sequence lock, so frames
     // leave in sequence order. A row too large on its own still spends its
-    // sequence, exactly as a single-row publication does.
+    // sequence, exactly as a single-row publication does. The head carries
+    // its stamp; each following row carries its delta from its predecessor,
+    // and a stamp no delta can express starts the next call.
     fn with_publication<S: crate::StreamSpec, E: From<PublicationError>>(
         &self,
         rows: &[S::Row],
+        stamps: &[Option<i64>],
         context: Option<&str>,
         send: impl FnOnce(harmos_contract::operations::host::Publication) -> Result<(), E>,
     ) -> Result<usize, E>
@@ -488,7 +504,7 @@ impl Supervisor {
             .checked_add(1)
             .ok_or(PublicationError::SequenceExhausted { stream: S::ID })?;
         *next = first;
-        let published_unix_micros = (self.clock)();
+        let published_unix_micros = stamps[0];
         let head = crate::wire::publication_encoded_len(
             S::ID,
             S::VERSION,
@@ -509,21 +525,27 @@ impl Supervisor {
             .into());
         }
         let mut following = 0_usize;
-        let mut taken = 1;
-        for row in &rows[1..] {
-            let grown = following.saturating_add(crate::wire::following_encoded_len(
-                row.encoded_len(),
-                published_unix_micros,
-            ));
-            let total = encoded(taken, grown);
+        let mut deltas = Vec::with_capacity(rows.len() - 1);
+        for (row, pair) in rows[1..].iter().zip(stamps.windows(2)) {
+            let delta = match (pair[0], pair[1]) {
+                (_, None) => None,
+                (Some(previous), Some(stamp)) => match stamp.checked_sub(previous) {
+                    Some(delta) => Some(delta),
+                    None => break,
+                },
+                (None, Some(_)) => break,
+            };
+            let grown = following
+                .saturating_add(crate::wire::following_encoded_len(row.encoded_len(), delta));
+            let total = encoded(deltas.len() + 1, grown);
             if total > PUBLICATION_BATCH_BYTES || !fits(total) || *next == u64::MAX {
                 break;
             }
             following = grown;
-            taken += 1;
+            deltas.push(delta);
             *next += 1;
         }
-        let rows = &rows[..taken];
+        let taken = deltas.len() + 1;
         send(host::Publication {
             stream: S::ID.to_owned(),
             schema: S::VERSION,
@@ -531,11 +553,12 @@ impl Supervisor {
             published_unix_micros,
             context: context.map(str::to_owned),
             payload: rows[0].encode_to_vec(),
-            following: rows[1..]
+            following: rows[1..taken]
                 .iter()
-                .map(|row| host::FollowingRow {
+                .zip(deltas)
+                .map(|(row, published_delta_micros)| host::FollowingRow {
                     payload: row.encode_to_vec(),
-                    published_unix_micros,
+                    published_delta_micros,
                 })
                 .collect(),
         })?;

@@ -197,11 +197,13 @@ async fn publish(
                 payload_bytes as usize
             );
         }
+        // Every Row Carries Its Own Production Stamp As A Forward Delta
+        assert!(publication.published_unix_micros.is_some());
         assert!(
             publication
                 .following
                 .iter()
-                .all(|row| row.published_unix_micros == publication.published_unix_micros)
+                .all(|row| row.published_delta_micros.is_some_and(|delta| delta >= 0))
         );
         calls.push(Call {
             first: publication.sequence.unwrap(),

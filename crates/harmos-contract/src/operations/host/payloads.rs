@@ -291,9 +291,12 @@ payload! { Publication,
     following: Vec<FollowingRow> => (7, Kind::Message { definition: FollowingRow::DEFINITION }, Repeated),
 }
 
+// A Following Row's Stamp Is Its Signed Offset From The Preceding Row's
+// Stamp, So A Steady Series Costs A Short Varint Per Row. It Is Present
+// Exactly When The Row Is Stamped, And Requires A Stamped Predecessor.
 payload! { FollowingRow,
     payload: Vec<u8> => (1, Kind::Bytes, Required),
-    published_unix_micros: Option<i64> => (2, Kind::I64, Optional),
+    published_delta_micros: Option<i64> => (2, Kind::I64, Optional),
 }
 
 payload! { RecordRequest,

@@ -92,6 +92,8 @@ pub enum StreamPublicationError {
     Capacity,
     #[error("the publication sequence is invalid or exhausted")]
     Sequence,
+    #[error("a batched row is stamped earlier than the row before it")]
+    Stamp,
     #[error("the plugin activation has not committed")]
     NotReady,
     #[error(transparent)]
@@ -406,6 +408,7 @@ impl PublicationLease {
                 .upgrade()
                 .ok_or(StreamPublicationError::Revoked)?;
             let mut receipts = Vec::with_capacity(rows.len());
+            let mut stamped = None;
             for (offset, row) in (0_u64..).zip(rows) {
                 let sequence = match wire_sequence.map(|first| first.checked_add(offset)) {
                     Some(None) => {
@@ -413,6 +416,13 @@ impl PublicationLease {
                     }
                     sequence => sequence.flatten(),
                 };
+                // Stamps Within One Batch Never Go Back
+                if let Some(stamp) = row.published_unix_micros {
+                    if stamped.is_some_and(|previous| stamp < previous) {
+                        return Ok((receipts, ready, Some(StreamPublicationError::Stamp)));
+                    }
+                    stamped = Some(stamp);
+                }
                 let missed = if offset == 0 { missed } else { 0 };
                 let (publication, dropped) = match self.admit_locked(row, sequence, missed, ready) {
                     Ok(admitted) => admitted,

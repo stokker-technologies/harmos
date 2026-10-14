@@ -26,6 +26,8 @@ use harmos_contract::plugin::Declared;
 use harmos_sidecar::{Attach, ObserverContext};
 
 /* === Constants === */
+// 2025-10-09 Around 08:53 UTC In Microseconds
+const TIMED_BASE: i64 = 1_760_000_000_000_000;
 const TICKING_DEMAND: harmos_sidecar::DemandKey =
     harmos_sidecar::DemandKey::new("ticking", "pulse");
 static NEXT_GATE_SEED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
@@ -85,6 +87,15 @@ struct BatchedRows;
 
 #[harmos::stream(id = "batches.raw", window = 16, row = support::Pulse)]
 struct RawRows;
+
+#[harmos::stream(id = "batches.timed", window = 1024, row = support::Pulse)]
+struct TimedRows;
+
+#[harmos::stream(id = "batches.clocked", window = 1024, row = support::Pulse)]
+struct ClockedRows;
+
+#[harmos::stream(id = "batches.stamped", window = 16, row = support::Pulse)]
+struct StampedRows;
 
 struct Batches {
     resources: Arc<()>,
@@ -390,7 +401,7 @@ impl harmos::operations::lifecycle::Policy for Batches {
     const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos::plugin(description = "Publishes Ordered Row Batches.", id = "batches", provides = (), requires(harmos::operations::host::Publish), observers = (), streams(BatchedRows, RawRows))]
+#[harmos::plugin(description = "Publishes Ordered Row Batches.", id = "batches", provides = (), requires(harmos::operations::host::Publish), observers = (), streams(BatchedRows, RawRows, TimedRows, ClockedRows, StampedRows))]
 impl harmos::Plugin for Batches {
     type Config = ();
     type Context = harmos_sidecar::Supervisor;
@@ -403,8 +414,12 @@ impl harmos::Plugin for Batches {
     }
     async fn initialize(&mut self, context: &Self::Context) -> Result<(), Self::Error> {
         let publisher = context.publisher::<Self>();
-        let pulses = |samples: std::ops::RangeInclusive<u64>| -> Vec<_> {
-            samples.map(support::pulse).collect()
+        let pulses = |samples: std::ops::RangeInclusive<u64>| {
+            let mut batch = publisher.batch::<BatchedRows>();
+            for sample in samples {
+                batch.push(support::pulse(sample));
+            }
+            batch
         };
         publisher
             .publish_batch_on_context::<BatchedRows>(&pulses(1..=3), Some("execution-a"))
@@ -415,14 +430,16 @@ impl harmos::Plugin for Batches {
             .await
             .map_err(harmos_sidecar::Refusal::of)?;
         publisher
-            .publish_batch_on::<BatchedRows>(&[])
+            .publish_batch_on::<BatchedRows>(&publisher.batch())
             .await
             .map_err(harmos_sidecar::Refusal::of)?;
         publisher
             .publish_batch_on_context::<BatchedRows>(&pulses(5..=6), Some("execution-b"))
             .await
             .map_err(harmos_sidecar::Refusal::of)?;
-        let undeclared = publisher.publish_batch_on::<Left>(&pulses(1..=2)).await;
+        let mut undeclared = publisher.batch::<Left>();
+        undeclared.push(support::pulse(1));
+        let undeclared = publisher.publish_batch_on::<Left>(&undeclared).await;
         if !matches!(
             undeclared,
             Err(harmos_sidecar::PublishError::Publication(
@@ -435,33 +452,59 @@ impl harmos::Plugin for Batches {
                 "undeclared batch was not refused",
             ));
         }
+        // Explicit Stamps: 100 Rows A Millisecond Apart Over 100 ms
+        let mut timed = publisher.batch::<TimedRows>();
+        for sample in 0..100 {
+            timed.push_at(support::pulse(sample), TIMED_BASE + 1_000 * sample as i64);
+        }
+        publisher
+            .publish_batch_on::<TimedRows>(&timed)
+            .await
+            .map_err(harmos_sidecar::Refusal::of)?;
+        // Kit Stamps: Each Row Carries The Time It Was Pushed, Not Sent
+        let mut clocked = publisher.batch::<ClockedRows>();
+        for sample in 0..100 {
+            clocked.push(support::pulse(sample));
+            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+        }
+        publisher
+            .publish_batch_on::<ClockedRows>(&clocked)
+            .await
+            .map_err(harmos_sidecar::Refusal::of)?;
         // A Refused Row Ends Its Batch; The Rows Before It Stay Published.
-        let raw = |sequence: u64, following: Vec<Vec<u8>>| harmos::operations::host::Publication {
-            stream: <RawRows as harmos::StreamSpec>::ID.to_owned(),
-            schema: 1,
-            sequence: Some(sequence),
-            published_unix_micros: None,
-            context: None,
-            payload: harmos::Message::encode_to_vec(&support::pulse(sequence)),
-            following: following
-                .into_iter()
-                .map(|payload| harmos::operations::host::FollowingRow {
-                    payload,
-                    published_unix_micros: None,
-                })
-                .collect(),
+        let raw = |stream: &str,
+                   sequence: u64,
+                   published_unix_micros: Option<i64>,
+                   following: Vec<(Vec<u8>, Option<i64>)>| {
+            harmos::operations::host::Publication {
+                stream: stream.to_owned(),
+                schema: 1,
+                sequence: Some(sequence),
+                published_unix_micros,
+                context: None,
+                payload: harmos::Message::encode_to_vec(&support::pulse(sequence)),
+                following: following
+                    .into_iter()
+                    .map(|(payload, published_delta_micros)| {
+                        harmos::operations::host::FollowingRow {
+                            payload,
+                            published_delta_micros,
+                        }
+                    })
+                    .collect(),
+            }
         };
-        let refused = harmos::operations::Host::call_as::<harmos::operations::host::Publish>(
-            context,
-            raw(
-                1,
-                vec![
-                    harmos::Message::encode_to_vec(&support::pulse(2)),
-                    vec![0xff; 3],
-                    harmos::Message::encode_to_vec(&support::pulse(4)),
-                ],
-            ),
-        )
+        let pulse = |sample: u64| harmos::Message::encode_to_vec(&support::pulse(sample));
+        let publish = |request| {
+            harmos::operations::Host::call_as::<harmos::operations::host::Publish>(context, request)
+        };
+        let raw_id = <RawRows as harmos::StreamSpec>::ID;
+        let refused = publish(raw(
+            raw_id,
+            1,
+            None,
+            vec![(pulse(2), None), (vec![0xff; 3], None), (pulse(4), None)],
+        ))
         .await;
         if refused.is_ok() {
             return Err(harmos_sidecar::Refusal::of(
@@ -469,12 +512,39 @@ impl harmos::Plugin for Batches {
             ));
         }
         // Only The Staged Prefix Advanced The Producer Sequence.
-        harmos::operations::Host::call_as::<harmos::operations::host::Publish>(
-            context,
-            raw(3, Vec::new()),
-        )
-        .await
-        .map_err(harmos_sidecar::Refusal::of)?;
+        publish(raw(raw_id, 3, None, Vec::new()))
+            .await
+            .map_err(harmos_sidecar::Refusal::of)?;
+        // A Delta Without A Stamped Predecessor Refuses The Whole Call
+        let stamped_id = <StampedRows as harmos::StreamSpec>::ID;
+        if publish(raw(stamped_id, 1, None, vec![(pulse(2), Some(1_000))]))
+            .await
+            .is_ok()
+        {
+            return Err(harmos_sidecar::Refusal::of(
+                "a delta without a base was admitted",
+            ));
+        }
+        // A Row Stamped Before Its Predecessor Is Refused At That Row
+        let backwards = raw(
+            stamped_id,
+            1,
+            Some(TIMED_BASE),
+            vec![
+                (pulse(2), Some(1_000)),
+                (pulse(3), Some(0)),
+                (pulse(4), Some(-1)),
+                (pulse(5), Some(1_000)),
+            ],
+        );
+        if publish(backwards).await.is_ok() {
+            return Err(harmos_sidecar::Refusal::of(
+                "a backwards batch row was admitted",
+            ));
+        }
+        publish(raw(stamped_id, 4, Some(TIMED_BASE), Vec::new()))
+            .await
+            .map_err(harmos_sidecar::Refusal::of)?;
         Ok(())
     }
     fn resources(&self) -> Arc<()> {
@@ -1007,15 +1077,32 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let capacity = std::num::NonZeroUsize::new(2).unwrap();
                     let source = harmos_sidecar::PluginNative::<Batches>::new(capacity).unwrap();
-                    let mut fixture = Managed::attach(
+                    // A Decoded 100-Row Batch Outgrows The Usual 4 KiB Preparation Budget
+                    let runtime = assembly()
+                        .register(Lanes::catalog())
+                        .operation_settings(harmos::operations::Settings {
+                            preparation_bytes: std::num::NonZeroUsize::new(64 * 1024),
+                            ..Default::default()
+                        })
+                        .runtime()
+                        .await
+                        .unwrap();
+                    let definitions =
+                        super::operations::inspected(&source, serde_json::to_vec(&()).unwrap());
+                    let resident = harmos::sidecar::Supervised::new(
                         source,
-                        serde_json::to_vec(&()).unwrap(),
+                        (|_: &harmos::services::Service<crate::support::Bank>,
+                          _: harmos::sidecar::Notice| {})
+                            as fn(&harmos::services::Service<crate::support::Bank>, _),
+                    );
+                    let mut fixture = Managed::from_runtime(
+                        runtime,
+                        definitions,
+                        resident,
                         Lanes::NativeOpen,
                         capacity,
-                        vec![],
-                        std::convert::identity,
-                    )
-                    .await;
+                        harmos::services::POLICY,
+                    );
                     fixture.publication().unwrap();
                     fixture.initialize().await.unwrap();
                     ready(fixture.ready().clone()).await;
@@ -1048,6 +1135,57 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         rows("batches.raw").await,
                         vec![(1, None), (2, None), (3, None)]
+                    );
+                    let stamps = |id: &str| {
+                        let stream = fixture.runtime.streams.publication(id, 1).unwrap();
+                        async move {
+                            stream
+                                .query(..)
+                                .await
+                                .unwrap()
+                                .map(|row| {
+                                    (
+                                        support::Pulse::decode(row.value.payload.as_slice())
+                                            .unwrap()
+                                            .sample,
+                                        row.value.published_unix_micros.unwrap(),
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                        }
+                    };
+                    // 100 Distinct Stamps Exactly One Millisecond Apart
+                    assert_eq!(
+                        stamps("batches.timed").await,
+                        (0..100)
+                            .map(|sample| (sample, TIMED_BASE + 1_000 * sample as i64))
+                            .collect::<Vec<_>>()
+                    );
+                    // Pushed At Least A Millisecond Apart: Strictly Rising Stamps
+                    let clocked = stamps("batches.clocked").await;
+                    assert_eq!(
+                        clocked
+                            .iter()
+                            .map(|(sample, _)| *sample)
+                            .collect::<Vec<_>>(),
+                        (0..100).collect::<Vec<_>>()
+                    );
+                    let gaps: Vec<_> = clocked
+                        .windows(2)
+                        .map(|pair| pair[1].1 - pair[0].1)
+                        .collect();
+                    assert!(gaps.iter().all(|gap| *gap >= 1_000), "{gaps:?}");
+                    let span = clocked[99].1 - clocked[0].1;
+                    assert!((99_000..10_000_000).contains(&span), "{span}");
+                    // The Backwards Row And Everything After It Stay Unpublished
+                    assert_eq!(
+                        stamps("batches.stamped").await,
+                        vec![
+                            (1, TIMED_BASE),
+                            (2, TIMED_BASE + 1_000),
+                            (3, TIMED_BASE + 1_000),
+                            (4, TIMED_BASE),
+                        ]
                     );
                     fixture.runtime.stop().await.unwrap();
                 });

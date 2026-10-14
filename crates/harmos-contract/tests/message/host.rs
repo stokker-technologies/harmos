@@ -56,6 +56,8 @@ struct BatchedPublication {
     stream: String,
     #[prost(uint64, optional, tag = "3")]
     sequence: Option<u64>,
+    #[prost(int64, optional, tag = "4")]
+    published_unix_micros: Option<i64>,
     #[prost(bytes = "vec", tag = "6")]
     payload: Vec<u8>,
     #[prost(message, repeated, tag = "7")]
@@ -67,7 +69,7 @@ struct BatchedRow {
     #[prost(bytes = "vec", tag = "1")]
     payload: Vec<u8>,
     #[prost(int64, optional, tag = "2")]
-    published_unix_micros: Option<i64>,
+    published_delta_micros: Option<i64>,
 }
 
 #[derive(Clone, PartialEq, prost::Message)]
@@ -152,34 +154,55 @@ fn contract_scenario() {
     }
     {
         scenario_runtime::check("batch_rows_follow", || {
+            // A Steady 1 kHz Series: The Head Carries The Base Stamp And Each
+            // Following Row A Short Delta; A Backwards Row Stays Encodable.
+            let deltas = [Some(1_000), Some(1_000), Some(-1), None];
             let value = Publication {
                 stream: "records".into(),
                 sequence: Some(7),
+                published_unix_micros: Some(1_760_000_000_000_000),
                 payload: vec![1],
-                following: vec![
-                    FollowingRow {
-                        payload: vec![2],
-                        published_unix_micros: Some(-1),
-                    },
-                    FollowingRow::default(),
-                ],
+                following: deltas
+                    .iter()
+                    .zip(2_u8..)
+                    .map(|(&published_delta_micros, payload)| FollowingRow {
+                        payload: vec![payload],
+                        published_delta_micros,
+                    })
+                    .collect(),
                 ..Publication::default()
             };
             let oracle = BatchedPublication {
                 stream: value.stream.clone(),
                 sequence: value.sequence,
+                published_unix_micros: value.published_unix_micros,
                 payload: value.payload.clone(),
-                following: vec![
-                    BatchedRow {
-                        payload: vec![2],
-                        published_unix_micros: Some(-1),
-                    },
-                    BatchedRow::default(),
-                ],
+                following: deltas
+                    .iter()
+                    .zip(2_u8..)
+                    .map(|(&published_delta_micros, payload)| BatchedRow {
+                        payload: vec![payload],
+                        published_delta_micros,
+                    })
+                    .collect(),
             };
             let bytes = prost::Message::encode_to_vec(&oracle);
             assert_eq!(value.encode_to_vec(), bytes);
             assert_eq!(Publication::decode(&bytes).unwrap(), value);
+            // One Byte Of Payload Plus A Millisecond Delta: Six Bytes
+            let steady = FollowingRow {
+                payload: vec![0],
+                published_delta_micros: Some(1_000),
+            };
+            let oracle = BatchedRow {
+                payload: vec![0],
+                published_delta_micros: Some(1_000),
+            };
+            assert_eq!(
+                steady.encode_to_vec(),
+                prost::Message::encode_to_vec(&oracle)
+            );
+            assert_eq!(steady.encode_to_vec().len(), 6);
             roundtrip(value);
         });
     }

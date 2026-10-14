@@ -43,7 +43,7 @@ pub use observer::{
 };
 pub use observer_host::{ObserverCaller, ObserverHost, ObserverPublisher, ObserverStreamPublisher};
 pub use plugin::{PluginNative, run_plugin, serve_plugin_channels};
-pub use publisher::{PublishError, Publisher};
+pub use publisher::{Batch, PublishError, Publisher};
 
 /* === Imports === */
 // Standard Library Imports

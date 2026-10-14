@@ -468,10 +468,14 @@ async fn throughput_case(
                 } else {
                     assert_eq!(row.stream, Sample::ID);
                     let first = row.sequence.expect("native source sequence is explicit");
-                    let following = row
-                        .following
-                        .into_iter()
-                        .map(|following| (following.payload, following.published_unix_micros));
+                    let mut stamp = row.published_unix_micros;
+                    let following =
+                        row.following.into_iter().map(|following| {
+                            stamp = stamp.zip(following.published_delta_micros).map(
+                                |(previous, delta)| previous.checked_add(delta).expect("row stamp"),
+                            );
+                            (following.payload, stamp)
+                        });
                     let rows =
                         std::iter::once((row.payload, row.published_unix_micros)).chain(following);
                     for (sequence, (payload, published_unix_micros)) in (first..).zip(rows) {

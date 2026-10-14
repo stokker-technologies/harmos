@@ -389,20 +389,22 @@ async fn publish(
     let mut accepted = 0_u64;
     let mut attempted = 0_u64;
     let publisher = host.publisher::<TransportPlugin>();
-    let batch = vec![sample; start.batch.max(1) as usize];
+    let mut batch = publisher.batch::<Sample>();
     while accepted < u64::from(start.samples) {
         if *closing.borrow() {
             return Ok(());
         }
-        let rows = &batch[..batch
-            .len()
-            .min((u64::from(start.samples) - accepted) as usize)];
-        attempted += rows.len() as u64;
+        let rows = u64::from(start.batch.max(1)).min(u64::from(start.samples) - accepted);
+        batch.clear();
+        for _ in 0..rows {
+            batch.push(sample.clone());
+        }
+        attempted += rows;
         tokio::select! {
             _ = closing.changed() => return Ok(()),
-            result = publisher.publish_batch_on::<Sample>(rows) => result.map_err(harmos_sidecar::Refusal::of)?,
+            result = publisher.publish_batch_on::<Sample>(&batch) => result.map_err(harmos_sidecar::Refusal::of)?,
         }
-        accepted += rows.len() as u64;
+        accepted += rows;
         tokio::select! {
             _ = closing.changed() => return Ok(()),
             _ = pace(&start, accepted, began) => {}

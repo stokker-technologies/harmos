@@ -230,9 +230,28 @@ impl Endpoint {
             std::mem::take(&mut request.payload),
             request.published_unix_micros,
         );
-        let following = std::mem::take(&mut request.following)
-            .into_iter()
-            .map(|row| (row.payload, row.published_unix_micros));
+        // Each Following Delta Rebuilds A Row's Stamp From Its Predecessor's.
+        let mut previous = request.published_unix_micros;
+        let mut following = Vec::with_capacity(request.following.len());
+        for row in std::mem::take(&mut request.following) {
+            let stamp = match (previous, row.published_delta_micros) {
+                (_, None) => None,
+                (Some(previous), Some(delta)) => Some(previous.checked_add(delta).ok_or(
+                    crate::Error::InvalidInput {
+                        field: "native publication",
+                        reason: "a row stamp must not overflow",
+                    },
+                )?),
+                (None, Some(_)) => {
+                    return Err(crate::Error::InvalidInput {
+                        field: "native publication",
+                        reason: "a stamp delta requires a stamped preceding row",
+                    });
+                }
+            };
+            previous = stamp;
+            following.push((row.payload, stamp));
+        }
         let mut batch: Vec<_> = std::iter::once(head)
             .chain(following)
             .map(

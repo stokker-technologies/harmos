@@ -169,7 +169,13 @@ impl Operation for Publishing {
                 .map(|value| Sample { value })
                 .collect();
             let mut calls = Vec::with_capacity(rows.len().div_ceil(size) * 8);
+            let mut batch = publisher.batch::<Sample>();
             for chunk in rows.chunks(size) {
+                // Rows Are Produced And Stamped Before The Measured Call
+                batch.clear();
+                for row in chunk {
+                    batch.push(*row);
+                }
                 let started = Instant::now();
                 if size == 1 {
                     publisher
@@ -178,7 +184,7 @@ impl Operation for Publishing {
                         .map_err(Refusal::of)?;
                 } else {
                     publisher
-                        .publish_batch_on_context::<Sample>(chunk, Some("bench"))
+                        .publish_batch_on_context::<Sample>(&batch, Some("bench"))
                         .await
                         .map_err(Refusal::of)?;
                 }

@@ -36,6 +36,16 @@ pub struct Publisher<P> {
     _plugin: PhantomData<fn() -> P>,
 }
 
+// Rows for one stream, each stamped with the time it was produced: `push`
+// reads the kit clock, never earlier than the previous stamp, and `push_at`
+// takes an explicit stamp. Publishing sends the stamps, not the send time.
+pub struct Batch<S: StreamSpec> {
+    rows: Vec<S::Row>,
+    stamps: Vec<Option<i64>>,
+    latest: Option<i64>,
+    clock: fn() -> Option<i64>,
+}
+
 /* === Enums === */
 #[derive(Debug, thiserror::Error)]
 pub enum PublishError {
@@ -86,34 +96,96 @@ impl<P: Declared> Publisher<P> {
     where
         S::Row: Message,
     {
-        self.publish_batch_on_context::<S>(std::slice::from_ref(row), context)
+        Self::declared::<S>()?;
+        let stamps = [self.supervisor.now()];
+        self.supervisor
+            .publication::<S>(std::slice::from_ref(row), &stamps, context)
             .await
     }
 
-    pub async fn publish_batch_on<S: StreamSpec>(&self, rows: &[S::Row]) -> Result<(), PublishError>
+    pub fn batch<S: StreamSpec>(&self) -> Batch<S> {
+        Batch {
+            rows: Vec::new(),
+            stamps: Vec::new(),
+            latest: None,
+            clock: self.supervisor.clock(),
+        }
+    }
+
+    pub async fn publish_batch_on<S: StreamSpec>(
+        &self,
+        batch: &Batch<S>,
+    ) -> Result<(), PublishError>
     where
         S::Row: Message,
     {
-        self.publish_batch_on_context::<S>(rows, None).await
+        self.publish_batch_on_context::<S>(batch, None).await
     }
 
-    // Publish rows in order with contiguous sequences, as one `host.publish`
-    // call where they fit. Rows before a refused row stay published.
+    // Publish rows in order with contiguous sequences and their own stamps,
+    // as one `host.publish` call where they fit. Rows before a refused row
+    // stay published.
     pub async fn publish_batch_on_context<S: StreamSpec>(
         &self,
-        rows: &[S::Row],
+        batch: &Batch<S>,
         context: Option<&str>,
     ) -> Result<(), PublishError>
     where
         S::Row: Message,
     {
-        if !P::STREAMS
+        Self::declared::<S>()?;
+        self.supervisor
+            .publication::<S>(&batch.rows, &batch.stamps, context)
+            .await
+    }
+
+    fn declared<S: StreamSpec>() -> Result<(), PublicationError> {
+        if P::STREAMS
             .iter()
             .any(|entry| entry.id == S::ID && entry.schema == S::VERSION)
         {
-            return Err(PublicationError::Undeclared { stream: S::ID }.into());
+            Ok(())
+        } else {
+            Err(PublicationError::Undeclared { stream: S::ID })
         }
-        self.supervisor.publication::<S>(rows, context).await
+    }
+}
+
+impl<S: StreamSpec> Batch<S> {
+    pub fn push(&mut self, row: S::Row) {
+        let stamp = match ((self.clock)(), self.latest) {
+            (Some(now), Some(latest)) => Some(now.max(latest)),
+            (now, latest) => now.or(latest),
+        };
+        self.stamped(row, stamp);
+    }
+
+    pub fn push_at(&mut self, row: S::Row, published_unix_micros: i64) {
+        self.stamped(row, Some(published_unix_micros));
+    }
+
+    pub fn rows(&self) -> &[S::Row] {
+        &self.rows
+    }
+
+    pub fn len(&self) -> usize {
+        self.rows.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.rows.is_empty()
+    }
+
+    // Empty the batch for reuse; later `push` stamps still never go back.
+    pub fn clear(&mut self) {
+        self.rows.clear();
+        self.stamps.clear();
+    }
+
+    fn stamped(&mut self, row: S::Row, stamp: Option<i64>) {
+        self.latest = self.latest.max(stamp);
+        self.rows.push(row);
+        self.stamps.push(stamp);
     }
 }
 
