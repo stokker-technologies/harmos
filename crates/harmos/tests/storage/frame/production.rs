@@ -117,6 +117,55 @@ fn contract_scenario() {
         });
     }
     {
+        scenario_runtime::check("view_memory_budget", || {
+            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
+            scenario_executor
+                .enable_all()
+                .build()
+                .expect("scenario runtime is valid")
+                .block_on(async {
+                    let f = Fixture::new(StorageSettings {
+                        read_memory_bytes: NonZeroUsize::new(32 * 1024 * 1024).unwrap(),
+                        ..StorageSettings::default()
+                    })
+                    .await;
+                    let defaults = StorageSettings::default().query_execution;
+                    let budget = QueryLimits {
+                        memory_bytes: NonZeroUsize::new(8 * 1024 * 1024).unwrap(),
+                        ..defaults
+                    };
+                    // The Output Exceeds The Default Working Memory But Fits The View Budget.
+                    let output = NonZeroUsize::new(6 * 1024 * 1024).unwrap();
+                    assert!(matches!(
+                        f.storage.prepare_read_production(output),
+                        Err(Error::ResourceExhausted {
+                            resource: "query decoded memory"
+                        })
+                    ));
+                    let interactive = f.storage.view_with_limits(defaults).await.unwrap();
+                    assert!(matches!(
+                        f.storage.prepare_read_production_in(&interactive, output),
+                        Err(Error::ResourceExhausted {
+                            resource: "query decoded memory"
+                        })
+                    ));
+                    drop(interactive);
+                    let finalization = f.storage.view_with_limits(budget).await.unwrap();
+                    let baseline = f.storage.status().read_bytes;
+                    let preparation = f
+                        .storage
+                        .prepare_read_production_in(&finalization, output)
+                        .unwrap();
+                    assert_eq!(preparation.execution_limits(), Some(budget));
+                    assert!(f.storage.status().read_bytes >= baseline + budget.memory_bytes.get());
+                    drop(preparation);
+                    assert_eq!(f.storage.status().read_bytes, baseline);
+                    drop(finalization);
+                    f.finish().await;
+                });
+        });
+    }
+    {
         scenario_runtime::check("work_retains_header", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor

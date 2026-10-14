@@ -104,7 +104,11 @@ impl<T> SeriesQuery<T> {
         &mut self.query.options
     }
 }
-impl<T> sealed::Supported for SeriesQuery<T> {}
+impl<T> sealed::Supported for SeriesQuery<T> {
+    fn options_mut(&mut self) -> &mut QueryOptions {
+        &mut self.query.options
+    }
+}
 impl<C, T: MemorySize + 'static> Query<C> for SeriesQuery<T> {
     type Reader = Series<T>;
     fn options(&self) -> &QueryOptions {

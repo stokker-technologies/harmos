@@ -392,6 +392,21 @@ impl StorageView {
         Ok(view.execution)
     }
 
+    // Reads Through This View Inherit Its Budget. Explicit Limits Must Match It.
+    pub(super) fn inherited_budget(&self, explicit: Option<QueryLimits>) -> Result<QueryLimits> {
+        let budget = self.execution_limits()?.ok_or(Error::InvalidInput {
+            field: "query view",
+            reason: "view has no read budget",
+        })?;
+        if explicit.is_some_and(|limits| limits != budget) {
+            return Err(Error::InvalidInput {
+                field: "query view",
+                reason: "view was not acquired with the same execution limits",
+            });
+        }
+        Ok(budget)
+    }
+
     pub fn decoded_bytes(&self) -> Result<NonZeroUsize> {
         self.execution_limits()?;
         Ok(self.manager().inner.settings.query_decoded_bytes)

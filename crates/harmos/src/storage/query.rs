@@ -10,7 +10,9 @@
 /* === Modules === */
 mod objects;
 pub(super) mod sealed {
-    pub trait Supported {}
+    pub trait Supported {
+        fn options_mut(&mut self) -> &mut super::QueryOptions;
+    }
 }
 
 /* === Re-Exports === */
@@ -291,15 +293,35 @@ impl<T: StoredObject> ObjectQuery<'_, T> {
     }
 }
 
-impl<T> sealed::Supported for RecordQuery<T> {}
+impl<T> sealed::Supported for RecordQuery<T> {
+    fn options_mut(&mut self) -> &mut QueryOptions {
+        &mut self.options
+    }
+}
 
-impl<T> sealed::Supported for StreamQuery<T> {}
+impl<T> sealed::Supported for StreamQuery<T> {
+    fn options_mut(&mut self) -> &mut QueryOptions {
+        &mut self.options
+    }
+}
 
-impl sealed::Supported for FileQuery {}
+impl sealed::Supported for FileQuery {
+    fn options_mut(&mut self) -> &mut QueryOptions {
+        &mut self.options
+    }
+}
 
-impl sealed::Supported for SchemaQuery {}
+impl sealed::Supported for SchemaQuery {
+    fn options_mut(&mut self) -> &mut QueryOptions {
+        &mut self.options
+    }
+}
 
-impl<T: StoredObject> sealed::Supported for ObjectQuery<'_, T> {}
+impl<T: StoredObject> sealed::Supported for ObjectQuery<'_, T> {
+    fn options_mut(&mut self) -> &mut QueryOptions {
+        &mut self.options
+    }
+}
 
 impl<C, T: MemorySize + 'static> FollowQuery<C> for RecordQuery<T> {
     type Raw = StoredRecord;
@@ -792,7 +814,7 @@ impl<C> StorageManager<C> {
         query.open(view, page, remaining)
     }
 
-    pub fn query_in<Q: Query<C>>(&self, view: &StorageView, query: Q) -> Result<Q::Reader> {
+    pub fn query_in<Q: Query<C>>(&self, view: &StorageView, mut query: Q) -> Result<Q::Reader> {
         let started = tokio::time::Instant::now();
         if !Arc::ptr_eq(&self.inner, &view.manager().inner) {
             return Err(Error::InvalidInput {
@@ -802,13 +824,10 @@ impl<C> StorageManager<C> {
         }
         let computation = view.computation_with(None, started.elapsed())?;
         let page = self.query_page(query.options())?;
+        // Queries Without Explicit Execution Limits Inherit The View Budget.
+        let budget = view.inherited_budget(query.options().execution)?;
+        query.options_mut().execution = Some(budget);
         let execution = self.query_execution(query.options())?;
-        if view.execution_limits()? != Some(execution) {
-            return Err(Error::InvalidInput {
-                field: "query view",
-                reason: "view was not acquired with the same execution limits",
-            });
-        }
         query.preflight(self, execution)?;
         drop(computation);
         query.open(

@@ -136,3 +136,35 @@ under `harmos::simulation`; do not expose internal reboot factories or restore o
 runtime aliases in consumer APIs.
 
 For concrete plugin and transport authoring, use `harmos-authoring`.
+
+## Storage View Budgets
+
+A storage view owns one read budget, the `QueryLimits` it was opened with
+(`memory_bytes`, `spill_bytes`, `timeout`). `StorageManager::view_with_limits`
+admits it against `query_execution_ceiling` and reserves its memory; the view's
+time is one cumulative allowance spent by every read performed through it.
+Standalone manager reads (`query`, `read_object`, `prepare_read_production`)
+take a fresh `query_execution` budget each.
+
+Every view-scoped read inherits the view budget: `query_in` (an explicit
+`QueryOptions::execution` must equal it), `read_object_in`, `StorageView::read_file`
+with its `StorageFileReader` chunks, `prepare_work` and
+`prepare_read_production_in`. Interactive callers keep the defaults; a long
+consumer pass opens one view and reads everything under it:
+
+```rust
+let finalization = storage
+    .view_with_limits(QueryLimits {
+        timeout: Duration::from_secs(300),
+        ..settings.query_execution
+    })
+    .await?;
+let object = storage.read_object_in::<Run>(&finalization, &key, ObjectVersion::Latest, bytes).await?;
+let mut records = storage.query_in(&finalization, RecordQuery::new(schema, decode))?;
+```
+
+Exhaustion reports `ResourceExhausted` naming the resource (`query computation
+time`, `query decoded memory`). Raise `query_execution_ceiling` for budgets
+beyond its default. `view_idle_timeout` still expires a view left idle between
+reads. File following (`follow_file`, `FileFollower`) and backend calls stay
+bounded per call by `io_timeout`, not by a view budget.

@@ -63,7 +63,11 @@ struct BackendScan<'a> {
 /* === Traits === */
 
 /* === Implementations === */
-impl sealed::Supported for FrameQuery {}
+impl sealed::Supported for FrameQuery {
+    fn options_mut(&mut self) -> &mut QueryOptions {
+        &mut self.options
+    }
+}
 impl<C> Query<C> for FrameQuery {
     type Reader = FrameResult;
     fn options(&self) -> &QueryOptions {

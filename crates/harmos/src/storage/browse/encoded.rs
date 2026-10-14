@@ -148,7 +148,11 @@ impl ObjectFieldsQuery {
         Ok((request, claim))
     }
 }
-impl sealed::Supported for ObjectFieldsQuery {}
+impl sealed::Supported for ObjectFieldsQuery {
+    fn options_mut(&mut self) -> &mut QueryOptions {
+        &mut self.options
+    }
+}
 impl<C> Query<C> for ObjectFieldsQuery {
     type Reader = ObjectBrowseResult;
     fn options(&self) -> &QueryOptions {

@@ -264,21 +264,19 @@ impl<C: ObjectCatalog> StorageManager<C> {
         C: Contains<T>,
     {
         let started = tokio::time::Instant::now();
-        let execution = self.inner.settings.query_execution;
-        if let Some(view) = view {
-            if !self.same_instance(view.manager()) {
-                return Err(Error::InvalidInput {
-                    field: "query view",
-                    reason: "view belongs to another manager",
-                });
+        // A Supplied View Lends Its Own Budget; Standalone Reads Use The Defaults.
+        let execution = match view {
+            Some(view) => {
+                if !self.same_instance(view.manager()) {
+                    return Err(Error::InvalidInput {
+                        field: "query view",
+                        reason: "view belongs to another manager",
+                    });
+                }
+                view.inherited_budget(None)?
             }
-            if view.execution_limits()? != Some(execution) {
-                return Err(Error::InvalidInput {
-                    field: "query view",
-                    reason: "view was not acquired with the same execution limits",
-                });
-            }
-        }
+            None => self.inner.settings.query_execution,
+        };
         self.inner
             .settings
             .query_page_ceiling

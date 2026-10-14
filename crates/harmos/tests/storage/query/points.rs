@@ -195,22 +195,18 @@ fn contract_scenario() {
                             reason: "view belongs to another manager"
                         })
                     ));
-                    for invalid in [&different] {
-                        assert!(matches!(
-                            f.storage
-                                .read_object_in::<Document>(
-                                    invalid,
-                                    &7,
-                                    ObjectVersion::Latest,
-                                    NonZeroUsize::new(4096).unwrap()
-                                )
-                                .await,
-                            Err(Error::InvalidInput {
-                                field: "query view",
-                                reason: "view was not acquired with the same execution limits"
-                            })
-                        ));
-                    }
+                    // A View With Its Own Budget Reads Under That Budget.
+                    drop(
+                        f.storage
+                            .read_object_in::<Document>(
+                                &different,
+                                &7,
+                                ObjectVersion::Latest,
+                                NonZeroUsize::new(4096).unwrap(),
+                            )
+                            .await
+                            .unwrap(),
+                    );
                     assert_eq!(f.storage.status().read_bytes, pinned);
                     assert_eq!(other.storage.status().read_bytes, 0);
                     f.storage.close().await.unwrap();
@@ -286,6 +282,88 @@ fn contract_scenario() {
                         .unwrap();
                     assert_eq!(value.value.value, 1);
                     drop(value);
+                    f.finish().await;
+                });
+        });
+    }
+    {
+        scenario_runtime::check("view_budget_outlasts_default", || {
+            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
+            scenario_executor
+                .enable_all()
+                .build()
+                .expect("scenario runtime is valid")
+                .block_on(async {
+                    let defaults = QueryLimits {
+                        timeout: Duration::from_millis(50),
+                        ..StorageSettings::default().query_execution
+                    };
+                    let f = Fixture::with_settings(StorageSettings {
+                        query_execution: defaults,
+                        ..StorageSettings::default()
+                    })
+                    .await;
+                    f.storage
+                        .write_object(&Document { id: 7, value: 1 })
+                        .await
+                        .unwrap();
+                    f.storage.flush().await.unwrap();
+                    let budget = QueryLimits {
+                        timeout: Duration::from_secs(10),
+                        ..defaults
+                    };
+                    let interactive = f.storage.view_with_limits(defaults).await.unwrap();
+                    let finalization = f.storage.view_with_limits(budget).await.unwrap();
+                    assert_eq!(finalization.execution_limits().unwrap(), Some(budget));
+                    // The Backend Holds Each Read Well Past The 50 ms Default Budget.
+                    f.data.control.block_read.store(true, Ordering::SeqCst);
+                    let read = |view: StorageView| {
+                        let storage = f.storage.clone();
+                        tokio::spawn(async move {
+                            storage
+                                .read_object_in::<Document>(
+                                    &view,
+                                    &7,
+                                    ObjectVersion::Latest,
+                                    NonZeroUsize::new(4096).unwrap(),
+                                )
+                                .await
+                                .map(|value| value.map(|value| value.value.value))
+                        })
+                    };
+                    let reading = read(interactive.clone());
+                    f.data.control.read_entered.notified().await;
+                    assert!(matches!(
+                        reading.await.unwrap(),
+                        Err(Error::ResourceExhausted {
+                            resource: "query computation time"
+                        })
+                    ));
+                    let reading = read(finalization.clone());
+                    f.data.control.read_entered.notified().await;
+                    tokio::time::sleep(Duration::from_millis(250)).await;
+                    f.data.control.read_release.notify_one();
+                    assert_eq!(reading.await.unwrap().unwrap(), Some(1));
+                    f.data.control.block_read.store(false, Ordering::SeqCst);
+                    // Queries Inherit The View Budget Unless They Name A Different One.
+                    let key = 7;
+                    let mut query = ObjectQuery::<Document>::new();
+                    query.item = Some(&key);
+                    let mut result = f.storage.query_in(&finalization, query).unwrap();
+                    let page = result.next_page().await.unwrap().unwrap();
+                    assert_eq!(page[0].value.value, 1);
+                    drop((page, result));
+                    let mut conflicting = ObjectQuery::<Document>::new();
+                    conflicting.item = Some(&key);
+                    conflicting.options.execution = Some(defaults);
+                    assert!(matches!(
+                        f.storage.query_in(&finalization, conflicting),
+                        Err(Error::InvalidInput {
+                            field: "query view",
+                            reason: "view was not acquired with the same execution limits"
+                        })
+                    ));
+                    drop((interactive, finalization));
                     f.finish().await;
                 });
         });

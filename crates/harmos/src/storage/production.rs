@@ -23,7 +23,7 @@ use std::time::Duration;
 
 // Local Imports
 use super::manager::{ENTRY_OVERHEAD, MemoryReservation};
-use super::{QueryLimits, QueryValue, StorageManager};
+use super::{QueryLimits, QueryValue, StorageManager, StorageView};
 use crate::{Error, MemorySize, Result};
 
 /* === Constants === */
@@ -85,7 +85,29 @@ impl<C> StorageManager<C> {
         &self,
         max_bytes: NonZeroUsize,
     ) -> Result<StorageProductionPreparation> {
-        let limits = self.inner.settings.query_execution;
+        self.prepare_read_production_with(self.inner.settings.query_execution, max_bytes)
+    }
+
+    // Native Output Prepared For A View Inherits That View's Budget.
+    pub fn prepare_read_production_in(
+        &self,
+        view: &StorageView,
+        max_bytes: NonZeroUsize,
+    ) -> Result<StorageProductionPreparation> {
+        if !self.same_instance(view.manager()) {
+            return Err(Error::InvalidInput {
+                field: "query view",
+                reason: "view belongs to another manager",
+            });
+        }
+        self.prepare_read_production_with(view.inherited_budget(None)?, max_bytes)
+    }
+
+    fn prepare_read_production_with(
+        &self,
+        limits: QueryLimits,
+        max_bytes: NonZeroUsize,
+    ) -> Result<StorageProductionPreparation> {
         limits.check_ceiling(self.inner.settings.query_execution_ceiling)?;
         let metadata = std::mem::size_of::<Execution>()
             .checked_add(2 * std::mem::size_of::<usize>())

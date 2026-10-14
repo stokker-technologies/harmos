@@ -88,7 +88,11 @@ impl EncodedObjectQuery {
         Ok(())
     }
 }
-impl sealed::Supported for EncodedObjectQuery {}
+impl sealed::Supported for EncodedObjectQuery {
+    fn options_mut(&mut self) -> &mut QueryOptions {
+        &mut self.options
+    }
+}
 impl<C> Query<C> for EncodedObjectQuery {
     type Reader = QueryResult<ObjectEntry, ObjectEntry>;
     fn options(&self) -> &QueryOptions {
