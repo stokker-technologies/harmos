@@ -90,11 +90,10 @@ impl<'a> DecodeInput<'a> {
         })
     }
 
-    /// Selects the last declared variant; `None` only when no variant appears.
-    ///
-    /// Every variant is a length-delimited message field, so an undeclared
-    /// length-delimited tag is a variant this build does not know and refuses
-    /// the whole body. Other wire types can never be variants and stay ignored.
+    // Selects The Last Declared Variant; None Only When No Variant Appears.
+    // Every variant is a length-delimited message field, so an undeclared
+    // length-delimited tag is a variant this build does not know and refuses
+    // the whole body. Other wire types can never be variants and stay ignored.
     pub fn variant(&self, tags: &[u32]) -> Result<Option<(u32, DecodeInput<'_>)>, MessageError> {
         let mut selected = None;
         let mut after = 0;
