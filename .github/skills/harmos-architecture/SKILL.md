@@ -95,6 +95,41 @@ same settings type, but never define a second copy or a second default.
 common operation/transaction traits, and macros. Domain modules retain canonical
 ownership. Do not expand the prelude into an automatic manager/type inventory.
 
+## Aggregate Vocabulary
+
+Harmos owns one statistic vocabulary and the math behind it; consumers alias it
+and never redefine a subset. `harmos::Aggregate` (from `harmos-contract`, wasm-clean,
+serde snake case, `name()`/`parse()` as `count`, `mean`, `p95`) is
+`Count | Sum | Mean | Median | Min | Max | Rms | Std | Percentile(u8)`. `Std` is
+the population deviation; `Percentile` takes a whole percentage 0..=100 and
+interpolates linearly between ranks.
+
+The math lives in `harmos-signal`, which names nothing of Harmos so it can lift
+out unchanged. `Series` answers every member exactly over a finished run;
+`Summary` is the streaming, mergeable form and answers only the members where
+`Aggregate::mergeable()` holds, refusing median and percentiles with `None`.
+Both skip non-finite values; empty input answers `Count` and `Sum` with zero and
+everything else with `None`. The `Aggregates` trait maps the vocabulary onto both:
+
+```rust
+use harmos::Aggregate;
+use harmos::signal::{Aggregates, Series, Summary};
+
+let series = Series::new(&samples); // or `samples.into_iter().collect()`
+let p95 = series.aggregate(Aggregate::Percentile(95));
+let settled = series.all_within(4.75, 5.25);
+let merged = Summary::of(&left).merge(&Summary::of(&right));
+let mean = merged.aggregate(Aggregate::Mean);
+```
+
+Every reduction path evaluates through `Series` or `Summary`: plot buckets
+(`streams::Bucket::aggregate`), stream batch measurements
+(`streams::Measurement::aggregate`) and storage group-bys
+(`storage::reduce::Agg::Of(Aggregate)`). Storage additionally keeps `Agg::Len`
+and `Agg::Last`, which select rows rather than compute statistics, and answers
+`Sum`, `Mean` and `Median` of integer and exact columns in exact rational
+arithmetic. Do not add a private statistic implementation beside them.
+
 ## Simulation Surface
 
 Keep the shared builder at `harmos::Builder`. Supporting simulation names belong

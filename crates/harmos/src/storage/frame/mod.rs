@@ -30,7 +30,7 @@ pub use query::{FrameQuery, FrameResult};
 // Third Party Imports
 
 // Local Imports
-use super::reduce::{Accumulator, Agg, ScalarKind, ScalarValue};
+use super::reduce::{Accumulator, ScalarKind, ScalarValue};
 use super::{ReadLimits, ReadView};
 use crate::storage::frame::plan::{compare_iter, heap, invalid};
 use crate::{MemorySize, Result};
@@ -144,13 +144,13 @@ impl Frame {
             let medians = group_by
                 .aggs
                 .iter()
-                .filter(|(_, agg)| *agg == Agg::Median)
+                .filter(|(_, agg)| agg.retains_values())
                 .count();
             let outer_medians = group_by
                 .outer
                 .iter()
                 .flatten()
-                .filter(|agg| **agg == Agg::Median)
+                .filter(|agg| agg.retains_values())
                 .count();
             let scratch = execute::median_slots(max_rows, accumulators)
                 .and_then(|slots| slots.checked_mul(medians))

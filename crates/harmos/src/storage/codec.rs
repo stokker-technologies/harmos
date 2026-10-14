@@ -297,6 +297,7 @@ pub(crate) struct Optional<T>(PhantomData<fn() -> T>);
 pub(crate) struct Id;
 pub(crate) struct Bytes;
 pub(crate) struct Unsigned;
+pub(crate) struct Percent;
 pub(crate) struct Version;
 pub(crate) struct Flag;
 pub(crate) struct Signed;
@@ -605,6 +606,37 @@ impl Value for Unsigned {
     #[cfg(feature = "grpc")]
     fn read(input: DecodeInput<'_>, tag: u32) -> Result<u64> {
         Ok(uint_field(input, tag)?.unwrap_or(0))
+    }
+}
+
+// A whole percentage rank, carried as a protobuf `uint32`; the rank's range is
+// a plan rule, so any byte decodes and the plan check refuses above 100.
+impl Value for Percent {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Percent));
+    postcard_field!();
+    type Native = u8;
+    const KIND: Kind = Kind::U32;
+    #[cfg(feature = "grpc")]
+    fn write(value: &u8, tag: u32, bytes: &mut Vec<u8>) {
+        crate::__private::prost::encoding::uint32::encode(tag, &u32::from(*value), bytes);
+    }
+
+    #[cfg(feature = "grpc")]
+    fn size(value: &u8, tag: u32) -> usize {
+        crate::__private::prost::encoding::uint32::encoded_len(tag, &u32::from(*value))
+    }
+
+    #[cfg(feature = "grpc")]
+    fn memory(input: DecodeInput<'_>, tag: u32) -> Result<usize> {
+        Self::read(input, tag)?;
+        Ok(0)
+    }
+
+    #[cfg(feature = "grpc")]
+    fn read(input: DecodeInput<'_>, tag: u32) -> Result<u8> {
+        uint_field(input, tag)?
+            .map_or(Ok(0), u8::try_from)
+            .map_err(|_| MessageError::borrowed("percentile rank exceeds a byte"))
     }
 }
 

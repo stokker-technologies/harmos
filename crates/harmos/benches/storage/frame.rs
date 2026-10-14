@@ -26,6 +26,7 @@ use serde_json::json;
 
 // Local Imports
 use super::backend::{Data, Recovery, history};
+use harmos::Aggregate;
 use harmos::storage::frame::*;
 use harmos::storage::reduce::{Agg, ScalarKind, ScalarValue};
 use harmos::storage::*;
@@ -245,9 +246,9 @@ pub(super) async fn reuse() {
     frame.group_by(
         GroupBy::new(scan)
             .agg(Expr::Col(0), Agg::Len)
-            .agg(Expr::Col(0), Agg::Mean),
+            .agg(Expr::Col(0), Agg::Of(Aggregate::Mean)),
     );
-    frame.group_by(GroupBy::new(scan).agg(Expr::Col(0), Agg::Median));
+    frame.group_by(GroupBy::new(scan).agg(Expr::Col(0), Agg::Of(Aggregate::Median)));
     let mut reader = storage
         .query(FrameQuery {
             frame,
@@ -338,25 +339,25 @@ fn fixture(mode: &str, count: usize) -> (Frame, Vec<Vec<ProjectedRow>>) {
             frame.group_by(
                 GroupBy::new(source)
                     .keys(vec![0])
-                    .agg(column(None), Agg::Count)
-                    .agg(column(None), Agg::Mean),
+                    .agg(column(None), Agg::Of(Aggregate::Count))
+                    .agg(column(None), Agg::Of(Aggregate::Mean)),
             );
         }
         "median" => {
             frame.group_by(
                 GroupBy::new(source)
                     .keys(vec![0])
-                    .agg(column(None), Agg::Median),
+                    .agg(column(None), Agg::Of(Aggregate::Median)),
             );
         }
         "repeated_bindings" => {
             frame.group_by(
                 GroupBy::new(source)
                     .keys(vec![0])
-                    .agg(column(None), Agg::Count)
-                    .agg(column(None), Agg::Mean),
+                    .agg(column(None), Agg::Of(Aggregate::Count))
+                    .agg(column(None), Agg::Of(Aggregate::Mean)),
             );
-            frame.group_by(GroupBy::new(source).agg(column(None), Agg::Median));
+            frame.group_by(GroupBy::new(source).agg(column(None), Agg::Of(Aggregate::Median)));
         }
         _ => {
             let left: Vec<_> = (0..count / 10)
@@ -381,8 +382,8 @@ fn fixture(mode: &str, count: usize) -> (Frame, Vec<Vec<ProjectedRow>>) {
             frame.group_by(
                 GroupBy::new(events)
                     .keys(vec![0])
-                    .agg(column(Some(join)), Agg::Count)
-                    .agg(column(Some(join)), Agg::Mean),
+                    .agg(column(Some(join)), Agg::Of(Aggregate::Count))
+                    .agg(column(Some(join)), Agg::Of(Aggregate::Mean)),
             );
             return (frame, vec![right, left]);
         }

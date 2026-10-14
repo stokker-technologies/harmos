@@ -8,12 +8,13 @@
  */
 
 /* === Modules === */
+mod aggregates;
 #[path = "../../../../tests/support/scenarios.rs"]
 mod scenario_runtime;
 
 #[allow(dead_code)]
 mod probe {
-    use harmos_signal::{Band, Decibel, Edge, Scale, Spectrum, Summary, Taper};
+    use harmos_signal::{Band, Decibel, Edge, Scale, Series, Spectrum, Summary, Taper};
 
     #[cfg(feature = "fft")]
     use harmos_signal::{Estimate, Welch};
@@ -29,6 +30,7 @@ mod probe {
         #[cfg(feature = "fft")]
         estimate: Estimate,
         scale: Scale,
+        series: Series<'static>,
         spectrum: Spectrum,
         summary: Summary,
         taper: Taper,
@@ -88,6 +90,13 @@ mod probe {
     const SUMMARY_PUSH: fn(&mut Summary, f64) = Summary::push;
     const SUMMARY_MERGE: fn(&Summary, &Summary) -> Summary = Summary::merge;
     const SUMMARY_VARIANCE: fn(&Summary) -> Option<f64> = Summary::variance;
+    const SUMMARY_STD: fn(&Summary) -> Option<f64> = Summary::std;
+    const SERIES_NEW: fn(&'static [f64]) -> Series<'static> = Series::new;
+    const SERIES_SUMMARY: fn(&Series<'static>) -> Summary = Series::summary;
+    const SERIES_MEDIAN: fn(&Series<'static>) -> Option<f64> = Series::median;
+    const SERIES_PERCENTILE: fn(&Series<'static>, f64) -> Option<f64> = Series::percentile;
+    const SERIES_ALL_BELOW: fn(&Series<'static>, f64) -> bool = Series::all_below;
+    const SERIES_ALL_WITHIN: fn(&Series<'static>, f64, f64) -> bool = Series::all_within;
 }
 
 /* === Re-Exports === */
@@ -102,7 +111,7 @@ use std::path::{Path, PathBuf};
 // Local Imports
 
 /* === Constants === */
-const CENSUS: [&str; 41] = [
+const CENSUS: [&str; 42] = [
     "Error",
     "Result",
     "Band",
@@ -110,6 +119,7 @@ const CENSUS: [&str; 41] = [
     "Edge",
     "Estimate",
     "Scale",
+    "Series",
     "Spectrum",
     "Summary",
     "Taper",
@@ -283,6 +293,19 @@ fn contract_scenario() {
             );
         });
     }
+    scenario_runtime::check("empty_input", aggregates::empty_input);
+    scenario_runtime::check("single_value", aggregates::single_value);
+    scenario_runtime::check("known_run", aggregates::known_run);
+    scenario_runtime::check("odd_even_medians", aggregates::odd_even_medians);
+    scenario_runtime::check(
+        "interpolated_percentiles",
+        aggregates::interpolated_percentiles,
+    );
+    scenario_runtime::check("sorted_once", aggregates::sorted_once);
+    scenario_runtime::check("finite_extremes", aggregates::finite_extremes);
+    scenario_runtime::check("non_finite_skipped", aggregates::non_finite_skipped);
+    scenario_runtime::check("value_predicates", aggregates::value_predicates);
+    scenario_runtime::check("summaries_agree", aggregates::summaries_agree);
     {
         scenario_runtime::check("anchor_reached_root", || {
             let root = code(&read(&source().join("lib.rs")));

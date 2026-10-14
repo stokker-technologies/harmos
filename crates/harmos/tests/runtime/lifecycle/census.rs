@@ -39,11 +39,10 @@ mod probe {
         state::StateManager, state::SystemFact, state::Timestamp, state::Transaction,
         state::Undoable, storage::Batch, storage::Cursor, storage::Horizon,
         storage::JournalConsumer, storage::Payload, storage::Recovery, storage::Series,
-        storage::Source, storage::StreamConsumer, streams::Aggregate, streams::Aggregated,
-        streams::Axial, streams::BeneathWindow, streams::Bucket, streams::Definition,
-        streams::Demand, streams::Item, streams::Point, streams::Prefix, streams::Query,
-        streams::Seal, streams::Stream, streams::StreamManager, streams::Survey, streams::Track,
-        streams::Tracked,
+        storage::Source, storage::StreamConsumer, streams::Aggregated, streams::Axial,
+        streams::BeneathWindow, streams::Bucket, streams::Definition, streams::Demand,
+        streams::Item, streams::Point, streams::Prefix, streams::Query, streams::Seal,
+        streams::Stream, streams::StreamManager, streams::Survey, streams::Track, streams::Tracked,
     };
 
     use crate::support::{Bank, Change, Deposit, Ledger, Refusal};
@@ -168,7 +167,7 @@ mod probe {
     pub type Barrier = Seal<crate::support::Capture>;
     pub type Folded = Bucket;
     pub type Placed = Point;
-    pub type Statistic = Aggregate;
+    pub type Statistic = harmos::Aggregate;
     pub type Answered = Aggregated;
 
     pub fn partitions<S: Tracked>(row: S) -> S {
@@ -354,7 +353,8 @@ use std::path::{Path, PathBuf};
 /* === Constants === */
 const CENSUS: [&str; 30] = [
     "bindings",
-    "signal",
+    // The one statistic vocabulary every reduction answers.
+    "Aggregate",
     // Contract namespaces re-exported whole: artifact scanning, standalone
     // bundles, and descriptor projection when only `reflection` is enabled.
     "artifacts",

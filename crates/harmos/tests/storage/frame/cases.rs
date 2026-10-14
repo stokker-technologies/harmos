@@ -21,6 +21,7 @@ use std::time::{Duration as Elapsed, UNIX_EPOCH};
 
 // Local Imports
 use super::*;
+use harmos::Aggregate;
 use harmos::Message;
 use harmos::storage::frame::*;
 use harmos::storage::reduce::{Agg, ExactNumber, ScalarKind, ScalarValue};
@@ -71,7 +72,7 @@ fn request() -> FrameQuery {
     let scan = frame.scan(selection(), vec![value()]);
     frame.group_by(
         GroupBy::new(scan)
-            .agg(Expr::Col(0), Agg::Mean)
+            .agg(Expr::Col(0), Agg::Of(Aggregate::Mean))
             .agg(Expr::Col(0), Agg::Len),
     );
     FrameQuery {
@@ -834,7 +835,7 @@ fn contract_scenario() {
                     keyed.frame.as_ofs[shift].on = (1, 1);
                     keyed.frame.group_bys[0]
                         .aggs
-                        .push((Expr::diff(shift), Agg::Mean));
+                        .push((Expr::diff(shift), Agg::Of(Aggregate::Mean)));
                     assert!(f.storage.query(keyed).await.is_err());
                     assert_eq!(f.data.control.query_views.load(Ordering::SeqCst), before);
                     f.finish().await;
@@ -853,7 +854,7 @@ fn contract_scenario() {
                     seed(&f, &[1, 2]).await;
                     let mut median = request();
                     median.frame.max_rows = NonZeroUsize::new(1 << 20).unwrap();
-                    median.frame.group_bys[0].aggs[0].1 = Agg::Median;
+                    median.frame.group_bys[0].aggs[0].1 = Agg::Of(Aggregate::Median);
                     let explain = median.frame.explain(config().query_page).unwrap();
                     assert!(explain.median_scratch_bytes > f.execution.memory_bytes.get());
                     assert!(f.storage.query(median).await.is_err());
@@ -894,12 +895,12 @@ fn contract_scenario() {
                     });
                     query.frame.group_by(
                         GroupBy::new(0)
-                            .agg(Expr::diff(shift), Agg::Max)
-                            .agg(Expr::diff(shift), Agg::Count),
+                            .agg(Expr::diff(shift), Agg::Of(Aggregate::Max))
+                            .agg(Expr::diff(shift), Agg::Of(Aggregate::Count)),
                     );
                     query
                         .frame
-                        .group_by(GroupBy::new(0).agg(Expr::Col(0), Agg::Median));
+                        .group_by(GroupBy::new(0).agg(Expr::Col(0), Agg::Of(Aggregate::Median)));
                     let mut reader = f.storage.query(query).await.unwrap();
                     let collected = reader.read().await.unwrap();
 
@@ -960,7 +961,7 @@ fn contract_scenario() {
                     });
                     query.frame.group_bys[0] = GroupBy::new(0)
                         .agg(Expr::AsOf { join, col: 0 }, Agg::Last)
-                        .agg(Expr::AsOf { join, col: 0 }, Agg::Count);
+                        .agg(Expr::AsOf { join, col: 0 }, Agg::Of(Aggregate::Count));
                     let mut reader = f.storage.query(query).await.unwrap();
 
                     // Rows At 9s And 16s Fall Back To The Latest Admitted Row, 4.

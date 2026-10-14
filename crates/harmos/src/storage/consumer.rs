@@ -137,7 +137,7 @@ pub trait Series<A: Application>: StreamConsumer<A> {
         track: &[String],
         start: Bound<u64>,
         end: Bound<u64>,
-        kind: crate::streams::Aggregate,
+        kind: crate::Aggregate,
     ) -> impl Future<Output = Result<Vec<crate::streams::Aggregated>, crate::streams::BeneathWindow>>
     + Send;
 
@@ -218,7 +218,7 @@ pub(crate) trait Serving<A: Application>: Recording<A> {
         track: &'read [String],
         start: Bound<u64>,
         end: Bound<u64>,
-        kind: crate::streams::Aggregate,
+        kind: crate::Aggregate,
     ) -> Pin<
         Box<
             dyn Future<
@@ -376,7 +376,7 @@ impl<A: Application, S: Series<A>> Serving<A> for S {
         track: &'read [String],
         start: Bound<u64>,
         end: Bound<u64>,
-        kind: crate::streams::Aggregate,
+        kind: crate::Aggregate,
     ) -> Pin<
         Box<
             dyn Future<

@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+mod aggregate;
 pub mod builtin;
 pub mod config;
 mod error;
@@ -42,6 +43,9 @@ pub mod runtime;
 
 #[cfg(feature = "simulation")]
 pub mod simulation;
+
+#[cfg(feature = "signal")]
+pub mod signal;
 
 pub mod streams;
 
@@ -110,16 +114,14 @@ pub use runtime::{Builder, Runtime};
 pub use harmos_contract::Protobuf;
 pub use harmos_contract::plugin::Plugin;
 pub use harmos_contract::{
-    Identifier, IdentifierError, MemorySize, Message, MessageError, Metadata, RowMetadata,
-    Storable, StreamField, StreamSpec, Value, ValueError, btree_map_memory,
+    Aggregate, Identifier, IdentifierError, MemorySize, Message, MessageError, Metadata,
+    RowMetadata, Storable, StreamField, StreamSpec, Value, ValueError, btree_map_memory,
 };
 // Contract Namespaces The Host Does Not Extend, Re-Exported Whole.
 #[cfg(any(feature = "plugin", feature = "packaging"))]
 pub use harmos_bundle as bundle;
 #[cfg(all(feature = "reflection", not(feature = "grpc")))]
 pub use harmos_contract::grpc;
-#[cfg(feature = "signal")]
-pub use harmos_signal as signal;
 // `message` Names Both The Contract Module And Its Same-Named Attribute.
 pub use harmos_contract::{artifacts, catalog, listeners, message, schema};
 pub use harmos_macros::{

@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+mod aggregate;
 mod answer;
 pub mod artifacts;
 #[cfg(feature = "bindings-python")]
@@ -78,6 +79,7 @@ pub mod __private {
 }
 
 /* === Re-Exports === */
+pub use aggregate::Aggregate;
 pub use artifacts::{FRAGMENT_LIMIT, KINDS, PREFIX, ScanError, fragments};
 pub use config::{ConfigError, decode_config, encode_config, validate_config};
 pub use error::{Error, Result};

@@ -25,11 +25,15 @@
 /* === Type Aliases === */
 
 /* === Structs === */
+// The streaming, mergeable reduction: count, sum, extremes, mean and spread
+// kept in constant space, so partial summaries of disjoint runs merge into the
+// summary of their union. Non-finite values are skipped, the same values
+// `Series` skips, so both answer the shared statistics identically.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Summary {
     count: u64,
     sum: f64,
-    sum_sq: f64,
+    mean: f64,
     lowest: f64,
     highest: f64,
     deviations: f64,
@@ -45,7 +49,7 @@ impl Default for Summary {
         Self {
             count: 0,
             sum: 0.0,
-            sum_sq: 0.0,
+            mean: 0.0,
             lowest: f64::INFINITY,
             highest: f64::NEG_INFINITY,
             deviations: 0.0,
@@ -69,16 +73,28 @@ impl Summary {
     }
 
     pub fn push(&mut self, value: f64) {
-        let before = self.mean().unwrap_or(0.0);
+        if !value.is_finite() {
+            return;
+        }
+        let before = self.mean;
 
         self.count += 1;
         self.sum += value;
-        self.sum_sq += value * value;
         self.lowest = self.lowest.min(value);
         self.highest = self.highest.max(value);
 
-        let after = self.sum / self.count as f64;
-        self.deviations += (value - before) * (value - after);
+        // The running mean never forms the sum, so it stays finite wherever
+        // the values do; opposite signs are weighted apart so the step itself
+        // cannot overflow.
+        let n = self.count as f64;
+        self.mean = if self.count == 1 {
+            value
+        } else if before.signum() == value.signum() {
+            before + (value - before) / n
+        } else {
+            before * ((n - 1.0) / n) + value / n
+        };
+        self.deviations += (value - before) * (value - self.mean);
     }
 
     #[must_use]
@@ -91,13 +107,16 @@ impl Summary {
         }
 
         let count = self.count + other.count;
-        let apart = (other.sum / other.count as f64) - (self.sum / self.count as f64);
-        let weight = (self.count as f64 * other.count as f64) / count as f64;
+        let total = count as f64;
+        let mean =
+            self.mean * (self.count as f64 / total) + other.mean * (other.count as f64 / total);
+        let apart = other.mean - self.mean;
+        let weight = (self.count as f64 * other.count as f64) / total;
 
         Self {
             count,
             sum: self.sum + other.sum,
-            sum_sq: self.sum_sq + other.sum_sq,
+            mean,
             lowest: self.lowest.min(other.lowest),
             highest: self.highest.max(other.highest),
             deviations: self.deviations + other.deviations + apart * apart * weight,
@@ -120,11 +139,6 @@ impl Summary {
     }
 
     #[must_use]
-    pub fn sum_sq(&self) -> f64 {
-        self.sum_sq
-    }
-
-    #[must_use]
     pub fn min(&self) -> Option<f64> {
         (self.count > 0).then_some(self.lowest)
     }
@@ -141,22 +155,26 @@ impl Summary {
 
     #[must_use]
     pub fn mean(&self) -> Option<f64> {
-        (self.count > 0).then(|| self.sum / self.count as f64)
+        (self.count > 0).then_some(self.mean)
     }
 
+    // Population variance: the spread of exactly these values, not an
+    // estimate of a wider population's.
     #[must_use]
     pub fn variance(&self) -> Option<f64> {
-        (self.count > 0).then(|| self.deviations / self.count as f64)
+        (self.count > 0).then(|| (self.deviations / self.count as f64).max(0.0))
     }
 
     #[must_use]
-    pub fn deviation(&self) -> Option<f64> {
+    pub fn std(&self) -> Option<f64> {
         self.variance().map(f64::sqrt)
     }
 
+    // The mean square is the squared mean plus the variance; `hypot` takes the
+    // root of that sum without squaring either term into overflow.
     #[must_use]
     pub fn rms(&self) -> Option<f64> {
-        (self.count > 0).then(|| (self.sum_sq / self.count as f64).sqrt())
+        Some(self.mean()?.hypot(self.std()?))
     }
 }
 

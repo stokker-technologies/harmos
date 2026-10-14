@@ -17,9 +17,12 @@ use std::any::Any;
 use std::ops::Bound;
 use std::sync::Arc;
 // Third Party Imports
+use harmos_contract::Aggregate;
+use harmos_signal::Summary;
 use tokio::sync::{mpsc, oneshot};
 // Local Imports
 use super::BeneathWindow;
+use crate::aggregate;
 use crate::{state::At, state::Position, streams::Definition};
 
 /* === Constants === */
@@ -36,6 +39,8 @@ pub struct Point {
     pub value: f64,
 }
 
+// One plot bucket of a field: the points a chart draws, and the running
+// summary every mergeable aggregate is answered from.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Bucket {
     pub field: String,
@@ -43,9 +48,7 @@ pub struct Bucket {
     pub last: Point,
     pub min: Point,
     pub max: Point,
-    pub count: u64,
-    pub sum: f64,
-    pub sum_sq: f64,
+    summary: Summary,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -66,16 +69,6 @@ pub(crate) struct Tier {
 }
 
 /* === Enums === */
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Aggregate {
-    Min,
-    Max,
-    Mean,
-    Sum,
-    Count,
-    Percentile(u8),
-}
-
 pub(crate) enum Request {
     Reader {
         stream: Definition,
@@ -120,6 +113,20 @@ pub(crate) enum Request {
 
 /* === Implementations === */
 impl Bucket {
+    pub fn point(field: impl Into<String>, point: Point) -> Self {
+        let mut summary = Summary::new();
+        summary.push(point.value);
+
+        Self {
+            field: field.into(),
+            first: point,
+            last: point,
+            min: point,
+            max: point,
+            summary,
+        }
+    }
+
     pub fn merge(&self, later: &Self) -> Self {
         assert_eq!(
             self.field, later.field,
@@ -132,85 +139,22 @@ impl Bucket {
             last: latest(self.last, later.last),
             min: lower(self.min, later.min),
             max: higher(self.max, later.max),
-            count: self.count + later.count,
-            sum: self.sum + later.sum,
-            sum_sq: self.sum_sq + later.sum_sq,
-        }
-    }
-}
-
-impl Aggregate {
-    pub fn name(&self) -> String {
-        match self {
-            Self::Min => "min".to_owned(),
-            Self::Max => "max".to_owned(),
-            Self::Mean => "mean".to_owned(),
-            Self::Sum => "sum".to_owned(),
-            Self::Count => "count".to_owned(),
-            Self::Percentile(rank) => format!("p{rank}"),
+            summary: self.summary.merge(&later.summary),
         }
     }
 
-    pub fn parse(name: &str) -> Option<Self> {
-        let named = match name {
-            "min" => Self::Min,
-            "max" => Self::Max,
-            "mean" => Self::Mean,
-            "sum" => Self::Sum,
-            "count" => Self::Count,
-            _ => Self::Percentile(name.strip_prefix('p')?.parse().ok()?),
-        };
-
-        named.answerable().then_some(named)
+    pub fn count(&self) -> u64 {
+        self.summary.count()
     }
 
-    pub fn folds_levels(&self) -> bool {
-        !matches!(self, Self::Percentile(_))
+    pub fn summary(&self) -> &Summary {
+        &self.summary
     }
 
-    pub fn folded(&self, bucket: &Bucket) -> Option<f64> {
-        Some(match self {
-            Self::Min => bucket.min.value,
-            Self::Max => bucket.max.value,
-            Self::Mean => bucket.sum / (bucket.count as f64),
-            Self::Sum => bucket.sum,
-            Self::Count => bucket.count as f64,
-            Self::Percentile(_) => return None,
-        })
-    }
-
-    pub fn scanned(&self, values: &mut [f64]) -> Option<f64> {
-        if values.is_empty() {
-            return None;
-        }
-        let count = values.len();
-
-        Some(match self {
-            Self::Min => values.iter().copied().fold(f64::INFINITY, f64::min),
-            Self::Max => values.iter().copied().fold(f64::NEG_INFINITY, f64::max),
-            Self::Mean => values.iter().sum::<f64>() / (count as f64),
-            Self::Sum => values.iter().sum(),
-            Self::Count => count as f64,
-            Self::Percentile(rank) => {
-                values.sort_by(f64::total_cmp);
-                values[nearest_rank(count, *rank)]
-            }
-        })
-    }
-
-    fn answerable(self) -> bool {
-        match self {
-            Self::Percentile(rank) => rank <= 100,
-            _ => true,
-        }
-    }
-
-    pub(crate) fn checked(self) -> Self {
-        assert!(
-            self.answerable(),
-            "a percentile rank is a percentage, and {self:?} names none"
-        );
-        self
+    // Mergeable members only: a bucket keeps no values, so median and
+    // percentiles answer `None` and are asked of the values instead.
+    pub fn aggregate(&self, kind: Aggregate) -> Option<f64> {
+        aggregate::of_summary(&self.summary, kind)
     }
 }
 
@@ -354,13 +298,6 @@ impl Tier {
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn nearest_rank(count: usize, rank: u8) -> usize {
-    (usize::from(rank) * count)
-        .div_ceil(100)
-        .saturating_sub(1)
-        .min(count - 1)
-}
-
 fn earliest(held: Point, next: Point) -> Point {
     if next.axis < held.axis { next } else { held }
 }

@@ -40,7 +40,7 @@ mod staging;
 mod window;
 
 /* === Re-Exports === */
-pub use batches::{BatchItem, Batches, Measurement, Statistics, Summary};
+pub use batches::{BatchItem, Batches, Measurement, Summary};
 pub use definition::Stream;
 pub use harmos_contract::streams::{
     Axial, BatchDefinition, Batched, Definition, Prefix, StreamCatalog, StreamRow, Track, Tracked,
@@ -84,7 +84,7 @@ pub use staging::StagedPublication;
 pub(crate) use definition::{Refused, Table, Wired};
 pub use demand::Demand;
 pub(crate) use demand::Holding;
-pub use series::{Aggregate, Aggregated, Bucket, Point};
+pub use series::{Aggregated, Bucket, Point};
 pub(crate) use series::{Opened, Request, Tier};
 pub use window::{BeneathWindow, Item};
 
