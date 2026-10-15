@@ -203,12 +203,14 @@ impl<C> StorageManager<C> {
                 return Err(Error::NotReady { domain: "storage" });
             }
             state.collect();
-            if state.views.len() >= self.inner.settings.max_views.get()
-                || state.status.read_bytes
-                    > self.inner.settings.read_memory_bytes.get() - total_bytes
-            {
+            if state.views.len() >= self.inner.settings.max_views.get() {
                 return Err(Error::ResourceExhausted {
                     resource: "storage views",
+                });
+            }
+            if state.status.read_bytes > self.inner.settings.read_memory_bytes.get() - total_bytes {
+                return Err(Error::ResourceExhausted {
+                    resource: "storage read memory",
                 });
             }
             if follow.is_some() && state.followers.len() >= self.inner.settings.max_followers.get()

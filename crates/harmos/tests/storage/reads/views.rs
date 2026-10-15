@@ -345,7 +345,9 @@ fn contract_scenario() {
                     let old = f.storage.view_with_limits(f.execution).await.unwrap();
                     assert!(matches!(
                         f.storage.view_with_limits(f.execution).await,
-                        Err(Error::ResourceExhausted { .. })
+                        Err(Error::ResourceExhausted {
+                            resource: "storage views"
+                        })
                     ));
                     write(&f.storage, "later").await;
                     f.storage.flush().await.unwrap();
@@ -1008,7 +1010,9 @@ fn contract_scenario() {
                     f.data.control.read_entered.notified().await;
                     assert!(matches!(
                         f.storage.view_with_limits(f.execution).await,
-                        Err(Error::ResourceExhausted { .. })
+                        Err(Error::ResourceExhausted {
+                            resource: "storage views"
+                        })
                     ));
                     tokio::time::timeout(Duration::from_secs(5), async {
                         for index in 0..16 {
@@ -1062,7 +1066,9 @@ fn contract_scenario() {
                     let view = f.storage.view_with_limits(f.execution).await.unwrap();
                     assert!(matches!(
                         f.storage.view_with_limits(f.execution).await,
-                        Err(Error::ResourceExhausted { .. })
+                        Err(Error::ResourceExhausted {
+                            resource: "storage read memory"
+                        })
                     ));
                     assert_eq!(view.saved().unwrap().sequence, 0);
                     assert_eq!(f.storage.status().read_bytes, bytes);
