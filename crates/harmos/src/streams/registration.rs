@@ -154,6 +154,7 @@ impl<A: Application> StreamManager<A> {
                         tier: self.tier.clone(),
                         closed: self.closed.clone(),
                         pool: self.windows.publications.clone(),
+                        ingest: self.windows.ingest.clone(),
                     },
                     active,
                     applied: self.applied.clone(),

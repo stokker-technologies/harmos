@@ -11,6 +11,7 @@
 mod batches;
 mod definition;
 mod demand;
+mod ingest;
 
 #[cfg(any(
     feature = "plugin",

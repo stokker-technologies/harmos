@@ -274,12 +274,21 @@ impl Window {
                 .is_some()
     }
 
-    pub(super) fn reclaim(&self, needed_bytes: usize, needed_rows: usize) -> Option<()> {
+    // Rows past `taken` are not in every feed's hands yet and stay retained.
+    pub(super) fn reclaim(
+        &self,
+        needed_bytes: usize,
+        needed_rows: usize,
+        taken: u64,
+    ) -> Option<()> {
         let mut ring = self.ring.write().expect("the ring is never poisoned");
         let mut bytes = 0usize;
         let mut rows = 0usize;
         let mut prefix = 0usize;
-        for (_, _, _, row) in &ring.rows {
+        for (cursor, _, _, row) in &ring.rows {
+            if *cursor > taken {
+                break;
+            }
             let publication = row.downcast_ref::<super::ManagedPublication>()?;
             prefix += 1;
             if Arc::strong_count(row) == 1
@@ -306,6 +315,28 @@ impl Window {
             drop(row);
         }
         Some(())
+    }
+
+    // Appending one row would evict a row some live feed has not taken in.
+    pub(super) fn evicts_unread(&self, taken: u64) -> bool {
+        let ring = self.ring.read().expect("the ring is never poisoned");
+        ring.rows.len() == ring.capacity
+            && ring
+                .rows
+                .front()
+                .is_some_and(|(cursor, ..)| *cursor > taken)
+    }
+
+    // Rows the window still takes without evicting one past `taken`.
+    #[cfg(any(
+        feature = "plugin",
+        feature = "plugin-guest",
+        feature = "plugin-sidecar"
+    ))]
+    pub(super) fn room(&self, taken: u64) -> usize {
+        let ring = self.ring.read().expect("the ring is never poisoned");
+        let read = ring.rows.partition_point(|(cursor, ..)| *cursor <= taken);
+        ring.capacity - (ring.rows.len() - read)
     }
 
     #[cfg(feature = "plugin-sidecar")]

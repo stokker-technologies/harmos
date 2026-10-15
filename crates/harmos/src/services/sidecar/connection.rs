@@ -37,6 +37,7 @@ pub(crate) struct Endpoint {
     requests: mpsc::UnboundedSender<Request>,
     arrivals: mpsc::Sender<Arrival>,
     sequences: Mutex<BTreeMap<String, u64>>,
+    turns: Mutex<BTreeMap<String, Arc<tokio::sync::Mutex<()>>>>,
     capacity: Mutex<Option<(NonZeroUsize, Arc<Semaphore>)>>,
     operations: Vec<Definition>,
     contracts: Vec<Contract>,
@@ -67,6 +68,7 @@ impl Endpoint {
             requests,
             arrivals,
             sequences: Mutex::new(BTreeMap::new()),
+            turns: Mutex::new(BTreeMap::new()),
             capacity: Mutex::new(None),
             operations: operations.to_vec(),
             contracts: contracts.to_vec(),
@@ -197,6 +199,31 @@ impl Endpoint {
         request: &mut crate::operations::host::Publication,
         context: &crate::operations::Context<'_>,
     ) -> crate::Result<()> {
+        // Calls On One Stream Stage In Arrival Order
+        let turn = self
+            .turns
+            .lock()
+            .expect("native publication turns poisoned")
+            .entry(request.stream.clone())
+            .or_default()
+            .clone();
+        let _turn = turn.lock().await;
+        let lease = scope.publication_in(context, &request.stream, request.schema)?;
+
+        // Every Row Published Before This Call Is Ingested Before It Stages
+        let mut ended = self.ended.clone();
+        tokio::select! {
+            ingested = lease.ingested() => ingested.map_err(|source| crate::Error::OperationFailed {
+                operation: "host.publish".into(),
+                source: Arc::new(source),
+            })?,
+            _ = ended.wait_for(|ended| *ended) => {
+                return Err(crate::Error::Closing {
+                    domain: "native publication connection",
+                });
+            }
+        }
+
         let permit = self
             .arrivals
             .reserve()
@@ -214,7 +241,6 @@ impl Endpoint {
                 domain: "native publication connection",
             });
         }
-        let lease = scope.publication_in(context, &request.stream, request.schema)?;
         let first = request.sequence.ok_or(crate::Error::InvalidInput {
             field: "native publication",
             reason: "the original producer sequence is required",
@@ -295,7 +321,7 @@ impl Endpoint {
         match staged.refused {
             Some(source) => Err(crate::Error::OperationFailed {
                 operation: "host.publish".into(),
-                source: std::sync::Arc::new(source),
+                source: Arc::new(source),
             }),
             None => Ok(()),
         }

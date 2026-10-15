@@ -171,6 +171,16 @@ impl Activation {
         }
     }
 
+    pub(super) fn pending(&self, wired: &Arc<Wired>) -> usize {
+        self.state
+            .lock()
+            .expect("publication staging poisoned")
+            .rows
+            .iter()
+            .filter(|pending| std::ptr::eq(pending.wired.as_ptr(), Arc::as_ptr(wired)))
+            .count()
+    }
+
     // Caller owns the table visibility write fence and original scope phase.
     pub(crate) fn commit_locked(&self) -> bool {
         let Some(table) = self.table.upgrade() else {

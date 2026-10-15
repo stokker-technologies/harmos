@@ -77,7 +77,7 @@ impl Pool {
         row: PublicationRow,
         wire_sequence: u64,
         missed: u64,
-        window: Option<&super::window::Window>,
+        window: Option<(&super::window::Window, u64)>,
     ) -> Result<ManagedPublication, StreamPublicationError> {
         let bytes = row
             .payload
@@ -90,9 +90,9 @@ impl Pool {
         let missing_bytes = bytes.saturating_sub(self.bytes.available_permits());
         let missing_rows = usize::from(self.rows.available_permits() == 0);
         if missing_bytes > 0 || missing_rows > 0 {
-            let window = window.ok_or(StreamPublicationError::Capacity)?;
+            let (window, taken) = window.ok_or(StreamPublicationError::Capacity)?;
             window
-                .reclaim(missing_bytes, missing_rows)
+                .reclaim(missing_bytes, missing_rows, taken)
                 .ok_or(StreamPublicationError::Capacity)?;
         }
         let slot = self

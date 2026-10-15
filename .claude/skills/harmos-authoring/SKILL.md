@@ -125,12 +125,26 @@ Use the original runtime and resource owners. Consult the relevant section only;
   unix_micros)`, then call `publish_batch_on_context::<S>(&batch, context)` (or
   `publish_batch_on`). Each row keeps its own stamp: the head row carries it and
   following rows carry signed deltas from their predecessor. Each `host.publish`
-  call carries the longest run of rows that fits the frame and a 1 MiB batch
-  budget, with contiguous sequences and per-row admission; the host refuses a
-  row stamped earlier than its predecessor in the batch. Rows before a refused
-  row stay published; the refused row and the rest of its call count as missed.
-  `publish_on_context` stamps one row at call time. Coalesce high-rate rows per
-  tick rather than overlapping calls, which do not order.
+  call carries the longest run of rows that fits the frame, a 1 MiB batch
+  budget and the stream's window, with contiguous sequences and per-row
+  admission; the host refuses a row stamped earlier than its predecessor in the
+  batch. Rows before a refused row stay published; the refused row and the rest
+  of its call count as missed. `publish_on_context` stamps one row at call time.
+  Coalesce high-rate rows per tick rather than overlapping calls, which do not
+  order.
+- Publication is lossless: a `host.publish` call (single row or batch) stages
+  only once every live `StreamManager::follow` feed has taken in every row
+  published before it on that stream, so a producer faster than the host's
+  ingest is paced and never laps the window. A feed takes in a batch when it
+  asks for the next one; drop a feed that is no longer drained, because any
+  live feed paces every plugin producer. Where waiting is impossible the host
+  refuses with `StreamPublicationError::Backlog` instead of evicting an unread
+  row: synchronous in-process and guest publication, rows staged before the
+  activation commits beyond the window's free room, and a raw call carrying
+  more rows than the window. The pool reclaims only taken-in rows; otherwise it
+  refuses with `Capacity`. A call also fails when the lease is revoked or the
+  connection ends. Runtime recorders and `watch()` followers do not pace
+  producers; a lagging watcher still sees `Item::Gap`.
 - Declare `input = Item` and/or `output = Item` explicitly. Context has no optional
   stream handles. Caller APIs are `upload`, `download`, and `exchange`, with
   `send`, `next`, synchronous `finish_input`, `split`, `join`, and

@@ -68,6 +68,7 @@ pub(crate) struct Table {
     pub(super) pump: watch::Sender<()>,
     pub(super) visibility: Arc<RwLock<()>>,
     pub(super) publications: Arc<super::publication::Pool>,
+    pub(super) ingest: Arc<super::ingest::Ingest>,
     #[cfg(any(
         feature = "plugin",
         feature = "plugin-guest",
@@ -156,6 +157,7 @@ impl Table {
             pump,
             visibility: Arc::new(RwLock::new(())),
             publications: Arc::new(super::publication::Pool::new()),
+            ingest: Arc::new(super::ingest::Ingest::new()),
             #[cfg(any(
                 feature = "plugin",
                 feature = "plugin-guest",

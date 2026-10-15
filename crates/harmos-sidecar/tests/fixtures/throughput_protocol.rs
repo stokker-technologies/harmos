@@ -177,7 +177,8 @@ impl StreamSpec for Sample {
     type Row = Self;
     const ID: &'static str = "reading";
     const VERSION: u32 = 1;
-    const WINDOW: usize = 1;
+    // A Call Carries At Most One Window Of Rows; Batches Here Reach 100
+    const WINDOW: usize = 1024;
 }
 
 impl Start {

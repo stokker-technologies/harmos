@@ -50,6 +50,7 @@ pub struct PluginStream {
     pub(super) tier: Tier,
     pub(super) closed: Arc<AtomicBool>,
     pub(super) pool: Arc<super::publication::Pool>,
+    pub(super) ingest: Arc<super::ingest::Ingest>,
 }
 
 pub struct PublicationLease {
@@ -94,6 +95,8 @@ pub enum StreamPublicationError {
     Sequence,
     #[error("a batched row is stamped earlier than the row before it")]
     Stamp,
+    #[error("the stream window is full of rows its ingest has not taken in")]
+    Backlog,
     #[error("the plugin activation has not committed")]
     NotReady,
     #[error(transparent)]
@@ -256,6 +259,7 @@ impl<A: Application> StreamManager<A> {
                     tier: self.tier.clone(),
                     closed: Arc::clone(&self.closed),
                     pool: self.windows.publications.clone(),
+                    ingest: self.windows.ingest.clone(),
                 },
                 active,
                 applied: self.applied.clone(),
@@ -274,6 +278,7 @@ impl<A: Application> StreamManager<A> {
             tier: self.tier.clone(),
             closed: Arc::clone(&self.closed),
             pool: self.windows.publications.clone(),
+            ingest: self.windows.ingest.clone(),
         })
     }
 
@@ -409,7 +414,21 @@ impl PublicationLease {
                 .ok_or(StreamPublicationError::Revoked)?;
             let mut receipts = Vec::with_capacity(rows.len());
             let mut stamped = None;
+            // Staged Rows Join The Window At Commit; They Must Evict No Unread Row.
+            let mut room = if ready {
+                usize::MAX
+            } else {
+                self.stream
+                    .wired
+                    .window
+                    .room(self.stream.ingest.taken())
+                    .saturating_sub(activation.pending(&self.stream.wired))
+            };
             for (offset, row) in (0_u64..).zip(rows) {
+                if room == 0 {
+                    return Ok((receipts, ready, Some(StreamPublicationError::Backlog)));
+                }
+                room -= 1;
                 let sequence = match wire_sequence.map(|first| first.checked_add(offset)) {
                     Some(None) => {
                         return Ok((receipts, ready, Some(StreamPublicationError::Sequence)));
@@ -565,13 +584,17 @@ impl PublicationLease {
         {
             return Err(StreamPublicationError::Sequence);
         }
+        let taken = self.stream.ingest.taken();
+        if live && self.stream.wired.window.evicts_unread(taken) {
+            return Err(StreamPublicationError::Backlog);
+        }
         let publication = self.stream.pool.retain(
             &self.stream.wired.definition,
             generation,
             row,
             next,
             missed,
-            live.then_some(self.stream.wired.window.as_ref()),
+            live.then_some((self.stream.wired.window.as_ref(), taken)),
         )?;
         let evicted = if live {
             self.stream.wired.window.append_locked(
@@ -596,6 +619,32 @@ impl PublicationLease {
             staged.scope.unbind_streams();
         }
         *self.active.lock().expect("stream lease poisoned") = false;
+        self.stream.ingest.wake();
+    }
+
+    // Wait until every live feed has taken in every row published on this
+    // stream so far. A caught-up stream answers without yielding.
+    pub async fn ingested(&self) -> Result<(), StreamPublicationError> {
+        let mut taken = self.stream.ingest.watch();
+        loop {
+            if !*self.active.lock().expect("stream lease poisoned")
+                || self.stream.closed.load(Ordering::Acquire)
+            {
+                return Err(StreamPublicationError::Revoked);
+            }
+            let published = self.stream.wired.window.latest_locked();
+            if taken
+                .borrow_and_update()
+                .values()
+                .all(|cursor| *cursor >= published)
+            {
+                return Ok(());
+            }
+            taken
+                .changed()
+                .await
+                .map_err(|_| StreamPublicationError::Revoked)?;
+        }
     }
 }
 

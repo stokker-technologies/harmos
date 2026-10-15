@@ -47,10 +47,13 @@ pub struct StreamManager<A: Application> {
     pub(super) marker: PhantomData<fn() -> A>,
 }
 
+// A live feed paces plugin publication: the window never evicts a row this
+// feed has not taken in. Asking for the next batch takes in the previous one.
 pub struct StreamFeed<A: Application> {
     pub(super) streams: StreamManager<A>,
     pub(super) changed: watch::Receiver<()>,
     pub(super) cursor: Cursor,
+    pub(super) intake: super::ingest::Intake,
 }
 
 pub(super) struct Partition<S> {
@@ -93,6 +96,7 @@ pub struct Seal<S> {
 /* === Implementations === */
 impl<A: Application> StreamFeed<A> {
     pub async fn next(&mut self) -> Option<Batch<A>> {
+        self.intake.took(self.cursor.0);
         loop {
             self.changed.borrow_and_update();
             let batch = self.streams.batch(self.cursor);
@@ -126,6 +130,7 @@ impl<A: Application> StreamManager<A> {
             streams: self.clone(),
             changed: self.delivery(),
             cursor: resume,
+            intake: self.windows.ingest.engage(resume.0),
         }
     }
 
@@ -203,6 +208,7 @@ impl<A: Application> StreamManager<A> {
         }
         self.closed.store(true, Ordering::Release);
         self.windows.wake();
+        self.windows.ingest.wake();
     }
 
     pub(crate) fn delivery(&self) -> watch::Receiver<()> {

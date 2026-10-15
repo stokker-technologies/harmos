@@ -30,6 +30,9 @@ use harmos_sidecar::{Attach, ObserverContext};
 const TIMED_BASE: i64 = 1_760_000_000_000_000;
 const TICKING_DEMAND: harmos_sidecar::DemandKey =
     harmos_sidecar::DemandKey::new("ticking", "pulse");
+// Each Tick Publishes A Batch Wider Than The Flood Window
+const FLOOD_BATCH: u64 = 12;
+const FLOOD_ROWS: u64 = 240;
 static NEXT_GATE_SEED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
 static GATE_SEEDS: Mutex<std::collections::BTreeMap<usize, std::sync::Weak<Gate>>> =
     Mutex::new(std::collections::BTreeMap::new());
@@ -99,6 +102,19 @@ struct StampedRows;
 
 struct Batches {
     resources: Arc<()>,
+}
+
+#[harmos::stream(id = "flood.rows", window = 8, row = support::Pulse)]
+struct FloodRows;
+
+struct Flood {
+    resources: Arc<()>,
+    attachment: Arc<harmos_sidecar::ObserverAttachment<(), harmos_sidecar::Publisher<Flood>>>,
+}
+
+#[derive(Default)]
+struct Flooding {
+    next: u64,
 }
 
 #[derive(Clone, Default, serde::Deserialize)]
@@ -174,6 +190,11 @@ enum TwinObservers {
 #[harmos::catalog]
 enum MultiObservers {
     Producer(MultiStreamObserver),
+}
+
+#[harmos::catalog]
+enum FloodObservers {
+    Producer(Flooding),
 }
 
 #[harmos::catalog]
@@ -806,6 +827,72 @@ impl harmos::Plugin for MultiStream {
     }
 }
 
+#[harmos::observer(streams(FloodRows), interval_ms = 1)]
+impl Flooding {
+    async fn observe(
+        &mut self,
+        ctx: &ObserverContext<'_, (), harmos_sidecar::Publisher<Flood>>,
+    ) -> Result<(), harmos_sidecar::PublishError> {
+        if self.next == FLOOD_ROWS {
+            return Ok(());
+        }
+        let publisher = ctx.host();
+        let mut batch = publisher.batch::<FloodRows>();
+        for sample in self.next..self.next + FLOOD_BATCH {
+            batch.push(support::pulse(sample));
+        }
+        publisher.publish_batch_on::<FloodRows>(&batch).await?;
+        self.next += FLOOD_BATCH;
+        Ok(())
+    }
+}
+
+impl harmos::operations::lifecycle::Policy for Flood {
+    const INITIALIZATION_POLICY: harmos::operations::OperationPolicy = LIFECYCLE;
+    const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
+}
+
+#[harmos::plugin(description = "Publishes Faster Than Its Host Ingests.", id = "flood", provides = ObserverOperations, requires(harmos::operations::host::Publish),
+    observers = FloodObservers, observer_control = ObserveControl, streams(FloodRows))]
+impl harmos::Plugin for Flood {
+    type Config = ();
+    type Context = harmos_sidecar::Supervisor;
+    type Resources = ();
+    type Error = harmos_sidecar::Refusal;
+    fn prepare(_: ()) -> Result<Self, Self::Error> {
+        let resources = Arc::new(());
+        let attachment = harmos_sidecar::ObserverAttachment::from_catalog::<FloodObservers>(
+            resources.clone(),
+            Self::STREAMS,
+        )?;
+        Ok(Self {
+            resources,
+            attachment,
+        })
+    }
+    async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn resources(&self) -> Arc<()> {
+        self.resources.clone()
+    }
+    fn bind_operations(
+        &self,
+        table: &mut harmos::operations::WireTable<Self::Context>,
+    ) -> Result<(), harmos::operations::ServingError> {
+        self.attachment.bind::<ObserveControl>(table)
+    }
+    fn attachment(&self) -> Option<Arc<dyn harmos_contract::plugin::Attachment<Self::Context>>> {
+        Some(self.attachment.clone())
+    }
+    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
 /* === Public Functions === */
 pub(super) async fn ready(mut ready: tokio::sync::watch::Receiver<bool>) {
     tokio::time::timeout(Duration::from_secs(2), ready.wait_for(|value| *value))
@@ -1187,6 +1274,66 @@ pub(super) fn contract_scenario() {
                             (4, TIMED_BASE),
                         ]
                     );
+                    fixture.runtime.stop().await.unwrap();
+                });
+        });
+    }
+    {
+        scenario_runtime::check("slow_ingest_lossless", || {
+            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
+            scenario_executor
+                .enable_all()
+                .build()
+                .expect("scenario runtime is valid")
+                .block_on(async {
+                    let capacity = std::num::NonZeroUsize::new(4).unwrap();
+                    let source = harmos_sidecar::PluginNative::<Flood>::new(capacity).unwrap();
+                    let mut fixture = Managed::attach(
+                        source,
+                        serde_json::to_vec(&()).unwrap(),
+                        Lanes::NativeOpen,
+                        capacity,
+                        vec![],
+                        std::convert::identity,
+                    )
+                    .await;
+                    // The Host's Ingest Follows Before The Producer Starts
+                    let mut feed = fixture.runtime.streams.follow(Cursor::ORIGIN);
+                    fixture.publication().unwrap();
+                    fixture.initialize().await.unwrap();
+                    ready(fixture.ready().clone()).await;
+
+                    // A Deliberately Slow Ingest: Every Batch Costs 3 ms
+                    let mut samples = Vec::new();
+                    let mut batches = 0;
+                    tokio::time::timeout(Duration::from_secs(20), async {
+                        while samples.len() < FLOOD_ROWS as usize {
+                            let batch = feed.next().await.expect("the feed stays live");
+                            assert!(
+                                batch.incomplete().is_empty(),
+                                "the window dropped an unread row"
+                            );
+                            samples.extend(
+                                batch
+                                    .publications()
+                                    .filter(|(definition, ..)| definition.id() == "flood.rows")
+                                    .map(|(_, _, row)| {
+                                        support::Pulse::decode(row.value.payload.as_slice())
+                                            .unwrap()
+                                            .sample
+                                    }),
+                            );
+                            batches += 1;
+                            tokio::time::sleep(Duration::from_millis(3)).await;
+                        }
+                    })
+                    .await
+                    .expect("every published row reaches the ingest");
+
+                    // Every Row Arrived Once, In Order, Through A Window Of 8
+                    assert_eq!(samples, (0..FLOOD_ROWS).collect::<Vec<_>>());
+                    assert!(batches > 1, "the producer was paced across ingest batches");
+                    fixture.shutdown().await.unwrap();
                     fixture.runtime.stop().await.unwrap();
                 });
         });

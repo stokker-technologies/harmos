@@ -480,7 +480,8 @@ impl Supervisor {
     // leave in sequence order. A row too large on its own still spends its
     // sequence, exactly as a single-row publication does. The head carries
     // its stamp; each following row carries its delta from its predecessor,
-    // and a stamp no delta can express starts the next call.
+    // and a stamp no delta can express starts the next call. A call carries
+    // at most one window of rows, so the host never evicts its own rows.
     fn with_publication<S: crate::StreamSpec, E: From<PublicationError>>(
         &self,
         rows: &[S::Row],
@@ -527,6 +528,9 @@ impl Supervisor {
         let mut following = 0_usize;
         let mut deltas = Vec::with_capacity(rows.len() - 1);
         for (row, pair) in rows[1..].iter().zip(stamps.windows(2)) {
+            if deltas.len() + 1 >= S::WINDOW {
+                break;
+            }
             let delta = match (pair[0], pair[1]) {
                 (_, None) => None,
                 (Some(previous), Some(stamp)) => match stamp.checked_sub(previous) {
