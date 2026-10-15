@@ -1034,23 +1034,30 @@ impl State {
 
     // Expects A Collected Status. Only Bytes Beyond A Guaranteed Ceiling Weigh
     // On The Pool; Reads Never Shrink To Fit: A Full Pool Refuses So The
-    // Consumer Retries Under Contention.
+    // Consumer Retries Under Contention. View-Less Charges Weigh Against
+    // Charged Bytes Alone: Reservations Held By Open Views Never Refuse Them,
+    // So Charged Bytes Stay Within The Pool Plus Admitted Guaranteed Ceilings.
     pub(super) fn check_read(
         &self,
         kind: ReservationKind,
         bytes: usize,
         capacity: usize,
     ) -> Result<()> {
-        let pooled = match kind.view().and_then(|id| self.views.get(&id)) {
-            Some(view) => view.pooled_growth(bytes),
-            None => bytes,
+        let (pooled, held) = match kind.view().and_then(|id| self.views.get(&id)) {
+            Some(view) => (view.pooled_growth(bytes), self.status.read_bytes),
+            None => (bytes, self.charged_read_bytes()),
         };
-        if pooled != 0 && (pooled > capacity || self.status.read_bytes > capacity - pooled) {
+        if pooled != 0 && (pooled > capacity || held > capacity - pooled) {
             return Err(Error::ResourceExhausted {
                 resource: "storage read memory",
             });
         }
         Ok(())
+    }
+
+    // Expects A Collected Status: The Pool Without What Open Views Reserve.
+    fn charged_read_bytes(&self) -> usize {
+        self.status.read_bytes - self.views.values().map(|view| view.held).sum::<usize>()
     }
 
     // A View May Already Be Gone When Output It Produced Is Dropped; Its Live

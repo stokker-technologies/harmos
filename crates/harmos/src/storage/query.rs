@@ -51,6 +51,15 @@ type Decode<R, T> = dyn Fn(R, NonZeroUsize) -> Result<T> + Send + Sync;
 /* === Structs === */
 /// A view's read budget. `memory_bytes` is the per-view ceiling; `admission`
 /// decides how much of it the shared read pool reserves when the view opens.
+///
+/// View acquisition admits reservations against everything the pool holds,
+/// so admitted ceilings never exceed `read_memory_bytes`. View-less reads,
+/// productions and projections (`produce`, `prepare_production`,
+/// `QueryValue::try_map`, `try_project`, `project_owned` of a view-less value)
+/// are refused only when charged bytes would exceed the pool: view-less and
+/// elastic charges plus guaranteed bytes beyond their ceilings. Reservations
+/// never refuse them, so charged bytes stay within the pool plus the admitted
+/// guaranteed ceilings.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct QueryLimits {

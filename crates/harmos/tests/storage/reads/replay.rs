@@ -825,11 +825,13 @@ fn contract_scenario() {
                             .is_err()
                     );
 
-                    // Competing Actual Payload Loans On The Same Ledger
+                    // Competing Actual Payload Loans On The Same Ledger. The
+                    // Competing View Leaves First: An Open View's Reservation
+                    // Never Refuses View-Less Charges, Actual Loans Do.
                     let mut competing = f.storage.replay(record_query(limits())).await.unwrap();
                     let page = competing.next_page().await.unwrap().unwrap();
                     drop(competing);
-                    super::views::wait_release(&f, 1).await;
+                    super::views::wait_release(&f, 2).await;
                     assert_eq!(
                         harmos::MemorySize::memory_size(&page[0].payload),
                         allowance.get()

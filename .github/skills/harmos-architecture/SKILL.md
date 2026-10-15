@@ -157,8 +157,19 @@ shared read pool (`read_memory_bytes`) holds while the view is open:
   would overfill the pool fails with `ResourceExhausted { resource: "storage
   read memory" }`; treat it as contention and retry, never shrink the request.
 
+View-less reads, productions and projections (`produce`,
+`prepare_production`, `QueryValue::try_map`, `try_project`, `project_owned` of
+a view-less value) charge the pool directly and are refused only when charged
+bytes (view-less and elastic charges plus guaranteed bytes beyond their
+ceilings) would exceed it; open views' reservations never refuse them. View
+acquisition admits reservations against everything the pool holds. Admitted
+ceilings therefore never exceed the pool, and charged bytes never exceed the
+pool plus the admitted guaranteed ceilings.
+
 `StorageView::charged_bytes` reports the view's live charges, and
-`StorageStatus::read_bytes` counts the bytes the pool holds.
+`StorageStatus::read_bytes` counts the bytes the pool holds, reservations
+included, so it may exceed `read_memory_bytes` by at most the admitted
+guaranteed ceilings.
 Standalone manager reads (`query`, `read_object`, `prepare_read_production`)
 take a fresh `query_execution` budget each.
 

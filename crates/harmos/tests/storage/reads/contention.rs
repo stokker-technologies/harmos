@@ -29,11 +29,19 @@ const MEMBERS: usize = 9;
 const WORK: Duration = Duration::from_millis(20);
 const FIRST_BACKOFF: Duration = Duration::from_millis(10);
 const LAST_BACKOFF: Duration = Duration::from_millis(160);
+// View-Less Assembly: A List Grown Step By Step, Then Projected Once Shared.
+const GROWTH_STEP: usize = 256 * 1024;
+const GROWTH_STEPS: usize = 4;
+const SUMMARY: usize = MIB / 2;
+// Room For The Vector Header Beside Its Exact Capacity.
+const SLACK: usize = 64;
 
 /* === Macros === */
 
 /* === Type Aliases === */
 type Refusals = Mutex<BTreeMap<(&'static str, &'static str), usize>>;
+// The Grown List, Shared, And The Summary Projected From It.
+type Assembly = (SharedQueryValue<Vec<u8>>, QueryValue<Vec<u8>>);
 
 /* === Structs === */
 
@@ -63,6 +71,18 @@ fn retained() -> Vec<u8> {
     vec![0; 3 * MIB / 4]
 }
 
+fn allowance(bytes: usize) -> NonZeroUsize {
+    NonZeroUsize::new(bytes + SLACK).unwrap()
+}
+
+// Exact Capacity Keeps The Charge Within Its Allowance.
+fn grown(list: &[u8], length: usize) -> Vec<u8> {
+    let mut grown = Vec::with_capacity(length);
+    grown.extend_from_slice(list);
+    grown.resize(length, 0);
+    grown
+}
+
 // Records A Refusal By Step; Any Other Failure Fails The Story.
 fn refused<T>(refusals: &Refusals, step: &'static str, result: Result<T, Error>) -> Option<T> {
     match result {
@@ -80,7 +100,8 @@ fn refused<T>(refusals: &Refusals, step: &'static str, result: Result<T, Error>)
 }
 
 // One Report Member: A Guaranteed View, A Page, Projections Under The View,
-// Held While Rendering. A Refusal Drops Everything And Retries With Backoff.
+// View-Less Assembly Beside It, Held While Rendering. A Refusal Drops
+// Everything And Retries With Backoff.
 async fn member(storage: StorageManager, limits: QueryLimits, refusals: Arc<Refusals>) {
     let mut backoff = FIRST_BACKOFF;
     loop {
@@ -118,9 +139,37 @@ async fn attempt(storage: &StorageManager, limits: QueryLimits, refusals: &Refus
             },
         ),
     )?;
+    let (list, summary) = assemble(storage, refusals)?;
     tokio::time::sleep(WORK).await;
-    drop((owned, rows, page, reader, view));
+    drop((summary, list, owned, rows, page, reader, view));
     Some(())
+}
+
+// View-Less Productions And Projections: Their Charges Weigh On The Pool
+// Outside Every Ceiling, So Admitted Reservations Must Not Refuse Them.
+fn assemble(storage: &StorageManager, refusals: &Refusals) -> Option<Assembly> {
+    let mut list = refused(
+        refusals,
+        "view-less production",
+        storage.produce(allowance(GROWTH_STEP), |_| Ok(grown(&[], GROWTH_STEP))),
+    )?
+    .try_into_value()
+    .unwrap();
+    for step in 2..=GROWTH_STEPS {
+        let length = step * GROWTH_STEP;
+        list = refused(
+            refusals,
+            "view-less growth",
+            list.try_map(allowance(length), |list, _| Ok(grown(&list, length))),
+        )?;
+    }
+    let list = refused(refusals, "view-less share", list.try_into_shared())?;
+    let summary = refused(
+        refusals,
+        "view-less projection",
+        list.try_project(allowance(SUMMARY), |list, _| Ok(list[..SUMMARY].to_vec())),
+    )?;
+    Some((list, summary))
 }
 
 /* === Tests === */
