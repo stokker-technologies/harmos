@@ -392,20 +392,21 @@ fn contract_scenario() {
                         .query_in(&view, RecordQuery::new(schema(), decode))
                         .unwrap();
                     let first = reader.next_page().await.unwrap().unwrap();
-                    let before = f.storage.status().read_bytes;
+                    // The Guaranteed View's Ceiling Covers Its Projections.
+                    let before = view.charged_bytes().unwrap();
                     let value = first
                         .try_into_value(NonZeroUsize::new(4096).unwrap(), |records, _| {
-                            assert!(f.storage.status().read_bytes >= before + 4096);
+                            assert!(view.charged_bytes().unwrap() >= before + 4096);
                             Ok(records
                                 .into_iter()
                                 .map(|record| record.payload)
                                 .collect::<Vec<_>>())
                         })
                         .unwrap();
-                    let before = f.storage.status().read_bytes;
+                    let before = view.charged_bytes().unwrap();
                     let combined = reader
                         .next_page_projected(NonZeroUsize::new(4096).unwrap(), |records, _| {
-                            assert!(f.storage.status().read_bytes >= before + 4096);
+                            assert!(view.charged_bytes().unwrap() >= before + 4096);
                             let mut values = (*value).clone();
                             values.extend(records.iter().map(|record| record.payload));
                             Ok(values)
@@ -549,6 +550,9 @@ fn contract_scenario() {
                         Ok(bytes.to_vec())
                     });
                     query.options.page = Some(limits(1, 4096));
+                    // Elastic Charges Land In The Pool, Where The Projection Observes Them.
+                    query.options.execution =
+                        Some(StorageSettings::default().query_execution.elastic());
                     let mut reader = f.storage.query(query).await.unwrap();
                     let page = reader.next_page().await.unwrap().unwrap();
                     let original = page[0].payload.as_ptr();
@@ -596,6 +600,9 @@ fn contract_scenario() {
                     f.storage.flush().await.unwrap();
                     let mut query = RecordQuery::new(schema(), decode);
                     query.options.page = Some(limits(1, 4096));
+                    // Elastic Charges Land In The Pool, Where The Projection Observes Them.
+                    query.options.execution =
+                        Some(StorageSettings::default().query_execution.elastic());
                     let mut reader = f.storage.query(query).await.unwrap();
                     let page = reader.next_page().await.unwrap().unwrap();
                     let original = page.as_ptr();
@@ -777,11 +784,11 @@ fn contract_scenario() {
                     let f = Fixture::new().await;
                     f.append(9).await;
                     f.storage.flush().await.unwrap();
-                    let mut reader = f
-                        .storage
-                        .query(RecordQuery::new(schema(), decode))
-                        .await
-                        .unwrap();
+                    let mut query = RecordQuery::new(schema(), decode);
+                    // Elastic Charges Land In The Pool, Where The Projection Observes Them.
+                    query.options.execution =
+                        Some(StorageSettings::default().query_execution.elastic());
+                    let mut reader = f.storage.query(query).await.unwrap();
                     let page = reader.next_page().await.unwrap().unwrap();
                     let value = page
                         .try_into_value(NonZeroUsize::new(4096).unwrap(), |records, _| {
@@ -833,11 +840,11 @@ fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let f = Fixture::new().await;
-                    let mut reader = f
-                        .storage
-                        .query(RecordQuery::new(schema(), decode))
-                        .await
-                        .unwrap();
+                    let mut query = RecordQuery::new(schema(), decode);
+                    // Elastic Charges Land In The Pool, Where The Release Shows.
+                    query.options.execution =
+                        Some(StorageSettings::default().query_execution.elastic());
+                    let mut reader = f.storage.query(query).await.unwrap();
                     reader.retain_view().unwrap();
                     let calls = AtomicUsize::new(0);
                     let failure = reader

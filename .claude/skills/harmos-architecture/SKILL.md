@@ -148,7 +148,9 @@ through it. `memory_bytes` is the per-view ceiling; `admission` decides what the
 shared read pool (`read_memory_bytes`) holds while the view is open:
 
 - `Admission::Guaranteed` (default) reserves the whole ceiling at open. Use it
-  for reads that must not fail halfway, such as sealing a report.
+  for reads that must not fail halfway, such as sealing a report. Its pages,
+  productions and projections draw from that ceiling; only bytes beyond it
+  charge the pool, and output outliving the view moves to the pool.
 - `Admission::Elastic` (`limits.elastic()`) reserves a floor of one query page
   plus view metadata. Every production, page, follower page and file chunk
   charges its real bytes to the pool and releases them on drop. A charge that
@@ -156,7 +158,7 @@ shared read pool (`read_memory_bytes`) holds while the view is open:
   read memory" }`; treat it as contention and retry, never shrink the request.
 
 `StorageView::charged_bytes` reports the view's live charges, and
-`StorageStatus::read_bytes` counts bytes actually charged.
+`StorageStatus::read_bytes` counts the bytes the pool holds.
 Standalone manager reads (`query`, `read_object`, `prepare_read_production`)
 take a fresh `query_execution` budget each.
 

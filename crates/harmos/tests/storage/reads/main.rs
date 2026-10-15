@@ -19,6 +19,8 @@ mod support;
 use fixture::*;
 #[path = "admission.rs"]
 mod admission;
+#[path = "contention.rs"]
+mod contention;
 #[path = "follow.rs"]
 mod follow;
 #[allow(dead_code, unused_imports)]

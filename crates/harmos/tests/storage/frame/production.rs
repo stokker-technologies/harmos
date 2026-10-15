@@ -157,7 +157,10 @@ fn contract_scenario() {
                         .prepare_read_production_in(&finalization, output)
                         .unwrap();
                     assert_eq!(preparation.execution_limits(), Some(budget));
-                    assert!(f.storage.status().read_bytes >= baseline + budget.memory_bytes.get());
+                    // The Ceiling Reserved At Open Covers The Production; Only Its
+                    // Entry Overhead Weighs On The Pool.
+                    assert!(finalization.charged_bytes().unwrap() >= budget.memory_bytes.get());
+                    assert!(f.storage.status().read_bytes < baseline + budget.memory_bytes.get());
                     drop(preparation);
                     assert_eq!(f.storage.status().read_bytes, baseline);
                     drop(finalization);

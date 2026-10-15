@@ -147,7 +147,8 @@ pub(super) struct ActiveBudget<'a> {
 #[serde(rename_all = "snake_case")]
 pub enum Admission {
     /// Reserve the whole ceiling at open: for reads that must not fail halfway,
-    /// such as sealing a report. Productions still charge their real bytes.
+    /// such as sealing a report. Reads under the view draw from that ceiling;
+    /// only bytes beyond it charge the pool.
     #[default]
     Guaranteed,
     /// Reserve a floor at open (one query page plus view metadata); each

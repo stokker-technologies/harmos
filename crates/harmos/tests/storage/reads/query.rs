@@ -262,13 +262,24 @@ fn contract_scenario() {
                         entered.store(true, Ordering::SeqCst);
                         decode(bytes, allowance)
                     });
-                    query.options.execution = Some(QueryLimits {
-                        memory_bytes: NonZeroUsize::new(
-                            StorageSettings::default().read_memory_bytes.get() - 64 * 1024,
-                        )
-                        .unwrap(),
-                        ..StorageSettings::default().query_execution
-                    });
+                    // A Guaranteed Holder Leaves Less Than A Page Free, So The
+                    // Elastic Reader's Page Charge Overfills The Pool.
+                    let capacity = StorageSettings::default().read_memory_bytes.get();
+                    let holder = f
+                        .storage
+                        .view_with_limits(QueryLimits {
+                            memory_bytes: NonZeroUsize::new(capacity - 128 * 1024).unwrap(),
+                            ..StorageSettings::default().query_execution
+                        })
+                        .await
+                        .unwrap();
+                    query.options.execution = Some(
+                        QueryLimits {
+                            memory_bytes: NonZeroUsize::new(64 * 1024).unwrap(),
+                            ..StorageSettings::default().query_execution
+                        }
+                        .elastic(),
+                    );
                     let mut reader = f.storage.query(query).await.unwrap();
                     let pinned = f.storage.status().read_bytes;
                     assert!(matches!(
@@ -277,7 +288,7 @@ fn contract_scenario() {
                     ));
                     assert!(!called.load(Ordering::SeqCst));
                     assert_eq!(f.storage.status().read_bytes, pinned);
-                    drop(reader);
+                    drop((reader, holder));
                     until(|| f.storage.status().read_bytes == 0).await;
                     f.finish().await;
                 });
@@ -314,6 +325,9 @@ fn contract_scenario() {
                         decode(bytes, NonZeroUsize::new(8).unwrap())
                     });
                     query.options.decoded_bytes = NonZeroUsize::new(512);
+                    // Elastic Charges Land In The Pool, Where The Decoder Observes Them.
+                    query.options.execution =
+                        Some(StorageSettings::default().query_execution.elastic());
                     let mut reader = f.storage.query(query).await.unwrap();
                     baseline.store(f.storage.status().read_bytes, Ordering::SeqCst);
 
@@ -1370,11 +1384,11 @@ fn contract_scenario() {
                     let f = Fixture::new().await;
                     f.append(9).await;
                     f.storage.flush().await.unwrap();
-                    let mut reader = f
-                        .storage
-                        .query(RecordQuery::new(schema(), decode))
-                        .await
-                        .unwrap();
+                    let mut query = RecordQuery::new(schema(), decode);
+                    // Elastic Charges Land In The Pool, Where The Projection Observes Them.
+                    query.options.execution =
+                        Some(StorageSettings::default().query_execution.elastic());
+                    let mut reader = f.storage.query(query).await.unwrap();
                     reader.retain_view().unwrap();
                     let saved = reader.view().unwrap().saved().unwrap();
                     let page = reader.next_page().await.unwrap().unwrap();

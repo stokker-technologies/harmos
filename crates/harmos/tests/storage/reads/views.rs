@@ -1127,12 +1127,14 @@ fn contract_scenario() {
                         .query(record_query(limits(1, 2048)))
                         .await
                         .unwrap();
+                    // The Guaranteed View's Ceiling Covers Its Projections.
+                    let view = reader.view().unwrap().clone();
                     let page = reader.next_page().await.unwrap().unwrap();
-                    let original_charge = f.storage.status().read_bytes;
+                    let original_charge = view.charged_bytes().unwrap();
                     let projected = page
                         .try_into_value(NonZeroUsize::new(1024).unwrap(), |entries, allowance| {
                             assert_eq!(allowance.get(), 1024);
-                            assert!(f.storage.status().read_bytes >= original_charge + 1024);
+                            assert!(view.charged_bytes().unwrap() >= original_charge + 1024);
                             Ok(entries
                                 .iter()
                                 .map(|entry| entry.position.sequence)
@@ -1142,21 +1144,21 @@ fn contract_scenario() {
                     assert_eq!(&*projected, &[1]);
                     projected.check_origin(&f.storage).unwrap();
                     let pointer = projected.as_ptr();
-                    let original_charge = f.storage.status().read_bytes;
+                    let original_charge = view.charged_bytes().unwrap();
                     let response = projected.try_into_response().unwrap();
                     let response = response
                         .try_unwrap()
                         .expect_err("projected loan cannot be detached");
                     assert_eq!(response.as_ptr(), pointer);
-                    let charged = f.storage.status().read_bytes;
+                    let charged = view.charged_bytes().unwrap();
                     assert!(charged >= original_charge + std::mem::size_of_val(&response));
                     let cached = response.clone().into_erased();
-                    assert_eq!(f.storage.status().read_bytes, charged);
+                    assert_eq!(view.charged_bytes().unwrap(), charged);
                     assert!(cached.clone().restore::<String>().is_none());
                     let restored = cached.clone().restore::<Vec<u64>>().unwrap();
                     assert!(response.ptr_eq(&restored));
                     assert_eq!(restored.as_ptr(), pointer);
-                    drop(reader);
+                    drop((view, reader));
                     wait_release(&f, 1).await;
                     let storage = f.storage.clone();
                     f.finish().await;

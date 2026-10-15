@@ -114,8 +114,10 @@ pub(super) struct ViewState {
     pub(super) deadline: tokio::time::Instant,
     // Pool Bytes Held While Open: Metadata Plus The Ceiling Or The Elastic Floor.
     held: usize,
-    // Live Production Bytes Attributed To This View, Already In The Pool.
+    // Live Read Bytes Attributed To This View: Pages, Productions, Projections.
     charged: usize,
+    // The Guaranteed Ceiling Already Held: Charges Draw From It Before The Pool.
+    covered: usize,
     execution: Option<QueryLimits>,
     remaining: Option<Duration>,
     computing: bool,
@@ -182,11 +184,11 @@ impl<C> StorageManager<C> {
             })
             .transpose()?
             .unwrap_or(0);
-        let reserved = match execution {
-            None => 0,
+        let (reserved, covered) = match execution {
+            None => (0, 0),
             Some(limits) => match limits.admission {
-                Admission::Guaranteed => limits.memory_bytes.get(),
-                Admission::Elastic => self.elastic_floor(limits)?,
+                Admission::Guaranteed => (limits.memory_bytes.get(), limits.memory_bytes.get()),
+                Admission::Elastic => (self.elastic_floor(limits)?, 0),
             },
         };
         let held = bytes
@@ -283,6 +285,7 @@ impl<C> StorageManager<C> {
                     deadline: executor::now() + self.inner.settings.view_idle_timeout,
                     held,
                     charged: 0,
+                    covered,
                     execution,
                     remaining: execution.map(|limits| limits.timeout),
                     computing: false,
@@ -411,7 +414,7 @@ impl StorageView {
         self.reader::<StoredRow>(selection)
     }
 
-    // Live Production Bytes Charged To The Pool Under This View.
+    // Live Read Bytes Charged Under This View, Covered By A Guaranteed Ceiling.
     pub fn charged_bytes(&self) -> Result<usize> {
         let state = self.lease.manager.inner.state.lock().unwrap();
         let view = state.views.get(&self.lease.id).ok_or(Error::ViewExpired)?;
@@ -946,6 +949,19 @@ impl ViewState {
                 .map(|view| view.snapshot())
         })
     }
+
+    // Pool Bytes This View Weighs: What It Holds Plus Charges Past Its Cover.
+    fn pooled(&self) -> usize {
+        self.held + self.charged.saturating_sub(self.covered)
+    }
+
+    // Additional Pool Bytes A New Charge Of `bytes` Would Weigh.
+    fn pooled_growth(&self, bytes: usize) -> usize {
+        self.charged
+            .saturating_add(bytes)
+            .saturating_sub(self.covered)
+            - self.charged.saturating_sub(self.covered)
+    }
 }
 
 impl State {
@@ -956,9 +972,15 @@ impl State {
         for view in self.views.values_mut() {
             view.expired |= view.idle_expired(now) || self.status.closing;
         }
+        let mut orphaned = 0;
         self.views.retain(|_, view| {
-            !view.expired || view.busy != 0 || view.opening || view.backend().is_some()
+            let keep = !view.expired || view.busy != 0 || view.opening || view.backend().is_some();
+            if !keep {
+                orphaned += view.charged;
+            }
+            keep
         });
+        self.read_bytes += orphaned;
         let mut expired = false;
         for held in self.followers.values_mut() {
             expired |= held.expire(self.status.closing, now);
@@ -985,7 +1007,7 @@ impl State {
                 .map(|deletion| deletion.bytes)
                 .sum::<usize>()
             + self.saves.values().map(|save| save.bytes).sum::<usize>()
-            + self.views.values().map(|view| view.held).sum::<usize>()
+            + self.views.values().map(ViewState::pooled).sum::<usize>()
             + self
                 .followers
                 .values()
@@ -993,7 +1015,7 @@ impl State {
                 .sum::<usize>();
     }
 
-    // Charges Read Bytes To The Pool And Attributes Them To Their View.
+    // Charges Read Bytes To Their Open View, Or To The Pool Directly.
     pub(super) fn charge_read(
         &mut self,
         kind: ReservationKind,
@@ -1001,19 +1023,29 @@ impl State {
         capacity: usize,
     ) -> Result<()> {
         self.collect();
-        self.check_read(bytes, capacity)?;
-        self.read_bytes += bytes;
-        if let Some(view) = kind.view().and_then(|id| self.views.get_mut(&id)) {
-            view.charged += bytes;
+        self.check_read(kind, bytes, capacity)?;
+        match kind.view().and_then(|id| self.views.get_mut(&id)) {
+            Some(view) => view.charged += bytes,
+            None => self.read_bytes += bytes,
         }
         self.collect();
         Ok(())
     }
 
-    // Expects A Collected Status. Productions Never Shrink To Fit: A Full
-    // Pool Refuses So The Consumer Retries Under Contention.
-    pub(super) fn check_read(&self, bytes: usize, capacity: usize) -> Result<()> {
-        if bytes > capacity || self.status.read_bytes > capacity - bytes {
+    // Expects A Collected Status. Only Bytes Beyond A Guaranteed Ceiling Weigh
+    // On The Pool; Reads Never Shrink To Fit: A Full Pool Refuses So The
+    // Consumer Retries Under Contention.
+    pub(super) fn check_read(
+        &self,
+        kind: ReservationKind,
+        bytes: usize,
+        capacity: usize,
+    ) -> Result<()> {
+        let pooled = match kind.view().and_then(|id| self.views.get(&id)) {
+            Some(view) => view.pooled_growth(bytes),
+            None => bytes,
+        };
+        if pooled != 0 && (pooled > capacity || self.status.read_bytes > capacity - pooled) {
             return Err(Error::ResourceExhausted {
                 resource: "storage read memory",
             });
@@ -1021,11 +1053,19 @@ impl State {
         Ok(())
     }
 
-    // A View May Already Be Gone When Output It Produced Is Dropped.
+    // A View May Already Be Gone When Output It Produced Is Dropped; Its Live
+    // Charges Then Moved To The Pool When The View Left.
     pub(super) fn release_read(&mut self, kind: ReservationKind, bytes: usize) {
-        self.read_bytes -= bytes;
-        if let Some(view) = kind.view().and_then(|id| self.views.get_mut(&id)) {
-            view.charged -= bytes;
+        match kind.view().and_then(|id| self.views.get_mut(&id)) {
+            Some(view) => view.charged -= bytes,
+            None => self.read_bytes -= bytes,
+        }
+    }
+
+    // A Released View Leaves Its Ceiling; Output It Produced Stays Charged.
+    pub(super) fn remove_view(&mut self, id: u64) {
+        if let Some(view) = self.views.remove(&id) {
+            self.read_bytes += view.charged;
         }
     }
 

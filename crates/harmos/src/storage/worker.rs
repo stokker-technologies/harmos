@@ -269,7 +269,7 @@ impl<A: Application> Resident<A> for Worker {
                                     inner.settings.file_session_timeout,
                                 ),
                             (Action::View(ViewAction::Release(..)), Completed::Released(id)) => {
-                                state.views.remove(&id);
+                                state.remove_view(id);
                                 state.snapshot_released();
                             }
                             (Action::Write(_), Completed::Write(progress)) => {

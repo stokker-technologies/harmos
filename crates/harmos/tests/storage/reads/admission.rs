@@ -197,6 +197,44 @@ fn contract_scenario() {
         });
     }
     {
+        scenario_runtime::check("guaranteed_charges_draw_from_ceiling", || {
+            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
+            scenario_executor.start_paused(true);
+            scenario_executor
+                .enable_all()
+                .build()
+                .expect("scenario runtime is valid")
+                .block_on(async {
+                    let mut policy = config();
+                    policy.view_idle_timeout = Duration::from_millis(10);
+                    let f = Fixture::new(policy).await;
+                    saved(&f).await;
+                    let view = f.storage.view_with_limits(f.execution).await.unwrap();
+                    let held = pool(&f);
+                    let mut reader = f.storage.query_in(&view, record_query(page())).unwrap();
+                    let page = reader.next_page().await.unwrap().unwrap();
+                    let projected = page
+                        .try_project(NonZeroUsize::new(MIB).unwrap(), |_, _| {
+                            Ok(vec![0_u8; MIB / 2])
+                        })
+                        .unwrap();
+                    // The Ceiling Reserved At Open Already Covers Both Charges.
+                    assert!(view.charged_bytes().unwrap() > MIB / 2);
+                    assert_eq!(pool(&f), held);
+                    drop((page, reader));
+                    // Output Outliving Its View Returns To The Pool With The Ceiling.
+                    tokio::time::advance(Duration::from_millis(11)).await;
+                    assert!(matches!(view.charged_bytes(), Err(Error::ViewExpired)));
+                    until(|| pool(&f) < held).await;
+                    assert!(pool(&f) > MIB / 2);
+                    drop(projected);
+                    until(|| pool(&f) == 0).await;
+                    drop(view);
+                    f.finish().await;
+                });
+        });
+    }
+    {
         scenario_runtime::check("elastic_charges_return_after_drop", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor
