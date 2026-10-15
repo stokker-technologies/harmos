@@ -17,6 +17,8 @@ mod scenario_runtime;
 #[path = "../../support/mod.rs"]
 mod support;
 use fixture::*;
+#[path = "admission.rs"]
+mod admission;
 #[path = "follow.rs"]
 mod follow;
 #[allow(dead_code, unused_imports)]

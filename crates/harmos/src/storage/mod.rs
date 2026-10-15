@@ -105,9 +105,9 @@ pub use production::{
     StorageProduction, StorageProductionComputation, StorageProductionPreparation,
 };
 pub use query::{
-    EncodedObjectQuery, FileQuery, FileQueryResult, FollowQuery, ObjectQuery, ObjectQueryResult,
-    Query, QueryLimits, QueryOptions, QueryPage, QueryResult, QueryValue, RecordQuery,
-    RecordQueryResult, SchemaQuery, SchemaQueryResult, SharedQueryValue, StreamQuery,
+    Admission, EncodedObjectQuery, FileQuery, FileQueryResult, FollowQuery, ObjectQuery,
+    ObjectQueryResult, Query, QueryLimits, QueryOptions, QueryPage, QueryResult, QueryValue,
+    RecordQuery, RecordQueryResult, SchemaQuery, SchemaQueryResult, SharedQueryValue, StreamQuery,
     StreamQueryResult,
 };
 pub use reads::{

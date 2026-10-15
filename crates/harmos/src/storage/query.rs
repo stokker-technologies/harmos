@@ -49,10 +49,14 @@ type DecodingMemory = dyn Fn(&[u8]) -> Result<usize> + Send + Sync;
 type Decode<R, T> = dyn Fn(R, NonZeroUsize) -> Result<T> + Send + Sync;
 
 /* === Structs === */
+/// A view's read budget. `memory_bytes` is the per-view ceiling; `admission`
+/// decides how much of it the shared read pool reserves when the view opens.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct QueryLimits {
     pub memory_bytes: NonZeroUsize,
+    #[serde(default)]
+    pub admission: Admission,
     pub spill_bytes: usize,
     pub timeout: Duration,
 }
@@ -138,6 +142,20 @@ pub(super) struct ActiveBudget<'a> {
 }
 
 /* === Enums === */
+// How A View Holds The Shared Read Pool (`StorageSettings::read_memory_bytes`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Admission {
+    /// Reserve the whole ceiling at open: for reads that must not fail halfway,
+    /// such as sealing a report. Productions still charge their real bytes.
+    #[default]
+    Guaranteed,
+    /// Reserve a floor at open (one query page plus view metadata); each
+    /// production charges its real bytes against the ceiling and the pool and
+    /// releases them on drop. A charge that would overfill the pool fails with
+    /// `ResourceExhausted { resource: "storage read memory" }` for a retry.
+    Elastic,
+}
 
 /* === Traits === */
 pub trait Query<C>: sealed::Supported {
@@ -179,6 +197,16 @@ impl Default for QueryOptions {
 }
 
 impl QueryLimits {
+    // Reserve Only A Floor At Open And Charge Productions As They Happen.
+    pub fn elastic(self) -> Self {
+        self.with_admission(Admission::Elastic)
+    }
+
+    pub fn with_admission(mut self, admission: Admission) -> Self {
+        self.admission = admission;
+        self
+    }
+
     pub fn check(self) -> Result<()> {
         if self.timeout.is_zero() {
             return Err(Error::InvalidInput {

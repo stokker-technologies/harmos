@@ -173,7 +173,7 @@ impl StorageView {
 impl StorageFileReader {
     async fn new(view: StorageView, file: &FileReference) -> Result<Self> {
         let (_pin, _) = view.pin()?;
-        let reservation = view.manager().reserve_read(encoded_size(file)?, 1).await?;
+        let reservation = view.reserve_read(encoded_size(file)?, 1)?;
         Ok(Self {
             view: Some(view),
             file: file.clone(),
@@ -200,7 +200,7 @@ impl StorageFileReader {
             let _activity = view.activity()?;
             let manager = view.manager();
             let _lifecycle = manager.inner.lifecycle.lock().await;
-            let reservation = manager.reserve_read(max_bytes.get(), 1).await?;
+            let reservation = view.reserve_read(max_bytes.get(), 1)?;
             let (_pin, metadata) = view.pin()?;
             if self.offset == self.file.length {
                 if <[u8; 32]>::from(self.hash.clone().finalize()) != self.file.sha256 {

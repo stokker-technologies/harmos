@@ -678,17 +678,9 @@ fn fetch<T: Entry>(
             .ok_or(Error::ResourceExhausted {
                 resource: "storage read memory",
             })?;
-        if charge > lease.inner.settings.read_memory_bytes.get() {
-            return Err(Error::ResourceExhausted {
-                resource: "storage read memory",
-            });
-        }
-        let available = lease
-            .inner
-            .settings
-            .read_memory_bytes
-            .get()
-            .saturating_sub(state.status.read_bytes);
+        let kind = ReservationKind::View(lease.id);
+        let capacity = lease.inner.settings.read_memory_bytes.get();
+        let mut refusal = state.check_read(charge, capacity).err();
         'queue: for pending in state
             .queue
             .iter()
@@ -727,10 +719,8 @@ fn fetch<T: Entry>(
                             break 'queue;
                         }
                         if !reserved {
-                            if charge > available {
-                                return Err(Error::ResourceExhausted {
-                                    resource: "storage read memory",
-                                });
+                            if let Some(error) = refusal.take() {
+                                return Err(error);
                             }
                             // The state lock serializes this reservation until it
                             // is recorded below; pending references stay borrowed.
@@ -762,11 +752,11 @@ fn fetch<T: Entry>(
             }
         }
         if reserved {
-            state.read_bytes += charge;
+            state.charge_read(kind, charge, capacity)?;
             reservation = Some(MemoryReservation {
                 inner: lease.inner.clone(),
                 bytes: charge,
-                kind: ReservationKind::Read,
+                kind,
             });
         }
         state.followers.get_mut(&lease.id).unwrap().after = cursor;

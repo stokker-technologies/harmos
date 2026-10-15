@@ -24,8 +24,8 @@ use super::manager::{ErasedCatalog, encoded_size};
 use super::replication::Replica;
 use super::selection::Entry;
 use super::{
-    BackendSnapshot, FileReference, ObjectEntry, QueryLimits, ReadHistory, ReadKind, ReadLimits,
-    ReadSelection, ReadView, StorageCursor, StorageEntry, StorageManager, StoragePart,
+    Admission, BackendSnapshot, FileReference, ObjectEntry, QueryLimits, ReadHistory, ReadKind,
+    ReadLimits, ReadSelection, ReadView, StorageCursor, StorageEntry, StorageManager, StoragePart,
     StorageSchema, StoredRecord, StoredRow,
 };
 use crate::Identifier;
@@ -381,6 +381,7 @@ pub(super) async fn copy(
         .ok_or(invalid("bootstrap execution bound overflow"))?;
     let execution = QueryLimits {
         memory_bytes,
+        admission: Admission::Guaranteed,
         spill_bytes: 0,
         timeout: manager.inner.settings.io_timeout,
     };

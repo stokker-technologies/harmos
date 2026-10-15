@@ -22,7 +22,7 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use super::manager::{ENTRY_OVERHEAD, MemoryReservation};
+use super::manager::{ENTRY_OVERHEAD, MemoryReservation, ReservationKind};
 use super::{QueryLimits, QueryValue, StorageManager, StorageView};
 use crate::{Error, MemorySize, Result};
 
@@ -85,7 +85,11 @@ impl<C> StorageManager<C> {
         &self,
         max_bytes: NonZeroUsize,
     ) -> Result<StorageProductionPreparation> {
-        self.prepare_read_production_with(self.inner.settings.query_execution, max_bytes)
+        self.prepare_read_production_with(
+            ReservationKind::Read,
+            self.inner.settings.query_execution,
+            max_bytes,
+        )
     }
 
     // Native Output Prepared For A View Inherits That View's Budget.
@@ -100,11 +104,16 @@ impl<C> StorageManager<C> {
                 reason: "view belongs to another manager",
             });
         }
-        self.prepare_read_production_with(view.inherited_budget(None)?, max_bytes)
+        self.prepare_read_production_with(
+            ReservationKind::View(view.id()),
+            view.inherited_budget(None)?,
+            max_bytes,
+        )
     }
 
     fn prepare_read_production_with(
         &self,
+        kind: ReservationKind,
         limits: QueryLimits,
         max_bytes: NonZeroUsize,
     ) -> Result<StorageProductionPreparation> {
@@ -120,9 +129,9 @@ impl<C> StorageManager<C> {
         if max_bytes.get() > working {
             return Err(super::query::decoded_limit());
         }
-        let reservation = self.reserve_read_now(max_bytes.get(), 1)?;
+        let reservation = self.reserve_read_for(kind, max_bytes.get(), 1)?;
         let execution_reservation =
-            self.reserve_read_now(limits.memory_bytes.get() - max_bytes.get(), 1)?;
+            self.reserve_read_for(kind, limits.memory_bytes.get() - max_bytes.get(), 1)?;
         let execution = Arc::new(Execution {
             limits,
             decoded_bytes: self.inner.settings.query_decoded_bytes,

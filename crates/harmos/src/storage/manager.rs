@@ -185,6 +185,8 @@ pub enum ErasedCatalog {}
 #[derive(Clone, Copy)]
 pub(super) enum ReservationKind {
     Read,
+    // A Read Charge Attributed To One View's Ceiling And Charged Bytes.
+    View(u64),
     Write,
     Replication,
 }
@@ -909,6 +911,15 @@ impl<C> StorageManager<C> {
         bytes: usize,
         entries: usize,
     ) -> Result<MemoryReservation> {
+        self.reserve_read_for(ReservationKind::Read, bytes, entries)
+    }
+
+    pub(super) fn reserve_read_for(
+        &self,
+        kind: ReservationKind,
+        bytes: usize,
+        entries: usize,
+    ) -> Result<MemoryReservation> {
         let bytes = entries
             .checked_mul(ENTRY_OVERHEAD)
             .and_then(|overhead| bytes.checked_add(overhead))
@@ -924,18 +935,11 @@ impl<C> StorageManager<C> {
         if !state.ready || !state.status.running {
             return Err(Error::NotReady { domain: "storage" });
         }
-        state.collect();
-        if state.status.read_bytes > self.inner.settings.read_memory_bytes.get() - bytes {
-            return Err(Error::ResourceExhausted {
-                resource: "storage read memory",
-            });
-        }
-        state.read_bytes += bytes;
-        state.collect();
+        state.charge_read(kind, bytes, self.inner.settings.read_memory_bytes.get())?;
         Ok(MemoryReservation {
             inner: self.inner.clone(),
             bytes,
-            kind: ReservationKind::Read,
+            kind,
         })
     }
 
@@ -1323,20 +1327,33 @@ impl RecordWrite<'_> {
     }
 }
 
+impl ReservationKind {
+    pub(super) fn is_read(self) -> bool {
+        matches!(self, Self::Read | Self::View(_))
+    }
+
+    pub(super) fn view(self) -> Option<u64> {
+        match self {
+            Self::View(id) => Some(id),
+            Self::Read | Self::Write | Self::Replication => None,
+        }
+    }
+}
+
 impl MemoryReservation {
     pub(super) fn projection(&self, bytes: std::num::NonZeroUsize) -> Result<Self> {
-        assert!(matches!(self.kind, ReservationKind::Read));
+        assert!(self.kind.is_read());
         let mut output = Self {
             inner: Arc::clone(&self.inner),
             bytes: 0,
-            kind: ReservationKind::Read,
+            kind: self.kind,
         };
         output.reserve_projection(bytes)?;
         Ok(output)
     }
 
     pub(super) fn reserve_projection(&mut self, bytes: std::num::NonZeroUsize) -> Result<()> {
-        assert!(matches!(self.kind, ReservationKind::Read));
+        assert!(self.kind.is_read());
         if bytes > self.inner.settings.query_decoded_bytes_ceiling {
             return Err(super::query::decoded_limit());
         }
@@ -1355,24 +1372,20 @@ impl MemoryReservation {
         if !state.ready || !state.status.running {
             return Err(Error::NotReady { domain: "storage" });
         }
-        let total = state
-            .read_bytes
-            .checked_add(additional)
-            .filter(|bytes| *bytes <= self.inner.settings.read_memory_bytes.get())
-            .ok_or(Error::ResourceExhausted {
-                resource: "storage read memory",
-            })?;
-        state.read_bytes = total;
+        state.charge_read(
+            self.kind,
+            additional,
+            self.inner.settings.read_memory_bytes.get(),
+        )?;
         self.bytes = retained;
-        state.collect();
         Ok(())
     }
 
     pub(super) fn retain_read(&mut self, bytes: usize) {
-        assert!(matches!(self.kind, ReservationKind::Read));
+        assert!(self.kind.is_read());
         assert!(bytes <= self.bytes);
         let mut state = self.inner.state.lock().unwrap();
-        state.read_bytes -= self.bytes - bytes;
+        state.release_read(self.kind, self.bytes - bytes);
         self.bytes = bytes;
         state.collect();
         drop(state);
@@ -1398,7 +1411,9 @@ impl Drop for MemoryReservation {
     fn drop(&mut self) {
         let mut state = self.inner.state.lock().unwrap();
         match self.kind {
-            ReservationKind::Read => state.read_bytes -= self.bytes,
+            ReservationKind::Read | ReservationKind::View(_) => {
+                state.release_read(self.kind, self.bytes)
+            }
             ReservationKind::Write => state.scratch_bytes -= self.bytes,
             ReservationKind::Replication => {
                 state.scratch_bytes -= self.bytes;

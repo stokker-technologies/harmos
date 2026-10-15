@@ -23,7 +23,7 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use crate::storage::{QueryLimits, ReadLimits};
+use crate::storage::{Admission, QueryLimits, ReadLimits};
 use crate::{Error, Result};
 
 /* === Constants === */
@@ -404,11 +404,13 @@ impl Default for StorageSettings {
             query_decoded_bytes_ceiling: NonZeroUsize::new(4 * 1024 * 1024).unwrap(),
             query_execution: QueryLimits {
                 memory_bytes: NonZeroUsize::new(4 * 1024 * 1024).unwrap(),
+                admission: Admission::Guaranteed,
                 spill_bytes: 0,
                 timeout: Duration::from_secs(5),
             },
             query_execution_ceiling: QueryLimits {
                 memory_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
+                admission: Admission::Guaranteed,
                 spill_bytes: 64 * 1024 * 1024,
                 timeout: Duration::from_secs(30),
             },

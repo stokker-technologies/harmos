@@ -184,6 +184,7 @@ pub(super) async fn reuse() {
     let data = Arc::new(Data::new(history()));
     let execution = QueryLimits {
         memory_bytes: super::nonzero(64 * 1024 * 1024),
+        admission: Admission::Guaranteed,
         timeout: Duration::from_secs(30),
         spill_bytes: 0,
     };

@@ -154,7 +154,7 @@ impl<C, T: MemorySize + 'static> Query<C> for SeriesQuery<T> {
                 "series metadata exceeds original working allowance",
             ));
         }
-        let reservation = view.manager().reserve_read_now(bytes, 1)?;
+        let reservation = view.reserve_read(bytes, 1)?;
         let mut selection = self.query.options.selection(ReadKind::Stream);
         selection.schema = Some(self.query.schema.clone());
         selection.source_time = self.query.source_time;
@@ -219,7 +219,7 @@ impl<T: MemorySize + 'static> Series<T> {
                 "series aggregate metadata exceeds original allowance",
             ));
         }
-        let _construction = view.manager().reserve_read_now(bytes, 1)?;
+        let _construction = view.reserve_read(bytes, 1)?;
 
         let mut frame = Frame::new(self.max_samples, NonZeroUsize::MIN);
         let scan = frame.scan(self.source.selection.clone(), self.source.columns.clone());

@@ -115,7 +115,7 @@ impl Profile {
                 if bytes > *decoded_bytes {
                     return Err(super::query::decoded_limit());
                 }
-                view.manager().reserve_read_now(bytes.get(), 1)
+                view.reserve_read(bytes.get(), 1)
             }
             Self::Producer(execution) => {
                 execution.check_output(bytes)?;

@@ -140,9 +140,24 @@ For concrete plugin and transport authoring, use `harmos-authoring`.
 ## Storage View Budgets
 
 A storage view owns one read budget, the `QueryLimits` it was opened with
-(`memory_bytes`, `spill_bytes`, `timeout`). `StorageManager::view_with_limits`
-admits it against `query_execution_ceiling` and reserves its memory; the view's
-time is one cumulative allowance spent by every read performed through it.
+(`memory_bytes`, `admission`, `spill_bytes`, `timeout`).
+`StorageManager::view_with_limits` admits it against `query_execution_ceiling`;
+the view's time is one cumulative allowance spent by every read performed
+through it. `memory_bytes` is the per-view ceiling; `admission` decides what the
+shared read pool (`read_memory_bytes`) holds while the view is open:
+
+- `Admission::Guaranteed` (default) reserves the whole ceiling at open. Use it
+  for reads that must not fail halfway, such as sealing a report.
+- `Admission::Elastic` (`limits.elastic()`) reserves a floor of one query page
+  plus view metadata. Every production, page, follower page and file chunk
+  charges its real bytes to the pool and releases them on drop. A charge that
+  would overfill the pool fails with `ResourceExhausted { resource: "storage
+  read memory" }`; treat it as contention and retry, never shrink the request.
+
+Opening refuses with `storage views` at `max_views` and with `storage read
+memory` when the pool cannot hold the new floor or reservation.
+`StorageView::charged_bytes` reports the view's live charges, and
+`StorageStatus::read_bytes` counts bytes actually charged.
 Standalone manager reads (`query`, `read_object`, `prepare_read_production`)
 take a fresh `query_execution` budget each.
 

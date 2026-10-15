@@ -66,7 +66,7 @@ impl<T: MemorySize + 'static> Transform<'_, T> {
         if bytes > memory_bytes.get() || memory_bytes > self.series.query.decoded_bytes() {
             return Err(invalid("downsample exceeds original output allowance"));
         }
-        let reservation = view.manager().reserve_read_now(bytes, 1)?;
+        let reservation = view.reserve_read(bytes, 1)?;
         let indices = crate::signal::decimate(self.series.samples, count);
         let mut points = slots(count)?;
         let mut selected = indices.iter().copied().peekable();
@@ -117,7 +117,7 @@ impl<T: MemorySize + 'static> Transform<'_, T> {
         {
             return Err(invalid("FFT exceeds original scratch/output allowance"));
         }
-        let reservation = view.manager().reserve_read_now(bytes, 1)?;
+        let reservation = view.reserve_read(bytes, 1)?;
         let mut real = slots(length)?;
         let mut imag = slots(length)?;
         let mut previous: Option<&ScalarValue> = None;

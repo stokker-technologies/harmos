@@ -118,7 +118,7 @@ impl<C> Query<C> for FrameQuery {
             manager.inner.primary.supports_scan_order(scan, order)
         })?;
         let decoded_bytes = manager.query_decoded_bytes(&self.options)?;
-        let reservation = manager.reserve_read_now(self.frame.memory_size(), 1)?;
+        let reservation = view.reserve_read(self.frame.memory_size(), 1)?;
         computation.finish(FrameResult {
             frame: self.frame,
             view,
@@ -156,7 +156,7 @@ impl FrameResult {
 
         // Peak Memory Is Charged Before The First Page Is Requested.
         let manager = self.view.manager();
-        let reservation = manager.reserve_read_now(self.explain.peak_bytes, 1)?;
+        let reservation = self.view.reserve_read(self.explain.peak_bytes, 1)?;
         let collected = tokio::time::timeout(computation.timeout(), async {
             let _activity = self.view.activity()?;
             let _lifecycle = manager.inner.lifecycle.lock().await;

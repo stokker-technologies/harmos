@@ -319,6 +319,7 @@ async fn measure(mode: &str, count: usize, repetition: Option<usize>) -> Duratio
     // The In-Memory Fixture Pins The Entire Native Snapshot For Replay.
     query.options.execution = Some(QueryLimits {
         memory_bytes: nonzero(16 * 1_024 * 1_024),
+        admission: Admission::Guaranteed,
         spill_bytes: 0,
         timeout: Duration::from_secs(5),
     });

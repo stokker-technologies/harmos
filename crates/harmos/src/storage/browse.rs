@@ -497,9 +497,7 @@ impl ObjectBrowseResult {
             .computation_with(Some(self.remaining), Duration::ZERO)?
             .ok_or(Error::ViewExpired)?;
         let _live = view.pin()?;
-        let output = view
-            .manager()
-            .reserve_read_now(self.decoded_bytes.get(), 1)?;
+        let output = view.reserve_read(self.decoded_bytes.get(), 1)?;
         let timeout = computation.timeout();
         let started = tokio::time::Instant::now();
         let _active = ActiveBudget {
@@ -514,8 +512,7 @@ impl ObjectBrowseResult {
             let _activity = view.activity()?;
             let manager = view.manager();
             let _lifecycle = manager.inner.lifecycle.lock().await;
-            let reservation =
-                manager.reserve_read_now(output_memory(self.page)?, self.page.rows.get())?;
+            let reservation = view.reserve_read(output_memory(self.page)?, self.page.rows.get())?;
             let (_pin, read_view) = view.pin()?;
             request.check_view(&read_view, self.cursor.as_ref())?;
             let page = manager
@@ -625,7 +622,7 @@ fn open_request(
                 .ok_or(invalid("projection size overflow"))?,
         )
         .ok_or(invalid("plan size overflow"))?;
-    let reservation = manager.reserve_read_now(bytes, 1)?;
+    let reservation = view.reserve_read(bytes, 1)?;
     let decoded_bytes = manager.query_decoded_bytes(&options)?;
     Ok(ObjectBrowseResult {
         request: Some(request),

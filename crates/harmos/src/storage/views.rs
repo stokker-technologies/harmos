@@ -23,7 +23,9 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use super::manager::{ENTRY_OVERHEAD, Inner, MemoryReservation, State, encoded_size};
+use super::manager::{
+    ENTRY_OVERHEAD, Inner, MemoryReservation, ReservationKind, State, encoded_size,
+};
 use super::selection::Entry;
 use super::*;
 use crate::supervision::executor;
@@ -110,7 +112,10 @@ pub(super) struct ViewState {
     pub(super) busy: usize,
     active: usize,
     pub(super) deadline: tokio::time::Instant,
-    pub(super) bytes: usize,
+    // Pool Bytes Held While Open: Metadata Plus The Ceiling Or The Elastic Floor.
+    held: usize,
+    // Live Production Bytes Attributed To This View, Already In The Pool.
+    charged: usize,
     execution: Option<QueryLimits>,
     remaining: Option<Duration>,
     computing: bool,
@@ -177,12 +182,19 @@ impl<C> StorageManager<C> {
             })
             .transpose()?
             .unwrap_or(0);
-        let bytes = bytes
-            .checked_add(execution.map_or(0, |limits| limits.memory_bytes.get()))
+        let reserved = match execution {
+            None => 0,
+            Some(limits) => match limits.admission {
+                Admission::Guaranteed => limits.memory_bytes.get(),
+                Admission::Elastic => self.elastic_floor(limits)?,
+            },
+        };
+        let held = bytes
+            .checked_add(reserved)
             .ok_or(Error::ResourceExhausted {
-                resource: "storage query memory",
+                resource: "storage read memory",
             })?;
-        let total_bytes = bytes
+        let total_bytes = held
             .checked_add(follower_bytes)
             .ok_or(Error::ResourceExhausted {
                 resource: "storage read memory",
@@ -203,12 +215,14 @@ impl<C> StorageManager<C> {
                 return Err(Error::NotReady { domain: "storage" });
             }
             state.collect();
-            if state.views.len() >= self.inner.settings.max_views.get()
-                || state.status.read_bytes
-                    > self.inner.settings.read_memory_bytes.get() - total_bytes
-            {
+            if state.views.len() >= self.inner.settings.max_views.get() {
                 return Err(Error::ResourceExhausted {
                     resource: "storage views",
+                });
+            }
+            if state.status.read_bytes > self.inner.settings.read_memory_bytes.get() - total_bytes {
+                return Err(Error::ResourceExhausted {
+                    resource: "storage read memory",
                 });
             }
             if follow.is_some() && state.followers.len() >= self.inner.settings.max_followers.get()
@@ -267,7 +281,8 @@ impl<C> StorageManager<C> {
                     busy: 0,
                     active: 0,
                     deadline: executor::now() + self.inner.settings.view_idle_timeout,
-                    bytes,
+                    held,
+                    charged: 0,
                     execution,
                     remaining: execution.map(|limits| limits.timeout),
                     computing: false,
@@ -313,6 +328,19 @@ impl<C> StorageManager<C> {
             }
             changed.changed().await.map_err(|_| Error::ViewExpired)?;
         }
+    }
+
+    // One Default Query Page, Capped By The View's Own Ceiling.
+    fn elastic_floor(&self, limits: QueryLimits) -> Result<usize> {
+        let page = self.inner.settings.query_page;
+        page.rows
+            .get()
+            .checked_mul(ENTRY_OVERHEAD)
+            .and_then(|overhead| page.bytes.get().checked_add(overhead))
+            .map(|floor| floor.min(limits.memory_bytes.get()))
+            .ok_or(Error::ResourceExhausted {
+                resource: "storage read memory",
+            })
     }
 
     pub(super) async fn release_views(&self) -> Result<()> {
@@ -381,6 +409,26 @@ impl StorageView {
 
     pub(super) fn read_stream(&self, selection: ReadSelection) -> Result<StorageReader<StoredRow>> {
         self.reader::<StoredRow>(selection)
+    }
+
+    // Live Production Bytes Charged To The Pool Under This View.
+    pub fn charged_bytes(&self) -> Result<usize> {
+        let state = self.lease.manager.inner.state.lock().unwrap();
+        let view = state.views.get(&self.lease.id).ok_or(Error::ViewExpired)?;
+        if view.expired || view.idle_expired(executor::now()) {
+            return Err(Error::ViewExpired);
+        }
+        Ok(view.charged)
+    }
+
+    pub(super) fn id(&self) -> u64 {
+        self.lease.id
+    }
+
+    // Charges A Read Made Under This View To The Pool And To Its Charged Bytes.
+    pub(super) fn reserve_read(&self, bytes: usize, entries: usize) -> Result<MemoryReservation> {
+        self.manager()
+            .reserve_read_for(ReservationKind::View(self.lease.id), bytes, entries)
     }
 
     pub fn execution_limits(&self) -> Result<Option<QueryLimits>> {
@@ -493,7 +541,7 @@ impl StorageView {
             return Ok(None);
         }
         let bytes = std::mem::size_of::<ComputationOwner>() + 2 * std::mem::size_of::<usize>();
-        let reservation = self.manager().reserve_read_now(bytes, 1)?;
+        let reservation = self.reserve_read(bytes, 1)?;
         let inner = &self.lease.manager.inner;
         let mut state = inner.state.lock().unwrap();
         let view = state
@@ -641,7 +689,7 @@ impl<T> StorageReader<T> {
             resource: "exhausted query",
         })?;
         let _live = view.pin()?;
-        view.manager().reserve_read_now(bytes.get(), 1)
+        view.reserve_read(bytes.get(), 1)
     }
 
     pub(super) fn exhausted(&self) -> bool {
@@ -937,12 +985,48 @@ impl State {
                 .map(|deletion| deletion.bytes)
                 .sum::<usize>()
             + self.saves.values().map(|save| save.bytes).sum::<usize>()
-            + self.views.values().map(|view| view.bytes).sum::<usize>()
+            + self.views.values().map(|view| view.held).sum::<usize>()
             + self
                 .followers
                 .values()
                 .map(|held| held.bytes)
                 .sum::<usize>();
+    }
+
+    // Charges Read Bytes To The Pool And Attributes Them To Their View.
+    pub(super) fn charge_read(
+        &mut self,
+        kind: ReservationKind,
+        bytes: usize,
+        capacity: usize,
+    ) -> Result<()> {
+        self.collect();
+        self.check_read(bytes, capacity)?;
+        self.read_bytes += bytes;
+        if let Some(view) = kind.view().and_then(|id| self.views.get_mut(&id)) {
+            view.charged += bytes;
+        }
+        self.collect();
+        Ok(())
+    }
+
+    // Expects A Collected Status. Productions Never Shrink To Fit: A Full
+    // Pool Refuses So The Consumer Retries Under Contention.
+    pub(super) fn check_read(&self, bytes: usize, capacity: usize) -> Result<()> {
+        if bytes > capacity || self.status.read_bytes > capacity - bytes {
+            return Err(Error::ResourceExhausted {
+                resource: "storage read memory",
+            });
+        }
+        Ok(())
+    }
+
+    // A View May Already Be Gone When Output It Produced Is Dropped.
+    pub(super) fn release_read(&mut self, kind: ReservationKind, bytes: usize) {
+        self.read_bytes -= bytes;
+        if let Some(view) = kind.view().and_then(|id| self.views.get_mut(&id)) {
+            view.charged -= bytes;
+        }
     }
 
     pub(super) fn view_action(&mut self, allow_release: bool) -> Option<ViewAction> {
@@ -1061,7 +1145,7 @@ fn fetch<'a, T: Entry>(
                 field: "read page",
                 reason: "size overflow",
             })?;
-        let reservation = manager.reserve_read(bytes, limits.rows.get()).await?;
+        let reservation = owned.reserve_read(bytes, limits.rows.get())?;
         let (_pin, view) = owned.pin()?;
         view.check_kind(T::KIND, selection, cursor)?;
         let page = manager
