@@ -38,8 +38,9 @@ const PERCENTILE: u32 = 455_936_439;
 const RANK: u32 = 211_531_165;
 
 // Variant tags in declaration order, indexed by the Postcard ordinal.
-#[cfg(feature = "grpc")]
-const TAGS: [u32; 9] = [COUNT, SUM, MEAN, MEDIAN, MIN, MAX, RMS, STD, PERCENTILE];
+crate::with_protobuf! {
+    const TAGS: [u32; 9] = [COUNT, SUM, MEAN, MEDIAN, MIN, MAX, RMS, STD, PERCENTILE];
+}
 
 /* === Macros === */
 
@@ -327,13 +328,14 @@ const fn variant(name: &'static str, tag: u32, payload: declaration::Definition)
 }
 
 // A zero rank is the proto3 default and stays off the wire.
-#[cfg(feature = "grpc")]
-fn protobuf_payload_len(value: &Aggregate) -> usize {
-    match value {
-        Aggregate::Percentile(rank @ 1..) => {
-            prost::encoding::uint32::encoded_len(RANK, &u32::from(*rank))
+crate::with_protobuf! {
+    fn protobuf_payload_len(value: &Aggregate) -> usize {
+        match value {
+            Aggregate::Percentile(rank @ 1..) => {
+                prost::encoding::uint32::encoded_len(RANK, &u32::from(*rank))
+            }
+            _ => 0,
         }
-        _ => 0,
     }
 }
 
