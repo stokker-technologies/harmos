@@ -150,10 +150,12 @@ pub(crate) fn structure(
         (false, true) => syn::Ident::new("download", proc_macro2::Span::call_site()),
         (true, true) => syn::Ident::new("exchange", proc_macro2::Span::call_site()),
     };
+    // The binding and its protobuf projection share the SDK's codec gate: a
+    // build whose messages carry no protobuf codec declares no gRPC method.
     let grpc = grpc.map(|binding| {
         quote! {
-            const GRPC: Option<#sdk::operations::Grpc> = Some(#binding);
             #sdk::__private::with_protobuf! {
+                const GRPC: Option<#sdk::operations::Grpc> = Some(#binding);
                 fn visit_grpc<V: #sdk::operations::GrpcVisitor>(visitor: V) -> Option<V::Entry> {
                     Some(visitor.#shape::<Self>())
                 }
