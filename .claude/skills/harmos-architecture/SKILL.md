@@ -180,7 +180,9 @@ let mut records = storage.query_in(&finalization, RecordQuery::new(schema, decod
 ```
 
 Exhaustion reports `ResourceExhausted` naming the resource (`query computation
-time`, `query decoded memory`). Raise `query_execution_ceiling` for budgets
+time`, `query decoded memory`). View acquisition refuses with `storage views`
+when `max_views` views are open and `storage read memory` when the read pool
+cannot hold the new view's reservation. Raise `query_execution_ceiling` for budgets
 beyond its default. `view_idle_timeout` still expires a view left idle between
 reads. File following (`follow_file`, `FileFollower`) and backend calls stay
 bounded per call by `io_timeout`, not by a view budget.
