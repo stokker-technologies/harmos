@@ -155,8 +155,6 @@ shared read pool (`read_memory_bytes`) holds while the view is open:
   would overfill the pool fails with `ResourceExhausted { resource: "storage
   read memory" }`; treat it as contention and retry, never shrink the request.
 
-Opening refuses with `storage views` at `max_views` and with `storage read
-memory` when the pool cannot hold the new floor or reservation.
 `StorageView::charged_bytes` reports the view's live charges, and
 `StorageStatus::read_bytes` counts bytes actually charged.
 Standalone manager reads (`query`, `read_object`, `prepare_read_production`)
