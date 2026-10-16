@@ -52,7 +52,6 @@ pub struct StorageProductionComputation {
 
 pub(super) struct Execution {
     limits: QueryLimits,
-    scratch_bytes: usize,
     state: Mutex<ExecutionState>,
     _reservation: MemoryReservation,
 }
@@ -132,18 +131,10 @@ impl<C> StorageManager<C> {
         if max_bytes.get() > working {
             return Err(super::query::decoded_limit());
         }
-        // Output And Scratch Draw From The Same Shared Read Pool.
-        let scratch_bytes = self
-            .inner
-            .settings
-            .query_decoded_bytes
-            .get()
-            .min(working - max_bytes.get());
         let reservation = self.reserve_read_for(kind, max_bytes.get(), 1)?;
-        let execution_reservation = self.reserve_read_for(kind, metadata + scratch_bytes, 1)?;
+        let execution_reservation = self.reserve_read_for(kind, metadata, 1)?;
         let execution = Arc::new(Execution {
             limits,
-            scratch_bytes,
             state: Mutex::new(ExecutionState {
                 remaining: limits.timeout,
                 started: None,
@@ -209,7 +200,7 @@ impl StorageProductionPreparation {
                 field: "storage production",
                 reason: "size overflow",
             })?;
-        // Execution Scratch Has Its Own Reservation; Retain Only The Produced Value.
+        // Retain Only The Produced Value; Temporary Work Has Its Own Claims.
         reservation.retain_read(charged);
         Ok(StorageProduction {
             value,
@@ -272,10 +263,6 @@ impl Execution {
 }
 
 impl StorageProductionComputation {
-    pub fn scratch_bytes(&self) -> usize {
-        self.execution.scratch_bytes
-    }
-
     pub fn timeout(&self) -> Duration {
         self.timeout
     }

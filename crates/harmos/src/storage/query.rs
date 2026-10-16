@@ -1427,6 +1427,13 @@ impl<T> Clone for SharedQueryValue<T> {
 }
 
 impl<T> SharedQueryValue<T> {
+    /// Charges temporary work to the same read pool as this value.
+    /// Keep the returned claim with the work, including after caller cancellation.
+    pub fn reserve_work(&self, bytes: NonZeroUsize) -> Result<super::arrow::RetainedMemory> {
+        let reservation = self.owner._reservation.projection(bytes)?;
+        Ok(super::manager::retain_memory(reservation))
+    }
+
     pub fn prepare_work(&self) -> Result<super::StorageReadWorkPreparation> {
         self.owner.prepare_work()
     }

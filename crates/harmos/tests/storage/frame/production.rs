@@ -1193,3 +1193,34 @@ async fn completed_producer_releases_unused_output_reservation() {
     assert_eq!(f.storage.status().read_bytes, baseline);
     f.finish().await;
 }
+
+#[tokio::test]
+async fn producer_work_claim_survives_detached_waiter() {
+    let f = Fixture::new(storage_settings()).await;
+    let baseline = f.storage.status().read_bytes;
+    let source = produced(&f.storage, NonZeroUsize::new(16).unwrap(), 7u64)
+        .try_into_shared()
+        .unwrap();
+    let occupied = f.storage.status().read_bytes;
+    assert!(occupied - baseline < storage_settings().query_decoded_bytes.get());
+    let memory = source
+        .reserve_work(NonZeroUsize::new(4096).unwrap())
+        .unwrap();
+    let charged = f.storage.status().read_bytes;
+    assert!(charged >= occupied + 4096);
+    let (release, released) = tokio::sync::oneshot::channel::<()>();
+    let (complete, completed) = tokio::sync::oneshot::channel();
+    let task = tokio::spawn(async move {
+        let _ = released.await;
+        drop(memory);
+        let _ = complete.send(());
+    });
+    drop(task);
+    assert_eq!(f.storage.status().read_bytes, charged);
+    release.send(()).unwrap();
+    completed.await.unwrap();
+    assert_eq!(f.storage.status().read_bytes, occupied);
+    drop(source);
+    assert_eq!(f.storage.status().read_bytes, baseline);
+    f.finish().await;
+}
