@@ -1458,7 +1458,7 @@ fn contract_scenario() {
 }
 
 #[tokio::test]
-async fn cancelled_output_admission_keeps_typed_cursor() {
+async fn cancelled_admission_keeps_typed_cursor() {
     let f = Fixture::new().await;
     let position = f.append(7).await;
     f.storage.flush().await.unwrap();

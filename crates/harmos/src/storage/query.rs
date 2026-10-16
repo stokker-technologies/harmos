@@ -1095,7 +1095,7 @@ impl<R, T: MemorySize> QueryResult<R, T> {
             return Ok(None);
         }
         let view = self.reader.view().cloned().ok_or(Error::ViewExpired)?;
-        let computation = view.computation()?.ok_or(Error::ViewExpired)?;
+        let computation = view.begin_computation_wait().await?;
         let timeout = computation.timeout();
         let started = tokio::time::Instant::now();
         if self.pending.is_none() {
