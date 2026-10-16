@@ -31,6 +31,7 @@ UV_PROJECT_ENVIRONMENT = "{{config_root}}/.venv"
 RUSTC_WRAPPER = "{% if os() == 'windows' %}{% else %}sccache{% endif %}"
 CARGO_INCREMENTAL = "0"
 HARMOS_FIXTURES_MANIFEST = "{{config_root}}/target/fixtures/harmos/consumer.json"
+TMPDIR = "/var/tmp"
 
 # === Tasks | Setup === #
 
