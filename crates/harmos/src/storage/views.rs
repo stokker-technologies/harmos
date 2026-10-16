@@ -190,6 +190,39 @@ impl<C> StorageManager<C> {
         execution: Option<QueryLimits>,
         at: Option<&StorageCursor>,
     ) -> Result<(StorageView, Option<super::follow::Lease>)> {
+        let timeout = execution.map_or(self.inner.settings.io_timeout, |limits| limits.timeout);
+        let started = tokio::time::Instant::now();
+        let mut changed = self.inner.changed.subscribe();
+        let acquired = tokio::time::timeout(timeout, async {
+            loop {
+                match self.try_acquire_view_at(follow, execution, at).await {
+                    Err(Error::ResourceExhausted {
+                        resource: "storage views" | "storage read memory" | "storage followers",
+                    }) => {
+                        changed.changed().await.map_err(|_| Error::Closing {
+                            domain: "storage read admission",
+                        })?;
+                    }
+                    result => return result,
+                }
+            }
+        })
+        .await
+        .map_err(|_| super::query::execution_timeout())??;
+        if let Some(limits) = execution {
+            acquired
+                .0
+                .limit_computation(limits.timeout.saturating_sub(started.elapsed()))?;
+        }
+        Ok(acquired)
+    }
+
+    async fn try_acquire_view_at(
+        &self,
+        follow: Option<(&ReadSelection, super::follow::Mode)>,
+        execution: Option<QueryLimits>,
+        at: Option<&StorageCursor>,
+    ) -> Result<(StorageView, Option<super::follow::Lease>)> {
         // Cover retained frontiers plus temporary acquisition/release copies.
         let bytes = encoded_size(self.inner.primary.history())?
             .checked_mul(8)
