@@ -126,3 +126,46 @@ async fn complete_corruption_is_preserved_and_refused() {
     assert!(reopened.open().await.is_err());
     assert_eq!(std::fs::read(&path).unwrap(), corrupt);
 }
+
+#[tokio::test]
+async fn state_root_has_one_owner_until_close() {
+    let root = tempfile::tempdir().unwrap();
+    let history = super::history();
+    let settings = super::storage_settings();
+    let first = FileBackend::new(root.path().to_owned(), history.clone(), &settings);
+    let second = FileBackend::new(root.path().to_owned(), history.clone(), &settings);
+    first.open().await.unwrap();
+    assert!(second.open().await.is_err());
+    let position = RecoveryPosition {
+        history: history.clone(),
+        sequence: 1,
+    };
+    let entry = RecoveryEntry {
+        position: position.clone(),
+        required_data: StorageCursor {
+            history: history.clone(),
+            sequence: 0,
+        },
+        payload: b"exclusive writer".to_vec(),
+    };
+    first.write_entries(&[entry.clone()]).await.unwrap();
+    first.flush(&position).await.unwrap();
+    first.close().await.unwrap();
+
+    // A Refused Owner Can Acquire The Root After The Original Owner Closes.
+    assert_eq!(second.open().await.unwrap(), position);
+    let after = RecoveryPosition {
+        history,
+        sequence: 0,
+    };
+    let page = second
+        .read_entries(&after, &position, settings.query_page)
+        .await
+        .unwrap();
+    assert_eq!(page.entries, vec![entry]);
+    assert_eq!(page.next, None);
+    assert!(first.open().await.is_err());
+    second.close().await.unwrap();
+    assert_eq!(first.open().await.unwrap(), position);
+    first.close().await.unwrap();
+}
