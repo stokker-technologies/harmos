@@ -221,11 +221,13 @@ impl<R, T: MemorySize> QueryFollower<R, T> {
         max_bytes: NonZeroUsize,
         map: impl FnOnce(&[T], NonZeroUsize) -> Result<U>,
     ) -> Result<QueryValue<U>> {
-        self.project_page_with(max_bytes, |page, bytes| page.try_project(bytes, map))
-            .await?
-            .ok_or(Error::Closing {
-                domain: "live following",
-            })
+        self.project_page_with(max_bytes, |page, bytes, reservation| {
+            page.project_reserved(bytes, reservation, map)
+        })
+        .await?
+        .ok_or(Error::Closing {
+            domain: "live following",
+        })
     }
 
     pub async fn next_page_projected_shared<U: MemorySize>(
@@ -233,8 +235,9 @@ impl<R, T: MemorySize> QueryFollower<R, T> {
         max_bytes: NonZeroUsize,
         map: impl FnOnce(&[T], NonZeroUsize) -> Result<U>,
     ) -> Result<SharedQueryValue<U>> {
-        self.project_page_with(max_bytes, |page, bytes| {
-            page.try_project(bytes, map)?.try_into_shared()
+        self.project_page_with(max_bytes, |page, bytes, reservation| {
+            page.project_reserved(bytes, reservation, map)?
+                .try_into_shared()
         })
         .await?
         .ok_or(Error::Closing {
@@ -245,9 +248,13 @@ impl<R, T: MemorySize> QueryFollower<R, T> {
     async fn project_page_with<U>(
         &mut self,
         max_bytes: NonZeroUsize,
-        map: impl FnOnce(&QueryPage<T>, NonZeroUsize) -> Result<U>,
+        map: impl FnOnce(&QueryPage<T>, NonZeroUsize, MemoryReservation) -> Result<U>,
     ) -> Result<Option<U>> {
-        let output = self.read_page_with(|page| map(page, max_bytes)).await?;
+        let output = self
+            .read_page_with(Some(max_bytes), |page, reservation| {
+                map(page, max_bytes, reservation.expect("projection admission"))
+            })
+            .await?;
         if output.is_some() {
             self.decoded.take();
         }
@@ -255,7 +262,7 @@ impl<R, T: MemorySize> QueryFollower<R, T> {
     }
 
     async fn read_page(&mut self) -> Result<Option<QueryPage<T>>> {
-        match self.read_page_with(|_| Ok(())).await? {
+        match self.read_page_with(None, |_, _| Ok(())).await? {
             Some(()) => Ok(self.decoded.take()),
             None => Ok(None),
         }
@@ -263,7 +270,8 @@ impl<R, T: MemorySize> QueryFollower<R, T> {
 
     async fn read_page_with<U>(
         &mut self,
-        map: impl FnOnce(&QueryPage<T>) -> Result<U>,
+        projection: Option<NonZeroUsize>,
+        map: impl FnOnce(&QueryPage<T>, Option<MemoryReservation>) -> Result<U>,
     ) -> Result<Option<U>> {
         let _live = self.source.lease.activity()?;
         if self.remaining.is_zero() {
@@ -331,7 +339,15 @@ impl<R, T: MemorySize> QueryFollower<R, T> {
             .decoded
             .as_ref()
             .expect("original decoded page is pending");
-        let output = map(page)?;
+        let reservation = if let Some(bytes) = projection {
+            Some(
+                page.reserve_projection_wait(bytes, timeout.saturating_sub(started.elapsed()))
+                    .await?,
+            )
+        } else {
+            None
+        };
+        let output = map(page, reservation)?;
         if started.elapsed() >= timeout {
             return Err(super::query::execution_timeout());
         }
@@ -365,7 +381,9 @@ impl<R, T: MemorySize> QueryReplay<R, T> {
             return Ok(None);
         };
         let output = inner
-            .project_page_with(max_bytes, |page, bytes| page.try_project(bytes, map))
+            .project_page_with(max_bytes, |page, bytes, reservation| {
+                page.project_reserved(bytes, reservation, map)
+            })
             .await?;
         if inner.pending.is_none() && inner.decoded.is_none() && inner.source.finished() {
             self.inner = None;
@@ -382,8 +400,9 @@ impl<R, T: MemorySize> QueryReplay<R, T> {
             return Ok(None);
         };
         let output = inner
-            .project_page_with(max_bytes, |page, bytes| {
-                page.try_project(bytes, map)?.try_into_shared()
+            .project_page_with(max_bytes, |page, bytes, reservation| {
+                page.project_reserved(bytes, reservation, map)?
+                    .try_into_shared()
             })
             .await?;
         if inner.pending.is_none() && inner.decoded.is_none() && inner.source.finished() {

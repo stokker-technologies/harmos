@@ -1222,17 +1222,34 @@ impl<T> Deref for QueryPage<T> {
 }
 
 impl<T> QueryPage<T> {
+    pub(super) async fn reserve_projection_wait(
+        &self,
+        bytes: NonZeroUsize,
+        timeout: Duration,
+    ) -> Result<MemoryReservation> {
+        self._reservation.projection_wait(bytes, timeout).await
+    }
+
+    pub(super) fn project_reserved<U: MemorySize>(
+        &self,
+        max_bytes: NonZeroUsize,
+        reservation: MemoryReservation,
+        map: impl FnOnce(&[T], NonZeroUsize) -> Result<U>,
+    ) -> Result<QueryValue<U>> {
+        let value = map(&self.entries, max_bytes)?;
+        if value.memory_size() > max_bytes.get() {
+            return Err(decoded_limit());
+        }
+        QueryValue::retain(value, reservation)
+    }
+
     pub fn try_project<U: MemorySize>(
         &self,
         max_bytes: NonZeroUsize,
         map: impl FnOnce(&[T], NonZeroUsize) -> Result<U>,
     ) -> Result<QueryValue<U>> {
         let reservation = self._reservation.projection(max_bytes)?;
-        let value = map(&self.entries, max_bytes)?;
-        if value.memory_size() > max_bytes.get() {
-            return Err(decoded_limit());
-        }
-        QueryValue::retain(value, reservation)
+        self.project_reserved(max_bytes, reservation, map)
     }
 }
 

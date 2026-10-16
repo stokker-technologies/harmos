@@ -1011,3 +1011,55 @@ async fn accepted_replay_keeps_raw_page_while_decode_waits() {
     drop(replay);
     f.finish().await;
 }
+
+#[tokio::test]
+async fn cancelled_replay_projection_preserves_decoded_page() {
+    let f = Fixture::new(config()).await;
+    write(&f.storage, "accepted").await;
+    let mut query = record_query(limits());
+    query.options.decoded_bytes = NonZeroUsize::new(16 * 1024);
+    let mut replay = f.storage.replay(query).await.unwrap();
+    super::views::wait_release(&f, 1).await;
+    let occupied = f.storage.status().read_bytes;
+    let probe = f.storage.reserve_arrow_memory(0).unwrap();
+    let overhead = f.storage.status().read_bytes - occupied;
+    drop(probe);
+    let capacity = config().budget.read_memory_bytes.get();
+    let external = f
+        .storage
+        .reserve_arrow_memory(capacity - occupied - overhead - 64 * 1024)
+        .unwrap();
+    let calls = std::cell::Cell::new(0usize);
+    let mut next = Box::pin(replay.next_page_projected(
+        NonZeroUsize::new(128 * 1024).unwrap(),
+        |rows, _| {
+            calls.set(calls.get() + 1);
+            Ok(rows[0].position.sequence)
+        },
+    ));
+    assert!(matches!(
+        std::future::poll_fn(|cx| std::task::Poll::Ready(std::future::Future::poll(
+            next.as_mut(),
+            cx
+        )))
+        .await,
+        std::task::Poll::Pending
+    ));
+    drop(next);
+    assert_eq!(calls.get(), 0);
+    drop(external);
+    let page = replay
+        .next_page_projected(NonZeroUsize::new(128 * 1024).unwrap(), |rows, _| {
+            calls.set(calls.get() + 1);
+            Ok(rows[0].position.sequence)
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(*page, 1);
+    assert_eq!(calls.get(), 1);
+    drop(page);
+    assert!(replay.next_page().await.unwrap().is_none());
+    drop(replay);
+    f.finish().await;
+}
