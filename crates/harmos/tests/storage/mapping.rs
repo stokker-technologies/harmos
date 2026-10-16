@@ -317,3 +317,121 @@ async fn mapping_exhaustion() {
     storage.close().await.unwrap();
     runtime.stop().await.unwrap();
 }
+
+#[tokio::test]
+async fn mapping_growth() {
+    // Conversion Can Grow Beyond Its Initial Reservation Within The Shared Budget.
+    let directory = tempfile::tempdir().unwrap();
+    let mut settings = storage_settings();
+    settings.budget.read_memory_bytes = std::num::NonZeroUsize::new(16 * 1024 * 1024).unwrap();
+    settings.query_execution.memory_bytes = std::num::NonZeroUsize::new(128 * 1024).unwrap();
+    settings.query_execution_ceiling.memory_bytes = settings.budget.read_memory_bytes;
+    settings.query_decoded_bytes = std::num::NonZeroUsize::new(8 * 1024).unwrap();
+    settings.query_decoded_bytes_ceiling = settings.query_decoded_bytes;
+    settings.query_page = ReadLimits {
+        rows: std::num::NonZeroUsize::MIN,
+        bytes: std::num::NonZeroUsize::new(16 * 1024).unwrap(),
+    };
+    settings.query_page_ceiling = ReadLimits {
+        rows: std::num::NonZeroUsize::MIN,
+        bytes: std::num::NonZeroUsize::new(64 * 1024).unwrap(),
+    };
+    let data = Arc::new(Data::<()>::journaled(directory.path(), history()).unwrap());
+    let storage = StorageManager::new(
+        StorageBackends {
+            primary: data,
+            state: Arc::new(Recovery::new(history())),
+            replicas: vec![],
+        },
+        settings.clone(),
+    )
+    .unwrap();
+    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
+        .register(catalog())
+        .runtime_with_storage(&storage)
+        .await
+        .unwrap();
+    let schema = SchemaKey {
+        id: Identifier::new("expansion").unwrap(),
+        version: NonZeroU32::MIN,
+        payload_encoding: PayloadEncoding::PostcardV1,
+    };
+    let graph = harmos::schema::graph::Schema::from_declaration(
+        <Expansion as harmos::schema::Described>::DEFINITION,
+        &harmos::config::SchemaSettings::default(),
+    )
+    .unwrap();
+    storage.write_schema(&schema, &graph).await.unwrap();
+    let item = Identifier::new("compact").unwrap();
+    let payload = Expansion {
+        values: vec![String::new(); 4096],
+    }
+    .encode_to_vec();
+    assert!(payload.len() < settings.query_page.bytes.get());
+    storage
+        .write_records(&[RecordWrite {
+            schema: &schema,
+            scope: None,
+            item: &item,
+            source: None,
+            source_time: None,
+            payload: &payload,
+        }])
+        .await
+        .unwrap();
+    let at = storage.flush().await.unwrap();
+    let request = |item| Query {
+        at: at.clone(),
+        source: Source::Records(RecordSelection {
+            schema: schema.clone(),
+            scope: None,
+            item,
+            source_start: None,
+            source_end: None,
+        }),
+        transforms: vec![],
+        slice: RowSlice {
+            offset: 0,
+            limit: None,
+        },
+    };
+    let mut reader = storage.query(request(Some(item))).await.unwrap();
+    assert!(matches!(
+        reader.next().await.unwrap(),
+        Some(QueryOutput::Schema(_))
+    ));
+    let Some(QueryOutput::Batch(batch)) = reader.next().await.unwrap() else {
+        panic!("expanded data batch");
+    };
+    assert_eq!(batch.as_record_batch().num_rows(), 1);
+    let retained = batch.as_record_batch().clone();
+    let payload = retained
+        .column_by_name("payload")
+        .unwrap()
+        .as_any()
+        .downcast_ref::<StructArray>()
+        .unwrap();
+    let values = payload
+        .column_by_name("values")
+        .unwrap()
+        .as_any()
+        .downcast_ref::<ListArray>()
+        .unwrap()
+        .value(0);
+    let strings = values
+        .as_any()
+        .downcast_ref::<arrow_array::StringArray>()
+        .unwrap();
+    assert_eq!(strings.len(), 4096);
+    assert!(strings.iter().all(|value| value == Some("")));
+    assert!(reader.next().await.unwrap().is_none());
+    assert_eq!(reader.completion().unwrap().rows, 1);
+    drop(values);
+    drop(batch);
+    drop(reader);
+    assert!(storage.status().read_bytes > 0);
+    assert!(storage.status().read_bytes <= settings.budget.read_memory_bytes.get());
+    drop(retained);
+    storage.close().await.unwrap();
+    runtime.stop().await.unwrap();
+}
