@@ -841,8 +841,9 @@ pub(super) fn contract_scenario() {
                     );
                     assert_eq!(
                         target.control.bootstrap_file_aborts.load(Ordering::SeqCst),
-                        1
+                        0
                     );
+                    assert!(target.staged.lock().unwrap().is_empty());
                     storage.close().await.unwrap();
                     f.finish().await;
                 });
