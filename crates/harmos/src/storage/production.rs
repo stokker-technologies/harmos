@@ -52,7 +52,6 @@ pub struct StorageProductionComputation {
 
 pub(super) struct Execution {
     limits: QueryLimits,
-    decoded_bytes: NonZeroUsize,
     scratch_bytes: usize,
     state: Mutex<ExecutionState>,
     _reservation: MemoryReservation,
@@ -141,7 +140,6 @@ impl<C> StorageManager<C> {
         let execution_reservation = self.reserve_read_for(kind, metadata + scratch_bytes, 1)?;
         let execution = Arc::new(Execution {
             limits,
-            decoded_bytes: self.inner.settings.query_decoded_bytes,
             scratch_bytes,
             state: Mutex::new(ExecutionState {
                 remaining: limits.timeout,
@@ -258,13 +256,6 @@ impl Execution {
             execution: self.clone(),
             timeout,
         })
-    }
-
-    pub(super) fn check_output(&self, bytes: NonZeroUsize) -> Result<()> {
-        if bytes > self.decoded_bytes {
-            return Err(super::query::decoded_limit());
-        }
-        Ok(())
     }
 
     fn check_active(&self) -> Result<()> {

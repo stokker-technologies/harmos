@@ -117,10 +117,7 @@ impl Profile {
                 }
                 view.reserve_read(bytes.get(), 1)
             }
-            Self::Producer(execution) => {
-                execution.check_output(bytes)?;
-                execution.reserve_output(bytes)
-            }
+            Self::Producer(execution) => execution.reserve_output(bytes),
         }
     }
 }

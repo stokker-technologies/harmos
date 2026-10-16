@@ -1037,9 +1037,6 @@ impl<R, T: MemorySize> QueryResult<R, T> {
         let timeout = computation.timeout();
         let started = tokio::time::Instant::now();
         let _live = view.pin()?;
-        if max_bytes.get() > self.decoded_bytes.get() {
-            return Err(decoded_limit());
-        }
         input.check_origin(view.manager())?;
         if started.elapsed() >= timeout {
             return Err(execution_timeout());
@@ -1080,9 +1077,6 @@ impl<R, T: MemorySize> QueryResult<R, T> {
         max_bytes: NonZeroUsize,
         map: impl FnOnce(&[T], NonZeroUsize) -> Result<U>,
     ) -> Result<Option<QueryValue<U>>> {
-        if max_bytes > self.decoded_bytes {
-            return Err(decoded_limit());
-        }
         let value = self
             .next_page_with(include_empty, |page| page.try_project(max_bytes, map))
             .await?;
@@ -1339,10 +1333,7 @@ impl<T: MemorySize> QueryValue<T> {
         let computation = self
             .execution
             .as_ref()
-            .map(|execution| {
-                execution.check_output(max_bytes)?;
-                execution.begin()
-            })
+            .map(|execution| execution.begin())
             .transpose()?;
         let output = self.project_in_computation(max_bytes, map)?;
         if let Some(computation) = &computation {
@@ -1356,9 +1347,6 @@ impl<T: MemorySize> QueryValue<T> {
         max_bytes: NonZeroUsize,
         map: impl FnOnce(&T, NonZeroUsize) -> Result<U>,
     ) -> Result<QueryValue<U>> {
-        if let Some(execution) = &self.execution {
-            execution.check_output(max_bytes)?;
-        }
         let reservation = self._reservation.projection(max_bytes)?;
         let value = map(&self.value, max_bytes)?;
         if value.memory_size() > max_bytes.get() {
@@ -1381,10 +1369,7 @@ impl<T: MemorySize> QueryValue<T> {
         } = self;
         let computation = execution
             .as_ref()
-            .map(|execution| {
-                execution.check_output(max_bytes)?;
-                execution.begin()
-            })
+            .map(|execution| execution.begin())
             .transpose()?;
         reservation.reserve_projection(max_bytes)?;
         let value = map(value, max_bytes)?;

@@ -98,7 +98,7 @@ fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let settings = storage_settings();
-                    let f = Fixture::with_settings(StorageSettings { ..settings }).await;
+                    let f = Fixture::with_settings(settings).await;
                     f.storage
                         .write_object(&Document { id: 7, value: 42 })
                         .await
@@ -184,12 +184,12 @@ fn contract_scenario() {
                                 .unwrap();
                                 let result = original.try_map::<Document>(requested, |_, _| {
                                     called.store(true, Ordering::SeqCst);
-                                    panic!("configured ceiling refusal must precede callback")
+                                    panic!("shared budget refusal must precede callback")
                                 });
                                 assert!(matches!(
                                     result,
                                     Err(Error::ResourceExhausted {
-                                        resource: "query decoded memory"
+                                        resource: "storage read memory"
                                     })
                                 ));
                                 assert!(!called.load(Ordering::SeqCst));
