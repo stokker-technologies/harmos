@@ -79,6 +79,12 @@ pub(crate) fn records(
     rows: &[StoredRecord],
     bank: &MemoryBank,
 ) -> Result<RecordBatch> {
+    let mut budget = bank.scope();
+    budget.claim(
+        rows.len()
+            .checked_mul(std::mem::size_of::<&StoredRecord>())
+            .ok_or_else(exhausted)?,
+    )?;
     let refs = rows.iter().collect::<Vec<_>>();
     record_batch(schema, &refs, None, bank)
 }
@@ -88,6 +94,12 @@ pub(crate) fn stream(
     rows: &[StoredRow],
     bank: &MemoryBank,
 ) -> Result<RecordBatch> {
+    let mut budget = bank.scope();
+    budget.claim(
+        rows.len()
+            .checked_mul(std::mem::size_of::<&StoredRecord>())
+            .ok_or_else(exhausted)?,
+    )?;
     let refs = rows.iter().map(|row| &row.record).collect::<Vec<_>>();
     record_batch(schema, &refs, Some(rows), bank)
 }
@@ -103,6 +115,11 @@ pub(crate) fn objects(
         row.value.schema.require_postcard()?;
     }
     let mut budget = bank.scope();
+    budget.claim(
+        rows.len()
+            .checked_mul(std::mem::size_of::<&[u8]>())
+            .ok_or_else(exhausted)?,
+    )?;
     let payloads = rows
         .iter()
         .map(|row| row.value.payload.as_slice())
@@ -294,6 +311,11 @@ fn record_batch(
         }
     }
     let mut budget = bank.scope();
+    budget.claim(
+        rows.len()
+            .checked_mul(std::mem::size_of::<&[u8]>())
+            .ok_or_else(exhausted)?,
+    )?;
     let payloads = rows
         .iter()
         .map(|row| row.payload.as_slice())
@@ -485,7 +507,7 @@ fn payload(
     let settings = harmos_contract::config::SchemaSettings::default();
     let construction = schema::Validator::construction_memory_bytes(&schema.schema, &settings)
         .map_err(|_| invalid("invalid payload schema"))?;
-    budget.claim(construction.checked_mul(4).ok_or_else(exhausted)?)?;
+    budget.claim(construction)?;
     let validator = schema::Validator::from_schema(&schema.schema, &settings)
         .map_err(|_| invalid("invalid payload schema"))?;
     // Count Expansion Before Allocating Trees Or Arrow Buffers.
