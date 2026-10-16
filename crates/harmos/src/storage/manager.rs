@@ -2023,6 +2023,10 @@ impl Drop for Admission {
 
 impl Drop for MemoryReservation {
     fn drop(&mut self) {
+        // Failed Admission Owns Nothing And Must Not Wake Its Own Waiter.
+        if self.bytes == 0 {
+            return;
+        }
         let mut state = self.inner.state.lock().unwrap();
         match self.kind {
             ReservationKind::Read | ReservationKind::View(_) => {
