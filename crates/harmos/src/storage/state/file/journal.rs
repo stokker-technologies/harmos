@@ -14,18 +14,22 @@
 /* === Imports === */
 // Standard Library Imports
 use std::fs::File;
-use std::io::{BufReader, Seek, SeekFrom};
+use std::io::{BufReader, Seek, SeekFrom, Write};
 use std::path::Path;
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 // Local Imports
 use super::files::Files;
 use super::format::{self, Read, corrupt, invalid, io};
-use crate::storage::state::{RecoveryEntry, RecoveryPage, RecoverySnapshot};
+use crate::storage::state::{RecoveryEntry, RecoveryPage, RecoverySnapshot, StorageStateSettings};
 use crate::storage::{ReadLimits, RecoveryPosition, StoreHistory};
 use crate::{BackendFailure, Error, Result};
 
 /* === Constants === */
+// Format 2 Encodes Payloads As Base64; Earlier Roots Are Refused, Never Migrated.
+const VERSION: u32 = 2;
+// Headers Hold Only A Position, So Their Bound Is Harmos-Owned.
+const HEADER_BYTES: usize = 4096;
 /* === Macros === */
 /* === Type Aliases === */
 /* === Structs === */
@@ -37,7 +41,7 @@ pub(super) struct StateLog {
     saved: u64,
     base: u64,
     entry_bytes: usize,
-    snapshot_bytes: usize,
+    checkpoint_bytes: usize,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -54,36 +58,41 @@ impl StateLog {
     pub(super) fn open(
         root: &Path,
         history: StoreHistory,
-        entry_bytes: usize,
-        snapshot_bytes: usize,
+        settings: StorageStateSettings,
     ) -> Result<Self> {
+        let entry_bytes = settings.max_entry_bytes.get();
+        let checkpoint_bytes = settings.max_checkpoint_bytes.get();
         let files = Files::open(root)?;
-        let snapshot: Option<RecoverySnapshot> = files.snapshot(snapshot_bytes)?;
+
+        // The Journal Header Identifies The Format Before Any Payload Is Decoded.
+        let mut file = files.journal()?;
+        let created = file.metadata().map_err(io)?.len() == 0;
+        if created {
+            let header = Header {
+                version: VERSION,
+                after: RecoveryPosition {
+                    history: history.clone(),
+                    sequence: 0,
+                },
+            };
+            format::write(&mut file, &header, HEADER_BYTES)?;
+            file.sync_all().map_err(io)?;
+            files.sync_directory()?;
+        }
+        let mut reader = BufReader::new(file.try_clone().map_err(io)?);
+        reader.seek(SeekFrom::Start(0)).map_err(io)?;
+        let header = header(&mut reader, &history)?;
+
+        let snapshot: Option<RecoverySnapshot> = files.snapshot(checkpoint_bytes)?;
         let base = if let Some(snapshot) = snapshot {
             history.check(&snapshot.through.history)?;
             snapshot.through.sequence
         } else {
             0
         };
-        let mut file = files.journal()?;
-        if file.metadata().map_err(io)?.len() == 0 {
-            if base != 0 {
-                return Err(corrupt("state checkpoint has no journal"));
-            }
-            let header = Header {
-                version: 1,
-                after: RecoveryPosition {
-                    history: history.clone(),
-                    sequence: 0,
-                },
-            };
-            format::write(&mut file, &header, entry_bytes)?;
-            file.sync_all().map_err(io)?;
-            files.sync_directory()?;
+        if created && base != 0 {
+            return Err(corrupt("state checkpoint has no journal"));
         }
-        let mut reader = BufReader::new(file.try_clone().map_err(io)?);
-        reader.seek(SeekFrom::Start(0)).map_err(io)?;
-        let header = header(&mut reader, &history, entry_bytes)?;
         if header.after.sequence > base {
             return Err(corrupt("state journal begins beyond checkpoint"));
         }
@@ -117,7 +126,7 @@ impl StateLog {
             saved,
             base,
             entry_bytes,
-            snapshot_bytes,
+            checkpoint_bytes,
         })
     }
 
@@ -137,8 +146,10 @@ impl StateLog {
         }
     }
 
+    /// The caller bounds the snapshot value; the configured limit bounds the written record.
     pub(super) fn snapshot(&self, maximum: usize) -> Result<Option<RecoverySnapshot>> {
-        self.files.snapshot(maximum.min(self.snapshot_bytes))
+        let bound = maximum.saturating_add(format::OVERHEAD);
+        self.files.snapshot(bound.min(self.checkpoint_bytes))
     }
 
     pub(super) fn page(
@@ -194,11 +205,11 @@ impl StateLog {
 
     pub(super) fn append(&mut self, entries: &[RecoveryEntry]) -> Result<()> {
         let mut next = self.saved;
+        let mut lines = Vec::new();
         for entry in entries {
             self.history.check(&entry.position.history)?;
-            if crate::storage::manager::encoded_size(entry)? > self.entry_bytes {
-                return Err(invalid("state entry exceeds configured storage size"));
-            }
+            // Encode Every Record Before Writing So An Oversized Entry Appends Nothing.
+            let line = format::encode(entry, self.entry_bytes)?;
             let sequence = entry.position.sequence;
             if sequence <= self.saved {
                 if sequence <= self.base {
@@ -220,14 +231,13 @@ impl StateLog {
                     return Err(invalid("state append is not consecutive"));
                 }
                 next = sequence;
+                lines.push(line);
             }
         }
         let start = self.file.seek(SeekFrom::End(0)).map_err(io)?;
         let result = (|| {
-            for entry in entries {
-                if entry.position.sequence > self.saved {
-                    format::write(&mut self.file, entry, self.entry_bytes)?;
-                }
+            for line in &lines {
+                self.file.write_all(line).map_err(io)?;
             }
             self.file.sync_all().map_err(io)
         })();
@@ -259,12 +269,12 @@ impl StateLog {
             return Err(invalid("state checkpoint is outside stored history"));
         }
         if base == self.base
-            && let Some(existing) = self.snapshot(self.snapshot_bytes)?
+            && let Some(existing) = self.snapshot(self.checkpoint_bytes)?
             && existing != *snapshot
         {
             return Err(conflict("state checkpoint retry has different content"));
         }
-        self.files.write_snapshot(snapshot, self.snapshot_bytes)?;
+        self.files.write_snapshot(snapshot, self.checkpoint_bytes)?;
         self.base = base;
         // A Durable Checkpoint Always Precedes Removal Of Its Covered Journal.
         let mut reader = self.reader()?;
@@ -274,10 +284,10 @@ impl StateLog {
             format::write(
                 writer,
                 &Header {
-                    version: 1,
+                    version: VERSION,
                     after: snapshot.through.clone(),
                 },
-                maximum,
+                HEADER_BYTES,
             )?;
             loop {
                 match format::read::<RecoveryEntry>(&mut reader, maximum)? {
@@ -305,7 +315,7 @@ impl StateLog {
     fn reader(&self) -> Result<BufReader<File>> {
         let mut reader = BufReader::new(self.file.try_clone().map_err(io)?);
         reader.seek(SeekFrom::Start(0)).map_err(io)?;
-        header(&mut reader, &self.history, self.entry_bytes)?;
+        header(&mut reader, &self.history)?;
         Ok(reader)
     }
 
@@ -328,12 +338,19 @@ impl StateLog {
 
 /* === Public Functions === */
 /* === Private Functions === */
-fn header(reader: &mut BufReader<File>, history: &StoreHistory, maximum: usize) -> Result<Header> {
-    let Read::Value(header) = format::read::<Header>(reader, maximum)? else {
+fn header(reader: &mut BufReader<File>, history: &StoreHistory) -> Result<Header> {
+    let Read::Value(header) = format::read::<Header>(reader, HEADER_BYTES)? else {
         return Err(corrupt("state journal header is incomplete"));
     };
-    if header.version != 1 {
-        return Err(corrupt("unsupported state journal version"));
+    if header.version != VERSION {
+        return Err(Error::backend(
+            "open state root",
+            BackendFailure::Unsupported,
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "state root uses a retired file format; open a fresh state root",
+            ),
+        ));
     }
     history.check(&header.after.history)?;
     Ok(header)
@@ -355,11 +372,8 @@ mod tests {
     #[test]
     fn failed_rollback_requires_reopen() {
         let root = tempfile::tempdir().unwrap();
-        let history = StoreHistory {
-            store: crate::Identifier::new("state.test").unwrap(),
-            epoch: crate::Identifier::new("epoch.one").unwrap(),
-        };
-        let mut journal = StateLog::open(root.path(), history.clone(), 4096, 4096).unwrap();
+        let history = history();
+        let mut journal = StateLog::open(root.path(), history.clone(), settings()).unwrap();
         // A Read-Only Handle Forces Both Append And Rollback To Fail.
         journal.file = File::open(root.path().join("state.jsonl")).unwrap();
         let entry = RecoveryEntry {
@@ -376,9 +390,23 @@ mod tests {
         assert!(journal.append(std::slice::from_ref(&entry)).is_err());
         assert!(journal.check().is_err());
         drop(journal);
-        let mut reopened = StateLog::open(root.path(), history, 4096, 4096).unwrap();
+        let mut reopened = StateLog::open(root.path(), history, settings()).unwrap();
         assert_eq!(reopened.position().sequence, 0);
         reopened.append(&[entry]).unwrap();
         assert_eq!(reopened.position().sequence, 1);
+    }
+
+    fn history() -> StoreHistory {
+        StoreHistory {
+            store: crate::Identifier::new("state.test").unwrap(),
+            epoch: crate::Identifier::new("epoch.one").unwrap(),
+        }
+    }
+
+    fn settings() -> StorageStateSettings {
+        StorageStateSettings {
+            max_entry_bytes: std::num::NonZeroUsize::new(4096).unwrap(),
+            max_checkpoint_bytes: std::num::NonZeroUsize::new(4096).unwrap(),
+        }
     }
 }

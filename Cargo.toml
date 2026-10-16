@@ -72,6 +72,7 @@ arrow-data = { version = "=59.3.0", default-features = false }
 arrow-ipc = { version = "=59.3.0", default-features = false }
 arrow-schema = { version = "=59.3.0", default-features = false }
 arrow-select = { version = "=59.3.0", default-features = false }
+base64 = { version = "0.22.1", default-features = false, features = ["alloc"] }
 postcard = { version = "1.1", default-features = false, features = ["alloc"] }
 flatbuffers = { version = "=25.12.19", default-features = false }
 prost = { version = "0.14", default-features = false }

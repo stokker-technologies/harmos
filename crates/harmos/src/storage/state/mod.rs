@@ -9,12 +9,14 @@
 
 /* === Modules === */
 mod admission;
+pub mod config;
 pub mod file;
 pub(crate) mod journal;
 mod reader;
 
 /* === Re-Exports === */
 pub(crate) use admission::Permit;
+pub use config::StorageStateSettings;
 
 /* === Imports === */
 // Standard Library Imports
@@ -37,6 +39,7 @@ use crate::{Error, Result};
 pub struct RecoveryEntry {
     pub required_data: super::StorageCursor,
     pub position: RecoveryPosition,
+    #[serde(with = "payload")]
     pub payload: Vec<u8>,
 }
 
@@ -45,6 +48,7 @@ pub struct RecoveryEntry {
 pub struct RecoverySnapshot {
     pub required_data: super::StorageCursor,
     pub through: RecoveryPosition,
+    #[serde(with = "payload")]
     pub payload: Vec<u8>,
 }
 
@@ -150,5 +154,27 @@ impl RecoveryPage {
 /* === Public Functions === */
 
 /* === Private Functions === */
+// Opaque Payloads Encode As Unpadded Base64, So Every Byte Changes The Encoded Size.
+mod payload {
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD_NO_PAD;
+    use serde::{Deserialize, Deserializer, Serializer, de::Error};
+
+    pub(super) fn serialize<S: Serializer>(
+        payload: &[u8],
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&STANDARD_NO_PAD.encode(payload))
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Vec<u8>, D::Error> {
+        let encoded = String::deserialize(deserializer)?;
+        STANDARD_NO_PAD
+            .decode(encoded.as_bytes())
+            .map_err(D::Error::custom)
+    }
+}
 
 /* === Tests === */

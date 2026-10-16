@@ -11,11 +11,13 @@
 /* === Re-Exports === */
 /* === Imports === */
 // Standard Library Imports
-use std::{fs::OpenOptions, io::Write};
+use std::{fs::OpenOptions, io::Write, num::NonZeroUsize};
 // Third Party Imports
 // Local Imports
-use harmos::storage::state::{RecoveryEntry, RecoverySnapshot, StateBackend, file::FileBackend};
-use harmos::storage::{ReadLimits, RecoveryPosition, StorageCursor};
+use harmos::storage::state::{
+    RecoveryEntry, RecoverySnapshot, StateBackend, StorageStateSettings, file::FileBackend,
+};
+use harmos::storage::{ReadLimits, RecoveryPosition, StorageCursor, StoreHistory};
 
 /* === Constants === */
 /* === Macros === */
@@ -26,13 +28,39 @@ use harmos::storage::{ReadLimits, RecoveryPosition, StorageCursor};
 /* === Implementations === */
 /* === Public Functions === */
 /* === Private Functions === */
+fn retired_header(history: &StoreHistory) -> Vec<u8> {
+    use sha2::Digest;
+
+    let value = serde_json::json!({
+        "version": 1,
+        "after": RecoveryPosition {
+            history: history.clone(),
+            sequence: 0,
+        },
+    });
+    let json = serde_json::to_vec(&value).unwrap();
+    let digest = sha2::Sha256::digest(&json);
+    let hex = digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    [
+        b"{\"value\":".as_slice(),
+        &json,
+        b",\"sha256\":\"",
+        hex.as_bytes(),
+        b"\"}\n",
+    ]
+    .concat()
+}
+
 /* === Tests === */
 #[tokio::test]
 async fn checkpoint_tail_survives_reopen_and_incomplete_append() {
     let root = tempfile::tempdir().unwrap();
     let history = super::history();
-    let settings = super::storage_settings();
-    let backend = FileBackend::new(root.path().to_owned(), history.clone(), &settings);
+    let settings = super::state_settings();
+    let backend = FileBackend::new(root.path().to_owned(), history.clone(), settings);
     let at = |sequence| RecoveryPosition {
         history: history.clone(),
         sequence,
@@ -68,7 +96,7 @@ async fn checkpoint_tail_survives_reopen_and_incomplete_append() {
     file.sync_all().unwrap();
     drop(file);
 
-    let reopened = FileBackend::new(root.path().to_owned(), history, &settings);
+    let reopened = FileBackend::new(root.path().to_owned(), history, settings);
     assert_eq!(reopened.open().await.unwrap().sequence, 3);
     assert_eq!(
         reopened
@@ -101,8 +129,8 @@ async fn checkpoint_tail_survives_reopen_and_incomplete_append() {
 async fn complete_corruption_is_preserved_and_refused() {
     let root = tempfile::tempdir().unwrap();
     let history = super::history();
-    let settings = super::storage_settings();
-    let backend = FileBackend::new(root.path().to_owned(), history.clone(), &settings);
+    let settings = super::state_settings();
+    let backend = FileBackend::new(root.path().to_owned(), history.clone(), settings);
     backend.open().await.unwrap();
     let position = RecoveryPosition {
         history: history.clone(),
@@ -120,14 +148,17 @@ async fn complete_corruption_is_preserved_and_refused() {
     backend.flush(&position).await.unwrap();
     backend.close().await.unwrap();
 
-    // A Complete Invalid Entry Must Not Be Treated As An Interrupted Append.
+    // A Complete Entry With A Damaged Payload Must Not Be Treated As An Interrupted Append.
     let path = root.path().join("state.jsonl");
-    let mut file = OpenOptions::new().append(true).open(&path).unwrap();
-    file.write_all(b"{}\n").unwrap();
-    file.sync_all().unwrap();
-    drop(file);
-    let corrupt = std::fs::read(&path).unwrap();
-    let reopened = FileBackend::new(root.path().to_owned(), history, &settings);
+    let mut corrupt = std::fs::read(&path).unwrap();
+    let encoded = b"c2F2ZWQgc3RhdGU";
+    let at = corrupt
+        .windows(encoded.len())
+        .position(|window| window == encoded)
+        .unwrap();
+    corrupt[at] = b'd';
+    std::fs::write(&path, &corrupt).unwrap();
+    let reopened = FileBackend::new(root.path().to_owned(), history, settings);
     assert!(reopened.open().await.is_err());
     assert_eq!(std::fs::read(&path).unwrap(), corrupt);
     assert!(reopened.open().await.is_err());
@@ -138,9 +169,9 @@ async fn complete_corruption_is_preserved_and_refused() {
 async fn state_root_has_one_owner_until_close() {
     let root = tempfile::tempdir().unwrap();
     let history = super::history();
-    let settings = super::storage_settings();
-    let first = FileBackend::new(root.path().to_owned(), history.clone(), &settings);
-    let second = FileBackend::new(root.path().to_owned(), history.clone(), &settings);
+    let settings = super::state_settings();
+    let first = FileBackend::new(root.path().to_owned(), history.clone(), settings);
+    let second = FileBackend::new(root.path().to_owned(), history.clone(), settings);
     first.open().await.unwrap();
     assert!(second.open().await.is_err());
     let position = RecoveryPosition {
@@ -185,4 +216,95 @@ async fn state_root_has_one_owner_until_close() {
     second.close().await.unwrap();
     assert_eq!(first.open().await.unwrap(), position);
     first.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn configured_limits_bound_encoded_records() {
+    let history = super::history();
+    let at = |sequence| RecoveryPosition {
+        history: history.clone(),
+        sequence,
+    };
+    let entry = |sequence, bytes: usize| RecoveryEntry {
+        position: at(sequence),
+        required_data: StorageCursor {
+            history: history.clone(),
+            sequence: 0,
+        },
+        payload: vec![7; bytes],
+    };
+    let snapshot = |bytes: usize| RecoverySnapshot {
+        through: at(1),
+        required_data: StorageCursor {
+            history: history.clone(),
+            sequence: 0,
+        },
+        payload: vec![9; bytes],
+    };
+
+    // Measure The Encoded Records Written For A Payload Of 3k Bytes.
+    let measured = tempfile::tempdir().unwrap();
+    let journal = measured.path().join("state.jsonl");
+    let backend = FileBackend::new(
+        measured.path().to_owned(),
+        history.clone(),
+        super::state_settings(),
+    );
+    backend.open().await.unwrap();
+    let header = std::fs::metadata(&journal).unwrap().len();
+    backend.write_entries(&[entry(1, 3000)]).await.unwrap();
+    // Measure Before The Checkpoint Compacts The Journal Back To Its Header.
+    let entry_bytes = std::fs::metadata(&journal).unwrap().len() - header;
+    backend.write_snapshot(&snapshot(3000)).await.unwrap();
+    backend.close().await.unwrap();
+    let checkpoint_bytes = std::fs::metadata(measured.path().join("state.json"))
+        .unwrap()
+        .len();
+    // Base64 Text Plus Envelope, Far Below The Former Decimal Number Arrays.
+    assert!(entry_bytes < 4500 && checkpoint_bytes < 4500);
+
+    // A Payload At The Limit Is Accepted; One Byte More Is Refused And Appends Nothing.
+    let root = tempfile::tempdir().unwrap();
+    let settings = StorageStateSettings {
+        max_entry_bytes: NonZeroUsize::new(entry_bytes as usize).unwrap(),
+        max_checkpoint_bytes: NonZeroUsize::new(checkpoint_bytes as usize).unwrap(),
+    };
+    let backend = FileBackend::new(root.path().to_owned(), history.clone(), settings);
+    backend.open().await.unwrap();
+    backend.write_entries(&[entry(1, 3000)]).await.unwrap();
+    assert!(backend.write_entries(&[entry(2, 3001)]).await.is_err());
+    assert!(backend.write_snapshot(&snapshot(3001)).await.is_err());
+    backend.write_snapshot(&snapshot(3000)).await.unwrap();
+    backend.close().await.unwrap();
+
+    let reopened = FileBackend::new(root.path().to_owned(), history.clone(), settings);
+    assert_eq!(reopened.open().await.unwrap(), at(1));
+    assert_eq!(
+        reopened
+            .read_snapshot(NonZeroUsize::new(checkpoint_bytes as usize).unwrap())
+            .await
+            .unwrap(),
+        Some(snapshot(3000))
+    );
+    // A Caller Bound Covers The Snapshot Value, Not The Integrity Envelope.
+    let value_bytes = serde_json::to_vec(&snapshot(3000)).unwrap().len();
+    assert_eq!(
+        reopened
+            .read_snapshot(NonZeroUsize::new(value_bytes).unwrap())
+            .await
+            .unwrap(),
+        Some(snapshot(3000))
+    );
+    reopened.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn retired_format_root_fails_to_open() {
+    let root = tempfile::tempdir().unwrap();
+    let history = super::history();
+    std::fs::write(root.path().join("state.jsonl"), retired_header(&history)).unwrap();
+
+    let backend = FileBackend::new(root.path().to_owned(), history, super::state_settings());
+    let error = backend.open().await.unwrap_err();
+    assert!(error.to_string().contains("fresh state root"), "{error}");
 }

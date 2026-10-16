@@ -25,6 +25,7 @@ use arrow_array::{Float64Array, UInt64Array};
 
 // Local Imports
 use super::backend::{Data, history, storage_settings};
+use super::fixture::state_settings;
 use super::support::{Bank, Ledger, catalog};
 use super::waveforms;
 use harmos::Runtime;
@@ -72,7 +73,7 @@ async fn external_pressure_reloads_uncommitted_page_once_and_cancellation_releas
                 state: Arc::new(harmos::storage::state::file::FileBackend::new(
                     directory.path().join("state"),
                     history(),
-                    &settings,
+                    state_settings(),
                 )),
             },
             settings,
@@ -254,7 +255,7 @@ async fn cancelled_schema_admission_releases_query_slot() {
             state: Arc::new(harmos::storage::state::file::FileBackend::new(
                 directory.path().join("state"),
                 history(),
-                &settings,
+                state_settings(),
             )),
         },
         settings,

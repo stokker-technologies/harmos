@@ -24,7 +24,8 @@ use crate::{BackendFailure, Error, Result};
 const PREFIX: &[u8] = b"{\"value\":";
 const TRAILER: &[u8] = b",\"sha256\":\"";
 const END: &[u8] = b"\"}\n";
-const OVERHEAD: usize = PREFIX.len() + TRAILER.len() + 64 + END.len();
+// Envelope Bytes Around One Value, Newline Included.
+pub(super) const OVERHEAD: usize = PREFIX.len() + TRAILER.len() + 64 + END.len();
 /* === Macros === */
 /* === Type Aliases === */
 /* === Structs === */
@@ -38,40 +39,46 @@ pub(super) enum Read<T> {
 /* === Traits === */
 /* === Implementations === */
 /* === Public Functions === */
-/// Writes a JSON envelope containing a value and its SHA-256 digest.
+/// Encodes one complete JSON envelope containing a value and its SHA-256 digest.
+/// The limit covers every byte written, including the envelope and newline.
+pub(super) fn encode<T: Serialize>(value: &T, maximum: usize) -> Result<Vec<u8>> {
+    let json = serde_json::to_vec(value).map_err(json)?;
+    let length = json
+        .len()
+        .checked_add(OVERHEAD)
+        .ok_or_else(|| invalid("state size overflow"))?;
+    if length > maximum {
+        return Err(invalid("state record exceeds configured storage size"));
+    }
+
+    let digest = Sha256::digest(&json);
+    let mut line = Vec::with_capacity(length);
+    line.extend_from_slice(PREFIX);
+    line.extend_from_slice(&json);
+    line.extend_from_slice(TRAILER);
+    for byte in digest {
+        write!(line, "{byte:02x}").map_err(io)?;
+    }
+    line.extend_from_slice(END);
+    Ok(line)
+}
+
 /// A newline is the commit delimiter; malformed complete lines are never skipped.
 pub(super) fn write<T: Serialize>(
     writer: &mut impl Write,
     value: &T,
     maximum: usize,
 ) -> Result<()> {
-    let length = crate::storage::manager::encoded_size(value)?;
-    if length > maximum {
-        return Err(invalid("state entry exceeds configured storage size"));
-    }
-    writer.write_all(PREFIX).map_err(io)?;
-    let mut output = HashWriter {
-        writer,
-        hash: Sha256::new(),
-    };
-    serde_json::to_writer(&mut output, value).map_err(json)?;
-    let digest = output.hash.finalize();
-    output.writer.write_all(TRAILER).map_err(io)?;
-    for byte in digest {
-        write!(output.writer, "{byte:02x}").map_err(io)?;
-    }
-    output.writer.write_all(END).map_err(io)
+    let line = encode(value, maximum)?;
+    writer.write_all(&line).map_err(io)
 }
 
-/// Reads at most one configured record plus its fixed integrity trailer.
+/// Reads at most one configured record, envelope included.
 /// An incomplete tail is distinguished from corruption in a committed line.
 pub(super) fn read<T: DeserializeOwned>(
     reader: &mut impl BufRead,
     maximum: usize,
 ) -> Result<Read<T>> {
-    let bound = maximum
-        .checked_add(OVERHEAD)
-        .ok_or_else(|| invalid("state size overflow"))?;
     let mut line = Vec::new();
     loop {
         let available = reader.fill_buf().map_err(io)?;
@@ -84,7 +91,7 @@ pub(super) fn read<T: DeserializeOwned>(
         }
         let complete = available.iter().position(|byte| *byte == b'\n');
         let count = complete.map_or(available.len(), |index| index + 1);
-        if count > bound.saturating_sub(line.len()) {
+        if count > maximum.saturating_sub(line.len()) {
             return Err(invalid("state record exceeds configured storage size"));
         }
         line.extend_from_slice(&available[..count]);
@@ -115,22 +122,6 @@ pub(super) fn read<T: DeserializeOwned>(
 }
 
 /* === Private Functions === */
-struct HashWriter<'a, W> {
-    writer: &'a mut W,
-    hash: Sha256,
-}
-
-impl<W: Write> Write for HashWriter<'_, W> {
-    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        let written = self.writer.write(bytes)?;
-        self.hash.update(&bytes[..written]);
-        Ok(written)
-    }
-    fn flush(&mut self) -> std::io::Result<()> {
-        self.writer.flush()
-    }
-}
-
 fn hex(byte: u8) -> Option<u8> {
     match byte {
         b'0'..=b'9' => Some(byte - b'0'),
@@ -170,28 +161,32 @@ mod tests {
     #[test]
     fn complete_corruption_is_not_an_incomplete_tail() {
         let mut bytes = Vec::new();
-        write(&mut bytes, &vec![1u8, 2, 3], 32).unwrap();
+        write(&mut bytes, &vec![1u8, 2, 3], 128).unwrap();
         let mut input = bytes.as_slice();
         assert!(
-            matches!(read::<Vec<u8>>(&mut input, 32).unwrap(), Read::Value(value) if value == [1, 2, 3])
+            matches!(read::<Vec<u8>>(&mut input, 128).unwrap(), Read::Value(value) if value == [1, 2, 3])
         );
         assert!(matches!(
-            read::<Vec<u8>>(&mut input, 32).unwrap(),
+            read::<Vec<u8>>(&mut input, 128).unwrap(),
             Read::End
         ));
         let mut truncated = &bytes[..bytes.len() - 1];
         assert!(matches!(
-            read::<Vec<u8>>(&mut truncated, 32).unwrap(),
+            read::<Vec<u8>>(&mut truncated, 128).unwrap(),
             Read::Incomplete
         ));
         bytes[1] = b'9';
-        assert!(read::<Vec<u8>>(&mut bytes.as_slice(), 32).is_err());
+        assert!(read::<Vec<u8>>(&mut bytes.as_slice(), 128).is_err());
     }
 
     #[test]
-    fn configured_size_is_enforced_before_writing() {
+    fn configured_size_covers_the_whole_record() {
+        let line = encode(&"abc", usize::MAX).unwrap();
+        assert_eq!(encode(&"abc", line.len()).unwrap(), line);
+
         let mut bytes = Vec::new();
-        assert!(write(&mut bytes, &vec![1u8, 2, 3], 2).is_err());
+        assert!(write(&mut bytes, &"abc", line.len() - 1).is_err());
         assert!(bytes.is_empty());
+        assert!(read::<String>(&mut line.as_slice(), line.len() - 1).is_err());
     }
 }
