@@ -87,31 +87,7 @@ impl MemoryBank {
     }
 
     pub(super) fn reserve(&self, bytes: usize) -> Result<RetainedMemory> {
-        {
-            let mut state = self.state.lock().unwrap();
-            if state.closed {
-                return Err(Error::NotReady {
-                    domain: "closed query allocation owner",
-                });
-            }
-            let required = state
-                .used
-                .checked_add(bytes)
-                .ok_or(Error::ResourceExhausted {
-                    resource: "storage read memory",
-                })?;
-            state.requested = state.requested.max(required);
-            if required > state.capacity {
-                let additional = required - state.capacity;
-                state
-                    .reservation
-                    .as_mut()
-                    .expect("open bank owns reservation")
-                    .grow_read(additional)?;
-                state.capacity = required;
-            }
-            state.used = required;
-        }
+        self.state.lock().unwrap().claim(bytes)?;
         let claim = Arc::new(Claim {
             bank: self.state.clone(),
             bytes: AtomicUsize::new(bytes),
@@ -131,24 +107,7 @@ impl MemoryScope<'_> {
             .ok_or(Error::ResourceExhausted {
                 resource: "storage read memory",
             })?;
-        let mut state = self.bank.state.lock().unwrap();
-        let required = state
-            .used
-            .checked_add(bytes)
-            .ok_or(Error::ResourceExhausted {
-                resource: "storage read memory",
-            })?;
-        state.requested = state.requested.max(required);
-        if required > state.capacity {
-            let additional = required - state.capacity;
-            state
-                .reservation
-                .as_mut()
-                .expect("scope borrows open bank")
-                .grow_read(additional)?;
-            state.capacity = required;
-        }
-        state.used = required;
+        self.bank.state.lock().unwrap().claim(bytes)?;
         self.used = used;
         Ok(())
     }
@@ -180,6 +139,30 @@ impl Claim {
 }
 
 impl BankState {
+    fn claim(&mut self, bytes: usize) -> Result<()> {
+        if self.closed {
+            return Err(Error::NotReady {
+                domain: "closed query allocation owner",
+            });
+        }
+        let required = self
+            .used
+            .checked_add(bytes)
+            .ok_or(Error::ResourceExhausted {
+                resource: "storage read memory",
+            })?;
+        self.requested = self.requested.max(required);
+        if required > self.capacity {
+            self.reservation
+                .as_mut()
+                .expect("open bank owns reservation")
+                .grow_read(required - self.capacity)?;
+            self.capacity = required;
+        }
+        self.used = required;
+        Ok(())
+    }
+
     fn release_unused(&mut self) {
         if !self.closed {
             return;
