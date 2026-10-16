@@ -85,7 +85,7 @@ pub(super) fn read<T: DeserializeOwned>(
         let complete = available.iter().position(|byte| *byte == b'\n');
         let count = complete.map_or(available.len(), |index| index + 1);
         if count > bound.saturating_sub(line.len()) {
-            return Err(corrupt("state record exceeds configured storage size"));
+            return Err(invalid("state record exceeds configured storage size"));
         }
         line.extend_from_slice(&available[..count]);
         reader.consume(count);

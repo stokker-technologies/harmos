@@ -21,9 +21,9 @@ use serde::{Deserialize, Serialize};
 // Local Imports
 use super::files::Files;
 use super::format::{self, Read, corrupt, invalid, io};
-use crate::Result;
 use crate::storage::state::{RecoveryEntry, RecoveryPage, RecoverySnapshot};
 use crate::storage::{ReadLimits, RecoveryPosition, StoreHistory};
+use crate::{BackendFailure, Error, Result};
 
 /* === Constants === */
 /* === Macros === */
@@ -138,10 +138,13 @@ impl Journal {
     ) -> Result<RecoveryPage> {
         self.history.check(&after.history)?;
         self.history.check(&through.history)?;
-        if after.sequence < self.base
-            || after.sequence > through.sequence
-            || through.sequence > self.saved
-        {
+        if after.sequence < self.base {
+            return Err(Error::Gap {
+                requested: after.sequence,
+                available: self.base,
+            });
+        }
+        if after.sequence > through.sequence || through.sequence > self.saved {
             return Err(invalid("state read range is outside retained history"));
         }
         let mut entries = Vec::new();
@@ -199,7 +202,7 @@ impl Journal {
                     Ok(stored.position.sequence < sequence)
                 })?;
                 if !same {
-                    return Err(invalid("state retry has different content"));
+                    return Err(conflict("state retry has different content"));
                 }
             } else {
                 if next.checked_add(1) != Some(sequence) {
@@ -233,7 +236,7 @@ impl Journal {
             return Err(invalid("state flush exceeds stored position"));
         }
         self.file.sync_all().map_err(io)?;
-        Ok(through.clone())
+        Ok(self.position())
     }
 
     pub(super) fn checkpoint(&mut self, snapshot: &RecoverySnapshot) -> Result<()> {
@@ -246,7 +249,7 @@ impl Journal {
             && let Some(existing) = self.snapshot(self.snapshot_bytes)?
             && existing != *snapshot
         {
-            return Err(invalid("state checkpoint retry has different content"));
+            return Err(conflict("state checkpoint retry has different content"));
         }
         self.files.write_snapshot(snapshot, self.snapshot_bytes)?;
         self.base = base;
@@ -319,6 +322,14 @@ fn header(reader: &mut BufReader<File>, history: &StoreHistory, maximum: usize) 
     }
     history.check(&header.after.history)?;
     Ok(header)
+}
+
+fn conflict(reason: &'static str) -> Error {
+    Error::backend(
+        "write state file",
+        BackendFailure::Conflict,
+        std::io::Error::new(std::io::ErrorKind::InvalidData, reason),
+    )
 }
 
 /* === Tests === */
