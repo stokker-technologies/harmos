@@ -69,8 +69,7 @@ pub enum Frame {
     },
     Refusal {
         id: u64,
-        code: i64,
-        message: String,
+        refusal: harmos_contract::Refusal,
     },
 }
 
@@ -160,7 +159,7 @@ impl Frame {
         match self {
             Self::Call { id, method, params } => call_encoded_len(*id, method, params.len()),
             Self::Answer { id, result } => answer_encoded_len(*id, result.len()),
-            Self::Refusal { id, code, message } => refusal_encoded_len(*id, *code, message.len()),
+            Self::Refusal { id, refusal } => refusal_encoded_len(*id, refusal),
             Self::Cancel { id } => 2 + varint_len(*id) + varint_len(u64::MAX),
             Self::Push { method, params } => 2usize
                 .saturating_add(binary_bytes_len(method.len()))
@@ -256,12 +255,11 @@ fn answer_encoded_len(id: u64, payload_len: usize) -> usize {
         .saturating_add(binary_bytes_len(payload_len))
 }
 
-fn refusal_encoded_len(id: u64, code: i64, message_len: usize) -> usize {
-    let zigzag = ((code as u64) << 1) ^ ((code >> 63) as u64);
+fn refusal_encoded_len(id: u64, refusal: &harmos_contract::Refusal) -> usize {
+    let refusal = postcard::experimental::serialized_size(refusal).unwrap_or(usize::MAX);
     2usize
         .saturating_add(varint_len(id))
-        .saturating_add(varint_len(zigzag))
-        .saturating_add(binary_bytes_len(message_len))
+        .saturating_add(refusal)
 }
 
 #[cfg(feature = "kit")]

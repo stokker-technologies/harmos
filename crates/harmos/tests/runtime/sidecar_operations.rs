@@ -950,7 +950,15 @@ async fn submitted(
     let id = Instance::detach(detached);
     // Built-ins are ordinary requirements: an undeclared caller is refused.
     let refused = host.call(harmos::builtin::Status::of(id)).await;
-    *counts.detached_status.lock().unwrap() = refused.err().map(|error| error.to_string());
+    *counts.detached_status.lock().unwrap() = refused.err().map(|error| {
+        std::iter::successors(
+            Some(&error as &(dyn std::error::Error + 'static)),
+            |error| error.source(),
+        )
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(": ")
+    });
     counts.refresh_release.notify_one();
     // Without a handle the child still runs while this attempt lives.
     tokio::time::timeout(Duration::from_secs(2), async {
@@ -1283,7 +1291,7 @@ fn contract_scenario() {
     };
     assert!(
         matches!(source.downcast_ref::<harmos::operations::NativeError>(),
-        Some(harmos::operations::NativeError::Preparation { failure: harmos::operations::Failure::Transient, message }) if message.contains("partial initialization failed"))
+        Some(harmos::operations::NativeError::Preparation(failure)) if failure.code() == harmos::operations::Failure::Transient && failure.cause().contains("partial initialization failed"))
     );
     assert_eq!(counts.prepared.load(Ordering::SeqCst), 1);
     assert_eq!(counts.operation_initialized.load(Ordering::SeqCst), 1);

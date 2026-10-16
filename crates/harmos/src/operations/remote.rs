@@ -43,12 +43,13 @@ struct Transfer<'a> {
 pub enum RemoteStreamError {
     #[error("remote stream protocol failed: {0}")]
     Protocol(&'static str),
-    #[error("remote stream item codec failed: {0}")]
+    #[error("remote stream item codec failed")]
     Payload(#[from] crate::MessageError),
-    #[error("remote stream output admission failed: {0}")]
+    #[error("remote stream output admission failed")]
     Output(#[from] crate::Error),
-    #[error("remote stream refused: {message}")]
-    Remote { failure: Failure, message: String },
+    // The provider's stream failure crosses unchanged.
+    #[error(transparent)]
+    Remote(harmos_contract::Failure),
 }
 
 /* === Traits === */
@@ -84,8 +85,22 @@ impl RemoteStreamError {
     pub(super) fn classification(&self) -> Failure {
         match self {
             Self::Protocol(_) | Self::Payload(_) => Failure::Invalid,
-            Self::Remote { failure, .. } => *failure,
+            Self::Remote(failure) => failure.code(),
             Self::Output(_) => Failure::Permanent,
+        }
+    }
+
+    pub(super) fn failure(&self) -> Option<&harmos_contract::Failure> {
+        match self {
+            Self::Remote(failure) => Some(failure),
+            _ => None,
+        }
+    }
+
+    pub(super) fn in_operation(self, operation: &str) -> Self {
+        match self {
+            Self::Remote(failure) => Self::Remote(failure.in_operation(operation)),
+            error => error,
         }
     }
 }
@@ -163,8 +178,8 @@ impl<T: Message + MemorySize + 'static> StreamEndpoints for StreamOutput<T> {
                     }
                     payload
                 }
-                WireAnswer::Failed { failure, message } => {
-                    return Err(RemoteStreamError::Remote { failure, message }.into());
+                WireAnswer::Failed { failure } => {
+                    return Err(RemoteStreamError::Remote(failure).into());
                 }
                 _ => {
                     return Err(RemoteStreamError::Protocol(
@@ -251,9 +266,7 @@ pub(super) async fn attempt<P: StreamPeer, E: StreamEndpoints>(
 fn acknowledge(answer: WireAnswer) -> Result<(), RemoteStreamError> {
     match answer {
         WireAnswer::Ready { payload } if payload.is_empty() => Ok(()),
-        WireAnswer::Failed { failure, message } => {
-            Err(RemoteStreamError::Remote { failure, message })
-        }
+        WireAnswer::Failed { failure } => Err(RemoteStreamError::Remote(failure)),
         _ => Err(RemoteStreamError::Protocol(
             "expected empty stream acknowledgement",
         )),

@@ -146,7 +146,7 @@ impl<T: Send> harmos::guest::operation_context::HostWithStore<T> for HasSelf<Stu
             .with(|mut access| access.get().child(payload))
             .map_err(|error| BridgeRefusal {
                 code: error.code().to_string(),
-                message: error.message().to_owned(),
+                failure: error.failure().encode(),
             })
     }
 }
@@ -309,8 +309,8 @@ impl Session {
                 payload,
             })
             .await;
-        if let WireAnswer::Failed { message, .. } = prepared {
-            return Err(message);
+        if let WireAnswer::Failed { failure } = prepared {
+            return Err(failure.cause().to_owned());
         }
         let initialized = self
             .phase(WireCommand::Initialize {
@@ -336,7 +336,7 @@ impl Session {
         );
         match answer {
             WireAnswer::Ready { payload } => Ok(payload),
-            WireAnswer::Failed { message, .. } => Err(message),
+            WireAnswer::Failed { failure } => Err(failure.cause().to_owned()),
             WireAnswer::Stream { .. } => panic!("unexpected stream response to unary phase"),
         }
     }
@@ -612,25 +612,27 @@ fn contract_scenario() {
     {
         scenario_runtime::check("refusal_preserves_reason", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
+            scenario_executor
+                .enable_all()
+                .build()
+                .expect("scenario runtime is valid")
+                .block_on(async {
+                    let refusing = Stub {
+                        invokes: VecDeque::from([Err(Refusal::new(
+                            -32601,
+                            "grant \"counter.increment\" was not declared",
+                        ))]),
+                        ..Stub::default()
+                    };
 
-    let refusing = Stub {
-        invokes: VecDeque::from([Err(Refusal::new(
-            -32601,
-            "grant \"counter.increment\" was not declared",
-        ))]),
-        ..Stub::default()
-    };
+                    let (_, answered) = initialize(refusing, r#""invoke""#).await;
 
-    let (_, answered) = initialize(refusing, r#""invoke""#).await;
-
-    assert_eq!(
-        answered,
-        Err("carrier handler failed: plugin lifecycle machinery failed: grant \"counter.increment\" was not declared (-32601)".to_owned()),
-        "both halves of the refusal record reach the guest"
-    );
-
-});
+                    assert_eq!(
+                        answered,
+                        Err("grant \"counter.increment\" was not declared (-32601)".to_owned()),
+                        "both halves of the refusal record reach the guest"
+                    );
+                });
         });
     }
     {
@@ -681,13 +683,7 @@ fn contract_scenario() {
                     let (stub, answered) =
                         initialize(Stub::default(), r#""nothing-the-guest-knows""#).await;
 
-                    assert_eq!(
-        answered,
-        Err(
-            "carrier handler failed: plugin lifecycle machinery failed: unknown test mode"
-                .to_owned()
-        )
-    );
+                    assert_eq!(answered, Err("unknown test mode".to_owned()));
                     assert!(
                         stub.calls.is_empty(),
                         "a refused initialization asked the host for nothing"
@@ -743,7 +739,7 @@ fn contract_scenario() {
             })
             .await;
         assert!(
-            matches!(&answer, WireAnswer::Failed { failure: Failure::Permanent, message } if message.contains(operation)),
+            matches!(&answer, WireAnswer::Failed { failure } if failure.code() == Failure::Permanent && failure.cause().contains(operation)),
             "{answer:?}"
         );
     }
@@ -779,9 +775,9 @@ fn contract_scenario() {
                         let result = session.call(2, Heard::ID, request.encode_to_vec()).await;
                         if refused {
                             assert_eq!(
-                result,
-                Err("carrier handler failed: this delivery is one the guest refuses".into())
-            );
+                                result,
+                                Err("this delivery is one the guest refuses".into())
+                            );
                             assert!(session.store.data().calls.is_empty());
                         } else {
                             assert!(result.is_ok());

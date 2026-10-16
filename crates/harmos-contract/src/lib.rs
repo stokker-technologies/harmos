@@ -17,6 +17,7 @@ pub mod builtin;
 pub mod catalog;
 pub mod config;
 mod error;
+pub mod failure;
 #[cfg(feature = "reflection")]
 pub mod grpc;
 mod identity;
@@ -83,6 +84,7 @@ pub use aggregate::Aggregate;
 pub use artifacts::{FRAGMENT_LIMIT, KINDS, PREFIX, ScanError, fragments};
 pub use config::{ConfigError, decode_config, encode_config, validate_config};
 pub use error::{Error, Result};
+pub use failure::Failure;
 pub use identity::{
     Requirement, artifact_subset, qualified, qualified_len, qualify, stream_subset,
 };
@@ -90,7 +92,7 @@ pub use inventory::StreamDeclaration;
 pub use inventory::publications::StreamSpec;
 pub use metadata::{Identifier, IdentifierError, Metadata};
 pub use plugin::Plugin;
-pub use refusal::{RESERVED, Refusal, UNKNOWN, UNREADABLE, reserved};
+pub use refusal::{FAILED, RESERVED, Refusal, UNKNOWN, UNREADABLE, reserved};
 pub use registration::{Registrar, Registration, RegistrationError};
 pub use value::{VALUE_DEPTH, Value, ValueError};
 

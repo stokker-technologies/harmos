@@ -87,8 +87,7 @@ enum Body<'a> {
     },
     Refusal {
         id: u64,
-        code: i64,
-        message: &'a str,
+        refusal: std::borrow::Cow<'a, harmos_contract::Refusal>,
     },
     Credit {
         consumed: u64,
@@ -174,10 +173,9 @@ impl Packet {
                 id,
                 result: result.to_vec(),
             }),
-            Body::Refusal { id, code, message } => Self::Frame(Frame::Refusal {
+            Body::Refusal { id, refusal } => Self::Frame(Frame::Refusal {
                 id,
-                code,
-                message: message.to_owned(),
+                refusal: refusal.into_owned(),
             }),
             Body::Credit { consumed } => Self::Credit(consumed),
         })
@@ -195,10 +193,9 @@ impl Packet {
             }
             Self::Frame(Frame::Push { method, params }) => Body::Push { method, params },
             Self::Frame(Frame::Answer { id, result }) => Body::Answer { id: *id, result },
-            Self::Frame(Frame::Refusal { id, code, message }) => Body::Refusal {
+            Self::Frame(Frame::Refusal { id, refusal }) => Body::Refusal {
                 id: *id,
-                code: *code,
-                message,
+                refusal: std::borrow::Cow::Borrowed(refusal),
             },
             Self::Credit(consumed) => Body::Credit {
                 consumed: *consumed,

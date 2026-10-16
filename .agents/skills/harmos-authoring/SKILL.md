@@ -159,6 +159,13 @@ Use the original runtime and resource owners. Consult the relevant section only;
   needs an overall shutdown budget. Timeout reports the unfinished phase and
   retains the same cleanup driver; it is not successful settlement or durability.
   Plain `stop` remains an unbounded orderly drain.
+- Plugin operation failures cross every carrier as one `harmos::Failure`
+  (`code`, `cause`, `context` with the operation and consumer step frames,
+  optional origin `diagnostics`). The cause is written once at the origin; the
+  host adds only the operation frame and the consumer adds the step frame with
+  `in_step`. Error `Display` impls print their own line and keep the cause in
+  `source()`; never interpolate an inner error's text. Consumers read the value
+  with `harmos::Error::failure()`; gRPC clients decode it from status details.
 - Never retry/cache a streaming operation after item transfer. WireTable streaming
   providers bind standard portable endpoints with explicit `WireStreamLimits`,
   individually or through `bind_streaming_operations`; `StreamOutput` endpoints

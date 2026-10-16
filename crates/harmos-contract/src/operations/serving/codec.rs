@@ -28,9 +28,7 @@ mod payload {
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 // Local Imports
-use super::{
-    Failure, WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCommand,
-};
+use super::{WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCommand};
 
 /* === Constants === */
 const VERSION: u8 = 6;
@@ -91,8 +89,7 @@ enum Envelope<'a> {
         payload: &'a [u8],
     },
     Failed {
-        failure: Failure,
-        message: &'a str,
+        failure: crate::Failure,
     },
     Child {
         context: [u8; 32],
@@ -315,9 +312,8 @@ impl WireAnswer {
                 epoch: *epoch,
                 transferred: *transferred,
             },
-            Self::Failed { failure, message } => Envelope::Failed {
-                failure: *failure,
-                message,
+            Self::Failed { failure } => Envelope::Failed {
+                failure: failure.clone(),
             },
         };
         encode(envelope)
@@ -342,10 +338,7 @@ impl WireAnswer {
             Envelope::Ready { payload } => Self::Ready {
                 payload: payload.to_vec(),
             },
-            Envelope::Failed { failure, message } => Self::Failed {
-                failure,
-                message: message.to_owned(),
-            },
+            Envelope::Failed { failure } => Self::Failed { failure },
             _ => return Err(WireCodecError::Kind),
         })
     }

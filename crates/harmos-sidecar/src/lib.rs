@@ -32,10 +32,10 @@ pub use harmos_contract::operations::{
     CacheKey, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy,
 };
 pub use harmos_contract::{
-    ConfigError, Plugin, RESERVED, Refusal, Registrar, Registration, RegistrationError, StreamSpec,
-    UNKNOWN, UNREADABLE, encode_config, reserved, validate_config,
+    ConfigError, Failure, Plugin, RESERVED, Refusal, Registrar, Registration, RegistrationError,
+    StreamSpec, UNKNOWN, UNREADABLE, encode_config, reserved, validate_config,
 };
-pub use harmos_contract::{builtin, catalog, listeners, operations};
+pub use harmos_contract::{builtin, catalog, failure, listeners, operations};
 
 pub use harmos_contract::StreamDeclaration;
 #[cfg(feature = "kit")]

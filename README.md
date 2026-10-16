@@ -394,6 +394,33 @@ In process, the inherent `submit` and `submit_as` admit synchronously. Sidecars
 and guests submit unary children; streaming child sessions (`upload`,
 `download`, `exchange`) remain in-process for now.
 
+A plugin operation that fails reaches its caller as one `harmos::Failure`:
+a classification `code`, a `cause` written once where the handler's error
+originated (the deepest message of its source chain), the operation frame the
+host adds where the call crosses from the plugin, and optional origin
+diagnostics holding the full chain. Sidecar frames, host refusals, guest
+records and gRPC status details carry the same value, and every error layer
+prints only its own line, so walking `source()` renders
+"operation `gauge.read` failed: connection reset" once.
+
+```rust,ignore
+match host.operations.call_as::<Read>(request).await {
+    Err(error) => {
+        if let Some(failure) = error.failure() {
+            tracing::warn!(
+                code = ?failure.code(),
+                cause = failure.cause(),
+                operation = failure.context().operation(),
+                "plugin operation failed",
+            );
+        }
+    }
+    Ok(reading) => record(reading),
+}
+// A gRPC client reads the same value from the status details.
+let failure = harmos::Failure::decode(status.details())?;
+```
+
 Operations derive child context with `with_value` for a declared
 `ContextValue`; every binding borrows its handle and returns the derived one.
 The child keeps the original caller, grants, cancellation and deadline while

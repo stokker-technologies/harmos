@@ -58,6 +58,15 @@ pub enum PublishError {
 /* === Traits === */
 
 /* === Implementations === */
+impl From<PublishError> for harmos_contract::Refusal {
+    fn from(error: PublishError) -> Self {
+        match error {
+            PublishError::Call(error) => error.into(),
+            error => Self::of(error),
+        }
+    }
+}
+
 impl<P> Clone for Publisher<P> {
     fn clone(&self) -> Self {
         Self {

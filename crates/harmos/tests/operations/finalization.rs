@@ -274,8 +274,22 @@ pub(super) fn contract_scenario() {
                     else {
                         panic!("must retain both attempt and cleanup causes");
                     };
-                    assert!(outcome.to_string().contains("attempt cause"));
-                    assert!(source.to_string().contains("cleanup cause"));
+                    let outcome = std::iter::successors(
+                        Some(&*outcome as &(dyn std::error::Error + 'static)),
+                        |error| error.source(),
+                    )
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(": ");
+                    assert!(outcome.contains("attempt cause"), "{outcome}");
+                    let source = std::iter::successors(
+                        Some(&*source as &(dyn std::error::Error + 'static)),
+                        |error| error.source(),
+                    )
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(": ");
+                    assert!(source.contains("cleanup cause"), "{source}");
                     assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
 
                     let second = runtime.operations.submit_as::<Finish>(request()).unwrap();
@@ -718,7 +732,7 @@ pub(super) fn contract_scenario() {
                     assert!(failed.settled_at().is_none());
                     assert!(matches!(failed.cleanup_failure().unwrap().as_ref(),
         Error::OperationFinalization { outcome: Some(outcome), .. }
-        if outcome.to_string().contains("attempt cause")));
+        if std::iter::successors(Some(&**outcome as &(dyn std::error::Error + 'static)), |error| error.source()).map(ToString::to_string).collect::<Vec<_>>().join(": ").contains("attempt cause")));
                     assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
 
                     counters.fail.store(false, Ordering::SeqCst);

@@ -468,11 +468,12 @@ where
 /* === Public Functions === */
 
 /* === Private Functions === */
+// The handler's error becomes the failure's cause here, in the plugin process
+// where it originated; every later carrier forwards the same value.
 fn operation_error<T: Operation>(error: T::Error) -> ServingError {
-    ServingError::Handler {
-        failure: T::classify(&error),
-        source: Arc::new(error),
-    }
+    let failure =
+        crate::Failure::originate(T::classify(&error), &error, crate::failure::Origin::Plugin);
+    ServingError::Handler(failure)
 }
 
 /* === Tests === */

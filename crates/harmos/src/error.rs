@@ -98,7 +98,8 @@ pub enum Error<E = Infallible> {
         source: harmos_contract::Error,
     },
 
-    #[error("operation `{operation}` failed: {source}")]
+    // Prints its own line; the cause is the source, read through `failure()`.
+    #[error("operation `{operation}` failed")]
     OperationFailed {
         operation: String,
         #[source]
@@ -247,6 +248,17 @@ impl<E> From<harmos_contract::operations::ContextError> for Error<E> {
 }
 
 impl<E> Error<E> {
+    // The structured failure this error carries from a plugin, with its cause
+    // written once at the origin and the operation frame the host added.
+    pub fn failure(&self) -> Option<&harmos_contract::Failure> {
+        match self {
+            Self::OperationFailed { source, .. } | Self::TaskFailed { source, .. } => {
+                carried(source.as_ref())
+            }
+            _ => None,
+        }
+    }
+
     pub fn backend(
         operation: &'static str,
         kind: BackendFailure,
@@ -263,5 +275,21 @@ impl<E> Error<E> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+fn carried<'a>(
+    source: &'a (dyn std::error::Error + Send + Sync + 'static),
+) -> Option<&'a harmos_contract::Failure> {
+    if let Some(error) = source.downcast_ref::<Error>() {
+        return error.failure();
+    }
+    #[cfg(feature = "plugin-sidecar")]
+    if let Some(error) = source.downcast_ref::<crate::operations::NativeError>() {
+        return error.failure();
+    }
+    #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
+    if let Some(error) = source.downcast_ref::<crate::operations::ComponentError>() {
+        return error.failure();
+    }
+    harmos_contract::Failure::find(source)
+}
 
 /* === Tests === */

@@ -189,8 +189,13 @@ pub enum SidecarError {
     Unavailable,
     #[error("the sidecar did not answer inside the route's deadline")]
     Deadline,
-    #[error("the sidecar refused the call: {message} ({code})")]
-    Refused { code: i64, message: String },
+    // The refusal's failure travels unchanged; this layer adds only its line.
+    #[error("the sidecar refused the call ({code})")]
+    Refused {
+        code: i64,
+        #[source]
+        failure: harmos_contract::Failure,
+    },
     #[error("the call left the route's contract: {0}")]
     Malformed(String),
 }
@@ -223,6 +228,14 @@ enum Absorbed {
 /* === Traits === */
 
 /* === Implementations === */
+impl SidecarError {
+    // A refusal the host raises itself, before any plugin answered.
+    pub(crate) fn refused(code: i64, message: impl Into<String>) -> Self {
+        let failure = harmos_contract::Failure::new(crate::operations::Failure::Permanent, message);
+        Self::Refused { code, failure }
+    }
+}
+
 impl Notice {
     pub fn published(&self) -> Option<&ManagedPublication> {
         match self {
@@ -925,9 +938,9 @@ where
                     _ => None,
                 };
                 let refused = match frame {
-                    Some(Frame::Refusal {
-                        id: at, message, ..
-                    }) if *at == id => Some(message.clone()),
+                    Some(Frame::Refusal { id: at, refusal }) if *at == id => {
+                        Some(refusal.message().to_owned())
+                    }
                     _ => None,
                 };
                 match self.absorb(arrival).await {
@@ -1044,10 +1057,10 @@ where
                         continue;
                     }
                     if request.children.is_some() && self.child_scopes.len() >= 128 {
-                        let _ = request.answer.send(Err(SidecarError::Refused {
-                            code: UNKNOWN,
-                            message: "native attempt context capacity exhausted".to_owned(),
-                        }));
+                        let _ = request.answer.send(Err(SidecarError::refused(
+                            UNKNOWN,
+                            "native attempt context capacity exhausted",
+                        )));
                         continue;
                     }
                     let id = self.mint();
@@ -1057,13 +1070,13 @@ where
                         params: request.params,
                     };
                     if !frame.fits() {
-                        let _ = request.answer.send(Err(SidecarError::Refused {
-                            code: Frame::OVERSIZED,
-                            message: format!(
+                        let _ = request.answer.send(Err(SidecarError::refused(
+                            Frame::OVERSIZED,
+                            format!(
                                 "the route request exceeds the {}-byte sidecar frame limit",
                                 Frame::LIMIT
                             ),
-                        }));
+                        )));
                         continue;
                     }
                     match self.send(frame).await {
@@ -1173,8 +1186,12 @@ where
                 self.settle(id, Ok(result));
                 Absorbed::Carried
             }
-            Arrival::Frame(Frame::Refusal { id, code, message }) => {
-                self.settle(id, Err(SidecarError::Refused { code, message }));
+            Arrival::Frame(Frame::Refusal { id, refusal }) => {
+                let refused = SidecarError::Refused {
+                    code: refusal.code(),
+                    failure: refusal.into_failure(),
+                };
+                self.settle(id, Err(refused));
                 Absorbed::Carried
             }
             Arrival::Frame(Frame::Push { method, params }) => {
@@ -1197,17 +1214,10 @@ where
                         Ok(child) => child,
                         Err(error) => {
                             let refusal = harmos_contract::Refusal::of(error);
-                            return self
-                                .send(Frame::Refusal {
-                                    id,
-                                    code: refusal.code(),
-                                    message: refusal.message().to_owned(),
-                                })
-                                .await
-                                .map_or_else(
-                                    |error| Absorbed::Malformed(error.to_string()),
-                                    |()| Absorbed::Carried,
-                                );
+                            return self.send(Frame::Refusal { id, refusal }).await.map_or_else(
+                                |error| Absorbed::Malformed(error.to_string()),
+                                |()| Absorbed::Carried,
+                            );
                         }
                     };
                     let scope = self
@@ -1261,11 +1271,7 @@ where
                                                 "submitted children require an attempt context",
                                             );
                                             return self
-                                                .send(Frame::Refusal {
-                                                    id,
-                                                    code: refusal.code(),
-                                                    message: refusal.message().to_owned(),
-                                                })
+                                                .send(Frame::Refusal { id, refusal })
                                                 .await
                                                 .map_or_else(
                                                     |error| Absorbed::Malformed(error.to_string()),
@@ -1307,11 +1313,7 @@ where
                                             let refusal =
                                                 crate::operations::children::refused(error);
                                             return self
-                                                .send(Frame::Refusal {
-                                                    id,
-                                                    code: refusal.code(),
-                                                    message: refusal.message().to_owned(),
-                                                })
+                                                .send(Frame::Refusal { id, refusal })
                                                 .await
                                                 .map_or_else(
                                                     |error| Absorbed::Malformed(error.to_string()),
@@ -1327,11 +1329,7 @@ where
                             let future = async move {
                                 let frame = match invocation.await {
                                     Ok(result) => Frame::Answer { id, result },
-                                    Err(error) => Frame::Refusal {
-                                        id,
-                                        code: error.code(),
-                                        message: error.message().to_owned(),
-                                    },
+                                    Err(error) => Frame::Refusal { id, refusal: error },
                                 };
                                 let _ = returns.send((frame, task_token)).await;
                             };
@@ -1347,17 +1345,10 @@ where
                             return Absorbed::Carried;
                         }
                     };
-                    return self
-                        .send(Frame::Refusal {
-                            id,
-                            code: refusal.code(),
-                            message: refusal.message().to_owned(),
-                        })
-                        .await
-                        .map_or_else(
-                            |error| Absorbed::Malformed(error.to_string()),
-                            |()| Absorbed::Carried,
-                        );
+                    return self.send(Frame::Refusal { id, refusal }).await.map_or_else(
+                        |error| Absorbed::Malformed(error.to_string()),
+                        |()| Absorbed::Carried,
+                    );
                 }
                 let refusal = if self.routed_tasks.len() >= CHILD_REQUESTS {
                     crate::plugin::DispatchError::Busy.into_refusal()
@@ -1376,11 +1367,7 @@ where
                                     Ok(result) => Frame::Answer { id, result },
                                     Err(error) => {
                                         let refusal = crate::operations::children::refused(error);
-                                        Frame::Refusal {
-                                            id,
-                                            code: refusal.code(),
-                                            message: refusal.message().to_owned(),
-                                        }
+                                        Frame::Refusal { id, refusal }
                                     }
                                 };
                                 let _ = returns.send((frame, task_token)).await;
@@ -1404,13 +1391,7 @@ where
                         "no managed operation caller is configured",
                     )
                 };
-                self.send(Frame::Refusal {
-                    id,
-                    code: refusal.code(),
-                    message: refusal.message().to_owned(),
-                })
-                .await
-                .map_or_else(
+                self.send(Frame::Refusal { id, refusal }).await.map_or_else(
                     |error| Absorbed::Malformed(error.to_string()),
                     |()| Absorbed::Carried,
                 )

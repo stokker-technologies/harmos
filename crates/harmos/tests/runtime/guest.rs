@@ -432,9 +432,9 @@ fn contract_scenario() {
         .await
         .unwrap_err();
     assert!(
-        matches!(component_error(&refused), harmos::operations::ComponentError::Remote {
-        failure: harmos::operations::Failure::Permanent, message,
-    } if message.contains("the probe declines"))
+        matches!(component_error(&refused), harmos::operations::ComponentError::Remote(failure)
+            if failure.code() == harmos::operations::Failure::Permanent
+                && failure.cause().contains("the probe declines"))
     );
     assert!(harmos::operations::Definition::of::<Reserved>().is_err());
     assert_eq!(
@@ -738,7 +738,7 @@ fn contract_scenario() {
             .await
             .unwrap_err();
         assert!(
-            matches!(component_error(&error), harmos::operations::ComponentError::Remote { failure: harmos::operations::Failure::Permanent, message: actual } if actual.contains(message)),
+            matches!(component_error(&error), harmos::operations::ComponentError::Remote(failure) if failure.code() == harmos::operations::Failure::Permanent && failure.cause().contains(message)),
             "{error:?}"
         );
     }
@@ -1277,11 +1277,10 @@ async fn scripted() -> Vec<String> {
         .call_as::<Decline>(Decline {})
         .await
         .unwrap_err();
-    let harmos::operations::ComponentError::Remote { failure, message } = component_error(&refused)
-    else {
+    let harmos::operations::ComponentError::Remote(failure) = component_error(&refused) else {
         panic!("expected classified refusal");
     };
-    trace.push(format!("{failure:?}: {message}"));
+    trace.push(format!("{:?}: {}", failure.code(), failure.cause()));
     let trapped = runtime
         .operations
         .call_as::<Fail>(Fail {})

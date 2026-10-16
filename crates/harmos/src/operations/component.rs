@@ -89,22 +89,24 @@ pub enum ComponentError {
     Stream(#[from] super::RemoteStreamError),
     #[error("the selected guest generation is unavailable")]
     Unavailable,
-    #[error("guest attempt context entropy is unavailable: {0}")]
+    #[error("guest attempt context entropy is unavailable")]
     Entropy(#[from] getrandom::Error),
     #[error("operation `{operation}` differs from the selected guest catalog")]
     Catalog { operation: &'static str },
     #[error(transparent)]
     Declaration(#[from] harmos_contract::Error),
-    #[error("guest operation transport failed: {0}")]
+    #[error("guest operation transport failed")]
     Transport(#[from] GuestError),
-    #[error("guest operation response codec failed: {0}")]
+    #[error("guest operation response codec failed")]
     Payload(#[from] crate::MessageError),
-    #[error("guest operation preparation failed: {message}")]
-    Preparation { failure: Failure, message: String },
-    #[error("guest operation request is not granted: {0}")]
+    // The guest refused the request while preparing it.
+    #[error(transparent)]
+    Preparation(harmos_contract::Failure),
+    #[error("guest operation request is not granted")]
     Unauthorized(#[source] crate::Error),
-    #[error("guest operation failed: {message}")]
-    Remote { failure: Failure, message: String },
+    // The guest handler failed; its failure crosses unchanged.
+    #[error(transparent)]
+    Remote(harmos_contract::Failure),
 }
 
 /* === Traits === */
@@ -113,6 +115,24 @@ pub enum ComponentError {
 impl ComponentError {
     pub(crate) fn classification(&self) -> Failure {
         classify(self)
+    }
+
+    pub(crate) fn failure(&self) -> Option<&harmos_contract::Failure> {
+        match self {
+            Self::Preparation(failure) | Self::Remote(failure) => Some(failure),
+            Self::Stream(source) => source.failure(),
+            _ => None,
+        }
+    }
+
+    // The host adds the one operation frame where the call crossed from the guest.
+    fn in_operation(self, operation: &str) -> Self {
+        match self {
+            Self::Preparation(failure) => Self::Preparation(failure.in_operation(operation)),
+            Self::Remote(failure) => Self::Remote(failure.in_operation(operation)),
+            Self::Stream(source) => Self::Stream(source.in_operation(operation)),
+            error => error,
+        }
     }
 }
 
@@ -281,7 +301,9 @@ where
             O::Response::decode(payload.as_slice()).map_err(ComponentError::Payload)
         }
         .await;
-        result.map(::core::convert::Into::into)
+        result
+            .map(::core::convert::Into::into)
+            .map_err(|error| error.in_operation(O::ID))
     }
 
     async fn cleanup(&mut self) -> Result<(), ComponentError> {
@@ -289,7 +311,10 @@ where
             return Ok(());
         };
 
-        self.component.finalize_encoded(state).await
+        self.component
+            .finalize_encoded(state)
+            .await
+            .map_err(|error| error.in_operation(O::ID))
     }
 
     fn transferred(&self) -> bool {
@@ -360,8 +385,8 @@ impl Component {
             };
             let answer = self.endpoint.phase(command, None).await?;
             let answer = match answer {
-                WireAnswer::Failed { failure, message } => {
-                    return Err(ComponentError::Preparation { failure, message });
+                WireAnswer::Failed { failure } => {
+                    return Err(ComponentError::Preparation(failure));
                 }
                 answer => answer,
             };
@@ -382,9 +407,7 @@ impl Component {
             .phase_encoded(state, context, Phase::Initialize)
             .await?;
         match answer {
-            WireAnswer::Failed { failure, message } => {
-                Err(ComponentError::Preparation { failure, message })
-            }
+            WireAnswer::Failed { failure } => Err(ComponentError::Preparation(failure)),
             answer => acknowledged(answer),
         }
     }
@@ -548,7 +571,7 @@ impl Operation for SdkOperation {
         payload: &mut Vec<u8>,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<Vec<u8>>, ComponentError> {
-        let result: ::core::result::Result<Vec<u8>, Self::Error> = async move {
+        let result: ::core::result::Result<Vec<u8>, Self::Error> = async {
             if self.state.is_none() {
                 let binding = &self.binding;
 
@@ -595,7 +618,10 @@ impl Operation for SdkOperation {
             ready(answer)
         }
         .await;
-        result.map(::core::convert::Into::into)
+        let operation = self.binding.definition.id.as_str();
+        result
+            .map(::core::convert::Into::into)
+            .map_err(|error| error.in_operation(operation))
     }
 
     async fn cleanup(&mut self) -> Result<(), ComponentError> {
@@ -603,7 +629,12 @@ impl Operation for SdkOperation {
             return Ok(());
         };
 
-        self.binding.component.finalize_encoded(state).await
+        let operation = self.binding.definition.id.as_str();
+        self.binding
+            .component
+            .finalize_encoded(state)
+            .await
+            .map_err(|error| error.in_operation(operation))
     }
 
     fn classify(error: &ComponentError) -> Failure {
@@ -675,10 +706,10 @@ fn sdk_dispatch(
 fn classify(error: &ComponentError) -> Failure {
     match error {
         ComponentError::Stream(source) => source.classification(),
-        ComponentError::Remote { failure, .. } => *failure,
+        ComponentError::Remote(failure) => failure.code(),
         ComponentError::Unauthorized(_) => Failure::Unauthorized,
-        ComponentError::Preparation { failure, .. } => match failure {
-            Failure::Invalid | Failure::Unauthorized | Failure::Cancelled => *failure,
+        ComponentError::Preparation(failure) => match failure.code() {
+            code @ (Failure::Invalid | Failure::Unauthorized | Failure::Cancelled) => code,
             _ => Failure::Permanent,
         },
         ComponentError::Transport(
@@ -695,7 +726,7 @@ fn classify(error: &ComponentError) -> Failure {
 fn ready(answer: WireAnswer) -> Result<Vec<u8>, ComponentError> {
     match answer {
         WireAnswer::Ready { payload } => Ok(payload),
-        WireAnswer::Failed { failure, message } => Err(ComponentError::Remote { failure, message }),
+        WireAnswer::Failed { failure } => Err(ComponentError::Remote(failure)),
         WireAnswer::Stream { .. } => Err(GuestError::Malformed {
             method: "operate".to_owned(),
             message: "unexpected stream response to unary phase".to_owned(),

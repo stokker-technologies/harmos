@@ -114,7 +114,7 @@ pub use runtime::{Builder, Runtime};
 pub use harmos_contract::Protobuf;
 pub use harmos_contract::plugin::Plugin;
 pub use harmos_contract::{
-    Aggregate, Identifier, IdentifierError, MemorySize, Message, MessageError, Metadata,
+    Aggregate, Failure, Identifier, IdentifierError, MemorySize, Message, MessageError, Metadata,
     RowMetadata, Storable, StreamField, StreamSpec, Value, ValueError, btree_map_memory,
 };
 // Contract Namespaces The Host Does Not Extend, Re-Exported Whole.
@@ -123,7 +123,7 @@ pub use harmos_bundle as bundle;
 #[cfg(all(feature = "reflection", not(feature = "grpc")))]
 pub use harmos_contract::grpc;
 // `message` Names Both The Contract Module And Its Same-Named Attribute.
-pub use harmos_contract::{artifacts, catalog, listeners, message, schema};
+pub use harmos_contract::{artifacts, catalog, failure, listeners, message, schema};
 pub use harmos_macros::{
     lanes, listener, observer, operation, plugin, record, records, stream, streams, transaction,
     transactions,

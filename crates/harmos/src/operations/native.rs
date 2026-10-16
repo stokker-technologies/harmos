@@ -115,28 +115,30 @@ enum Selection {
 pub enum NativeError {
     #[error(transparent)]
     Stream(#[from] super::RemoteStreamError),
-    #[error("native provider retention failed: {0}")]
+    #[error("native provider retention failed")]
     Provider(#[source] crate::Error),
     #[error("the selected native generation is unavailable")]
     Unavailable,
     #[error("native operation capacity is retained")]
     Capacity,
-    #[error("native attempt context entropy is unavailable: {0}")]
+    #[error("native attempt context entropy is unavailable")]
     Entropy(#[from] getrandom::Error),
     #[error("operation `{operation}` differs from the selected native catalog")]
     Catalog { operation: String },
     #[error(transparent)]
     Declaration(#[from] harmos_contract::Error),
-    #[error("native operation transport failed: {0}")]
+    #[error("native operation transport failed")]
     Transport(#[from] SidecarError),
-    #[error("native operation response codec failed: {0}")]
+    #[error("native operation response codec failed")]
     Payload(#[from] crate::MessageError),
-    #[error("native operation preparation failed: {message}")]
-    Preparation { failure: Failure, message: String },
-    #[error("native operation request is not granted: {0}")]
+    // The provider refused the request while preparing it.
+    #[error(transparent)]
+    Preparation(harmos_contract::Failure),
+    #[error("native operation request is not granted")]
     Unauthorized(#[source] crate::Error),
-    #[error("native operation failed: {message}")]
-    Remote { failure: Failure, message: String },
+    // The provider's handler failed; its failure crosses unchanged.
+    #[error(transparent)]
+    Remote(harmos_contract::Failure),
 }
 
 /* === Traits === */
@@ -145,6 +147,24 @@ pub enum NativeError {
 impl NativeError {
     pub(crate) fn classification(&self) -> Failure {
         classify(self)
+    }
+
+    pub(crate) fn failure(&self) -> Option<&harmos_contract::Failure> {
+        match self {
+            Self::Preparation(failure) | Self::Remote(failure) => Some(failure),
+            Self::Stream(source) => source.failure(),
+            _ => None,
+        }
+    }
+
+    // The host adds the one operation frame where the call crossed from the plugin.
+    fn in_operation(self, operation: &str) -> Self {
+        match self {
+            Self::Preparation(failure) => Self::Preparation(failure.in_operation(operation)),
+            Self::Remote(failure) => Self::Remote(failure.in_operation(operation)),
+            Self::Stream(source) => Self::Stream(source.in_operation(operation)),
+            error => error,
+        }
     }
 }
 
@@ -459,7 +479,9 @@ where
             O::Response::decode(payload.as_slice()).map_err(NativeError::Payload)
         }
         .await;
-        result.map(::core::convert::Into::into)
+        result
+            .map(::core::convert::Into::into)
+            .map_err(|error| error.in_operation(O::ID))
     }
 
     async fn cleanup(&mut self) -> std::result::Result<(), NativeError> {
@@ -467,7 +489,10 @@ where
             return Ok(());
         };
 
-        self.native.finalize_encoded(state).await
+        self.native
+            .finalize_encoded(state)
+            .await
+            .map_err(|error| error.in_operation(O::ID))
     }
 
     fn transferred(&self) -> bool {
@@ -503,10 +528,10 @@ impl Native {
     ) -> std::result::Result<NativeState, NativeError> {
         self.validate_definition(definition)?;
         if payload.capacity() > harmos_sidecar::Frame::LIMIT {
-            let source = SidecarError::Refused {
-                code: harmos_sidecar::Frame::OVERSIZED,
-                message: "operation request exceeds the native frame limit".to_owned(),
-            };
+            let source = SidecarError::refused(
+                harmos_sidecar::Frame::OVERSIZED,
+                "operation request exceeds the native frame limit",
+            );
             return Err(source.into());
         }
         let state = NativeState {
@@ -567,8 +592,8 @@ impl Native {
             };
             let answer = self.endpoint.phase(command).await?;
             let answer = match answer {
-                WireAnswer::Failed { failure, message } => {
-                    return Err(NativeError::Preparation { failure, message });
+                WireAnswer::Failed { failure } => {
+                    return Err(NativeError::Preparation(failure));
                 }
                 answer => answer,
             };
@@ -586,9 +611,7 @@ impl Native {
             .phase_encoded(state, context, Phase::Initialize)
             .await?;
         match answer {
-            WireAnswer::Failed { failure, message } => {
-                Err(NativeError::Preparation { failure, message })
-            }
+            WireAnswer::Failed { failure } => Err(NativeError::Preparation(failure)),
             answer => acknowledged(answer),
         }
     }
@@ -748,7 +771,7 @@ impl<E: super::StreamEndpoints> Operation for EncodedOperation<E> {
         request: &mut EncodedRequest,
         endpoints: &mut Self::Endpoints,
     ) -> std::result::Result<crate::operations::Response<Opaque>, NativeError> {
-        let result: ::core::result::Result<Opaque, Self::Error> = async move {
+        let result: ::core::result::Result<Opaque, Self::Error> = async {
             if self.state.is_none() {
                 let binding = &self.binding;
 
@@ -850,7 +873,12 @@ impl<E: super::StreamEndpoints> Operation for EncodedOperation<E> {
             Ok(Opaque(payload))
         }
         .await;
-        result.map(::core::convert::Into::into)
+        result
+            .map(::core::convert::Into::into)
+            .map_err(|error| match &self.state {
+                Some(state) => error.in_operation(state.operation.as_str()),
+                None => error,
+            })
     }
 
     async fn cleanup(&mut self) -> std::result::Result<(), NativeError> {
@@ -858,7 +886,12 @@ impl<E: super::StreamEndpoints> Operation for EncodedOperation<E> {
             return Ok(());
         };
 
-        self.binding.native.finalize_encoded(state).await
+        let operation = state.operation.clone();
+        self.binding
+            .native
+            .finalize_encoded(state)
+            .await
+            .map_err(|error| error.in_operation(operation.as_str()))
     }
 
     fn transferred(&self) -> bool {
@@ -1109,10 +1142,10 @@ pub(super) fn dispatch(
         None => binding.reserve().map_err(failure)?,
     };
     if input.payload.capacity() > harmos_sidecar::Frame::LIMIT {
-        return Err(failure(NativeError::Transport(SidecarError::Refused {
-            code: harmos_sidecar::Frame::OVERSIZED,
-            message: "operation request exceeds the native frame limit".to_owned(),
-        })));
+        return Err(failure(NativeError::Transport(SidecarError::refused(
+            harmos_sidecar::Frame::OVERSIZED,
+            "operation request exceeds the native frame limit",
+        ))));
     }
     let request = EncodedRequest {
         grpc: false,
@@ -1243,10 +1276,10 @@ fn validate_inventory(native: &Native, scope: &crate::plugin::PluginScope) -> Re
 fn classify(error: &NativeError) -> Failure {
     match error {
         NativeError::Stream(source) => source.classification(),
-        NativeError::Remote { failure, .. } => *failure,
+        NativeError::Remote(failure) => failure.code(),
         NativeError::Unauthorized(_) => Failure::Unauthorized,
-        NativeError::Preparation { failure, .. } => match failure {
-            Failure::Invalid | Failure::Unauthorized | Failure::Cancelled => *failure,
+        NativeError::Preparation(failure) => match failure.code() {
+            code @ (Failure::Invalid | Failure::Unauthorized | Failure::Cancelled) => code,
             _ => Failure::Permanent,
         },
         NativeError::Transport(SidecarError::Unavailable | SidecarError::Deadline) => {
@@ -1269,7 +1302,7 @@ fn ready(answer: WireAnswer) -> std::result::Result<Vec<u8>, NativeError> {
             "native operation response exceeds the frame limit".to_owned(),
         )
         .into()),
-        WireAnswer::Failed { failure, message } => Err(NativeError::Remote { failure, message }),
+        WireAnswer::Failed { failure } => Err(NativeError::Remote(failure)),
         WireAnswer::Stream { .. } => Err(SidecarError::Malformed(
             "unexpected stream response to unary phase".to_owned(),
         )

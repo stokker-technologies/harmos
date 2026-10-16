@@ -200,9 +200,24 @@ pub(crate) async fn lifecycle(
 pub(crate) fn refused(error: Error) -> Refusal {
     match error {
         Error::OperationCaller { source } => source.into_refusal(),
-        Error::OperationFailed { ref source, .. } => {
-            let refusal = source.downcast_ref::<Refusal>().cloned();
-            refusal.unwrap_or_else(|| Refusal::of(error))
+        Error::OperationFailed {
+            ref operation,
+            ref source,
+        } => {
+            if let Some(refusal) = source.downcast_ref::<Refusal>() {
+                let failure = refusal.failure().clone().in_operation(operation.as_str());
+                return Refusal::failed(refusal.code(), failure);
+            }
+            // A Carried Failure Keeps Its Cause And Any Frame Closer To The Origin
+            let failure = error.failure().cloned().unwrap_or_else(|| {
+                harmos_contract::Failure::originate(
+                    crate::operations::Failure::Permanent,
+                    &error,
+                    harmos_contract::failure::Origin::Host,
+                )
+            });
+            let failure = failure.in_operation(operation.as_str());
+            Refusal::failed(harmos_contract::FAILED, failure)
         }
         Error::OperationUnauthorized { .. } | Error::OperationLaneCycle { .. } => {
             Refusal::new(-32_604, error)
@@ -211,7 +226,12 @@ pub(crate) fn refused(error: Error) -> Refusal {
         Error::OperationPayload { .. } => Refusal::new(harmos_contract::UNREADABLE, error),
         Error::OperationRefused(crate::Refusal::TimedOut) => Refusal::new(-32_607, error),
         Error::OperationRefused(_) | Error::Closing { .. } => Refusal::new(-32_606, error),
-        error => Refusal::of(error),
+        error => Refusal::originate(
+            harmos_contract::FAILED,
+            crate::operations::Failure::Permanent,
+            &error,
+            harmos_contract::failure::Origin::Host,
+        ),
     }
 }
 

@@ -60,7 +60,11 @@ impl Context {
         super::plugin::__bindings::harmos::guest::operation_context::child(payload)
             .await
             .map_err(|error| {
-                OperationRefusal::new(error.code.parse().unwrap_or(UNKNOWN), error.message)
+                let code = error.code.parse().unwrap_or(UNKNOWN);
+                match harmos_contract::Failure::decode(&error.failure) {
+                    Ok(failure) => OperationRefusal::failed(code, failure),
+                    Err(source) => OperationRefusal::new(code, source),
+                }
             })
     }
 

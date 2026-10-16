@@ -507,8 +507,8 @@ async fn throughput_case(
                     WireAnswer::Stream { .. } => {
                         panic!("unexpected stream response to publication operation")
                     }
-                    WireAnswer::Failed { message, .. } => {
-                        panic!("publication operation refused: {message}")
+                    WireAnswer::Failed { failure } => {
+                        panic!("publication operation refused: {failure}")
                     }
                 }
                 answered = true;
@@ -684,7 +684,7 @@ async fn phase(
     let result = call(outgoing, incoming, id, WIRE_METHOD, params).await;
     match WireAnswer::decode(&result).unwrap() {
         WireAnswer::Ready { payload } => payload,
-        WireAnswer::Failed { message, .. } => panic!("operation phase refused: {message}"),
+        WireAnswer::Failed { failure } => panic!("operation phase refused: {failure}"),
         WireAnswer::Stream { .. } => panic!("unexpected stream response to unary phase"),
     }
 }

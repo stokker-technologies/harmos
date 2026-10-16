@@ -334,7 +334,14 @@ pub(super) fn contract_scenario() {
                         .runtime_with_storage(&storage)
                         .await;
                     let error = result.err().expect("consumer panic refuses boot");
-                    assert!(error.to_string().contains("controlled consumer panic"));
+                    let error = std::iter::successors(
+                        Some(&error as &(dyn std::error::Error + 'static)),
+                        |error| error.source(),
+                    )
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(": ");
+                    assert!(error.contains("controlled consumer panic"), "{error}");
                     assert!(storage.status().closed);
                     assert!(!data.control.open.load(Ordering::SeqCst));
                 });

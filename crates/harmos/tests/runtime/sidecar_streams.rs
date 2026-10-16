@@ -356,11 +356,12 @@ fn contract_scenario() {
                         Err(status) => status,
                     };
                     assert_eq!(status.code(), tonic::Code::InvalidArgument, "{status:?}");
-                    assert_eq!(
-                        status.message(),
-                        "operation payload codec failed",
-                        "{status:?}"
-                    );
+                    // The Status Details Carry The Structured Failure Unchanged
+                    let failure = harmos::Failure::decode(status.details()).unwrap();
+                    assert_eq!(status.message(), failure.cause(), "{status:?}");
+                    assert!(failure.cause().contains("wire type mismatch"), "{status:?}");
+                    assert!(failure.context().operation().is_some(), "{status:?}");
+                    assert!(failure.diagnostics().is_none(), "{status:?}");
                     assert_eq!(counts.runs.load(Ordering::SeqCst), 0);
 
                     fixture.shutdown().await.unwrap();

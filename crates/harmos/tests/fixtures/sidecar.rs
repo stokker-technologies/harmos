@@ -315,7 +315,7 @@ impl Operation for Echoing {
                     },
                 )
                 .await
-                .map_err(Refusal::of)?;
+                .map_err(Refusal::from)?;
             }
             Ok(request.clone())
         }

@@ -584,8 +584,8 @@ impl<const ALLOWED: bool> harmos::operations::Operation for Forwarding<ALLOWED> 
                 .await
                 .map(harmos::operations::Response::into_owned)
                 .map_err(|error| match error {
-                    harmos_sidecar::CallError::Refused { code, message } => {
-                        Refusal::new(code, message)
+                    harmos_sidecar::CallError::Refused { code, failure } => {
+                        Refusal::failed(code, failure)
                     }
                     error => Refusal::of(error),
                 })
@@ -1443,7 +1443,7 @@ pub(super) fn contract_scenario() {
         panic!("native source must survive")
     };
     assert!(
-        matches!(source.downcast_ref::<NativeError>(), Some(NativeError::Remote { message, .. }) if message.contains("may not invoke"))
+        matches!(source.downcast_ref::<NativeError>(), Some(NativeError::Remote(failure)) if failure.cause().contains("may not invoke"))
     );
     assert_eq!(
         runtime
@@ -1606,7 +1606,7 @@ pub(super) fn contract_scenario() {
     };
     assert_eq!(operation, Forward::<false>::ID);
     assert!(
-        matches!(source.downcast_ref::<NativeError>(), Some(NativeError::Remote { message, .. }) if message.contains("may not invoke"))
+        matches!(source.downcast_ref::<NativeError>(), Some(NativeError::Remote(failure)) if failure.cause().contains("may not invoke"))
     );
     assert!(
         runtime

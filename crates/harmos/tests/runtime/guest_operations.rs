@@ -256,8 +256,9 @@ pub(super) fn contract_scenario() {
                             panic!("the original finalization handler error is preserved")
                         };
                         assert!(matches!(source.downcast_ref::<ComponentError>(),
-            Some(ComponentError::Remote { failure: Failure::Transient, message })
-                if message.contains("first cleanup retained")));
+            Some(ComponentError::Remote(failure))
+                if failure.code() == Failure::Transient
+                    && failure.cause().contains("first cleanup retained")));
                     }
                     let error = runtime
                         .operations
@@ -270,8 +271,8 @@ pub(super) fn contract_scenario() {
                         panic!("both failed cleanup owners must still charge the original capacity")
                     };
                     assert!(matches!(source.downcast_ref::<ComponentError>(),
-        Some(ComponentError::Preparation { message, .. })
-            if message == "carrier invocation capacity is exhausted"));
+        Some(ComponentError::Preparation(failure))
+            if failure.cause() == "carrier invocation capacity is exhausted"));
 
                     // The Reserved SDK Slot Settles Those Same Ordinary States Before Retirement
                     let original = lifecycle.component();
@@ -345,10 +346,11 @@ pub(super) fn contract_scenario() {
                     let mut source = Some(&error as &dyn std::error::Error);
                     let mut refused_catalog = false;
                     while let Some(error) = source {
-                        if let Some(ComponentError::Remote { message, .. }) =
+                        if let Some(ComponentError::Remote(failure)) =
                             error.downcast_ref::<ComponentError>()
                         {
-                            refused_catalog |= message
+                            refused_catalog |= failure
+                                .cause()
                 .contains("carrier handler definitions differ from the selected operation catalog");
                         }
                         source = if let Some(harmos::Error::OperationFailed { source, .. }) =
@@ -518,7 +520,7 @@ pub(super) fn contract_scenario() {
         panic!("original initialization error")
     };
     assert!(
-        matches!(source.downcast_ref::<ComponentError>(), Some(ComponentError::Preparation { failure: Failure::Transient, message }) if message.contains("partial initialization failed"))
+        matches!(source.downcast_ref::<ComponentError>(), Some(ComponentError::Preparation(failure)) if failure.code() == Failure::Transient && failure.cause().contains("partial initialization failed"))
     );
     assert_eq!(
         invocation.status().phase(),

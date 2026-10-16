@@ -60,10 +60,7 @@ macro_rules! export_plugin {
                 $crate::kit::plugin::__bindings::harmos::guest::capabilities::Refusal,
             > {
                 let capacity = ::std::num::NonZeroUsize::new($capacity).ok_or_else(|| {
-                    $crate::kit::plugin::__bindings::harmos::guest::capabilities::Refusal {
-                        code: "-32602".to_owned(),
-                        message: "plugin operation capacity must be positive".to_owned(),
-                    }
+                    $crate::kit::plugin::refusal("plugin operation capacity must be positive")
                 })?;
                 $crate::kit::plugin::operate::<$plugin>(command, capacity).await
             }
@@ -205,10 +202,12 @@ fn supported_observers<P: Declared>() -> Result<(), String> {
     Ok(())
 }
 
-fn refusal(error: impl std::fmt::Display) -> Refusal {
+#[doc(hidden)]
+pub fn refusal(error: impl std::fmt::Display) -> Refusal {
+    let refusal = harmos_contract::Refusal::new(harmos_contract::UNREADABLE, error);
     Refusal {
-        code: harmos_contract::UNREADABLE.to_string(),
-        message: error.to_string(),
+        code: refusal.code().to_string(),
+        failure: refusal.failure().encode(),
     }
 }
 

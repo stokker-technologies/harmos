@@ -378,10 +378,10 @@ impl Endpoint {
             return Err(SidecarError::Unavailable);
         }
         let params = command.encode().map_err(|error| match error {
-            harmos_contract::operations::WireCodecError::Oversized => SidecarError::Refused {
-                code: Frame::OVERSIZED,
-                message: "operation control exceeds the native frame limit".to_owned(),
-            },
+            harmos_contract::operations::WireCodecError::Oversized => SidecarError::refused(
+                Frame::OVERSIZED,
+                "operation control exceeds the native frame limit",
+            ),
             error => SidecarError::Malformed(error.to_string()),
         })?;
         let frame = Frame::Call {
@@ -390,10 +390,10 @@ impl Endpoint {
             params,
         };
         if !frame.fits() {
-            return Err(SidecarError::Refused {
-                code: Frame::OVERSIZED,
-                message: "operation control exceeds the native frame limit".to_owned(),
-            });
+            return Err(SidecarError::refused(
+                Frame::OVERSIZED,
+                "operation control exceeds the native frame limit",
+            ));
         }
         let Frame::Call { method, params, .. } = frame else {
             unreachable!()

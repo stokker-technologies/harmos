@@ -178,8 +178,8 @@ async fn exchange(
                                 if let Some(receipt) = consumption { let _ = receipt.consumed(); }
                                 continue;
                             }
-                            Frame::Refusal { id, code, message } => {
-                                host.receive_refusal(id, code, message);
+                            Frame::Refusal { id, refusal } => {
+                                host.receive_refusal(id, refusal);
                                 if let Some(receipt) = consumption { let _ = receipt.consumed(); }
                                 continue;
                             }
@@ -220,8 +220,7 @@ async fn exchange(
                                             let refusal = Refusal::of("the sidecar request queue is full");
                                             if to_host.try_send(Outgoing::Frame(Frame::Refusal {
                                                 id,
-                                                code: refusal.code(),
-                                                message: refusal.message().to_owned(),
+                                                refusal,
                                             })).is_err() {
                                                 break;
                                             }
@@ -395,8 +394,10 @@ async fn dispatch_requests(
                 let _ = outgoing
                     .send(Outgoing::Frame(Frame::Refusal {
                         id,
-                        code: UNKNOWN,
-                        message: "carrier reply capacity exhausted".to_owned(),
+                        refusal: Refusal::new(
+                            UNKNOWN,
+                            "carrier reply capacity exhausted".to_owned(),
+                        ),
                     }))
                     .await;
             }
@@ -511,8 +512,7 @@ async fn answer(opening: &mut Opening, host: &Supervisor, frame: Frame) -> Answe
             Ok(result) => Answered::Frame(Frame::Answer { id, result }),
             Err(error) => Answered::Frame(Frame::Refusal {
                 id,
-                code: UNREADABLE,
-                message: error.to_string(),
+                refusal: Refusal::new(UNREADABLE, error.to_string()),
             }),
         };
     }
@@ -522,8 +522,7 @@ async fn answer(opening: &mut Opening, host: &Supervisor, frame: Frame) -> Answe
             Err(error) => {
                 return Answered::Frame(Frame::Refusal {
                     id,
-                    code: UNREADABLE,
-                    message: error.to_string(),
+                    refusal: Refusal::new(UNREADABLE, error.to_string()),
                 });
             }
         };
@@ -545,8 +544,7 @@ async fn answer(opening: &mut Opening, host: &Supervisor, frame: Frame) -> Answe
             Err(error) => {
                 return Answered::Frame(Frame::Refusal {
                     id,
-                    code: UNREADABLE,
-                    message: error.to_string(),
+                    refusal: Refusal::new(UNREADABLE, error.to_string()),
                 });
             }
         };
@@ -555,8 +553,7 @@ async fn answer(opening: &mut Opening, host: &Supervisor, frame: Frame) -> Answe
             Err(error) => {
                 return Answered::Frame(Frame::Refusal {
                     id,
-                    code: UNREADABLE,
-                    message: error.to_string(),
+                    refusal: Refusal::new(UNREADABLE, error.to_string()),
                 });
             }
         };
@@ -569,7 +566,7 @@ async fn answer(opening: &mut Opening, host: &Supervisor, frame: Frame) -> Answe
                 crate::operations::WireAnswer::Stream { payload, .. } => {
                     payload.as_ref().map_or(0, Vec::len)
                 }
-                crate::operations::WireAnswer::Failed { message, .. } => message.len(),
+                crate::operations::WireAnswer::Failed { failure } => failure.cause().len(),
             };
             if minimum >= Frame::LIMIT {
                 return oversized_reply(id);
@@ -579,8 +576,7 @@ async fn answer(opening: &mut Opening, host: &Supervisor, frame: Frame) -> Answe
                 Err(harmos_contract::operations::WireCodecError::Oversized) => oversized_reply(id),
                 Err(error) => Frame::Refusal {
                     id,
-                    code: UNREADABLE,
-                    message: error.to_string(),
+                    refusal: Refusal::new(UNREADABLE, error.to_string()),
                 },
             }
         }));
@@ -588,17 +584,21 @@ async fn answer(opening: &mut Opening, host: &Supervisor, frame: Frame) -> Answe
     if reserved(&method) {
         return Answered::Frame(Frame::Refusal {
             id,
-            code: UNKNOWN,
-            message: format!("this sidecar does not serve the reserved `{method}`"),
+            refusal: Refusal::new(
+                UNKNOWN,
+                format!("this sidecar does not serve the reserved `{method}`"),
+            ),
         });
     }
 
     Answered::Frame(Frame::Refusal {
         id,
-        code: UNKNOWN,
-        message: format!(
-            "operation work must use the `{}` phase contract; received `{method}`",
-            crate::operations::WIRE_METHOD
+        refusal: Refusal::new(
+            UNKNOWN,
+            format!(
+                "operation work must use the `{}` phase contract; received `{method}`",
+                crate::operations::WIRE_METHOD
+            ),
         ),
     })
 }
@@ -606,10 +606,12 @@ async fn answer(opening: &mut Opening, host: &Supervisor, frame: Frame) -> Answe
 fn oversized_reply(id: u64) -> Frame {
     Frame::Refusal {
         id,
-        code: Frame::OVERSIZED,
-        message: format!(
-            "the route reply exceeds the {}-byte sidecar frame limit",
-            Frame::LIMIT
+        refusal: Refusal::new(
+            Frame::OVERSIZED,
+            format!(
+                "the route reply exceeds the {}-byte sidecar frame limit",
+                Frame::LIMIT
+            ),
         ),
     }
 }

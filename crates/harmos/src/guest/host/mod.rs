@@ -281,10 +281,7 @@ impl<A: Application> Host<A> {
                                                             -32_606, error,
                                                         ),
                                                     };
-                                                    Bridge::<A>::refusal(
-                                                        &refusal.code().to_string(),
-                                                        refusal.message(),
-                                                    )
+                                                    Bridge::<A>::forwarded(&refusal)
                                                 }),
                                             None => Err(Bridge::<A>::refusal(
                                                 "-32601",
@@ -302,12 +299,7 @@ impl<A: Application> Host<A> {
                                                 scope.control(control, cancelled).await
                                             }
                                         };
-                                        answer.map_err(|error| {
-                                            Bridge::<A>::refusal(
-                                                &error.code().to_string(),
-                                                error.message(),
-                                            )
-                                        })
+                                        answer.map_err(|error| Bridge::<A>::forwarded(&error))
                                     }
                                 }
                             }
@@ -534,9 +526,18 @@ impl<A: Application> Bridge<A> {
     }
 
     fn refusal(code: &str, message: impl Into<String>) -> sdk::capabilities::Refusal {
+        let failure = harmos_contract::Failure::new(crate::operations::Failure::Permanent, message);
         sdk::capabilities::Refusal {
             code: code.to_owned(),
-            message: message.into(),
+            failure: failure.encode(),
+        }
+    }
+
+    // A host refusal crosses into the guest with its failure unchanged.
+    fn forwarded(refusal: &OperationRefusal) -> sdk::capabilities::Refusal {
+        sdk::capabilities::Refusal {
+            code: refusal.code().to_string(),
+            failure: refusal.failure().encode(),
         }
     }
 }
@@ -556,9 +557,16 @@ pub(super) fn store_limits(settings: PluginGuestSettings) -> StoreLimits {
 }
 
 fn refused(refusal: sdk::capabilities::Refusal) -> OperationRefusal {
+    let failure = match harmos_contract::Failure::decode(&refusal.failure) {
+        Ok(failure) => failure,
+        Err(source) => {
+            let cause = format!("the guest refusal is unreadable: {source}");
+            harmos_contract::Failure::new(crate::operations::Failure::Invalid, cause)
+        }
+    };
     match refusal.code.parse::<i64>() {
-        Ok(code) => OperationRefusal::new(code, refusal.message),
-        Err(_) => OperationRefusal::of(format!("{}: {}", refusal.code, refusal.message)),
+        Ok(code) => OperationRefusal::failed(code, failure),
+        Err(_) => OperationRefusal::failed(harmos_contract::FAILED, failure),
     }
 }
 

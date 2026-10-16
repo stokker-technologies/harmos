@@ -207,8 +207,7 @@ pub enum WireAnswer {
         payload: Vec<u8>,
     },
     Failed {
-        failure: Failure,
-        message: String,
+        failure: crate::Failure,
     },
 }
 
@@ -260,12 +259,9 @@ pub enum ServingError {
     Codec(#[source] crate::MessageError),
     #[error("carrier handler panicked")]
     Panicked,
-    #[error("carrier handler failed: {source}")]
-    Handler {
-        failure: Failure,
-        #[source]
-        source: Arc<dyn std::error::Error + Send + Sync>,
-    },
+    // The handler's failure, written once at its origin.
+    #[error(transparent)]
+    Handler(crate::Failure),
 }
 
 /* === Traits === */
@@ -955,7 +951,7 @@ impl WireCommand {
 impl ServingError {
     pub fn classification(&self) -> Failure {
         match self {
-            Self::Handler { failure, .. } => *failure,
+            Self::Handler(failure) => failure.code(),
             Self::Panicked => Failure::Ambiguous,
             Self::Codec(_)
             | Self::Declaration(_)
@@ -1024,9 +1020,13 @@ pub fn decode_prepared_grant(
 fn wire_answer(result: Result<Vec<u8>, ServingError>) -> WireAnswer {
     match result {
         Ok(payload) => WireAnswer::Ready { payload },
+        Err(ServingError::Handler(failure)) => WireAnswer::Failed { failure },
         Err(error) => WireAnswer::Failed {
-            failure: error.classification(),
-            message: error.to_string(),
+            failure: crate::Failure::originate(
+                error.classification(),
+                &error,
+                crate::failure::Origin::Plugin,
+            ),
         },
     }
 }

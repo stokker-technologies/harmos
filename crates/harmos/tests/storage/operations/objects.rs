@@ -526,10 +526,14 @@ fn contract_scenario() {
                             .submit_endpoints::<FollowObjects, _>(request, sender)
                             .unwrap();
                         let error = call.await.err().unwrap();
-                        assert!(
-                            error.to_string().contains("retained data begins"),
-                            "{error}"
-                        );
+                        let error = std::iter::successors(
+                            Some(&error as &(dyn std::error::Error + 'static)),
+                            |error| error.source(),
+                        )
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                        .join(": ");
+                        assert!(error.contains("retained data begins"), "{error}");
                         assert!(receiver.recv().await.is_none());
                         runtime.stop().await.unwrap();
                     })

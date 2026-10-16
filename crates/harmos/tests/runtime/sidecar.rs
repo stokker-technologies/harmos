@@ -582,16 +582,30 @@ struct Measuring {
     resources: Arc<GaugeResources>,
 }
 
+// A handler error shaped like a gRPC client failure: every layer repeats the
+// one beneath it, the way tonic and hyper render a reset connection.
+#[derive(Debug, thiserror::Error)]
+enum MeasureError {
+    #[error("measure refused")]
+    Refused(#[source] Refusal),
+    #[error("operation `gauge.probe.read` failed: {0}")]
+    Probe(#[source] ProbeTransport),
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("gRPC transport error: {0}")]
+struct ProbeTransport(#[source] std::io::Error);
+
 impl harmos::operations::Operation for Measuring {
     type Declaration = GetMeasure;
     type Resources = GaugeResources;
-    type Error = Refusal;
+    type Error = MeasureError;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
     async fn initialize<'ctx>(
         resources: Arc<GaugeResources>,
         _: Self::Context<'ctx>,
-    ) -> Result<Self, Refusal> {
+    ) -> Result<Self, MeasureError> {
         Ok(Self { resources })
     }
     async fn run<'ctx>(
@@ -599,11 +613,17 @@ impl harmos::operations::Operation for Measuring {
         _: Self::Context<'ctx>,
         request: &mut Measure,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos::operations::Response<Measured>, Refusal> {
+    ) -> Result<harmos::operations::Response<Measured>, MeasureError> {
         let result: ::core::result::Result<Measured, Self::Error> = async move {
             let _ = &request;
+            if request.value == i64::MIN {
+                let reset =
+                    std::io::Error::new(std::io::ErrorKind::ConnectionReset, "connection reset");
+                return Err(MeasureError::Probe(ProbeTransport(reset)));
+            }
             if request.value < 0 {
-                return Err(Refusal::of("this gauge measures no negative value"));
+                let refusal = Refusal::of("this gauge measures no negative value");
+                return Err(MeasureError::Refused(refusal));
             }
             Ok(Measured {
                 value: request.value * self.resources.factor,
@@ -887,7 +907,7 @@ impl harmos::operations::Operation for PublishingPulse {
             host.publisher::<Meter>()
                 .publish_on::<MeterPulse>(&support::pulse(request.sample))
                 .await
-                .map_err(Refusal::of)
+                .map_err(Refusal::from)
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -1171,8 +1191,8 @@ fn assert_transport_refusal(error: harmos::Error, code: i64, detail: &str) {
     };
     assert!(
         matches!(source.downcast_ref::<harmos::operations::NativeError>(),
-        Some(harmos::operations::NativeError::Transport(SidecarError::Refused { code: actual, message }))
-            if *actual == code && message.contains(detail)),
+        Some(harmos::operations::NativeError::Transport(SidecarError::Refused { code: actual, failure }))
+            if *actual == code && failure.cause().contains(detail)),
         "{source}"
     );
 }
@@ -1690,11 +1710,8 @@ fn own_contract() {
                     });
                     assert!(matches!(
                         refusal,
-                        Some(harmos_sidecar::Frame::Refusal {
-                            id: 2,
-                            code: harmos_sidecar::UNKNOWN,
-                            ..
-                        })
+                        Some(harmos_sidecar::Frame::Refusal { id: 2, refusal })
+                            if refusal.code() == harmos_sidecar::UNKNOWN
                     ));
                     #[cfg(any(unix, windows))]
                     {
@@ -2079,83 +2096,122 @@ fn own_contract() {
     {
         scenario_runtime::check("generated_entry_attaches", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
+            scenario_executor
+                .enable_all()
+                .build()
+                .expect("scenario runtime is valid")
+                .block_on(async {
+                    GAUGE_DEACTIVATED.store(false, Ordering::SeqCst);
 
-    GAUGE_DEACTIVATED.store(false, Ordering::SeqCst);
+                    // Bind The Original SDK Owner Before Authored Initialization
+                    let capacity = NonZeroUsize::new(16).unwrap();
+                    let source = harmos_sidecar::PluginNative::<Gauge>::new(capacity).unwrap();
+                    let mut fixture = operations::Managed::attach(
+                        source,
+                        serde_json::to_vec(&Calibration { factor: 3 }).unwrap(),
+                        operations::Lanes::NativeOpen,
+                        capacity,
+                        vec![],
+                        std::convert::identity,
+                    )
+                    .await;
+                    fixture.initialize().await.unwrap();
+                    publications::ready(fixture.ready().clone()).await;
 
-    // Bind The Original SDK Owner Before Authored Initialization
-    let capacity = NonZeroUsize::new(16).unwrap();
-    let source = harmos_sidecar::PluginNative::<Gauge>::new(capacity).unwrap();
-    let mut fixture = operations::Managed::attach(
-        source,
-        serde_json::to_vec(&Calibration { factor: 3 }).unwrap(),
-        operations::Lanes::NativeOpen,
-        capacity,
-        vec![],
-        std::convert::identity,
-    )
-    .await;
-    fixture.initialize().await.unwrap();
-    publications::ready(fixture.ready().clone()).await;
+                    assert_eq!(
+                        fixture
+                            .call_as::<GetMeasure>(Measure { value: 7 })
+                            .await
+                            .unwrap(),
+                        Measured { value: 21 },
+                        "the route answers under the configuration the entry was activated with"
+                    );
+                    let error = fixture
+                        .call_as::<GetMeasure>(Measure { value: -1 })
+                        .await
+                        .unwrap_err();
+                    let failure = error
+                        .failure()
+                        .expect("handler refusal preserves its structured failure");
+                    assert_eq!(failure.code(), harmos::operations::Failure::Permanent);
+                    assert_eq!(failure.cause(), "this gauge measures no negative value");
+                    assert_eq!(failure.context().operation(), Some(GetMeasure::ID));
+                    assert_eq!(
+                        error.to_string(),
+                        format!("operation `{}` failed", GetMeasure::ID),
+                        "the operation frame prints its own line, never the cause"
+                    );
 
-    assert_eq!(
-        fixture
-            .call_as::<GetMeasure>(Measure { value: 7 })
-            .await
-            .unwrap(),
-        Measured { value: 21 },
-        "the route answers under the configuration the entry was activated with"
-    );
-    let error = fixture
-        .call_as::<GetMeasure>(Measure { value: -1 })
-        .await
-        .unwrap_err();
-    let harmos::Error::OperationFailed { source, .. } = error else {
-        panic!("handler refusal preserves its operation cause")
-    };
-    assert!(
-        matches!(source.downcast_ref::<harmos::operations::NativeError>(),
-        Some(harmos::operations::NativeError::Remote { failure: harmos::operations::Failure::Permanent, message })
-            if message == &format!("carrier handler failed: {}", Refusal::of("this gauge measures no negative value")))
-    );
+                    // A Nested Transport Failure Arrives As One Cause And One Operation Frame
+                    let error = fixture
+                        .call_as::<GetMeasure>(Measure { value: i64::MIN })
+                        .await
+                        .unwrap_err();
+                    let failure = error
+                        .failure()
+                        .expect("the handler failure crosses as a structured value");
+                    assert_eq!(failure.cause(), "connection reset");
+                    assert_eq!(failure.context().operation(), Some(GetMeasure::ID));
+                    assert_eq!(failure.context().step(), None);
+                    let diagnostics = failure.diagnostics().expect("origin diagnostics");
+                    assert_eq!(diagnostics.origin(), harmos::failure::Origin::Plugin);
+                    assert_eq!(
+                        diagnostics.chain().len(),
+                        3,
+                        "the full origin chain stays in diagnostics"
+                    );
+                    let rendered = std::iter::successors(
+                        Some(&error as &(dyn std::error::Error + 'static)),
+                        |error| error.source(),
+                    )
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(": ");
+                    assert_eq!(
+                        rendered,
+                        format!("operation `{}` failed: connection reset", GetMeasure::ID),
+                        "no carrier repeats the cause or adds a frame"
+                    );
 
-    assert_eq!(
-        fixture.call_as::<RunEcho>("hello".to_owned()).await.unwrap(),
-        "hello".to_owned()
-    );
-    assert_eq!(
-        fixture
-            .call_as::<RunUppercase>("hello".to_owned())
-            .await
-            .unwrap(),
-        "HELLO".to_owned()
-    );
+                    assert_eq!(
+                        fixture
+                            .call_as::<RunEcho>("hello".to_owned())
+                            .await
+                            .unwrap(),
+                        "hello".to_owned()
+                    );
+                    assert_eq!(
+                        fixture
+                            .call_as::<RunUppercase>("hello".to_owned())
+                            .await
+                            .unwrap(),
+                        "HELLO".to_owned()
+                    );
 
-    assert_eq!(
-        fixture
-            .call_as::<StopSampling>(StopSamplingRequest {})
-            .await
-            .unwrap(),
-        StopSamplingResponse {},
-        "a route carrying nothing either way still names one message each way"
-    );
-    assert_eq!(
-        fixture
-            .call_as::<GetFactor>(GetFactorRequest {})
-            .await
-            .unwrap(),
-        Measured { value: 3 },
-        "a reply written through the crate's own alias dispatches like any other"
-    );
+                    assert_eq!(
+                        fixture
+                            .call_as::<StopSampling>(StopSamplingRequest {})
+                            .await
+                            .unwrap(),
+                        StopSamplingResponse {},
+                        "a route carrying nothing either way still names one message each way"
+                    );
+                    assert_eq!(
+                        fixture
+                            .call_as::<GetFactor>(GetFactorRequest {})
+                            .await
+                            .unwrap(),
+                        Measured { value: 3 },
+                        "a reply written through the crate's own alias dispatches like any other"
+                    );
 
-    fixture.shutdown().await.unwrap();
-    fixture.runtime.stop().await.unwrap();
-    assert!(
-        GAUGE_DEACTIVATED.load(Ordering::SeqCst),
-        "the local attachment runs the generated entry's awaited deactivation"
-    );
-
-});
+                    fixture.shutdown().await.unwrap();
+                    fixture.runtime.stop().await.unwrap();
+                    assert!(
+                        GAUGE_DEACTIVATED.load(Ordering::SeqCst),
+                        "the local attachment runs the generated entry's awaited deactivation"
+                    );
+                });
         });
     }
     {
@@ -2199,8 +2255,9 @@ fn own_contract() {
     };
     assert!(
         matches!(source.downcast_ref::<harmos::operations::NativeError>(),
-        Some(harmos::operations::NativeError::Remote { failure: harmos::operations::Failure::Permanent, message })
-            if message.contains("stream or schema differs from the frozen generation inventory")),
+        Some(harmos::operations::NativeError::Remote(failure))
+            if failure.code() == harmos::operations::Failure::Permanent
+                && failure.cause().contains("stream or schema differs from the frozen generation inventory")),
         "{source}"
     );
     assert!(
@@ -2273,8 +2330,8 @@ fn own_contract() {
         assert!(
             matches!(refused, harmos::Error::OperationFailed { source, .. }
             if matches!(source.downcast_ref::<harmos::operations::NativeError>(),
-                Some(harmos::operations::NativeError::Remote { message, .. })
-                if message.contains("stream or schema differs from the frozen generation inventory")))
+                Some(harmos::operations::NativeError::Remote(failure))
+                if failure.cause().contains("stream or schema differs from the frozen generation inventory")))
         );
         assert_eq!(
             fixture

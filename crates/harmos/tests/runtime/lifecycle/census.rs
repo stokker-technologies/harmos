@@ -351,7 +351,7 @@ use std::path::{Path, PathBuf};
 // Local Imports
 
 /* === Constants === */
-const CENSUS: [&str; 30] = [
+const CENSUS: [&str; 32] = [
     "bindings",
     // The one statistic vocabulary every reduction answers.
     "Aggregate",
@@ -383,6 +383,9 @@ const CENSUS: [&str; 30] = [
     "Application",
     // Public lane admission and resident lifecycle contracts.
     "Refusal",
+    // The structured failure every plugin carrier transports.
+    "Failure",
+    "failure",
     // Six names for file-shaped evidence: the facade, one piece of evidence at
     // whichever stage it has reached, the kind declaration naming the typed
     // account a piece of evidence of that kind records, a draft still being written,
@@ -451,7 +454,7 @@ const AUTHORING: [&str; 13] = [
     "operation",
 ];
 
-const GUEST_CENSUS: [&str; 53] = [
+const GUEST_CENSUS: [&str; 54] = [
     "Host",
     "OperationInstance",
     "builtin",
@@ -497,6 +500,7 @@ const GUEST_CENSUS: [&str; 53] = [
     "Metadata",
     "Prefix",
     "Refusal",
+    "Failure",
     "StreamField",
     "Track",
     "Tracked",
@@ -507,7 +511,7 @@ const GUEST_CENSUS: [&str; 53] = [
     "streams",
 ];
 
-const SIDECAR_KIT_CENSUS: [&str; 81] = [
+const SIDECAR_KIT_CENSUS: [&str; 83] = [
     "Host",
     "OperationInstance",
     "builtin",
@@ -547,6 +551,8 @@ const SIDECAR_KIT_CENSUS: [&str; 81] = [
     "PublicationError",
     "RESERVED",
     "Refusal",
+    "Failure",
+    "failure",
     "Registrar",
     "Registration",
     "RegistrationError",
@@ -2052,6 +2058,13 @@ fn contract_scenario() {
                         // A sidecar's own request refusal maps to a caller status.
                         && !(line == "#[cfg(feature = \"plugin-sidecar\")]"
                             && path.ends_with("/crates/harmos/src/grpc/server.rs"))
+                        // A plugin failure is read through the carrier that
+                        // transported it; the gate selects the provider
+                        // carrier, not durable storage.
+                        && !((line == "#[cfg(feature = \"plugin-sidecar\")]"
+                            || line
+                                == "#[cfg(all(feature = \"plugin-guest\", not(target_arch = \"wasm32\")))]")
+                            && path.ends_with("/crates/harmos/src/error.rs"))
                         // Console flags and SystemRoot belong to native process
                         // startup, not to memory/persistence selection.
                         && !(line == "#[cfg(windows)]"

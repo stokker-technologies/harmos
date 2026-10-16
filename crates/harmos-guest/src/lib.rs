@@ -28,7 +28,7 @@ pub use harmos_contract::{builtin, catalog, listeners, operations};
 pub use component::componentize;
 pub use harmos_contract::inventory;
 pub use harmos_contract::{
-    ConfigError, Plugin, Refusal, Registrar, Registration, RegistrationError, StreamSpec,
+    ConfigError, Failure, Plugin, Refusal, Registrar, Registration, RegistrationError, StreamSpec,
     encode_config, reserved, validate_config,
 };
 

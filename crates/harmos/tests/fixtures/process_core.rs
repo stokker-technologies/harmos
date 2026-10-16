@@ -195,7 +195,14 @@ impl Operation for Inspecting {
                     format!("{}:{child}", parent.id)
                 }
                 Ok(response) => format!("egress status {}", response.status),
-                Err(error) => error.to_string(),
+                // Each Layer Prints Its Own Line; The Cause Is Its Source
+                Err(error) => std::iter::successors(
+                    Some(&error as &(dyn std::error::Error + 'static)),
+                    |error| error.source(),
+                )
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(": "),
             })
         }
         .await;

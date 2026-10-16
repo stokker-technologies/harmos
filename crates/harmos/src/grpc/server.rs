@@ -477,20 +477,40 @@ fn ungranted<'a>(source: &'a (dyn std::error::Error + Send + Sync + 'static)) ->
 // Wrong-Shape Payload) Names The Caller's Fault In Its Own Words.
 #[cfg(feature = "plugin-sidecar")]
 fn refused_request(source: &(dyn std::error::Error + Send + Sync + 'static)) -> Option<Status> {
-    let crate::operations::NativeError::Preparation {
-        failure: crate::operations::Failure::Invalid,
-        message,
-    } = source.downcast_ref()?
-    else {
+    let crate::operations::NativeError::Preparation(failure) = source.downcast_ref()? else {
         return None;
     };
+    if failure.code() != crate::operations::Failure::Invalid {
+        return None;
+    }
 
-    Some(Status::invalid_argument(message.clone()))
+    Some(Status::invalid_argument(failure.cause()))
+}
+
+// A carried plugin failure reaches a remote client as the same structured
+// value in the status details. Origin diagnostics stay inside the host: chains
+// and backtraces are not disclosed to network callers.
+fn with_failure(status: Status, error: &Error) -> Status {
+    let Some(failure) = error.failure() else {
+        return status;
+    };
+    if !status.details().is_empty() {
+        return status;
+    }
+
+    let details = failure.clone().without_diagnostics().encode();
+    Status::with_details_and_metadata(
+        status.code(),
+        status.message(),
+        details.into(),
+        status.metadata().clone(),
+    )
 }
 
 pub(super) fn status(error: Error) -> Status {
-    let mut status = explicit_status(&error)
+    let status = explicit_status(&error)
         .unwrap_or_else(|| Status::new(code(&error), "operation request failed"));
+    let mut status = with_failure(status, &error);
     status.set_source(Arc::new(error));
     status
 }
@@ -509,7 +529,11 @@ fn input_status(error: InputError) -> Status {
         }
         InputError::Forward { .. } => None,
     };
-    if let Some(mut status) = explicit {
+    let failed = match &error {
+        InputError::Operation(error) | InputError::Forward { source: error, .. } => error,
+    };
+    if let Some(status) = explicit {
+        let mut status = with_failure(status, failed);
         status.set_source(Arc::new(error));
         return status;
     }
@@ -529,7 +553,8 @@ fn input_status(error: InputError) -> Status {
             }
         }
     };
-    let mut status = Status::new(code, "operation input failed");
+    let status = Status::new(code, "operation input failed");
+    let mut status = with_failure(status, failed);
     status.set_source(Arc::new(error));
     status
 }

@@ -36,9 +36,9 @@ use crate::{Error, MemorySize};
 /* === Enums === */
 #[derive(Debug, thiserror::Error)]
 pub enum InputError {
-    #[error("operation failed while forwarding input: {0}")]
+    #[error("operation failed while forwarding input")]
     Operation(#[source] Box<Error>),
-    #[error("input forwarding failed: {source}")]
+    #[error("input forwarding failed")]
     Forward {
         #[source]
         source: Box<Error>,

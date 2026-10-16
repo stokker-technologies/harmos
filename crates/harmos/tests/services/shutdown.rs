@@ -402,7 +402,14 @@ pub(super) fn contract_scenario() {
                     cleanup.running.notified().await;
                     let mut participant = runtime.stop_participant();
                     let failure = runtime.stop().await.unwrap_err();
-                    assert!(failure.to_string().contains("physical cleanup failed"));
+                    let failure = std::iter::successors(
+                        Some(&failure as &(dyn std::error::Error + 'static)),
+                        |error| error.source(),
+                    )
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(": ");
+                    assert!(failure.contains("physical cleanup failed"), "{failure}");
                     assert!(!cleanup.dropped.load(Ordering::SeqCst));
                     assert_eq!(cleanup.attempts.load(Ordering::SeqCst), 1);
 

@@ -75,8 +75,14 @@ pub(crate) enum Outgoing {
 
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum CallError {
-    #[error("the host refused the call ({code}): {message}")]
-    Refused { code: i64, message: String },
+    // The host's refusal carries the failure unchanged; this layer names only
+    // the operation the host attributed it to.
+    #[error("{}", refused_line(*.code, .failure))]
+    Refused {
+        code: i64,
+        #[source]
+        failure: harmos_contract::Failure,
+    },
     #[error("the host connection is unavailable")]
     Unavailable,
     #[error("the host returned a malformed reply for `{method}`: {message}")]
@@ -109,6 +115,17 @@ pub enum PublicationError {
 /* === Traits === */
 
 /* === Implementations === */
+// A handler that returns a host refusal forwards its failure unchanged rather
+// than flattening the call error's own line into a new cause.
+impl From<CallError> for harmos_contract::Refusal {
+    fn from(error: CallError) -> Self {
+        match error {
+            CallError::Refused { code, failure } => Self::failed(code, failure),
+            error => Self::of(error),
+        }
+    }
+}
+
 impl harmos_contract::plugin::Context for Supervisor {
     fn with_generation(&self, token: [u8; 32]) -> Self {
         let mut host = self.clone();
@@ -408,9 +425,11 @@ impl Supervisor {
         self.pending.answer(id, Ok(result));
     }
 
-    pub(crate) fn receive_refusal(&self, id: u64, code: i64, message: String) {
+    pub(crate) fn receive_refusal(&self, id: u64, refusal: harmos_contract::Refusal) {
+        let code = refusal.code();
+        let failure = refusal.into_failure();
         self.pending
-            .answer(id, Err(CallError::Refused { code, message }));
+            .answer(id, Err(CallError::Refused { code, failure }));
     }
 
     pub(crate) fn disconnected(&self) {
@@ -583,6 +602,13 @@ impl Supervisor {
 /* === Public Functions === */
 
 /* === Private Functions === */
+fn refused_line(code: i64, failure: &harmos_contract::Failure) -> String {
+    match failure.context().operation() {
+        Some(operation) => format!("operation `{operation}` failed"),
+        None => format!("the host refused the call ({code})"),
+    }
+}
+
 pub(super) fn published_at() -> Option<i64> {
     match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
         Ok(elapsed) => i64::try_from(elapsed.as_micros()).ok(),
