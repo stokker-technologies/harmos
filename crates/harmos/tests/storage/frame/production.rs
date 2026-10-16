@@ -72,47 +72,34 @@ fn contract_scenario() {
                 .build()
                 .unwrap()
                 .block_on(async {
-                    let probe = Fixture::new(storage_settings()).await;
-                    let value = produced(&probe.storage, NonZeroUsize::new(16).unwrap(), 7_u64);
-                    let original = probe.storage.status().read_bytes;
-                    let shared = value.try_into_shared().unwrap();
-                    let shared_metadata = probe.storage.status().read_bytes - original;
-                    drop(shared);
-                    probe.finish().await;
-                    let delivery = std::mem::size_of::<harmos::operations::Response<u64>>();
-                    let delivery =
-                        delivery.max(std::mem::size_of::<harmos::operations::StreamItem<u64>>());
-                    let delivery_metadata =
-                        shared_metadata + delivery - std::mem::size_of::<SharedQueryValue<u64>>();
-                    assert!(delivery_metadata > shared_metadata);
-                    for (ceiling, accepted) in [(shared_metadata, false), (delivery_metadata, true)]
-                    {
-                        let settings = StorageSettings {
-                            query_decoded_bytes: NonZeroUsize::new(ceiling).unwrap(),
-                            ..storage_settings()
-                        };
-                        let f = Fixture::new(settings).await;
-                        let baseline = f.storage.status().read_bytes;
-                        let produce =
-                            || produced(&f.storage, NonZeroUsize::new(16).unwrap(), 7_u64);
-                        let shared = produce().try_into_shared().unwrap();
-                        assert_eq!(*shared, 7);
-                        drop(shared);
-                        assert_eq!(f.storage.status().read_bytes, baseline);
-                        let value = produce();
-                        value.check_origin(&f.storage).unwrap();
-                        let result = value.try_into_response();
-                        if accepted {
-                            let response = result.unwrap();
-                            assert_eq!(*response, 7);
-                            assert!(f.storage.status().read_bytes > baseline);
-                            drop(response);
-                        } else {
-                            assert!(matches!(result, Err(Error::ResourceExhausted { .. })));
-                        }
-                        assert_eq!(f.storage.status().read_bytes, baseline);
-                        f.finish().await;
-                    }
+                    let f = Fixture::new(storage_settings()).await;
+                    let baseline = f.storage.status().read_bytes;
+                    let value = produced(&f.storage, NonZeroUsize::new(16).unwrap(), 7_u64);
+                    let occupied = f.storage.status().read_bytes;
+                    let probe = f.storage.reserve_arrow_memory(0).unwrap();
+                    let overhead = f.storage.status().read_bytes - occupied;
+                    drop(probe);
+                    let capacity = storage_settings().budget.read_memory_bytes.get();
+                    let external = f
+                        .storage
+                        .reserve_arrow_memory(capacity - occupied - overhead)
+                        .unwrap();
+                    assert!(matches!(
+                        value.try_into_response(),
+                        Err(Error::ResourceExhausted {
+                            resource: "storage read memory"
+                        })
+                    ));
+                    drop(external);
+                    assert_eq!(f.storage.status().read_bytes, baseline);
+
+                    let value = produced(&f.storage, NonZeroUsize::new(16).unwrap(), 7_u64);
+                    let response = value.try_into_response().unwrap();
+                    assert_eq!(*response, 7);
+                    assert!(f.storage.status().read_bytes > baseline);
+                    drop(response);
+                    assert_eq!(f.storage.status().read_bytes, baseline);
+                    f.finish().await;
                 });
         });
     }
