@@ -1533,3 +1533,50 @@ async fn typed_output_admission_reloads_without_advancing_cursor() {
     drop(reader);
     f.finish().await;
 }
+
+#[tokio::test]
+async fn typed_projection_waits_before_invoking_callback() {
+    let f = Fixture::new().await;
+    let position = f.append(7).await;
+    f.storage.flush().await.unwrap();
+    let mut query = RecordQuery::new(schema(), decode);
+    query.options.execution = Some(storage_settings().query_execution.elastic());
+    query.options.decoded_bytes = NonZeroUsize::new(16 * 1024);
+    let mut reader = f.storage.query(query).await.unwrap();
+    let occupied = f.storage.status().read_bytes;
+    let probe = f.storage.reserve_arrow_memory(0).unwrap();
+    let overhead = f.storage.status().read_bytes - occupied;
+    drop(probe);
+    let capacity = storage_settings().budget.read_memory_bytes.get();
+    // The Decoded Page Fits; Its Projection Waits Without Running User Code.
+    let external = f
+        .storage
+        .reserve_arrow_memory(capacity - occupied - overhead - 64 * 1024)
+        .unwrap();
+    let calls = std::cell::Cell::new(0usize);
+    let mut next = Box::pin(reader.next_page_projected(
+        NonZeroUsize::new(128 * 1024).unwrap(),
+        |rows, _| {
+            calls.set(calls.get() + 1);
+            assert_eq!(rows.len(), 1);
+            Ok(rows[0].position)
+        },
+    ));
+    assert!(matches!(
+        std::future::poll_fn(|cx| std::task::Poll::Ready(std::future::Future::poll(
+            next.as_mut(),
+            cx
+        )))
+        .await,
+        std::task::Poll::Pending
+    ));
+    assert_eq!(calls.get(), 0);
+    drop(external);
+    let page = next.await.unwrap().unwrap();
+    assert_eq!(*page, position.sequence);
+    assert_eq!(calls.get(), 1);
+    drop(page);
+    assert!(reader.next_page().await.unwrap().is_none());
+    drop(reader);
+    f.finish().await;
+}

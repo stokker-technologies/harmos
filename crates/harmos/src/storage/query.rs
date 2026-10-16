@@ -1049,7 +1049,7 @@ impl<R, T: MemorySize> QueryResult<R, T> {
     }
 
     pub async fn next_page(&mut self) -> Result<Option<QueryPage<T>>> {
-        match self.next_page_with(false, |_| Ok(())).await? {
+        match self.next_page_with(false, None, |_| Ok(())).await? {
             Some(()) => Ok(self.pending.take()),
             None => Ok(None),
         }
@@ -1078,7 +1078,9 @@ impl<R, T: MemorySize> QueryResult<R, T> {
         map: impl FnOnce(&[T], NonZeroUsize) -> Result<U>,
     ) -> Result<Option<QueryValue<U>>> {
         let value = self
-            .next_page_with(include_empty, |page| page.try_project(max_bytes, map))
+            .next_page_with(include_empty, Some(max_bytes), |page| {
+                page.try_project(max_bytes, map)
+            })
             .await?;
         if value.is_some() {
             self.pending.take();
@@ -1089,6 +1091,7 @@ impl<R, T: MemorySize> QueryResult<R, T> {
     async fn next_page_with<U>(
         &mut self,
         include_empty: bool,
+        projection: Option<NonZeroUsize>,
         map: impl FnOnce(&QueryPage<T>) -> Result<U>,
     ) -> Result<Option<U>> {
         if self.reader.exhausted() {
@@ -1179,6 +1182,23 @@ impl<R, T: MemorySize> QueryResult<R, T> {
             self.reader.commit_staged_page();
             return Ok(None);
         }
+        // Admit Output Before Invoking The One-Shot Projection Callback.
+        let _projection = if let Some(bytes) = projection {
+            let required = bytes
+                .get()
+                .checked_add(ENTRY_OVERHEAD)
+                .ok_or_else(decoded_limit)?;
+            Some(
+                tokio::time::timeout(
+                    timeout.saturating_sub(started.elapsed()),
+                    view.reserve_working_wait(required),
+                )
+                .await
+                .map_err(|_| execution_timeout())??,
+            )
+        } else {
+            None
+        };
         // Retries Borrow The Same Decoded Page And Its Original Read Charge.
         let _live = self.reader.view().ok_or(Error::ViewExpired)?.pin()?;
         let projected = map(self
