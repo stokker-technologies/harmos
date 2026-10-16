@@ -630,7 +630,7 @@ fn contract_scenario() {
                     query.options.through = Some(2);
                     let mut replay = f.storage.replay(query).await.unwrap();
                     assert_eq!(replay.boundary().sequence, 2);
-                    let allowance = NonZeroUsize::new(64).unwrap();
+                    let allowance = NonZeroUsize::new(limits().bytes.get() + 1).unwrap();
                     for expected in [1, 2] {
                         let mut pointer = 0;
                         let refused = replay
@@ -644,7 +644,10 @@ fn contract_scenario() {
                             .await;
                         assert!(matches!(refused, Err(Error::ResourceExhausted { .. })));
                         assert_eq!(calls.load(Ordering::SeqCst), expected as usize);
-                        let oversized = NonZeroUsize::new(limits().bytes.get() + 1).unwrap();
+                        let oversized = NonZeroUsize::new(
+                            storage_settings().budget.read_memory_bytes.get() + 1,
+                        )
+                        .unwrap();
                         assert!(
                             replay
                                 .next_page_projected::<Vec<u64>>(oversized, |_, _| panic!(

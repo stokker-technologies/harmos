@@ -247,9 +247,6 @@ impl<R, T: MemorySize> QueryFollower<R, T> {
         max_bytes: NonZeroUsize,
         map: impl FnOnce(&QueryPage<T>, NonZeroUsize) -> Result<U>,
     ) -> Result<Option<U>> {
-        if max_bytes > self.decoded_bytes {
-            return Err(super::query::decoded_limit());
-        }
         let output = self.read_page_with(|page| map(page, max_bytes)).await?;
         if output.is_some() {
             self.decoded.take();
