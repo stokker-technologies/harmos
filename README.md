@@ -331,7 +331,8 @@ Saved-view frame queries combine `Predicate::Compare`, `Predicate::In` and
 `Predicate::Exists` filters with AND. Membership accepts at most 64 scalar
 alternatives; an empty set matches nothing. Presence excludes missing and null
 values, so nested ownership fields can be required without admitting unscoped
-records. Queries keep the original saved cut and declared memory limits.
+records. Queries keep the original saved cut; read allocations and retained
+results are charged to the shared storage read budget.
 
 Raw saved record paging accepts bounded disjunction through
 the native `RecordQuery::filter` adapter:
