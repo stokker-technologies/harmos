@@ -202,7 +202,6 @@ def prepare(root: Path) -> None:
             [
                 "build",
                 "--locked",
-                "--release",
                 "-p",
                 "harmos-guest",
                 "--example",
@@ -218,7 +217,7 @@ def prepare(root: Path) -> None:
         )
         source = (
             target
-            / "wasm32-unknown-unknown/release/examples"
+            / "wasm32-unknown-unknown/debug/examples"
             / (example.replace("-", "_") + ".wasm")
         )
         name = (
