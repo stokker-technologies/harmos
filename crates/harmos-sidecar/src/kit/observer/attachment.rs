@@ -192,13 +192,14 @@ where
             )?);
         }
         let running = self.running.as_mut().expect("spawned activation");
-        let failed = running.failed.take();
+        let failed = running.failed.as_mut();
         // Cancelling This Attempt Interrupts The Observing Thread
         let _interrupt = Interrupt(&mut running.stop);
         let failure = match failed {
             Some(failed) => failed.await.ok(),
             None => None,
         };
+        running.failed.take();
         match failure {
             Some(failure) => Err(Refusal::of(failure)),
             None => Err(Refusal::of("observer activation ended")),
@@ -206,14 +207,20 @@ where
     }
 
     async fn stop(&mut self) -> Result<(), Refusal> {
-        if let Some(mut running) = self.running.take()
-            && let Some(activity) = running.join().await?
-        {
-            self.activity = Some(activity);
-        }
-        match self.activity.as_mut() {
+        let failure = if let Some(mut running) = self.running.take() {
+            let (activity, failure) = running.join().await;
+            self.activity = activity;
+            failure
+        } else {
+            None
+        };
+        let stopped = match self.activity.as_mut() {
             Some(activity) => activity.stop().await.map_err(Refusal::of),
             None => Ok(()),
+        };
+        match failure {
+            Some(failure) => Err(Refusal::of(failure)),
+            None => stopped,
         }
     }
 
@@ -278,14 +285,21 @@ impl Running {
     }
 
     // Interrupt the activation and take its activity back.
-    async fn join(&mut self) -> Result<Option<Activity>, Refusal> {
+    async fn join(&mut self) -> (Option<Activity>, Option<ObserverError>) {
         if let Some(stop) = self.stop.take() {
             let _ = stop.send(());
         }
-        match self.returned.take() {
-            Some(returned) => Ok(returned.await.ok()),
-            None => Ok(None),
-        }
+        let activity = match self.returned.take() {
+            Some(returned) => returned.await.ok(),
+            None => None,
+        };
+        // Joining the activation also settles its failure sender. Cancellation
+        // of run must not discard an error that shutdown still needs to report.
+        let failure = self
+            .failed
+            .take()
+            .and_then(|mut failed| failed.try_recv().ok());
+        (activity, failure)
     }
 }
 
