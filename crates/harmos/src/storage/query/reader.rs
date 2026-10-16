@@ -316,16 +316,37 @@ impl QueryReader {
             Some(key) => Some(manager.lookup_schema(&self.view, &key).await?),
             None => None,
         };
-        let bank =
-            crate::storage::memory::MemoryBank::new(self.view.reserve_read_wait(0, 1).await?, 0);
-        let empty = match &self.request.source {
-            Source::Objects(_) => self.object_schemas.as_ref().unwrap().empty(),
-            Source::Records(_) => {
-                super::source::records(self.schema.as_ref().unwrap(), &[], &bank)?
+        let mut credit = None;
+        let (empty, bank, _credit) = loop {
+            let reservation = self.view.reserve_read_wait(0, 1).await?;
+            let bank = crate::storage::memory::MemoryBank::new(reservation, 0);
+            let empty = match &self.request.source {
+                Source::Objects(_) => Ok(self.object_schemas.as_ref().unwrap().empty()),
+                Source::Records(_) => {
+                    super::source::records(self.schema.as_ref().unwrap(), &[], &bank)
+                }
+                Source::Stream(_) => {
+                    super::source::stream(self.schema.as_ref().unwrap(), &[], &bank)
+                }
+                Source::Schemas(_) => super::source::schemas(&[], &bank),
+                Source::Files(_) => super::source::files(&[], &bank),
+            };
+            match empty {
+                Ok(empty) => break (empty, bank, credit),
+                Err(Error::ResourceExhausted { .. }) if bank.requested() > bank.capacity() => {
+                    let required = bank
+                        .requested()
+                        .checked_add(crate::storage::manager::ENTRY_OVERHEAD)
+                        .ok_or(Error::ResourceExhausted {
+                            resource: "query schema construction",
+                        })?;
+                    // Release Partial Construction Before Waiting For Shared Capacity.
+                    drop(bank);
+                    drop(credit.take());
+                    credit = Some(self.view.reserve_working_wait(required).await?);
+                }
+                Err(error) => return Err(error),
             }
-            Source::Stream(_) => super::source::stream(self.schema.as_ref().unwrap(), &[], &bank)?,
-            Source::Schemas(_) => super::source::schemas(&[], &bank)?,
-            Source::Files(_) => super::source::files(&[], &bank)?,
         };
         let mut pipeline = Pipeline::new(
             empty.schema(),
