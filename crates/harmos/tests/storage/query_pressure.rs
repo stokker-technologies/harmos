@@ -24,7 +24,7 @@ use std::task::Poll;
 use arrow_array::{Float64Array, UInt64Array};
 
 // Local Imports
-use super::backend::{Data, Recovery, history, storage_settings};
+use super::backend::{Data, history, storage_settings};
 use super::support::{Bank, Ledger, catalog};
 use super::waveforms;
 use harmos::Runtime;
@@ -73,7 +73,11 @@ async fn external_pressure_reloads_uncommitted_page_once_and_cancellation_releas
         let storage = StorageManager::new(
             StorageBackends {
                 primary: data.clone(),
-                state: Arc::new(Recovery::new(history())),
+                state: Arc::new(harmos::storage::state::file::FileBackend::new(
+                    directory.path().join("state"),
+                    history(),
+                    &settings,
+                )),
                 replicas: vec![],
             },
             settings,
@@ -241,4 +245,72 @@ fn assert_result(output: QueryOutput) {
         "retry must neither omit nor duplicate rows"
     );
     assert!((rms.value(0) - waveforms::AMPLITUDE / 2.0_f64.sqrt()).abs() < 1e-12);
+}
+
+#[tokio::test]
+async fn cancelled_schema_admission_releases_query_slot() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut settings = storage_settings();
+    settings.request.max_active_queries = NonZeroUsize::MIN;
+    let capacity = settings.budget.read_memory_bytes.get();
+    let storage = StorageManager::new(
+        StorageBackends {
+            primary: Arc::new(Data::<()>::journaled(directory.path(), history()).unwrap()),
+            state: Arc::new(harmos::storage::state::file::FileBackend::new(
+                directory.path().join("state"),
+                history(),
+                &settings,
+            )),
+            replicas: vec![],
+        },
+        settings,
+    )
+    .unwrap();
+    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
+        .register(catalog())
+        .runtime_with_storage(&storage)
+        .await
+        .unwrap();
+    let at = storage.flush().await.unwrap();
+    let query = || Query {
+        at: at.clone(),
+        source: Source::Files(harmos::storage::query::FileSelection {
+            scope: None,
+            item: None,
+        }),
+        transforms: vec![],
+        slice: RowSlice {
+            offset: 0,
+            limit: None,
+        },
+    };
+    let mut reader = storage.query(query()).await.unwrap();
+    let occupied = storage.status().read_bytes;
+    let probe = storage.reserve_arrow_memory(0).unwrap();
+    let overhead = storage.status().read_bytes - occupied;
+    drop(probe);
+    let external = storage
+        .reserve_arrow_memory(capacity - occupied - overhead)
+        .unwrap();
+    let mut next = Box::pin(reader.next());
+    assert!(matches!(
+        std::future::poll_fn(|cx| Poll::Ready(std::future::Future::poll(next.as_mut(), cx))).await,
+        Poll::Pending
+    ));
+    drop(next);
+    assert!(reader.next().await.is_err());
+    assert!(reader.completion().is_err());
+    drop(reader);
+    drop(external);
+
+    let mut successor = storage.query(query()).await.unwrap();
+    assert!(matches!(
+        successor.next().await.unwrap(),
+        Some(QueryOutput::Schema(_))
+    ));
+    assert!(successor.next().await.unwrap().is_none());
+    assert_eq!(successor.completion().unwrap().rows, 0);
+    drop(successor);
+    storage.close().await.unwrap();
+    runtime.stop().await.unwrap();
 }
