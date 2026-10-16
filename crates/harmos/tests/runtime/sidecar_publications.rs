@@ -352,10 +352,18 @@ impl Producer {
         &mut self,
         ctx: &ObserverContext<'_, Gate, harmos_sidecar::Publisher<Ticking>>,
     ) -> Result<(), Infallible> {
-        ctx.publish_on::<TickingPulse>(&support::pulse(ctx.tick().ordinal()))
+        match ctx
+            .publish_on::<TickingPulse>(&support::pulse(ctx.tick().ordinal()))
             .await
-            .unwrap();
-        Ok(())
+        {
+            // A Retiring Generation May Tick Once After The Host Closes Its Admission.
+            Ok(())
+            | Err(harmos_sidecar::PublishError::Call(harmos_sidecar::CallError::Refused {
+                code: -32_606,
+                ..
+            })) => Ok(()),
+            Err(error) => panic!("ticking publication failed: {error}"),
+        }
     }
 }
 
