@@ -202,6 +202,10 @@ def prepare(root: Path) -> None:
             [
                 "build",
                 "--locked",
+                # Guest fuel measures Wasm instructions, including generated schema decoding.
+                # Keep dev assertions and quick codegen, with basic optimization for the guest.
+                "--config",
+                "profile.dev.opt-level=1",
                 "-p",
                 "harmos-guest",
                 "--example",
