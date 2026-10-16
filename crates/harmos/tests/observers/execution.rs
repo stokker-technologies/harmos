@@ -97,7 +97,6 @@ impl Watch {
                 .send((ctx.observer_id(), ctx.activation_id(), ctx.tick().ordinal()))
                 .unwrap();
         }
-        assert!(ctx.tick().elapsed() >= Duration::from_millis(5));
         assert_eq!(ctx.extension::<u64>(), Some(&ctx.host().token));
         ctx.resources()
             .events

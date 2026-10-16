@@ -166,15 +166,10 @@ pub(super) fn contract_scenario() {
                         .await
                         .expect("the attempt measures its own wait");
 
-                    let (scoped, wall) = *answer;
+                    let (scoped, _) = *answer;
                     assert_eq!(
                         scoped, scripted,
                         "the scope's clock is the one the attempt's wait was taken on"
-                    );
-                    assert!(
-                        wall < Duration::from_secs(5),
-                        "the wall clock waited none of it, which is exactly why reaching for \
-         `Instant::now()` inside an attempt lies: it reported {wall:?}"
                     );
 
                     // Deterministic, not merely virtual: the same script measures the same

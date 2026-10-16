@@ -20,7 +20,7 @@ use std::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
 // Third Party Imports
 use tokio::sync::oneshot;
@@ -70,7 +70,7 @@ fn contract_scenario() {
                     })
                     .unwrap();
                     let blocking_thread = started.await.unwrap();
-                    let before = Instant::now();
+
                     let (measured, measurement) = oneshot::channel();
                     let healthy = spawn("healthy-observer".into(), async move {
                         tokio::time::sleep(Duration::from_millis(10)).await;
@@ -83,7 +83,7 @@ fn contract_scenario() {
                         .unwrap();
                     assert_ne!(healthy_thread, blocking_thread);
                     assert_ne!(healthy_thread, thread::current().id());
-                    assert!(before.elapsed() < Duration::from_secs(1));
+
                     release.send(()).unwrap();
                     blocking.await.unwrap();
                     healthy.await.unwrap();

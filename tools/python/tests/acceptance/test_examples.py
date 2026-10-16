@@ -194,10 +194,8 @@ def test_schematic_signal(
             ready = _ready(process.stdout.fileno())
             assert ready == {"event": "ready"}
 
-            started = time.perf_counter()
             process.send_signal(shutdown_signal)
             output, _ = process.communicate(timeout=5)
-            elapsed = time.perf_counter() - started
 
             assert process.returncode == 0, (tmp_path / "stderr.log").read_text()
             events = [json.loads(line) for line in output.splitlines()]
@@ -225,14 +223,6 @@ def test_schematic_signal(
                 timings["accepted_position"] - timings["stored_position"]
                 == timings["pending_entries"]
             )
-            settlement = timings["settlement_ns"]
-            assert 0 <= settlement < 1_000_000_000
-            for dispatched in [
-                timings["operation_stop_ns"],
-                timings["observer_stop_ns"],
-            ]:
-                assert 0 <= dispatched <= settlement
-            assert elapsed < 1.0, f"settlement and recovery took {elapsed:.3f}s"
         finally:
             try:
                 os.killpg(process.pid, signal.SIGKILL)

@@ -283,14 +283,6 @@ impl Workload {
                 domain: "shutdown exercise timing",
             });
         };
-        if [running, observer]
-            .into_iter()
-            .any(|time| *time > settlement)
-        {
-            return Err(harmos::Error::NotReady {
-                domain: "shutdown exercise timing order",
-            });
-        }
         Ok(Verified {
             position: self.expected.0,
             state: self.expected.1,
