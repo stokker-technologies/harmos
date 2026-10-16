@@ -89,3 +89,40 @@ async fn checkpoint_tail_survives_reopen_and_incomplete_append() {
     assert_eq!(page.next, None);
     reopened.close().await.unwrap();
 }
+
+#[tokio::test]
+async fn complete_corruption_is_preserved_and_refused() {
+    let root = tempfile::tempdir().unwrap();
+    let history = super::history();
+    let settings = super::storage_settings();
+    let backend = FileBackend::new(root.path().to_owned(), history.clone(), &settings);
+    backend.open().await.unwrap();
+    let position = RecoveryPosition {
+        history: history.clone(),
+        sequence: 1,
+    };
+    let entry = RecoveryEntry {
+        position: position.clone(),
+        required_data: StorageCursor {
+            history: history.clone(),
+            sequence: 0,
+        },
+        payload: b"saved state".to_vec(),
+    };
+    backend.write_entries(&[entry]).await.unwrap();
+    backend.flush(&position).await.unwrap();
+    backend.close().await.unwrap();
+
+    // A Complete Invalid Entry Must Not Be Treated As An Interrupted Append.
+    let path = root.path().join("state.jsonl");
+    let mut file = OpenOptions::new().append(true).open(&path).unwrap();
+    file.write_all(b"{}\n").unwrap();
+    file.sync_all().unwrap();
+    drop(file);
+    let corrupt = std::fs::read(&path).unwrap();
+    let reopened = FileBackend::new(root.path().to_owned(), history, &settings);
+    assert!(reopened.open().await.is_err());
+    assert_eq!(std::fs::read(&path).unwrap(), corrupt);
+    assert!(reopened.open().await.is_err());
+    assert_eq!(std::fs::read(&path).unwrap(), corrupt);
+}

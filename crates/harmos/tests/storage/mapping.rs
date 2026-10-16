@@ -9,7 +9,7 @@
 /* === Modules === */
 /* === Re-Exports === */
 /* === Imports === */
-use super::backend::{Data, Recovery, history, storage_settings};
+use super::backend::{Data, history, storage_settings};
 use super::support::{Bank, Ledger, catalog};
 use arrow_array::{Array, Float64Array, ListArray, StructArray, UInt32Array};
 use harmos::storage::query::{Query, QueryOutput, RecordSelection, RowSlice, Source};
@@ -46,7 +46,11 @@ async fn mapping() {
     let storage = StorageManager::new(
         StorageBackends {
             primary: data,
-            state: Arc::new(Recovery::new(history())),
+            state: Arc::new(harmos::storage::state::file::FileBackend::new(
+                directory.path().join("state"),
+                history(),
+                &settings,
+            )),
             replicas: vec![],
         },
         settings,
@@ -232,7 +236,11 @@ async fn mapping_exhaustion() {
     let storage = StorageManager::new(
         StorageBackends {
             primary: data,
-            state: Arc::new(Recovery::new(history())),
+            state: Arc::new(harmos::storage::state::file::FileBackend::new(
+                directory.path().join("state"),
+                history(),
+                &settings,
+            )),
             replicas: vec![],
         },
         settings.clone(),
@@ -338,7 +346,11 @@ async fn mapping_growth() {
     let storage = StorageManager::new(
         StorageBackends {
             primary: data,
-            state: Arc::new(Recovery::new(history())),
+            state: Arc::new(harmos::storage::state::file::FileBackend::new(
+                directory.path().join("state"),
+                history(),
+                &settings,
+            )),
             replicas: vec![],
         },
         settings.clone(),
