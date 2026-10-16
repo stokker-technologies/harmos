@@ -197,7 +197,7 @@ impl<C> StorageManager<C> {
             loop {
                 match self.try_acquire_view_at(follow, execution, at).await {
                     Err(Error::ResourceExhausted {
-                        resource: "storage views" | "storage read memory" | "storage followers",
+                        resource: "storage read memory",
                     }) => {
                         changed.changed().await.map_err(|_| Error::Closing {
                             domain: "storage read admission",
@@ -278,22 +278,11 @@ impl<C> StorageManager<C> {
                 return Err(Error::NotReady { domain: "storage" });
             }
             state.collect();
-            if state.views.len() >= self.inner.settings.max_views.get() {
-                return Err(Error::ResourceExhausted {
-                    resource: "storage views",
-                });
-            }
             if state.status.read_bytes
                 > self.inner.settings.budget.read_memory_bytes.get() - total_bytes
             {
                 return Err(Error::ResourceExhausted {
                     resource: "storage read memory",
-                });
-            }
-            if follow.is_some() && state.followers.len() >= self.inner.settings.max_followers.get()
-            {
-                return Err(Error::ResourceExhausted {
-                    resource: "storage followers",
                 });
             }
             if follow.is_some_and(|(selection, mode)| {

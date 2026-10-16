@@ -330,25 +330,19 @@ fn contract_scenario() {
         });
     }
     {
-        scenario_runtime::check("pressure_refuses_views", || {
+        scenario_runtime::check("retained_view_preserves_snapshot", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor
                 .enable_all()
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let mut policy = config();
-                    policy.max_views = NonZeroUsize::new(1).unwrap();
+                    let policy = config();
                     let f = Fixture::new(policy).await;
                     write(&f.storage, "saved").await;
                     f.storage.flush().await.unwrap();
                     let old = f.storage.view_with_limits(f.execution).await.unwrap();
-                    assert!(matches!(
-                        f.storage.view_with_limits(f.execution).await,
-                        Err(Error::ResourceExhausted {
-                            resource: "storage views"
-                        })
-                    ));
+
                     write(&f.storage, "later").await;
                     f.storage.flush().await.unwrap();
                     assert_eq!(
@@ -538,8 +532,7 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let mut policy = config();
-                    policy.max_views = NonZeroUsize::new(1).unwrap();
+                    let policy = config();
                     let f = Fixture::new(policy).await;
                     write(&f.storage, "one").await;
                     f.storage.flush().await.unwrap();
@@ -996,7 +989,6 @@ fn contract_scenario() {
                     policy.snapshot_bytes = NonZeroUsize::new(512).unwrap();
                     policy.query_execution.memory_bytes = NonZeroUsize::new(10 * 1024).unwrap();
                     policy.query_decoded_bytes = policy.budget.read_memory_bytes;
-                    policy.max_views = NonZeroUsize::new(1).unwrap();
                     let f = Fixture::new(policy).await;
                     write(&f.storage, "saved").await;
                     f.storage.flush().await.unwrap();
@@ -1008,12 +1000,7 @@ fn contract_scenario() {
                     f.data.control.block_read.store(true, Ordering::SeqCst);
                     let reading = tokio::spawn(async move { reader.next_page().await });
                     f.data.control.read_entered.notified().await;
-                    assert!(matches!(
-                        f.storage.view_with_limits(f.execution).await,
-                        Err(Error::ResourceExhausted {
-                            resource: "storage views"
-                        })
-                    ));
+
                     tokio::time::timeout(Duration::from_secs(5), async {
                         for index in 0..16 {
                             write(&f.storage, &format!("later-{index}")).await;

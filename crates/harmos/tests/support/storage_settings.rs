@@ -67,8 +67,6 @@ pub fn storage_settings() -> StorageSettings {
         },
         replica_lag_positions: NonZeroU64::new(4096).unwrap(),
         replication_shutdown: Duration::ZERO,
-        max_views: NonZeroUsize::new(32).unwrap(),
-        max_followers: NonZeroUsize::new(32).unwrap(),
         max_files: NonZeroUsize::new(8).unwrap(),
         file_session_timeout: Duration::from_secs(60),
         max_mutations: NonZeroUsize::new(1024).unwrap(),

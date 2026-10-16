@@ -47,8 +47,6 @@ pub struct StorageSettings {
     pub replication_limits: ReadLimits,
     pub replica_lag_positions: NonZeroU64,
     pub replication_shutdown: Duration,
-    pub max_views: NonZeroUsize,
-    pub max_followers: NonZeroUsize,
     pub max_files: NonZeroUsize,
     pub max_mutations: NonZeroUsize,
     pub mutation_memory_bytes: NonZeroUsize,

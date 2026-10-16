@@ -213,22 +213,19 @@ fn contract_scenario() {
         });
     }
     {
-        scenario_runtime::check("count_limit_drop", || {
+        scenario_runtime::check("concurrent_followers_release_retention", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor
                 .enable_all()
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let mut policy = config();
-                    policy.max_followers = NonZeroUsize::new(1).unwrap();
+                    let policy = config();
                     let f = Fixture::new(policy).await;
                     write(&f.storage, "one").await;
                     let reader = f.storage.follow(record_query(limits())).await.unwrap();
-                    assert!(matches!(
-                        f.storage.follow(record_query(limits())).await,
-                        Err(Error::ResourceExhausted { .. })
-                    ));
+                    let concurrent = f.storage.follow(record_query(limits())).await.unwrap();
+                    drop(concurrent);
                     f.storage.flush().await.unwrap();
                     assert!(f.storage.status().pending_bytes > 0);
                     drop(reader);
@@ -278,8 +275,7 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let mut policy = config();
-                    policy.max_followers = NonZeroUsize::new(1).unwrap();
+                    let policy = config();
                     let f = Fixture::new(policy).await;
                     write(&f.storage, "one").await;
                     f.data.control.block_view.store(true, Ordering::SeqCst);
@@ -382,8 +378,7 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let mut policy = config();
-                    policy.max_followers = NonZeroUsize::new(1).unwrap();
+                    let policy = config();
                     let f = Fixture::new(policy).await;
                     for (order, through, after) in [
                         (ReadOrder::Descending, None, 0),

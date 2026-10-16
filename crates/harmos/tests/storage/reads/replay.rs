@@ -330,7 +330,6 @@ fn contract_scenario() {
                     for complete in [false, true] {
                         let mut settings = config();
                         settings.request.max_pending_write_batches = NonZeroUsize::new(1).unwrap();
-                        settings.max_followers = NonZeroUsize::new(1).unwrap();
                         let f = Fixture::new(settings).await;
                         write(&f.storage, "first").await;
                         let mut replay = f.storage.replay(record_query(limits())).await.unwrap();
@@ -392,8 +391,7 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let mut settings = config();
-                    settings.max_followers = NonZeroUsize::new(1).unwrap();
+                    let settings = config();
                     let f = Fixture::new(settings).await;
                     write(&f.storage, "one").await;
                     for (after, through, order) in [
@@ -472,8 +470,7 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let mut settings = config();
-                    settings.max_followers = NonZeroUsize::new(1).unwrap();
+                    let settings = config();
                     let f = Fixture::new(settings).await;
                     write(&f.storage, "one").await;
                     f.data.control.block_view.store(true, Ordering::SeqCst);
