@@ -74,32 +74,32 @@ impl NormalizedObjects {
                 let Some(rows) = reader.stage_page(page).await? else {
                     break;
                 };
-                let bytes = rows
-                    .iter()
-                    .enumerate()
-                    .try_fold(0usize, |total, (index, row)| {
+                let (count, bytes) = rows.iter().enumerate().try_fold(
+                    (0usize, 0usize),
+                    |(count, total), (index, row)| {
                         if schemas.iter().any(|schema| schema.key == row.value.schema)
                             || rows
                                 .iter()
                                 .take(index)
                                 .any(|prior| prior.value.schema == row.value.schema)
                         {
-                            return Ok(total);
+                            return Ok((count, total));
                         }
-                        row.value
-                            .schema
-                            .memory_size()
-                            .checked_mul(4)
-                            .and_then(|bytes| bytes.checked_add(1024))
-                            .and_then(|bytes| total.checked_add(bytes))
-                            .ok_or_else(exhausted)
-                    })?;
-                if bytes == 0 {
+                        let bytes = total
+                            .checked_add(row.value.schema.memory_size())
+                            .ok_or_else(exhausted)?;
+                        Ok((count.checked_add(1).ok_or_else(exhausted)?, bytes))
+                    },
+                )?;
+                if count == 0 {
                     reader.commit_staged_page();
                     drop(rows);
                     drop(credit.take());
                     continue;
                 }
+                let bytes = bytes
+                    .checked_add(std::mem::size_of::<Vec<crate::storage::SchemaKey>>())
+                    .ok_or_else(exhausted)?;
                 let working = bytes
                     .checked_add(crate::storage::manager::ENTRY_OVERHEAD)
                     .ok_or_else(exhausted)?;
@@ -121,7 +121,7 @@ impl NormalizedObjects {
                 }
                 let reservation =
                     crate::storage::manager::retain_memory(view.reserve_read(bytes, 1)?);
-                let mut keys = Vec::new();
+                let mut keys = Vec::with_capacity(count);
                 for row in rows.iter() {
                     if schemas.iter().any(|schema| schema.key == row.value.schema)
                         || keys.iter().any(|key| key == &row.value.schema)
