@@ -67,6 +67,7 @@ pub struct QueryReader {
     inflight: bool,
     rows: u64,
     schema_memory: Option<RetainedMemory>,
+    prepared_schema: Option<ArrowSchema>,
     staged_peak: usize,
 }
 
@@ -131,6 +132,7 @@ impl<C> StorageQuery<C> for Query {
             inflight: false,
             rows: 0,
             schema_memory: None,
+            prepared_schema: None,
             staged_peak: 0,
         })
     }
@@ -167,6 +169,7 @@ impl QueryReader {
         self.schema = None;
         self.object_schemas = None;
         self.schema_memory = None;
+        self.prepared_schema = None;
         self.discard_source();
         self.view.release_query_permit();
     }
@@ -189,25 +192,8 @@ impl QueryReader {
         }
         if self.pipeline.is_none() {
             self.prepare().await?;
-            let pipeline = self.pipeline.as_ref().unwrap();
-            let schema = ArrowSchema::try_new(pipeline.output_schema())?;
-            let retained = pipeline
-                .memory_size()
-                .checked_add(self.prefix.as_ref().map_or(0, Pipeline::memory_size))
-                .and_then(|bytes| {
-                    bytes.checked_add(
-                        self.reduction
-                            .as_ref()
-                            .map_or(0, |reduction| reduction.memory_size()),
-                    )
-                })
-                .and_then(|bytes| bytes.checked_add(schema.memory_size()))
-                .and_then(|bytes| bytes.checked_add(4096))
-                .ok_or(Error::ResourceExhausted {
-                    resource: "query retained plan",
-                })?;
+            let schema = self.prepared_schema.take().expect("prepared query schema");
             let memory = self.schema_memory.as_ref().unwrap();
-            memory.shrink_to(retained)?;
             return Ok(Some(QueryOutput::Schema(schema.retain(memory.clone()))));
         }
         loop {
@@ -330,40 +316,16 @@ impl QueryReader {
             Some(key) => Some(manager.lookup_schema(&self.view, &key).await?),
             None => None,
         };
-        let schema_bytes = self
-            .schema
-            .as_ref()
-            .map_or(0, |schema| (**schema).memory_size())
-            .saturating_add(
-                self.object_schemas
-                    .as_ref()
-                    .map_or(0, |schemas| schemas.memory_size()),
-            );
-        let allowance = schema_bytes
-            .checked_mul(32)
-            .and_then(|size| {
-                self.request
-                    .memory_size()
-                    .checked_mul(8)
-                    .and_then(|plan| size.checked_add(plan))
-            })
-            .and_then(|size| size.checked_add(64 * 1024))
-            .ok_or(Error::ResourceExhausted {
-                resource: "query schema memory",
-            })?;
-        let memory: RetainedMemory = crate::storage::manager::retain_memory(
-            self.view.reserve_read_wait(allowance, 1).await?,
-        );
+        let bank =
+            crate::storage::memory::MemoryBank::new(self.view.reserve_read_wait(0, 1).await?, 0);
         let empty = match &self.request.source {
             Source::Objects(_) => self.object_schemas.as_ref().unwrap().empty(),
             Source::Records(_) => {
-                super::source::records(self.schema.as_ref().unwrap(), &[], allowance)?
+                super::source::records(self.schema.as_ref().unwrap(), &[], &bank)?
             }
-            Source::Stream(_) => {
-                super::source::stream(self.schema.as_ref().unwrap(), &[], allowance)?
-            }
-            Source::Schemas(_) => super::source::schemas(&[], allowance)?,
-            Source::Files(_) => super::source::files(&[], allowance)?,
+            Source::Stream(_) => super::source::stream(self.schema.as_ref().unwrap(), &[], &bank)?,
+            Source::Schemas(_) => super::source::schemas(&[], &bank)?,
+            Source::Files(_) => super::source::files(&[], &bank)?,
         };
         let mut pipeline = Pipeline::new(
             empty.schema(),
@@ -378,19 +340,32 @@ impl QueryReader {
             pipeline = suffix;
         }
         self.slicing = Some(pipeline.stream_slice());
+        let schema = ArrowSchema::try_new(pipeline.output_schema())?;
+        let retained = pipeline
+            .memory_size()
+            .checked_add(self.prefix.as_ref().map_or(0, Pipeline::memory_size))
+            .and_then(|bytes| {
+                bytes.checked_add(
+                    self.reduction
+                        .as_ref()
+                        .map_or(0, |value| value.memory_size()),
+                )
+            })
+            .and_then(|bytes| bytes.checked_add(schema.memory_size()))
+            .ok_or(Error::ResourceExhausted {
+                resource: "query retained plan",
+            })?;
+        self.schema_memory = Some(bank.reserve(retained)?);
+        self.prepared_schema = Some(schema);
         self.pipeline = Some(pipeline);
-        self.schema_memory = Some(memory);
         Ok(())
     }
 
     async fn next_source(&mut self) -> Result<Option<ArrowBatch>> {
-        let page = self.page;
+        let mut page = self.page;
         let view = self.view.clone();
         let schema = self.schema.as_ref();
         let object_schemas = self.object_schemas.as_ref();
-        let schema_memory = schema
-            .map_or(0, |schema| (**schema).memory_size())
-            .saturating_add(object_schemas.map_or(0, |schemas| schemas.memory_size()));
         macro_rules! fetch {
             ($reader:expr, $map:expr) => {{
                 let mut credit = None;
@@ -398,25 +373,9 @@ impl QueryReader {
                     let Some(rows) = $reader.stage_page(page).await? else {
                         return Ok(None);
                     };
-                    let bytes = rows
-                        .iter()
-                        .try_fold(0usize, |total, row| total.checked_add(row.memory_size()))
-                        .ok_or(Error::ResourceExhausted {
-                            resource: "query source conversion",
-                        })?;
-                    let allowance = bytes
-                        .checked_mul(32)
-                        .and_then(|bytes| bytes.checked_add(schema_memory.saturating_mul(16)))
-                        .and_then(|bytes| bytes.checked_add(64 * 1024))
-                        .ok_or(Error::ResourceExhausted {
-                            resource: "query source conversion",
-                        })?;
                     let peak = rows
                         .reserved_bytes()
-                        .checked_add(allowance)
-                        .and_then(|bytes| {
-                            bytes.checked_add(StorageView::computation_memory_bytes())
-                        })
+                        .checked_add(StorageView::computation_memory_bytes())
                         .and_then(|bytes| {
                             bytes.checked_add(crate::storage::manager::ENTRY_OVERHEAD)
                         })
@@ -424,11 +383,8 @@ impl QueryReader {
                             resource: "query source conversion",
                         })?;
                     if credit.is_none() {
-                        let working = allowance
-                            .checked_add(StorageView::computation_memory_bytes())
-                            .and_then(|bytes| {
-                                bytes.checked_add(crate::storage::manager::ENTRY_OVERHEAD)
-                            })
+                        let working = StorageView::computation_memory_bytes()
+                            .checked_add(crate::storage::manager::ENTRY_OVERHEAD)
                             .ok_or(Error::ResourceExhausted {
                                 resource: "query source conversion",
                             })?;
@@ -445,44 +401,66 @@ impl QueryReader {
                     }
                     let _admitted_credit = credit.take().expect("source stage owns working credit");
                     let computation = view.begin_computation()?;
-                    let reservation = view.reserve_read(allowance, 1)?;
-                    let reservation = crate::storage::manager::retain_memory(reservation);
-                    let batch: RecordBatch = $map(&rows, allowance)?;
-                    let batch = ArrowBatch::try_new(batch)?;
-                    if batch
-                        .memory_size()
-                        .checked_add(4096)
-                        .is_none_or(|bytes| bytes > allowance)
-                    {
-                        return Err(Error::ResourceExhausted {
-                            resource: "query source conversion",
-                        });
+                    let reservation = view.reserve_read(0, 1)?;
+                    let bank = crate::storage::memory::MemoryBank::new(reservation, 0);
+                    let converted = (|| {
+                        let batch: RecordBatch = $map(&rows, &bank)?;
+                        let batch = ArrowBatch::try_new(batch)?;
+                        let reservation = bank.reserve(batch.memory_size())?;
+                        batch.retain(reservation)
+                    })();
+                    let demand = bank.requested();
+                    match converted {
+                        Ok(batch) => {
+                            self.staged_peak = peak.checked_add(bank.capacity()).ok_or(
+                                Error::ResourceExhausted {
+                                    resource: "query source conversion",
+                                },
+                            )?;
+                            computation.check()?;
+                            break Ok(Some(batch));
+                        }
+                        Err(Error::ResourceExhausted { .. }) if demand > bank.capacity() => {
+                            let retry =
+                                peak.checked_add(demand).ok_or(Error::ResourceExhausted {
+                                    resource: "query source conversion",
+                                })?;
+                            drop(bank);
+                            drop(computation);
+                            drop(_admitted_credit);
+                            drop(rows);
+                            $reader.discard_staged_page();
+                            match view.reserve_working_wait(retry).await {
+                                Ok(admitted) => credit = Some(admitted),
+                                Err(Error::ResourceExhausted { .. }) if page.rows.get() > 1 => {
+                                    page.rows =
+                                        std::num::NonZeroUsize::new(page.rows.get() / 2).unwrap();
+                                }
+                                Err(error) => return Err(error),
+                            }
+                        }
+                        Err(error) => return Err(error),
                     }
-                    reservation.shrink_to(batch.memory_size().saturating_add(4096))?;
-                    self.staged_peak = peak;
-                    let batch = batch.retain(reservation)?;
-                    computation.check()?;
-                    break Ok(Some(batch));
                 }
             }};
         }
         match &mut self.raw {
             RawReader::Objects(reader) => {
-                fetch!(reader, |rows: &[ObjectEntry], allowance| object_schemas
+                fetch!(reader, |rows: &[ObjectEntry], bank| object_schemas
                     .unwrap()
-                    .map(rows, allowance))
+                    .map(rows, bank))
             }
-            RawReader::Records(reader) => fetch!(reader, |rows: &[StoredRecord], allowance| {
-                super::source::records(schema.unwrap(), rows, allowance)
+            RawReader::Records(reader) => fetch!(reader, |rows: &[StoredRecord], bank| {
+                super::source::records(schema.unwrap(), rows, bank)
             }),
-            RawReader::Stream(reader) => fetch!(reader, |rows: &[StoredRow], allowance| {
-                super::source::stream(schema.unwrap(), rows, allowance)
+            RawReader::Stream(reader) => fetch!(reader, |rows: &[StoredRow], bank| {
+                super::source::stream(schema.unwrap(), rows, bank)
             }),
-            RawReader::Schemas(reader) => fetch!(reader, |rows: &[StorageSchema], allowance| {
-                super::source::schemas(rows, allowance)
+            RawReader::Schemas(reader) => fetch!(reader, |rows: &[StorageSchema], bank| {
+                super::source::schemas(rows, bank)
             }),
-            RawReader::Files(reader) => fetch!(reader, |rows: &[FileReference], allowance| {
-                super::source::files(rows, allowance)
+            RawReader::Files(reader) => fetch!(reader, |rows: &[FileReference], bank| {
+                super::source::files(rows, bank)
             }),
         }
     }

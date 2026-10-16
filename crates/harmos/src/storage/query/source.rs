@@ -30,6 +30,7 @@ use arrow_buffer::{NullBuffer, OffsetBuffer, ScalarBuffer};
 use arrow_schema::{DataType, Field, Fields, Schema, TimeUnit};
 // Local Imports
 use crate::schema::{self, Cardinality, Event, PathElement, Scalar, graph};
+use crate::storage::memory::{MemoryBank, MemoryScope as Budget};
 use crate::storage::{
     FileReference, ObjectEntry, StorageCursor, StorageSchema, StoredRecord, StoredRow,
 };
@@ -56,11 +57,6 @@ macro_rules! scalar_array {
 /* === Type Aliases === */
 
 /* === Structs === */
-struct Budget {
-    used: usize,
-    limit: usize,
-}
-
 /* === Enums === */
 enum Node<'a> {
     Null,
@@ -72,18 +68,8 @@ enum Node<'a> {
 /* === Traits === */
 
 /* === Implementations === */
-impl Budget {
-    fn claim(&mut self, bytes: usize) -> Result<()> {
-        self.used = self.used.checked_add(bytes).ok_or_else(exhausted)?;
-        if self.used > self.limit {
-            return Err(exhausted());
-        }
-        Ok(())
-    }
-}
-
 /* === Public Functions === */
-// The Caller Holds The Reservation Covering This Construction Allowance.
+// Construction Charges The Shared Storage Reservation Before Allocation.
 pub(crate) fn payload_fields(schema: &graph::Schema) -> Result<Fields> {
     fields(schema, schema.root, 0, &mut 0)
 }
@@ -91,44 +77,32 @@ pub(crate) fn payload_fields(schema: &graph::Schema) -> Result<Fields> {
 pub(crate) fn records(
     schema: &StorageSchema,
     rows: &[StoredRecord],
-    allowance: usize,
+    bank: &MemoryBank,
 ) -> Result<RecordBatch> {
-    if rows.len() > allowance / 256 {
-        return Err(exhausted());
-    }
     let refs = rows.iter().collect::<Vec<_>>();
-    record_batch(schema, &refs, None, allowance)
+    record_batch(schema, &refs, None, bank)
 }
 
 pub(crate) fn stream(
     schema: &StorageSchema,
     rows: &[StoredRow],
-    allowance: usize,
+    bank: &MemoryBank,
 ) -> Result<RecordBatch> {
-    if rows.len() > allowance / 256 {
-        return Err(exhausted());
-    }
     let refs = rows.iter().map(|row| &row.record).collect::<Vec<_>>();
-    record_batch(schema, &refs, Some(rows), allowance)
+    record_batch(schema, &refs, Some(rows), bank)
 }
 
 pub(crate) fn objects(
     schema: &StorageSchema,
     rows: &[ObjectEntry],
-    allowance: usize,
+    bank: &MemoryBank,
 ) -> Result<RecordBatch> {
-    if rows.len() > allowance / 256 {
-        return Err(exhausted());
-    }
     // The caller resolves every selected schema and establishes compatibility.
     // Equivalent payload graphs may have different logical schema identifiers.
     for row in rows {
         row.value.schema.require_postcard()?;
     }
-    let mut budget = Budget {
-        used: 0,
-        limit: allowance,
-    };
+    let mut budget = bank.scope();
     let payloads = rows
         .iter()
         .map(|row| row.value.payload.as_slice())
@@ -183,14 +157,8 @@ pub(crate) fn objects(
     assemble(columns, payload)
 }
 
-pub(crate) fn files(rows: &[FileReference], allowance: usize) -> Result<RecordBatch> {
-    if rows.len() > allowance / 256 {
-        return Err(exhausted());
-    }
-    let mut budget = Budget {
-        used: 0,
-        limit: allowance,
-    };
+pub(crate) fn files(rows: &[FileReference], bank: &MemoryBank) -> Result<RecordBatch> {
+    let mut budget = bank.scope();
     metadata_budget(
         rows.len(),
         rows.iter()
@@ -262,14 +230,8 @@ pub(crate) fn files(rows: &[FileReference], allowance: usize) -> Result<RecordBa
     flat(columns)
 }
 
-pub(crate) fn schemas(rows: &[StorageSchema], allowance: usize) -> Result<RecordBatch> {
-    if rows.len() > allowance / 256 {
-        return Err(exhausted());
-    }
-    let mut budget = Budget {
-        used: 0,
-        limit: allowance,
-    };
+pub(crate) fn schemas(rows: &[StorageSchema], bank: &MemoryBank) -> Result<RecordBatch> {
+    let mut budget = bank.scope();
     metadata_budget(
         rows.len(),
         rows.iter()
@@ -324,17 +286,14 @@ fn record_batch(
     schema: &StorageSchema,
     rows: &[&StoredRecord],
     streams: Option<&[StoredRow]>,
-    allowance: usize,
+    bank: &MemoryBank,
 ) -> Result<RecordBatch> {
     for row in rows {
         if row.schema != schema.key {
             return Err(invalid("record batch has incompatible schemas"));
         }
     }
-    let mut budget = Budget {
-        used: 0,
-        limit: allowance,
-    };
+    let mut budget = bank.scope();
     let payloads = rows
         .iter()
         .map(|row| row.payload.as_slice())
@@ -513,7 +472,11 @@ fn expanded_schema_bytes(
     Ok(bytes)
 }
 
-fn payload(schema: &StorageSchema, payloads: &[&[u8]], budget: &mut Budget) -> Result<ArrayRef> {
+fn payload(
+    schema: &StorageSchema,
+    payloads: &[&[u8]],
+    budget: &mut Budget<'_>,
+) -> Result<ArrayRef> {
     schema.key.require_postcard()?;
     let mut expanded_fields = 0;
     let expanded_bytes =
@@ -724,7 +687,7 @@ fn append_schema_columns(
     columns: &mut Vec<(Field, ArrayRef)>,
     key: &crate::storage::SchemaKey,
     rows: usize,
-    budget: &mut Budget,
+    budget: &mut Budget<'_>,
 ) -> Result<()> {
     budget.claim(
         rows.checked_mul(key.id.as_str().len().saturating_add(32))
@@ -773,7 +736,7 @@ fn assemble(columns: Vec<(Field, ArrayRef)>, payload: ArrayRef) -> Result<Record
     )
     .map_err(|_| invalid("Arrow result batch mismatch"))
 }
-fn metadata_budget(rows: usize, text: usize, budget: &mut Budget) -> Result<()> {
+fn metadata_budget(rows: usize, text: usize, budget: &mut Budget<'_>) -> Result<()> {
     budget.claim(
         rows.checked_mul(2048)
             .and_then(|n| text.checked_mul(4).and_then(|text| n.checked_add(text)))

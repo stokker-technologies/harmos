@@ -151,20 +151,10 @@ impl NormalizedObjects {
             Some(Transform::Project(project)) => Some(project.clone()),
             _ => None,
         };
-        let schema_bytes = schemas.iter().try_fold(0usize, |total, schema| {
-            total
-                .checked_add((**schema).memory_size())
-                .ok_or_else(exhausted)
-        })?;
-        let allowance = schema_bytes
-            .checked_mul(64)
-            .and_then(|bytes| bytes.checked_add(65536))
-            .ok_or_else(exhausted)?;
-        let construction =
-            crate::storage::manager::retain_memory(view.reserve_read_wait(allowance, 1).await?);
+        let bank = crate::storage::memory::MemoryBank::new(view.reserve_read_wait(0, 1).await?, 0);
         let mut output: Option<Arc<Schema>> = None;
         for schema in &schemas {
-            let empty = super::source::objects(schema, &[], allowance)?;
+            let empty = super::source::objects(schema, &[], &bank)?;
             let candidate = match &projection {
                 Some(project) => canonical_schema(&project.output_schema(empty.schema().as_ref())?),
                 None => empty.schema().as_ref().clone(),
@@ -195,8 +185,7 @@ impl NormalizedObjects {
             })
             .and_then(|bytes| bytes.checked_add(4096))
             .ok_or_else(exhausted)?;
-        construction.shrink_to(retained)?;
-        metadata.push(construction);
+        metadata.push(bank.reserve(retained)?);
         Ok(Self {
             schemas,
             projection,
@@ -209,21 +198,17 @@ impl NormalizedObjects {
         RecordBatch::new_empty(Arc::clone(&self.output))
     }
 
-    pub(crate) fn memory_size(&self) -> usize {
-        self.schemas
-            .iter()
-            .map(|schema| (**schema).memory_size())
-            .fold(0usize, usize::saturating_add)
-            .saturating_add(crate::storage::arrow::schema_memory(&self.output))
-            .saturating_add(self.projection.as_ref().map_or(0, MemorySize::memory_size))
-    }
-
-    pub(crate) fn map(&self, rows: &[ObjectEntry], allowance: usize) -> Result<RecordBatch> {
+    pub(crate) fn map(
+        &self,
+        rows: &[ObjectEntry],
+        bank: &crate::storage::memory::MemoryBank,
+    ) -> Result<RecordBatch> {
         if rows.is_empty() {
             return Ok(self.empty());
         }
         let mut batches = Vec::new();
         let mut retained = 0usize;
+        let mut claims = Vec::new();
         let mut start = 0usize;
         // Contiguous Runs Preserve The Original Capture Ordering Across Schemas.
         while start < rows.len() {
@@ -239,8 +224,7 @@ impl NormalizedObjects {
                 .ok_or_else(|| {
                     invalid("object schema was not resolved at the requested boundary")
                 })?;
-            let remaining = allowance.checked_sub(retained).ok_or_else(exhausted)?;
-            let source = super::source::objects(schema, &rows[start..end], remaining / 3)?;
+            let source = super::source::objects(schema, &rows[start..end], bank)?;
             let projected = match &self.projection {
                 Some(project) => canonical_batch(
                     project.apply(&source, &mut || Ok(()))?,
@@ -254,15 +238,12 @@ impl NormalizedObjects {
             retained = retained
                 .checked_add(resident_bytes(&projected)?)
                 .ok_or_else(exhausted)?;
-            if retained
-                .checked_mul(3)
-                .is_none_or(|bytes| bytes > allowance)
-            {
-                return Err(exhausted());
-            }
+            claims.push(bank.reserve(resident_bytes(&projected)?)?);
             batches.push(projected);
             start = end;
         }
+        let mut construction = bank.scope();
+        construction.claim(retained)?;
         arrow_select::concat::concat_batches(&self.output, &batches)
             .map_err(|_| invalid("normalized object batch concatenation failed"))
     }

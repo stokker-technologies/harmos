@@ -36,9 +36,15 @@ use std::sync::{Arc, Mutex};
 pub(super) struct MemoryBank {
     state: Arc<Mutex<BankState>>,
 }
+pub(super) struct MemoryScope<'a> {
+    bank: &'a MemoryBank,
+    used: usize,
+}
+
 struct BankState {
     reservation: Option<MemoryReservation>,
     capacity: usize,
+    requested: usize,
     used: usize,
     closed: bool,
 }
@@ -58,9 +64,25 @@ impl MemoryBank {
             state: Arc::new(Mutex::new(BankState {
                 reservation: Some(reservation),
                 capacity,
+                requested: capacity,
                 used: 0,
                 closed: false,
             })),
+        }
+    }
+
+    pub(super) fn requested(&self) -> usize {
+        self.state.lock().unwrap().requested
+    }
+
+    pub(super) fn capacity(&self) -> usize {
+        self.state.lock().unwrap().capacity
+    }
+
+    pub(super) fn scope(&self) -> MemoryScope<'_> {
+        MemoryScope {
+            bank: self,
+            used: 0,
         }
     }
 
@@ -78,6 +100,7 @@ impl MemoryBank {
                 .ok_or(Error::ResourceExhausted {
                     resource: "storage read memory",
                 })?;
+            state.requested = state.requested.max(required);
             if required > state.capacity {
                 let additional = required - state.capacity;
                 state
@@ -97,6 +120,45 @@ impl MemoryBank {
         Ok(RetainedMemory::new(claim, move |bytes| {
             shrink.shrink_to(bytes)
         }))
+    }
+}
+
+impl MemoryScope<'_> {
+    pub(super) fn claim(&mut self, bytes: usize) -> Result<()> {
+        let used = self
+            .used
+            .checked_add(bytes)
+            .ok_or(Error::ResourceExhausted {
+                resource: "storage read memory",
+            })?;
+        let mut state = self.bank.state.lock().unwrap();
+        let required = state
+            .used
+            .checked_add(bytes)
+            .ok_or(Error::ResourceExhausted {
+                resource: "storage read memory",
+            })?;
+        state.requested = state.requested.max(required);
+        if required > state.capacity {
+            let additional = required - state.capacity;
+            state
+                .reservation
+                .as_mut()
+                .expect("scope borrows open bank")
+                .grow_read(additional)?;
+            state.capacity = required;
+        }
+        state.used = required;
+        self.used = used;
+        Ok(())
+    }
+}
+
+impl Drop for MemoryScope<'_> {
+    fn drop(&mut self) {
+        let mut state = self.bank.state.lock().unwrap();
+        state.used -= self.used;
+        state.release_unused();
     }
 }
 
