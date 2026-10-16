@@ -670,7 +670,7 @@ fn contract_scenario() {
                     let view = f.storage.view_with_limits(f.execution).await.unwrap();
                     f.storage.flush().await.unwrap();
                     // The Page Fits The Shared Budget Only Without Its Cursor Metadata.
-                    let mut query = record_query(limits(1, 150_000));
+                    let mut query = record_query(limits(1, 100_000));
                     query.options.decoded_bytes = NonZeroUsize::new(40_000);
                     query.item = Some(item);
                     let mut reader = f.storage.query_in(&view, query).unwrap();

@@ -18,7 +18,6 @@
 // Standard Library Imports
 use std::borrow::Cow;
 use std::num::NonZeroUsize;
-use std::time::Instant;
 
 // Third Party Imports
 
@@ -256,7 +255,6 @@ pub fn check() {
         assert!(serde_json::from_value::<declaration::Named>(malformed).is_err());
     });
     scenario_runtime::check("shared_checkpoint_schema", || {
-        let started = Instant::now();
         let schema: Schema = serde_json::from_str(CHECKPOINT).unwrap();
         // Resolve The Same Complete Contract Through Inert Named Fragments
         let named: Vec<declaration::Named> = schema
@@ -370,11 +368,6 @@ pub fn check() {
         }
         assert_eq!(expanded[schema.root], 5583);
         assert_eq!(depths[schema.root], 18);
-        eprintln!(
-            "checkpoint schema: {preparation:?}, {} JSON bytes, {:?} preparation",
-            CHECKPOINT.len(),
-            started.elapsed()
-        );
 
         let bounded = SchemaSettings {
             preparation_bytes: NonZeroUsize::new(preparation.bytes - 1).unwrap(),
