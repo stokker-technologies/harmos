@@ -21,8 +21,7 @@ use std::{num::NonZeroUsize, path::PathBuf, sync::Arc};
 // Third Party Imports
 use tokio::sync::Mutex;
 // Local Imports
-use super::{RecoveryEntry, RecoveryPage, RecoverySnapshot, StateBackend};
-use crate::storage::config::StorageSettings;
+use super::{RecoveryEntry, RecoveryPage, RecoverySnapshot, StateBackend, StorageStateSettings};
 use crate::storage::{ReadLimits, RecoveryPosition, StorageFuture, StoreHistory};
 use crate::{BackendFailure, Error, Result};
 use journal::StateLog;
@@ -36,8 +35,7 @@ use journal::StateLog;
 pub struct FileBackend {
     root: PathBuf,
     history: StoreHistory,
-    entry_bytes: usize,
-    snapshot_bytes: usize,
+    settings: StorageStateSettings,
     journal: Arc<Mutex<Option<StateLog>>>,
 }
 
@@ -45,12 +43,11 @@ pub struct FileBackend {
 /* === Traits === */
 /* === Implementations === */
 impl FileBackend {
-    pub fn new(root: PathBuf, history: StoreHistory, settings: &StorageSettings) -> Self {
+    pub fn new(root: PathBuf, history: StoreHistory, settings: StorageStateSettings) -> Self {
         Self {
             root,
             history,
-            entry_bytes: settings.max_batch_bytes().get(),
-            snapshot_bytes: settings.max_batch_bytes().get(),
+            settings,
             journal: Arc::new(Mutex::new(None)),
         }
     }
@@ -83,11 +80,10 @@ impl StateBackend for FileBackend {
             let mut owner = self.journal.clone().lock_owned().await;
             let root = self.root.clone();
             let history = self.history.clone();
-            let entry_bytes = self.entry_bytes;
-            let snapshot_bytes = self.snapshot_bytes;
+            let settings = self.settings;
             tokio::task::spawn_blocking(move || {
                 if owner.is_none() {
-                    *owner = Some(StateLog::open(&root, history, entry_bytes, snapshot_bytes)?);
+                    *owner = Some(StateLog::open(&root, history, settings)?);
                 }
                 let journal = owner.as_ref().expect("opened journal");
                 journal.check()?;

@@ -757,6 +757,8 @@ const ALLOWANCE: [(&str, &[&str]); 17] = [
             "arrow-ipc",
             "arrow-schema",
             "arrow-select",
+            // Compact Binary Payload Text In The File State Backend.
+            "base64",
             "flatbuffers",
             "postcard",
             "bytes",

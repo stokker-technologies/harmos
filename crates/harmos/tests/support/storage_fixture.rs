@@ -87,6 +87,12 @@ impl Fixture {
 }
 
 /* === Public Functions === */
+pub(crate) fn state_settings() -> harmos::storage::state::StorageStateSettings {
+    harmos::storage::state::StorageStateSettings {
+        max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
+        max_checkpoint_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
+    }
+}
 
 /* === Private Functions === */
 pub(crate) fn config() -> StorageSettings {

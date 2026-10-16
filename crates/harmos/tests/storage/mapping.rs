@@ -10,6 +10,7 @@
 /* === Re-Exports === */
 /* === Imports === */
 use super::backend::{Data, history, storage_settings};
+use super::fixture::state_settings;
 use super::support::{Bank, Ledger, catalog};
 use arrow_array::{Array, Float64Array, ListArray, StructArray, UInt32Array};
 use harmos::storage::query::{Query, QueryOutput, RecordSelection, RowSlice, Source};
@@ -49,7 +50,7 @@ async fn mapping() {
             state: Arc::new(harmos::storage::state::file::FileBackend::new(
                 directory.path().join("state"),
                 history(),
-                &settings,
+                state_settings(),
             )),
         },
         settings,
@@ -228,7 +229,7 @@ async fn mapping_exhaustion() {
             state: Arc::new(harmos::storage::state::file::FileBackend::new(
                 directory.path().join("state"),
                 history(),
-                &settings,
+                state_settings(),
             )),
         },
         settings.clone(),
@@ -327,7 +328,7 @@ async fn mapping_growth() {
             state: Arc::new(harmos::storage::state::file::FileBackend::new(
                 directory.path().join("state"),
                 history(),
-                &settings,
+                state_settings(),
             )),
         },
         settings.clone(),
