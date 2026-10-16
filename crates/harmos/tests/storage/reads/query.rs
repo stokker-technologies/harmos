@@ -851,7 +851,7 @@ fn contract_scenario() {
         });
     }
     {
-        scenario_runtime::check("decoded_ceiling_refuses", || {
+        scenario_runtime::check("shared_budget_refuses_oversized_decode", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor
                 .enable_all()
@@ -861,7 +861,7 @@ fn contract_scenario() {
                     let f = Fixture::new().await;
                     let mut query = RecordQuery::new(schema(), decode);
                     query.options.decoded_bytes =
-                        NonZeroUsize::new(storage_settings().query_decoded_bytes_ceiling.get() + 1);
+                        NonZeroUsize::new(storage_settings().budget.read_memory_bytes.get() + 1);
                     f.data.control.block_view.store(true, Ordering::SeqCst);
                     let before = f.storage.status().read_bytes;
                     assert!(matches!(

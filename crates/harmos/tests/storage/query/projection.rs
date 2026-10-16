@@ -98,11 +98,7 @@ fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let settings = storage_settings();
-                    let f = Fixture::with_settings(StorageSettings {
-                        query_decoded_bytes_ceiling: settings.budget.read_memory_bytes,
-                        ..settings
-                    })
-                    .await;
+                    let f = Fixture::with_settings(StorageSettings { ..settings }).await;
                     f.storage
                         .write_object(&Document { id: 7, value: 42 })
                         .await
@@ -610,7 +606,7 @@ fn contract_scenario() {
 
                     let called = AtomicBool::new(false);
                     let excessive =
-                        NonZeroUsize::new(storage_settings().query_decoded_bytes_ceiling.get() + 1)
+                        NonZeroUsize::new(storage_settings().budget.read_memory_bytes.get() + 1)
                             .unwrap();
                     let refused = page.try_project::<Vec<u64>>(excessive, |_, _| {
                         called.store(true, Ordering::SeqCst);
@@ -619,7 +615,7 @@ fn contract_scenario() {
                     assert!(matches!(
                         refused,
                         Err(Error::ResourceExhausted {
-                            resource: "query decoded memory"
+                            resource: "storage read memory"
                         })
                     ));
                     assert!(!called.load(Ordering::SeqCst));

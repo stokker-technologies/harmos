@@ -42,7 +42,6 @@ pub struct StorageSettings {
     pub query_page: ReadLimits,
     pub query_page_ceiling: ReadLimits,
     pub query_decoded_bytes: NonZeroUsize,
-    pub query_decoded_bytes_ceiling: NonZeroUsize,
     pub query_execution: QueryLimits,
     pub query_execution_ceiling: QueryLimits,
     pub replication_limits: ReadLimits,
@@ -131,12 +130,10 @@ impl StorageSettings {
             .check(self.query_page.rows.get(), self.query_page.bytes.get())?;
         self.query_execution
             .check_ceiling(self.query_execution_ceiling)?;
-        if self.query_decoded_bytes > self.query_decoded_bytes_ceiling
-            || self.query_decoded_bytes > self.budget.read_memory_bytes
-        {
+        if self.query_decoded_bytes > self.budget.read_memory_bytes {
             return Err(crate::Error::InvalidInput {
                 field: "query decoding",
-                reason: "default decoded capacity exceeds its ceiling or shared read capacity",
+                reason: "default decoded capacity exceeds shared read capacity",
             });
         }
         if self.query_execution.memory_bytes > self.budget.read_memory_bytes {

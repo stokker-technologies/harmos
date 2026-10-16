@@ -89,7 +89,6 @@ fn contract_scenario() {
                     {
                         let settings = StorageSettings {
                             query_decoded_bytes: NonZeroUsize::new(ceiling).unwrap(),
-                            query_decoded_bytes_ceiling: NonZeroUsize::new(ceiling).unwrap(),
                             ..storage_settings()
                         };
                         let f = Fixture::new(settings).await;

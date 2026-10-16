@@ -987,9 +987,7 @@ impl<C> StorageManager<C> {
         let bytes = options
             .decoded_bytes
             .unwrap_or(self.inner.settings.query_decoded_bytes);
-        if bytes > self.inner.settings.query_decoded_bytes_ceiling
-            || bytes > self.inner.settings.budget.read_memory_bytes
-        {
+        if bytes > self.inner.settings.budget.read_memory_bytes {
             return Err(decoded_limit());
         }
         Ok(bytes)

@@ -220,7 +220,6 @@ async fn mapping_exhaustion() {
     settings.query_execution.memory_bytes = std::num::NonZeroUsize::new(128 * 1024).unwrap();
     settings.query_execution_ceiling.memory_bytes = settings.budget.read_memory_bytes;
     settings.query_decoded_bytes = std::num::NonZeroUsize::new(8 * 1024).unwrap();
-    settings.query_decoded_bytes_ceiling = settings.query_decoded_bytes;
     settings.query_page = ReadLimits {
         rows: std::num::NonZeroUsize::MIN,
         bytes: std::num::NonZeroUsize::new(16 * 1024).unwrap(),
@@ -327,7 +326,6 @@ async fn mapping_growth() {
     settings.query_execution.memory_bytes = std::num::NonZeroUsize::new(128 * 1024).unwrap();
     settings.query_execution_ceiling.memory_bytes = settings.budget.read_memory_bytes;
     settings.query_decoded_bytes = std::num::NonZeroUsize::new(8 * 1024).unwrap();
-    settings.query_decoded_bytes_ceiling = settings.query_decoded_bytes;
     settings.query_page = ReadLimits {
         rows: std::num::NonZeroUsize::MIN,
         bytes: std::num::NonZeroUsize::new(16 * 1024).unwrap(),
