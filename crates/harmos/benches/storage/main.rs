@@ -14,7 +14,16 @@
 )]
 #[path = "../../tests/support/storage.rs"]
 mod backend;
+mod contention;
+mod files;
+mod fixture;
 mod frame;
+mod ingestion;
+mod metrics;
+mod query;
+mod transforms;
+#[path = "../../tests/support/storage/waveforms.rs"]
+mod waveforms;
 
 /* === Re-Exports === */
 
@@ -134,6 +143,10 @@ impl RecordProjection for Projection {
 
 /* === Private Functions === */
 fn main() {
+    println!(
+        "{}",
+        serde_json::json!({"kind":"storage_benchmark_provenance", "provenance": metrics::provenance()})
+    );
     let executor = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -182,6 +195,11 @@ fn main() {
         }
     }
     group.finish();
+    ingestion::run(&mut criterion, &executor);
+    query::run(&mut criterion, &executor);
+    transforms::run(&mut criterion, &executor);
+    files::run(&mut criterion, &executor);
+    contention::run(&mut criterion, &executor);
     frame::run(&mut criterion);
     executor.block_on(frame::reuse());
     criterion.final_summary();
@@ -193,23 +211,31 @@ async fn measure(mode: &str, count: usize, repetition: Option<usize>) -> Duratio
     let config = StorageSettings {
         flush_interval: Duration::from_secs(3_600),
         // The Controlled Backend Pins Whole Tables Before Producing A Page.
-        read_memory_bytes: nonzero(32 * 1_024 * 1_024),
-        queue_capacity: nonzero(8_192),
-        queue_capacity_bytes: nonzero(128 * 1_024 * 1_024),
+        budget: {
+            let mut settings = backend::storage_settings().budget;
+            settings.read_memory_bytes = nonzero(32 * 1_024 * 1_024);
+            settings
+        },
+        request: {
+            let mut settings = backend::storage_settings().request;
+            settings.max_pending_write_batches = nonzero(8_192);
+            settings.max_pending_write_bytes = nonzero(128 * 1_024 * 1_024);
+            settings
+        },
         target_batch_bytes: nonzero(128 * 1_024 * 1_024),
         max_batch_bytes: nonzero(128 * 1_024 * 1_024),
         query_execution: QueryLimits {
             memory_bytes: nonzero(16 * 1024 * 1024),
-            ..StorageSettings::default().query_execution
+            ..backend::storage_settings().query_execution
         },
         write_batch_entries: nonzero(512),
         write_batch_bytes: nonzero(4 * 1_024 * 1_024),
-        ..StorageSettings::default()
+        ..backend::storage_settings()
     };
     let storage = StorageManager::new(
         StorageBackends {
             primary: data.clone(),
-            recovery: recovery.clone(),
+            state: recovery.clone(),
             replicas: Vec::new(),
         },
         config,

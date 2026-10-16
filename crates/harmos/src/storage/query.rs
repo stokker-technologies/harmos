@@ -8,10 +8,22 @@
  */
 
 /* === Modules === */
+mod contract;
 mod objects;
+mod reader;
+pub use reader::QueryReader;
+pub mod execute;
+pub(crate) mod object_schemas;
+pub mod reduction;
+pub(crate) mod source;
+pub mod transform;
+pub use contract::{
+    FileSelection, ObjectSelection, ObjectVersions, Query, QueryCompletion, QueryOutput,
+    RecordSelection, RowSlice, SchemaSelection, Source, StreamSelection,
+};
 pub(super) mod sealed {
     pub trait Supported {
-        fn options_mut(&mut self) -> &mut super::QueryOptions;
+        fn options_mut(&mut self) -> Option<&mut super::QueryOptions>;
     }
 }
 
@@ -52,19 +64,13 @@ type Decode<R, T> = dyn Fn(R, NonZeroUsize) -> Result<T> + Send + Sync;
 /// A view's read budget. `memory_bytes` is the per-view ceiling; `admission`
 /// decides how much of it the shared read pool reserves when the view opens.
 ///
-/// View acquisition admits reservations against everything the pool holds,
-/// so admitted ceilings never exceed `read_memory_bytes`. View-less reads,
-/// productions and projections (`produce`, `prepare_production`,
-/// `QueryValue::try_map`, `try_project`, `project_owned` of a view-less value)
-/// are refused only when charged bytes would exceed the pool: view-less and
-/// elastic charges plus guaranteed bytes beyond their ceilings. Reservations
-/// never refuse them, so charged bytes stay within the pool plus the admitted
-/// guaranteed ceilings.
+/// View acquisition, view-less reads, productions and projections all obey
+/// the same shared ceiling. A covered view charge draws from its reservation;
+/// other reads cannot borrow capacity reserved for an admitted working stage.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct QueryLimits {
     pub memory_bytes: NonZeroUsize,
-    #[serde(default)]
     pub admission: Admission,
     pub spill_bytes: usize,
     pub timeout: Duration,
@@ -115,7 +121,7 @@ pub struct FileQuery {
 
 pub struct ObjectQuery<'a, T: StoredObject> {
     pub item: Option<&'a T::Key>,
-    pub versions: ObjectVersions,
+    pub versions: super::ObjectVersions,
     pub history: ReadHistory,
     pub options: QueryOptions,
     decoding_memory: Option<Box<DecodingMemory>>,
@@ -151,13 +157,13 @@ pub(super) struct ActiveBudget<'a> {
 }
 
 /* === Enums === */
-// How A View Holds The Shared Read Pool (`StorageSettings::read_memory_bytes`).
+// How A View Holds The Shared Read Pool (`StorageSettings::budget`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Admission {
-    /// Reserve the whole ceiling at open: for reads that must not fail halfway,
-    /// such as sealing a report. Reads under the view draw from that ceiling;
-    /// only bytes beyond it charge the pool.
+    /// Reserve the caller-supplied ceiling at open. Reads under the view draw
+    /// from that ceiling; only bytes beyond it charge the pool. Canonical Query
+    /// uses elastic admission and storage-owned temporary working reservations.
     #[default]
     Guaranteed,
     /// Reserve a floor at open (one query page plus view metadata); each
@@ -168,10 +174,16 @@ pub enum Admission {
 }
 
 /* === Traits === */
-pub trait Query<C>: sealed::Supported {
+pub trait StorageQuery<C>: sealed::Supported {
     type Reader;
 
     fn options(&self) -> &QueryOptions;
+    fn requested_cursor(&self) -> Option<&StorageCursor> {
+        None
+    }
+    fn request_memory_bytes(&self) -> usize {
+        std::mem::size_of_val(self)
+    }
 
     fn preflight(&self, _manager: &StorageManager<C>, _limits: QueryLimits) -> Result<()> {
         Ok(())
@@ -309,7 +321,7 @@ impl<T: StoredObject> Default for ObjectQuery<'_, T> {
     fn default() -> Self {
         Self {
             item: None,
-            versions: ObjectVersions::Latest,
+            versions: super::ObjectVersions::Latest,
             history: ReadHistory::Retained,
             options: QueryOptions::default(),
             decoding_memory: None,
@@ -332,32 +344,32 @@ impl<T: StoredObject> ObjectQuery<'_, T> {
 }
 
 impl<T> sealed::Supported for RecordQuery<T> {
-    fn options_mut(&mut self) -> &mut QueryOptions {
-        &mut self.options
+    fn options_mut(&mut self) -> Option<&mut QueryOptions> {
+        Some(&mut self.options)
     }
 }
 
 impl<T> sealed::Supported for StreamQuery<T> {
-    fn options_mut(&mut self) -> &mut QueryOptions {
-        &mut self.options
+    fn options_mut(&mut self) -> Option<&mut QueryOptions> {
+        Some(&mut self.options)
     }
 }
 
 impl sealed::Supported for FileQuery {
-    fn options_mut(&mut self) -> &mut QueryOptions {
-        &mut self.options
+    fn options_mut(&mut self) -> Option<&mut QueryOptions> {
+        Some(&mut self.options)
     }
 }
 
 impl sealed::Supported for SchemaQuery {
-    fn options_mut(&mut self) -> &mut QueryOptions {
-        &mut self.options
+    fn options_mut(&mut self) -> Option<&mut QueryOptions> {
+        Some(&mut self.options)
     }
 }
 
 impl<T: StoredObject> sealed::Supported for ObjectQuery<'_, T> {
-    fn options_mut(&mut self) -> &mut QueryOptions {
-        &mut self.options
+    fn options_mut(&mut self) -> Option<&mut QueryOptions> {
+        Some(&mut self.options)
     }
 }
 
@@ -462,7 +474,7 @@ impl<C, T: MemorySize + 'static> FollowQuery<C> for StreamQuery<T> {
     }
 }
 
-impl<C, T: MemorySize + 'static> Query<C> for RecordQuery<T> {
+impl<C, T: MemorySize + 'static> StorageQuery<C> for RecordQuery<T> {
     type Reader = RecordQueryResult<T>;
     fn options(&self) -> &QueryOptions {
         &self.options
@@ -513,7 +525,7 @@ impl<C, T: MemorySize + 'static> Query<C> for RecordQuery<T> {
     }
 }
 
-impl<C, T: MemorySize + 'static> Query<C> for StreamQuery<T> {
+impl<C, T: MemorySize + 'static> StorageQuery<C> for StreamQuery<T> {
     type Reader = StreamQueryResult<T>;
     fn options(&self) -> &QueryOptions {
         &self.options
@@ -632,7 +644,7 @@ impl<C> FollowQuery<C> for FileQuery {
     }
 }
 
-impl<C> Query<C> for SchemaQuery {
+impl<C> StorageQuery<C> for SchemaQuery {
     type Reader = SchemaQueryResult;
     fn options(&self) -> &QueryOptions {
         &self.options
@@ -663,7 +675,7 @@ impl<C> Query<C> for SchemaQuery {
     }
 }
 
-impl<C> Query<C> for FileQuery {
+impl<C> StorageQuery<C> for FileQuery {
     type Reader = FileQueryResult;
     fn options(&self) -> &QueryOptions {
         &self.options
@@ -696,7 +708,7 @@ impl<C> Query<C> for FileQuery {
     }
 }
 
-impl<C: ObjectCatalog + Contains<T>, T: StoredObject> Query<C> for ObjectQuery<'_, T> {
+impl<C: ObjectCatalog + Contains<T>, T: StoredObject> StorageQuery<C> for ObjectQuery<'_, T> {
     type Reader = ObjectQueryResult<T>;
     fn options(&self) -> &QueryOptions {
         &self.options
@@ -836,23 +848,77 @@ impl<C: ObjectCatalog + Contains<T>, T: StoredObject> FollowQuery<C> for ObjectQ
 }
 
 impl<C> StorageManager<C> {
-    pub async fn query<Q: Query<C>>(&self, query: Q) -> Result<Q::Reader> {
+    pub async fn query<Q: StorageQuery<C>>(&self, query: Q) -> Result<Q::Reader> {
         let started = tokio::time::Instant::now();
         let page = self.query_page(query.options())?;
-        let execution = self.query_execution(query.options())?;
+        let execution = if query.requested_cursor().is_some() {
+            QueryLimits {
+                memory_bytes: self.inner.settings.budget.read_memory_bytes,
+                admission: Admission::Elastic,
+                spill_bytes: 0,
+                timeout: self.inner.settings.query_execution_ceiling.timeout,
+            }
+        } else {
+            self.query_execution(query.options())?
+        };
         query.preflight(self, execution)?;
         let timeout = remaining_budget(execution.timeout, started)?;
-        let view = tokio::time::timeout(timeout, self.view_with_limits(execution))
+        // FIFO Semaphore Admission; Queued Descriptions Remain Memory-Bounded.
+        let description_bytes =
+            query
+                .request_memory_bytes()
+                .checked_mul(4)
+                .ok_or(Error::ResourceExhausted {
+                    resource: "query plan memory",
+                })?;
+        let description = self.reserve_read_now(description_bytes, 1)?;
+        let active = match self.inner.query_active.clone().try_acquire_owned() {
+            Ok(active) => active,
+            Err(_) => {
+                let pending = self
+                    .inner
+                    .query_pending
+                    .clone()
+                    .try_acquire_owned()
+                    .map_err(|_| Error::ResourceExhausted {
+                        resource: "pending storage queries",
+                    })?;
+                let active =
+                    tokio::time::timeout(timeout, self.inner.query_active.clone().acquire_owned())
+                        .await
+                        .map_err(|_| execution_timeout())?
+                        .map_err(|_| Error::Closing {
+                            domain: "storage queries",
+                        })?;
+                drop(pending);
+                active
+            }
+        };
+        let remaining = remaining_budget(execution.timeout, started)?;
+        let acquire = async {
+            match query.requested_cursor() {
+                Some(at) => self.view_at(at, execution).await,
+                None => self.view_with_limits(execution).await,
+            }
+        };
+        let view = tokio::time::timeout(remaining, acquire)
             .await
             .map_err(|_| execution_timeout())??;
+        view.retain_query_permit(active);
+        view.retain_query_description(description);
         let remaining = execution.timeout.saturating_sub(started.elapsed());
         if remaining.is_zero() {
             return Err(execution_timeout());
         }
+        view.limit_computation(remaining)?;
         query.open(view, page, remaining)
     }
 
-    pub fn query_in<Q: Query<C>>(&self, view: &StorageView, mut query: Q) -> Result<Q::Reader> {
+    pub fn query_in<Q: StorageQuery<C>>(
+        &self,
+        view: &StorageView,
+        mut query: Q,
+    ) -> Result<Q::Reader> {
         let started = tokio::time::Instant::now();
         if !Arc::ptr_eq(&self.inner, &view.manager().inner) {
             return Err(Error::InvalidInput {
@@ -864,7 +930,13 @@ impl<C> StorageManager<C> {
         let page = self.query_page(query.options())?;
         // Queries Without Explicit Execution Limits Inherit The View Budget.
         let budget = view.inherited_budget(query.options().execution)?;
-        query.options_mut().execution = Some(budget);
+        query
+            .options_mut()
+            .ok_or(Error::InvalidInput {
+                field: "query view",
+                reason: "declarative queries own their cursor-bound view",
+            })?
+            .execution = Some(budget);
         let execution = self.query_execution(query.options())?;
         query.preflight(self, execution)?;
         drop(computation);
@@ -916,7 +988,7 @@ impl<C> StorageManager<C> {
             .decoded_bytes
             .unwrap_or(self.inner.settings.query_decoded_bytes);
         if bytes > self.inner.settings.query_decoded_bytes_ceiling
-            || bytes > self.inner.settings.read_memory_bytes
+            || bytes > self.inner.settings.budget.read_memory_bytes
         {
             return Err(decoded_limit());
         }

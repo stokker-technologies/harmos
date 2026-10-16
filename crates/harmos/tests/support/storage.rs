@@ -8,8 +8,13 @@
  */
 
 /* === Modules === */
+#[path = "storage_settings.rs"]
+mod settings;
+pub use settings::storage_settings;
 #[path = "storage/frame.rs"]
 mod frame;
+#[path = "storage/journal.rs"]
+mod journal;
 
 /* === Re-Exports === */
 
@@ -29,7 +34,7 @@ use tokio::sync::Notify;
 
 // Local Imports
 use harmos::catalog::Projection;
-use harmos::storage::recovery::*;
+use harmos::storage::state::*;
 use harmos::storage::*;
 use harmos::{BackendFailure, Error, Identifier, MemorySize, Result};
 
@@ -169,6 +174,7 @@ pub struct Control {
 }
 
 struct Snapshot {
+    object_releases: Vec<ObjectRetentionRelease>,
     query_bytes: usize,
     lost_objects_through: u64,
     lost_files_through: u64,
@@ -187,7 +193,9 @@ struct Import {
 }
 
 pub struct Data<C = ()> {
+    pub object_releases: Mutex<Vec<ObjectRetentionRelease>>,
     catalog: PhantomData<fn() -> C>,
+    journal: Option<journal::Journal>,
     pub objects: Mutex<BTreeMap<u64, ObjectEntry>>,
     pub object_schemas: Mutex<BTreeMap<(String, u32), Vec<harmos::schema::Field>>>,
     pub staged: Mutex<BTreeMap<String, (FileMetadata, Vec<u8>)>>,
@@ -295,7 +303,9 @@ impl Data {
 impl<C: ObjectCatalog> Data<C> {
     pub fn with_catalog(history: StoreHistory) -> Self {
         Self {
+            object_releases: Mutex::new(Vec::new()),
             catalog: PhantomData,
+            journal: None,
             objects: Mutex::default(),
             object_schemas: Mutex::default(),
             staged: Mutex::default(),
@@ -322,6 +332,17 @@ impl<C: ObjectCatalog> Data<C> {
             committed_import: Mutex::default(),
         }
     }
+    #[allow(
+        dead_code,
+        reason = "Shared fixture: only journal-backed story binaries use this constructor"
+    )]
+    pub fn journaled(root: &std::path::Path, history: StoreHistory) -> Result<Self> {
+        let mut data = Self::with_catalog(history);
+        data.journal = Some(journal::Journal::new(root)?);
+        data.journal.as_ref().unwrap().restore(&data)?;
+        Ok(data)
+    }
+
     fn at(&self, sequence: u64) -> StorageCursor {
         StorageCursor {
             history: self.history.clone(),
@@ -331,6 +352,92 @@ impl<C: ObjectCatalog> Data<C> {
 }
 
 impl<C: ObjectCatalog> StorageBackend for Data<C> {
+    fn release_object_history<'a>(
+        &'a self,
+        schema: &'a SchemaKey,
+        item: &'a ObjectKey,
+        through: &'a StorageCursor,
+    ) -> StorageFuture<'a, ()> {
+        Box::pin(async move {
+            self.history.check(&through.history)?;
+            if through.sequence > self.saved.load(Ordering::SeqCst) as u64 {
+                return Err(failure(BackendFailure::Conflict));
+            }
+            let release = ObjectRetentionRelease {
+                schema: schema.clone(),
+                item: item.clone(),
+                through: through.clone(),
+            };
+            if let Some(journal) = &self.journal {
+                journal.release(&release)?;
+            }
+            upsert_release(&mut self.object_releases.lock().unwrap(), release);
+            Ok(())
+        })
+    }
+    fn read_object_releases<'a>(
+        &'a self,
+        view: &'a ReadView,
+        cursor: Option<&'a ObjectReleaseCursor>,
+        limits: ReadLimits,
+    ) -> StorageFuture<'a, ObjectReleasePage> {
+        Box::pin(async move {
+            let snapshots = self.snapshots.lock().unwrap();
+            let snapshot = snapshots
+                .get(&view.snapshot().token)
+                .ok_or(Error::ViewExpired)?;
+            let mut entries = Vec::new();
+            let mut bytes = 0;
+            let mut more = false;
+            for release in &snapshot.object_releases {
+                if !view.saved().covers(&release.through)?
+                    || cursor.is_some_and(|cursor| !cursor.precedes(&release.cursor()))
+                {
+                    continue;
+                }
+                let length = serde_json::to_vec(release).unwrap().len();
+                if entries.len() == limits.rows.get() || bytes + length > limits.bytes.get() {
+                    if entries.is_empty() {
+                        return Err(Error::ResourceExhausted {
+                            resource: "test release page",
+                        });
+                    }
+                    more = true;
+                    break;
+                }
+                bytes += length;
+                entries.push(release.clone());
+            }
+            let next = if more {
+                entries.last().map(ObjectRetentionRelease::cursor)
+            } else {
+                None
+            };
+            Ok(ObjectReleasePage { entries, next })
+        })
+    }
+    fn write_bootstrap_releases<'a>(
+        &'a self,
+        identity: &'a BootstrapId,
+        releases: &'a [ObjectRetentionRelease],
+    ) -> StorageFuture<'a, ()> {
+        Box::pin(async move {
+            let mut imports = self.import.lock().unwrap();
+            let import = imports
+                .as_mut()
+                .ok_or_else(|| failure(BackendFailure::Conflict))?;
+            if import.identity != *identity {
+                return Err(failure(BackendFailure::Conflict));
+            }
+            for release in releases {
+                if !identity.cut().covers(&release.through)? {
+                    return Err(failure(BackendFailure::Conflict));
+                }
+                upsert_release(&mut import.entries.object_releases, release.clone());
+            }
+            Ok(())
+        })
+    }
     fn supports_scan_order(
         &self,
         _scan: &harmos::storage::frame::Scan,
@@ -409,6 +516,17 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
             let rows = self.rows.lock().unwrap();
             // Preclaim Native Snapshot Maps, Index Nodes And Both Token Buffers.
             let query_bytes = [
+                self.object_releases
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .fold(0usize, |bytes, release| {
+                        bytes
+                            .saturating_add(std::mem::size_of::<ObjectRetentionRelease>())
+                            .saturating_add(release.schema.memory_size())
+                            .saturating_add(release.item.memory_size())
+                            .saturating_add(release.through.memory_size())
+                    }),
                 snapshot_map_memory(&objects),
                 snapshot_map_memory(&files),
                 snapshot_map_memory(&schemas),
@@ -433,6 +551,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
                 });
             }
             let snapshot = Snapshot {
+                object_releases: self.object_releases.lock().unwrap().clone(),
                 lost_files_through: self.lost_files_through.load(Ordering::SeqCst) as u64,
                 retention_generation: self.retention_generation.load(Ordering::SeqCst) as u64,
                 query_bytes,
@@ -546,6 +665,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
                 identity: identity.clone(),
                 prior: saved.clone(),
                 entries: Snapshot {
+                    object_releases: Vec::new(),
                     query_bytes: 0,
                     lost_objects_through: 0,
                     lost_files_through: 0,
@@ -733,6 +853,8 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
             verify!(records, Records, Records);
             verify!(rows, Stream, Stream);
             verify!(files, Files, Files);
+            actual.record_releases(&import.entries.object_releases)?;
+            actual.finish_releases();
             if actual != *manifest {
                 return Err(failure(BackendFailure::Corrupt));
             }
@@ -751,6 +873,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
                     return Err(failure(BackendFailure::Corrupt));
                 }
             }
+            *self.object_releases.lock().unwrap() = import.entries.object_releases.clone();
             *self.schemas.lock().unwrap() = import.entries.schemas.clone();
             *self.objects.lock().unwrap() = import.entries.objects.clone();
             *self.records.lock().unwrap() = import.entries.records.clone();
@@ -813,8 +936,50 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
             self.control
                 .write(batch.entries().map(|entry| entry.position().sequence))
                 .await?;
-            // Physical writes can be partially committed before an uncertain
-            // result. Replays reconcile identical content at every position.
+            // Validate The Entire Atomic Batch Before Publishing Any Entry.
+            for entry in batch.entries() {
+                let position = entry.position().sequence;
+                let conflict = match entry {
+                    StorageEntry::Schema(value) => self
+                        .schemas
+                        .lock()
+                        .unwrap()
+                        .get(&position)
+                        .is_some_and(|prior| prior != value),
+                    StorageEntry::Object(value) => {
+                        C::validate_value(&value.value, NonZeroUsize::MAX)?;
+                        self.objects
+                            .lock()
+                            .unwrap()
+                            .get(&position)
+                            .is_some_and(|prior| prior != value)
+                    }
+                    StorageEntry::Record(value) => self
+                        .records
+                        .lock()
+                        .unwrap()
+                        .get(&position)
+                        .is_some_and(|prior| prior != value),
+                    StorageEntry::Row(value) => self
+                        .rows
+                        .lock()
+                        .unwrap()
+                        .get(&position)
+                        .is_some_and(|prior| prior != value),
+                    StorageEntry::File(value) => !self
+                        .blobs
+                        .lock()
+                        .unwrap()
+                        .get(value.metadata.id.as_str())
+                        .is_some_and(|(prior, _)| prior == value),
+                };
+                if conflict {
+                    return Err(failure(BackendFailure::Conflict));
+                }
+            }
+            if let Some(journal) = &self.journal {
+                journal.commit(batch)?;
+            }
             for entry in batch.entries() {
                 let position = entry.position().sequence;
                 match entry {
@@ -946,7 +1111,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
                 // Controlled test storage uses a scan; real adapters use their key index.
                 // Only a bounded removal list is allocated, independent of key count.
                 for (&position, object) in objects.range(..=through.sequence) {
-                    let keep = definitions
+                    let retention = definitions
                         .try_for_each(|definition| {
                             if definition.schema().unwrap().id == object.value.schema.id {
                                 Err(*definition)
@@ -956,9 +1121,17 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
                         })
                         .err()
                         .unwrap()
-                        .retention()
-                        .versions()
-                        .get();
+                        .retention();
+                    if retention == ObjectRetention::UntilReleased
+                        && !self.object_releases.lock().unwrap().iter().any(|release| {
+                            release.schema == object.value.schema
+                                && release.item == object.value.item
+                                && release.through.sequence >= position
+                        })
+                    {
+                        continue;
+                    }
+                    let keep = retention.versions().get();
                     let newer = objects
                         .range((
                             std::ops::Bound::Excluded(position),
@@ -977,6 +1150,9 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
                         }
                         remove.push(position);
                     }
+                }
+                if let Some(journal) = &self.journal {
+                    journal.prune(through, &remove)?;
                 }
                 for position in &remove {
                     objects.remove(position);
@@ -1029,6 +1205,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
             };
             let files = self.files.lock().unwrap();
             let snapshot = Snapshot {
+                object_releases: self.object_releases.lock().unwrap().clone(),
                 lost_files_through: self.lost_files_through.load(Ordering::SeqCst) as u64,
                 retention_generation: self.retention_generation.load(Ordering::SeqCst) as u64,
                 query_bytes: 0,
@@ -1942,6 +2119,9 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
             {
                 return Err(failure(BackendFailure::Transient));
             }
+            if let Some(journal) = &self.journal {
+                journal.stage(&metadata.id, &[])?;
+            }
             Ok(StagedFile {
                 history: self.history.clone(),
                 id: metadata.id.clone(),
@@ -1980,6 +2160,9 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
                     stored.extend_from_slice(bytes);
                 } else if stored.get(offset..offset + bytes.len()) != Some(bytes) {
                     return Err(failure(BackendFailure::Conflict));
+                }
+                if let Some(journal) = &self.journal {
+                    journal.stage(&staging.id, stored)?;
                 }
             }
             if self
@@ -2038,6 +2221,9 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
                 .ok_or_else(|| failure(BackendFailure::Permanent))?;
             if bytes.len() as u64 != length || <[u8; 32]>::from(Sha256::digest(bytes)) != sha256 {
                 return Err(failure(BackendFailure::Corrupt));
+            }
+            if let Some(journal) = &self.journal {
+                journal.finish(&staging.id, bytes, &sha256)?;
             }
             // A Failed Integrity Check Must Retain The Last Recoverable Prefix.
             let (metadata, bytes) = staged
@@ -2171,7 +2357,7 @@ impl Recovery {
     }
 }
 
-impl RecoveryBackend for Recovery {
+impl StateBackend for Recovery {
     fn history(&self) -> &StoreHistory {
         &self.history
     }
@@ -2481,6 +2667,28 @@ fn filtered_page<'a, T: Clone + MemorySize + serde::Serialize + 'a>(
         entries: result,
         next,
     })
+}
+
+fn upsert_release(releases: &mut Vec<ObjectRetentionRelease>, release: ObjectRetentionRelease) {
+    if let Some(prior) = releases
+        .iter_mut()
+        .find(|prior| prior.schema == release.schema && prior.item == release.item)
+    {
+        if prior.through.sequence < release.through.sequence {
+            *prior = release;
+        }
+    } else {
+        releases.push(release);
+    }
+    releases.sort_by(|left, right| {
+        if left.cursor().precedes(&right.cursor()) {
+            std::cmp::Ordering::Less
+        } else if right.cursor().precedes(&left.cursor()) {
+            std::cmp::Ordering::Greater
+        } else {
+            std::cmp::Ordering::Equal
+        }
+    });
 }
 
 /* === Tests === */

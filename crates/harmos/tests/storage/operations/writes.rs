@@ -6,328 +6,166 @@
  *
  * ***
  */
-
 /* === Modules === */
-use crate::scenario_runtime;
-
 /* === Re-Exports === */
-
 /* === Imports === */
-
-// Standard Library Imports
+use super::{Fixture, Lanes, Operations, config};
+use arrow_array::{Array, ArrayRef, RecordBatch, StringArray, StructArray, UInt64Array};
+use arrow_schema::{DataType, Field, Fields, Schema};
+use harmos::operations::StreamSettings;
+use harmos::storage::arrow::ArrowBatch;
+use harmos::storage::operations::{WriteRecords, WriteStreams};
+use harmos::storage::writes::{DataBatch, WriteReceipt, WriteRequest};
+use harmos::{Identifier, MemorySize, Message};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-
-// Third Party Imports
-
-// Local Imports
-use super::{Fixture, Lanes, Operations, config};
-use harmos::storage::operations::{
-    WriteRecords, WriteRecordsRequest, WriteStream, WriteStreamRequest,
-};
-use harmos::storage::{MutationId, RecordInput, StreamInput};
-use harmos::{Identifier, MemorySize, Message};
-
 /* === Constants === */
-
 /* === Macros === */
-
 /* === Type Aliases === */
-
 /* === Structs === */
-
 /* === Enums === */
-
 /* === Traits === */
-
 /* === Implementations === */
-
 /* === Public Functions === */
+pub(super) fn settings() -> StreamSettings {
+    StreamSettings {
+        items: NonZeroUsize::new(4).unwrap(),
+        bytes: NonZeroUsize::new(1024 * 1024).unwrap(),
+    }
+}
 
-/* === Private Functions === */
-fn input(name: &str) -> RecordInput {
-    RecordInput {
+pub(super) fn batch(sequence: u64, destination: &str) -> DataBatch {
+    let fields: Fields = vec![Field::new("value", DataType::UInt64, false)].into();
+    let payload = StructArray::new(fields, vec![Arc::new(UInt64Array::from(vec![7, 11]))], None);
+    let items = vec!["first", "second"];
+    let data = envelope(payload, &items, &[0, 1]);
+    DataBatch {
+        sequence,
+        destination: Identifier::new(destination).unwrap(),
         schema: super::super::schema(),
-        scope: None,
-        item: Identifier::new(name).unwrap(),
-        source: None,
-        source_time: None,
-        payload: name.as_bytes().to_vec(),
+        data,
     }
-}
-fn request(f: &Fixture, key: &str) -> WriteRecordsRequest {
-    WriteRecordsRequest {
-        mutation: MutationId {
-            window: f.storage.mutation_window().unwrap().id,
-            key: Identifier::new(key).unwrap(),
-        },
-        records: vec![input("first"), input("second")],
-        source: Identifier::new("bench").unwrap(),
-    }
-}
-async fn fixture() -> Fixture {
-    let f = Fixture::new(config()).await;
-    Operations::register(
-        &f.runtime.operations,
-        "storage",
-        Lanes::Open,
-        Arc::new(f.storage.clone()),
-    )
-    .unwrap();
-    f
 }
 
-/* === Tests === */
+pub(super) fn envelope(payload: StructArray, items: &[&str], sequences: &[u64]) -> ArrowBatch {
+    let metadata_fields: Fields = vec![
+        Field::new("item", DataType::Utf8, false),
+        Field::new("sequence", DataType::UInt64, false),
+    ]
+    .into();
+    let metadata = StructArray::new(
+        metadata_fields,
+        vec![
+            Arc::new(StringArray::from(items.to_vec())),
+            Arc::new(UInt64Array::from(sequences.to_vec())),
+        ],
+        None,
+    );
+    let fields = vec![
+        Field::new("_storage", metadata.data_type().clone(), false),
+        Field::new("payload", payload.data_type().clone(), false),
+    ];
+    let columns: Vec<ArrayRef> = vec![Arc::new(metadata), Arc::new(payload)];
+    ArrowBatch::try_new(RecordBatch::try_new(Arc::new(Schema::new(fields)), columns).unwrap())
+        .unwrap()
+}
+
+pub(super) async fn seed(f: &Fixture) {
+    let graph = harmos::schema::graph::Schema {
+        root: 0,
+        definitions: vec![vec![harmos::schema::graph::Field {
+            name: "value".into(),
+            tag: 1,
+            kind: harmos::schema::graph::Kind::U64,
+            cardinality: harmos::schema::Cardinality::Required,
+        }]],
+    };
+    f.storage
+        .write_schema(&super::super::schema(), &graph)
+        .await
+        .unwrap();
+    f.storage.flush().await.unwrap();
+}
 
 pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("matching_writes_share", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let f = fixture().await;
-                    let request = request(&f, "records");
-                    let (left, right) = tokio::join!(
-                        f.runtime
-                            .operations
-                            .call_as::<WriteRecords>(request.clone()),
-                        f.runtime
-                            .operations
-                            .call_as::<WriteRecords>(request.clone())
-                    );
-                    let original = left.unwrap();
-                    assert_eq!(right.unwrap(), original);
-                    assert_eq!(original.sequence, 2);
-                    let later = f
-                        .runtime
-                        .operations
-                        .call_as::<WriteRecords>(self::request(&f, "later"))
-                        .await;
-                    assert!(later.is_ok());
-                    assert_eq!(
-                        f.runtime
-                            .operations
-                            .call_as::<WriteRecords>(request.clone())
-                            .await
-                            .unwrap(),
-                        original
-                    );
-                    assert_eq!(f.storage.cursor_accepted().sequence, 4);
-                    let mut conflicting = request.clone();
-                    conflicting.records[0].payload.push(0);
-                    assert!(
-                        f.runtime
-                            .operations
-                            .call_as::<WriteRecords>(conflicting)
-                            .await
-                            .is_err()
-                    );
-                    f.storage.flush().await.unwrap();
-                    assert_eq!(f.data.records.lock().unwrap().len(), 4);
-                    f.finish().await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("stream_writes_preserve", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let f = fixture().await;
-                    let record = request(&f, "shared-key");
-                    let request = WriteStreamRequest {
-                        mutation: record.mutation.clone(),
-                        rows: vec![StreamInput {
-                            record: input("sample"),
-                            stream: Identifier::new("sensor").unwrap(),
-                            sequence: 999,
-                        }],
-                    };
-                    let original = f
-                        .runtime
-                        .operations
-                        .call_as::<WriteStream>(request.clone())
-                        .await
-                        .unwrap();
-                    assert_eq!(
-                        f.runtime
-                            .operations
-                            .call_as::<WriteStream>(request)
-                            .await
-                            .unwrap(),
-                        original
-                    );
-                    assert!(
-                        f.runtime
-                            .operations
-                            .call_as::<WriteRecords>(record)
-                            .await
-                            .is_err()
-                    );
-                    f.storage.flush().await.unwrap();
-                    assert_eq!(f.data.rows.lock().unwrap()[&1].sequence, 999);
-                    f.finish().await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("pressure_preserves_admission", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let mut settings = config();
-                    settings.max_mutations = NonZeroUsize::MIN;
-                    let f = Fixture::new(settings).await;
-                    let request = request(&f, "first");
-                    let values = request
-                        .records
-                        .iter()
-                        .map(RecordInput::borrowed)
-                        .collect::<Vec<_>>();
-                    let accepted = f
-                        .storage
-                        .write_records_once(&request.mutation, &values)
-                        .await
-                        .unwrap();
-                    let next = self::request(&f, "next");
-                    assert!(
-                        f.storage
-                            .write_records_once(&next.mutation, &values)
-                            .await
-                            .is_err()
-                    );
-                    assert_eq!(f.storage.cursor_accepted(), accepted);
-                    assert_eq!(
-                        f.storage
-                            .write_records_once(&request.mutation, &values)
-                            .await
-                            .unwrap(),
-                        accepted
-                    );
-                    f.finish().await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("empty_mutations_rejected", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let f = fixture().await;
-                    let mut request = request(&f, "empty");
-                    request.records.clear();
-                    assert!(
-                        f.runtime
-                            .operations
-                            .call_as::<WriteRecords>(request)
-                            .await
-                            .is_err()
-                    );
-                    assert_eq!(f.storage.cursor_accepted().sequence, 0);
-                    assert_eq!(f.storage.status().mutation_bytes, 0);
-                    f.finish().await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("repeated_input_codec", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let f = fixture().await;
-                    let request = request(&f, "codec");
-                    let bytes = request.encode_to_vec();
-                    let memory = WriteRecordsRequest::decoding_memory(&bytes).unwrap();
-                    let decoded = WriteRecordsRequest::decode(&bytes).unwrap();
-                    assert_eq!(decoded, request);
-                    assert!(decoded.memory_size() <= memory);
-                    let mut malformed = bytes;
-                    malformed.extend_from_slice(&[0x12, 1, 0xff]);
-                    assert!(WriteRecordsRequest::decoding_memory(&malformed).is_err());
-                    f.finish().await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("failure_preserves_accepted", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    use std::sync::atomic::Ordering;
-                    let f = fixture().await;
-                    let request = request(&f, "accepted");
-                    let values = request
-                        .records
-                        .iter()
-                        .map(RecordInput::borrowed)
-                        .collect::<Vec<_>>();
-                    let accepted = f
-                        .storage
-                        .write_records_once(&request.mutation, &values)
-                        .await
-                        .unwrap();
-                    f.data.control.failures.store(1, Ordering::SeqCst);
-                    assert!(f.storage.flush().await.is_err());
-                    assert_eq!(
-                        f.storage
-                            .write_records_once(&request.mutation, &values)
-                            .await
-                            .unwrap(),
-                        accepted
-                    );
-                    assert!(f.storage.status().failure.is_some());
-                    f.storage.flush().await.unwrap();
-                    f.finish().await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("refusal_releases_queue", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let mut settings = config();
-                    settings.mutation_memory_bytes = NonZeroUsize::new(128).unwrap();
-                    let f = Fixture::new(settings).await;
-                    let request = request(&f, "too-large");
-                    let values = request
-                        .records
-                        .iter()
-                        .map(RecordInput::borrowed)
-                        .collect::<Vec<_>>();
-                    assert!(
-                        f.storage
-                            .write_records_once(&request.mutation, &values)
-                            .await
-                            .is_err()
-                    );
-                    assert_eq!(f.storage.cursor_accepted().sequence, 0);
-                    assert_eq!(f.storage.status().pending_bytes, 0);
-                    f.storage.write_records(&values).await.unwrap();
-                    assert_eq!(f.storage.cursor_accepted().sequence, 2);
-                    f.finish().await;
-                });
-        });
-    }
+    crate::scenario_runtime::check("typed_writer_batches", || {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let f = Fixture::new(config()).await;
+                Operations::register(
+                    &f.runtime.operations,
+                    "storage",
+                    Lanes::Open,
+                    Arc::new(f.storage.clone()),
+                )
+                .unwrap();
+                seed(&f).await;
+                let mut records = f
+                    .runtime
+                    .operations
+                    .exchange::<WriteRecords>(WriteRequest { scope: None }, settings(), settings())
+                    .unwrap();
+                let first = batch(1, "bench");
+                records
+                    .send_with(first.memory_size(), || Ok(first))
+                    .await
+                    .unwrap();
+                records.finish_input();
+                let mut accepted = None;
+                let mut durable = None;
+                while let Some(receipt) = records.next().await.unwrap() {
+                    match &*receipt {
+                        WriteReceipt::Accepted(receipt) => {
+                            assert!(accepted.is_none());
+                            accepted = Some(receipt.clone());
+                        }
+                        WriteReceipt::Durable(receipt) => {
+                            assert_eq!(accepted.as_ref(), Some(receipt));
+                            durable = Some(receipt.clone());
+                        }
+                    }
+                }
+                let completed = records.join().await.unwrap();
+                assert_eq!(completed.batches, 1);
+                assert_eq!(completed.cursor, durable.unwrap().cursor);
+                assert_eq!(f.data.records.lock().unwrap().len(), 2);
+
+                // Cancelling Delivery Does Not Retract Storage-Owned Samples.
+                let mut stream = f
+                    .runtime
+                    .operations
+                    .exchange::<WriteStreams>(WriteRequest { scope: None }, settings(), settings())
+                    .unwrap();
+                let first = batch(1, "voltage");
+                stream.send(first).await.unwrap();
+                let accepted = loop {
+                    let receipt = stream.next().await.unwrap().unwrap();
+                    if let WriteReceipt::Accepted(receipt) = &*receipt {
+                        break receipt.cursor.clone();
+                    }
+                };
+                stream.cancel_and_settle().await.unwrap();
+                f.storage.flush_until(&accepted).await.unwrap();
+                assert_eq!(f.data.rows.lock().unwrap().len(), 2);
+                assert_eq!(f.storage.cursor_saved(), accepted);
+
+                // Portable Batch Descriptors Preserve Identity And Native Arrow Values.
+                let original = batch(42, "roundtrip");
+                let encoded = original.encode_to_vec();
+                assert!(DataBatch::decoding_memory(&encoded).unwrap() >= encoded.len());
+                let decoded = DataBatch::decode(&encoded).unwrap();
+                assert_eq!(decoded.sequence, 42);
+                assert_eq!(decoded.destination, original.destination);
+                assert_eq!(
+                    decoded.data.as_record_batch(),
+                    original.data.as_record_batch()
+                );
+                f.finish().await;
+            })
+    });
 }
+/* === Private Functions === */
+/* === Tests === */

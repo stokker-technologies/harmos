@@ -153,7 +153,7 @@ fn contract_scenario() {
                 .block_on(async {
                     let f = Fixture::new(config()).await;
                     saved(&f).await;
-                    let capacity = config().read_memory_bytes.get();
+                    let capacity = config().budget.read_memory_bytes.get();
                     let elastic = f
                         .storage
                         .view_with_limits(ceiling(&f, 4 * MIB).elastic())
@@ -191,6 +191,64 @@ fn contract_scenario() {
                     assert_eq!(elastic.charged_bytes().unwrap(), 0);
                     assert_eq!(pool(&f), floor);
                     drop(elastic);
+                    until(|| pool(&f) == 0).await;
+                    f.finish().await;
+                });
+        });
+    }
+    {
+        scenario_runtime::check("standalone_production_shares_guaranteed_pool", || {
+            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
+            scenario_executor
+                .enable_all()
+                .build()
+                .expect("scenario runtime is valid")
+                .block_on(async {
+                    let f = Fixture::new(config()).await;
+                    let capacity = config().budget.read_memory_bytes.get();
+                    let probe = f.storage.view_with_limits(ceiling(&f, MIB)).await.unwrap();
+                    let metadata = pool(&f) - MIB;
+                    drop(probe);
+                    until(|| pool(&f) == 0).await;
+                    // Leave One MiB Free; Plain Production Charges Its Requested Output.
+                    let guaranteed = f
+                        .storage
+                        .view_with_limits(ceiling(&f, capacity - metadata - MIB))
+                        .await
+                        .unwrap();
+                    let occupied = pool(&f);
+                    assert_eq!(occupied, capacity - MIB);
+                    let called = std::cell::Cell::new(false);
+                    let small = f
+                        .storage
+                        .produce(NonZeroUsize::new(64).unwrap(), |_| Ok(vec![7_u8; 16]))
+                        .unwrap();
+                    drop(small);
+                    assert_eq!(pool(&f), occupied);
+                    assert!(read_memory_refusal(f.storage.produce(
+                        NonZeroUsize::new(2 * MIB).unwrap(),
+                        |_| {
+                            called.set(true);
+                            Ok(vec![7_u8; 16])
+                        }
+                    )));
+                    assert!(!called.get(), "refusal precedes producer allocation");
+                    assert_eq!(
+                        pool(&f),
+                        occupied,
+                        "failed standalone reservation cannot leak"
+                    );
+                    drop(guaranteed);
+                    until(|| pool(&f) == 0).await;
+                    let output = f
+                        .storage
+                        .produce(NonZeroUsize::new(64).unwrap(), |_| Ok(vec![7_u8; 16]))
+                        .unwrap()
+                        .try_into_value()
+                        .unwrap();
+                    assert_eq!(&**output, &[7_u8; 16]);
+                    assert!(pool(&f) > 0 && pool(&f) <= capacity);
+                    drop(output);
                     until(|| pool(&f) == 0).await;
                     f.finish().await;
                 });

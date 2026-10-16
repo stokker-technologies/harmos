@@ -24,8 +24,8 @@ use std::time::Duration;
 use super::super::manager::{ErasedCatalog, MemoryReservation};
 use super::super::query::{execution_timeout, sealed};
 use super::super::{
-    Query, QueryLimits, QueryOptions, QueryValue, ReadOrder, SharedQueryValue, StorageManager,
-    StorageView,
+    QueryLimits, QueryOptions, QueryValue, ReadOrder, SharedQueryValue, StorageManager,
+    StorageQuery, StorageView,
 };
 use super::execute::{plan, reuses_left};
 use super::*;
@@ -64,11 +64,11 @@ struct BackendScan<'a> {
 
 /* === Implementations === */
 impl sealed::Supported for FrameQuery {
-    fn options_mut(&mut self) -> &mut QueryOptions {
-        &mut self.options
+    fn options_mut(&mut self) -> Option<&mut QueryOptions> {
+        Some(&mut self.options)
     }
 }
-impl<C> Query<C> for FrameQuery {
+impl<C> StorageQuery<C> for FrameQuery {
     type Reader = FrameResult;
     fn options(&self) -> &QueryOptions {
         &self.options

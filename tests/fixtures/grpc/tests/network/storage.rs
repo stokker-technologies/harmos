@@ -25,6 +25,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 // Third Party Imports
+use arrow_array::{Array, StringArray, StructArray, TimestampNanosecondArray, UInt64Array};
+use harmos::storage::arrow::ArrowBatch;
+use harmos::storage::query::{
+    Query, QueryCompletion, QueryOutput, RecordSelection, RowSlice, Source, StreamSelection,
+};
 use prost::Message as _;
 
 // Local Imports
@@ -37,8 +42,7 @@ use harmos::storage::{
 use harmos::{Identifier, Runtime};
 use harmos_grpc_fixture::storage::v1::{
     storage_client::StorageClient, storage_follow_output, storage_follow_stream_output,
-    storage_messages, storage_query_files_output, storage_query_schemas_output,
-    storage_query_stream_output, storage_read_records_output,
+    storage_messages, storage_query_output,
 };
 
 /* === Constants === */
@@ -48,6 +52,11 @@ use harmos_grpc_fixture::storage::v1::{
 /* === Type Aliases === */
 
 /* === Structs === */
+#[harmos::message]
+struct Reading {
+    value: String,
+}
+
 #[harmos::message]
 struct StoredDocument {
     id: String,
@@ -86,6 +95,126 @@ fn followed(encoded: &[u8]) -> harmos::storage::StoredRecord {
     }
 }
 
+async fn query_batches(
+    client: &mut StorageClient<tonic::transport::Channel>,
+    request: Query,
+) -> Vec<ArrowBatch> {
+    let encoded = harmos::Protobuf::encode_to_vec(&request);
+    let wire = storage_messages::query::Row1::decode(encoded.as_slice()).unwrap();
+    let mut response = client.query(wire).await.unwrap().into_inner();
+    let mut schema = None;
+    let mut batches = Vec::new();
+    loop {
+        match response
+            .message()
+            .await
+            .unwrap_or_else(|error| panic!("query {:?} failed: {error}", request.source))
+            .expect("query must terminate explicitly")
+            .value
+            .unwrap()
+        {
+            storage_query_output::Value::Item(item) => {
+                match <QueryOutput as harmos::Protobuf>::decode(&item.encode_to_vec()).unwrap() {
+                    QueryOutput::Schema(header) => {
+                        assert!(schema.is_none() && batches.is_empty());
+                        schema = Some(header);
+                    }
+                    QueryOutput::Batch(batch) => {
+                        assert_eq!(
+                            batch.as_record_batch().schema().as_ref(),
+                            schema
+                                .as_ref()
+                                .expect("schema precedes batches")
+                                .as_schema()
+                        );
+                        batches.push(batch);
+                    }
+                }
+            }
+            storage_query_output::Value::Response(done) => {
+                let done =
+                    <QueryCompletion as harmos::Protobuf>::decode(&done.encode_to_vec()).unwrap();
+                assert_eq!(done.at, request.at);
+                assert_eq!(
+                    done.rows,
+                    batches
+                        .iter()
+                        .map(|batch| batch.as_record_batch().num_rows() as u64)
+                        .sum::<u64>()
+                );
+                assert!(schema.is_some());
+                assert!(response.message().await.unwrap().is_none());
+                return batches;
+            }
+        }
+    }
+}
+
+fn write_batch(
+    schema: harmos::storage::SchemaKey,
+    destination: &str,
+    metadata: StructArray,
+    payload: StructArray,
+) -> harmos::storage::writes::DataBatch {
+    use arrow_array::{ArrayRef, RecordBatch};
+    use arrow_schema::{Field, Schema};
+    let fields = vec![
+        Field::new("_storage", metadata.data_type().clone(), false),
+        Field::new("payload", payload.data_type().clone(), false),
+    ];
+    let columns: Vec<ArrayRef> = vec![Arc::new(metadata), Arc::new(payload)];
+    harmos::storage::writes::DataBatch {
+        sequence: 1,
+        destination: Identifier::new(destination).unwrap(),
+        schema,
+        data: ArrowBatch::try_new(
+            RecordBatch::try_new(Arc::new(Schema::new(fields)), columns).unwrap(),
+        )
+        .unwrap(),
+    }
+}
+
+async fn write_completion<T: prost::Message + Default>(
+    mut response: tonic::Streaming<T>,
+) -> StorageCursor {
+    use harmos::grpc::OutputEnvelope;
+    use harmos::storage::writes::{WriteCompletion, WriteReceipt};
+    let mut accepted = None;
+    let mut durable = None;
+    loop {
+        let frame = response
+            .message()
+            .await
+            .unwrap()
+            .expect("write must terminate explicitly");
+        let envelope = <OutputEnvelope<WriteReceipt, WriteCompletion> as harmos::Protobuf>::decode(
+            &frame.encode_to_vec(),
+        )
+        .unwrap();
+        match envelope {
+            OutputEnvelope::Item(WriteReceipt::Accepted(receipt)) => {
+                assert!(accepted.is_none());
+                assert_eq!(receipt.sequence, 1);
+                accepted = Some(receipt);
+            }
+            OutputEnvelope::Item(WriteReceipt::Durable(receipt)) => {
+                assert!(durable.is_none());
+                assert_eq!(accepted.as_ref(), Some(&receipt));
+                durable = Some(receipt);
+            }
+            OutputEnvelope::Response(done) => {
+                assert_eq!(done.batches, 1);
+                assert_eq!(
+                    done.cursor,
+                    durable.expect("durability precedes completion").cursor
+                );
+                assert!(response.message().await.unwrap().is_none());
+                return done.cursor;
+            }
+        }
+    }
+}
+
 /* === Tests === */
 #[tokio::test]
 async fn storage_uses_data() {
@@ -102,12 +231,12 @@ async fn storage_uses_data() {
             StorageManager::new(
                 StorageBackends {
                     primary: data.clone(),
-                    recovery: Arc::new(backend::Recovery::new(backend::history())),
+                    state: Arc::new(backend::Recovery::new(backend::history())),
                     replicas: Vec::new(),
                 },
                 StorageSettings {
                     flush_interval: Duration::from_secs(60),
-                    ..StorageSettings::default()
+                    ..backend::storage_settings()
                 },
             )
             .unwrap(),
@@ -138,6 +267,21 @@ async fn storage_uses_data() {
             id: Identifier::new("reading").unwrap(),
             version: NonZeroU32::MIN,
         };
+        let graph = harmos::schema::graph::Schema::from_declaration(
+            <Reading as harmos::schema::Described>::DEFINITION,
+            &harmos::config::SchemaSettings::default(),
+        )
+        .unwrap();
+        storage.write_schema(&key, &graph).await.unwrap();
+        let native_payload = harmos::Message::encode_to_vec(&Reading {
+            value: "native bytes".into(),
+        });
+        let live_payload = harmos::Message::encode_to_vec(&Reading {
+            value: "live bytes".into(),
+        });
+        let live_row_payload = harmos::Message::encode_to_vec(&Reading {
+            value: "live row".into(),
+        });
         let sample = Identifier::new("sample").unwrap();
         let source = Identifier::new("sensor").unwrap();
         // Use A Pre-Epoch Tick Representable On Linux And Windows
@@ -155,7 +299,7 @@ async fn storage_uses_data() {
             item: &sample,
             source: Some(&source),
             source_time: Some(source_time),
-            payload: b"native bytes",
+            payload: &native_payload,
         };
         storage.write_records(&[record]).await.unwrap();
         storage
@@ -168,20 +312,22 @@ async fn storage_uses_data() {
             .unwrap();
         let through = storage.cursor_accepted();
         assert!(storage.cursor_saved().sequence < through.sequence);
+        // Arrow Frames Retain Schema, Arrays And IPC Bytes Together.
+        // This Round Trip Uses The Same Capacity As The Typed Write Stories.
         let capacity = harmos::operations::StreamSettings {
             items: NonZeroUsize::new(1).unwrap(),
-            bytes: NonZeroUsize::new(4096).unwrap(),
+            bytes: NonZeroUsize::new(1024 * 1024).unwrap(),
         };
         let service = harmos_grpc_fixture::StorageServer::new(
             harmos::grpc::server::Authority::TrustedHost(runtime.operations.clone()),
             harmos::grpc::server::Settings {
                 calls: NonZeroUsize::new(4).unwrap(),
                 decode: harmos::grpc::DecodeSettings {
-                    message_bytes: NonZeroUsize::new(4096).unwrap(),
-                    retained_bytes: NonZeroUsize::new(16384).unwrap(),
+                    message_bytes: capacity.bytes,
+                    retained_bytes: backend::storage_settings().budget.read_memory_bytes,
                 },
                 encode: harmos::grpc::EncodeSettings {
-                    message_bytes: NonZeroUsize::new(4096).unwrap(),
+                    message_bytes: capacity.bytes,
                     buffer_bytes: NonZeroUsize::new(256).unwrap(),
                 },
                 input: capacity,
@@ -225,24 +371,41 @@ async fn storage_uses_data() {
         assert_eq!(saved, storage.cursor_saved());
         let local = runtime.operations.call_as::<Save>(save).await.unwrap();
         assert_eq!(*local, saved);
-        let encoded = harmos::Protobuf::encode_to_vec(&Selection::default());
-        let query = storage_messages::query_files::Row1::decode(encoded.as_slice()).unwrap();
-        let mut stream = client.query_files(query).await.unwrap().into_inner();
-        let item = stream.message().await.unwrap().unwrap().value.unwrap();
-        let storage_query_files_output::Value::Item(item) = item else {
-            panic!("expected file item")
-        };
-        let actual = <FileReference as harmos::Protobuf>::decode(&item.encode_to_vec()).unwrap();
-        assert_eq!(actual, file);
-        let completed = stream.message().await.unwrap().unwrap().value.unwrap();
-        let storage_query_files_output::Value::Response(completed) = completed else {
-            panic!("expected final cursor")
-        };
+        let files = query_batches(
+            &mut client,
+            Query {
+                at: saved.clone(),
+                source: Source::Files(harmos::storage::query::FileSelection {
+                    scope: None,
+                    item: None,
+                }),
+                transforms: vec![],
+                slice: RowSlice::default(),
+            },
+        )
+        .await;
+        assert_eq!(files.len(), 1);
+        let files = files[0].as_record_batch();
         assert_eq!(
-            <StorageCursor as harmos::Protobuf>::decode(&completed.encode_to_vec()).unwrap(),
-            saved
+            files
+                .column_by_name("item")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap()
+                .value(0),
+            file.metadata.id.as_str()
         );
-        assert!(stream.message().await.unwrap().is_none());
+        assert_eq!(
+            files
+                .column_by_name("length")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<UInt64Array>()
+                .unwrap()
+                .value(0),
+            file.length
+        );
         let selection = DataSelection {
             selection: Selection::default(),
             schema: key.clone(),
@@ -251,55 +414,193 @@ async fn storage_uses_data() {
             source_end: Some(std::time::UNIX_EPOCH),
             record_filter: None,
         };
+        // Finished File Bytes Use The Same Operation Until Explicit Completion.
+        let request = harmos::storage::files::ReadFile {
+            file: file.clone(),
+            range: harmos::storage::files::ByteRange {
+                offset: 2,
+                limit: Some(7),
+            },
+        };
+        let encoded = harmos::Protobuf::encode_to_vec(&request);
+        let wire = storage_messages::read_file::Row1::decode(encoded.as_slice()).unwrap();
+        let mut content = client.read_file(wire).await.unwrap().into_inner();
+        let mut bytes = Vec::new();
+        loop {
+            use harmos_grpc_fixture::storage::v1::storage_read_file_output;
+            match content
+                .message()
+                .await
+                .unwrap()
+                .expect("file read must terminate explicitly")
+                .value
+                .unwrap()
+            {
+                storage_read_file_output::Value::Item(item) => {
+                    let batch = <harmos::storage::files::FileBatch as harmos::Protobuf>::decode(
+                        &item.encode_to_vec(),
+                    )
+                    .unwrap();
+                    assert_eq!(batch.offset, 2 + bytes.len() as u64);
+                    bytes.extend_from_slice(&batch.bytes);
+                }
+                storage_read_file_output::Value::Response(done) => {
+                    let done =
+                        <harmos::storage::files::FileCompletion as harmos::Protobuf>::decode(
+                            &done.encode_to_vec(),
+                        )
+                        .unwrap();
+                    assert_eq!(done.bytes, bytes.len() as u64);
+                    break;
+                }
+            }
+        }
+        assert_eq!(bytes, b"corded ");
+        assert!(content.message().await.unwrap().is_none());
+        let records = query_batches(
+            &mut client,
+            Query {
+                at: saved.clone(),
+                source: Source::Records(RecordSelection {
+                    schema: key.clone(),
+                    scope: None,
+                    item: Some(sample.clone()),
+                    source_start: selection.source_start,
+                    source_end: selection.source_end,
+                }),
+                transforms: vec![],
+                slice: RowSlice::default(),
+            },
+        )
+        .await;
+        assert_eq!(records.len(), 1);
+        let record_batch = records[0].as_record_batch();
+        assert_eq!(record_batch.num_rows(), 1);
+        let metadata = record_batch
+            .column_by_name("_storage")
+            .unwrap()
+            .as_any()
+            .downcast_ref::<StructArray>()
+            .unwrap();
+        assert_eq!(
+            metadata
+                .column_by_name("item")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap()
+                .value(0),
+            sample.as_str()
+        );
+        assert_eq!(
+            metadata
+                .column_by_name("source")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap()
+                .value(0),
+            source.as_str()
+        );
+        assert_eq!(
+            metadata
+                .column_by_name("source_time")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<TimestampNanosecondArray>()
+                .unwrap()
+                .value(0),
+            -100
+        );
+        let payload = record_batch
+            .column_by_name("payload")
+            .unwrap()
+            .as_any()
+            .downcast_ref::<StructArray>()
+            .unwrap();
+        assert_eq!(
+            payload
+                .column_by_name("value")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap()
+                .value(0),
+            "native bytes"
+        );
+        let rows = query_batches(
+            &mut client,
+            Query {
+                at: saved.clone(),
+                source: Source::Stream(StreamSelection {
+                    schema: key.clone(),
+                    scope: None,
+                    item: Some(sample.clone()),
+                    stream: Some(source.clone()),
+                    source_start: selection.source_start,
+                    source_end: selection.source_end,
+                }),
+                transforms: vec![],
+                slice: RowSlice::default(),
+            },
+        )
+        .await;
+        assert_eq!(rows.len(), 1);
+        let row_batch = rows[0].as_record_batch();
+        assert_eq!(row_batch.num_rows(), 1);
+        let metadata = row_batch
+            .column_by_name("_storage")
+            .unwrap()
+            .as_any()
+            .downcast_ref::<StructArray>()
+            .unwrap();
+        assert_eq!(
+            metadata
+                .column_by_name("stream")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap()
+                .value(0),
+            source.as_str()
+        );
+        assert_eq!(
+            metadata
+                .column_by_name("sequence")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<UInt64Array>()
+                .unwrap()
+                .value(0),
+            123
+        );
+        assert_eq!(
+            metadata
+                .column_by_name("source_time")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<TimestampNanosecondArray>()
+                .unwrap()
+                .value(0),
+            -100
+        );
+        let payload = row_batch
+            .column_by_name("payload")
+            .unwrap()
+            .as_any()
+            .downcast_ref::<StructArray>()
+            .unwrap();
+        assert_eq!(
+            payload
+                .column_by_name("value")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap()
+                .value(0),
+            "native bytes"
+        );
         let encoded = harmos::Protobuf::encode_to_vec(&selection);
-        let query = storage_messages::read_records::Row1::decode(encoded.as_slice()).unwrap();
-        let mut records = client.read_records(query).await.unwrap().into_inner();
-        let storage_read_records_output::Value::Item(record) =
-            records.message().await.unwrap().unwrap().value.unwrap()
-        else {
-            panic!("expected record");
-        };
-        let record =
-            <harmos::storage::StoredRecord as harmos::Protobuf>::decode(&record.encode_to_vec())
-                .unwrap();
-        assert_eq!(record.schema, key);
-        assert_eq!(record.item, sample);
-        assert_eq!(record.source, Some(source.clone()));
-        assert_eq!(record.source_time, Some(source_time));
-        assert_eq!(record.payload, b"native bytes");
-        let storage_read_records_output::Value::Response(completed) =
-            records.message().await.unwrap().unwrap().value.unwrap()
-        else {
-            panic!("expected record boundary");
-        };
-        assert_eq!(
-            <StorageCursor as harmos::Protobuf>::decode(&completed.encode_to_vec()).unwrap(),
-            saved
-        );
-        assert!(records.message().await.unwrap().is_none());
-        let query = storage_messages::query_stream::Row1::decode(encoded.as_slice()).unwrap();
-        let mut rows = client.query_stream(query).await.unwrap().into_inner();
-        let storage_query_stream_output::Value::Item(row) =
-            rows.message().await.unwrap().unwrap().value.unwrap()
-        else {
-            panic!("expected stream row");
-        };
-        let row =
-            <harmos::storage::StoredRow as harmos::Protobuf>::decode(&row.encode_to_vec()).unwrap();
-        assert_eq!(row.stream, source);
-        assert_eq!(row.sequence, 123);
-        assert_eq!(row.record.source_time, Some(source_time));
-        assert_eq!(row.record.payload, b"native bytes");
-        let storage_query_stream_output::Value::Response(completed) =
-            rows.message().await.unwrap().unwrap().value.unwrap()
-        else {
-            panic!("expected stream boundary");
-        };
-        assert_eq!(
-            <StorageCursor as harmos::Protobuf>::decode(&completed.encode_to_vec()).unwrap(),
-            saved
-        );
-        assert!(rows.message().await.unwrap().is_none());
         let query = storage_messages::follow::Row1::decode(encoded.as_slice()).unwrap();
         let mut following = client.follow(query).await.unwrap().into_inner();
         let storage_follow_output::Value::Item(boundaries) =
@@ -318,7 +619,12 @@ async fn storage_uses_data() {
         else {
             panic!("expected historical record");
         };
-        assert_eq!(followed(&first.encode_to_vec()), record);
+        let historical = followed(&first.encode_to_vec());
+        assert_eq!(historical.schema, key);
+        assert_eq!(historical.item, sample);
+        assert_eq!(historical.source, Some(source.clone()));
+        assert_eq!(historical.source_time, Some(source_time));
+        assert_eq!(historical.payload, native_payload);
         let live = Identifier::new("live").unwrap();
         let position = storage
             .write_records(&[harmos::storage::RecordWrite {
@@ -327,7 +633,7 @@ async fn storage_uses_data() {
                 item: &live,
                 source: Some(&source),
                 source_time: Some(source_time),
-                payload: b"live bytes",
+                payload: &live_payload,
             }])
             .await
             .unwrap();
@@ -355,7 +661,10 @@ async fn storage_uses_data() {
         let first =
             <harmos::storage::StoredRow as harmos::Protobuf>::decode(&first.encode_to_vec())
                 .unwrap();
-        assert_eq!(first, row);
+        assert_eq!(first.stream, source);
+        assert_eq!(first.sequence, 123);
+        assert_eq!(first.record.source_time, Some(source_time));
+        assert_eq!(first.record.payload, native_payload);
         storage
             .write_stream(&[harmos::storage::StreamWrite {
                 stream: &source,
@@ -366,7 +675,7 @@ async fn storage_uses_data() {
                     item: &live,
                     source: Some(&source),
                     source_time: Some(source_time),
-                    payload: b"live row",
+                    payload: &live_row_payload,
                 },
             }])
             .await
@@ -384,13 +693,11 @@ async fn storage_uses_data() {
         let next = <harmos::storage::StoredRow as harmos::Protobuf>::decode(&next.encode_to_vec())
             .unwrap();
         assert_eq!(next.sequence, 124);
-        assert_eq!(next.record.payload, b"live row");
+        assert_eq!(next.record.payload, live_row_payload);
         // Native Production And Generated Readers Share The Original File Owner.
         use harmos::storage::operations::{FileBytes, FileSelection};
         use harmos::storage::{FilePhase, FileProgress, StagedFile};
-        use harmos_grpc_fixture::storage::v1::{
-            storage_follow_file_output, storage_read_files_output,
-        };
+        use harmos_grpc_fixture::storage::v1::storage_follow_file_output;
         let mut producer = storage
             .produce_file(FileMetadata {
                 id: Identifier::new("growing").unwrap(),
@@ -440,31 +747,21 @@ async fn storage_uses_data() {
             offset: 0,
             chunk_bytes: 2,
         };
-        let encoded = harmos::Protobuf::encode_to_vec(&selection);
-        let query = storage_messages::read_files::Row1::decode(encoded.as_slice()).unwrap();
-        let mut reading = client.read_files(query).await.unwrap().into_inner();
+        // Staging Bytes Remain Owned By The Production Follower.
+        let mut reading = storage.follow_file(&selection.file, 0).await.unwrap();
         let mut prefix = Vec::new();
-        loop {
-            match reading.message().await.unwrap().unwrap().value.unwrap() {
-                storage_read_files_output::Value::Item(chunk) => {
-                    let chunk =
-                        <FileBytes as harmos::Protobuf>::decode(&chunk.encode_to_vec()).unwrap();
-                    assert_eq!(chunk.offset, prefix.len() as u64);
-                    assert!(chunk.bytes.len() <= 2);
-                    prefix.extend_from_slice(&chunk.bytes);
-                }
-                storage_read_files_output::Value::Response(progress) => {
-                    let progress =
-                        <FileProgress as harmos::Protobuf>::decode(&progress.encode_to_vec())
-                            .unwrap();
-                    assert_eq!(progress.length, 3);
-                    assert_eq!(progress.phase, FilePhase::Producing);
-                    break;
-                }
-            }
+        while prefix.len() < 3 {
+            let chunk = reading
+                .next_chunk(NonZeroUsize::new(2).unwrap())
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(chunk.len() <= 2);
+            prefix.extend_from_slice(&chunk);
         }
         assert_eq!(prefix, b"old");
-        assert!(reading.message().await.unwrap().is_none());
+        assert_eq!(reading.progress().length, 3);
+        assert_eq!(reading.progress().phase, FilePhase::Producing);
         selection.offset = 3;
         let encoded = harmos::Protobuf::encode_to_vec(&selection);
         let query = storage_messages::follow_file::Row1::decode(encoded.as_slice()).unwrap();
@@ -600,52 +897,73 @@ async fn storage_uses_data() {
                 staged
             );
         }
-        use harmos::storage::operations::{WriteRecordsRequest, WriteStreamRequest};
-        use harmos::storage::{RecordInput, StreamInput};
-        let input = RecordInput {
-            schema: key.clone(),
-            scope: None,
-            item: Identifier::new("remote-record").unwrap(),
-            source: Some(source.clone()),
-            source_time: Some(source_time),
-            payload: b"remote bytes".to_vec(),
-        };
-        let request = WriteRecordsRequest {
-            mutation: mutation("remote-record-write"),
-            records: vec![input.clone()],
-            source: source.clone(),
-        };
-        let encoded = harmos::Protobuf::encode_to_vec(&request);
-        let wire = storage_messages::write_records::Row1::decode(encoded.as_slice()).unwrap();
+        use arrow_schema::{DataType, Field, TimeUnit};
+        use harmos::grpc::InputEnvelope;
+        use harmos::storage::writes::{DataBatch, WriteRequest};
+        let metadata = StructArray::new(
+            vec![
+                Field::new("item", DataType::Utf8, false),
+                Field::new("source", DataType::Utf8, false),
+                Field::new(
+                    "source_time",
+                    DataType::Timestamp(TimeUnit::Nanosecond, Some("UTC".into())),
+                    false,
+                ),
+                Field::new("sequence", DataType::UInt64, false),
+            ]
+            .into(),
+            vec![
+                Arc::new(StringArray::from(vec!["remote-record"])),
+                Arc::new(StringArray::from(vec![source.as_str()])),
+                Arc::new(TimestampNanosecondArray::from(vec![-100]).with_timezone("UTC")),
+                Arc::new(UInt64Array::from(vec![456])),
+            ],
+            None,
+        );
+        let payload = StructArray::new(
+            vec![Field::new("value", DataType::Utf8, false)].into(),
+            vec![Arc::new(StringArray::from(vec!["remote bytes"]))],
+            None,
+        );
+        let batch = write_batch(key.clone(), source.as_str(), metadata, payload);
+        let frames = [
+            InputEnvelope::<WriteRequest, DataBatch>::Request(WriteRequest { scope: None }),
+            InputEnvelope::Item(batch.clone()),
+        ];
+        let frames = frames.into_iter().map(|frame| {
+            harmos_grpc_fixture::storage::v1::StorageWriteRecordsInput::decode(
+                harmos::Protobuf::encode_to_vec(&frame).as_slice(),
+            )
+            .unwrap()
+        });
         let response = client
-            .write_records(wire.clone())
+            .write_records(futures_util::stream::iter(frames))
             .await
             .unwrap()
             .into_inner();
-        let accepted =
-            <StorageCursor as harmos::Protobuf>::decode(&response.encode_to_vec()).unwrap();
-        let response = client.write_records(wire).await.unwrap().into_inner();
-        assert_eq!(
-            <StorageCursor as harmos::Protobuf>::decode(&response.encode_to_vec()).unwrap(),
-            accepted
-        );
+        let accepted = write_completion(response).await;
         assert_eq!(storage.cursor_accepted(), accepted);
-        let request = WriteStreamRequest {
-            mutation: mutation("remote-stream-write"),
-            rows: vec![StreamInput {
-                record: input,
-                stream: source.clone(),
-                sequence: 456,
-            }],
-        };
-        let encoded = harmos::Protobuf::encode_to_vec(&request);
-        let wire = storage_messages::write_stream::Row1::decode(encoded.as_slice()).unwrap();
-        let response = client.write_stream(wire).await.unwrap().into_inner();
-        let stream_position =
-            <StorageCursor as harmos::Protobuf>::decode(&response.encode_to_vec()).unwrap();
+        assert_eq!(storage.cursor_saved(), accepted);
+        let frames = [
+            InputEnvelope::<WriteRequest, DataBatch>::Request(WriteRequest { scope: None }),
+            InputEnvelope::Item(batch),
+        ];
+        let frames = frames.into_iter().map(|frame| {
+            harmos_grpc_fixture::storage::v1::StorageWriteStreamsInput::decode(
+                harmos::Protobuf::encode_to_vec(&frame).as_slice(),
+            )
+            .unwrap()
+        });
+        let response = client
+            .write_streams(futures_util::stream::iter(frames))
+            .await
+            .unwrap()
+            .into_inner();
+        let stream_position = write_completion(response).await;
         assert_eq!(stream_position.sequence, accepted.sequence + 1);
-        use harmos::storage::operations::{QuerySchemasRequest, WriteSchemaRequest};
-        use harmos::storage::{SchemaInfo, SchemaInput};
+        assert_eq!(storage.cursor_saved(), stream_position);
+        use harmos::storage::SchemaInput;
+        use harmos::storage::operations::WriteSchemaRequest;
         let logical = SchemaInput::new(
             harmos::storage::SchemaKey {
                 payload_encoding: harmos::storage::PayloadEncoding::PostcardV1,
@@ -692,41 +1010,45 @@ async fn storage_uses_data() {
         assert_eq!(position.sequence, stream_position.sequence + 1);
         assert!(storage.cursor_saved().sequence < position.sequence);
         storage.flush().await.unwrap();
-        let query = QuerySchemasRequest {
-            schema: Some(logical.key.clone()),
-            selection: Selection {
-                page_rows: 1,
-                ..Default::default()
+        let schemas = query_batches(
+            &mut client,
+            Query {
+                at: position.clone(),
+                source: Source::Schemas(harmos::storage::query::SchemaSelection {
+                    schema: Some(logical.key.clone()),
+                }),
+                transforms: Vec::new(),
+                slice: RowSlice {
+                    offset: 0,
+                    limit: Some(1),
+                },
             },
-        };
-        let encoded = harmos::Protobuf::encode_to_vec(&query);
-        let wire = storage_messages::query_schemas::Row1::decode(encoded.as_slice()).unwrap();
-        let mut schemas = client.query_schemas(wire).await.unwrap().into_inner();
-        let storage_query_schemas_output::Value::Item(item) =
-            schemas.message().await.unwrap().unwrap().value.unwrap()
-        else {
-            panic!("expected schema");
-        };
-        let native = <SchemaInfo as harmos::Protobuf>::decode(&item.encode_to_vec()).unwrap();
+        )
+        .await;
+        assert_eq!(schemas.len(), 1);
+        let schema = schemas[0].as_record_batch();
+        assert_eq!(schema.num_rows(), 1);
         assert_eq!(
-            native,
-            SchemaInfo {
-                position: position.clone(),
-                schema: logical
-            }
+            schema
+                .column_by_name("schema_id")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap()
+                .value(0),
+            logical.key.id.as_str()
         );
-        let storage_query_schemas_output::Value::Response(completed) =
-            schemas.message().await.unwrap().unwrap().value.unwrap()
-        else {
-            panic!("expected boundary");
-        };
-        assert_eq!(
-            <StorageCursor as harmos::Protobuf>::decode(&completed.encode_to_vec()).unwrap(),
-            position
-        );
-        assert!(schemas.message().await.unwrap().is_none());
+        let definition = schema
+            .column_by_name("definition")
+            .unwrap()
+            .as_any()
+            .downcast_ref::<arrow_array::BinaryArray>()
+            .unwrap()
+            .value(0);
+        let decoded: harmos::schema::graph::Schema =
+            <harmos::schema::graph::Schema as harmos::Message>::decode(definition).unwrap();
+        assert_eq!(&decoded, logical.graph());
         use harmos::storage::ObjectCatalog;
-        use harmos::storage::operations::{WriteObjectsRequest, WriteObjectsResponse};
         let value = StoredObjects::encode(
             &StoredDocument {
                 id: "path/document".into(),
@@ -735,120 +1057,159 @@ async fn storage_uses_data() {
             NonZeroUsize::new(4096).unwrap(),
         )
         .unwrap();
-        let request = WriteObjectsRequest {
-            mutation: mutation("write-objects"),
-            objects: vec![value],
-        };
-        let encoded = harmos::Protobuf::encode_to_vec(&request);
-        let wire = storage_messages::write_objects::Row1::decode(encoded.as_slice()).unwrap();
+        let metadata = StructArray::new(
+            vec![Field::new("item", DataType::Utf8, false)].into(),
+            vec![Arc::new(StringArray::from(vec!["path/document"]))],
+            None,
+        );
+        let payload = StructArray::new(
+            vec![
+                Field::new("id", DataType::Utf8, false),
+                Field::new("text", DataType::Utf8, false),
+            ]
+            .into(),
+            vec![
+                Arc::new(StringArray::from(vec!["path/document"])),
+                Arc::new(StringArray::from(vec!["network"])),
+            ],
+            None,
+        );
+        let batch = write_batch(
+            value.schema.clone(),
+            value.schema.id.as_str(),
+            metadata,
+            payload,
+        );
+        let frames = [
+            InputEnvelope::<WriteRequest, DataBatch>::Request(WriteRequest { scope: None }),
+            InputEnvelope::Item(batch),
+        ];
+        let frames = frames.into_iter().map(|frame| {
+            harmos_grpc_fixture::storage::v1::StorageWriteObjectsInput::decode(
+                harmos::Protobuf::encode_to_vec(&frame).as_slice(),
+            )
+            .unwrap()
+        });
         let response = client
-            .write_objects(wire.clone())
+            .write_objects(futures_util::stream::iter(frames))
             .await
             .unwrap()
             .into_inner();
-        let admitted =
-            <WriteObjectsResponse as harmos::Protobuf>::decode(&response.encode_to_vec()).unwrap();
-        assert_eq!(admitted.objects[0].position.sequence, position.sequence + 2);
-        let repeated = client.write_objects(wire).await.unwrap().into_inner();
-        assert_eq!(
-            <WriteObjectsResponse as harmos::Protobuf>::decode(&repeated.encode_to_vec()).unwrap(),
-            admitted
-        );
-        assert_eq!(
-            storage
-                .write_objects_once(&request.mutation, &request.objects)
-                .await
-                .unwrap(),
-            admitted.objects
-        );
-        storage.flush().await.unwrap();
+        let object_position = write_completion(response).await;
+        assert!(object_position.sequence > position.sequence);
+        assert_eq!(storage.cursor_saved(), object_position);
         let found = storage
             .read_object::<StoredDocument>(
                 &"path/document".into(),
-                harmos::storage::ObjectVersion::Exact(admitted.objects[0].version.clone()),
+                harmos::storage::ObjectVersion::Latest,
                 NonZeroUsize::new(4096).unwrap(),
             )
             .await
             .unwrap()
             .unwrap();
         assert_eq!(found.value.text, "network");
-        use harmos::storage::operations::{ObjectResult, ObjectSelection, ReadObjectsRequest};
-        use harmos_grpc_fixture::storage::v1::{
-            storage_follow_objects_output, storage_read_objects_output,
-        };
-        let mut selection = ObjectSelection::default();
-        selection.selection.page_rows = 1;
-        let wire = storage_messages::read_objects::Row1::decode(
-            harmos::Protobuf::encode_to_vec(&ReadObjectsRequest {
-                selection: selection.clone(),
-                fields: None,
-            })
-            .as_slice(),
+        let exact = storage
+            .read_object::<StoredDocument>(
+                &"path/document".into(),
+                harmos::storage::ObjectVersion::Exact(found.version.clone()),
+                NonZeroUsize::new(4096).unwrap(),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(exact.value.text, "network");
+        let object_source = Source::Objects(harmos::storage::query::ObjectSelection {
+            schema: Some(value.schema.clone()),
+            key: Some(value.item.clone()),
+            versions: harmos::storage::query::ObjectVersions::Latest,
+        });
+        let objects = query_batches(
+            &mut client,
+            Query {
+                at: object_position.clone(),
+                source: object_source.clone(),
+                transforms: Vec::new(),
+                slice: RowSlice {
+                    offset: 0,
+                    limit: Some(1),
+                },
+            },
         )
-        .unwrap();
-        let mut objects = client.read_objects(wire).await.unwrap().into_inner();
-        let storage_read_objects_output::Value::Item(item) =
-            objects.message().await.unwrap().unwrap().value.unwrap()
-        else {
-            panic!("expected object");
-        };
-        let ObjectResult::Value(native) =
-            <ObjectResult as harmos::Protobuf>::decode(&item.encode_to_vec()).unwrap()
-        else {
-            panic!("expected full object");
-        };
-        assert_eq!(native.version, admitted.objects[0].version);
-        assert_eq!(native.value, request.objects[0]);
-        let storage_read_objects_output::Value::Response(boundary) =
-            objects.message().await.unwrap().unwrap().value.unwrap()
-        else {
-            panic!("expected boundary");
-        };
+        .await;
+        assert_eq!(objects.len(), 1);
+        let object = objects[0].as_record_batch();
+        assert_eq!(object.num_rows(), 1);
+        let payload = object
+            .column_by_name("payload")
+            .unwrap()
+            .as_any()
+            .downcast_ref::<StructArray>()
+            .unwrap();
         assert_eq!(
-            <StorageCursor as harmos::Protobuf>::decode(&boundary.encode_to_vec()).unwrap(),
-            storage.cursor_saved()
+            payload
+                .column_by_name("id")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap()
+                .value(0),
+            "path/document"
         );
-        assert!(objects.message().await.unwrap().is_none());
-        let row = harmos::storage::ObjectMetadata {
-            schema: native.value.schema.clone(),
-            item: native.value.item.clone(),
-            position: native.position.clone(),
-            version: native.version.clone(),
-            values: vec![harmos::storage::ObjectScalar::Text("network".into())],
+        assert_eq!(
+            payload
+                .column_by_name("text")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap()
+                .value(0),
+            "network"
+        );
+        use harmos::storage::query::transform::{
+            FieldPath, Transform,
+            project::{Project, Projection},
         };
-        *data.control.browse_rows.lock().unwrap() = Some(vec![row.clone()]);
-        let projected = ReadObjectsRequest {
-            selection: ObjectSelection {
-                schema: Some(native.value.schema.clone()),
+        let projected = query_batches(
+            &mut client,
+            Query {
+                at: object_position.clone(),
+                source: object_source,
+                transforms: vec![Transform::Project(Project {
+                    fields: vec![Projection {
+                        field: FieldPath {
+                            fields: vec!["payload".into(), "text".into()],
+                        },
+                        name: "text".into(),
+                    }],
+                })],
+                slice: RowSlice::default(),
+            },
+        )
+        .await;
+        assert_eq!(projected.len(), 1);
+        let projected = projected[0].as_record_batch();
+        assert_eq!(projected.num_columns(), 1);
+        assert_eq!(
+            projected
+                .column(0)
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap()
+                .value(0),
+            "network"
+        );
+
+        use harmos::storage::operations::ObjectSelection;
+        use harmos_grpc_fixture::storage::v1::storage_follow_objects_output;
+        let selection = ObjectSelection {
+            versions: harmos::storage::ObjectVersions::Revisions,
+            selection: Selection {
+                after: Some(object_position),
+                page_rows: 1,
                 ..Default::default()
             },
-            fields: Some(harmos::storage::ObjectFields {
-                projection: vec![Identifier::new("text").unwrap()],
-                ..Default::default()
-            }),
+            ..Default::default()
         };
-        let wire = storage_messages::read_objects::Row1::decode(
-            harmos::Protobuf::encode_to_vec(&projected).as_slice(),
-        )
-        .unwrap();
-        let mut projected = client.read_objects(wire).await.unwrap().into_inner();
-        let storage_read_objects_output::Value::Item(item) =
-            projected.message().await.unwrap().unwrap().value.unwrap()
-        else {
-            panic!("expected scalar metadata");
-        };
-        assert_eq!(
-            <ObjectResult as harmos::Protobuf>::decode(&item.encode_to_vec()).unwrap(),
-            ObjectResult::Fields(row)
-        );
-        assert!(matches!(
-            projected.message().await.unwrap().unwrap().value.unwrap(),
-            storage_read_objects_output::Value::Response(_)
-        ));
-        assert!(projected.message().await.unwrap().is_none());
-
-        selection.versions = harmos::storage::ObjectVersions::Revisions;
-        selection.selection.after = Some(native.position);
         let wire = storage_messages::follow_objects::Row1::decode(
             harmos::Protobuf::encode_to_vec(&selection).as_slice(),
         )
@@ -876,7 +1237,6 @@ async fn storage_uses_data() {
             following_file,
             reading,
             following_rows,
-            stream,
             records,
             rows,
             client,

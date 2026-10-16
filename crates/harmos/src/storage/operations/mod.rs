@@ -23,17 +23,13 @@ mod follow_objects;
 mod follow_stream;
 mod object_result;
 mod object_selection;
-mod query_files;
-mod query_schemas;
+mod query;
 mod query_storage;
-mod query_stream;
-mod read_files;
-mod read_objects;
-mod read_records;
-mod reductions;
+mod read_file;
 mod resume_file;
 mod save;
 mod selection;
+mod write_file;
 mod write_objects;
 mod write_records;
 mod write_schema;
@@ -55,21 +51,17 @@ pub use follow_objects::FollowObjects;
 pub use follow_stream::FollowStream;
 pub use object_result::ObjectResult;
 pub use object_selection::ObjectSelection;
-pub use query_files::QueryFiles;
-pub use query_schemas::{QuerySchemas, QuerySchemasRequest};
+pub use query::Query;
 pub use query_storage::{QueryStorage, QueryStorageRequest};
-pub use query_stream::QueryStream;
-pub use read_files::ReadFiles;
-pub use read_objects::{ReadObjects, ReadObjectsRequest};
-pub use read_records::ReadRecords;
-pub use reductions::{Reductions, ReductionsRequest};
+pub use read_file::ReadFile;
 pub use resume_file::ResumeFile;
 pub use save::{Save, SaveRequest};
 pub use selection::Selection;
-pub use write_objects::{WriteObjects, WriteObjectsRequest, WriteObjectsResponse};
-pub use write_records::{WriteRecords, WriteRecordsRequest};
+pub use write_file::WriteFile;
+pub use write_objects::WriteObjects;
+pub use write_records::WriteRecords;
 pub use write_schema::{WriteSchema, WriteSchemaRequest};
-pub use write_stream::{WriteStream, WriteStreamRequest};
+pub use write_stream::WriteStreams;
 
 /* === Imports === */
 
@@ -113,6 +105,13 @@ const STREAM_POLICY: OperationPolicy = OperationPolicy {
     ..POLICY
 };
 
+const IO_POLICY: OperationPolicy = OperationPolicy {
+    timeout: harmos_contract::operations::UNBOUNDED,
+    attempt_timeout: harmos_contract::operations::UNBOUNDED,
+    retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
+};
+
 /* === Macros === */
 // Declare The Portable Catalog And Its Original Provider Bindings Together.
 macro_rules! catalog {
@@ -133,13 +132,11 @@ macro_rules! catalog {
 }
 
 catalog! {
+    Query => query,
+    ReadFile => read_file,
     Save => save,
-    QueryFiles => query_files,
-    ReadRecords => read_records,
-    QueryStream => query_stream,
     Follow => follow,
     FollowStream => follow_stream,
-    ReadFiles => read_files,
     FollowFile => follow_file,
     QueryStorage => query_storage,
     ResumeFile => resume_file,
@@ -148,15 +145,13 @@ catalog! {
     FinishFile => finish_file,
     AbandonFile => abandon_file,
     WriteRecords => write_records,
-    WriteStream => write_stream,
+    WriteStreams => write_stream,
+    WriteFile => write_file,
     DeleteFile => delete_file,
     WriteSchema => write_schema,
-    QuerySchemas => query_schemas,
     WriteObjects => write_objects,
-    ReadObjects => read_objects,
     FollowObjects => follow_objects,
     Acknowledge => acknowledge,
-    Reductions => reductions,
 }
 
 /* === Type Aliases === */
@@ -184,6 +179,17 @@ impl Operations {
 /* === Public Functions === */
 
 /* === Private Functions === */
+fn output_timeout() -> crate::Error {
+    crate::Error::backend(
+        "storage output",
+        crate::BackendFailure::Transient,
+        std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            "consumer delivery deadline exceeded",
+        ),
+    )
+}
+
 const fn grpc(method: &'static str) -> crate::operations::Grpc {
     crate::operations::Grpc::new("harmos.storage.v1", "Storage", method)
 }

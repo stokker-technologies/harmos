@@ -65,8 +65,7 @@ fn projection() -> NonZeroUsize {
     NonZeroUsize::new(MIB).unwrap()
 }
 
-// Rendered Output Each Projection Keeps: Three Members Overfill The Slack
-// Their Guaranteed Ceilings Leave In The Pool, Yet Each Fits Its Own Ceiling.
+// Each Projection Fits Its View; Independent Assembly Still Shares The Global Pool.
 fn retained() -> Vec<u8> {
     vec![0; 3 * MIB / 4]
 }
@@ -145,8 +144,8 @@ async fn attempt(storage: &StorageManager, limits: QueryLimits, refusals: &Refus
     Some(())
 }
 
-// View-Less Productions And Projections: Their Charges Weigh On The Pool
-// Outside Every Ceiling, So Admitted Reservations Must Not Refuse Them.
+// Independent Productions And Projections Compete With Every Reserved View.
+// A Refusal Releases This Attempt Before Its Bounded Retry.
 fn assemble(storage: &StorageManager, refusals: &Refusals) -> Option<Assembly> {
     let mut list = refused(
         refusals,
@@ -176,7 +175,7 @@ fn assemble(storage: &StorageManager, refusals: &Refusals) -> Option<Assembly> {
 #[test]
 fn contract_scenario() {
     {
-        scenario_runtime::check("guaranteed_members_settle_under_contention", || {
+        scenario_runtime::check("shared_pool_members_settle_under_contention", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor.start_paused(true);
             scenario_executor
@@ -194,14 +193,27 @@ fn contract_scenario() {
                             tokio::spawn(member(f.storage.clone(), f.execution, refusals.clone()))
                         })
                         .collect::<Vec<_>>();
-                    for member in members {
-                        member.await.unwrap();
-                    }
+                    tokio::time::timeout(Duration::from_secs(30), async {
+                        for member in members {
+                            member.await.unwrap();
+                            assert!(
+                                f.storage.status().read_bytes
+                                    <= config().budget.read_memory_bytes.get()
+                            );
+                        }
+                    })
+                    .await
+                    .expect("shared-budget contention must settle after owners release charges");
                     let elapsed = started.elapsed();
                     let refusals = refusals.lock().unwrap().clone();
                     eprintln!("Settled In {elapsed:?} With Refusals {refusals:?}");
-                    // Admitted Members Never Retry: Their Ceilings Cover Their Reads.
-                    assert!(refusals.keys().all(|(step, _)| *step == "open"));
+                    // A View Guarantees Only Its Own Work. Assembly May Be Refused
+                    // By The Same Pool And Must Make Progress After Other Owners Drop.
+                    assert!(
+                        !refusals.is_empty(),
+                        "nine guaranteed ceilings cannot fit together"
+                    );
+                    assert!(refusals.values().all(|count| *count > 0));
                     tokio::time::timeout(Duration::from_secs(2), async {
                         while f.storage.status().read_bytes != 0 {
                             tokio::task::yield_now().await;

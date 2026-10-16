@@ -13,6 +13,7 @@ use crate::scenario_runtime;
 /* === Re-Exports === */
 
 /* === Imports === */
+use crate::backend::storage_settings;
 // Standard Library Imports
 
 // Third Party Imports
@@ -134,14 +135,14 @@ impl Fixture {
         let storage = StorageManager::new(
             StorageBackends {
                 primary: primary.clone(),
-                recovery: Arc::new(Recovery::new(history())),
+                state: Arc::new(Recovery::new(history())),
                 replicas: targets,
             },
             StorageSettings {
                 object_prune_entries: NonZeroUsize::MIN,
                 flush_interval: Duration::from_secs(60),
                 max_retries: 0,
-                ..StorageSettings::default()
+                ..storage_settings()
             },
         )
         .unwrap();
@@ -207,7 +208,7 @@ where
 
 async fn count_retained(storage: &StorageManager<RetainedObjects>) -> usize {
     let view = storage
-        .view_with_limits(StorageSettings::default().query_execution)
+        .view_with_limits(storage_settings().query_execution)
         .await
         .unwrap();
     let counters = count_member::<Counter>(storage, &view).await;
@@ -280,7 +281,7 @@ async fn import_replica(
     let storage = StorageManager::new(
         StorageBackends {
             primary: f.primary.clone(),
-            recovery: Arc::new(Recovery::new(history())),
+            state: Arc::new(Recovery::new(history())),
             replicas: vec![ReplicaTarget {
                 id: Identifier::new("new").unwrap(),
                 backend: replica,
@@ -288,7 +289,7 @@ async fn import_replica(
         },
         StorageSettings {
             max_retries: 0,
-            ..StorageSettings::default()
+            ..storage_settings()
         },
     )
     .unwrap();
@@ -314,7 +315,7 @@ pub(super) fn contract_scenario() {
                     f.storage.flush_until(&first.position).await.unwrap();
                     let pinned = f
                         .storage
-                        .view_with_limits(StorageSettings::default().query_execution)
+                        .view_with_limits(storage_settings().query_execution)
                         .await
                         .unwrap();
                     let second = f
@@ -694,7 +695,7 @@ pub(super) fn contract_scenario() {
     let reopened = StorageManager::new(
         StorageBackends {
             primary: f.primary.clone(),
-            recovery: Arc::new(Recovery::new(history())),
+            state: Arc::new(Recovery::new(history())),
             replicas: vec![ReplicaTarget {
                 id: Identifier::new("new").unwrap(),
                 backend: replica.clone(),
@@ -702,7 +703,7 @@ pub(super) fn contract_scenario() {
         },
         StorageSettings {
             max_retries: 0,
-            ..StorageSettings::default()
+            ..storage_settings()
         },
     )
     .unwrap();
@@ -968,7 +969,7 @@ pub(super) fn contract_scenario() {
                     f.storage.flush().await.unwrap();
                     let view = f
                         .storage
-                        .view_with_limits(StorageSettings::default().query_execution)
+                        .view_with_limits(storage_settings().query_execution)
                         .await
                         .unwrap();
                     f.storage
@@ -1024,24 +1025,49 @@ pub(super) fn contract_scenario() {
                     let f = Fixture::new(true).await;
                     let replica = f.replica.as_ref().unwrap();
                     replica.control.open_entered.notified().await;
+                    f.storage
+                        .write_object(&Counter { id: 1, value: 10 })
+                        .await
+                        .unwrap();
+                    let initial = f.storage.flush().await.unwrap();
+                    replica.control.block_open.store(false, Ordering::SeqCst);
+                    replica.control.open_release.notify_one();
+                    // Finish Initial Release Synchronization Before Gating A Later Copy.
+                    until(|| {
+                        replica
+                            .control
+                            .prune_calls
+                            .lock()
+                            .unwrap()
+                            .last()
+                            .is_some_and(|call| call.0 == initial.sequence)
+                    })
+                    .await;
                     f.primary
                         .control
                         .block_release
                         .store(true, Ordering::SeqCst);
                     f.storage
-                        .write_object(&Counter { id: 1, value: 10 })
+                        .write_object(&Counter { id: 1, value: 20 })
                         .await
                         .unwrap();
                     let saved = f.storage.flush().await.unwrap();
-                    replica.control.block_open.store(false, Ordering::SeqCst);
-                    replica.control.open_release.notify_one();
                     tokio::time::timeout(
                         Duration::from_secs(2),
                         f.primary.control.release_entered.notified(),
                     )
                     .await
                     .unwrap();
-                    until(|| !f.primary.control.prune_calls.lock().unwrap().is_empty()).await;
+                    until(|| {
+                        f.primary
+                            .control
+                            .prune_calls
+                            .lock()
+                            .unwrap()
+                            .last()
+                            .is_some_and(|call| call.0 == saved.sequence)
+                    })
+                    .await;
                     let calls = f.primary.control.prune_calls.lock().unwrap().len();
                     assert_eq!(f.storage.replicas()[0].saved.as_ref(), Some(&saved));
                     f.primary
@@ -1077,6 +1103,11 @@ pub(super) fn contract_scenario() {
                     let f = Fixture::new(true).await;
                     let replica = f.replica.as_ref().unwrap();
                     replica.control.open_entered.notified().await;
+                    replica.control.block_open.store(false, Ordering::SeqCst);
+                    replica.control.open_release.notify_one();
+                    // The Empty Initial Synchronization Has No Pruning Work To Gate.
+                    until(|| f.primary.control.releases_completed.load(Ordering::SeqCst) > 0).await;
+                    let released = f.primary.control.releases_completed.load(Ordering::SeqCst);
                     f.primary
                         .control
                         .block_release
@@ -1090,8 +1121,6 @@ pub(super) fn contract_scenario() {
                         .await
                         .unwrap();
                     let saved = f.storage.flush().await.unwrap();
-                    replica.control.block_open.store(false, Ordering::SeqCst);
-                    replica.control.open_release.notify_one();
                     tokio::time::timeout(
                         Duration::from_secs(2),
                         f.primary.control.release_entered.notified(),
@@ -1110,7 +1139,10 @@ pub(super) fn contract_scenario() {
                         .block_release
                         .store(false, Ordering::SeqCst);
                     f.primary.control.release_release.notify_one();
-                    until(|| f.primary.control.releases_completed.load(Ordering::SeqCst) > 0).await;
+                    until(|| {
+                        f.primary.control.releases_completed.load(Ordering::SeqCst) > released
+                    })
+                    .await;
                     // The Old Answer Was Already Calculated While The Source Pin Was Still Held.
                     f.primary
                         .control

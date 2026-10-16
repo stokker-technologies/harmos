@@ -97,7 +97,7 @@ pub(crate) enum Capture<A: Application> {
 
 pub(crate) enum Permit {
     Callback(OwnedSemaphorePermit),
-    Managed(crate::storage::recovery::Permit),
+    Managed(crate::storage::state::Permit),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]

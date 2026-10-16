@@ -8,8 +8,12 @@
  */
 
 /* === Modules === */
+pub(crate) mod convert;
+mod streaming;
 
 /* === Re-Exports === */
+pub use streaming::{BatchReceipt, DataBatch, WriteCompletion, WriteReceipt, WriteRequest};
+pub(crate) use streaming::{WriteKind, exchange};
 
 /* === Imports === */
 // Standard Library Imports

@@ -34,6 +34,7 @@ use crate::{Error, Result};
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RecoveryEntry {
+    pub required_data: super::StorageCursor,
     pub position: RecoveryPosition,
     pub payload: Vec<u8>,
 }
@@ -41,6 +42,7 @@ pub struct RecoveryEntry {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RecoverySnapshot {
+    pub required_data: super::StorageCursor,
     pub through: RecoveryPosition,
     pub payload: Vec<u8>,
 }
@@ -54,7 +56,7 @@ pub struct RecoveryPage {
 /* === Enums === */
 
 /* === Traits === */
-pub trait RecoveryBackend: Send + Sync + 'static {
+pub trait StateBackend: Send + Sync + 'static {
     fn history(&self) -> &StoreHistory;
     fn open(&self) -> StorageFuture<'_, RecoveryPosition>;
     fn read_snapshot(

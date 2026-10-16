@@ -51,8 +51,11 @@ impl<C> StorageManager<C> {
         if !state.ready || state.status.closed {
             return Err(Error::NotReady { domain: "storage" });
         }
-        let (snapshot, bytes) =
-            state.capture_file_snapshot(through, self.inner.settings.read_memory_bytes.get(), 0)?;
+        let (snapshot, bytes) = state.capture_file_snapshot(
+            through,
+            self.inner.settings.budget.read_memory_bytes.get(),
+            0,
+        )?;
         if bytes == 0 {
             return Ok(None);
         }
@@ -81,7 +84,7 @@ impl<C> StorageManager<C> {
             return Ok(());
         }
         // Reserve Before Asking The Backend To Allocate Its Complete Bounded Set.
-        let capacity = self.inner.settings.read_memory_bytes.get();
+        let capacity = self.inner.settings.budget.read_memory_bytes.get();
         let bytes = capacity / 2;
         let limits = ReadLimits {
             rows: self.inner.settings.max_files,
@@ -120,9 +123,9 @@ impl<C> StorageManager<C> {
         let mut write_reservation = {
             let mut state = self.inner.state.lock().unwrap();
             state.collect();
-            if write_bytes >= self.inner.settings.queue_capacity_bytes.get()
+            if write_bytes >= self.inner.settings.request.max_pending_write_bytes.get()
                 || state.status.pending_bytes
-                    > self.inner.settings.queue_capacity_bytes.get() - write_bytes
+                    > self.inner.settings.request.max_pending_write_bytes.get() - write_bytes
             {
                 return Err(Error::ResourceExhausted {
                     resource: "recovered file production",
@@ -155,7 +158,7 @@ impl<C> StorageManager<C> {
                 file_bytes(&checkpoint.metadata, &checkpoint.session.history)?;
             total = total.checked_add(base_bytes).ok_or_else(size_error)?;
             if reference_bytes > self.inner.settings.max_batch_bytes.get()
-                || total >= self.inner.settings.queue_capacity_bytes.get()
+                || total >= self.inner.settings.request.max_pending_write_bytes.get()
             {
                 return Err(Error::ResourceExhausted {
                     resource: "recovered file production",

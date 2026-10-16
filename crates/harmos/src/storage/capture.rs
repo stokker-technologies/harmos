@@ -18,7 +18,7 @@
 
 // Local Imports
 use super::manager::encoded_size;
-use super::recovery::Permit;
+use super::state::Permit;
 use super::{ReadLimits, RecordWrite, StorageFuture};
 use crate::{Error, Result, state::Envelope};
 

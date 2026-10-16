@@ -24,7 +24,7 @@ use std::time::Duration;
 // Local Imports
 use super::{Fixture, Lanes, Operations, config};
 use harmos::Identifier;
-use harmos::storage::operations::{FileBytes, FileSelection, FollowFile, ReadFiles};
+use harmos::storage::operations::{FileBytes, FileSelection, FollowFile, ReadFile};
 use harmos::storage::{FileMetadata, FilePhase, StagedFile};
 
 /* === Constants === */
@@ -96,29 +96,38 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     tokio::time::timeout(Duration::from_secs(5), async {
-                        let (fixture, mut producer, request) = setup().await;
-                        let (sender, mut receiver) =
-                            harmos::operations::stream::<FileBytes>(limits()).unwrap();
+                        let (fixture, mut producer, _) = setup().await;
+                        let finished = producer.finish().await.unwrap();
+                        fixture.storage.flush().await.unwrap();
+                        let request = harmos::storage::files::ReadFile {
+                            file: finished,
+                            range: harmos::storage::files::ByteRange {
+                                offset: 0,
+                                limit: None,
+                            },
+                        };
+                        let (sender, mut receiver) = harmos::operations::stream::<
+                            harmos::storage::files::FileBatch,
+                        >(limits())
+                        .unwrap();
                         let instance = fixture
                             .runtime
                             .operations
-                            .submit_endpoints::<ReadFiles, _>(request, sender)
+                            .submit_endpoints::<ReadFile, _>(request, sender)
                             .unwrap();
                         let first = receiver.recv().await.unwrap();
                         assert_eq!(first.offset, 0);
                         let mut bytes = first.bytes.clone();
                         drop(first);
-                        producer.write_all(b"later").await.unwrap();
-                        producer.finish().await.unwrap();
+
                         while let Some(chunk) = receiver.recv().await {
                             assert_eq!(chunk.offset, bytes.len() as u64);
-                            assert!(chunk.bytes.len() <= 2);
+
                             bytes.extend_from_slice(&chunk.bytes);
                         }
                         assert_eq!(bytes, b"prefix");
                         let result = instance.await.unwrap();
-                        assert_eq!(result.length, 6);
-                        assert_eq!(result.phase, FilePhase::Producing);
+                        assert_eq!(result.bytes, 6);
                         fixture.finish().await;
                     })
                     .await

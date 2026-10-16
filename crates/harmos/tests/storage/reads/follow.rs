@@ -102,7 +102,7 @@ fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let mut policy = config();
-                    policy.queue_capacity = NonZeroUsize::new(1).unwrap();
+                    policy.request.max_pending_write_batches = NonZeroUsize::new(1).unwrap();
                     let f = Fixture::new(policy).await;
                     write(&f.storage, "first").await;
                     let mut reader = f.storage.follow(record_query(limits())).await.unwrap();

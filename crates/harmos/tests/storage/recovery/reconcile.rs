@@ -67,7 +67,7 @@ impl Store {
         StorageManager::new(
             StorageBackends {
                 primary: self.data.clone(),
-                recovery: self.recovery.clone(),
+                state: self.recovery.clone(),
                 replicas: Vec::new(),
             },
             config(),

@@ -148,7 +148,7 @@ impl<C> StorageManager<C> {
                             .saturating_add(file.memory_size().saturating_mul(2))
                             .saturating_add(2 * std::mem::size_of::<usize>());
                         state.collect();
-                        let capacity = self.inner.settings.read_memory_bytes.get();
+                        let capacity = self.inner.settings.budget.read_memory_bytes.get();
                         if bytes > capacity || state.status.read_bytes > capacity - bytes {
                             return Err(exhausted());
                         }

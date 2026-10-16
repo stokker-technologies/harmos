@@ -121,6 +121,22 @@ impl<'a> Scope<'a> {
         crate::records::RecordManager::new(self.state::<A>())
     }
 
+    /// The Runtime-Owned Storage Instance, When Storage Is Enabled.
+    pub fn storage<A: crate::Application>(
+        &self,
+    ) -> Option<&'a crate::storage::StorageManager<crate::storage::ErasedCatalog>> {
+        self.core.instances.handles_of::<A>().storage.get()
+    }
+
+    /// Streams Own Their Listener Lifecycle; Services Are Operation Residents.
+    pub fn streams<A: crate::Application>(&self) -> crate::streams::StreamManager<A> {
+        self.core.instances.handles_of::<A>().streams.clone()
+    }
+
+    pub fn evidence<A: crate::Application>(&self) -> crate::evidence::Evidence<A> {
+        self.core.instances.handles_of::<A>().evidence.clone()
+    }
+
     pub fn state<A: crate::Application>(&self) -> crate::state::StateManager<A> {
         let journal = self.core.instances.state_of::<A>();
         match self.core.cause {

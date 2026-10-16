@@ -67,7 +67,7 @@ impl Probe {
             storage: StorageManager::new(
                 StorageBackends {
                     primary: data.clone(),
-                    recovery: recovery.clone(),
+                    state: recovery.clone(),
                     replicas: Vec::new(),
                 },
                 config(),
@@ -418,7 +418,7 @@ pub(super) fn contract_scenario() {
                         let storage = StorageManager::new(
                             StorageBackends {
                                 primary: data.clone(),
-                                recovery: recovery.clone(),
+                                state: recovery.clone(),
                                 replicas,
                             },
                             policy,

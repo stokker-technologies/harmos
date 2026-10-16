@@ -312,7 +312,7 @@ impl<C> StorageManager<C> {
         if !self.inner.primary.supports_mutation_receipts() {
             return Ok(());
         }
-        let bytes = (self.inner.settings.read_memory_bytes.get() / 2)
+        let bytes = (self.inner.settings.budget.read_memory_bytes.get() / 2)
             .min(self.inner.settings.mutation_memory_bytes.get());
         let limits = super::ReadLimits {
             rows: self.inner.settings.max_mutations,
@@ -321,7 +321,8 @@ impl<C> StorageManager<C> {
         let _reservation = {
             let mut state = self.inner.state.lock().unwrap();
             state.collect();
-            if state.status.read_bytes > self.inner.settings.read_memory_bytes.get() - bytes {
+            if state.status.read_bytes > self.inner.settings.budget.read_memory_bytes.get() - bytes
+            {
                 return Err(exhausted());
             }
             state.read_bytes += bytes;
@@ -403,7 +404,7 @@ impl<C> StorageManager<C> {
             accepted: state.status.accepted.clone(),
             saved: state.status.saved.clone(),
             mutations,
-            file_chunk_bytes: self.inner.settings.file_chunk_bytes.get() as u64,
+            file_chunk_bytes: self.inner.settings.response.batch_bytes.get() as u64,
         })
     }
 

@@ -745,6 +745,14 @@ const ALLOWANCE: [(&str, &[&str]); 17] = [
     (
         "harmos",
         &[
+            "arrow-array",
+            "arrow-buffer",
+            "arrow-data",
+            "arrow-ipc",
+            "arrow-schema",
+            "arrow-select",
+            "flatbuffers",
+            "postcard",
             "bytes",
             "criterion",
             "futures-core",
@@ -822,6 +830,8 @@ const ALLOWANCE: [(&str, &[&str]); 17] = [
     (
         "harmos-grpc-fixture",
         &[
+            "arrow-array",
+            "arrow-schema",
             "futures-util",
             "harmos",
             "prost",
@@ -2018,6 +2028,15 @@ fn contract_scenario() {
                         && !operation_facility_gate(&path, line)
                         && !transport_facility_gate(&path, line)
                         && !packaging_facility_gate(&path, line)
+                        // RSS Sampling And Wire Encoding Do Not Select Persistence.
+                        && !((line == "#[cfg(target_os = \"linux\")]"
+                            || line == "#[cfg(not(target_os = \"linux\"))]")
+                            && path.ends_with("/crates/harmos/benches/storage/metrics.rs"))
+                        && !(line == "#[cfg(feature = \"grpc\")]"
+                            && (path.ends_with("/crates/harmos/src/storage/arrow/message.rs")
+                                || path.ends_with("/crates/harmos/src/storage/query/reader.rs")))
+                        && !(line == "#[cfg(any(feature = \"grpc\", feature = \"plugin\", feature = \"packaging\"))]"
+                            && path.ends_with("/crates/harmos/src/config.rs"))
                         && !(line == "#[cfg(all(not(target_arch = \"wasm32\"), feature = \"plugin\"))]"
                             && path.ends_with("/crates/harmos/src/lib.rs"))
                         // The facade's carrier kits, bundles and descriptor

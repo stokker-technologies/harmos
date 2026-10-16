@@ -11,8 +11,8 @@
 # === Imports === #
 
 # Standard Library Imports
-import json
 import hashlib
+import json
 import os
 import platform
 import re
@@ -24,6 +24,7 @@ from pathlib import Path
 # Third Party Imports
 
 # Local Imports
+# isort: split
 from . import _policy, evidence, release_registry, version
 
 # Type Checking Imports
@@ -121,7 +122,7 @@ def tag_version(tag: str) -> str:
 
 def target(settings: dict) -> str:
     selected = os.environ.get("RELEASE_TARGET")
-    if selected not in settings.get("targets", []):
+    if not isinstance(selected, str) or selected not in settings.get("targets", []):
         raise _policy.ToolError("RELEASE_TARGET must be one of release.targets")
     system = {"Linux": "linux", "Windows": "windows", "Darwin": "macos"}.get(
         platform.system()

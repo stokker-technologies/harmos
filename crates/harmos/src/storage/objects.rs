@@ -362,12 +362,24 @@ impl<C> StorageManager<C> {
                 .max_batch_bytes
                 .get()
                 .saturating_mul(4)
-                .min(self.inner.settings.queue_capacity_bytes.get()),
+                .min(self.inner.settings.request.max_pending_write_bytes.get()),
         )
         .unwrap()
     }
 
     pub(super) async fn admit_object_group(
+        &self,
+        max_bytes: NonZeroUsize,
+        count: NonZeroUsize,
+        mutation: Option<super::admissions::Mutation<'_>>,
+        build: impl FnOnce(&mut ObjectGroup<'_, C>) -> Result<()> + Send,
+    ) -> Result<Vec<ObjectReceipt>> {
+        let _writer = self.inner.object_writes.lock().await;
+        self.admit_object_group_locked(max_bytes, count, mutation, build)
+            .await
+    }
+
+    pub(super) async fn admit_object_group_locked(
         &self,
         max_bytes: NonZeroUsize,
         count: NonZeroUsize,
@@ -385,6 +397,7 @@ impl<C> StorageManager<C> {
                 max_bytes.get(),
                 positions,
                 mutation,
+                false,
                 |first| {
                     let slots = count
                         .get()

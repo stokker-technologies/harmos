@@ -385,9 +385,9 @@ fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let mut policy = config();
-                    policy.queue_capacity_bytes = NonZeroUsize::new(50_000).unwrap();
-                    policy.target_batch_bytes = policy.queue_capacity_bytes;
-                    policy.max_batch_bytes = policy.queue_capacity_bytes;
+                    policy.request.max_pending_write_bytes = NonZeroUsize::new(50_000).unwrap();
+                    policy.target_batch_bytes = policy.request.max_pending_write_bytes;
+                    policy.max_batch_bytes = policy.request.max_pending_write_bytes;
                     let f = Fixture::new(policy).await;
                     write(&f.storage, "held").await;
                     let old = f.storage.view_with_limits(f.execution).await.unwrap();
@@ -625,7 +625,7 @@ fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let mut policy = config();
-                    policy.queue_capacity = NonZeroUsize::new(1).unwrap();
+                    policy.request.max_pending_write_batches = NonZeroUsize::new(1).unwrap();
                     let f = Fixture::new(policy).await;
                     write(&f.storage, "first").await;
                     let view = f.storage.view_with_limits(f.execution).await.unwrap();
@@ -656,12 +656,12 @@ fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let mut policy = config();
-                    policy.queue_capacity_bytes = NonZeroUsize::new(200_000).unwrap();
-                    policy.target_batch_bytes = policy.queue_capacity_bytes;
-                    policy.max_batch_bytes = policy.queue_capacity_bytes;
-                    policy.read_memory_bytes = NonZeroUsize::new(200_000).unwrap();
+                    policy.request.max_pending_write_bytes = NonZeroUsize::new(200_000).unwrap();
+                    policy.target_batch_bytes = policy.request.max_pending_write_bytes;
+                    policy.max_batch_bytes = policy.request.max_pending_write_bytes;
+                    policy.budget.read_memory_bytes = NonZeroUsize::new(200_000).unwrap();
                     policy.query_execution.memory_bytes = NonZeroUsize::new(64_000).unwrap();
-                    policy.query_decoded_bytes = policy.read_memory_bytes;
+                    policy.query_decoded_bytes = policy.budget.read_memory_bytes;
                     let f = Fixture::new(policy).await;
                     let item = Identifier::new("x".repeat(32_768)).unwrap();
                     let key = schema();
@@ -719,9 +719,9 @@ fn contract_scenario() {
                     probe.finish().await;
 
                     let mut policy = config();
-                    policy.queue_capacity_bytes = NonZeroUsize::new(charge + 1).unwrap();
-                    policy.target_batch_bytes = policy.queue_capacity_bytes;
-                    policy.max_batch_bytes = policy.queue_capacity_bytes;
+                    policy.request.max_pending_write_bytes = NonZeroUsize::new(charge + 1).unwrap();
+                    policy.target_batch_bytes = policy.request.max_pending_write_bytes;
+                    policy.max_batch_bytes = policy.request.max_pending_write_bytes;
                     let f = Fixture::new(policy).await;
                     write(&f.storage, "one").await;
                     let view = f.storage.view_with_limits(f.execution).await.unwrap();
@@ -944,8 +944,8 @@ fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let mut policy = config();
-                    policy.max_batch_bytes = policy.queue_capacity_bytes;
-                    policy.target_batch_bytes = policy.queue_capacity_bytes;
+                    policy.max_batch_bytes = policy.request.max_pending_write_bytes;
+                    policy.target_batch_bytes = policy.request.max_pending_write_bytes;
                     let f = Fixture::new(policy).await;
                     let empty = f.storage.view_with_limits(f.execution).await.unwrap();
                     let view_bytes = f.storage.status().read_bytes;
@@ -989,13 +989,13 @@ fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let mut policy = config();
-                    policy.queue_capacity_bytes = NonZeroUsize::new(8192).unwrap();
-                    policy.target_batch_bytes = policy.queue_capacity_bytes;
-                    policy.max_batch_bytes = policy.queue_capacity_bytes;
-                    policy.read_memory_bytes = NonZeroUsize::new(32 * 1024).unwrap();
+                    policy.request.max_pending_write_bytes = NonZeroUsize::new(8192).unwrap();
+                    policy.target_batch_bytes = policy.request.max_pending_write_bytes;
+                    policy.max_batch_bytes = policy.request.max_pending_write_bytes;
+                    policy.budget.read_memory_bytes = NonZeroUsize::new(32 * 1024).unwrap();
                     policy.snapshot_bytes = NonZeroUsize::new(512).unwrap();
                     policy.query_execution.memory_bytes = NonZeroUsize::new(10 * 1024).unwrap();
-                    policy.query_decoded_bytes = policy.read_memory_bytes;
+                    policy.query_decoded_bytes = policy.budget.read_memory_bytes;
                     policy.max_views = NonZeroUsize::new(1).unwrap();
                     let f = Fixture::new(policy).await;
                     write(&f.storage, "saved").await;
@@ -1061,7 +1061,7 @@ fn contract_scenario() {
                     drop(view);
                     probe.finish().await;
                     let mut policy = config();
-                    policy.read_memory_bytes = NonZeroUsize::new(bytes * 2 - 1).unwrap();
+                    policy.budget.read_memory_bytes = NonZeroUsize::new(bytes * 2 - 1).unwrap();
                     let f = Fixture::new(policy).await;
                     let view = f.storage.view_with_limits(f.execution).await.unwrap();
                     assert!(matches!(

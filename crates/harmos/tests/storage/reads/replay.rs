@@ -13,6 +13,7 @@ use crate::scenario_runtime;
 /* === Re-Exports === */
 
 /* === Imports === */
+use crate::backend::storage_settings;
 
 // Standard Library Imports
 
@@ -328,7 +329,7 @@ fn contract_scenario() {
                 .block_on(async {
                     for complete in [false, true] {
                         let mut settings = config();
-                        settings.queue_capacity = NonZeroUsize::new(1).unwrap();
+                        settings.request.max_pending_write_batches = NonZeroUsize::new(1).unwrap();
                         settings.max_followers = NonZeroUsize::new(1).unwrap();
                         let f = Fixture::new(settings).await;
                         write(&f.storage, "first").await;
@@ -709,7 +710,7 @@ fn contract_scenario() {
                     let mut query = record_query(limits());
                     query.options.execution = Some(QueryLimits {
                         timeout: Duration::from_millis(400),
-                        ..StorageSettings::default().query_execution
+                        ..storage_settings().query_execution
                     });
                     let mut replay = f.storage.replay(query).await.unwrap();
                     let allowance = NonZeroUsize::new(64).unwrap();
@@ -802,12 +803,12 @@ fn contract_scenario() {
                 .block_on(async {
                     let mut settings = config();
                     // Admit Two Full Views Before Exhausting Their Shared Output Ledger.
-                    settings.read_memory_bytes = NonZeroUsize::new(64 * 1024).unwrap();
+                    settings.budget.read_memory_bytes = NonZeroUsize::new(64 * 1024).unwrap();
                     settings.snapshot_bytes = NonZeroUsize::new(512).unwrap();
                     settings.query_decoded_bytes = limits().bytes;
                     // The Backend Preclaims All Snapshot Map Nodes, Independently Of Page Size.
                     settings.query_execution.memory_bytes = NonZeroUsize::new(8 * 1024).unwrap();
-                    let capacity = settings.read_memory_bytes.get();
+                    let capacity = settings.budget.read_memory_bytes.get();
                     let f = Fixture::new(settings).await;
                     write(&f.storage, "one").await;
                     let mut replay = f.storage.replay(record_query(limits())).await.unwrap();

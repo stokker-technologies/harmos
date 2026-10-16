@@ -120,7 +120,7 @@ fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let mut policy = config();
-                    policy.file_chunk_bytes = NonZeroUsize::new(31).unwrap();
+                    policy.response.batch_bytes = NonZeroUsize::new(31).unwrap();
                     let f = Fixture::new(policy).await;
                     let bytes: Vec<_> = (0..8192).map(|n| (n % 251) as u8).collect();
                     let reference = f
@@ -535,9 +535,9 @@ fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let mut policy = config();
-                    policy.queue_capacity_bytes = NonZeroUsize::new(20_000).unwrap();
-                    policy.target_batch_bytes = policy.queue_capacity_bytes;
-                    policy.max_batch_bytes = policy.queue_capacity_bytes;
+                    policy.request.max_pending_write_bytes = NonZeroUsize::new(20_000).unwrap();
+                    policy.target_batch_bytes = policy.request.max_pending_write_bytes;
+                    policy.max_batch_bytes = policy.request.max_pending_write_bytes;
                     let f = Fixture::new(policy).await;
                     let bytes = vec![42; 100_000];
                     let mut file = f
@@ -577,7 +577,7 @@ fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let mut policy = config();
-                    policy.queue_capacity = NonZeroUsize::new(1).unwrap();
+                    policy.request.max_pending_write_batches = NonZeroUsize::new(1).unwrap();
                     let f = Fixture::new(policy).await;
                     tokio::time::timeout(Duration::from_secs(5), async {
                         write(&f.storage, "before-create").await;

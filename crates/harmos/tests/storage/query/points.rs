@@ -13,6 +13,7 @@ use crate::scenario_runtime;
 /* === Re-Exports === */
 
 /* === Imports === */
+use crate::backend::storage_settings;
 
 // Standard Library Imports
 
@@ -94,7 +95,7 @@ fn contract_scenario() {
                     f.storage.flush_until(&first.position).await.unwrap();
                     let view = f
                         .storage
-                        .view_with_limits(StorageSettings::default().query_execution)
+                        .view_with_limits(storage_settings().query_execution)
                         .await
                         .unwrap();
                     let pinned = f.storage.status().read_bytes;
@@ -169,7 +170,7 @@ fn contract_scenario() {
                 .block_on(async {
                     let f = Fixture::new().await;
                     let other = Fixture::new().await;
-                    let execution = StorageSettings::default().query_execution;
+                    let execution = storage_settings().query_execution;
                     let view = f.storage.view_with_limits(execution).await.unwrap();
                     let different = f
                         .storage
@@ -239,9 +240,9 @@ fn contract_scenario() {
                     let f = Fixture::with_settings(StorageSettings {
                         query_execution: QueryLimits {
                             timeout: Duration::from_millis(50),
-                            ..StorageSettings::default().query_execution
+                            ..storage_settings().query_execution
                         },
-                        ..StorageSettings::default()
+                        ..storage_settings()
                     })
                     .await;
                     f.storage
@@ -296,11 +297,11 @@ fn contract_scenario() {
                 .block_on(async {
                     let defaults = QueryLimits {
                         timeout: Duration::from_millis(50),
-                        ..StorageSettings::default().query_execution
+                        ..storage_settings().query_execution
                     };
                     let f = Fixture::with_settings(StorageSettings {
                         query_execution: defaults,
-                        ..StorageSettings::default()
+                        ..storage_settings()
                     })
                     .await;
                     f.storage
@@ -406,9 +407,9 @@ fn contract_scenario() {
                     let f = Fixture::with_settings(StorageSettings {
                         query_execution: QueryLimits {
                             memory_bytes: NonZeroUsize::new(1).unwrap(),
-                            ..StorageSettings::default().query_execution
+                            ..storage_settings().query_execution
                         },
-                        ..StorageSettings::default()
+                        ..storage_settings()
                     })
                     .await;
                     f.storage

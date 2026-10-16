@@ -87,6 +87,8 @@ pub enum PayloadEncoding {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ObjectRetention {
+    /// Preserve every revision until the consumer durably releases its lifecycle.
+    UntilReleased,
     Latest,
     Versions(NonZeroUsize),
 }
@@ -355,7 +357,7 @@ impl fmt::Write for KeyWriter {
 impl ObjectRetention {
     pub const fn versions(self) -> NonZeroUsize {
         match self {
-            Self::Latest => NonZeroUsize::MIN,
+            Self::UntilReleased | Self::Latest => NonZeroUsize::MIN,
             Self::Versions(count) => count,
         }
     }

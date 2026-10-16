@@ -57,3 +57,16 @@ exclude = ["crates/harmos/src/prelude.rs"]
 
 
 # === PyO3 ===
+
+[[catalogs]]
+language = "rust"
+path = "crates/harmos/src/storage/query/transform/mod.rs"
+name = "Transform"
+implementations = [
+  "filter.rs",
+  "project.rs",
+  "aggregate.rs",
+  "histogram.rs",
+  "downsample.rs",
+  "sort.rs",
+]

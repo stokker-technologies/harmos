@@ -142,6 +142,27 @@ macro_rules! backend_contract {
 
 backend_contract! {
 pub trait StorageBackend {
+    /// Read durable lifecycle-release metadata from the same pinned image as the data.
+    /// Order by schema ID/version/encoding and object key; emit only releases covered by
+    /// the view's saved cursor. A continuation identifies the final emitted entry.
+    fn read_object_releases<'a>(&'a self, _view: &'a ReadView,
+        _cursor: Option<&'a super::bootstrap::ObjectReleaseCursor>, _limits: ReadLimits)
+        -> StorageFuture<'a, super::bootstrap::ObjectReleasePage> = Box::pin(async {
+        Err(crate::Error::InvalidInput { field: "object retention", reason: "backend does not export lifecycle releases" })
+    });
+    /// Stage lifecycle releases privately under the bootstrap identity. Successful
+    /// finish replaces the target ledger atomically with the imported image; abort
+    /// must discard staged releases. Repeating an identical page is idempotent.
+    fn write_bootstrap_releases<'a>(&'a self, _identity: &'a BootstrapId,
+        _releases: &'a [super::bootstrap::ObjectRetentionRelease]) -> StorageFuture<'a, ()> = Box::pin(async {
+        Err(crate::Error::InvalidInput { field: "object retention", reason: "backend does not import lifecycle releases" })
+    });
+    /// Persist a monotonic release frontier before permitting its stale revisions
+    /// to be reclaimed. Repeating a covered release must not advance metadata.
+    fn release_object_history<'a>(&'a self, _schema: &'a super::SchemaKey,
+        _item: &'a super::ObjectKey, _through: &'a StorageCursor) -> StorageFuture<'a, ()> = Box::pin(async {
+        Err(crate::Error::InvalidInput { field: "object retention", reason: "backend does not support lifecycle release" })
+    });
     fn history(&self) -> &StoreHistory;
             fn open(&self) -> StorageFuture<'_, StorageCursor>;
     fn cursor_saved(&self) -> StorageFuture<'_, StorageCursor>;
@@ -293,7 +314,7 @@ pub type StorageFuture<'a, T> = Pin<Box<dyn Future<Output = crate::Result<T>> + 
 /* === Structs === */
 pub struct StorageBackends<C: ObjectCatalog = ()> {
     pub primary: Arc<dyn StorageBackend<Catalog = C>>,
-    pub recovery: Arc<dyn super::recovery::RecoveryBackend>,
+    pub state: Arc<dyn super::state::StateBackend>,
     pub replicas: Vec<ReplicaTarget<C>>,
 }
 

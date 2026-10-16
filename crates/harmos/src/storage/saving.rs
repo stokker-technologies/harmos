@@ -125,7 +125,7 @@ impl<C> StorageManager<C> {
                             .saturating_add(2 * std::mem::size_of::<usize>());
                         let (files, bytes) = state.capture_file_snapshot(
                             Some(through),
-                            self.inner.settings.read_memory_bytes.get(),
+                            self.inner.settings.budget.read_memory_bytes.get(),
                             extra,
                         )?;
                         let outcome = MutationValue::Cursor(through.clone());

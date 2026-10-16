@@ -275,7 +275,7 @@ pub(super) async fn file(
         executor::yield_now().await;
         replica.check_copying()?;
         let maximum = NonZeroUsize::new(
-            (file.length - offset).min(manager.inner.settings.file_chunk_bytes.get() as u64)
+            (file.length - offset).min(manager.inner.settings.response.batch_bytes.get() as u64)
                 as usize,
         )
         .unwrap();
@@ -321,17 +321,10 @@ pub(super) async fn file(
     if actual != *file {
         return Err(invalid("target changed the immutable file reference"));
     }
-    // A replay may have created staging even if a prior uncertain finish won.
-    // Abort is idempotent and cannot delete the completed immutable file.
-    match bootstrap {
-        Some(identity) => {
-            replica
-                .config
-                .backend
-                .abort_bootstrap_file(identity, &staging)
-                .await?
-        }
-        None => replica.config.backend.abort_file(&staging).await?,
+    // Private Finished Files Remain Owned By The Bootstrap Until Its Atomic Commit.
+    // Aborting Here Would Remove Bytes Before Their Retained References Are Imported.
+    if bootstrap.is_none() {
+        replica.config.backend.abort_file(&staging).await?;
     }
     replica.state.lock().unwrap().staging = None;
     Ok(())

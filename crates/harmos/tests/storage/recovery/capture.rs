@@ -165,7 +165,7 @@ impl Store {
         StorageManager::new(
             StorageBackends {
                 primary: self.data.clone(),
-                recovery: self.recovery.clone(),
+                state: self.recovery.clone(),
                 replicas: Vec::new(),
             },
             config,
@@ -365,7 +365,7 @@ fn contract_scenario() {
                 .block_on(async {
                     let store = Store::new();
                     let mut config = config();
-                    config.queue_capacity = NonZeroUsize::new(2).unwrap();
+                    config.request.max_pending_write_batches = NonZeroUsize::new(2).unwrap();
                     let storage = store.manager(config);
                     let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
                     store.ready(&storage).await;
@@ -493,7 +493,7 @@ fn contract_scenario() {
                 .block_on(async {
                     let store = Store::new();
                     let mut config = config();
-                    config.queue_capacity = NonZeroUsize::new(1).unwrap();
+                    config.request.max_pending_write_batches = NonZeroUsize::new(1).unwrap();
                     let storage = store.manager(config);
                     let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
                     store.ready(&storage).await;
@@ -633,7 +633,7 @@ fn contract_scenario() {
                 .block_on(async {
                     let store = Store::new();
                     let mut config = config();
-                    config.queue_capacity = NonZeroUsize::new(4096).unwrap();
+                    config.request.max_pending_write_batches = NonZeroUsize::new(4096).unwrap();
                     let storage = store.manager(config);
                     let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
                     store.ready(&storage).await;
@@ -736,11 +736,11 @@ fn contract_scenario() {
                     for (entries, expected) in [(32, vec![32; 4]), (usize::MAX, vec![128])] {
                         let store = Store::new();
                         let mut policy = config();
-                        policy.queue_capacity = NonZeroUsize::new(512).unwrap();
+                        policy.request.max_pending_write_batches = NonZeroUsize::new(512).unwrap();
                         policy.write_batch_entries = NonZeroUsize::new(entries).unwrap();
                         policy.write_batch_bytes = NonZeroUsize::new(4 * 1024 * 1024).unwrap();
-                        policy.target_batch_bytes = policy.queue_capacity_bytes;
-                        policy.max_batch_bytes = policy.queue_capacity_bytes;
+                        policy.target_batch_bytes = policy.request.max_pending_write_bytes;
+                        policy.max_batch_bytes = policy.request.max_pending_write_bytes;
                         let storage = store.manager(policy);
                         let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
                         store.ready(&storage).await;
@@ -949,8 +949,8 @@ fn contract_scenario() {
                 .block_on(async {
                     let store = Store::new();
                     let mut policy = config();
-                    policy.queue_capacity_bytes = NonZeroUsize::new(512 * 1024).unwrap();
-                    policy.max_batch_bytes = policy.queue_capacity_bytes;
+                    policy.request.max_pending_write_bytes = NonZeroUsize::new(512 * 1024).unwrap();
+                    policy.max_batch_bytes = policy.request.max_pending_write_bytes;
                     policy.target_batch_bytes = policy.max_batch_bytes;
                     let storage = store.manager(policy);
                     let runtime = store
@@ -994,8 +994,9 @@ fn contract_scenario() {
                     for cancel in [false, true] {
                         let store = Store::new();
                         let mut policy = config();
-                        policy.queue_capacity_bytes = NonZeroUsize::new(256 * 1024).unwrap();
-                        policy.max_batch_bytes = policy.queue_capacity_bytes;
+                        policy.request.max_pending_write_bytes =
+                            NonZeroUsize::new(256 * 1024).unwrap();
+                        policy.max_batch_bytes = policy.request.max_pending_write_bytes;
                         policy.target_batch_bytes = policy.max_batch_bytes;
                         let storage = store.manager(policy);
                         let runtime = Runtime::<Model>::builder(0, ())
@@ -1148,7 +1149,7 @@ fn contract_scenario() {
                     let storage = StorageManager::new(
                         StorageBackends {
                             primary: store.data.clone(),
-                            recovery: store.recovery.clone(),
+                            state: store.recovery.clone(),
                             replicas: vec![ReplicaTarget {
                                 id: id.clone(),
                                 backend: target.clone(),

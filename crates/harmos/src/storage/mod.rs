@@ -9,6 +9,7 @@
 
 /* === Modules === */
 mod admissions;
+pub mod arrow;
 pub(crate) mod attachments;
 mod backend;
 mod batch;
@@ -18,13 +19,14 @@ mod browse;
 pub(crate) mod capture;
 pub(crate) mod catalog;
 pub(crate) mod codec;
+pub mod config;
 pub(crate) mod consumer;
 pub(crate) mod data;
 mod deletion;
 mod file_checkpoint;
 mod file_follow;
 mod file_reads;
-pub(crate) mod files;
+pub mod files;
 pub(crate) mod mutations;
 pub(crate) mod object_fields;
 pub(crate) mod object_values;
@@ -37,39 +39,40 @@ pub(crate) mod timestamp;
 mod follow;
 pub mod frame;
 pub(crate) mod manager;
+mod memory;
 mod object_admissions;
 mod objects;
 mod production;
-mod query;
+pub mod query;
 mod queue;
 mod reads;
 mod receipts;
 mod record_filter;
-pub mod recovery;
 pub mod reduce;
 mod replication;
 mod saving;
 mod schema;
 mod selection;
 mod staging;
+pub mod state;
 mod transfer;
 mod views;
 mod work;
 mod worker;
-mod writes;
+pub mod writes;
 
 #[cfg(feature = "signal")]
 pub mod series;
 
 /* === Re-Exports === */
-pub use crate::config::StorageSettings;
 pub use crate::storage::catalog::{
     ObjectCatalog, ObjectDefinition, ObjectDefinitions, ObjectKey, ObjectRetention, ObjectValue,
     PayloadEncoding, SchemaKey, StoredObject,
 };
 pub use crate::storage::data::{RecordInput, StoredRecord, StoredRow, StreamInput};
 pub use crate::storage::files::{
-    FileMetadata, FilePhase, FileProgress, FileReference, FileSession, StagedFile,
+    ByteRange, FileBatch, FileCompletion, FileMetadata, FilePhase, FileProgress, FileReference,
+    FileSession, ReadFile, StagedFile,
 };
 pub use crate::storage::mutations::{FileProducer, MutationId, MutationWindow, StorageInfo};
 pub use crate::storage::object_fields::{
@@ -85,14 +88,15 @@ pub use attachments::{Horizon, Payload, Recovery, Source};
 pub use backend::{StorageBackend, StorageBackends, StorageFuture};
 pub use batch::{StorageBatch, StorageEntry, StoragePart};
 pub use bootstrap::{
-    BootstrapId, BootstrapManifest, CollectionDigest, RetainedBatch, RetainedCoverage,
-    RetainedSnapshot,
+    BootstrapId, BootstrapManifest, CollectionDigest, ObjectReleaseCursor, ObjectReleasePage,
+    ObjectRetentionRelease, ReleaseDigest, RetainedBatch, RetainedCoverage, RetainedSnapshot,
 };
 pub use browse::{
     ObjectBrowseCursor, ObjectBrowsePage, ObjectBrowseQuery, ObjectBrowseRequest,
     ObjectBrowseResult, ObjectColumn, ObjectFieldsQuery, ObjectOrder, ObjectPredicate,
 };
 pub use capture::{ProjectedRecords, RecordProjection};
+pub use config::{StorageBudget, StorageRequestSettings, StorageResponseSettings, StorageSettings};
 pub use consumer::{Batch, Cursor, JournalConsumer, Series, StreamConsumer};
 pub use file_checkpoint::FileCheckpoint;
 pub use file_follow::FileFollower;
@@ -106,8 +110,8 @@ pub use production::{
 };
 pub use query::{
     Admission, EncodedObjectQuery, FileQuery, FileQueryResult, FollowQuery, ObjectQuery,
-    ObjectQueryResult, Query, QueryLimits, QueryOptions, QueryPage, QueryResult, QueryValue,
-    RecordQuery, RecordQueryResult, SchemaQuery, SchemaQueryResult, SharedQueryValue, StreamQuery,
+    ObjectQueryResult, QueryLimits, QueryOptions, QueryPage, QueryResult, QueryValue, RecordQuery,
+    RecordQueryResult, SchemaQuery, SchemaQueryResult, SharedQueryValue, StorageQuery, StreamQuery,
     StreamQueryResult,
 };
 pub use reads::{

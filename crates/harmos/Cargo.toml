@@ -139,6 +139,14 @@ semver = { workspace = true, default-features = true, optional = true }
 sha2 = { workspace = true, default-features = true }
 
 # Serialization
+arrow-array = { workspace = true }
+arrow-buffer = { workspace = true }
+arrow-data = { workspace = true }
+arrow-ipc = { workspace = true }
+arrow-schema = { workspace = true }
+arrow-select = { workspace = true }
+flatbuffers = { workspace = true }
+postcard = { workspace = true }
 prost-reflect = { workspace = true, optional = true, features = ["serde"] }
 serde = { workspace = true, default-features = true }
 serde_json = { workspace = true, default-features = true, features = ["raw_value"] }

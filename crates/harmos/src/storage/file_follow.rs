@@ -118,7 +118,7 @@ impl FileFollower {
             if self.offset < progress.length {
                 let size = max_bytes
                     .get()
-                    .min(self.manager.inner.settings.file_chunk_bytes.get())
+                    .min(self.manager.inner.settings.response.batch_bytes.get())
                     .min(usize::try_from(progress.length - self.offset).unwrap_or(usize::MAX));
                 let maximum = NonZeroUsize::new(size).expect("nonempty file prefix");
                 let reservation = self.manager.reserve_read(size, 1).await?;

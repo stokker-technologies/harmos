@@ -93,6 +93,7 @@ impl<A: Application> Resident<A> for Worker {
         let mut prefer_views = true;
         let mut prefer_files = true;
         let mut prefer_pruning = true;
+        let mut prefer_state = true;
         context.ready();
         loop {
             changed.borrow_and_update();
@@ -183,6 +184,28 @@ impl<A: Application> Resident<A> for Worker {
                     } else {
                         first
                     };
+                    // Journal Order Is Independent Of Unrelated Measurements.
+                    // Only The Earliest Unwritten State Entry May Bypass Data,
+                    // And Its Declared Evidence Dependency Must Already Be Durable.
+                    let ready_state = state
+                        .recovery_request
+                        .and_then(|target| {
+                            state.queue.iter().find(|entry| {
+                                entry.index <= target.index
+                                    && entry.operation.domain() == Domain::Recovery
+                                    && state.needs_write(entry)
+                            })
+                        })
+                        .filter(|entry| {
+                            entry.operation.required_data().is_some_and(|required| {
+                                state.status.saved.covers(required).unwrap_or(false)
+                            })
+                        });
+                    let selected = if prefer_state {
+                        ready_state.or(selected)
+                    } else {
+                        selected
+                    };
                     selected.cloned().map(Action::Write)
                 } else {
                     None
@@ -220,6 +243,9 @@ impl<A: Application> Resident<A> for Worker {
                 selected
             };
             if let Some(action) = action {
+                if let Action::Write(entry) = &action {
+                    prefer_state = entry.operation.domain() != Domain::Recovery;
+                }
                 prefer_pruning = !matches!(action, Action::Prune(_));
                 prefer_views = !matches!(action, Action::View(_) | Action::File(_));
                 let Some(result) = context.until_stopping(perform(inner, &action)).await else {
@@ -435,43 +461,64 @@ impl Drop for Running {
 }
 
 impl Operation {
-    pub(super) fn check_entry_bytes(&self, maximum: std::num::NonZeroUsize) -> Result<()> {
-        let part = match self {
-            Self::Schema(value) => StoragePart::Schemas(std::slice::from_ref(value)),
+    pub(super) fn encoded_batch_bytes(&self) -> Result<usize> {
+        let sum = |parts: &[StoragePart<'_>]| -> Result<usize> {
+            parts
+                .iter()
+                .flat_map(|part| part.entries())
+                .try_fold(0usize, |bytes, entry| {
+                    bytes
+                        .checked_add(entry.encoded_bytes()?)
+                        .ok_or(Error::InvalidInput {
+                            field: "storage admission",
+                            reason: "encoded batch size overflow",
+                        })
+                })
+        };
+        match self {
+            Self::Schema(value) => sum(&[StoragePart::Schemas(std::slice::from_ref(value))]),
             Self::ObjectGroup {
                 schemas, objects, ..
             } => {
+                let mut bytes = 0usize;
                 for (schema, object) in schemas.iter().zip(objects) {
-                    for part in [
+                    let next = sum(&[
                         StoragePart::Schemas(std::slice::from_ref(schema)),
                         StoragePart::Objects(std::slice::from_ref(object)),
-                    ] {
-                        for entry in part.entries() {
-                            if entry.encoded_bytes()? > maximum.get() {
-                                return Err(Error::InvalidInput {
-                                    field: "storage admission",
-                                    reason: "one entry exceeds max_batch_bytes",
-                                });
-                            }
-                        }
-                    }
+                    ])?;
+                    bytes = bytes.checked_add(next).ok_or(Error::InvalidInput {
+                        field: "storage admission",
+                        reason: "encoded batch size overflow",
+                    })?;
                 }
-                return Ok(());
+                Ok(bytes)
             }
-            Self::Records(values) => StoragePart::Records(values),
-            Self::Stream(values) => StoragePart::Stream(values),
-            Self::File(value) => StoragePart::Files(std::slice::from_ref(value)),
-            Self::Recovery(_) | Self::Snapshot(_) => return Ok(()),
-        };
-        for entry in part.entries() {
-            if entry.encoded_bytes()? > maximum.get() {
-                return Err(Error::InvalidInput {
-                    field: "storage admission",
-                    reason: "one entry exceeds max_batch_bytes",
-                });
-            }
+            Self::Records(values) => sum(&[StoragePart::Records(values)]),
+            Self::Stream(values) => sum(&[StoragePart::Stream(values)]),
+            Self::File(value) => sum(&[StoragePart::Files(std::slice::from_ref(value))]),
+            Self::Recovery(_) | Self::Snapshot(_) => Ok(0),
+        }
+    }
+
+    pub(super) fn check_entry_bytes(&self, maximum: std::num::NonZeroUsize) -> Result<()> {
+        if self.encoded_batch_bytes()? > maximum.get() {
+            return Err(Error::InvalidInput {
+                field: "storage admission",
+                reason: "atomic batch exceeds max_batch_bytes; split before submission",
+            });
         }
         Ok(())
+    }
+
+    pub(super) fn required_data(&self) -> Option<&super::StorageCursor> {
+        match self {
+            Self::Recovery(entries) => entries
+                .iter()
+                .max_by_key(|entry| entry.required_data.sequence)
+                .map(|entry| &entry.required_data),
+            Self::Snapshot(snapshot) => Some(&snapshot.required_data),
+            _ => None,
+        }
     }
 
     pub(super) fn domain(&self) -> Domain {
@@ -557,10 +604,32 @@ async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
                 }
                 Operation::Stream(rows) => Some(StoragePart::Stream(rows)),
                 Operation::Recovery(entries) => {
+                    let saved = inner.state.lock().unwrap().status.saved.clone();
+                    for entry in entries {
+                        if !saved.covers(&entry.required_data)? {
+                            return Err(Error::InvalidInput {
+                                field: "state evidence dependency",
+                                reason: "journal cannot precede required primary persistence",
+                            });
+                        }
+                    }
                     inner.bounded(inner.recovery.write_entries(entries)).await?;
                     None
                 }
                 Operation::Snapshot(snapshot) => {
+                    if !inner
+                        .state
+                        .lock()
+                        .unwrap()
+                        .status
+                        .saved
+                        .covers(&snapshot.required_data)?
+                    {
+                        return Err(Error::InvalidInput {
+                            field: "state snapshot dependency",
+                            reason: "snapshot cannot precede required primary persistence",
+                        });
+                    }
                     inner
                         .bounded(inner.recovery.write_snapshot(snapshot))
                         .await?;

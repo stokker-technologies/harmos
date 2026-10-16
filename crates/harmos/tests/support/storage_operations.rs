@@ -22,7 +22,7 @@ use std::sync::Arc;
 // Local Imports
 use super::{Fixture, config, write};
 use harmos::operations::Contracts;
-use harmos::storage::operations::{Operations, QueryFiles, Save, SaveRequest, Selection};
+use harmos::storage::operations::{Operations, Save, SaveRequest, Selection};
 
 /* === Constants === */
 

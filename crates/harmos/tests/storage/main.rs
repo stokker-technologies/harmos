@@ -8,15 +8,24 @@
  */
 
 /* === Modules === */
+mod arrow;
 #[path = "../support/storage.rs"]
 mod backend;
+mod cancellation;
+mod exhaustion;
 #[path = "../support/storage_fixture.rs"]
 mod fixture;
+mod mapping;
+mod nominal;
 mod policy;
+mod query_pressure;
 #[path = "../../../../tests/support/scenarios.rs"]
 mod scenario_runtime;
+mod state_admission;
 #[path = "../support/mod.rs"]
 mod support;
+#[path = "../support/storage/waveforms.rs"]
+mod waveforms;
 use fixture::*;
 #[path = "../storage/batching.rs"]
 mod batching;

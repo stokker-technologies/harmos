@@ -21,7 +21,7 @@ use std::time::Duration;
 
 // Local Imports
 use super::{
-    FollowQuery, Query, QueryOptions, QueryResult, decoded_limit, remaining_budget, sealed,
+    FollowQuery, QueryOptions, QueryResult, StorageQuery, decoded_limit, remaining_budget, sealed,
 };
 use crate::storage::catalog::{LOOKUP_MEMORY_BYTES, ObjectDefinition};
 use crate::storage::{
@@ -89,11 +89,11 @@ impl EncodedObjectQuery {
     }
 }
 impl sealed::Supported for EncodedObjectQuery {
-    fn options_mut(&mut self) -> &mut QueryOptions {
-        &mut self.options
+    fn options_mut(&mut self) -> Option<&mut QueryOptions> {
+        Some(&mut self.options)
     }
 }
-impl<C> Query<C> for EncodedObjectQuery {
+impl<C> StorageQuery<C> for EncodedObjectQuery {
     type Reader = QueryResult<ObjectEntry, ObjectEntry>;
     fn options(&self) -> &QueryOptions {
         &self.options

@@ -62,9 +62,9 @@ fn contract_scenario() {
                     probe.finish().await;
 
                     let mut policy = config();
-                    policy.queue_capacity_bytes = NonZeroUsize::new(charge * 3).unwrap();
-                    policy.target_batch_bytes = policy.queue_capacity_bytes;
-                    policy.max_batch_bytes = policy.queue_capacity_bytes;
+                    policy.request.max_pending_write_bytes = NonZeroUsize::new(charge * 3).unwrap();
+                    policy.target_batch_bytes = policy.request.max_pending_write_bytes;
+                    policy.max_batch_bytes = policy.request.max_pending_write_bytes;
                     policy.write_batch_entries = NonZeroUsize::new(usize::MAX).unwrap();
                     policy.write_batch_bytes = NonZeroUsize::new(usize::MAX).unwrap();
                     let f = Fixture::new(policy).await;
@@ -181,15 +181,15 @@ fn contract_scenario() {
                 .block_on(async {
                     for memory_pressure in [false, true] {
                         let mut policy = config();
-                        policy.queue_capacity =
+                        policy.request.max_pending_write_batches =
                             NonZeroUsize::new(if memory_pressure { 256 } else { 4 }).unwrap();
-                        policy.queue_capacity_bytes =
+                        policy.request.max_pending_write_bytes =
                             NonZeroUsize::new(if memory_pressure { 8192 } else { 1024 * 1024 })
                                 .unwrap();
-                        policy.target_batch_bytes = policy.queue_capacity_bytes;
-                        policy.max_batch_bytes = policy.queue_capacity_bytes;
-                        let queue_limit = policy.queue_capacity.get();
-                        let memory_limit = policy.queue_capacity_bytes.get();
+                        policy.target_batch_bytes = policy.request.max_pending_write_bytes;
+                        policy.max_batch_bytes = policy.request.max_pending_write_bytes;
+                        let queue_limit = policy.request.max_pending_write_batches.get();
+                        let memory_limit = policy.request.max_pending_write_bytes.get();
                         let f = Fixture::new(policy).await;
                         tokio::time::timeout(Duration::from_secs(5), async {
                             for index in 0..32 {
@@ -221,7 +221,7 @@ fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let mut policy = config();
-                    policy.queue_capacity = NonZeroUsize::new(2).unwrap();
+                    policy.request.max_pending_write_batches = NonZeroUsize::new(2).unwrap();
                     let f = Fixture::new(policy).await;
                     f.data.control.block_flush.store(true, Ordering::SeqCst);
                     write(&f.storage, "one").await;
@@ -259,7 +259,7 @@ fn contract_scenario() {
             scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
 
     let mut policy = config();
-    policy.queue_capacity = NonZeroUsize::new(2).unwrap();
+    policy.request.max_pending_write_batches = NonZeroUsize::new(2).unwrap();
     let f = Fixture::new(policy).await;
     f.data.control.block_write.store(true, Ordering::SeqCst);
     write(&f.storage, "one").await;
@@ -296,7 +296,7 @@ fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let mut policy = config();
-                    policy.queue_capacity = NonZeroUsize::new(1).unwrap();
+                    policy.request.max_pending_write_batches = NonZeroUsize::new(1).unwrap();
                     let f = Fixture::new(policy).await;
                     f.data.control.flush_failures.store(1, Ordering::SeqCst);
                     write(&f.storage, "one").await;
@@ -334,9 +334,9 @@ fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let mut policy = config();
-                    policy.queue_capacity_bytes = NonZeroUsize::new(8192).unwrap();
-                    policy.target_batch_bytes = policy.queue_capacity_bytes;
-                    policy.max_batch_bytes = policy.queue_capacity_bytes;
+                    policy.request.max_pending_write_bytes = NonZeroUsize::new(8192).unwrap();
+                    policy.target_batch_bytes = policy.request.max_pending_write_bytes;
+                    policy.max_batch_bytes = policy.request.max_pending_write_bytes;
                     let f = Fixture::new(policy).await;
                     write(&f.storage, "one").await;
                     let snapshot = tokio::time::timeout(
@@ -385,16 +385,24 @@ fn contract_scenario() {
                     f.data.control.block_flush.store(true, Ordering::SeqCst);
                     f.recovery.control.block_flush.store(true, Ordering::SeqCst);
                     tokio::time::advance(Duration::from_secs(1)).await;
-                    f.data.control.flush_entered.notified().await;
-                    f.data.control.block_flush.store(false, Ordering::SeqCst);
-                    f.data.control.flush_release.notify_one();
-                    f.recovery.control.flush_entered.notified().await;
-                    f.recovery
-                        .control
-                        .block_flush
-                        .store(false, Ordering::SeqCst);
-                    f.recovery.control.flush_release.notify_one();
+                    // Independent State Work May Reach Its Flush Before Data.
+                    tokio::join!(
+                        async {
+                            f.data.control.flush_entered.notified().await;
+                            f.data.control.block_flush.store(false, Ordering::SeqCst);
+                            f.data.control.flush_release.notify_one();
+                        },
+                        async {
+                            f.recovery.control.flush_entered.notified().await;
+                            f.recovery
+                                .control
+                                .block_flush
+                                .store(false, Ordering::SeqCst);
+                            f.recovery.control.flush_release.notify_one();
+                        }
+                    );
                     f.storage.flush_recovery().await.unwrap();
+                    f.storage.flush().await.unwrap();
                     assert_eq!(*f.data.control.write_sizes.lock().unwrap(), [4]);
                     assert_eq!(*f.recovery.control.write_sizes.lock().unwrap(), [2]);
                     assert_eq!(f.storage.status().saved.sequence, 4);
@@ -542,7 +550,8 @@ fn contract_scenario() {
                 .block_on(async {
                     let f = Fixture::new(config()).await;
                     write(&f.storage, "before").await;
-                    let snapshot = harmos::storage::recovery::RecoverySnapshot {
+                    let snapshot = harmos::storage::state::RecoverySnapshot {
+                        required_data: f.storage.cursor_saved(),
                         through: f.storage.status().recovery_accepted,
                         payload: vec![7],
                     };
@@ -575,7 +584,8 @@ fn contract_scenario() {
                     probe.finish().await;
 
                     let mut policy = config();
-                    policy.queue_capacity_bytes = NonZeroUsize::new(charge * 16).unwrap();
+                    policy.request.max_pending_write_bytes =
+                        NonZeroUsize::new(charge * 16).unwrap();
                     policy.target_batch_bytes = NonZeroUsize::new(charge * 2).unwrap();
                     policy.max_batch_bytes = policy.target_batch_bytes;
                     let f = Fixture::new(policy).await;
@@ -609,7 +619,7 @@ fn contract_scenario() {
         });
     }
     {
-        scenario_runtime::check("splits_groups_cancelled", || {
+        scenario_runtime::check("atomic_batch_settles", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor
                 .enable_all()
@@ -617,7 +627,7 @@ fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let mut policy = config();
-                    policy.max_batch_bytes = NonZeroUsize::new(1024).unwrap();
+                    policy.max_batch_bytes = NonZeroUsize::new(4096).unwrap();
                     policy.target_batch_bytes = policy.max_batch_bytes;
                     let f = Fixture::new(policy).await;
                     let key = schema();
@@ -627,39 +637,18 @@ fn contract_scenario() {
                     f.data.control.block_write.store(true, Ordering::SeqCst);
                     let accepted = f.storage.write_records(&records).await.unwrap();
                     let admitted = f.storage.status().pending_bytes;
-                    {
-                        let flush = f.storage.flush_until(&accepted);
-                        tokio::pin!(flush);
-                        tokio::select! {
-                            _ = &mut flush => panic!("physical write is blocked"),
-                            _ = f.data.control.write_entered.notified() => {}
-                        }
-                        f.data.control.write_release.notify_one();
-                        tokio::select! {
-                            _ = &mut flush => panic!("the complete admitted group is not durable"),
-                            _ = f.data.control.write_entered.notified() => {}
-                        }
-                        let saved = f.storage.cursor_saved().sequence;
-                        assert!(saved > 0 && saved < accepted.sequence);
-                        assert_eq!(f.storage.status().pending_batches, 1);
-                        assert_eq!(f.storage.status().pending_bytes, admitted);
-                    }
+                    let flushing = {
+                        let storage = f.storage.clone();
+                        tokio::spawn(async move { storage.flush().await })
+                    };
+                    f.data.control.write_entered.notified().await;
+                    assert_eq!(f.storage.cursor_saved().sequence, 0);
+                    assert_eq!(f.storage.status().pending_bytes, admitted);
                     f.data.control.block_write.store(false, Ordering::SeqCst);
                     f.data.control.write_release.notify_one();
-                    tokio::time::timeout(Duration::from_secs(5), async {
-                        while f.storage.cursor_saved() != accepted {
-                            tokio::task::yield_now().await;
-                        }
-                    })
-                    .await
-                    .unwrap();
+                    assert_eq!(flushing.await.unwrap().unwrap(), accepted);
+                    assert_eq!(*f.data.control.write_sizes.lock().unwrap(), [8]);
                     assert_eq!(f.storage.status().pending_bytes, 0);
-                    assert_eq!(
-                        *f.data.control.writes.lock().unwrap(),
-                        (1..=8).collect::<Vec<_>>()
-                    );
-                    let sizes = f.data.control.write_bytes.lock().unwrap().clone();
-                    assert!(sizes.len() > 1 && sizes.iter().all(|bytes| *bytes <= 1024));
                     f.finish().await;
                 });
         });
@@ -695,7 +684,7 @@ fn contract_scenario() {
         });
     }
     {
-        scenario_runtime::check("suffix_retries_rewriting", || {
+        scenario_runtime::check("whole_batch_retries", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor
                 .enable_all()
@@ -703,51 +692,29 @@ fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let mut policy = config();
-                    policy.max_batch_bytes = NonZeroUsize::new(1024).unwrap();
+                    policy.max_batch_bytes = NonZeroUsize::new(4096).unwrap();
                     policy.target_batch_bytes = policy.max_batch_bytes;
                     let f = Fixture::new(policy).await;
                     let key = schema();
                     let item = Identifier::new("group").unwrap();
                     let payload = vec![7; 100];
                     let records: Vec<_> = (0..8).map(|_| record(&key, &item, &payload)).collect();
-                    f.data.control.block_write.store(true, Ordering::SeqCst);
                     let accepted = f.storage.write_records(&records).await.unwrap();
-                    let saved_prefix;
-                    {
-                        let flush = f.storage.flush_until(&accepted);
-                        tokio::pin!(flush);
-                        tokio::select! {
-                            _ = &mut flush => panic!("first physical batch is blocked"),
-                            _ = f.data.control.write_entered.notified() => {}
-                        }
-                        f.data.control.write_release.notify_one();
-                        tokio::select! {
-                            _ = &mut flush => panic!("second physical batch is blocked"),
-                            _ = f.data.control.write_entered.notified() => {}
-                        }
-                        saved_prefix = f.storage.cursor_saved();
-                        assert!(
-                            saved_prefix.sequence > 0 && saved_prefix.sequence < accepted.sequence
-                        );
-                        f.data.control.failures.store(1, Ordering::SeqCst);
-                        f.data.control.block_write.store(false, Ordering::SeqCst);
-                        f.data.control.write_release.notify_one();
-                        assert!(flush.await.is_err());
-                    }
-                    assert_eq!(f.storage.cursor_saved(), saved_prefix);
+                    f.data.control.failures.store(1, Ordering::SeqCst);
+                    assert!(f.storage.flush_until(&accepted).await.is_err());
+                    assert_eq!(f.storage.cursor_saved().sequence, 0);
                     assert_eq!(f.storage.status().pending_batches, 1);
                     assert_eq!(f.storage.flush_until(&accepted).await.unwrap(), accepted);
-                    let writes = f.data.control.writes.lock().unwrap().clone();
-                    for position in 1..=saved_prefix.sequence {
-                        assert_eq!(
-                            writes
-                                .iter()
-                                .filter(|written| **written == position)
-                                .count(),
-                            1
-                        );
-                    }
                     assert_eq!(f.data.records.lock().unwrap().len(), 8);
+                    assert!(
+                        f.data
+                            .control
+                            .write_sizes
+                            .lock()
+                            .unwrap()
+                            .iter()
+                            .all(|size| *size == 8)
+                    );
                     assert_eq!(f.storage.status().pending_bytes, 0);
                     f.finish().await;
                 });
@@ -774,14 +741,17 @@ fn contract_scenario() {
                         definitions: vec![fields],
                     };
                     let mut policy = config();
-                    policy.queue_capacity_bytes = NonZeroUsize::new(16 * 1024).unwrap();
-                    policy.target_batch_bytes = policy.queue_capacity_bytes;
-                    policy.max_batch_bytes = policy.queue_capacity_bytes;
+                    policy.request.max_pending_write_bytes = NonZeroUsize::new(16 * 1024).unwrap();
+                    policy.target_batch_bytes = policy.request.max_pending_write_bytes;
+                    policy.max_batch_bytes = policy.request.max_pending_write_bytes;
                     let f = Fixture::new(policy.clone()).await;
                     let key = schema();
                     let position = f.storage.write_schema(&key, &graph).await.unwrap();
                     assert_eq!(position.sequence, 1);
-                    assert!(f.storage.status().pending_bytes < policy.queue_capacity_bytes.get());
+                    assert!(
+                        f.storage.status().pending_bytes
+                            < policy.request.max_pending_write_bytes.get()
+                    );
                     f.storage.flush().await.unwrap();
                     {
                         let saved = f.data.schemas.lock().unwrap();
@@ -831,7 +801,7 @@ fn contract_scenario() {
                         f.storage.write_schema(&key, &graph).await,
                         Err(harmos::Error::InvalidInput {
                             field: "storage admission",
-                            reason: "one entry exceeds max_batch_bytes",
+                            reason: "atomic batch exceeds max_batch_bytes; split before submission",
                         })
                     ));
                     assert_eq!(f.storage.cursor_accepted().sequence, 0);
@@ -871,9 +841,9 @@ fn contract_scenario() {
                         definitions: vec![fields.to_vec(), CHILDREN.to_vec()],
                     };
                     let mut policy = config();
-                    policy.queue_capacity_bytes = NonZeroUsize::new(4096).unwrap();
-                    policy.target_batch_bytes = policy.queue_capacity_bytes;
-                    policy.max_batch_bytes = policy.queue_capacity_bytes;
+                    policy.request.max_pending_write_bytes = NonZeroUsize::new(4096).unwrap();
+                    policy.target_batch_bytes = policy.request.max_pending_write_bytes;
+                    policy.max_batch_bytes = policy.request.max_pending_write_bytes;
                     let f = Fixture::new(policy.clone()).await;
                     assert!(matches!(
                         f.storage.write_schema(&schema(), &graph).await,
@@ -886,9 +856,9 @@ fn contract_scenario() {
                     assert_eq!(f.storage.status().pending_bytes, 0);
                     assert!(f.data.schemas.lock().unwrap().is_empty());
                     f.finish().await;
-                    policy.queue_capacity_bytes = NonZeroUsize::new(64 * 1024).unwrap();
-                    policy.target_batch_bytes = policy.queue_capacity_bytes;
-                    policy.max_batch_bytes = policy.queue_capacity_bytes;
+                    policy.request.max_pending_write_bytes = NonZeroUsize::new(64 * 1024).unwrap();
+                    policy.target_batch_bytes = policy.request.max_pending_write_bytes;
+                    policy.max_batch_bytes = policy.request.max_pending_write_bytes;
                     let f = Fixture::new(policy).await;
                     f.storage.write_schema(&schema(), &graph).await.unwrap();
                     f.storage.flush().await.unwrap();

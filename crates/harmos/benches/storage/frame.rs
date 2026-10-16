@@ -190,15 +190,19 @@ pub(super) async fn reuse() {
     };
     let settings = StorageSettings {
         flush_interval: Duration::from_secs(3600),
-        read_memory_bytes: super::nonzero(256 * 1024 * 1024),
+        budget: {
+            let mut settings = super::backend::storage_settings().budget;
+            settings.read_memory_bytes = super::nonzero(256 * 1024 * 1024);
+            settings
+        },
         query_execution: execution,
         query_execution_ceiling: execution,
-        ..StorageSettings::default()
+        ..super::backend::storage_settings()
     };
     let storage = StorageManager::new(
         StorageBackends {
             primary: data.clone(),
-            recovery: Arc::new(Recovery::new(history())),
+            state: Arc::new(Recovery::new(history())),
             replicas: Vec::new(),
         },
         settings,

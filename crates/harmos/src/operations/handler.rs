@@ -326,6 +326,16 @@ impl Context<'_> {
         self.origin.identity == super::caller::Identity::Host
     }
 
+    // Revalidate The Caller Before Every Streamed Destination
+    pub(crate) fn admit_stream_grant(&self, grant: &harmos_contract::plugin::Grant) -> Result<()> {
+        self.source.check()?;
+        match &self.origin.grants {
+            Some(authority) => authority.admit(Some(grant)),
+            None if self.is_host_call() => Ok(()),
+            None => Err(Error::PermissionDenied),
+        }
+    }
+
     // Refuse a provider-prepared grant the admitted caller does not hold.
     #[cfg(any(
         all(feature = "plugin-guest", not(target_arch = "wasm32")),

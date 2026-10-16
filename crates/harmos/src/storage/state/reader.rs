@@ -63,8 +63,12 @@ impl<C> StorageManager<C> {
         };
         let snapshot_bound = snapshot_bytes
             .map(|bytes| {
-                recovery_preparation_bytes(bytes.get(), self.inner.recovery.history())
-                    .map(|charged| NonZeroUsize::new(charged).expect("positive snapshot budget"))
+                recovery_preparation_bytes(
+                    bytes.get(),
+                    self.inner.recovery.history(),
+                    self.inner.primary.history(),
+                )
+                .map(|charged| NonZeroUsize::new(charged).expect("positive snapshot budget"))
             })
             .transpose()?;
         let mut bytes = limits
@@ -92,7 +96,8 @@ impl<C> StorageManager<C> {
                 > self
                     .inner
                     .settings
-                    .queue_capacity_bytes
+                    .request
+                    .max_pending_write_bytes
                     .get()
                     .saturating_sub(current.status.pending_bytes)
             {
@@ -139,6 +144,10 @@ impl<C> RecoveryReader<'_, C> {
                 reason: "invalid managed snapshot boundary or size",
             });
         }
+        if let Some(snapshot) = &snapshot {
+            self.storage
+                .check_state_dependency(&snapshot.required_data)?;
+        }
         Ok(snapshot)
     }
 
@@ -155,12 +164,16 @@ impl<C> RecoveryReader<'_, C> {
         page.check(after, &self.through, self.limits, |entry| {
             encoded_size(entry).unwrap_or(usize::MAX)
         })?;
+        for entry in &page.entries {
+            self.storage.check_state_dependency(&entry.required_data)?;
+        }
         Ok(page)
     }
 
     pub(crate) fn finish(self, position: Position) -> watch::Receiver<Position> {
         let (saved, durable) = watch::channel(position);
         let mut current = self.storage.inner.state.lock().unwrap();
+        current.journal_required_data = current.status.saved.clone();
         current.journal_saved = Some(saved);
         current.journal_limit = self.limits.bytes.get();
         durable

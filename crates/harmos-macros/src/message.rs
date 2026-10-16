@@ -95,6 +95,10 @@ pub(crate) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
     let mut tags = BTreeMap::new();
     let mut fields = Vec::new();
     for field in &mut item.fields {
+        // Macro-Forwarded Types Carry Invisible Delimiter Groups
+        while let Type::Group(group) = &field.ty {
+            field.ty = (*group.elem).clone();
+        }
         if field
             .attrs
             .iter()
@@ -402,3 +406,22 @@ fn common(ty: &Type) -> bool {
 }
 
 /* === Tests === */
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proc_macro2::{Delimiter, Group};
+
+    #[test]
+    fn forwarded_field_types_preserve_message_shape_rules() {
+        let supported = Group::new(Delimiter::None, quote!(Option<i64>));
+        let supported = TokenStream::from(proc_macro2::TokenTree::Group(supported));
+        let expanded = expand(quote!(), quote!(struct Row { value: #supported }));
+        assert!(expanded.is_ok());
+
+        let unsupported = Group::new(Delimiter::None, quote!(Option<Vec<String>>));
+        let unsupported = TokenStream::from(proc_macro2::TokenTree::Group(unsupported));
+        let expanded = expand(quote!(), quote!(struct Row { value: #unsupported }));
+        let error = expanded.expect_err("forwarding must not admit recursive containers");
+        assert!(error.to_string().contains("unsupported message field"));
+    }
+}

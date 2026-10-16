@@ -58,9 +58,10 @@ your application defines what each change means.
 
 - **Storage**
 
-  Supply adapters for committed history, snapshots, streams, and evidence.
-  Your application chooses its database and file format; Harmos defines the
-  contracts they implement.
+  Supply adapters for committed history, managed-state journals and snapshots,
+  streams, and evidence. Your application chooses its database and file format
+  and explicitly supplies storage budgets, queue limits and response batch
+  ceilings. Analytical query results use Arrow schemas and record batches.
 
 - **Crash Recovery**
 
@@ -251,8 +252,8 @@ Message descriptions use finite shared definitions and references, including
 recursive shapes. `config::SchemaSettings` bounds schema preparation memory and
 work separately from payload limits. Artifact metadata uses revision 6; rebuild
 hosts and SDK consumers together. Stored schema metadata uses `graph_v1`;
-`storage.write_schema` and `storage.query_schemas` use semantic version 2 for the
-finite schema description. Product row payload codecs are unchanged. Inline
+Schema writes retain the finite schema description; finite schema reads use
+`Query` with `Source::Schemas`. Product row payload codecs remain explicit. Inline
 schema metadata is unsupported: preserve the original data and select a fresh
 storage root rather than resetting or silently converting it. Backends can reserve
 JSON schema decode memory with `StorageSchema::decoding_memory_bytes(encoded_bytes)`
@@ -309,6 +310,20 @@ unread streams, are aborted after half of `shutdown_timeout`. The application
 runtime stays available for a new attachment. Accepted sockets
 use TCP_NODELAY so small flow-control windows do not add Nagle buffering delays.
 
+Finite storage queries select a source at a full persisted storage cursor,
+apply an ordered transform plan, and apply row `offset`/`limit` to the final
+result. Delivery emits a schema, bounded Arrow record batches, and a final
+operation completion. Response `batch_rows` and `batch_bytes` bound each delivery
+batch; they do not truncate the query result. Consumers retain the storage
+memory ownership of shared Arrow buffers through clones and slices.
+
+Typed stream, record and object writers acknowledge acceptance and durability
+separately for each atomic logical batch. A disconnected invocation may have
+committed earlier batches; callers must not blindly replay unacknowledged data.
+Finished-file reads are separate from producing-file follow/resume operations.
+State persistence uses `storage::state::StateBackend`; the state manager owns
+transactions and replay while the storage manager owns admission and durability.
+
 Saved-view frame queries combine `Predicate::Compare`, `Predicate::In` and
 `Predicate::Exists` filters with AND. Membership accepts at most 64 scalar
 alternatives; an empty set matches nothing. Presence excludes missing and null
@@ -316,7 +331,7 @@ values, so nested ownership fields can be required without admitting unscoped
 records. Queries keep the original saved cut and declared memory limits.
 
 Raw saved record paging accepts bounded disjunction through
-`RecordQuery::filter` and `storage::operations::DataSelection::record_filter`:
+the native `RecordQuery::filter` adapter:
 
 ```rust
 RecordFilter {
@@ -340,8 +355,8 @@ paging; direct follow and replay reject them.
 
 A retained, connected `StorageFile` stays live during idle periods under its
 original producer owner. Dropping the producer or cancelling its pending write
-starts the configured `file_session_timeout` resume window (60 seconds by
-default); recovered sessions have the same bounded window. Token-only mutation
+starts the consumer-configured `file_session_timeout` resume window;
+recovered sessions have the same bounded window. Token-only mutation
 producers retain bounded inactivity expiry because no native handle owns their
 lifetime. An unadopted native resume remains disconnected. Resume fences the old
 producer and clears the disconnected deadline. Finish, abort and storage shutdown

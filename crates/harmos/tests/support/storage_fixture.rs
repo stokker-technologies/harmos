@@ -22,8 +22,8 @@ pub(crate) use std::time::Duration;
 
 // Local Imports
 use super::{backend, operations, support};
-pub(crate) use backend::{Data, Recovery, history};
-pub(crate) use harmos::storage::recovery::RecoverySnapshot;
+pub(crate) use backend::{Data, Recovery, history, storage_settings};
+pub(crate) use harmos::storage::state::RecoverySnapshot;
 pub(crate) use harmos::storage::*;
 pub(crate) use harmos::{BackendFailure, Error, Identifier, Runtime};
 pub(crate) use support::{Bank, Ledger, catalog};
@@ -69,7 +69,7 @@ impl Fixture {
         let storage = StorageManager::new(
             StorageBackends {
                 primary: data.clone(),
-                recovery: recovery.clone(),
+                state: recovery.clone(),
                 replicas,
             },
             config,
@@ -104,7 +104,7 @@ pub(crate) fn config() -> StorageSettings {
     StorageSettings {
         flush_interval: Duration::from_secs(60),
         max_retries: 0,
-        ..StorageSettings::default()
+        ..storage_settings()
     }
 }
 

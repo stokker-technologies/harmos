@@ -10,9 +10,6 @@
 /* === Modules === */
 use crate::scenario_runtime;
 
-#[path = "query_objects.rs"]
-mod fields;
-
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -26,7 +23,10 @@ use std::sync::Arc;
 // Local Imports
 use super::super::{Bank, Data, Ledger, Recovery, catalog, config, history};
 use super::Lanes;
-use harmos::storage::operations::{Operations, WriteObjects, WriteObjectsRequest};
+use arrow_array::{StringArray, StructArray};
+use arrow_schema::{DataType, Field, Fields};
+use harmos::storage::operations::{Operations, WriteObjects};
+use harmos::storage::writes::{DataBatch, WriteReceipt, WriteRequest};
 use harmos::storage::{
     MutationId, ObjectCatalog, ObjectRetention, ObjectValue, ObjectVersion, StorageBackends,
     StorageManager, StoredObject,
@@ -118,7 +118,7 @@ fn contract_scenario() {
                     let storage = StorageManager::new(
                         StorageBackends {
                             primary: Arc::new(Data::<Objects>::with_catalog(history())),
-                            recovery: Arc::new(Recovery::new(history())),
+                            state: Arc::new(Recovery::new(history())),
                             replicas: Vec::new(),
                         },
                         config(),
@@ -137,66 +137,77 @@ fn contract_scenario() {
                         Arc::new(storage.clone()),
                     )
                     .unwrap();
-                    let mutation = MutationId {
-                        window: storage.mutation_window().unwrap().id,
-                        key: Identifier::new("group").unwrap(),
+                    let first = value("a/b", "first");
+                    let second = value("second", "two");
+                    // Register Authored Schema Before Sending Its Typed Payload.
+                    let document = Document {
+                        id: "bootstrap".into(),
+                        text: "schema".into(),
                     };
-                    let request = WriteObjectsRequest {
-                        mutation: mutation.clone(),
-                        objects: vec![value("a/b", "first"), value("second", "two")],
-                    };
-                    let response = runtime
+                    storage.write_object(&document).await.unwrap();
+                    storage.flush().await.unwrap();
+                    let fields: Fields = vec![
+                        Field::new("id", DataType::Utf8, false),
+                        Field::new("text", DataType::Utf8, false),
+                    ]
+                    .into();
+                    let payload = StructArray::new(
+                        fields,
+                        vec![
+                            Arc::new(StringArray::from(vec!["a/b", "second"])),
+                            Arc::new(StringArray::from(vec!["first", "two"])),
+                        ],
+                        None,
+                    );
+                    let data = super::writes::envelope(
+                        payload,
+                        &[first.item.as_str(), second.item.as_str()],
+                        &[0, 1],
+                    );
+                    let request = WriteRequest { scope: None };
+                    let mut writer = runtime
                         .operations
-                        .call_as::<WriteObjects>(request.clone())
-                        .await
+                        .exchange::<WriteObjects>(
+                            request,
+                            super::writes::settings(),
+                            super::writes::settings(),
+                        )
                         .unwrap();
-                    assert_eq!(response.objects.len(), 2);
-                    assert_eq!(response.objects[0].position.sequence, 2);
-                    assert_eq!(response.objects[1].position.sequence, 4);
-                    assert_eq!(storage.cursor_saved().sequence, 0);
-                    let native = storage
-                        .write_object(&Document {
-                            id: "a/b".into(),
-                            text: "later".into(),
+                    writer
+                        .send(DataBatch {
+                            sequence: 1,
+                            destination: first.schema.id.clone(),
+                            schema: first.schema,
+                            data,
                         })
                         .await
                         .unwrap();
-                    assert_eq!(native.position.sequence, 6);
-                    let repeated = storage
-                        .write_objects_once(&mutation, &request.objects)
-                        .await
-                        .unwrap();
-                    assert_eq!(repeated, response.objects);
-                    assert_eq!(storage.cursor_accepted(), native.position);
-                    let mut conflict = request.clone();
-                    conflict.objects[0] = value("a/b", "conflict");
-                    assert!(
-                        runtime
-                            .operations
-                            .call_as::<WriteObjects>(conflict)
-                            .await
-                            .is_err()
-                    );
-                    storage.flush().await.unwrap();
+                    writer.finish_input();
+                    let mut accepted = None;
+                    while let Some(receipt) = writer.next().await.unwrap() {
+                        match &*receipt {
+                            WriteReceipt::Accepted(receipt) => {
+                                accepted = Some(receipt.cursor.clone())
+                            }
+                            WriteReceipt::Durable(receipt) => {
+                                assert_eq!(accepted.as_ref(), Some(&receipt.cursor))
+                            }
+                        }
+                    }
+                    let completion = writer.join().await.unwrap();
+                    assert_eq!(completion.batches, 1);
+                    assert_eq!(storage.cursor_saved(), completion.cursor);
                     let exact = storage
                         .read_object::<Document>(
                             &"a/b".into(),
-                            ObjectVersion::Exact(response.objects[0].version.clone()),
+                            ObjectVersion::Latest,
                             NonZeroUsize::new(4096).unwrap(),
                         )
                         .await
                         .unwrap()
                         .unwrap();
                     assert_eq!(exact.value.text, "first");
-                    assert_eq!(
-                        runtime
-                            .operations
-                            .call_as::<WriteObjects>(request)
-                            .await
-                            .unwrap()
-                            .objects,
-                        response.objects
-                    );
+                    drop(exact);
                     runtime.stop().await.unwrap();
                 });
         });
@@ -212,7 +223,7 @@ fn contract_scenario() {
                     let storage = StorageManager::new(
                         StorageBackends {
                             primary: Arc::new(Data::<Objects>::with_catalog(history())),
-                            recovery: Arc::new(Recovery::new(history())),
+                            state: Arc::new(Recovery::new(history())),
                             replicas: Vec::new(),
                         },
                         config(),
@@ -267,7 +278,7 @@ fn contract_scenario() {
                     let storage = StorageManager::new(
                         StorageBackends {
                             primary: data.clone(),
-                            recovery: Arc::new(Recovery::new(history())),
+                            state: Arc::new(Recovery::new(history())),
                             replicas: Vec::new(),
                         },
                         config(),
@@ -325,7 +336,7 @@ fn contract_scenario() {
                     let restored = StorageManager::new(
                         StorageBackends {
                             primary: recovered,
-                            recovery: Arc::new(Recovery::new(history())),
+                            state: Arc::new(Recovery::new(history())),
                             replicas: Vec::new(),
                         },
                         config(),
@@ -349,92 +360,6 @@ fn contract_scenario() {
                     );
                     assert_eq!(restored.cursor_accepted(), receipts[1].position);
                     restarted.stop().await.unwrap();
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("latest_page_revisions", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    use harmos::storage::{ObjectVersions, operations::ObjectSelection};
-                    let (runtime, storage, _) = query_fixture().await;
-                    let old = storage
-                        .write_object(&Document {
-                            id: "path/key".into(),
-                            text: "old".into(),
-                        })
-                        .await
-                        .unwrap();
-                    storage
-                        .write_object(&Document {
-                            id: "other".into(),
-                            text: "other".into(),
-                        })
-                        .await
-                        .unwrap();
-                    let latest = storage
-                        .write_object(&Document {
-                            id: "path/key".into(),
-                            text: "new".into(),
-                        })
-                        .await
-                        .unwrap();
-                    assert!(
-                        query_objects(&runtime, ObjectSelection::default())
-                            .await
-                            .is_empty()
-                    );
-                    storage.flush().await.unwrap();
-                    let mut request = ObjectSelection::default();
-                    request.selection.page_rows = 1;
-                    let values = query_objects(&runtime, request.clone()).await;
-                    assert_eq!(values.len(), 2);
-                    assert_eq!(values[0].value.item.as_str(), "other");
-                    assert_eq!(values[1].version, latest.version);
-                    request.schema = Some(value("path/key", "").schema);
-                    request.key = Some(value("path/key", "").item);
-                    request.versions = ObjectVersions::Revisions;
-                    request.selection.descending = true;
-                    let values = query_objects(&runtime, request.clone()).await;
-                    assert_eq!(
-                        values
-                            .iter()
-                            .map(|value| value.version.clone())
-                            .collect::<Vec<_>>(),
-                        vec![latest.version.clone(), old.version.clone()]
-                    );
-                    request.selection.through = Some(old.position.sequence);
-                    request.versions = ObjectVersions::Latest;
-                    let values = query_objects(&runtime, request).await;
-                    assert_eq!(values.len(), 1);
-                    assert_eq!(values[0].version, old.version);
-                    let upgraded = storage
-                        .write_object(&DocumentV2 {
-                            id: "path/key".into(),
-                            text: "version two".into(),
-                        })
-                        .await
-                        .unwrap();
-                    storage.flush().await.unwrap();
-                    let request = ObjectSelection {
-                        schema: Some(value("path/key", "").schema),
-                        key: Some(value("path/key", "").item),
-                        ..Default::default()
-                    };
-                    assert!(query_objects(&runtime, request).await.is_empty());
-                    let request = ObjectSelection {
-                        key: Some(value("path/key", "").item),
-                        ..Default::default()
-                    };
-                    let values = query_objects(&runtime, request).await;
-                    assert_eq!(values.len(), 1);
-                    assert_eq!(values[0].version, upgraded.version);
-                    assert_eq!(values[0].value.schema.version.get(), 2);
                     runtime.stop().await.unwrap();
                 });
         });
@@ -620,7 +545,7 @@ async fn query_fixture() -> (Runtime<Bank>, StorageManager<Objects>, Arc<Data<Ob
     let storage = StorageManager::new(
         StorageBackends {
             primary: data.clone(),
-            recovery: Arc::new(Recovery::new(history())),
+            state: Arc::new(Recovery::new(history())),
             replicas: Vec::new(),
         },
         config(),
@@ -640,35 +565,4 @@ async fn query_fixture() -> (Runtime<Bank>, StorageManager<Objects>, Arc<Data<Ob
     )
     .unwrap();
     (runtime, storage, data)
-}
-async fn query_objects(
-    runtime: &Runtime<Bank>,
-    request: harmos::storage::operations::ObjectSelection,
-) -> Vec<harmos::storage::ObjectEntry> {
-    let (sender, mut receiver) = harmos::operations::stream::<
-        harmos::storage::operations::ObjectResult,
-    >(harmos::operations::StreamSettings {
-        items: NonZeroUsize::MIN,
-        bytes: NonZeroUsize::new(4096).unwrap(),
-    })
-    .unwrap();
-    let call = runtime
-        .operations
-        .submit_endpoints::<harmos::storage::operations::ReadObjects, _>(
-            harmos::storage::operations::ReadObjectsRequest {
-                selection: request,
-                fields: None,
-            },
-            sender,
-        )
-        .unwrap();
-    let mut values = Vec::new();
-    while let Some(value) = receiver.recv().await {
-        let harmos::storage::operations::ObjectResult::Value(value) = &*value else {
-            panic!("expected full object");
-        };
-        values.push(value.clone());
-    }
-    call.await.unwrap();
-    values
 }

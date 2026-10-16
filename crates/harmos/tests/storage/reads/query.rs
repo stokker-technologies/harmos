@@ -20,6 +20,7 @@ mod projection;
 /* === Re-Exports === */
 
 /* === Imports === */
+use crate::backend::storage_settings;
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::{
@@ -108,7 +109,7 @@ impl Fixture {
             query_page_ceiling: limits(4, 8192),
             flush_interval: Duration::from_secs(60),
             max_retries: 0,
-            ..StorageSettings::default()
+            ..storage_settings()
         })
         .await
     }
@@ -117,7 +118,7 @@ impl Fixture {
         let storage = StorageManager::new(
             StorageBackends {
                 primary: data.clone(),
-                recovery: Arc::new(Recovery::new(history())),
+                state: Arc::new(Recovery::new(history())),
                 replicas: vec![],
             },
             settings,
@@ -196,7 +197,7 @@ fn contract_scenario() {
                     until(|| f.data.control.releases.load(Ordering::SeqCst) == 1).await;
                     let charged = f.storage.status().read_bytes;
                     assert!(charged >= page[0].memory_size());
-                    assert!(charged < StorageSettings::default().query_decoded_bytes.get());
+                    assert!(charged < storage_settings().query_decoded_bytes.get());
                     drop(reader);
                     assert_eq!(f.storage.status().read_bytes, charged);
                     drop(page);
@@ -264,19 +265,19 @@ fn contract_scenario() {
                     });
                     // A Guaranteed Holder Leaves Less Than A Page Free, So The
                     // Elastic Reader's Page Charge Overfills The Pool.
-                    let capacity = StorageSettings::default().read_memory_bytes.get();
+                    let capacity = storage_settings().budget.read_memory_bytes.get();
                     let holder = f
                         .storage
                         .view_with_limits(QueryLimits {
                             memory_bytes: NonZeroUsize::new(capacity - 128 * 1024).unwrap(),
-                            ..StorageSettings::default().query_execution
+                            ..storage_settings().query_execution
                         })
                         .await
                         .unwrap();
                     query.options.execution = Some(
                         QueryLimits {
                             memory_bytes: NonZeroUsize::new(64 * 1024).unwrap(),
-                            ..StorageSettings::default().query_execution
+                            ..storage_settings().query_execution
                         }
                         .elastic(),
                     );
@@ -326,8 +327,7 @@ fn contract_scenario() {
                     });
                     query.options.decoded_bytes = NonZeroUsize::new(512);
                     // Elastic Charges Land In The Pool, Where The Decoder Observes Them.
-                    query.options.execution =
-                        Some(StorageSettings::default().query_execution.elastic());
+                    query.options.execution = Some(storage_settings().query_execution.elastic());
                     let mut reader = f.storage.query(query).await.unwrap();
                     baseline.store(f.storage.status().read_bytes, Ordering::SeqCst);
 
@@ -579,7 +579,7 @@ fn contract_scenario() {
                     }
                     let view = f
                         .storage
-                        .view_with_limits(StorageSettings::default().query_execution)
+                        .view_with_limits(storage_settings().query_execution)
                         .await
                         .unwrap();
                     let mut invalid = RecordQuery::new(schema(), decode);
@@ -828,7 +828,7 @@ fn contract_scenario() {
                     f.storage.flush().await.unwrap();
                     let view = f
                         .storage
-                        .view_with_limits(StorageSettings::default().query_execution)
+                        .view_with_limits(storage_settings().query_execution)
                         .await
                         .unwrap();
                     assert!(
@@ -860,9 +860,8 @@ fn contract_scenario() {
                 .block_on(async {
                     let f = Fixture::new().await;
                     let mut query = RecordQuery::new(schema(), decode);
-                    query.options.decoded_bytes = NonZeroUsize::new(
-                        StorageSettings::default().query_decoded_bytes_ceiling.get() + 1,
-                    );
+                    query.options.decoded_bytes =
+                        NonZeroUsize::new(storage_settings().query_decoded_bytes_ceiling.get() + 1);
                     f.data.control.block_view.store(true, Ordering::SeqCst);
                     let before = f.storage.status().read_bytes;
                     assert!(matches!(
@@ -889,7 +888,7 @@ fn contract_scenario() {
                     let mut query = RecordQuery::new(schema(), decode);
                     query.options.execution = Some(QueryLimits {
                         memory_bytes: NonZeroUsize::new(16 * 1024 * 1024 + 1).unwrap(),
-                        ..StorageSettings::default().query_execution
+                        ..storage_settings().query_execution
                     });
                     assert!(matches!(
                         f.storage.query(query).await,
@@ -918,7 +917,7 @@ fn contract_scenario() {
                     let mut query = RecordQuery::new(schema(), decode);
                     query.options.execution = Some(QueryLimits {
                         memory_bytes: NonZeroUsize::new(1).unwrap(),
-                        ..StorageSettings::default().query_execution
+                        ..storage_settings().query_execution
                     });
                     assert!(f.storage.query(query).await.is_err());
                     until(|| f.storage.status().read_bytes == 0).await;
@@ -942,7 +941,7 @@ fn contract_scenario() {
                     let mut query = RecordQuery::new(schema(), decode);
                     query.options.execution = Some(QueryLimits {
                         timeout: Duration::from_secs(2),
-                        ..StorageSettings::default().query_execution
+                        ..storage_settings().query_execution
                     });
                     let mut result = f.storage.query(query).await.unwrap();
                     // Idle is below the separate view idle limit, but exceeds compute timeout.
@@ -980,7 +979,7 @@ fn contract_scenario() {
                     let mut query = RecordQuery::new(schema(), decode);
                     query.options.execution = Some(QueryLimits {
                         timeout: Duration::from_secs(1),
-                        ..StorageSettings::default().query_execution
+                        ..storage_settings().query_execution
                     });
                     let mut result = f.storage.query(query).await.unwrap();
                     f.data.control.block_read.store(true, Ordering::SeqCst);
@@ -1021,7 +1020,7 @@ fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let f = Fixture::new().await;
-                    let execution = StorageSettings::default().query_execution;
+                    let execution = storage_settings().query_execution;
                     let different = f
                         .storage
                         .view_with_limits(QueryLimits {
@@ -1031,7 +1030,7 @@ fn contract_scenario() {
                         .await
                         .unwrap();
                     assert!(
-                        <RecordQuery<u64> as Query<()>>::open(
+                        <RecordQuery<u64> as StorageQuery<()>>::open(
                             RecordQuery::new(schema(), decode),
                             different,
                             limits(1, 4096),
@@ -1041,7 +1040,7 @@ fn contract_scenario() {
                     );
                     let bounded = f
                         .storage
-                        .view_with_limits(StorageSettings::default().query_execution)
+                        .view_with_limits(storage_settings().query_execution)
                         .await
                         .unwrap();
                     for (page, timeout) in [
@@ -1049,7 +1048,7 @@ fn contract_scenario() {
                         (limits(1, 4096), Duration::from_secs(6)),
                     ] {
                         assert!(
-                            <RecordQuery<u64> as Query<()>>::open(
+                            <RecordQuery<u64> as StorageQuery<()>>::open(
                                 RecordQuery::new(schema(), decode),
                                 bounded.clone(),
                                 page,
@@ -1386,8 +1385,7 @@ fn contract_scenario() {
                     f.storage.flush().await.unwrap();
                     let mut query = RecordQuery::new(schema(), decode);
                     // Elastic Charges Land In The Pool, Where The Projection Observes Them.
-                    query.options.execution =
-                        Some(StorageSettings::default().query_execution.elastic());
+                    query.options.execution = Some(storage_settings().query_execution.elastic());
                     let mut reader = f.storage.query(query).await.unwrap();
                     reader.retain_view().unwrap();
                     let saved = reader.view().unwrap().saved().unwrap();
@@ -1444,13 +1442,13 @@ fn contract_scenario() {
             let result = StorageManager::new(
                 StorageBackends {
                     primary: data.clone(),
-                    recovery: Arc::new(Recovery::new(history())),
+                    state: Arc::new(Recovery::new(history())),
                     replicas: vec![],
                 },
                 StorageSettings {
                     query_page: limits(5, 4096),
                     query_page_ceiling: limits(4, 8192),
-                    ..StorageSettings::default()
+                    ..storage_settings()
                 },
             );
             assert!(result.is_err());

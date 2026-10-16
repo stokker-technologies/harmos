@@ -330,7 +330,7 @@ pub(super) fn contract_scenario() {
                         let storage = harmos::storage::StorageManager::new(
                             harmos::storage::StorageBackends {
                                 primary: f.data.clone(),
-                                recovery: Arc::new(crate::Recovery::new(crate::backend::history())),
+                                state: Arc::new(crate::Recovery::new(crate::backend::history())),
                                 replicas: vec![ReplicaTarget {
                                     id: Identifier::new("new").unwrap(),
                                     backend: target.clone(),

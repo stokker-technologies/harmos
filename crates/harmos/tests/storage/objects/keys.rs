@@ -13,6 +13,7 @@ use crate::scenario_runtime;
 /* === Re-Exports === */
 
 /* === Imports === */
+use crate::backend::storage_settings;
 // Standard Library Imports
 use std::fmt;
 // Third Party Imports
@@ -50,7 +51,7 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     let key = CASE.to_owned();
                     let wanted = Document {
                         id: key.clone(),
@@ -138,14 +139,18 @@ fn contract_scenario() {
                     let storage = StorageManager::new(
                         StorageBackends {
                             primary: primary.clone(),
-                            recovery: Arc::new(Recovery::new(history())),
+                            state: Arc::new(Recovery::new(history())),
                             replicas: vec![],
                         },
                         StorageSettings {
-                            queue_capacity_bytes: NonZeroUsize::new(8192).unwrap(),
+                            request: {
+                                let mut settings = storage_settings().request;
+                                settings.max_pending_write_bytes = NonZeroUsize::new(8192).unwrap();
+                                settings
+                            },
                             target_batch_bytes: NonZeroUsize::new(2048).unwrap(),
                             max_batch_bytes: NonZeroUsize::new(4096).unwrap(),
-                            ..StorageSettings::default()
+                            ..storage_settings()
                         },
                     )
                     .unwrap();

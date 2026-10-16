@@ -153,6 +153,8 @@ serde_json = { workspace = true, default-features = true }
 # Networking
 
 # Storage
+arrow-array = { workspace = true }
+arrow-schema = { workspace = true }
 
 # UI
 

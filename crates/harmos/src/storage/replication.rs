@@ -85,6 +85,9 @@ pub(super) struct State {
     pub(super) stopping: bool,
     retry: u64,
     objects_pruned: u64,
+    release_requested: u64,
+    release_copied: u64,
+    release_required_sequence: u64,
 }
 
 #[derive(Clone)]
@@ -300,9 +303,9 @@ impl<C> StorageManager<C> {
                 }
                 state.collect();
                 if state.replication_bytes
-                    <= self.inner.settings.queue_capacity_bytes.get() / 2 - bytes
+                    <= self.inner.settings.request.max_pending_write_bytes.get() / 2 - bytes
                     && state.status.pending_bytes
-                        <= self.inner.settings.queue_capacity_bytes.get() - bytes
+                        <= self.inner.settings.request.max_pending_write_bytes.get() - bytes
                 {
                     state.scratch_bytes += bytes;
                     state.replication_bytes += bytes;
@@ -372,6 +375,8 @@ impl<A: Application> Resident<A> for Worker {
                 }
                 state.status.failure.is_none()
                     && (state.stopping
+                        || (self.manager.inner.has_objects
+                            && state.release_requested != state.release_copied)
                         || (self.manager.inner.has_objects
                             && state
                                 .status
@@ -562,7 +567,7 @@ pub(super) fn configure<C: ObjectCatalog>(
     }
     if transfer_bytes(settings, C::definition_count() != 0)?
         .checked_mul(targets.len())
-        .is_none_or(|bytes| bytes > settings.queue_capacity_bytes.get() / 2)
+        .is_none_or(|bytes| bytes > settings.request.max_pending_write_bytes.get() / 2)
     {
         return Err(invalid(
             "all replica transfer bounds must fit half the shared memory budget",
@@ -592,7 +597,7 @@ pub(super) fn configure<C: ObjectCatalog>(
         total = total
             .checked_add(base_bytes)
             .ok_or(invalid("replica metadata size overflow"))?;
-        if total > settings.queue_capacity_bytes.get() / 4 {
+        if total > settings.request.max_pending_write_bytes.get() / 4 {
             return Err(invalid(
                 "replica metadata exceeds a quarter of shared memory",
             ));
@@ -619,10 +624,23 @@ pub(super) fn configure<C: ObjectCatalog>(
                 stopping: false,
                 retry: 0,
                 objects_pruned: 0,
+                release_requested: 1,
+                release_copied: 0,
+                release_required_sequence: 0,
             }),
         }));
     }
     Ok((replicas, total))
+}
+
+pub(super) fn object_history_released(inner: &Arc<super::manager::Inner>, through: &StorageCursor) {
+    for replica in &inner.replicas {
+        let mut state = replica.state.lock().unwrap();
+        state.release_requested = state.release_requested.wrapping_add(1);
+        state.release_required_sequence = state.release_required_sequence.max(through.sequence);
+        state.objects_pruned = 0;
+    }
+    inner.notify();
 }
 
 pub(super) async fn cleanup(
@@ -742,7 +760,7 @@ fn transfer_bytes(settings: &StorageSettings, objects: bool) -> Result<usize> {
                 Some(n)
             }
         })
-        .and_then(|n| n.checked_add(settings.file_chunk_bytes.get()))
+        .and_then(|n| n.checked_add(settings.response.batch_bytes.get()))
         .and_then(|n| {
             n.checked_add(StorageSchema::decoding_memory_bytes(
                 settings.replication_limits.bytes.get(),
@@ -801,6 +819,28 @@ async fn run(
         }
         replica.check_copying()?;
         cleanup(manager, replica).await?;
+    }
+    if manager.inner.has_objects {
+        if reservation.is_none() {
+            *reservation = Some(manager.reserve_replication(replica).await?);
+        }
+        let (requested, copied, required) = {
+            let state = replica.state.lock().unwrap();
+            (
+                state.release_requested,
+                state.release_copied,
+                state.release_required_sequence,
+            )
+        };
+        if requested != copied {
+            super::bootstrap::sync_releases(manager, replica, &through).await?;
+            cleanup(manager, replica).await?;
+            if required <= through.sequence {
+                let mut state = replica.state.lock().unwrap();
+                state.release_copied = requested;
+                state.objects_pruned = 0;
+            }
+        }
     }
     if manager.inner.has_objects && through.sequence > replica.state.lock().unwrap().objects_pruned
     {

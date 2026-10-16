@@ -29,8 +29,8 @@ use super::manager::MemoryReservation;
 use super::query::sealed;
 use super::reduce::{Agg, ScalarKind, ScalarValue};
 use super::{
-    Query, QueryOptions, QueryValue, ReadKind, ReadLimits, StorageManager, StorageView, StoredRow,
-    StreamQuery, StreamQueryResult,
+    QueryOptions, QueryValue, ReadKind, ReadLimits, StorageManager, StorageQuery, StorageView,
+    StoredRow, StreamQuery, StreamQueryResult,
 };
 use crate::{Error, MemorySize, Result};
 
@@ -105,11 +105,11 @@ impl<T> SeriesQuery<T> {
     }
 }
 impl<T> sealed::Supported for SeriesQuery<T> {
-    fn options_mut(&mut self) -> &mut QueryOptions {
-        &mut self.query.options
+    fn options_mut(&mut self) -> Option<&mut QueryOptions> {
+        Some(&mut self.query.options)
     }
 }
-impl<C, T: MemorySize + 'static> Query<C> for SeriesQuery<T> {
+impl<C, T: MemorySize + 'static> StorageQuery<C> for SeriesQuery<T> {
     type Reader = Series<T>;
     fn options(&self) -> &QueryOptions {
         &self.query.options
@@ -173,7 +173,8 @@ impl<C, T: MemorySize + 'static> Query<C> for SeriesQuery<T> {
         if pages.capacity() != self.samples.get() {
             return Err(invalid("series handle capacity exceeds reservation"));
         }
-        let mut query = <StreamQuery<T> as Query<C>>::open(self.query, view, page, remaining)?;
+        let mut query =
+            <StreamQuery<T> as StorageQuery<C>>::open(self.query, view, page, remaining)?;
         query.retain_view()?;
         Ok(Series {
             query,

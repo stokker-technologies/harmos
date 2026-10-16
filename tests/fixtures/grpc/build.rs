@@ -108,124 +108,144 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "::harmos",
         &[
             harmos::grpc::Method {
+                name: "Query",
+                contract: storage_contracts.iter().find(|contract| contract.operation().id.as_str()
+                    == <harmos::storage::operations::Query as harmos::operations::OperationDeclaration>::ID)
+                    .ok_or("missing Query storage contract")?,
+                declaration: "::harmos::storage::operations::Query",
+            },
+            harmos::grpc::Method {
+                name: "ReadFile",
+                contract: storage_contracts.iter().find(|contract| contract.operation().id.as_str()
+                    == <harmos::storage::operations::ReadFile as harmos::operations::OperationDeclaration>::ID)
+                    .ok_or("missing ReadFile storage contract")?,
+                declaration: "::harmos::storage::operations::ReadFile",
+            },
+            harmos::grpc::Method {
                 name: "Save",
-                contract: &storage_contracts[0],
+                contract: storage_contracts.iter().find(|contract| contract.operation().id.as_str()
+                    == <harmos::storage::operations::Save as harmos::operations::OperationDeclaration>::ID)
+                    .ok_or("missing Save storage contract")?,
                 declaration: "::harmos::storage::operations::Save",
             },
             harmos::grpc::Method {
-                name: "QueryFiles",
-                contract: &storage_contracts[1],
-                declaration: "::harmos::storage::operations::QueryFiles",
-            },
-            harmos::grpc::Method {
-                name: "ReadRecords",
-                contract: &storage_contracts[2],
-                declaration: "::harmos::storage::operations::ReadRecords",
-            },
-            harmos::grpc::Method {
-                name: "QueryStream",
-                contract: &storage_contracts[3],
-                declaration: "::harmos::storage::operations::QueryStream",
-            },
-            harmos::grpc::Method {
                 name: "Follow",
-                contract: &storage_contracts[4],
+                contract: storage_contracts.iter().find(|contract| contract.operation().id.as_str()
+                    == <harmos::storage::operations::Follow as harmos::operations::OperationDeclaration>::ID)
+                    .ok_or("missing Follow storage contract")?,
                 declaration: "::harmos::storage::operations::Follow",
             },
             harmos::grpc::Method {
                 name: "FollowStream",
-                contract: &storage_contracts[5],
+                contract: storage_contracts.iter().find(|contract| contract.operation().id.as_str()
+                    == <harmos::storage::operations::FollowStream as harmos::operations::OperationDeclaration>::ID)
+                    .ok_or("missing FollowStream storage contract")?,
                 declaration: "::harmos::storage::operations::FollowStream",
             },
             harmos::grpc::Method {
-                name: "ReadFiles",
-                contract: &storage_contracts[6],
-                declaration: "::harmos::storage::operations::ReadFiles",
-            },
-            harmos::grpc::Method {
                 name: "FollowFile",
-                contract: &storage_contracts[7],
+                contract: storage_contracts.iter().find(|contract| contract.operation().id.as_str()
+                    == <harmos::storage::operations::FollowFile as harmos::operations::OperationDeclaration>::ID)
+                    .ok_or("missing FollowFile storage contract")?,
                 declaration: "::harmos::storage::operations::FollowFile",
             },
             harmos::grpc::Method {
                 name: "QueryStorage",
-                contract: &storage_contracts[8],
+                contract: storage_contracts.iter().find(|contract| contract.operation().id.as_str()
+                    == <harmos::storage::operations::QueryStorage as harmos::operations::OperationDeclaration>::ID)
+                    .ok_or("missing QueryStorage storage contract")?,
                 declaration: "::harmos::storage::operations::QueryStorage",
             },
             harmos::grpc::Method {
                 name: "ResumeFile",
-                contract: &storage_contracts[9],
+                contract: storage_contracts.iter().find(|contract| contract.operation().id.as_str()
+                    == <harmos::storage::operations::ResumeFile as harmos::operations::OperationDeclaration>::ID)
+                    .ok_or("missing ResumeFile storage contract")?,
                 declaration: "::harmos::storage::operations::ResumeFile",
             },
             harmos::grpc::Method {
                 name: "CreateFile",
-                contract: &storage_contracts[10],
+                contract: storage_contracts.iter().find(|contract| contract.operation().id.as_str()
+                    == <harmos::storage::operations::CreateFile as harmos::operations::OperationDeclaration>::ID)
+                    .ok_or("missing CreateFile storage contract")?,
                 declaration: "::harmos::storage::operations::CreateFile",
             },
             harmos::grpc::Method {
                 name: "AppendFile",
-                contract: &storage_contracts[11],
+                contract: storage_contracts.iter().find(|contract| contract.operation().id.as_str()
+                    == <harmos::storage::operations::AppendFile as harmos::operations::OperationDeclaration>::ID)
+                    .ok_or("missing AppendFile storage contract")?,
                 declaration: "::harmos::storage::operations::AppendFile",
             },
             harmos::grpc::Method {
                 name: "FinishFile",
-                contract: &storage_contracts[12],
+                contract: storage_contracts.iter().find(|contract| contract.operation().id.as_str()
+                    == <harmos::storage::operations::FinishFile as harmos::operations::OperationDeclaration>::ID)
+                    .ok_or("missing FinishFile storage contract")?,
                 declaration: "::harmos::storage::operations::FinishFile",
             },
             harmos::grpc::Method {
                 name: "AbandonFile",
-                contract: &storage_contracts[13],
+                contract: storage_contracts.iter().find(|contract| contract.operation().id.as_str()
+                    == <harmos::storage::operations::AbandonFile as harmos::operations::OperationDeclaration>::ID)
+                    .ok_or("missing AbandonFile storage contract")?,
                 declaration: "::harmos::storage::operations::AbandonFile",
             },
             harmos::grpc::Method {
                 name: "WriteRecords",
-                contract: &storage_contracts[14],
+                contract: storage_contracts.iter().find(|contract| contract.operation().id.as_str()
+                    == <harmos::storage::operations::WriteRecords as harmos::operations::OperationDeclaration>::ID)
+                    .ok_or("missing WriteRecords storage contract")?,
                 declaration: "::harmos::storage::operations::WriteRecords",
             },
             harmos::grpc::Method {
-                name: "WriteStream",
-                contract: &storage_contracts[15],
-                declaration: "::harmos::storage::operations::WriteStream",
+                name: "WriteStreams",
+                contract: storage_contracts.iter().find(|contract| contract.operation().id.as_str()
+                    == <harmos::storage::operations::WriteStreams as harmos::operations::OperationDeclaration>::ID)
+                    .ok_or("missing WriteStreams storage contract")?,
+                declaration: "::harmos::storage::operations::WriteStreams",
+            },
+            harmos::grpc::Method {
+                name: "WriteFile",
+                contract: storage_contracts.iter().find(|contract| contract.operation().id.as_str()
+                    == <harmos::storage::operations::WriteFile as harmos::operations::OperationDeclaration>::ID)
+                    .ok_or("missing WriteFile storage contract")?,
+                declaration: "::harmos::storage::operations::WriteFile",
             },
             harmos::grpc::Method {
                 name: "DeleteFile",
-                contract: &storage_contracts[16],
+                contract: storage_contracts.iter().find(|contract| contract.operation().id.as_str()
+                    == <harmos::storage::operations::DeleteFile as harmos::operations::OperationDeclaration>::ID)
+                    .ok_or("missing DeleteFile storage contract")?,
                 declaration: "::harmos::storage::operations::DeleteFile",
             },
             harmos::grpc::Method {
                 name: "WriteSchema",
-                contract: &storage_contracts[17],
+                contract: storage_contracts.iter().find(|contract| contract.operation().id.as_str()
+                    == <harmos::storage::operations::WriteSchema as harmos::operations::OperationDeclaration>::ID)
+                    .ok_or("missing WriteSchema storage contract")?,
                 declaration: "::harmos::storage::operations::WriteSchema",
             },
             harmos::grpc::Method {
-                name: "QuerySchemas",
-                contract: &storage_contracts[18],
-                declaration: "::harmos::storage::operations::QuerySchemas",
-            },
-            harmos::grpc::Method {
                 name: "WriteObjects",
-                contract: &storage_contracts[19],
+                contract: storage_contracts.iter().find(|contract| contract.operation().id.as_str()
+                    == <harmos::storage::operations::WriteObjects as harmos::operations::OperationDeclaration>::ID)
+                    .ok_or("missing WriteObjects storage contract")?,
                 declaration: "::harmos::storage::operations::WriteObjects",
             },
             harmos::grpc::Method {
-                name: "ReadObjects",
-                contract: &storage_contracts[20],
-                declaration: "::harmos::storage::operations::ReadObjects",
-            },
-            harmos::grpc::Method {
                 name: "FollowObjects",
-                contract: &storage_contracts[21],
+                contract: storage_contracts.iter().find(|contract| contract.operation().id.as_str()
+                    == <harmos::storage::operations::FollowObjects as harmos::operations::OperationDeclaration>::ID)
+                    .ok_or("missing FollowObjects storage contract")?,
                 declaration: "::harmos::storage::operations::FollowObjects",
             },
             harmos::grpc::Method {
                 name: "Acknowledge",
-                contract: &storage_contracts[22],
+                contract: storage_contracts.iter().find(|contract| contract.operation().id.as_str()
+                    == <harmos::storage::operations::Acknowledge as harmos::operations::OperationDeclaration>::ID)
+                    .ok_or("missing Acknowledge storage contract")?,
                 declaration: "::harmos::storage::operations::Acknowledge",
-            },
-            harmos::grpc::Method {
-                name: "Reductions",
-                contract: &storage_contracts[23],
-                declaration: "::harmos::storage::operations::Reductions",
             },
         ],
     )?;

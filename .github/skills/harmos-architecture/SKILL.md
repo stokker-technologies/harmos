@@ -85,11 +85,19 @@ reaches. Crates compiled to WebAssembly (shared declaration crates and guest
 components) are the one exception: they must build without the host runtime, so
 they depend on `harmos-contract` and `harmos-guest`.
 
-Each configurable crate owns externally supplied settings and their defaults in
-root `src/config.rs`. Internal state and live resources remain with their domains.
-Composition supplies each manager only its relevant settings; plugin activation
-configuration follows the same root ownership. Domain re-exports may name the
-same settings type, but never define a second copy or a second default.
+Each configurable subsystem owns its settings and validation in its own
+`config.rs` (for example `storage/config.rs`). Root `config.rs` composes those
+module-owned types without duplicate definitions. Keep at most two configuration
+levels within each subsystem; root composition adds one outer level. Prefix
+storage settings types with `Storage`.
+
+Consumers explicitly supply resource and operational policy without implicit
+`Default` implementations or deserialization fallbacks. Consumers own product
+defaults, machine-aware sizing and operator overrides. Harmos owns protocol
+constants, correctness constraints and private algorithm choices. Existing APIs
+require cohesive migration with their consumers; this policy does not claim the
+migration is already implemented. Managers receive only relevant settings;
+live resources and mutable state remain with their domain owners.
 
 `harmos::prelude` is a bounded authoring convenience for application entry points,
 common operation/transaction traits, and macros. Domain modules retain canonical
@@ -138,62 +146,63 @@ runtime aliases in consumer APIs.
 
 For concrete plugin and transport authoring, use `harmos-authoring`.
 
-## Storage View Budgets
+## Storage Ownership And Queries
 
-A storage view owns one read budget, the `QueryLimits` it was opened with
-(`memory_bytes`, `admission`, `spill_bytes`, `timeout`).
-`StorageManager::view_with_limits` admits it against `query_execution_ceiling`;
-the view's time is one cumulative allowance spent by every read performed
-through it. `memory_bytes` is the per-view ceiling; `admission` decides what the
-shared read pool (`read_memory_bytes`) holds while the view is open:
+StorageManager owns read/write admission, accounting, persistence and generic
+retention. Consumer applications supply explicit StorageSettings from
+storage/config.rs; root config.rs composes those settings. Do not reintroduce
+library-selected operational defaults or report-specific read allowances.
+StorageRequestSettings controls queue/dispatch capacity; StorageResponseSettings
+batch_rows and batch_bytes control delivery ceilings, independently of query
+row offset/limit. Preserve bounds on in-flight writes and encoding scratch as
+well as pending descriptions and data.
 
-- `Admission::Guaranteed` (default) reserves the whole ceiling at open. Use it
-  for reads that must not fail halfway, such as sealing a report. Its pages,
-  productions and projections draw from that ceiling; only bytes beyond it
-  charge the pool, and output outliving the view moves to the pool.
-- `Admission::Elastic` (`limits.elastic()`) reserves a floor of one query page
-  plus view metadata. Every production, page, follower page and file chunk
-  charges its real bytes to the pool and releases them on drop. A charge that
-  would overfill the pool fails with `ResourceExhausted { resource: "storage
-  read memory" }`; treat it as contention and retry, never shrink the request.
+Query is a declarative storage-owned plan with a full StorageCursor, a selected
+source, ordered transforms and a final row slice. The cursor identifies the
+requested history; it does not itself pin retention. Admission protects the
+required data for the read lifetime. A pruned or foreign history errors rather
+than silently selecting a newer boundary. Sources cover objects, records,
+streams, schemas and finished-file metadata. ReadFile is separate and reads
+finished immutable content; explicit producing/follow/resume APIs retain their
+separate lifecycle.
 
-View-less reads, productions and projections (`produce`,
-`prepare_production`, `QueryValue::try_map`, `try_project`, `project_owned` of
-a view-less value) charge the pool directly and are refused only when charged
-bytes (view-less and elastic charges plus guaranteed bytes beyond their
-ceilings) would exceed it; open views' reservations never refuse them. View
-acquisition admits reservations against everything the pool holds. Admitted
-ceilings therefore never exceed the pool, and charged bytes never exceed the
-pool plus the admitted guaranteed ceilings.
+Use Arrow Schema and RecordBatch for analytical results. Emit one schema event,
+then bounded batches, then the operation's final completion response. Native
+calls use the same contract without forced serialization. Wire codecs must
+preflight allocation bounds, preserve schema equality and use the existing
+operation transport. Shared Arrow allocations remain charged through clones
+and slices until their last owner releases them. A consumer-created deep copy
+is the consumer's allocation; it must not be confused with a free zero-copy
+escape from storage accounting.
 
-`StorageView::charged_bytes` reports the view's live charges, and
-`StorageStatus::read_bytes` counts the bytes the pool holds, reservations
-included, so it may exceed `read_memory_bytes` by at most the admitted
-guaranteed ceilings.
-Standalone manager reads (`query`, `read_object`, `prepare_read_production`)
-take a fresh `query_execution` budget each.
+Keep one storage transform catalog and the shared statistic implementation.
+Validate input/output schemas before emitting results; apply transforms in
+order and row slicing last. Aggregate full selected data; downsample display
+traces only. Preserve exact integer/rational semantics where supported. Do not
+introduce arbitrary code execution, a second query engine or browser-side
+evidence calculations to bypass the shared contract.
 
-Every view-scoped read inherits the view budget: `query_in` (an explicit
-`QueryOptions::execution` must equal it), `read_object_in`, `StorageView::read_file`
-with its `StorageFileReader` chunks, `prepare_work` and
-`prepare_read_production_in`. Interactive callers keep the defaults; a long
-consumer pass opens one view and reads everything under it:
+Separate typed write operations share acceptance/durability machinery. Each
+logical batch validates and commits atomically; transport frames do not define
+commit boundaries. Accepted work belongs to storage and cannot be withdrawn by
+cancelling its operation. Durable receipts prove persistence. Connection loss
+can leave partial committed success and unknown unacknowledged outcomes; do not
+blindly replay uncertain batches. Long-lived execution writers must not inherit
+a short fixed operation lifetime. Consumer acquisition policy may drop unsent
+measurement data, but storage must not silently discard accepted work or
+managed-state/control transitions.
 
-```rust
-let finalization = storage
-    .view_with_limits(QueryLimits {
-        timeout: Duration::from_secs(300),
-        ..settings.query_execution
-    })
-    .await?;
-let object = storage.read_object_in::<Run>(&finalization, &key, ObjectVersion::Latest, bytes).await?;
-let mut records = storage.query_in(&finalization, RecordQuery::new(schema, decode))?;
-```
+StateManager owns transactions, live state and replay. StateBackend stores the
+journal and snapshots through StorageManager. Keep state journal positions
+separate from evidence cursors. Required evidence must become durable before
+state referring to it is replayable; snapshots must be durable before covered
+journal entries can be reclaimed. Do not imply atomicity across independent
+backends merely because acknowledgments mention both.
 
-Exhaustion reports `ResourceExhausted` naming the resource (`query computation
-time`, `query decoded memory`). View acquisition refuses with `storage views`
-when `max_views` views are open and `storage read memory` when the read pool
-cannot hold the new view's reservation. Raise `query_execution_ceiling` for budgets
-beyond its default. `view_idle_timeout` still expires a view left idle between
-reads. File following (`follow_file`, `FileFollower`) and backend calls stay
-bounded per call by `io_timeout`, not by a view budget.
+Consumers own lifecycle retention policy, including preserving all revisions
+needed by active executions. Generic retention releases must survive ordinary
+persistence, replication and bootstrap. Subject sealing cannot race active
+materializations or accepted late writes. Report finalization, stop behavior,
+renderer resources and stopped-report evidence boundaries belong to Dokime,
+not Harmos. Temporary contention may wait; impossible working sets or retained
+result deadlocks must fail explicitly rather than loop or omit results.

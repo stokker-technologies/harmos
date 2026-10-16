@@ -42,6 +42,36 @@ static NEXT_VIEW: AtomicU64 = AtomicU64::new(1);
 /* === Structs === */
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct ObjectRetentionRelease {
+    pub schema: super::SchemaKey,
+    pub item: super::ObjectKey,
+    pub through: StorageCursor,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ObjectReleaseCursor {
+    pub schema: super::SchemaKey,
+    pub item: super::ObjectKey,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ObjectReleasePage {
+    pub entries: Vec<ObjectRetentionRelease>,
+    pub next: Option<ObjectReleaseCursor>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReleaseDigest {
+    entries: u64,
+    encoded_bytes: u64,
+    sha256: [u8; 32],
+    complete: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RetainedCoverage {
     pub cut: StorageCursor,
     pub complete_after: u64,
@@ -95,6 +125,7 @@ pub struct CollectionDigest {
 pub struct BootstrapManifest {
     identity: BootstrapId,
     collections: [CollectionDigest; 5],
+    releases: ReleaseDigest,
 }
 
 struct HashWriter(Sha256);
@@ -104,6 +135,79 @@ struct HashWriter(Sha256);
 /* === Traits === */
 
 /* === Implementations === */
+impl ObjectRetentionRelease {
+    pub fn cursor(&self) -> ObjectReleaseCursor {
+        ObjectReleaseCursor {
+            schema: self.schema.clone(),
+            item: self.item.clone(),
+        }
+    }
+}
+
+impl ObjectReleaseCursor {
+    fn key(&self) -> (&str, u32, u8, &str) {
+        (
+            self.schema.id.as_str(),
+            self.schema.version.get(),
+            self.schema.payload_encoding as u8,
+            self.item.as_str(),
+        )
+    }
+
+    pub fn precedes(&self, other: &Self) -> bool {
+        self.key() < other.key()
+    }
+}
+
+impl ObjectReleasePage {
+    pub fn check(
+        &self,
+        view: &ReadView,
+        after: Option<&ObjectReleaseCursor>,
+        limits: ReadLimits,
+    ) -> Result<()> {
+        let mut previous = after.cloned();
+        let mut bytes = 0usize;
+        for release in &self.entries {
+            if !view.saved().covers(&release.through)? {
+                return Err(invalid("object release exceeds the pinned durable cut"));
+            }
+            let cursor = release.cursor();
+            if previous
+                .as_ref()
+                .is_some_and(|previous| !previous.precedes(&cursor))
+            {
+                return Err(invalid("object releases are repeated or unordered"));
+            }
+            previous = Some(cursor);
+            bytes = bytes
+                .checked_add(encoded_size(release)?)
+                .ok_or(invalid("object release page overflow"))?;
+        }
+        limits.check(self.entries.len(), bytes)?;
+        if let Some(next) = &self.next
+            && (self.entries.is_empty() || previous.as_ref() != Some(next))
+        {
+            return Err(invalid(
+                "object release continuation does not match page tail",
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl ReleaseDigest {
+    pub fn entries(&self) -> u64 {
+        self.entries
+    }
+    pub fn encoded_bytes(&self) -> u64 {
+        self.encoded_bytes
+    }
+    pub fn sha256(&self) -> &[u8; 32] {
+        &self.sha256
+    }
+}
+
 impl RetainedCoverage {
     pub fn check(&self) -> Result<()> {
         if self.complete_after > self.cut.sequence {
@@ -265,6 +369,12 @@ impl BootstrapManifest {
     pub fn new(identity: BootstrapId) -> Self {
         Self {
             identity,
+            releases: ReleaseDigest {
+                entries: 0,
+                encoded_bytes: 0,
+                sha256: Sha256::digest([]).into(),
+                complete: false,
+            },
             collections: std::array::from_fn(|_| CollectionDigest {
                 entries: 0,
                 encoded_bytes: 0,
@@ -283,6 +393,44 @@ impl BootstrapManifest {
         &self.collections[index(kind)]
     }
 
+    pub fn releases(&self) -> &ReleaseDigest {
+        &self.releases
+    }
+
+    pub fn record_releases(&mut self, releases: &[ObjectRetentionRelease]) -> Result<()> {
+        if self.releases.complete {
+            return Err(invalid("object release manifest already complete"));
+        }
+        let mut digest = self.releases.clone();
+        for release in releases {
+            if !self.identity.cut.covers(&release.through)? {
+                return Err(invalid("object release exceeds bootstrap cut"));
+            }
+            digest.entries = digest
+                .entries
+                .checked_add(1)
+                .ok_or(invalid("object release count overflow"))?;
+            digest.encoded_bytes = digest
+                .encoded_bytes
+                .checked_add(encoded_size(release)? as u64)
+                .ok_or(invalid("object release bytes overflow"))?;
+            let mut writer = HashWriter(Sha256::new());
+            serde_json::to_writer(&mut writer, release).map_err(|error| {
+                Error::backend("object release manifest", BackendFailure::Corrupt, error)
+            })?;
+            let mut next = Sha256::new();
+            next.update(digest.sha256);
+            next.update(writer.0.finalize());
+            digest.sha256 = next.finalize().into();
+        }
+        self.releases = digest;
+        Ok(())
+    }
+
+    pub fn finish_releases(&mut self) {
+        self.releases.complete = true;
+    }
+
     pub fn finish_collection(&mut self, kind: ReadKind) {
         self.collections[index(kind)].complete = true;
     }
@@ -292,6 +440,7 @@ impl BootstrapManifest {
             .collections
             .iter()
             .any(|collection| !collection.complete)
+            || !self.releases.complete
         {
             return Err(invalid("retained export has unfinished collections"));
         }
@@ -439,6 +588,14 @@ pub(super) async fn copy(
     export::<StoredRecord>(manager, replica, &view, &identity, &mut manifest).await?;
     export::<StoredRow>(manager, replica, &view, &identity, &mut manifest).await?;
     export::<FileReference>(manager, replica, &view, &identity, &mut manifest).await?;
+    export_releases(
+        manager,
+        replica,
+        &view,
+        Some(&identity),
+        Some(&mut manifest),
+    )
+    .await?;
     manifest.check_complete()?;
     replica.check_copying()?;
     let receipt = manager
@@ -454,6 +611,95 @@ pub(super) async fn copy(
 }
 
 /* === Private Functions === */
+pub(super) async fn sync_releases(
+    manager: &StorageManager<ErasedCatalog>,
+    replica: &Replica,
+    through: &StorageCursor,
+) -> Result<()> {
+    let snapshot = manager
+        .inner
+        .bounded(manager.inner.primary.read_view(through))
+        .await?;
+    replica.state.lock().unwrap().snapshot = Some(snapshot.clone());
+    if snapshot.saved != *through
+        || snapshot.token.is_empty()
+        || snapshot.token.len() > manager.inner.settings.snapshot_bytes.get()
+    {
+        return Err(invalid(
+            "release snapshot differs from durable cut or token bound",
+        ));
+    }
+    let sequence = NEXT_VIEW
+        .try_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+            value.checked_add(1)
+        })
+        .map_err(|_| invalid("release view identity overflow"))?;
+    let id = Identifier::new(format!("release-view-{sequence}"))
+        .map_err(|_| invalid("release view identity"))?;
+    let view = ReadView::new(id, through.clone(), through.clone(), snapshot)?;
+    export_releases(manager, replica, &view, None, None).await
+}
+
+pub(super) async fn export_releases(
+    manager: &StorageManager<ErasedCatalog>,
+    replica: &Replica,
+    view: &ReadView,
+    identity: Option<&BootstrapId>,
+    mut manifest: Option<&mut BootstrapManifest>,
+) -> Result<()> {
+    let limits = manager.inner.settings.replication_limits;
+    let mut cursor = None;
+    loop {
+        executor::yield_now().await;
+        replica.check_copying()?;
+        let page = manager
+            .inner
+            .bounded(
+                manager
+                    .inner
+                    .primary
+                    .read_object_releases(view, cursor.as_ref(), limits),
+            )
+            .await?;
+        page.check(view, cursor.as_ref(), limits)?;
+        match identity {
+            Some(identity) => {
+                manager
+                    .inner
+                    .bounded(
+                        replica
+                            .config
+                            .backend
+                            .write_bootstrap_releases(identity, &page.entries),
+                    )
+                    .await?
+            }
+            None => {
+                for release in &page.entries {
+                    manager
+                        .inner
+                        .bounded(replica.config.backend.release_object_history(
+                            &release.schema,
+                            &release.item,
+                            &release.through,
+                        ))
+                        .await?;
+                }
+            }
+        }
+        if let Some(manifest) = manifest.as_deref_mut() {
+            manifest.record_releases(&page.entries)?;
+        }
+        cursor = page.next;
+        if cursor.is_none() {
+            if let Some(manifest) = manifest {
+                manifest.finish_releases();
+            }
+            return Ok(());
+        }
+    }
+}
+
 async fn export<T: Entry>(
     manager: &StorageManager<ErasedCatalog>,
     replica: &Replica,

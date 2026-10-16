@@ -72,16 +72,23 @@ impl Batch {
     pub(super) fn prepare(inner: &Arc<Inner>, first: &Pending) -> Option<Self> {
         let kind = kind(&first.operation)?;
         let mut state = inner.state.lock().unwrap();
-        let boundary = state.write_boundary()?;
+        // Ready State Writes May Bypass An Earlier Unrelated Primary Barrier.
+        let boundary = if kind == Kind::Recovery {
+            state.recovery_request?.index
+        } else {
+            state.write_boundary()?
+        };
         let available = inner
             .settings
-            .queue_capacity_bytes
+            .request
+            .max_pending_write_bytes
             .get()
             .saturating_sub(state.status.pending_bytes)
             .min(inner.settings.write_batch_bytes.get());
         let mut bytes = 0usize;
         let mut count = 0usize;
         let mut operations = 0;
+        let mut encoded_bytes = 0usize;
         for entry in state.queue.iter().filter(|entry| {
             entry.index >= first.index
                 && state.needs_write(entry)
@@ -93,7 +100,20 @@ impl Batch {
             if !compatible(entry, kind) {
                 break;
             }
+            if kind == Kind::Recovery
+                && entry
+                    .operation
+                    .required_data()
+                    .is_some_and(|required| !state.status.saved.covers(required).unwrap_or(false))
+            {
+                break;
+            }
             let (length, charge) = charge(&entry.operation)?;
+            let next_encoded =
+                encoded_bytes.checked_add(entry.operation.encoded_batch_bytes().ok()?)?;
+            if next_encoded > inner.settings.max_batch_bytes.get() {
+                break;
+            }
             let next_count = count.checked_add(length)?;
             let next_bytes = bytes
                 .checked_add(charge)?
@@ -101,6 +121,7 @@ impl Batch {
             if next_count > inner.settings.write_batch_entries.get() || next_bytes > available {
                 break;
             }
+            encoded_bytes = next_encoded;
             count = next_count;
             bytes = next_bytes;
             operations += 1;
@@ -166,6 +187,15 @@ impl Batch {
             progress.saved = Some(write_data(inner, &parts).await?);
         }
         if !recovery.is_empty() {
+            let saved = inner.state.lock().unwrap().status.saved.clone();
+            for entry in &recovery {
+                if !saved.covers(&entry.required_data)? {
+                    return Err(Error::InvalidInput {
+                        field: "state evidence dependency",
+                        reason: "journal cannot precede required primary persistence",
+                    });
+                }
+            }
             inner
                 .bounded(inner.recovery.write_entries(&recovery))
                 .await?;
@@ -176,8 +206,8 @@ impl Batch {
 
 /* === Public Functions === */
 pub(super) async fn write_data(inner: &Inner, parts: &[StoragePart<'_>]) -> Result<StorageCursor> {
-    let after = inner.state.lock().unwrap().status.saved.sequence;
-    let batch = StorageBatch::prefix(parts, after, inner.settings.max_batch_bytes)?;
+    // Logical admissions are indivisible; never persist a prefix of one batch.
+    let batch = StorageBatch::new(parts, inner.settings.max_batch_bytes)?;
     inner.primary.history().check(&batch.first().history)?;
     let through = batch.through();
     {
@@ -231,10 +261,14 @@ fn charge(operation: &Operation) -> Option<(usize, usize)> {
             values.iter().try_fold(0usize, |bytes, value| {
                 bytes
                     .checked_add(
-                        recovery_resident_bytes(value.payload.len(), &value.position.history)
-                            .ok()?,
+                        recovery_resident_bytes(
+                            value.payload.len(),
+                            &value.position.history,
+                            &value.required_data.history,
+                        )
+                        .ok()?,
                     )?
-                    .checked_add(std::mem::size_of::<super::recovery::RecoveryEntry>() * 3)
+                    .checked_add(std::mem::size_of::<super::state::RecoveryEntry>() * 3)
             })?,
         ),
         _ => return None,

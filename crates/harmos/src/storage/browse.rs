@@ -446,12 +446,12 @@ impl ObjectBrowsePage {
 }
 
 impl<T: StoredObject> sealed::Supported for ObjectBrowseQuery<T> {
-    fn options_mut(&mut self) -> &mut QueryOptions {
-        &mut self.options
+    fn options_mut(&mut self) -> Option<&mut QueryOptions> {
+        Some(&mut self.options)
     }
 }
 
-impl<C: ObjectCatalog + Contains<T>, T: StoredObject> Query<C> for ObjectBrowseQuery<T> {
+impl<C: ObjectCatalog + Contains<T>, T: StoredObject> StorageQuery<C> for ObjectBrowseQuery<T> {
     type Reader = ObjectBrowseResult;
     fn options(&self) -> &QueryOptions {
         &self.options

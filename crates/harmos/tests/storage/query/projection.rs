@@ -13,6 +13,7 @@ use crate::scenario_runtime;
 /* === Re-Exports === */
 
 /* === Imports === */
+use crate::backend::storage_settings;
 
 // Standard Library Imports
 
@@ -96,9 +97,9 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let settings = StorageSettings::default();
+                    let settings = storage_settings();
                     let f = Fixture::with_settings(StorageSettings {
-                        query_decoded_bytes_ceiling: settings.read_memory_bytes,
+                        query_decoded_bytes_ceiling: settings.budget.read_memory_bytes,
                         ..settings
                     })
                     .await;
@@ -124,7 +125,7 @@ fn contract_scenario() {
                         match outcome {
                             0 => {
                                 let result = original.try_map::<Document>(
-                                    StorageSettings::default().read_memory_bytes,
+                                    storage_settings().budget.read_memory_bytes,
                                     |_, _| {
                                         called.store(true, Ordering::SeqCst);
                                         panic!("capacity refusal must precede callback")
@@ -182,7 +183,7 @@ fn contract_scenario() {
                             }
                             4 => {
                                 let requested = NonZeroUsize::new(
-                                    StorageSettings::default().read_memory_bytes.get() + 1,
+                                    storage_settings().budget.read_memory_bytes.get() + 1,
                                 )
                                 .unwrap();
                                 let result = original.try_map::<Document>(requested, |_, _| {
@@ -384,7 +385,7 @@ fn contract_scenario() {
                     f.storage.flush().await.unwrap();
                     let view = f
                         .storage
-                        .view_with_limits(StorageSettings::default().query_execution)
+                        .view_with_limits(storage_settings().query_execution)
                         .await
                         .unwrap();
                     let mut reader = f
@@ -551,8 +552,7 @@ fn contract_scenario() {
                     });
                     query.options.page = Some(limits(1, 4096));
                     // Elastic Charges Land In The Pool, Where The Projection Observes Them.
-                    query.options.execution =
-                        Some(StorageSettings::default().query_execution.elastic());
+                    query.options.execution = Some(storage_settings().query_execution.elastic());
                     let mut reader = f.storage.query(query).await.unwrap();
                     let page = reader.next_page().await.unwrap().unwrap();
                     let original = page[0].payload.as_ptr();
@@ -601,8 +601,7 @@ fn contract_scenario() {
                     let mut query = RecordQuery::new(schema(), decode);
                     query.options.page = Some(limits(1, 4096));
                     // Elastic Charges Land In The Pool, Where The Projection Observes Them.
-                    query.options.execution =
-                        Some(StorageSettings::default().query_execution.elastic());
+                    query.options.execution = Some(storage_settings().query_execution.elastic());
                     let mut reader = f.storage.query(query).await.unwrap();
                     let page = reader.next_page().await.unwrap().unwrap();
                     let original = page.as_ptr();
@@ -610,10 +609,9 @@ fn contract_scenario() {
                     let views = f.data.control.query_views.load(Ordering::SeqCst);
 
                     let called = AtomicBool::new(false);
-                    let excessive = NonZeroUsize::new(
-                        StorageSettings::default().query_decoded_bytes_ceiling.get() + 1,
-                    )
-                    .unwrap();
+                    let excessive =
+                        NonZeroUsize::new(storage_settings().query_decoded_bytes_ceiling.get() + 1)
+                            .unwrap();
                     let refused = page.try_project::<Vec<u64>>(excessive, |_, _| {
                         called.store(true, Ordering::SeqCst);
                         panic!("output refusal must precede conversion")
@@ -701,7 +699,7 @@ fn contract_scenario() {
                     let mut query = RecordQuery::new(schema(), decode);
                     query.options.execution = Some(QueryLimits {
                         timeout: Duration::from_millis(100),
-                        ..StorageSettings::default().query_execution
+                        ..storage_settings().query_execution
                     });
                     let mut reader = f.storage.query(query).await.unwrap();
                     reader.retain_view().unwrap();
@@ -786,8 +784,7 @@ fn contract_scenario() {
                     f.storage.flush().await.unwrap();
                     let mut query = RecordQuery::new(schema(), decode);
                     // Elastic Charges Land In The Pool, Where The Projection Observes Them.
-                    query.options.execution =
-                        Some(StorageSettings::default().query_execution.elastic());
+                    query.options.execution = Some(storage_settings().query_execution.elastic());
                     let mut reader = f.storage.query(query).await.unwrap();
                     let page = reader.next_page().await.unwrap().unwrap();
                     let value = page
@@ -842,8 +839,7 @@ fn contract_scenario() {
                     let f = Fixture::new().await;
                     let mut query = RecordQuery::new(schema(), decode);
                     // Elastic Charges Land In The Pool, Where The Release Shows.
-                    query.options.execution =
-                        Some(StorageSettings::default().query_execution.elastic());
+                    query.options.execution = Some(storage_settings().query_execution.elastic());
                     let mut reader = f.storage.query(query).await.unwrap();
                     reader.retain_view().unwrap();
                     let calls = AtomicUsize::new(0);

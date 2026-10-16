@@ -69,6 +69,8 @@ struct Fetched<T> {
 }
 
 struct Lease {
+    query_permit: std::sync::Mutex<Option<tokio::sync::OwnedSemaphorePermit>>,
+    query_description: std::sync::Mutex<Option<MemoryReservation>>,
     manager: StorageManager<super::manager::ErasedCatalog>,
     id: u64,
 }
@@ -76,6 +78,11 @@ struct Lease {
 pub(super) struct Activity {
     inner: Arc<Inner>,
     id: u64,
+}
+
+pub(super) struct WorkingCredit {
+    view: StorageView,
+    covered: usize,
 }
 
 pub(super) struct Pin {
@@ -157,10 +164,31 @@ impl<C> StorageManager<C> {
         Ok(view)
     }
 
+    pub async fn view_at(&self, at: &StorageCursor, limits: QueryLimits) -> Result<StorageView> {
+        if limits.memory_bytes > self.inner.settings.budget.read_memory_bytes {
+            return Err(Error::ResourceExhausted {
+                resource: "storage read memory",
+            });
+        }
+        self.inner.primary.validate_query_limits(limits)?;
+        self.acquire_view_at(None, Some(limits), Some(at))
+            .await
+            .map(|(view, _)| view)
+    }
+
     pub(super) async fn acquire_view(
         &self,
         follow: Option<(&ReadSelection, super::follow::Mode)>,
         execution: Option<QueryLimits>,
+    ) -> Result<(StorageView, Option<super::follow::Lease>)> {
+        self.acquire_view_at(follow, execution, None).await
+    }
+
+    async fn acquire_view_at(
+        &self,
+        follow: Option<(&ReadSelection, super::follow::Mode)>,
+        execution: Option<QueryLimits>,
+        at: Option<&StorageCursor>,
     ) -> Result<(StorageView, Option<super::follow::Lease>)> {
         // Cover retained frontiers plus temporary acquisition/release copies.
         let bytes = encoded_size(self.inner.primary.history())?
@@ -201,7 +229,7 @@ impl<C> StorageManager<C> {
             .ok_or(Error::ResourceExhausted {
                 resource: "storage read memory",
             })?;
-        if total_bytes > self.inner.settings.read_memory_bytes.get() {
+        if total_bytes > self.inner.settings.budget.read_memory_bytes.get() {
             return Err(Error::InvalidInput {
                 field: "read view",
                 reason: "view exceeds read memory budget",
@@ -222,7 +250,9 @@ impl<C> StorageManager<C> {
                     resource: "storage views",
                 });
             }
-            if state.status.read_bytes > self.inner.settings.read_memory_bytes.get() - total_bytes {
+            if state.status.read_bytes
+                > self.inner.settings.budget.read_memory_bytes.get() - total_bytes
+            {
                 return Err(Error::ResourceExhausted {
                     resource: "storage read memory",
                 });
@@ -253,8 +283,17 @@ impl<C> StorageManager<C> {
                     field: "read view",
                     reason: "identity exhausted",
                 })?;
-            let accepted = state.status.accepted.clone();
-            let saved = state.status.saved.clone();
+            if let Some(at) = at {
+                self.inner.primary.history().check(&at.history)?;
+                if !state.status.saved.covers(at)? {
+                    return Err(Error::InvalidInput {
+                        field: "query cursor",
+                        reason: "cursor exceeds the durable storage frontier",
+                    });
+                }
+            }
+            let accepted = at.cloned().unwrap_or_else(|| state.status.accepted.clone());
+            let saved = at.cloned().unwrap_or_else(|| state.status.saved.clone());
             if let Some((selection, mode)) = follow {
                 state.followers.insert(
                     id,
@@ -297,6 +336,8 @@ impl<C> StorageManager<C> {
         };
         let view = StorageView {
             lease: Arc::new(Lease {
+                query_permit: std::sync::Mutex::new(None),
+                query_description: std::sync::Mutex::new(None),
                 manager: self.erased(),
                 id,
             }),
@@ -376,11 +417,45 @@ impl<C> StorageManager<C> {
 }
 
 impl StorageView {
+    pub(super) fn retain_query_description(&self, description: MemoryReservation) {
+        *self.lease.query_description.lock().unwrap() = Some(description);
+    }
+
+    fn query_description_bytes(&self) -> usize {
+        self.lease
+            .query_description
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map_or(0, |reservation| reservation.bytes)
+    }
+
+    pub(super) fn retain_query_permit(&self, permit: tokio::sync::OwnedSemaphorePermit) {
+        *self.lease.query_permit.lock().unwrap() = Some(permit);
+    }
+
+    pub(super) fn release_query_permit(&self) {
+        self.lease.query_permit.lock().unwrap().take();
+    }
+
     pub fn begin_computation(&self) -> Result<StorageViewComputation> {
         self.computation()?.ok_or(Error::InvalidInput {
             field: "storage view computation",
             reason: "original view has no bounded computation profile",
         })
+    }
+
+    pub(super) async fn begin_computation_wait(&self) -> Result<StorageViewComputation> {
+        if self.execution_limits()?.is_none() {
+            return Err(Error::InvalidInput {
+                field: "storage view computation",
+                reason: "original view has no bounded computation profile",
+            });
+        }
+        let bytes = std::mem::size_of::<ComputationOwner>() + 2 * std::mem::size_of::<usize>();
+        let reservation = self.reserve_read_wait(bytes, 1).await?;
+        self.computation_with_reserved(None, Duration::ZERO, reservation)?
+            .ok_or(Error::ViewExpired)
     }
 
     pub(super) fn manager(&self) -> &StorageManager<super::manager::ErasedCatalog> {
@@ -429,6 +504,177 @@ impl StorageView {
     }
 
     // Charges A Read Made Under This View To The Pool And To Its Charged Bytes.
+    pub(super) async fn reserve_read_wait(
+        &self,
+        bytes: usize,
+        entries: usize,
+    ) -> Result<MemoryReservation> {
+        let _activity = self.activity()?;
+        let total = entries
+            .checked_mul(ENTRY_OVERHEAD)
+            .and_then(|overhead| bytes.checked_add(overhead))
+            .ok_or(Error::ResourceExhausted {
+                resource: "query working memory",
+            })?;
+        let started = tokio::time::Instant::now();
+        let timeout = {
+            let state = self.manager().inner.state.lock().unwrap();
+            let view = state.views.get(&self.id()).ok_or(Error::ViewExpired)?;
+            match view.computation.upgrade() {
+                Some(active) => active.timeout.saturating_sub(active.started.elapsed()),
+                None => view
+                    .remaining
+                    .unwrap_or(self.manager().inner.settings.io_timeout),
+            }
+        };
+        let mut changed = self.manager().inner.changed.subscribe();
+        loop {
+            match self.reserve_read(bytes, entries) {
+                Ok(reservation) => {
+                    // Admission Waiting Spends The Same Cumulative Query Allowance.
+                    let mut state = self.manager().inner.state.lock().unwrap();
+                    let view = state.views.get_mut(&self.id()).ok_or(Error::ViewExpired)?;
+                    if !view.computing
+                        && let Some(remaining) = &mut view.remaining
+                    {
+                        *remaining = remaining.saturating_sub(started.elapsed());
+                        if remaining.is_zero() {
+                            return Err(super::query::execution_timeout());
+                        }
+                    }
+                    return Ok(reservation);
+                }
+                Err(Error::ResourceExhausted {
+                    resource: "storage read memory",
+                }) => {
+                    let description_bytes = self.query_description_bytes();
+                    let inner = &self.manager().inner;
+                    let state = inner.state.lock().unwrap();
+                    let view = state.views.get(&self.id()).ok_or(Error::ViewExpired)?;
+                    let self_held = view.pooled().saturating_add(description_bytes);
+                    if self_held
+                        .checked_add(view.pooled_growth(total))
+                        .is_none_or(|bytes| bytes > inner.settings.budget.read_memory_bytes.get())
+                    {
+                        return Err(Error::ResourceExhausted {
+                            resource: "query retained working memory",
+                        });
+                    }
+                }
+                Err(error) => return Err(error),
+            }
+            let remaining = timeout.saturating_sub(started.elapsed());
+            if remaining.is_zero() {
+                return Err(super::query::execution_timeout());
+            }
+            tokio::time::timeout(remaining, changed.changed())
+                .await
+                .map_err(|_| super::query::execution_timeout())?
+                .map_err(|_| Error::Closing {
+                    domain: "storage read admission",
+                })?;
+        }
+    }
+
+    pub(super) fn try_reserve_working(&self, bytes: usize) -> Result<WorkingCredit> {
+        let inner = &self.manager().inner;
+        let mut state = inner.state.lock().unwrap();
+        state.collect();
+        let view = state.views.get(&self.id()).ok_or(Error::ViewExpired)?;
+        if view.expired {
+            return Err(Error::ViewExpired);
+        }
+        let capacity = inner.settings.budget.read_memory_bytes.get();
+        let bytes = bytes.saturating_sub(view.covered.saturating_sub(view.charged));
+        if view
+            .pooled()
+            .checked_add(bytes)
+            .is_none_or(|total| total > capacity)
+        {
+            return Err(Error::ResourceExhausted {
+                resource: "query retained working memory",
+            });
+        }
+        if state
+            .status
+            .read_bytes
+            .checked_add(bytes)
+            .is_none_or(|total| total > capacity)
+        {
+            return Err(Error::ResourceExhausted {
+                resource: "storage read memory",
+            });
+        }
+        let view = state.views.get_mut(&self.id()).unwrap();
+        let covered = view
+            .charged
+            .saturating_sub(view.covered)
+            .checked_add(bytes)
+            .ok_or(Error::ResourceExhausted {
+                resource: "query working memory",
+            })?;
+        view.covered += covered;
+        view.held += covered;
+        view.active += 1;
+        state.collect();
+        Ok(WorkingCredit {
+            view: self.clone(),
+            covered,
+        })
+    }
+
+    pub(super) async fn reserve_working_wait(&self, bytes: usize) -> Result<WorkingCredit> {
+        let _activity = self.activity()?;
+        // Existing Retained Charges Keep Their Weight. The New Peak Covers
+        // Reloadable Input, Conversion And All Kernel Asks As One Admission.
+        let started = tokio::time::Instant::now();
+        let timeout = {
+            let state = self.manager().inner.state.lock().unwrap();
+            state
+                .views
+                .get(&self.id())
+                .ok_or(Error::ViewExpired)?
+                .remaining
+                .unwrap_or(self.manager().inner.settings.io_timeout)
+        };
+        let mut changed = self.manager().inner.changed.subscribe();
+        loop {
+            match self.try_reserve_working(bytes) {
+                Ok(credit) => {
+                    let mut state = self.manager().inner.state.lock().unwrap();
+                    let view = state.views.get_mut(&self.id()).ok_or(Error::ViewExpired)?;
+                    if let Some(remaining) = &mut view.remaining {
+                        *remaining = remaining.saturating_sub(started.elapsed());
+                        if remaining.is_zero() {
+                            drop(state);
+                            drop(credit);
+                            return Err(super::query::execution_timeout());
+                        }
+                    }
+                    return Ok(credit);
+                }
+                Err(Error::ResourceExhausted {
+                    resource: "storage read memory",
+                }) => {}
+                Err(error) => return Err(error),
+            }
+            let remaining = timeout.saturating_sub(started.elapsed());
+            if remaining.is_zero() {
+                return Err(super::query::execution_timeout());
+            }
+            tokio::time::timeout(remaining, changed.changed())
+                .await
+                .map_err(|_| super::query::execution_timeout())?
+                .map_err(|_| Error::Closing {
+                    domain: "storage read admission",
+                })?;
+        }
+    }
+
+    pub(super) fn computation_memory_bytes() -> usize {
+        std::mem::size_of::<ComputationOwner>() + 2 * std::mem::size_of::<usize>() + ENTRY_OVERHEAD
+    }
+
     pub(super) fn reserve_read(&self, bytes: usize, entries: usize) -> Result<MemoryReservation> {
         self.manager()
             .reserve_read_for(ReservationKind::View(self.lease.id), bytes, entries)
@@ -545,6 +791,15 @@ impl StorageView {
         }
         let bytes = std::mem::size_of::<ComputationOwner>() + 2 * std::mem::size_of::<usize>();
         let reservation = self.reserve_read(bytes, 1)?;
+        self.computation_with_reserved(ceiling, charged, reservation)
+    }
+
+    fn computation_with_reserved(
+        &self,
+        ceiling: Option<Duration>,
+        charged: Duration,
+        reservation: MemoryReservation,
+    ) -> Result<Option<StorageViewComputation>> {
         let inner = &self.lease.manager.inner;
         let mut state = inner.state.lock().unwrap();
         let view = state
@@ -591,7 +846,11 @@ impl StorageView {
     }
 
     pub(super) async fn compute<T>(&self, work: impl Future<Output = Result<T>>) -> Result<T> {
-        let computation = self.computation()?;
+        let computation = if self.execution_limits()?.is_some() {
+            Some(self.begin_computation_wait().await?)
+        } else {
+            None
+        };
         let result = match &computation {
             Some(active) => tokio::time::timeout(active.timeout(), work)
                 .await
@@ -722,6 +981,33 @@ impl<T> StorageReader<T> {
         if empty { Ok(None) } else { Ok(Some(entries)) }
     }
 
+    pub(super) async fn stage_page(
+        &mut self,
+        limits: ReadLimits,
+    ) -> Result<Option<StoragePage<T>>> {
+        let Some(view) = self.view.clone() else {
+            return Ok(None);
+        };
+        let page = view
+            .compute(self.stage_page_reserved(limits, |entries, reservation| {
+                Ok(StoragePage::new(entries, reservation))
+            }))
+            .await?;
+        let Some((page, empty)) = page else {
+            return Ok(None);
+        };
+        if empty {
+            self.commit_staged_page();
+            Ok(None)
+        } else {
+            Ok(Some(page))
+        }
+    }
+
+    pub(super) fn discard_staged_page(&mut self) {
+        self.staged_cursor = None;
+    }
+
     // The Internal Caller Already Owns The Original View Computation.
     pub(super) async fn next_page_in_computation(
         &mut self,
@@ -790,7 +1076,36 @@ impl<T> StorageReader<T> {
     }
 }
 
+impl<T: MemorySize> StoragePage<T> {
+    pub(super) fn into_single(self) -> Result<QueryValue<T>> {
+        if self.entries.len() != 1 {
+            return Err(Error::InvalidInput {
+                field: "storage schema",
+                reason: "expected one schema at requested cursor",
+            });
+        }
+        let Self {
+            entries,
+            mut reservation,
+        } = self;
+        let value = entries.into_iter().next().unwrap();
+        let retained = value
+            .memory_size()
+            .checked_add(ENTRY_OVERHEAD)
+            .ok_or_else(super::query::decoded_limit)?;
+        if retained > reservation.bytes {
+            return Err(super::query::decoded_limit());
+        }
+        reservation.retain_read(retained);
+        QueryValue::retain(value, reservation)
+    }
+}
+
 impl<T> StoragePage<T> {
+    pub(super) fn reserved_bytes(&self) -> usize {
+        self.reservation.bytes
+    }
+
     pub(super) fn new(entries: Vec<T>, reservation: MemoryReservation) -> Self {
         Self {
             entries,
@@ -823,6 +1138,21 @@ impl<T> Deref for StoragePage<T> {
 impl<T: fmt::Debug> fmt::Debug for StoragePage<T> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.entries.fmt(formatter)
+    }
+}
+
+impl Drop for WorkingCredit {
+    fn drop(&mut self) {
+        let inner = &self.view.manager().inner;
+        let mut state = inner.state.lock().unwrap();
+        if let Some(view) = state.views.get_mut(&self.view.id()) {
+            view.covered -= self.covered;
+            view.held -= self.covered;
+            view.active -= 1;
+        }
+        state.collect();
+        drop(state);
+        inner.notify();
     }
 }
 
@@ -1032,11 +1362,8 @@ impl State {
         Ok(())
     }
 
-    // Expects A Collected Status. Only Bytes Beyond A Guaranteed Ceiling Weigh
-    // On The Pool; Reads Never Shrink To Fit: A Full Pool Refuses So The
-    // Consumer Retries Under Contention. View-Less Charges Weigh Against
-    // Charged Bytes Alone: Reservations Held By Open Views Never Refuse Them,
-    // So Charged Bytes Stay Within The Pool Plus Admitted Guaranteed Ceilings.
+    // All Reads Share One Pool. A View's Covered Charges Consume Its Already
+    // Reserved Peak; View-Less Reads Cannot Borrow That Admission Capacity.
     pub(super) fn check_read(
         &self,
         kind: ReservationKind,
@@ -1045,7 +1372,7 @@ impl State {
     ) -> Result<()> {
         let (pooled, held) = match kind.view().and_then(|id| self.views.get(&id)) {
             Some(view) => (view.pooled_growth(bytes), self.status.read_bytes),
-            None => (bytes, self.charged_read_bytes()),
+            None => (bytes, self.status.read_bytes),
         };
         if pooled != 0 && (pooled > capacity || held > capacity - pooled) {
             return Err(Error::ResourceExhausted {
@@ -1053,11 +1380,6 @@ impl State {
             });
         }
         Ok(())
-    }
-
-    // Expects A Collected Status: The Pool Without What Open Views Reserve.
-    fn charged_read_bytes(&self) -> usize {
-        self.status.read_bytes - self.views.values().map(|view| view.held).sum::<usize>()
     }
 
     // A View May Already Be Gone When Output It Produced Is Dropped; Its Live
@@ -1162,7 +1484,6 @@ fn fetch<'a, T: Entry>(
         let _activity = owned.activity()?;
         let manager = &owned.lease.manager;
         let limits = T::read_limits(limits);
-        let _lifecycle = manager.inner.lifecycle.lock().await;
         // Reserve the bounded backend page and cursor/filter metadata before I/O.
         // Identifiers are unbounded; fixed per-row overhead cannot cover them.
         let cursor_bytes = encoded_size(selection)?
@@ -1173,26 +1494,77 @@ fn fetch<'a, T: Entry>(
                 field: "read page",
                 reason: "size overflow",
             })?;
-        let page_bytes = if T::KIND == super::ReadKind::Schemas {
-            limits
-                .bytes
+        let (limits, reservation) = if T::KIND == super::ReadKind::Schemas {
+            let workspace = |bytes: NonZeroUsize| {
+                bytes
+                    .get()
+                    .checked_mul(4)
+                    .and_then(|total| {
+                        total.checked_add(T::decoding_overhead(ReadLimits {
+                            rows: limits.rows,
+                            bytes,
+                        })?)
+                    })
+                    .and_then(|total| total.checked_add(cursor_bytes))
+            };
+            let overflow = || Error::ResourceExhausted {
+                resource: "query schema memory",
+            };
+            // Admit A Minimal Workspace, Then Expand Under The Same Pool Lock.
+            // Earlier Output And Other Queries Remain Accounted For Throughout.
+            let minimum = workspace(NonZeroUsize::MIN).ok_or_else(overflow)?;
+            let mut reservation = owned.reserve_read_wait(minimum, limits.rows.get()).await?;
+            let mut state = manager.inner.state.lock().unwrap();
+            state.collect();
+            let view = state.views.get(&owned.id()).ok_or(Error::ViewExpired)?;
+            let capacity = manager.inner.settings.budget.read_memory_bytes.get();
+            let available = capacity
+                .saturating_sub(state.status.read_bytes)
+                .saturating_add(view.covered.saturating_sub(view.charged))
+                .saturating_add(reservation.bytes);
+            let overhead = limits
+                .rows
                 .get()
-                .checked_mul(4)
-                .and_then(|bytes| bytes.checked_add(T::decoding_overhead(limits)?))
-                .ok_or(Error::InvalidInput {
-                    field: "read page",
-                    reason: "schema decode bound overflow",
-                })?
+                .checked_mul(ENTRY_OVERHEAD)
+                .ok_or_else(overflow)?;
+            let mut low = 1usize;
+            let mut high = limits.bytes.get();
+            while low < high {
+                let middle = low + (high - low).div_ceil(2);
+                let fits = workspace(NonZeroUsize::new(middle).unwrap())
+                    .and_then(|bytes| bytes.checked_add(overhead))
+                    .is_some_and(|bytes| bytes <= available);
+                if fits {
+                    low = middle;
+                } else {
+                    high = middle - 1;
+                }
+            }
+            let limits = ReadLimits {
+                rows: limits.rows,
+                bytes: NonZeroUsize::new(low).unwrap(),
+            };
+            let total = workspace(limits.bytes)
+                .and_then(|bytes| bytes.checked_add(overhead))
+                .ok_or_else(overflow)?;
+            state.charge_read(reservation.kind, total - reservation.bytes, capacity)?;
+            reservation.bytes = total;
+            drop(state);
+            (limits, reservation)
         } else {
-            limits.bytes.get()
+            let bytes =
+                limits
+                    .bytes
+                    .get()
+                    .checked_add(cursor_bytes)
+                    .ok_or(Error::InvalidInput {
+                        field: "read page",
+                        reason: "size overflow",
+                    })?;
+            let reservation = owned.reserve_read_wait(bytes, limits.rows.get()).await?;
+            (limits, reservation)
         };
-        let bytes = page_bytes
-            .checked_add(cursor_bytes)
-            .ok_or(Error::InvalidInput {
-                field: "read page",
-                reason: "size overflow",
-            })?;
-        let reservation = owned.reserve_read(bytes, limits.rows.get())?;
+        let _lifecycle = manager.inner.lifecycle.lock().await;
         let (_pin, view) = owned.pin()?;
         view.check_kind(T::KIND, selection, cursor)?;
         let page = manager

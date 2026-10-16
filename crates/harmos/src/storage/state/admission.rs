@@ -69,17 +69,20 @@ impl<C> StorageManager<C> {
         records: Option<ReadLimits>,
         snapshot: bool,
     ) -> Result<Permit> {
-        let recovery_bytes =
-            recovery_preparation_bytes(payload_bytes, self.inner.recovery.history())?;
+        let recovery_bytes = recovery_preparation_bytes(
+            payload_bytes,
+            self.inner.recovery.history(),
+            self.inner.primary.history(),
+        )?;
         let bytes = recovery_bytes;
         let batches = 1 + usize::from(records.is_some());
-        if batches > self.inner.settings.queue_capacity.get() {
+        if batches > self.inner.settings.request.max_pending_write_batches.get() {
             return Err(Error::InvalidInput {
                 field: "managed capture",
                 reason: "requires two queue slots",
             });
         }
-        if bytes > self.inner.settings.queue_capacity_bytes.get() {
+        if bytes > self.inner.settings.request.max_pending_write_bytes.get() {
             return Err(Error::InvalidInput {
                 field: "managed recovery",
                 reason: "group exceeds memory budget",
@@ -110,9 +113,9 @@ impl<C> StorageManager<C> {
                 if state.reserved == 0
                     && state.finishing.is_none()
                     && state.status.pending_bytes
-                        <= self.inner.settings.queue_capacity_bytes.get() - bytes
+                        <= self.inner.settings.request.max_pending_write_bytes.get() - bytes
                     && state.status.pending_batches
-                        <= self.inner.settings.queue_capacity.get() - batches
+                        <= self.inner.settings.request.max_pending_write_batches.get() - batches
                 {
                     state
                         .next
@@ -188,7 +191,11 @@ impl<C> StorageManager<C> {
 impl Permit {
     pub(crate) fn snapshot_payload(&mut self, payload: Vec<u8>) -> Result<()> {
         debug_assert!(self.snapshot);
-        let bytes = recovery_resident_bytes(payload.capacity(), self.inner.recovery.history())?;
+        let bytes = recovery_resident_bytes(
+            payload.capacity(),
+            self.inner.recovery.history(),
+            self.inner.primary.history(),
+        )?;
         if bytes > self.bytes {
             return Err(Error::InvalidInput {
                 field: "state snapshot",
@@ -235,10 +242,9 @@ impl Permit {
         // Refuse a group that cannot fit even after all accepted work drains.
         // Waiting with a partial permit in that case would deadlock itself.
         if capture_total > limits.bytes.get()
-            || self
-                .bytes
-                .checked_add(total)
-                .is_none_or(|total| total > self.inner.settings.queue_capacity_bytes.get())
+            || self.bytes.checked_add(total).is_none_or(|total| {
+                total > self.inner.settings.request.max_pending_write_bytes.get()
+            })
         {
             return Err(invalid());
         }
@@ -269,7 +275,7 @@ impl Permit {
                 }
                 state.collect();
                 if state.status.pending_bytes
-                    <= self.inner.settings.queue_capacity_bytes.get() - bytes
+                    <= self.inner.settings.request.max_pending_write_bytes.get() - bytes
                 {
                     state.reserved += bytes;
                     state.collect();
@@ -283,7 +289,7 @@ impl Permit {
                     .pending_bytes
                     .saturating_sub(state.queue.bytes())
                     .saturating_sub(state.scratch_bytes);
-                if held > self.inner.settings.queue_capacity_bytes.get() - bytes {
+                if held > self.inner.settings.request.max_pending_write_bytes.get() - bytes {
                     return Err(invalid());
                 }
                 // Flush accepted work only; this permit owns the uncommitted
@@ -309,8 +315,11 @@ impl Permit {
         // Encoding runs under the original conservative scratch reservation.
         // Only the encoded buffer survives commit; release unused framing and
         // growth allowance before the group becomes queued work.
-        let bytes =
-            recovery_resident_bytes(self.payload.capacity(), self.inner.recovery.history())?;
+        let bytes = recovery_resident_bytes(
+            self.payload.capacity(),
+            self.inner.recovery.history(),
+            self.inner.primary.history(),
+        )?;
         if bytes > self.bytes {
             return Err(Error::InvalidInput {
                 field: "managed recovery",
@@ -334,6 +343,17 @@ impl Permit {
 
     pub(crate) fn commit(mut self, frontier: Position) {
         let mut state = self.inner.state.lock().unwrap();
+        let required_data = if self.snapshot {
+            state.journal_required_data.clone()
+        } else {
+            self.records.last().map_or_else(
+                || state.status.saved.clone(),
+                |record| record.position.clone(),
+            )
+        };
+        if required_data.sequence > state.journal_required_data.sequence {
+            state.journal_required_data = required_data.clone();
+        }
         if let Some(last) = self.records.last() {
             state.status.accepted = last.position.clone();
             state.data_accepted = Target {
@@ -361,11 +381,13 @@ impl Permit {
             journal: (!self.snapshot).then_some(frontier),
             operation: if self.snapshot {
                 Operation::Snapshot(RecoverySnapshot {
+                    required_data: required_data.clone(),
                     through: position,
                     payload: std::mem::take(&mut self.payload),
                 })
             } else {
                 Operation::Recovery(vec![RecoveryEntry {
+                    required_data,
                     position,
                     payload: std::mem::take(&mut self.payload),
                 }])

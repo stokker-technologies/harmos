@@ -240,10 +240,11 @@ fn reserve(
         .ok_or_else(size_error)?;
     if bytes
         > settings
-            .queue_capacity_bytes
+            .request
+            .max_pending_write_bytes
             .get()
             .saturating_sub(state.status.pending_bytes)
-        || state.status.pending_batches >= settings.queue_capacity.get()
+        || state.status.pending_batches >= settings.request.max_pending_write_batches.get()
     {
         return Err(Error::ResourceExhausted {
             resource: "file mutation command",

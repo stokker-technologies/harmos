@@ -84,6 +84,8 @@ pub struct ServiceDefinition {
 
 // The runtime managers a service context lends as typed values.
 pub(crate) struct Handles<A: Application> {
+    pub(crate) storage:
+        Arc<std::sync::OnceLock<crate::storage::StorageManager<crate::storage::ErasedCatalog>>>,
     pub(crate) state: StateManager<A>,
     pub(crate) records: crate::records::RecordManager<A>,
     pub(crate) streams: StreamManager<A>,
@@ -191,6 +193,7 @@ impl<A: Application> Handles<A> {
 impl<A: Application> Clone for Handles<A> {
     fn clone(&self) -> Self {
         Self {
+            storage: self.storage.clone(),
             state: self.state.clone(),
             records: self.records.clone(),
             streams: self.streams.clone(),

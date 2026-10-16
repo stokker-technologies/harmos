@@ -13,6 +13,7 @@ use crate::scenario_runtime;
 /* === Re-Exports === */
 
 /* === Imports === */
+use crate::backend::storage_settings;
 // Standard Library Imports
 use std::cell::Cell;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -71,7 +72,7 @@ fn contract_scenario() {
                 .build()
                 .unwrap()
                 .block_on(async {
-                    let probe = Fixture::new(StorageSettings::default()).await;
+                    let probe = Fixture::new(storage_settings()).await;
                     let value = produced(&probe.storage, NonZeroUsize::new(16).unwrap(), 7_u64);
                     let original = probe.storage.status().read_bytes;
                     let shared = value.try_into_shared().unwrap();
@@ -89,7 +90,7 @@ fn contract_scenario() {
                         let settings = StorageSettings {
                             query_decoded_bytes: NonZeroUsize::new(ceiling).unwrap(),
                             query_decoded_bytes_ceiling: NonZeroUsize::new(ceiling).unwrap(),
-                            ..StorageSettings::default()
+                            ..storage_settings()
                         };
                         let f = Fixture::new(settings).await;
                         let baseline = f.storage.status().read_bytes;
@@ -125,11 +126,16 @@ fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let f = Fixture::new(StorageSettings {
-                        read_memory_bytes: NonZeroUsize::new(32 * 1024 * 1024).unwrap(),
-                        ..StorageSettings::default()
+                        budget: {
+                            let mut settings = storage_settings().budget;
+                            settings.read_memory_bytes =
+                                NonZeroUsize::new(32 * 1024 * 1024).unwrap();
+                            settings
+                        },
+                        ..storage_settings()
                     })
                     .await;
-                    let defaults = StorageSettings::default().query_execution;
+                    let defaults = storage_settings().query_execution;
                     let budget = QueryLimits {
                         memory_bytes: NonZeroUsize::new(8 * 1024 * 1024).unwrap(),
                         ..defaults
@@ -176,7 +182,7 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     let baseline = f.storage.status().read_bytes;
                     let preparation = f
                         .storage
@@ -231,7 +237,7 @@ fn contract_scenario() {
                 .block_on(async {
                     let settings = StorageSettings {
                         query_decoded_bytes: NonZeroUsize::new(128).unwrap(),
-                        ..StorageSettings::default()
+                        ..storage_settings()
                     };
                     let f = Fixture::new(settings).await;
                     let view = f.storage.view_with_limits(f.execution).await.unwrap();
@@ -267,7 +273,7 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     let baseline = f.storage.status().read_bytes;
                     let preparation = f
                         .storage
@@ -326,7 +332,7 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     let baseline = f.storage.status().read_bytes;
                     let preparation = f
                         .storage
@@ -367,7 +373,7 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     let baseline = f.storage.status().read_bytes;
                     let peak = Cell::new(0);
                     let produced = f
@@ -397,11 +403,15 @@ fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let mut settings = StorageSettings {
-                        read_memory_bytes: NonZeroUsize::new(4096).unwrap(),
-                        ..StorageSettings::default()
+                        budget: {
+                            let mut settings = storage_settings().budget;
+                            settings.read_memory_bytes = NonZeroUsize::new(4096).unwrap();
+                            settings
+                        },
+                        ..storage_settings()
                     };
-                    settings.query_execution.memory_bytes = settings.read_memory_bytes;
-                    settings.query_decoded_bytes = settings.read_memory_bytes;
+                    settings.query_execution.memory_bytes = settings.budget.read_memory_bytes;
+                    settings.query_decoded_bytes = settings.budget.read_memory_bytes;
                     let f = Fixture::new(settings).await;
                     let baseline = f.storage.status().read_bytes;
                     let produced = f
@@ -436,7 +446,7 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     let baseline = f.storage.status().read_bytes;
                     let oversized = f
                         .storage
@@ -481,7 +491,7 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     let baseline = f.storage.status().read_bytes;
                     let called = Cell::new(false);
                     let result = f
@@ -505,10 +515,10 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     let view = f
                         .storage
-                        .view_with_limits(StorageSettings::default().query_execution)
+                        .view_with_limits(storage_settings().query_execution)
                         .await
                         .unwrap();
                     let saved = view.saved().unwrap();
@@ -540,7 +550,7 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     let baseline = f.storage.status().read_bytes;
                     let produced = f
                         .storage
@@ -583,7 +593,7 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     let pending = f.storage.status().pending_bytes;
                     let produced = f
                         .storage
@@ -621,7 +631,7 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     let baseline = f.storage.status().read_bytes;
                     let produced = f
                         .storage
@@ -653,7 +663,7 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let mut settings = StorageSettings::default();
+                    let mut settings = storage_settings();
                     settings.query_execution.timeout = Duration::from_secs(10);
                     settings.query_execution.memory_bytes = NonZeroUsize::new(4096).unwrap();
                     settings.query_decoded_bytes = NonZeroUsize::new(128).unwrap();
@@ -732,7 +742,7 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let mut settings = StorageSettings::default();
+                    let mut settings = storage_settings();
                     settings.query_execution.timeout = Duration::from_secs(10);
                     let f = Fixture::new(settings).await;
                     let baseline = f.storage.status().read_bytes;
@@ -783,6 +793,34 @@ fn contract_scenario() {
         });
     }
     {
+        scenario_runtime::check("shared_pool_native_reads", || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    let mut settings = storage_settings();
+                    settings.budget.read_memory_bytes = settings.query_execution.memory_bytes;
+                    settings.query_decoded_bytes = NonZeroUsize::new(64 * 1024).unwrap();
+                    let f = Fixture::new(settings).await;
+                    let baseline = f.storage.status().read_bytes;
+                    let first = f
+                        .storage
+                        .prepare_read_production(NonZeroUsize::new(64).unwrap())
+                        .unwrap();
+                    let second = f
+                        .storage
+                        .prepare_read_production(NonZeroUsize::new(64).unwrap())
+                        .unwrap();
+                    assert!(f.storage.status().read_bytes < baseline + 256 * 1024);
+                    drop(first);
+                    drop(second);
+                    assert_eq!(f.storage.status().read_bytes, baseline);
+                    f.finish().await;
+                });
+        });
+    }
+    {
         scenario_runtime::check("guard_rejects_another", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor
@@ -790,7 +828,7 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     let baseline = f.storage.status().read_bytes;
                     let first = f
                         .storage
@@ -910,7 +948,7 @@ fn response_delivery_contract() {
                 .build()
                 .unwrap()
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     let baseline = f.storage.status().read_bytes;
                     let value = produced(
                         &f.storage,
@@ -1063,7 +1101,7 @@ fn owned_stream_admission() {
                 .build()
                 .unwrap()
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     let baseline = f.storage.status().read_bytes;
                     let produce = || {
                         produced(&f.storage, NonZeroUsize::new(1024).unwrap(), vec![7_u8; 64])

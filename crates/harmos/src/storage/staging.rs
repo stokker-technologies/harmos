@@ -161,7 +161,7 @@ impl<C> StorageManager<C> {
 
     async fn create(&self, metadata: FileMetadata, resumable: bool) -> Result<StorageFile> {
         let (reference_bytes, base_bytes) = file_bytes(&metadata, self.inner.primary.history())?;
-        if base_bytes >= self.inner.settings.queue_capacity_bytes.get() {
+        if base_bytes >= self.inner.settings.request.max_pending_write_bytes.get() {
             return Err(Error::InvalidInput {
                 field: "file metadata",
                 reason: "metadata exceeds memory budget",
@@ -203,9 +203,10 @@ impl<C> StorageManager<C> {
                 state.collect();
                 // Leave at least one byte for chunk progress even with tiny policies.
                 if state.files.len() < self.inner.settings.max_files.get()
-                    && state.status.pending_batches < self.inner.settings.queue_capacity.get()
+                    && state.status.pending_batches
+                        < self.inner.settings.request.max_pending_write_batches.get()
                     && state.status.pending_bytes
-                        < self.inner.settings.queue_capacity_bytes.get() - base_bytes
+                        < self.inner.settings.request.max_pending_write_bytes.get() - base_bytes
                 {
                     let id = NEXT_FILE
                         .try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
@@ -369,11 +370,18 @@ impl StorageFile {
                     .manager
                     .inner
                     .settings
-                    .queue_capacity_bytes
+                    .request
+                    .max_pending_write_bytes
                     .get()
                     .saturating_sub(state.status.pending_bytes);
-                let capacity =
-                    state.status.pending_batches < self.manager.inner.settings.queue_capacity.get();
+                let capacity = state.status.pending_batches
+                    < self
+                        .manager
+                        .inner
+                        .settings
+                        .request
+                        .max_pending_write_batches
+                        .get();
                 let file = state.files.get_mut(&self.id).ok_or_else(closed)?;
                 file.check_session(self.session.as_ref())?;
                 if file.abandoned || file.command.is_some() {
@@ -401,7 +409,7 @@ impl StorageFile {
                     let count = bytes
                         .len()
                         .min(available)
-                        .min(self.manager.inner.settings.file_chunk_bytes.get());
+                        .min(self.manager.inner.settings.response.batch_bytes.get());
                     file.ticket = file.ticket.checked_add(1).ok_or(size_error())?;
                     file.command = Some(Command::Write(Arc::from(&bytes[..count])));
                     let ticket = file.ticket;
@@ -441,8 +449,14 @@ impl StorageFile {
                     });
                 }
                 state.collect();
-                let capacity =
-                    state.status.pending_batches < self.manager.inner.settings.queue_capacity.get();
+                let capacity = state.status.pending_batches
+                    < self
+                        .manager
+                        .inner
+                        .settings
+                        .request
+                        .max_pending_write_batches
+                        .get();
                 let lag_full = state.status.accepted.sequence >= replica_ceiling;
                 let file = state.files.get_mut(&self.id).ok_or_else(closed)?;
                 if let Some(Command::Finish { .. }) = file.command {

@@ -26,6 +26,7 @@ from typing import Any
 # Third Party Imports
 
 # Local Imports
+# isort: split
 from . import _policy
 
 # Type Checking Imports
@@ -88,6 +89,8 @@ def request(
         base = os.environ.get(
             "CI_API_V4_URL", settings.get("api_url", "https://gitlab.com/api/v4")
         )
+        if not isinstance(base, str) or not base:
+            raise _policy.ToolError("GitLab API URL required")
         project = settings.get("project_id", os.environ.get("CI_PROJECT_ID"))
         token = os.environ.get("GITLAB_TOKEN")
         job_token = os.environ.get("CI_JOB_TOKEN")
@@ -108,7 +111,7 @@ def request(
                     raise _policy.ToolError(
                         "GitLab reads require GITLAB_TOKEN with read_api access"
                     )
-                headers = {"PRIVATE-TOKEN": token}
+                headers = {"Authorization": "Bearer " + token}
             else:
                 allowed = (
                     method == "PUT" and endpoint.startswith("packages/generic/")
@@ -134,7 +137,7 @@ def request(
                         "GitLab CI publication requires CI_JOB_TOKEN"
                     )
                 elif token:
-                    headers = {"PRIVATE-TOKEN": token}
+                    headers = {"Authorization": "Bearer " + token}
                 else:
                     raise _policy.ToolError(
                         "GitLab local publication requires GITLAB_TOKEN"
@@ -629,9 +632,6 @@ def publish(directory: Path, settings: dict, root: Path, manifest: dict) -> None
                 "published release cannot be replaced; use a new patch version"
             )
         available = []
-        package = urllib.parse.quote(
-            settings.get("package", manifest["product"]), safe=""
-        )
         verify_duplicate_policy(settings)
     for item in files(root, manifest):
         data = _policy.inside(root, item["path"]).read_bytes()
@@ -654,6 +654,9 @@ def publish(directory: Path, settings: dict, root: Path, manifest: dict) -> None
                 verify_download(settings, endpoint, item)
             link = {"name": item["name"], "url": endpoint}
         else:
+            package = urllib.parse.quote(
+                settings.get("package", manifest["product"]), safe=""
+            )
             endpoint = f"packages/generic/{package}/{tag}/{urllib.parse.quote(item['name'], safe='')}"
             existing = request(settings, endpoint, binary=True)
             if existing is not None and existing != data:

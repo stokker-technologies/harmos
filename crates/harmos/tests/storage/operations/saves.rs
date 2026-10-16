@@ -220,9 +220,9 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let mut settings = config();
-                    settings.read_memory_bytes = std::num::NonZeroUsize::new(128).unwrap();
-                    settings.query_decoded_bytes = settings.read_memory_bytes;
-                    settings.query_execution.memory_bytes = settings.read_memory_bytes;
+                    settings.budget.read_memory_bytes = std::num::NonZeroUsize::new(128).unwrap();
+                    settings.query_decoded_bytes = settings.budget.read_memory_bytes;
+                    settings.query_execution.memory_bytes = settings.budget.read_memory_bytes;
                     let f = Fixture::new(settings).await;
                     let request = save_request(&f, f.storage.cursor_accepted());
                     assert!(

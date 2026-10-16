@@ -133,7 +133,7 @@ fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let mut policy = config();
-                    policy.queue_capacity = NonZeroUsize::new(1).unwrap();
+                    policy.request.max_pending_write_batches = NonZeroUsize::new(1).unwrap();
                     let f = Fixture::new(policy).await;
                     f.data.control.block_flush.store(true, Ordering::SeqCst);
                     write(&f.storage, "one").await;
@@ -284,7 +284,7 @@ fn contract_scenario() {
                     let storage = StorageManager::new(
                         StorageBackends {
                             primary: data.clone(),
-                            recovery: recovery.clone(),
+                            state: recovery.clone(),
                             replicas: Vec::new(),
                         },
                         config(),
@@ -312,7 +312,7 @@ fn contract_scenario() {
             scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
 
     let mut policy = config();
-    policy.queue_capacity = NonZeroUsize::new(1).unwrap();
+    policy.request.max_pending_write_batches = NonZeroUsize::new(1).unwrap();
     let f = Fixture::new(policy).await;
     f.data.control.block_flush.store(true, Ordering::SeqCst);
     write(&f.storage, "one").await;
@@ -352,6 +352,7 @@ fn contract_scenario() {
                     let through = f.storage.write_recovery(&[b"one", b"two"]).await.unwrap();
                     f.storage.flush_recovery().await.unwrap();
                     let snapshot = RecoverySnapshot {
+                        required_data: f.storage.cursor_saved(),
                         through: through.clone(),
                         payload: vec![5],
                     };
@@ -442,9 +443,9 @@ fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let mut policy = config();
-                    policy.queue_capacity_bytes = NonZeroUsize::new(2048).unwrap();
-                    policy.target_batch_bytes = policy.queue_capacity_bytes;
-                    policy.max_batch_bytes = policy.queue_capacity_bytes;
+                    policy.request.max_pending_write_bytes = NonZeroUsize::new(2048).unwrap();
+                    policy.target_batch_bytes = policy.request.max_pending_write_bytes;
+                    policy.max_batch_bytes = policy.request.max_pending_write_bytes;
                     let f = Fixture::new(policy).await;
                     let payload = vec![255; 4096];
                     let key = schema();

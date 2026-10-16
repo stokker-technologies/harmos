@@ -27,8 +27,8 @@ use crate::storage::catalog::LOOKUP_MEMORY_BYTES;
 use crate::storage::manager::MemoryReservation;
 use crate::storage::query::sealed;
 use crate::storage::{
-    EncodedObjectQuery, ObjectFields, Query, QueryLimits, QueryOptions, ReadHistory, ReadKind,
-    ReadLimits, ReadOrder, ReadSelection, StorageManager, StorageView,
+    EncodedObjectQuery, ObjectFields, QueryLimits, QueryOptions, ReadHistory, ReadKind, ReadLimits,
+    ReadOrder, ReadSelection, StorageManager, StorageQuery, StorageView,
 };
 use crate::{MemorySize, Result};
 
@@ -149,11 +149,11 @@ impl ObjectFieldsQuery {
     }
 }
 impl sealed::Supported for ObjectFieldsQuery {
-    fn options_mut(&mut self) -> &mut QueryOptions {
-        &mut self.options
+    fn options_mut(&mut self) -> Option<&mut QueryOptions> {
+        Some(&mut self.options)
     }
 }
-impl<C> Query<C> for ObjectFieldsQuery {
+impl<C> StorageQuery<C> for ObjectFieldsQuery {
     type Reader = ObjectBrowseResult;
     fn options(&self) -> &QueryOptions {
         &self.options

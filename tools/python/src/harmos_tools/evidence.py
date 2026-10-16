@@ -37,11 +37,11 @@ import sys
 import threading
 import time
 import tomllib
-import xml.etree.ElementTree as ElementTree
 from collections.abc import Iterator, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
-from typing import IO, Any
+from typing import IO, Any, Self
+from xml.etree import ElementTree
 
 # Third Party Imports
 
@@ -285,7 +285,7 @@ class Lock:
     wait_seconds: float = 0
     held: bool = field(default=False, init=False)
 
-    def __enter__(self) -> "Lock":
+    def __enter__(self) -> Self:
         deadline = time.monotonic() + self.wait_seconds
         while True:
             try:
@@ -2166,6 +2166,7 @@ def _query(root: Path, arguments: Sequence[str]) -> str | None:
             cwd=root,
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=COMMAND_TIMEOUT_SECONDS,
             check=False,
         )
@@ -2210,6 +2211,7 @@ def _metadata(root: Path) -> dict[str, Any]:
             cwd=root,
             capture_output=True,
             text=True,
+            encoding="utf-8",
             check=False,
         )
     except OSError as error:
@@ -2231,7 +2233,7 @@ def _run_selections(
     coverage: bool,
     records: list[Record],
 ) -> None:
-    category, language = target
+    category, _language = target
     if not selected:
         raise EvidenceError("no test configuration selects this category and language")
     failures = []
@@ -2337,6 +2339,7 @@ def _rust(
             env=environment,
             capture_output=True,
             text=True,
+            encoding="utf-8",
             check=False,
         )
         if shown.returncode != 0:
@@ -2569,6 +2572,7 @@ def _python(
             env=setup,
             capture_output=True,
             text=True,
+            encoding="utf-8",
             check=False,
         )
         if shown.returncode != 0:
@@ -2667,6 +2671,7 @@ def _installed(
             env=environment,
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=COMMAND_TIMEOUT_SECONDS * 6,
             check=False,
         )

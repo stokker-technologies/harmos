@@ -12,47 +12,29 @@
 /* === Re-Exports === */
 
 /* === Imports === */
-
 // Standard Library Imports
-
+use std::any::TypeId;
 use std::sync::Arc;
-
 // Third Party Imports
-
 // Local Imports
-
-use crate::operations::{Context, Operation};
-use crate::operations::{OperationDeclaration, ReplaySafety, Visibility, WireOperation};
-
+use crate::operations::{
+    Context, Grpc, InputDeclaration, Operation, OperationDeclaration, OutputDeclaration,
+    ReplaySafety, StreamInput, StreamOutput, Visibility, WireOperation,
+};
+use crate::schema::Described;
 use crate::storage::StorageManager;
-use crate::storage::{MutationId, ObjectReceipt, ObjectValue};
-
+use crate::storage::writes::{
+    DataBatch, WriteCompletion, WriteKind, WriteReceipt, WriteRequest, exchange,
+};
 use crate::{Error, Result};
 
 /* === Constants === */
 
 /* === Macros === */
-crate::storage::codec::product!(WriteObjectsRequest {
-    mutation: crate::storage::codec::Nested<MutationId> => 1,
-    objects: crate::storage::codec::Repeated<ObjectValue> => 2,
-});
-
-crate::storage::codec::product!(WriteObjectsResponse {
-    objects: crate::storage::codec::Repeated<ObjectReceipt> => 1,
-});
 
 /* === Type Aliases === */
 
 /* === Structs === */
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WriteObjectsRequest {
-    pub mutation: MutationId,
-    pub objects: Vec<ObjectValue>,
-}
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WriteObjectsResponse {
-    pub objects: Vec<ObjectReceipt>,
-}
 pub struct WriteObjects;
 
 pub(super) struct Handler<C> {
@@ -65,27 +47,37 @@ pub(super) struct Handler<C> {
 
 /* === Implementations === */
 impl OperationDeclaration for WriteObjects {
-    type Request = WriteObjectsRequest;
-    type Response = WriteObjectsResponse;
+    type Request = WriteRequest;
+    type Response = WriteCompletion;
     const ID: &'static str = "storage.write_objects";
-    const POLICY: crate::operations::OperationPolicy = super::POLICY;
-    const VISIBILITY: Visibility = Visibility::Host;
-    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-}
-impl WireOperation for WriteObjects {
-    const VERSION: u32 = 1;
-}
-impl crate::MemorySize for WriteObjectsResponse {
-    fn memory_size(&self) -> usize {
-        self.objects.memory_size()
+    const POLICY: crate::operations::OperationPolicy = super::IO_POLICY;
+    const VISIBILITY: Visibility = Visibility::Shared;
+    const REPLAY: ReplaySafety = ReplaySafety::Unknown;
+
+    fn endpoint_types() -> (Option<TypeId>, Option<TypeId>) {
+        (
+            Some(TypeId::of::<DataBatch>()),
+            Some(TypeId::of::<WriteReceipt>()),
+        )
     }
 }
-impl crate::MemorySize for WriteObjectsRequest {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>() + self.mutation.memory_size()
-            - std::mem::size_of::<MutationId>()
-            + self.objects.memory_size()
-            - std::mem::size_of::<Vec<ObjectValue>>()
+
+impl InputDeclaration for WriteObjects {
+    type Item = DataBatch;
+}
+impl OutputDeclaration for WriteObjects {
+    type Item = WriteReceipt;
+}
+
+impl WireOperation for WriteObjects {
+    const VERSION: u32 = 1;
+    const INPUT: Option<crate::schema::declaration::Definition> = Some(DataBatch::DEFINITION);
+    const OUTPUT: Option<crate::schema::declaration::Definition> = Some(WriteReceipt::DEFINITION);
+    const GRPC: Option<Grpc> = Some(super::grpc("WriteObjects"));
+    crate::with_protobuf! {
+        fn visit_grpc<V: crate::operations::GrpcVisitor>(visitor: V) -> Option<V::Entry> {
+            Some(visitor.exchange::<Self>())
+        }
     }
 }
 
@@ -94,7 +86,8 @@ impl<C: 'static> Operation for Handler<C> {
     type Resources = StorageManager<C>;
     type Error = Error;
     type Context<'a> = Context<'a>;
-    type Endpoints = ();
+    type Endpoints = (StreamInput<DataBatch>, StreamOutput<WriteReceipt>);
+
     async fn initialize<'ctx>(
         storage: Arc<StorageManager<C>>,
         _: Self::Context<'ctx>,
@@ -104,19 +97,20 @@ impl<C: 'static> Operation for Handler<C> {
 
     async fn run<'a>(
         &mut self,
-        _: Self::Context<'a>,
-        request: &mut WriteObjectsRequest,
-        _: &mut Self::Endpoints,
-    ) -> Result<crate::operations::Response<WriteObjectsResponse>> {
-        let result: ::core::result::Result<WriteObjectsResponse, Self::Error> = async move {
-            let objects = self
-                .storage
-                .write_objects_once(&request.mutation, &request.objects)
-                .await?;
-            Ok(WriteObjectsResponse { objects })
-        }
-        .await;
-        result.map(::core::convert::Into::into)
+        ctx: Self::Context<'a>,
+        request: &mut WriteRequest,
+        endpoints: &mut Self::Endpoints,
+    ) -> Result<crate::operations::Response<WriteCompletion>> {
+        let completion = exchange(
+            &self.storage,
+            &ctx,
+            request,
+            endpoints,
+            WriteKind::Objects,
+            WriteObjects::ID,
+        )
+        .await?;
+        Ok(completion.into())
     }
 
     fn classify(error: &Error) -> crate::operations::Failure {

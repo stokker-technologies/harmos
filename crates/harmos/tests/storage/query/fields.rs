@@ -13,6 +13,7 @@ use crate::scenario_runtime;
 /* === Re-Exports === */
 
 /* === Imports === */
+use crate::backend::storage_settings;
 
 // Standard Library Imports
 
@@ -181,7 +182,7 @@ fn contract_scenario() {
                     let mut query = query().project(fields()).unwrap();
                     query.options.execution = Some(QueryLimits {
                         memory_bytes: NonZeroUsize::new(1024).unwrap(),
-                        ..StorageSettings::default().query_execution
+                        ..storage_settings().query_execution
                     });
                     assert!(f.storage.query(query).await.is_err());
                     assert_eq!(f.data.control.query_views.load(Ordering::SeqCst), before);

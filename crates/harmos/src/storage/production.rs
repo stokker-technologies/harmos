@@ -125,17 +125,24 @@ impl<C> StorageManager<C> {
             .memory_bytes
             .get()
             .checked_sub(metadata)
+            .and_then(|bytes| bytes.checked_sub(2 * ENTRY_OVERHEAD))
             .ok_or_else(super::query::decoded_limit)?;
         if max_bytes.get() > working {
             return Err(super::query::decoded_limit());
         }
+        // The Execution Limit Is A Ceiling, Not A Whole-Pool Reservation.
+        let scratch_bytes = self
+            .inner
+            .settings
+            .query_decoded_bytes
+            .get()
+            .min(working - max_bytes.get());
         let reservation = self.reserve_read_for(kind, max_bytes.get(), 1)?;
-        let execution_reservation =
-            self.reserve_read_for(kind, limits.memory_bytes.get() - max_bytes.get(), 1)?;
+        let execution_reservation = self.reserve_read_for(kind, metadata + scratch_bytes, 1)?;
         let execution = Arc::new(Execution {
             limits,
             decoded_bytes: self.inner.settings.query_decoded_bytes,
-            scratch_bytes: working - max_bytes.get(),
+            scratch_bytes,
             state: Mutex::new(ExecutionState {
                 remaining: limits.timeout,
                 started: None,

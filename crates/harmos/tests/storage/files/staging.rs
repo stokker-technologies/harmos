@@ -20,6 +20,7 @@ mod recovery;
 /* === Re-Exports === */
 
 /* === Imports === */
+use crate::backend::storage_settings;
 // Standard Library Imports
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -477,7 +478,7 @@ fn own_contract() {
                     assert_eq!(f.data.staged.lock().unwrap()["late"].1, b"retained");
                     f.finish().await;
                     assert_eq!(
-                        harmos::storage::StorageSettings::default().file_session_timeout,
+                        storage_settings().file_session_timeout,
                         Duration::from_secs(60)
                     );
                 });

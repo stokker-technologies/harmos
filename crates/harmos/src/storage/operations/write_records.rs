@@ -12,44 +12,29 @@
 /* === Re-Exports === */
 
 /* === Imports === */
-
 // Standard Library Imports
-
+use std::any::TypeId;
 use std::sync::Arc;
-
 // Third Party Imports
-
 // Local Imports
-use crate::Identifier;
-
-use crate::operations::{Context, Operation};
-use crate::operations::{Grpc, OperationDeclaration, ReplaySafety, Visibility, WireOperation};
-
+use crate::operations::{
+    Context, Grpc, InputDeclaration, Operation, OperationDeclaration, OutputDeclaration,
+    ReplaySafety, StreamInput, StreamOutput, Visibility, WireOperation,
+};
+use crate::schema::Described;
 use crate::storage::StorageManager;
-use crate::storage::{MutationId, RecordInput, StorageCursor};
-
+use crate::storage::writes::{
+    DataBatch, WriteCompletion, WriteKind, WriteReceipt, WriteRequest, exchange,
+};
 use crate::{Error, Result};
-use harmos_contract::plugin::Grant;
 
 /* === Constants === */
 
 /* === Macros === */
-crate::storage::codec::product!(WriteRecordsRequest {
-    mutation: crate::storage::codec::Nested<MutationId> => 1,
-    records: crate::storage::codec::Repeated<RecordInput> => 2,
-    source: crate::storage::codec::Id => 3,
-});
 
 /* === Type Aliases === */
 
 /* === Structs === */
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WriteRecordsRequest {
-    pub mutation: MutationId,
-    pub records: Vec<RecordInput>,
-    pub source: Identifier,
-}
-
 pub struct WriteRecords;
 
 pub(super) struct Handler<C> {
@@ -62,33 +47,37 @@ pub(super) struct Handler<C> {
 
 /* === Implementations === */
 impl OperationDeclaration for WriteRecords {
-    type Request = WriteRecordsRequest;
-    type Response = StorageCursor;
+    type Request = WriteRequest;
+    type Response = WriteCompletion;
     const ID: &'static str = "storage.write_records";
-    const POLICY: crate::operations::OperationPolicy = super::POLICY;
+    const POLICY: crate::operations::OperationPolicy = super::IO_POLICY;
     const VISIBILITY: Visibility = Visibility::Shared;
-    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-    fn grant(request: &WriteRecordsRequest) -> Option<Grant> {
-        Some(Grant::of(Self::ID, request.source.as_str().to_owned()))
+    const REPLAY: ReplaySafety = ReplaySafety::Unknown;
+
+    fn endpoint_types() -> (Option<TypeId>, Option<TypeId>) {
+        (
+            Some(TypeId::of::<DataBatch>()),
+            Some(TypeId::of::<WriteReceipt>()),
+        )
     }
 }
+
+impl InputDeclaration for WriteRecords {
+    type Item = DataBatch;
+}
+impl OutputDeclaration for WriteRecords {
+    type Item = WriteReceipt;
+}
+
 impl WireOperation for WriteRecords {
     const VERSION: u32 = 1;
+    const INPUT: Option<crate::schema::declaration::Definition> = Some(DataBatch::DEFINITION);
+    const OUTPUT: Option<crate::schema::declaration::Definition> = Some(WriteReceipt::DEFINITION);
     const GRPC: Option<Grpc> = Some(super::grpc("WriteRecords"));
     crate::with_protobuf! {
         fn visit_grpc<V: crate::operations::GrpcVisitor>(visitor: V) -> Option<V::Entry> {
-            Some(visitor.unary::<Self>())
+            Some(visitor.exchange::<Self>())
         }
-    }
-}
-impl crate::MemorySize for WriteRecordsRequest {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>() + self.mutation.memory_size()
-            - std::mem::size_of::<MutationId>()
-            + self.records.memory_size()
-            - std::mem::size_of::<Vec<RecordInput>>()
-            + self.source.memory_size()
-            - std::mem::size_of::<Identifier>()
     }
 }
 
@@ -97,7 +86,8 @@ impl<C: 'static> Operation for Handler<C> {
     type Resources = StorageManager<C>;
     type Error = Error;
     type Context<'a> = Context<'a>;
-    type Endpoints = ();
+    type Endpoints = (StreamInput<DataBatch>, StreamOutput<WriteReceipt>);
+
     async fn initialize<'ctx>(
         storage: Arc<StorageManager<C>>,
         _: Self::Context<'ctx>,
@@ -107,29 +97,20 @@ impl<C: 'static> Operation for Handler<C> {
 
     async fn run<'a>(
         &mut self,
-        _: Self::Context<'a>,
-        request: &mut WriteRecordsRequest,
-        _: &mut Self::Endpoints,
-    ) -> Result<crate::operations::Response<StorageCursor>> {
-        let result: ::core::result::Result<StorageCursor, Self::Error> = async move {
-            for record in &mut request.records {
-                match &record.source {
-                    Some(source) if *source != request.source => {
-                        return Err(Error::InvalidInput {
-                            field: "storage record source",
-                            reason: "a record names a source other than the granted tag",
-                        });
-                    }
-                    _ => record.source = Some(request.source.clone()),
-                }
-            }
-            let values = request.records.iter().map(RecordInput::borrowed);
-            self.storage
-                .admit_record_values(&request.mutation, values)
-                .await
-        }
-        .await;
-        result.map(::core::convert::Into::into)
+        ctx: Self::Context<'a>,
+        request: &mut WriteRequest,
+        endpoints: &mut Self::Endpoints,
+    ) -> Result<crate::operations::Response<WriteCompletion>> {
+        let completion = exchange(
+            &self.storage,
+            &ctx,
+            request,
+            endpoints,
+            WriteKind::Records,
+            WriteRecords::ID,
+        )
+        .await?;
+        Ok(completion.into())
     }
 
     fn classify(error: &Error) -> crate::operations::Failure {

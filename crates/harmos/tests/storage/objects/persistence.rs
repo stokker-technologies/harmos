@@ -19,6 +19,7 @@ mod versions;
 /* === Re-Exports === */
 
 /* === Imports === */
+use crate::backend::storage_settings;
 // Standard Library Imports
 
 // Third Party Imports
@@ -70,7 +71,7 @@ impl Fixture {
         let storage = StorageManager::new(
             StorageBackends {
                 primary: primary.clone(),
-                recovery: Arc::new(Recovery::new(history())),
+                state: Arc::new(Recovery::new(history())),
                 replicas,
             },
             config,
@@ -126,7 +127,7 @@ pub(super) fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     let first = f.storage.write_object(&document("running")).await.unwrap();
                     let second = f.storage.write_object(&document("finished")).await.unwrap();
                     assert_eq!(second.position.sequence, first.position.sequence + 2);
@@ -181,7 +182,7 @@ pub(super) fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     let first = f.storage.write_object(&document("running")).await.unwrap();
                     f.storage.flush().await.unwrap();
                     let view = f.storage.view_with_limits(f.execution).await.unwrap();
@@ -222,7 +223,7 @@ pub(super) fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     let first = f.storage.write_object(&document("running")).await.unwrap();
                     let second = f.storage.write_object(&document("finished")).await.unwrap();
                     f.storage.flush().await.unwrap();
@@ -265,7 +266,7 @@ pub(super) fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     let old = LegacyDocument {
                         id: "document-1".into(),
                         status: "old".into(),
@@ -311,7 +312,7 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let f = Fixture::new(StorageSettings {
                         flush_interval: Duration::from_secs(60),
-                        ..StorageSettings::default()
+                        ..storage_settings()
                     })
                     .await;
                     f.storage
@@ -400,7 +401,7 @@ pub(super) fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     f.storage.write_object(&document("running")).await.unwrap();
                     f.storage.write_object(&document("finished")).await.unwrap();
                     f.primary.control.flush_failures.store(1, Ordering::SeqCst);
@@ -438,7 +439,7 @@ pub(super) fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     f.storage.write_object(&document("running")).await.unwrap();
                     f.primary.control.invalid_page.store(true, Ordering::SeqCst);
                     let saved = f.storage.flush().await.unwrap();
@@ -491,8 +492,12 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let config = StorageSettings {
-                        queue_capacity: NonZeroUsize::new(1).unwrap(),
-                        ..StorageSettings::default()
+                        request: {
+                            let mut settings = storage_settings().request;
+                            settings.max_pending_write_batches = NonZeroUsize::new(1).unwrap();
+                            settings
+                        },
+                        ..storage_settings()
                     };
                     let f = Fixture::new(config).await;
                     f.primary.control.block_write.store(true, Ordering::SeqCst);
@@ -522,7 +527,7 @@ pub(super) fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     let admitted = f.storage.write_object(&document("running")).await.unwrap();
                     f.storage.flush().await.unwrap();
                     let view = f.storage.view_with_limits(f.execution).await.unwrap();
@@ -585,7 +590,7 @@ pub(super) fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     let first = f.storage.write_object(&document("running")).await.unwrap();
                     f.primary.control.block_write.store(true, Ordering::SeqCst);
                     let storage = f.storage.clone();
@@ -611,7 +616,7 @@ pub(super) fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     f.storage.write_object(&document("running")).await.unwrap();
                     f.storage.flush().await.unwrap();
                     let view = f.storage.view_with_limits(f.execution).await.unwrap();
@@ -659,7 +664,7 @@ pub(super) fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let f = Fixture::with_replica(StorageSettings::default(), true).await;
+                    let f = Fixture::with_replica(storage_settings(), true).await;
                     let first = f.storage.write_object(&document("running")).await.unwrap();
                     f.storage.write_object(&document("finished")).await.unwrap();
                     let saved = f.storage.flush().await.unwrap();
@@ -695,7 +700,7 @@ pub(super) fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     f.storage.write_object(&document("running")).await.unwrap();
                     f.storage.flush().await.unwrap();
                     f.storage.write_object(&document("finished")).await.unwrap();
@@ -719,7 +724,7 @@ pub(super) fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     f.storage.write_object(&document("running")).await.unwrap();
                     f.storage.flush().await.unwrap();
                     f.storage.write_object(&document("finished")).await.unwrap();
@@ -744,7 +749,7 @@ pub(super) fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     let current = document("current");
                     let legacy = LegacyDocument {
                         id: "legacy".into(),
@@ -803,7 +808,7 @@ pub(super) fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     let baseline = f.storage.status().pending_bytes;
                     let failure = f
                         .storage
@@ -837,7 +842,7 @@ pub(super) fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     let baseline = f.storage.status().pending_bytes;
                     let storage = f.storage.clone();
                     let panic = tokio::spawn(async move {
@@ -873,13 +878,29 @@ pub(super) fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
+                    let probe = Fixture::new(storage_settings()).await;
+                    for name in ["first", "second"] {
+                        probe.storage.write_object(&document(name)).await.unwrap();
+                        probe.storage.flush().await.unwrap();
+                    }
+                    let single_bytes = *probe
+                        .primary
+                        .control
+                        .write_bytes
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .max()
+                        .unwrap();
+                    probe.finish().await;
                     let config = StorageSettings {
-                        target_batch_bytes: NonZeroUsize::new(512).unwrap(),
-                        max_batch_bytes: NonZeroUsize::new(512).unwrap(),
-                        ..StorageSettings::default()
+                        target_batch_bytes: NonZeroUsize::new(single_bytes).unwrap(),
+                        max_batch_bytes: NonZeroUsize::new(single_bytes).unwrap(),
+                        ..storage_settings()
                     };
                     let f = Fixture::new(config).await;
-                    let receipts = f
+                    let before = f.storage.cursor_accepted();
+                    let refused = f
                         .storage
                         .write_object_group(
                             NonZeroUsize::new(64 * 1024).unwrap(),
@@ -889,8 +910,34 @@ pub(super) fn contract_scenario() {
                                 group.write(&document("second"))
                             },
                         )
-                        .await
-                        .unwrap();
+                        .await;
+                    assert!(matches!(
+                        refused,
+                        Err(harmos::Error::InvalidInput {
+                            field: "storage admission",
+                            ..
+                        })
+                    ));
+                    assert_eq!(
+                        f.storage.cursor_accepted(),
+                        before,
+                        "oversized atomic group cannot be partially admitted"
+                    );
+                    // Decoded Catalog Metadata Needs More Memory Than The Wire Batch.
+                    let mut receipts = Vec::new();
+                    for name in ["first", "second"] {
+                        let receipt = f
+                            .storage
+                            .write_object_group(
+                                NonZeroUsize::new(64 * 1024).unwrap(),
+                                NonZeroUsize::MIN,
+                                |group| group.write(&document(name)),
+                            )
+                            .await
+                            .unwrap()
+                            .remove(0);
+                        receipts.push(receipt);
+                    }
                     f.primary.control.flush_failures.store(1, Ordering::SeqCst);
                     assert!(f.storage.flush_until(&receipts[1].position).await.is_err());
                     assert_eq!(f.storage.cursor_saved().sequence, 0);

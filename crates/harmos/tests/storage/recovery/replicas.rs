@@ -120,7 +120,8 @@ pub(super) fn contract_scenario() {
                     assert!(target.records.lock().unwrap().is_empty());
                     assert!(target.rows.lock().unwrap().is_empty());
                     f.storage.flush_recovery().await.unwrap();
-                    assert_eq!(f.storage.cursor_saved().sequence, 3);
+                    // State Without An Evidence Dependency Does Not Flush Measurements.
+                    assert_eq!(f.storage.cursor_saved().sequence, 0);
                     let saved = f.storage.flush().await.unwrap();
                     wait(&f.storage, "remote", &saved).await.unwrap();
                     assert_eq!(target.control.writes.lock().unwrap().as_slice(), &[1, 2, 3]);
@@ -240,7 +241,7 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let mut policy = config();
                     let mut targets = Vec::new();
-                    policy.file_chunk_bytes = NonZeroUsize::new(17).unwrap();
+                    policy.response.batch_bytes = NonZeroUsize::new(17).unwrap();
                     let target = replica(&mut targets, "remote");
                     target.control.finish_failures.store(1, Ordering::SeqCst);
                     let f = Fixture::with_replicas(policy, targets).await;
@@ -372,7 +373,7 @@ pub(super) fn contract_scenario() {
                     let storage = StorageManager::new(
                         StorageBackends {
                             primary: f.data.clone(),
-                            recovery: f.recovery.clone(),
+                            state: f.recovery.clone(),
                             replicas: targets,
                         },
                         policy,
@@ -558,7 +559,7 @@ pub(super) fn contract_scenario() {
                     let storage = StorageManager::new(
                         StorageBackends {
                             primary: data.clone(),
-                            recovery,
+                            state: recovery,
                             replicas: targets,
                         },
                         policy,
@@ -667,9 +668,10 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let mut policy = config();
                     let mut targets = Vec::new();
-                    policy.queue_capacity_bytes = NonZeroUsize::new(6 * 1024 * 1024).unwrap();
-                    policy.target_batch_bytes = policy.queue_capacity_bytes;
-                    policy.max_batch_bytes = policy.queue_capacity_bytes;
+                    policy.request.max_pending_write_bytes =
+                        NonZeroUsize::new(6 * 1024 * 1024).unwrap();
+                    policy.target_batch_bytes = policy.request.max_pending_write_bytes;
+                    policy.max_batch_bytes = policy.request.max_pending_write_bytes;
                     // Reserve Finite-Schema Decoding Within The Same Shared 6 MiB Cap.
                     policy.replication_limits.bytes = NonZeroUsize::new(16 * 1024).unwrap();
                     let first = replica(&mut targets, "first");
@@ -806,7 +808,11 @@ pub(super) fn contract_scenario() {
                     let item = Identifier::new("row").unwrap();
                     let payload = vec![7; 100];
                     let records: Vec<_> = (0..8).map(|_| record(&key, &item, &payload)).collect();
-                    let accepted = f.storage.write_records(&records).await.unwrap();
+                    // Producers Split Atomic Submissions Before Storage Admission.
+                    let mut accepted = f.storage.cursor_accepted();
+                    for batch in records.chunks(2) {
+                        accepted = f.storage.write_records(batch).await.unwrap();
+                    }
                     f.storage.flush_until(&accepted).await.unwrap();
                     wait(&f.storage, "bounded", &accepted).await.unwrap();
                     assert_eq!(
@@ -921,7 +927,7 @@ pub(super) fn contract_scenario() {
                 StorageManager::new(
                     StorageBackends {
                         primary: target.clone(),
-                        recovery: recovery.clone(),
+                        state: recovery.clone(),
                         replicas: targets.clone()
                     },
                     policy.clone()
@@ -936,7 +942,7 @@ pub(super) fn contract_scenario() {
                 StorageManager::new(
                     StorageBackends {
                         primary: Arc::new(Data::new(history())),
-                        recovery: recovery.clone(),
+                        state: recovery.clone(),
                         replicas: targets
                     },
                     policy
@@ -951,7 +957,7 @@ pub(super) fn contract_scenario() {
                 StorageManager::new(
                     StorageBackends {
                         primary: Arc::new(Data::new(history())),
-                        recovery,
+                        state: recovery,
                         replicas: targets
                     },
                     policy

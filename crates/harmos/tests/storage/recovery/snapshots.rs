@@ -25,7 +25,7 @@ use super::{
     Bank, Data, Ledger, Recovery, StorageBackends, StorageManager, catalog, config, history, schema,
 };
 use harmos::state::SnapshotPolicy;
-use harmos::storage::recovery::RecoverySnapshot;
+use harmos::storage::state::RecoverySnapshot;
 use harmos::storage::{ReadLimits, StorageSettings};
 use harmos::{
     Builder, Runtime, state::Focus, state::Position, state::PrincipalId, state::RequestKey,
@@ -91,7 +91,7 @@ impl Store {
         StorageManager::new(
             StorageBackends {
                 primary: self.data.clone(),
-                recovery: self.recovery.clone(),
+                state: self.recovery.clone(),
                 replicas: Vec::new(),
             },
             config,
@@ -498,7 +498,7 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let store = Store::new();
                     let mut config = config();
-                    config.queue_capacity = NonZeroUsize::new(1).unwrap();
+                    config.request.max_pending_write_batches = NonZeroUsize::new(1).unwrap();
                     let storage = store.manager(config);
                     let runtime = builder(policy(1))
                         .runtime_with_storage(&storage)
@@ -621,9 +621,9 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let store = Store::new();
                     let mut config = config();
-                    config.queue_capacity_bytes = NonZeroUsize::new(256 * 1024).unwrap();
-                    config.target_batch_bytes = config.queue_capacity_bytes;
-                    config.max_batch_bytes = config.queue_capacity_bytes;
+                    config.request.max_pending_write_bytes = NonZeroUsize::new(256 * 1024).unwrap();
+                    config.target_batch_bytes = config.request.max_pending_write_bytes;
+                    config.max_batch_bytes = config.request.max_pending_write_bytes;
                     let storage = store.manager(config);
                     assert!(
                         builder(policy(100))
@@ -652,7 +652,8 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let store = Store::new();
                     let mut settings = config();
-                    settings.queue_capacity_bytes = NonZeroUsize::new(1024 * 1024).unwrap();
+                    settings.request.max_pending_write_bytes =
+                        NonZeroUsize::new(1024 * 1024).unwrap();
                     settings.max_batch_bytes = NonZeroUsize::new(512 * 1024).unwrap();
                     settings.target_batch_bytes = settings.max_batch_bytes;
                     let storage = store.manager(settings);

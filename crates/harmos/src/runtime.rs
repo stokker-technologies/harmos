@@ -946,7 +946,9 @@ impl<A: Application> Builder<A> {
                 cleanup: None,
             })?;
         let lanes = crate::operations::lane::Lanes::freeze(lanes).map_err(Incompatible::work)?;
+        let storage = Arc::new(boot.storage.clone().map(OnceLock::from).unwrap_or_default());
         let handles = crate::services::Handles {
+            storage: storage.clone(),
             state: journal.clone(),
             records: records.clone(),
             streams: streams.clone(),
@@ -1028,7 +1030,7 @@ impl<A: Application> Builder<A> {
             evidence,
             stopping: Mutex::new(Stopping::Running(Some(supervisor))),
             closing: AtomicBool::new(false),
-            storage: Arc::new(boot.storage.clone().map(OnceLock::from).unwrap_or_default()),
+            storage,
             journal_handles,
             participants: Participants::new(),
             notices: watch::channel(None).0,

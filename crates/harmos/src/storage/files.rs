@@ -9,8 +9,10 @@
 
 /* === Modules === */
 mod codec;
+mod read;
 
 /* === Re-Exports === */
+pub use read::{ByteRange, FileBatch, FileCompletion, ReadFile};
 
 /* === Imports === */
 // Standard Library Imports

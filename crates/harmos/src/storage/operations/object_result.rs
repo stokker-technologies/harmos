@@ -49,12 +49,6 @@ pub enum ObjectResult {
 /* === Traits === */
 
 /* === Implementations === */
-impl ObjectResult {
-    pub(super) fn wrapping_memory<T: MemorySize>(value: &T) -> usize {
-        std::mem::size_of::<Self>()
-            .saturating_add(value.memory_size().saturating_sub(std::mem::size_of::<T>()))
-    }
-}
 impl MemorySize for ObjectResult {
     fn memory_size(&self) -> usize {
         let heap = match self {

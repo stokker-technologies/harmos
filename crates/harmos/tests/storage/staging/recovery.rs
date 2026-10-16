@@ -98,7 +98,7 @@ pub(super) async fn restart(source: &Fixture) -> Fixture {
     let storage = StorageManager::new(
         StorageBackends {
             primary: data.clone(),
-            recovery: recovery.clone(),
+            state: recovery.clone(),
             replicas: Vec::new(),
         },
         settings,
@@ -290,7 +290,7 @@ pub(super) fn contract_scenario() {
                     let restored = StorageManager::new(
                         StorageBackends {
                             primary: f.data.clone(),
-                            recovery: f.recovery.clone(),
+                            state: f.recovery.clone(),
                             replicas: Vec::new(),
                         },
                         config(),
@@ -438,7 +438,7 @@ pub(super) fn contract_scenario() {
                         let storage: StorageManager = StorageManager::new(
                             StorageBackends {
                                 primary: data.clone(),
-                                recovery,
+                                state: recovery,
                                 replicas: Vec::new(),
                             },
                             settings,

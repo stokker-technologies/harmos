@@ -77,7 +77,7 @@ async fn dormant() -> Fixture {
     let storage = StorageManager::new(
         StorageBackends {
             primary: data.clone(),
-            recovery: recovery.clone(),
+            state: recovery.clone(),
             replicas: Vec::new(),
         },
         settings,
@@ -392,7 +392,7 @@ fn contract_scenario() {
                     let storage = StorageManager::new(
                         StorageBackends {
                             primary: data.clone(),
-                            recovery,
+                            state: recovery,
                             replicas: Vec::new(),
                         },
                         config(),

@@ -18,6 +18,7 @@ mod retention;
 /* === Re-Exports === */
 
 /* === Imports === */
+use crate::backend::storage_settings;
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -208,13 +209,13 @@ fn own_contract() {
                     let replica_id = Identifier::new("remote").unwrap();
                     let config = StorageSettings {
                         flush_interval: Duration::from_secs(60),
-                        ..StorageSettings::default()
+                        ..storage_settings()
                     };
                     // Neither the catalog nor its members need Clone to share these owners.
                     let storage = StorageManager::new(
                         StorageBackends {
                             primary: primary.clone(),
-                            recovery: recovery.clone(),
+                            state: recovery.clone(),
                             replicas: vec![ReplicaTarget {
                                 id: replica_id.clone(),
                                 backend: replica.clone(),
@@ -258,10 +259,10 @@ fn own_contract() {
                     let storage = StorageManager::new(
                         StorageBackends {
                             primary,
-                            recovery: Arc::new(Recovery::new(history())),
+                            state: Arc::new(Recovery::new(history())),
                             replicas: Vec::new(),
                         },
-                        StorageSettings::default(),
+                        storage_settings(),
                     )
                     .unwrap();
                     let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
@@ -408,10 +409,10 @@ fn own_contract() {
             let result = StorageManager::new(
                 StorageBackends {
                     primary: primary.clone(),
-                    recovery: recovery.clone(),
+                    state: recovery.clone(),
                     replicas: Vec::new(),
                 },
-                StorageSettings::default(),
+                storage_settings(),
             );
             assert!(matches!(
                 result,
@@ -445,10 +446,10 @@ fn own_contract() {
                     StorageManager::new(
                         StorageBackends {
                             primary: primary.clone(),
-                            recovery: recovery.clone(),
+                            state: recovery.clone(),
                             replicas
                         },
-                        StorageSettings::default()
+                        storage_settings()
                     )
                     .is_err()
                 );

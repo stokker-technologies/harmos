@@ -15,7 +15,7 @@ use crate::scenario_runtime;
 /* === Imports === */
 // Standard Library Imports
 use std::collections::BTreeMap;
-use std::num::{NonZeroU32, NonZeroUsize};
+use std::num::NonZeroU32;
 use std::sync::Arc;
 // Third Party Imports
 
@@ -29,14 +29,17 @@ use harmos::plugin::{
     PluginDefinitions, PluginEndpoint, PluginLifecycle, PluginLifecycleAuthority, PluginManager,
     PluginTransition, Router,
 };
-use harmos::storage::frame::{Expr, Frame, GroupBy, ScalarField, ScalarPath};
-use harmos::storage::operations::{
-    Acknowledge, AcknowledgeRequest, Reductions, ReductionsRequest, WriteRecords,
-    WriteRecordsRequest,
+use harmos::storage::operations::{Acknowledge, AcknowledgeRequest, Query, WriteRecords};
+use harmos::storage::query::transform::{
+    Transform,
+    aggregate::{Aggregate as AggregateTransform, Measure},
 };
-use harmos::storage::reduce::{Agg, ScalarKind, ScalarValue};
-use harmos::storage::{MutationId, RecordInput};
-use harmos::storage::{ReadKind, ReadLimits, ReadSelection, SchemaKey};
+use harmos::storage::query::{
+    Query as QueryRequest, QueryOutput, RecordSelection, RowSlice, Source,
+};
+
+use harmos::storage::SchemaKey;
+use harmos::storage::writes::{WriteReceipt, WriteRequest};
 use harmos::{Error, Identifier, Result};
 use harmos_contract::inventory::contracts::Required;
 use harmos_contract::plugin::Grant;
@@ -135,55 +138,27 @@ fn plugin(id: &str, required: Vec<Required>) -> PluginDefinition {
     }
 }
 
-fn write(fixture: &Fixture, key: &str, source: &str) -> WriteRecordsRequest {
-    WriteRecordsRequest {
-        mutation: MutationId {
-            window: fixture.storage.mutation_window().unwrap().id,
-            key: Identifier::new(key).unwrap(),
-        },
-        records: vec![RecordInput {
-            schema: super::super::schema(),
+fn query(fixture: &Fixture, schema: SchemaKey) -> QueryRequest {
+    QueryRequest {
+        at: fixture.storage.cursor_saved(),
+        source: Source::Records(RecordSelection {
+            schema,
             scope: None,
-            item: Identifier::new("reading").unwrap(),
-            source: None,
-            source_time: None,
-            payload: b"reading".to_vec(),
-        }],
-        source: Identifier::new(source).unwrap(),
-    }
-}
-
-fn frame(schemas: &[SchemaKey], max_groups: usize) -> ReductionsRequest {
-    let mut frame = Frame::new(
-        NonZeroUsize::new(64).unwrap(),
-        NonZeroUsize::new(max_groups).unwrap(),
-    );
-    for schema in schemas {
-        let mut selection = ReadSelection::new(ReadKind::Records);
-        selection.schema = Some(schema.clone());
-        let scan = frame.scan(
-            selection,
-            vec![ScalarField {
-                path: ScalarPath::Payload(vec![Identifier::new("value").unwrap()]),
-                kind: ScalarKind::Unsigned,
+            item: None,
+            source_start: None,
+            source_end: None,
+        }),
+        transforms: vec![Transform::Aggregate(AggregateTransform {
+            groups: vec![],
+            measures: vec![Measure {
+                field: "payload.value".into(),
+                statistic: Aggregate::Count,
+                name: "count".into(),
             }],
-        );
-        let group_by = GroupBy::new(scan)
-            .agg(Expr::Col(0), Agg::Of(Aggregate::Mean))
-            .agg(Expr::Col(0), Agg::Len);
-        frame.group_by(if max_groups > 1 {
-            group_by
-                .keys(vec![0])
-                .agg(Expr::Col(0), Agg::Of(Aggregate::Median))
-        } else {
-            group_by
-        });
-    }
-    ReductionsRequest {
-        frame,
-        page: ReadLimits {
-            rows: NonZeroUsize::new(16).unwrap(),
-            bytes: NonZeroUsize::new(64 * 1024).unwrap(),
+        })],
+        slice: RowSlice {
+            offset: 0,
+            limit: None,
         },
     }
 }
@@ -273,18 +248,45 @@ pub(super) fn contract_scenario() {
                         .caller(&host.callers["bystander"])
                         .unwrap();
 
-                    // The Granted Source Appends; Another Source Or An Ungranted Caller Is Refused
-                    let cursor = writer
-                        .submit_as::<WriteRecords>(write(&fixture, "first", "bench"))
-                        .unwrap()
+                    super::writes::seed(&fixture).await;
+                    let mut exchange = writer
+                        .exchange::<WriteRecords>(
+                            WriteRequest { scope: None },
+                            super::writes::settings(),
+                            super::writes::settings(),
+                        )
+                        .unwrap();
+                    exchange
+                        .send(super::writes::batch(1, "bench"))
                         .await
                         .unwrap();
+                    let cursor = loop {
+                        let receipt = exchange.next().await.unwrap().unwrap();
+                        if let WriteReceipt::Durable(receipt) = &*receipt {
+                            break Arc::new(receipt.cursor.clone());
+                        }
+                    };
+                    // A Second Destination On The Same Invocation Needs Its Own Grant.
+                    exchange
+                        .send(super::writes::batch(2, "other"))
+                        .await
+                        .unwrap();
+                    exchange.finish_input();
+                    while exchange.next().await.unwrap().is_some() {}
+                    let failure = exchange.join().await.unwrap_err();
                     assert!(matches!(
-                        writer.submit_as::<WriteRecords>(write(&fixture, "second", "other")),
-                        Err(Error::OperationUnauthorized { .. })
-                    ));
+                        &failure,
+                        Error::OperationFailed { source, .. }
+                            if matches!(source.downcast_ref::<Error>(), Some(Error::OperationUnauthorized { .. }))
+                    ), "unexpected write failure: {failure:?}");
+                    assert_eq!(fixture.data.records.lock().unwrap().len(), 2);
+                    assert_eq!(fixture.storage.cursor_accepted(), *cursor);
                     assert!(matches!(
-                        bystander.submit_as::<WriteRecords>(write(&fixture, "third", "bench")),
+                        bystander.exchange::<WriteRecords>(
+                            WriteRequest { scope: None },
+                            super::writes::settings(),
+                            super::writes::settings()
+                        ),
                         Err(Error::OperationUnauthorized { .. })
                     ));
 
@@ -320,7 +322,7 @@ pub(super) fn contract_scenario() {
         });
     }
     {
-        scenario_runtime::check("reductions_collect_frames", || {
+        scenario_runtime::check("query_enforces_grants", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor
                 .enable_all()
@@ -346,13 +348,15 @@ pub(super) fn contract_scenario() {
                         version: NonZeroU32::MIN,
                         ..schema.clone()
                     };
-                    let survey = |id: &str| Grant::of(Reductions::ID, id.to_owned());
+                    let survey = |schema: &SchemaKey| {
+                        Grant::of(
+                            Query::ID,
+                            query(&fixture, schema.clone()).source.grant_scope(),
+                        )
+                    };
                     let definitions = PluginDefinitions::new(
                         [
-                            plugin(
-                                "reducer",
-                                vec![required::<Reductions>(vec![survey(schema.id.as_str())])],
-                            ),
+                            plugin("reducer", vec![required::<Query>(vec![survey(&schema)])]),
                             plugin("bystander", Vec::new()),
                         ],
                         [],
@@ -371,44 +375,51 @@ pub(super) fn contract_scenario() {
                         .caller(&host.callers["bystander"])
                         .unwrap();
 
-                    // The Granted Schema Collects Exactly, As The In-Process Query Does
-                    let collected = reducer
-                        .submit_as::<Reductions>(frame(std::slice::from_ref(&schema), 1))
-                        .unwrap()
-                        .await
+                    let mut collected = reducer
+                        .download::<Query>(
+                            query(&fixture, schema.clone()),
+                            super::writes::settings(),
+                        )
                         .unwrap();
-                    assert_eq!(
-                        collected.outputs[0].groups[0].values,
-                        vec![
-                            ScalarValue::Unsigned(9_007_199_254_740_994),
-                            ScalarValue::Unsigned(2)
-                        ]
-                    );
-
-                    // A Second Schema Widens The Grant To Every Schema; Nobody Else Reads
+                    let mut count = None;
+                    while let Some(output) = collected.next().await.unwrap() {
+                        if let QueryOutput::Batch(batch) = &*output {
+                            let values = batch
+                                .as_record_batch()
+                                .column_by_name("count")
+                                .unwrap()
+                                .as_any()
+                                .downcast_ref::<arrow_array::UInt64Array>()
+                                .unwrap();
+                            count = Some(values.value(0));
+                        }
+                    }
+                    assert_eq!(count, Some(2));
+                    assert_eq!(collected.join().await.unwrap().rows, 1);
+                    let mut cross_kind = query(&fixture, schema.clone());
+                    cross_kind.source = Source::Stream(harmos::storage::query::StreamSelection {
+                        schema: schema.clone(),
+                        scope: None,
+                        item: None,
+                        stream: None,
+                        source_start: None,
+                        source_end: None,
+                    });
                     assert!(matches!(
-                        reducer.submit_as::<Reductions>(frame(&[schema.clone(), other], 1)),
+                        reducer.download::<Query>(cross_kind, super::writes::settings()),
+                        Err(Error::OperationUnauthorized { .. })
+                    ));
+
+                    assert!(matches!(
+                        reducer
+                            .download::<Query>(query(&fixture, other), super::writes::settings()),
                         Err(Error::OperationUnauthorized { .. })
                     ));
                     assert!(matches!(
-                        bystander.submit_as::<Reductions>(frame(std::slice::from_ref(&schema), 1)),
+                        bystander
+                            .download::<Query>(query(&fixture, schema), super::writes::settings()),
                         Err(Error::OperationUnauthorized { .. })
                     ));
-
-                    // Explained Memory Beyond The View's Working Allowance Is Refused Up Front
-                    let mut oversized = frame(std::slice::from_ref(&schema), 4096);
-                    oversized.frame.max_rows = NonZeroUsize::new(1 << 20).unwrap();
-                    let refused = reducer
-                        .submit_as::<Reductions>(oversized)
-                        .unwrap()
-                        .await
-                        .unwrap_err();
-                    assert!(
-                        refused
-                            .to_string()
-                            .contains("explained frame memory exceeds query working memory"),
-                        "{refused}"
-                    );
                     manager.shutdown(&mut host).await.unwrap();
                     fixture.finish().await;
                 });

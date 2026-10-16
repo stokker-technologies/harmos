@@ -679,7 +679,7 @@ fn fetch<T: Entry>(
                 resource: "storage read memory",
             })?;
         let kind = ReservationKind::View(lease.id);
-        let capacity = lease.inner.settings.read_memory_bytes.get();
+        let capacity = lease.inner.settings.budget.read_memory_bytes.get();
         let mut refusal = state.check_read(kind, charge, capacity).err();
         'queue: for pending in state
             .queue

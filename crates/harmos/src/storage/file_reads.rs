@@ -35,6 +35,8 @@ pub struct StorageFileReader {
     view: Option<StorageView>,
     file: FileReference,
     offset: u64,
+    end: u64,
+    verify_hash: bool,
     hash: Sha256,
     _metadata: MemoryReservation,
 }
@@ -178,6 +180,8 @@ impl StorageFileReader {
             view: Some(view),
             file: file.clone(),
             offset: 0,
+            end: file.length,
+            verify_hash: true,
             hash: Sha256::new(),
             _metadata: reservation,
         })
@@ -191,6 +195,36 @@ impl StorageFileReader {
         self.offset
     }
 
+    pub fn range(mut self, range: super::files::ByteRange) -> Result<Self> {
+        if self.offset != 0 {
+            return Err(Error::InvalidInput {
+                field: "file byte range",
+                reason: "range must be selected before reading",
+            });
+        }
+        self.end = range.end(self.file.length)?;
+        self.offset = range.offset;
+        self.verify_hash = range.offset == 0 && self.end == self.file.length;
+        Ok(self)
+    }
+
+    pub(super) async fn reserve_delivery(
+        &self,
+        maximum: NonZeroUsize,
+    ) -> Result<super::views::WorkingCredit> {
+        let view = self.view.as_ref().ok_or(Error::ViewExpired)?;
+        let bytes = maximum
+            .get()
+            .checked_mul(2)
+            .and_then(|bytes| bytes.checked_add(std::mem::size_of::<super::files::FileBatch>() * 2))
+            .and_then(|bytes| bytes.checked_add(super::StorageView::computation_memory_bytes()))
+            .and_then(|bytes| bytes.checked_add(super::manager::ENTRY_OVERHEAD * 3))
+            .ok_or(Error::ResourceExhausted {
+                resource: "file delivery memory",
+            })?;
+        view.reserve_working_wait(bytes).await
+    }
+
     pub async fn next_chunk(&mut self, max_bytes: NonZeroUsize) -> Result<Option<FileChunk>> {
         let Some(view) = self.view.clone() else {
             return Ok(None);
@@ -199,11 +233,11 @@ impl StorageFileReader {
         let work = async {
             let _activity = view.activity()?;
             let manager = view.manager();
-            let _lifecycle = manager.inner.lifecycle.lock().await;
-            let reservation = view.reserve_read(max_bytes.get(), 1)?;
             let (_pin, metadata) = view.pin()?;
-            if self.offset == self.file.length {
-                if <[u8; 32]>::from(self.hash.clone().finalize()) != self.file.sha256 {
+            if self.offset == self.end {
+                if self.verify_hash
+                    && <[u8; 32]>::from(self.hash.clone().finalize()) != self.file.sha256
+                {
                     return Err(corrupt("file digest mismatch"));
                 }
                 if let Some(active) = &computation {
@@ -212,19 +246,27 @@ impl StorageFileReader {
                 self.view = None;
                 return Ok(None);
             }
+            let maximum = NonZeroUsize::new(
+                max_bytes
+                    .get()
+                    .min(usize::try_from(self.end - self.offset).unwrap_or(usize::MAX)),
+            )
+            .expect("nonempty remaining range");
+            let reservation = view.reserve_read_wait(maximum.get(), 1).await?;
+            let _lifecycle = manager.inner.lifecycle.lock().await;
             let bytes = manager
                 .inner
                 .bounded(manager.inner.primary.read_file(
                     &metadata,
                     &self.file,
                     self.offset,
-                    max_bytes,
+                    maximum,
                 ))
                 .await?;
             let _live = view.pin()?;
             if bytes.is_empty()
-                || bytes.capacity() > max_bytes.get()
-                || bytes.len() as u64 > self.file.length - self.offset
+                || bytes.capacity() > maximum.get()
+                || bytes.len() as u64 > self.end - self.offset
             {
                 return Err(corrupt(
                     "file chunk is empty or outside the immutable length",
@@ -233,7 +275,8 @@ impl StorageFileReader {
             let next = self.offset + bytes.len() as u64;
             let mut hash = self.hash.clone();
             hash.update(&bytes);
-            if next == self.file.length
+            if self.verify_hash
+                && next == self.end
                 && <[u8; 32]>::from(hash.clone().finalize()) != self.file.sha256
             {
                 return Err(corrupt("file digest mismatch"));
@@ -243,7 +286,7 @@ impl StorageFileReader {
             }
             self.offset = next;
             self.hash = hash;
-            if next == self.file.length {
+            if next == self.end {
                 self.view = None;
             }
             Ok(Some(FileChunk {

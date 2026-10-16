@@ -140,7 +140,7 @@ impl Store {
         StorageManager::new(
             StorageBackends {
                 primary: self.data.clone(),
-                recovery: self.recovery.clone(),
+                state: self.recovery.clone(),
                 replicas: Vec::new(),
             },
             config,
@@ -251,7 +251,7 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let store = Store::new();
                     let mut config = config();
-                    config.queue_capacity = NonZeroUsize::new(1).unwrap();
+                    config.request.max_pending_write_batches = NonZeroUsize::new(1).unwrap();
                     let storage = store.manager(config);
                     let runtime = store.boot(&storage).await;
                     store
@@ -466,7 +466,8 @@ pub(super) fn contract_scenario() {
                     assert!(storage.write_recovery(&[b"foreign"]).await.is_err());
                     assert!(
                         storage
-                            .write_snapshot(&harmos::storage::recovery::RecoverySnapshot {
+                            .write_snapshot(&harmos::storage::state::RecoverySnapshot {
+                                required_data: storage.cursor_saved(),
                                 through: storage.status().recovery_accepted,
                                 payload: vec![],
                             })
@@ -651,7 +652,7 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let store = Store::new();
                     let mut policy = config();
-                    policy.queue_capacity = NonZeroUsize::new(4).unwrap();
+                    policy.request.max_pending_write_batches = NonZeroUsize::new(4).unwrap();
                     policy.flush_interval = Duration::from_millis(2);
                     let storage = store.manager(policy);
                     let runtime = store.boot(&storage).await;

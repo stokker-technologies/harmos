@@ -13,6 +13,7 @@ use crate::scenario_runtime;
 /* === Re-Exports === */
 
 /* === Imports === */
+use crate::backend::storage_settings;
 // Standard Library Imports
 
 // Third Party Imports
@@ -49,7 +50,7 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     let admitted = f.storage.write_object(&document("running")).await.unwrap();
                     let json = serde_json::to_vec(&admitted.version).unwrap();
                     let version: ObjectVersionToken = serde_json::from_slice(&json).unwrap();
@@ -77,10 +78,10 @@ fn contract_scenario() {
                     let reopened = StorageManager::new(
                         StorageBackends {
                             primary: f.primary.clone(),
-                            recovery: Arc::new(Recovery::new(history())),
+                            state: Arc::new(Recovery::new(history())),
                             replicas: Vec::new(),
                         },
-                        StorageSettings::default(),
+                        storage_settings(),
                     )
                     .unwrap();
                     reopened.start(&f.runtime).await.unwrap();
@@ -111,7 +112,7 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     let first = f.storage.write_object(&document("first")).await.unwrap();
                     let mut other = document("second");
                     other.id = "document-2".into();
@@ -152,7 +153,7 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     let first = f.storage.write_object(&document("first")).await.unwrap();
                     let second = f.storage.write_object(&document("second")).await.unwrap();
                     f.storage.flush().await.unwrap();
@@ -232,7 +233,7 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let f = Fixture::new(StorageSettings::default()).await;
+                    let f = Fixture::new(storage_settings()).await;
                     let admitted = f.storage.write_object(&document("original")).await.unwrap();
                     f.storage.flush().await.unwrap();
                     let view = f.storage.view_with_limits(f.execution).await.unwrap();
@@ -277,7 +278,7 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let mut settings = StorageSettings::default();
+                    let mut settings = storage_settings();
                     settings.query_execution.timeout = Duration::from_secs(2);
                     let f = Fixture::new(settings).await;
                     f.storage.write_object(&document("original")).await.unwrap();
@@ -364,7 +365,7 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let mut settings = StorageSettings::default();
+                    let mut settings = storage_settings();
                     // Include The Fixture's Pinned Maps And Retention Coverage Metadata.
                     // The Independently Asserted Decoded Profile Remains 4096 Bytes.
                     settings.query_execution.memory_bytes = NonZeroUsize::new(20 * 1024).unwrap();
