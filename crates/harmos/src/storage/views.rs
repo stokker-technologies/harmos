@@ -1131,6 +1131,20 @@ impl<T> StoragePage<T> {
         }
     }
 
+    pub(super) async fn project_wait<U: crate::MemorySize>(
+        &self,
+        max_bytes: NonZeroUsize,
+        timeout: std::time::Duration,
+        map: impl FnOnce(&[T], NonZeroUsize) -> Result<Vec<U>>,
+    ) -> Result<QueryPage<U>> {
+        let reservation = self.reservation.projection_wait(max_bytes, timeout).await?;
+        let entries = map(&self.entries, max_bytes)?;
+        if entries.memory_size() > max_bytes.get() {
+            return Err(super::query::decoded_limit());
+        }
+        QueryPage::retain(entries, reservation)
+    }
+
     pub fn try_project<U: crate::MemorySize>(
         &self,
         max_bytes: NonZeroUsize,

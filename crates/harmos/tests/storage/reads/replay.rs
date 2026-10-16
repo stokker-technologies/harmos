@@ -975,3 +975,39 @@ async fn accepted_replay_waits_for_shared_capacity() {
     drop(replay);
     f.finish().await;
 }
+
+#[tokio::test]
+async fn accepted_replay_keeps_raw_page_while_decode_waits() {
+    let f = Fixture::new(config()).await;
+    write(&f.storage, "accepted").await;
+    let mut query = record_query(limits());
+    query.options.decoded_bytes = NonZeroUsize::new(128 * 1024);
+    let mut replay = f.storage.replay(query).await.unwrap();
+    super::views::wait_release(&f, 1).await;
+    let occupied = f.storage.status().read_bytes;
+    let probe = f.storage.reserve_arrow_memory(0).unwrap();
+    let overhead = f.storage.status().read_bytes - occupied;
+    drop(probe);
+    let capacity = config().budget.read_memory_bytes.get();
+    let external = f
+        .storage
+        .reserve_arrow_memory(capacity - occupied - overhead - 64 * 1024)
+        .unwrap();
+    let mut next = Box::pin(replay.next_page());
+    assert!(matches!(
+        std::future::poll_fn(|cx| std::task::Poll::Ready(std::future::Future::poll(
+            next.as_mut(),
+            cx
+        )))
+        .await,
+        std::task::Poll::Pending
+    ));
+    drop(external);
+    let page = next.await.unwrap().unwrap();
+    assert_eq!(page.len(), 1);
+    assert_eq!(page[0].position.sequence, 1);
+    drop(page);
+    assert!(replay.next_page().await.unwrap().is_none());
+    drop(replay);
+    f.finish().await;
+}

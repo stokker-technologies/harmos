@@ -287,38 +287,40 @@ impl<R, T: MemorySize> QueryFollower<R, T> {
         if self.decoded.is_none() {
             let pending = self.pending.as_ref().expect("original raw page is pending");
             let decode = &self.decode;
-            let page = pending.try_project(self.decoded_bytes, |entries, bytes| {
-                let inline = entries
-                    .len()
-                    .checked_mul(std::mem::size_of::<T>())
-                    .and_then(|bytes| bytes.checked_add(std::mem::size_of::<Vec<T>>()))
-                    .ok_or_else(super::query::decoded_limit)?;
-                if inline > bytes.get() {
-                    return Err(super::query::decoded_limit());
-                }
-                let mut output = Vec::with_capacity(entries.len());
-                let mut retained = std::mem::size_of::<Vec<T>>()
-                    .saturating_add(output.capacity().saturating_mul(std::mem::size_of::<T>()));
-                for entry in entries {
+            let page = pending
+                .project_wait(self.decoded_bytes, timeout, |entries, bytes| {
+                    let inline = entries
+                        .len()
+                        .checked_mul(std::mem::size_of::<T>())
+                        .and_then(|bytes| bytes.checked_add(std::mem::size_of::<Vec<T>>()))
+                        .ok_or_else(super::query::decoded_limit)?;
+                    if inline > bytes.get() {
+                        return Err(super::query::decoded_limit());
+                    }
+                    let mut output = Vec::with_capacity(entries.len());
+                    let mut retained = std::mem::size_of::<Vec<T>>()
+                        .saturating_add(output.capacity().saturating_mul(std::mem::size_of::<T>()));
+                    for entry in entries {
+                        if started.elapsed() >= timeout {
+                            return Err(super::query::execution_timeout());
+                        }
+                        let allowance = NonZeroUsize::new(bytes.get().saturating_sub(retained))
+                            .ok_or_else(super::query::decoded_limit)?;
+                        let value = decode(entry, allowance)?;
+                        retained = retained.saturating_add(
+                            value.memory_size().saturating_sub(std::mem::size_of::<T>()),
+                        );
+                        if retained > bytes.get() {
+                            return Err(super::query::decoded_limit());
+                        }
+                        output.push(value);
+                    }
                     if started.elapsed() >= timeout {
                         return Err(super::query::execution_timeout());
                     }
-                    let allowance = NonZeroUsize::new(bytes.get().saturating_sub(retained))
-                        .ok_or_else(super::query::decoded_limit)?;
-                    let value = decode(entry, allowance)?;
-                    retained = retained.saturating_add(
-                        value.memory_size().saturating_sub(std::mem::size_of::<T>()),
-                    );
-                    if retained > bytes.get() {
-                        return Err(super::query::decoded_limit());
-                    }
-                    output.push(value);
-                }
-                if started.elapsed() >= timeout {
-                    return Err(super::query::execution_timeout());
-                }
-                Ok(output)
-            })?;
+                    Ok(output)
+                })
+                .await?;
             self.decoded = Some(page);
             self.pending.take();
         }

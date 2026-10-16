@@ -1896,6 +1896,42 @@ impl MemoryReservation {
         Ok(output)
     }
 
+    pub(super) async fn projection_wait(
+        &self,
+        bytes: std::num::NonZeroUsize,
+        timeout: std::time::Duration,
+    ) -> Result<Self> {
+        let required = self
+            .bytes
+            .checked_add(bytes.get())
+            .and_then(|total| total.checked_add(ENTRY_OVERHEAD))
+            .ok_or_else(super::query::decoded_limit)?;
+        if required > self.inner.settings.budget.read_memory_bytes.get() {
+            return Err(super::query::decoded_limit());
+        }
+        let started = tokio::time::Instant::now();
+        let mut changed = self.inner.changed.subscribe();
+        loop {
+            match self.projection(bytes) {
+                Ok(reservation) => return Ok(reservation),
+                Err(Error::ResourceExhausted {
+                    resource: "storage read memory",
+                }) => {}
+                Err(error) => return Err(error),
+            }
+            let remaining = timeout.saturating_sub(started.elapsed());
+            if remaining.is_zero() {
+                return Err(super::query::execution_timeout());
+            }
+            tokio::time::timeout(remaining, changed.changed())
+                .await
+                .map_err(|_| super::query::execution_timeout())?
+                .map_err(|_| Error::Closing {
+                    domain: "storage read admission",
+                })?;
+        }
+    }
+
     pub(super) fn reserve_projection(&mut self, bytes: std::num::NonZeroUsize) -> Result<()> {
         assert!(self.kind.is_read());
         let additional = bytes
