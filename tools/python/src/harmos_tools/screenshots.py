@@ -18,7 +18,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 # Third Party Imports
-
 # Local Imports
 # isort: split
 from . import _policy, evidence

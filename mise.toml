@@ -258,8 +258,12 @@ description = "Check"
 run = [{ task = "check:fast" }, { task = "check:compiled" }]
 
 [tasks."build:ci"]
-description = "Check Compiled Targets And Build Native Release Assets"
-run = [{ task = "check:compiled" }, { task = "build:release" }]
+description = "Check Compiled Targets And Build Development Assets"
+run = [
+  { task = "check:compiled" },
+  { task = "build:dev" },
+  { task = "build:acceptance:dev" },
+]
 
 [tasks."ci:feature"]
 description = "Check Feature Branch Source Without Compiling Product Targets"

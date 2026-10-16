@@ -24,7 +24,6 @@ import urllib.request
 from pathlib import Path
 
 # Third Party Imports
-
 # Local Imports
 from . import _policy, docs_artifacts, docs_registry, docs_site
 
@@ -201,7 +200,9 @@ def tools(directory: Path, docs: dict) -> dict[str, str]:
         for name in names
     }
     if docs.get("guides"):
-        package = json.loads((directory / "docs/package.json").read_text())
+        package = json.loads(
+            (directory / "docs/package.json").read_text(encoding="utf-8")
+        )
         for name in ["node", "npm"]:
             expected = package.get("engines", {}).get(name)
             if (
@@ -343,7 +344,7 @@ def build(directory: Path, docs: dict, profile: str, selector: str | None) -> No
 
 def verified(directory: Path, docs: dict) -> dict:
     output = stage(directory)
-    manifest = json.loads((output / "manifest.json").read_text())
+    manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
     docs_artifacts.verify(output / "files", manifest)
     _, revision = selected(directory, docs, manifest["selector"])
     if (
@@ -396,7 +397,9 @@ def assemble(directory: Path, docs: dict) -> None:
 
 def assembled(directory: Path, docs: dict) -> dict:
     manifest = verified(directory, docs)
-    receipt = json.loads((stage(directory) / "assembled.json").read_text())
+    receipt = json.loads(
+        (stage(directory) / "assembled.json").read_text(encoding="utf-8")
+    )
     if receipt["files"] != docs_artifacts.inventory(directory / "site") or receipt[
         "artifact"
     ] != docs_artifacts.digest(json.dumps(manifest, sort_keys=True).encode()):
@@ -517,7 +520,9 @@ def smoke(directory: Path, docs: dict) -> None:
 def publish(directory: Path, docs: dict) -> None:
     manifest = verified(directory, docs)
     receipt = assembled(directory, docs)
-    smoke_receipt = json.loads((stage(directory) / "smoke.json").read_text())
+    smoke_receipt = json.loads(
+        (stage(directory) / "smoke.json").read_text(encoding="utf-8")
+    )
     image = docs.get("image")
     if not isinstance(image, str) or not image:
         raise _policy.ToolError("docs.image must declare the assembled container image")

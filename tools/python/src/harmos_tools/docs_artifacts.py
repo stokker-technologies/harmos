@@ -20,7 +20,6 @@ import zipfile
 from pathlib import Path
 
 # Third Party Imports
-
 # Local Imports
 from . import _policy, docs_site
 
@@ -228,7 +227,8 @@ def assemble(
     )
     redirect = f"{base}{target['selector']}/{target['home']}"
     (site / "index.html").write_text(
-        f'<html><head><meta http-equiv="refresh" content="0;url={redirect}"></head><body><a href="{redirect}">Documentation</a></body></html>'
+        f'<html><head><meta http-equiv="refresh" content="0;url={redirect}"></head><body><a href="{redirect}">Documentation</a></body></html>',
+        encoding="utf-8",
     )
     # Latest Is A Serving Alias; Immutable Version Content Is Never Rewritten.
     if latest:
@@ -237,7 +237,8 @@ def assemble(
             suffix = path.relative_to(site / "latest").as_posix()
             url = base + latest + "/" + suffix
             path.write_text(
-                f'<html><head><meta http-equiv="refresh" content="0;url={url}"></head><body><a href="{url}">Latest Stable Documentation</a></body></html>'
+                f'<html><head><meta http-equiv="refresh" content="0;url={url}"></head><body><a href="{url}">Latest Stable Documentation</a></body></html>',
+                encoding="utf-8",
             )
     docs_site.static(destination, "/")
     return metadata

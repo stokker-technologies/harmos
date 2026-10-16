@@ -135,7 +135,7 @@ runs:
       run: |
         case "$CACHE_ROLE" in
           release) paths=$'target/release\ntarget/*/release' ;;
-          integration) paths=$'target/debug\ntarget/fixtures/harmos/build' ;;
+          integration) paths=$'target/debug\ntarget/*/debug\ntarget/fixtures/harmos/build' ;;
           coverage) paths=$'target/validation/cargo/coverage\ntarget/fixtures/harmos/build' ;;
           *) echo "Unknown compiler cache role: $CACHE_ROLE" >&2; exit 1 ;;
         esac

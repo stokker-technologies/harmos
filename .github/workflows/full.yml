@@ -98,7 +98,7 @@ jobs:
       - uses: ./.github/actions/setup
         id: setup
         with:
-          cargo-cache-role: release
+          cargo-cache-role: integration
           cache-write: 'true'
       - name: build:ci
         run: mise run build:ci
@@ -148,7 +148,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: ./.github/actions/setup
         with:
-          cargo-cache-role: release
+          cargo-cache-role: integration
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.build_ci_linux.outputs.artifact }}
@@ -209,7 +209,7 @@ jobs:
       - uses: ./.github/actions/setup
         id: setup
         with:
-          cargo-cache-role: release
+          cargo-cache-role: integration
           cache-write: 'true'
       - name: build:ci
         run: mise run build:ci
@@ -259,7 +259,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: ./.github/actions/setup
         with:
-          cargo-cache-role: release
+          cargo-cache-role: integration
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.build_ci_windows.outputs.artifact }}
