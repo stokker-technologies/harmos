@@ -25,7 +25,7 @@ use super::{RecoveryEntry, RecoveryPage, RecoverySnapshot, StateBackend};
 use crate::storage::config::StorageSettings;
 use crate::storage::{ReadLimits, RecoveryPosition, StorageFuture, StoreHistory};
 use crate::{BackendFailure, Error, Result};
-use journal::Journal;
+use journal::StateLog;
 
 /* === Constants === */
 /* === Macros === */
@@ -38,7 +38,7 @@ pub struct FileBackend {
     history: StoreHistory,
     entry_bytes: usize,
     snapshot_bytes: usize,
-    journal: Arc<Mutex<Option<Journal>>>,
+    journal: Arc<Mutex<Option<StateLog>>>,
 }
 
 /* === Enums === */
@@ -57,7 +57,7 @@ impl FileBackend {
 
     async fn call<T: Send + 'static>(
         &self,
-        action: impl FnOnce(&mut Journal) -> Result<T> + Send + 'static,
+        action: impl FnOnce(&mut StateLog) -> Result<T> + Send + 'static,
     ) -> Result<T> {
         // Acquire Before Dispatch So Cancellation Cannot Enqueue An Older Write.
         let mut owner = self.journal.clone().lock_owned().await;
@@ -87,7 +87,7 @@ impl StateBackend for FileBackend {
             let snapshot_bytes = self.snapshot_bytes;
             tokio::task::spawn_blocking(move || {
                 if owner.is_none() {
-                    *owner = Some(Journal::open(&root, history, entry_bytes, snapshot_bytes)?);
+                    *owner = Some(StateLog::open(&root, history, entry_bytes, snapshot_bytes)?);
                 }
                 let journal = owner.as_ref().expect("opened journal");
                 journal.check()?;

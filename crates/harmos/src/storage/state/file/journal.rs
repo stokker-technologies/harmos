@@ -29,7 +29,7 @@ use crate::{BackendFailure, Error, Result};
 /* === Macros === */
 /* === Type Aliases === */
 /* === Structs === */
-pub(super) struct Journal {
+pub(super) struct StateLog {
     files: Files,
     file: File,
     poisoned: bool,
@@ -50,7 +50,7 @@ struct Header {
 /* === Enums === */
 /* === Traits === */
 /* === Implementations === */
-impl Journal {
+impl StateLog {
     pub(super) fn open(
         root: &Path,
         history: StoreHistory,
@@ -359,7 +359,7 @@ mod tests {
             store: crate::Identifier::new("state.test").unwrap(),
             epoch: crate::Identifier::new("epoch.one").unwrap(),
         };
-        let mut journal = Journal::open(root.path(), history.clone(), 4096, 4096).unwrap();
+        let mut journal = StateLog::open(root.path(), history.clone(), 4096, 4096).unwrap();
         // A Read-Only Handle Forces Both Append And Rollback To Fail.
         journal.file = File::open(root.path().join("state.jsonl")).unwrap();
         let entry = RecoveryEntry {
@@ -376,7 +376,7 @@ mod tests {
         assert!(journal.append(std::slice::from_ref(&entry)).is_err());
         assert!(journal.check().is_err());
         drop(journal);
-        let mut reopened = Journal::open(root.path(), history, 4096, 4096).unwrap();
+        let mut reopened = StateLog::open(root.path(), history, 4096, 4096).unwrap();
         assert_eq!(reopened.position().sequence, 0);
         reopened.append(&[entry]).unwrap();
         assert_eq!(reopened.position().sequence, 1);

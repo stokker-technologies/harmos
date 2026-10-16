@@ -2127,6 +2127,12 @@ fn contract_scenario() {
                         // whole point of splitting them.
                         && !(line == "#[cfg(feature = \"simulation\")]"
                             && path.ends_with("/examples/schematic/app/src/app.rs"))
+                        // The file state backend opens its root directory for
+                        // durability sync on every platform; Windows only needs a
+                        // flag to obtain a directory handle at all. The gate picks
+                        // a handle flag, not memory-only versus persisted storage.
+                        && !(line == "#[cfg(windows)]"
+                            && path.ends_with("/crates/harmos/src/storage/state/file/files.rs"))
                         // An encoded provider's prepared grant is checked where
                         // the host executes guests or sidecars; the gate selects
                         // the provider carrier, not durable storage.
