@@ -46,7 +46,7 @@ pub(crate) struct NormalizedObjects {
     schemas: Vec<QueryValue<StorageSchema>>,
     projection: Option<Project>,
     output: Arc<Schema>,
-    _metadata: Vec<RetainedMemory>,
+    _metadata: RetainedMemory,
 }
 
 /* === Enums === */
@@ -63,7 +63,6 @@ impl NormalizedObjects {
     ) -> Result<Self> {
         let manager = view.manager();
         let mut schemas: Vec<QueryValue<StorageSchema>> = Vec::new();
-        let mut metadata = Vec::new();
         if let Some(key) = &selection.schema {
             schemas.push(manager.lookup_schema(view, key).await?);
         } else {
@@ -174,18 +173,16 @@ impl NormalizedObjects {
             transforms.remove(0);
         }
         let output = output.expect("nonempty selected schemas");
-        let retained = crate::storage::arrow::schema_memory(&output)
-            .checked_mul(2)
-            .and_then(|bytes| {
-                projection
-                    .as_ref()
-                    .map_or(0, MemorySize::memory_size)
-                    .checked_mul(2)
-                    .and_then(|projection| bytes.checked_add(projection))
-            })
-            .and_then(|bytes| bytes.checked_add(4096))
+        let schema_slots = schemas
+            .capacity()
+            .checked_mul(std::mem::size_of::<QueryValue<StorageSchema>>())
             .ok_or_else(exhausted)?;
-        metadata.push(bank.reserve(retained)?);
+        let retained = crate::storage::arrow::schema_memory(&output)
+            .checked_add(projection.as_ref().map_or(0, MemorySize::memory_size))
+            .and_then(|bytes| bytes.checked_add(schema_slots))
+            .and_then(|bytes| bytes.checked_add(std::mem::size_of::<Self>()))
+            .ok_or_else(exhausted)?;
+        let metadata = bank.reserve(retained)?;
         Ok(Self {
             schemas,
             projection,
