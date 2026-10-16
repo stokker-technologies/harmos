@@ -597,6 +597,18 @@ fn contract_scenario() {
                     super::views::wait_release(&f, 1).await;
                     assert_eq!(page[0].position.sequence, 1);
                     let retained = f.storage.status().read_bytes;
+                    let projected = page
+                        .try_project(NonZeroUsize::new(64).unwrap(), |rows, _| {
+                            Ok(rows
+                                .iter()
+                                .map(|row| row.position.sequence)
+                                .collect::<Vec<_>>())
+                        })
+                        .unwrap();
+                    assert_eq!(&projected[..], &[1]);
+                    assert!(f.storage.status().read_bytes > retained);
+                    drop(projected);
+                    assert_eq!(f.storage.status().read_bytes, retained);
                     assert!(retained > 0);
                     let storage = f.storage.clone();
                     f.finish().await;

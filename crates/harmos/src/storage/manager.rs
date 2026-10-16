@@ -1927,12 +1927,16 @@ impl MemoryReservation {
         if let Some(id) = self.kind.view()
             && state.views.get(&id).is_none_or(|view| view.expired)
         {
-            // Live Followers Retain Their Own Lease After Saved History Closes.
-            state
-                .followers
-                .get(&id)
-                .ok_or(Error::ViewExpired)?
-                .check()?;
+            if let Some(follower) = state.followers.get(&id) {
+                // Live Followers Retain Their Own Lease After Saved History Closes.
+                follower.check()?;
+            } else if !state.views.contains_key(&id) {
+                // Retained Values Outlive Their Reader. Collection Already Moved
+                // Their Existing Charges Into The Shared, View-Less Read Ledger.
+                self.kind = ReservationKind::Read;
+            } else {
+                return Err(Error::ViewExpired);
+            }
         }
         state.charge_read(
             self.kind,
