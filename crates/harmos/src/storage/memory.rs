@@ -67,12 +67,27 @@ impl MemoryBank {
     pub(super) fn reserve(&self, bytes: usize) -> Result<RetainedMemory> {
         {
             let mut state = self.state.lock().unwrap();
-            if state.closed || bytes > state.capacity.saturating_sub(state.used) {
-                return Err(Error::ResourceExhausted {
-                    resource: "query kernel memory estimate",
+            if state.closed {
+                return Err(Error::NotReady {
+                    domain: "closed query allocation owner",
                 });
             }
-            state.used += bytes;
+            let required = state
+                .used
+                .checked_add(bytes)
+                .ok_or(Error::ResourceExhausted {
+                    resource: "storage read memory",
+                })?;
+            if required > state.capacity {
+                let additional = required - state.capacity;
+                state
+                    .reservation
+                    .as_mut()
+                    .expect("open bank owns reservation")
+                    .grow_read(additional)?;
+                state.capacity = required;
+            }
+            state.used = required;
         }
         let claim = Arc::new(Claim {
             bank: self.state.clone(),

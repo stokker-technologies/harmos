@@ -1905,10 +1905,20 @@ impl MemoryReservation {
             .get()
             .checked_add(ENTRY_OVERHEAD)
             .ok_or_else(super::query::decoded_limit)?;
-        let retained = self
+        self.grow_read(additional)
+    }
+
+    pub(super) fn grow_read(&mut self, additional: usize) -> Result<()> {
+        assert!(self.kind.is_read());
+        if additional == 0 {
+            return Ok(());
+        }
+        let bytes = self
             .bytes
             .checked_add(additional)
-            .ok_or_else(super::query::decoded_limit)?;
+            .ok_or(Error::ResourceExhausted {
+                resource: "storage read memory",
+            })?;
         let mut state = self.inner.state.lock().unwrap();
         if state.status.closing {
             return Err(Error::Closing { domain: "storage" });
@@ -1916,12 +1926,18 @@ impl MemoryReservation {
         if !state.ready || !state.status.running {
             return Err(Error::NotReady { domain: "storage" });
         }
+        state.collect();
+        if let Some(id) = self.kind.view()
+            && state.views.get(&id).is_none_or(|view| view.expired)
+        {
+            return Err(Error::ViewExpired);
+        }
         state.charge_read(
             self.kind,
             additional,
             self.inner.settings.budget.read_memory_bytes.get(),
         )?;
-        self.bytes = retained;
+        self.bytes = bytes;
         Ok(())
     }
 
