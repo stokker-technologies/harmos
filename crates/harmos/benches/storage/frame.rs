@@ -196,7 +196,6 @@ pub(super) async fn reuse() {
             settings
         },
         query_execution: execution,
-        query_execution_ceiling: execution,
         ..super::backend::storage_settings()
     };
     let storage = StorageManager::new(

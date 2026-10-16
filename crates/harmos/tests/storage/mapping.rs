@@ -222,7 +222,6 @@ async fn mapping_exhaustion() {
     let mut settings = storage_settings();
     settings.budget.read_memory_bytes = std::num::NonZeroUsize::new(512 * 1024).unwrap();
     settings.query_execution.memory_bytes = std::num::NonZeroUsize::new(128 * 1024).unwrap();
-    settings.query_execution_ceiling.memory_bytes = settings.budget.read_memory_bytes;
     settings.query_decoded_bytes = std::num::NonZeroUsize::new(8 * 1024).unwrap();
     settings.query_page = ReadLimits {
         rows: std::num::NonZeroUsize::MIN,
@@ -329,7 +328,6 @@ async fn mapping_growth() {
     let mut settings = storage_settings();
     settings.budget.read_memory_bytes = std::num::NonZeroUsize::new(16 * 1024 * 1024).unwrap();
     settings.query_execution.memory_bytes = std::num::NonZeroUsize::new(128 * 1024).unwrap();
-    settings.query_execution_ceiling.memory_bytes = settings.budget.read_memory_bytes;
     settings.query_decoded_bytes = std::num::NonZeroUsize::new(8 * 1024).unwrap();
     settings.query_page = ReadLimits {
         rows: std::num::NonZeroUsize::MIN,

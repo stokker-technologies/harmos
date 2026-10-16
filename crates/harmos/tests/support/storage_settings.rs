@@ -52,12 +52,7 @@ pub fn storage_settings() -> StorageSettings {
             spill_bytes: 0,
             timeout: Duration::from_secs(5),
         },
-        query_execution_ceiling: QueryLimits {
-            memory_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
-            admission: Admission::Guaranteed,
-            spill_bytes: 64 * 1024 * 1024,
-            timeout: Duration::from_secs(30),
-        },
+
         replication_limits: ReadLimits {
             rows: NonZeroUsize::new(64).unwrap(),
             bytes: NonZeroUsize::new(64 * 1024).unwrap(),

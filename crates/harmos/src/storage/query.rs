@@ -238,21 +238,6 @@ impl QueryLimits {
         }
         Ok(())
     }
-
-    pub fn check_ceiling(self, ceiling: Self) -> Result<()> {
-        self.check()?;
-        ceiling.check()?;
-        if self.memory_bytes > ceiling.memory_bytes
-            || self.spill_bytes > ceiling.spill_bytes
-            || self.timeout > ceiling.timeout
-        {
-            return Err(Error::InvalidInput {
-                field: "query execution",
-                reason: "request exceeds manager ceiling",
-            });
-        }
-        Ok(())
-    }
 }
 
 impl Drop for ActiveBudget<'_> {
@@ -856,7 +841,7 @@ impl<C> StorageManager<C> {
                 memory_bytes: self.inner.settings.budget.read_memory_bytes,
                 admission: Admission::Elastic,
                 spill_bytes: 0,
-                timeout: self.inner.settings.query_execution_ceiling.timeout,
+                timeout: self.inner.settings.query_execution.timeout,
             }
         } else {
             self.query_execution(query.options())?
@@ -978,7 +963,7 @@ impl<C> StorageManager<C> {
         let execution = options
             .execution
             .unwrap_or(self.inner.settings.query_execution);
-        execution.check_ceiling(self.inner.settings.query_execution_ceiling)?;
+        execution.check()?;
         self.inner.primary.validate_query_limits(execution)?;
         Ok(execution)
     }

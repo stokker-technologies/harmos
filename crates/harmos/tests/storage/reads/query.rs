@@ -876,7 +876,7 @@ fn contract_scenario() {
         });
     }
     {
-        scenario_runtime::check("ceiling_refuses_snapshot", || {
+        scenario_runtime::check("shared_budget_refuses_snapshot", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor
                 .enable_all()
@@ -886,13 +886,16 @@ fn contract_scenario() {
                     let f = Fixture::new().await;
                     let mut query = RecordQuery::new(schema(), decode);
                     query.options.execution = Some(QueryLimits {
-                        memory_bytes: NonZeroUsize::new(16 * 1024 * 1024 + 1).unwrap(),
+                        memory_bytes: NonZeroUsize::new(
+                            storage_settings().budget.read_memory_bytes.get() + 1,
+                        )
+                        .unwrap(),
                         ..storage_settings().query_execution
                     });
                     assert!(matches!(
                         f.storage.query(query).await,
                         Err(Error::InvalidInput {
-                            field: "query execution",
+                            field: "read view",
                             ..
                         })
                     ));

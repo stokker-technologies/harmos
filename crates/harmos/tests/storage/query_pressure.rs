@@ -65,7 +65,6 @@ async fn external_pressure_reloads_uncommitted_page_once_and_cancellation_releas
         let mut settings = storage_settings();
         settings.request.max_active_queries = NonZeroUsize::new(1).unwrap();
         settings.query_execution.admission = Admission::Elastic;
-        settings.query_execution_ceiling.admission = Admission::Elastic;
         settings.query_page.rows = NonZeroUsize::new(16).unwrap();
         settings.query_page.bytes = NonZeroUsize::new(16 * 1024).unwrap();
         let capacity = settings.budget.read_memory_bytes.get();

@@ -147,7 +147,7 @@ impl<C> StorageManager<C> {
 
     pub async fn view_with_limits(&self, limits: QueryLimits) -> Result<StorageView> {
         let started = tokio::time::Instant::now();
-        limits.check_ceiling(self.inner.settings.query_execution_ceiling)?;
+        limits.check()?;
         self.inner.primary.validate_query_limits(limits)?;
         let timeout = super::query::remaining_budget(limits.timeout, started)?;
         let (view, _) = tokio::time::timeout(timeout, self.acquire_view(None, Some(limits)))

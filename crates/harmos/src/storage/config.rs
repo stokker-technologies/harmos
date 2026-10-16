@@ -43,7 +43,7 @@ pub struct StorageSettings {
 
     pub query_decoded_bytes: NonZeroUsize,
     pub query_execution: QueryLimits,
-    pub query_execution_ceiling: QueryLimits,
+
     pub replication_limits: ReadLimits,
     pub replica_lag_positions: NonZeroU64,
     pub replication_shutdown: Duration,
@@ -124,8 +124,7 @@ impl StorageSettings {
                 reason: "must be positive and representable",
             });
         }
-        self.query_execution
-            .check_ceiling(self.query_execution_ceiling)?;
+        self.query_execution.check()?;
         if self.query_decoded_bytes > self.budget.read_memory_bytes {
             return Err(crate::Error::InvalidInput {
                 field: "query decoding",

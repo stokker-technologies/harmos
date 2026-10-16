@@ -115,7 +115,7 @@ impl<C> StorageManager<C> {
         limits: QueryLimits,
         max_bytes: NonZeroUsize,
     ) -> Result<StorageProductionPreparation> {
-        limits.check_ceiling(self.inner.settings.query_execution_ceiling)?;
+        limits.check()?;
         let metadata = std::mem::size_of::<Execution>()
             .checked_add(2 * std::mem::size_of::<usize>())
             .ok_or_else(super::query::decoded_limit)?;
