@@ -148,7 +148,10 @@ async fn state_root_has_one_owner_until_close() {
         },
         payload: b"exclusive writer".to_vec(),
     };
-    first.write_entries(&[entry.clone()]).await.unwrap();
+    first
+        .write_entries(std::slice::from_ref(&entry))
+        .await
+        .unwrap();
     first.flush(&position).await.unwrap();
     first.close().await.unwrap();
 

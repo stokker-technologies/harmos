@@ -1472,7 +1472,7 @@ async fn cancelled_admission_keeps_typed_cursor() {
     // Cancellation Before Fetch Must Leave The Original Typed Cursor Intact.
     let page = reader.next_page().await.unwrap().unwrap();
     assert_eq!(page.len(), 1);
-    assert_eq!(page[0].position, position.sequence);
+    assert_eq!(page[0].position, position);
     drop(page);
     assert!(reader.next_page().await.unwrap().is_none());
     drop(reader);
@@ -1510,7 +1510,7 @@ async fn typed_output_admission_reloads_without_advancing_cursor() {
     drop(external);
     let page = next.await.unwrap().unwrap();
     assert_eq!(page.len(), 1);
-    assert_eq!(page[0].position, position.sequence);
+    assert_eq!(page[0].position, position);
     drop(page);
     assert!(reader.next_page().await.unwrap().is_none());
     drop(reader);
@@ -1542,7 +1542,7 @@ async fn typed_projection_waits_before_invoking_callback() {
         |rows, _| {
             calls.set(calls.get() + 1);
             assert_eq!(rows.len(), 1);
-            Ok(rows[0].position)
+            Ok(rows[0].position.clone())
         },
     ));
     assert!(matches!(
@@ -1556,7 +1556,7 @@ async fn typed_projection_waits_before_invoking_callback() {
     assert_eq!(calls.get(), 0);
     drop(external);
     let page = next.await.unwrap().unwrap();
-    assert_eq!(*page, position.sequence);
+    assert_eq!(*page, position);
     assert_eq!(calls.get(), 1);
     drop(page);
     assert!(reader.next_page().await.unwrap().is_none());

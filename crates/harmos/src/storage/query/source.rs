@@ -70,11 +70,11 @@ enum Node<'a> {
 /* === Implementations === */
 /* === Public Functions === */
 // Construction Charges The Shared Storage Reservation Before Allocation.
-pub(crate) fn payload_fields(schema: &graph::Schema) -> Result<Fields> {
+pub(super) fn payload_fields(schema: &graph::Schema) -> Result<Fields> {
     fields(schema, schema.root, 0, &mut 0)
 }
 
-pub(crate) fn records(
+pub(super) fn records(
     schema: &StorageSchema,
     rows: &[StoredRecord],
     bank: &MemoryBank,
@@ -89,7 +89,7 @@ pub(crate) fn records(
     record_batch(schema, &refs, None, bank)
 }
 
-pub(crate) fn stream(
+pub(super) fn stream(
     schema: &StorageSchema,
     rows: &[StoredRow],
     bank: &MemoryBank,
@@ -104,7 +104,7 @@ pub(crate) fn stream(
     record_batch(schema, &refs, Some(rows), bank)
 }
 
-pub(crate) fn objects(
+pub(super) fn objects(
     schema: &StorageSchema,
     rows: &[ObjectEntry],
     bank: &MemoryBank,
@@ -174,7 +174,7 @@ pub(crate) fn objects(
     assemble(columns, payload)
 }
 
-pub(crate) fn files(rows: &[FileReference], bank: &MemoryBank) -> Result<RecordBatch> {
+pub(super) fn files(rows: &[FileReference], bank: &MemoryBank) -> Result<RecordBatch> {
     let mut budget = bank.scope();
     metadata_budget(
         rows.len(),
@@ -247,7 +247,7 @@ pub(crate) fn files(rows: &[FileReference], bank: &MemoryBank) -> Result<RecordB
     flat(columns)
 }
 
-pub(crate) fn schemas(rows: &[StorageSchema], bank: &MemoryBank) -> Result<RecordBatch> {
+pub(super) fn schemas(rows: &[StorageSchema], bank: &MemoryBank) -> Result<RecordBatch> {
     let mut budget = bank.scope();
     metadata_budget(
         rows.len(),

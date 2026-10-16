@@ -13,9 +13,9 @@ mod objects;
 mod reader;
 pub use reader::QueryReader;
 pub mod execute;
-pub(crate) mod object_schemas;
+mod object_schemas;
 pub mod reduction;
-pub(crate) mod source;
+mod source;
 pub mod transform;
 pub use contract::{
     FileSelection, ObjectSelection, ObjectVersions, Query, QueryCompletion, QueryOutput,

@@ -42,7 +42,7 @@ use crate::{Error, MemorySize, Result};
 /* === Structs === */
 /// Resolved schemas for one finite object selection. A leading projection may
 /// normalize heterogeneous payloads before the common query pipeline begins.
-pub(crate) struct NormalizedObjects {
+pub(super) struct NormalizedObjects {
     schemas: Vec<QueryValue<StorageSchema>>,
     projection: Option<Project>,
     output: Arc<Schema>,
@@ -55,7 +55,7 @@ pub(crate) struct NormalizedObjects {
 
 /* === Implementations === */
 impl NormalizedObjects {
-    pub(crate) async fn resolve(
+    pub(super) async fn resolve(
         view: &StorageView,
         selection: &ObjectSelection,
         transforms: &mut Vec<Transform>,
@@ -76,7 +76,7 @@ impl NormalizedObjects {
                 };
                 let (count, bytes) = rows.iter().enumerate().try_fold(
                     (0usize, 0usize),
-                    |(count, total), (index, row)| {
+                    |(count, total), (index, row)| -> Result<(usize, usize)> {
                         if schemas.iter().any(|schema| schema.key == row.value.schema)
                             || rows
                                 .iter()
@@ -191,11 +191,11 @@ impl NormalizedObjects {
         })
     }
 
-    pub(crate) fn empty(&self) -> RecordBatch {
+    pub(super) fn empty(&self) -> RecordBatch {
         RecordBatch::new_empty(Arc::clone(&self.output))
     }
 
-    pub(crate) fn map(
+    pub(super) fn map(
         &self,
         rows: &[ObjectEntry],
         bank: &crate::storage::memory::MemoryBank,
