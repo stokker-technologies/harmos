@@ -517,7 +517,7 @@ impl Following {
         self.failure.is_none() && self.through.is_none_or(|through| self.after < through)
     }
 
-    fn check(&self) -> Result<()> {
+    pub(super) fn check(&self) -> Result<()> {
         match self.failure {
             Some(Failure::Gap {
                 requested,

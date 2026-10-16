@@ -1927,7 +1927,12 @@ impl MemoryReservation {
         if let Some(id) = self.kind.view()
             && state.views.get(&id).is_none_or(|view| view.expired)
         {
-            return Err(Error::ViewExpired);
+            // Live Followers Retain Their Own Lease After Saved History Closes.
+            state
+                .followers
+                .get(&id)
+                .ok_or(Error::ViewExpired)?
+                .check()?;
         }
         state.charge_read(
             self.kind,

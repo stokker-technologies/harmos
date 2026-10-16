@@ -908,3 +908,24 @@ fn contract_scenario() {
         });
     }
 }
+
+#[tokio::test]
+async fn accepted_replay_projects_after_saved_view_release() {
+    let f = Fixture::new(config()).await;
+    write(&f.storage, "accepted").await;
+    let mut replay = f.storage.replay(record_query(limits())).await.unwrap();
+    super::views::wait_release(&f, 1).await;
+    let value = replay
+        .next_page_projected(NonZeroUsize::new(64).unwrap(), |rows, _| {
+            assert_eq!(rows.len(), 1);
+            Ok(rows[0].position.sequence)
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(*value, 1);
+    drop(value);
+    assert!(replay.next_page().await.unwrap().is_none());
+    drop(replay);
+    f.finish().await;
+}
