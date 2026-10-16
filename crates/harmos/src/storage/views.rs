@@ -972,7 +972,7 @@ impl<T> StorageReader<T> {
         self.view.as_ref()
     }
 
-    pub(super) fn reserve_output(
+    pub(super) async fn reserve_output(
         &self,
         bytes: std::num::NonZeroUsize,
     ) -> Result<MemoryReservation> {
@@ -980,7 +980,7 @@ impl<T> StorageReader<T> {
             resource: "exhausted query",
         })?;
         let _live = view.pin()?;
-        view.reserve_read(bytes.get(), 1)
+        view.reserve_read_wait(bytes.get(), 1).await
     }
 
     pub(super) fn exhausted(&self) -> bool {

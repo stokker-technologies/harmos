@@ -1099,7 +1099,7 @@ impl<R, T: MemorySize> QueryResult<R, T> {
         let timeout = computation.timeout();
         let started = tokio::time::Instant::now();
         if self.pending.is_none() {
-            let mut reservation = self.reader.reserve_output(self.decoded_bytes)?;
+            let mut reservation = self.reader.reserve_output(self.decoded_bytes).await?;
             let decode = &self.decode;
             let bytes = self.decoded_bytes;
             let page = tokio::time::timeout(
