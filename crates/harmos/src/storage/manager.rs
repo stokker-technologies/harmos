@@ -103,7 +103,7 @@ pub(super) struct Inner {
         fn(&SchemaKey) -> Result<crate::storage::catalog::ObjectDefinition>,
     pub(super) state: Mutex<State>,
     pub(super) changed: watch::Sender<u64>,
-    pub(super) lifecycle: tokio::sync::Mutex<Lifecycle>,
+    pub(super) lifecycle: tokio::sync::RwLock<Lifecycle>,
 }
 
 #[derive(Default)]
@@ -324,7 +324,7 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
                     finishing: None,
                 }),
                 changed: watch::channel(0).0,
-                lifecycle: tokio::sync::Mutex::new(Lifecycle::default()),
+                lifecycle: tokio::sync::RwLock::new(Lifecycle::default()),
             }),
         })
     }
@@ -341,7 +341,7 @@ impl<C> StorageManager<C> {
         operations: &OperationManager,
     ) -> Result<()> {
         self.claim_owner(operations.resident_identity())?;
-        let mut lifecycle = self.inner.lifecycle.lock().await;
+        let mut lifecycle = self.inner.lifecycle.write().await;
         {
             let state = self.inner.state.lock().unwrap();
             if state.status.closing {
@@ -380,7 +380,7 @@ impl<C> StorageManager<C> {
     }
 
     pub(crate) async fn acquire(&self) -> Result<()> {
-        let mut lifecycle = self.inner.lifecycle.lock().await;
+        let mut lifecycle = self.inner.lifecycle.write().await;
         self.acquire_locked(&mut lifecycle).await
     }
 
@@ -746,7 +746,7 @@ impl<C> StorageManager<C> {
     ) -> Result<StorageCursor> {
         self.flush_domain(Domain::Data, Some(through)).await?;
         if files.is_some() {
-            let _lifecycle = self.inner.lifecycle.lock().await;
+            let _lifecycle = self.inner.lifecycle.write().await;
             if self.inner.state.lock().unwrap().status.closed {
                 return Err(Error::Closing { domain: "storage" });
             }
@@ -766,7 +766,7 @@ impl<C> StorageManager<C> {
         through: &RecoveryPosition,
         limits: ReadLimits,
     ) -> Result<RecoveryPage> {
-        let _lifecycle = self.inner.lifecycle.lock().await;
+        let _lifecycle = self.inner.lifecycle.read().await;
         let charge = limits
             .rows
             .get()
@@ -800,7 +800,7 @@ impl<C> StorageManager<C> {
         &self,
         max_bytes: std::num::NonZeroUsize,
     ) -> Result<Option<RecoverySnapshot>> {
-        let _lifecycle = self.inner.lifecycle.lock().await;
+        let _lifecycle = self.inner.lifecycle.read().await;
         let charge = max_bytes.get().saturating_add(ENTRY_OVERHEAD);
         let _reservation =
             Reservation::wait(&self.inner, Pool::Read, &Held::default(), charge, None)
@@ -831,7 +831,7 @@ impl<C> StorageManager<C> {
         }
         self.inner.notify();
 
-        let mut lifecycle = self.inner.lifecycle.lock().await;
+        let mut lifecycle = self.inner.lifecycle.write().await;
         let ready = {
             let state = self.inner.state.lock().unwrap();
             state.ready && !state.status.closed

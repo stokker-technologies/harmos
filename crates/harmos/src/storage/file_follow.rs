@@ -79,7 +79,7 @@ impl<C> StorageManager<C> {
 
     pub async fn file_progress(&self, file: &StagedFile) -> Result<FileProgress> {
         self.inner.primary.history().check(&file.history)?;
-        let _lifecycle = self.inner.lifecycle.lock().await;
+        let _lifecycle = self.inner.lifecycle.read().await;
         {
             let state = self.inner.state.lock().unwrap();
             if state.status.closing || !state.ready {
@@ -132,7 +132,7 @@ impl FileFollower {
                     Reservation::wait(&self.manager.inner, Pool::Read, &self.held, size, None)
                         .await
                         .map_err(Refusal::into_error)?;
-                let _lifecycle = self.manager.inner.lifecycle.lock().await;
+                let _lifecycle = self.manager.inner.lifecycle.read().await;
                 if self.manager.inner.state.lock().unwrap().status.closing {
                     return Err(Error::Closing {
                         domain: "storage file reader",

@@ -25,6 +25,7 @@ mod scenario_runtime;
 mod state_admission;
 #[path = "../support/mod.rs"]
 mod support;
+mod typed_reads;
 #[path = "../support/storage/waveforms.rs"]
 mod waveforms;
 use fixture::*;

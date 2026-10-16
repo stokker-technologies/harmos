@@ -17,7 +17,7 @@
 use std::num::NonZeroUsize;
 
 // Third Party Imports
-use tokio::sync::{MutexGuard, watch};
+use tokio::sync::{RwLockReadGuard, watch};
 
 // Local Imports
 use super::{RecoveryPage, RecoverySnapshot};
@@ -39,7 +39,7 @@ pub(crate) struct RecoveryReader<'a, C> {
     storage: &'a StorageManager<C>,
     // Release Budget Before Unlocking The Recovery Lifecycle.
     _reservation: Reservation,
-    _lifecycle: MutexGuard<'a, Lifecycle>,
+    _lifecycle: RwLockReadGuard<'a, Lifecycle>,
     through: RecoveryPosition,
     limits: ReadLimits,
     snapshot_bound: Option<NonZeroUsize>,
@@ -56,7 +56,7 @@ impl<C> StorageManager<C> {
         limits: ReadLimits,
         snapshot_bytes: Option<NonZeroUsize>,
     ) -> Result<RecoveryReader<'_, C>> {
-        let lifecycle = self.inner.lifecycle.lock().await;
+        let lifecycle = self.inner.lifecycle.read().await;
         let invalid = |reason| Error::InvalidInput {
             field: "state recovery",
             reason,

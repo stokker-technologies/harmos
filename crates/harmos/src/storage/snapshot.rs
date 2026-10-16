@@ -159,7 +159,7 @@ impl Snapshot {
         selection: &T::Selection,
         page: ScanPage,
     ) -> Result<(Vec<T>, usize)> {
-        let _lifecycle = self.inner.lifecycle.lock().await;
+        let _lifecycle = self.inner.lifecycle.read().await;
         self.check()?;
         let entries = self
             .inner
@@ -193,7 +193,7 @@ impl Snapshot {
     }
 
     pub(super) async fn read_object(&self, point: &ObjectPoint) -> Result<Option<ObjectEntry>> {
-        let _lifecycle = self.inner.lifecycle.lock().await;
+        let _lifecycle = self.inner.lifecycle.read().await;
         self.check()?;
         let object = self
             .inner
@@ -218,7 +218,7 @@ impl Snapshot {
         offset: u64,
         max_bytes: NonZeroUsize,
     ) -> Result<Vec<u8>> {
-        let _lifecycle = self.inner.lifecycle.lock().await;
+        let _lifecycle = self.inner.lifecycle.read().await;
         self.check()?;
         self.inner
             .bounded(

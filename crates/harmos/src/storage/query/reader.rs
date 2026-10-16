@@ -101,22 +101,7 @@ impl<C> StorageManager<C> {
             Reservation::wait(&self.inner, Pool::Read, &held, description_bytes, None)
                 .await
                 .map_err(Refusal::into_error)?;
-        let active = match Arc::clone(&self.inner.query_active).try_acquire_owned() {
-            Ok(active) => active,
-            Err(_) => {
-                let _pending = Arc::clone(&self.inner.query_pending)
-                    .try_acquire_owned()
-                    .map_err(|_| Error::ResourceExhausted {
-                        resource: "pending storage queries",
-                    })?;
-                Arc::clone(&self.inner.query_active)
-                    .acquire_owned()
-                    .await
-                    .map_err(|_| Error::Closing {
-                        domain: "storage queries",
-                    })?
-            }
-        };
+        let active = query_slot(&self.inner).await?;
 
         // Pin The Requested Image For The Whole Invocation.
         let snapshot = self.snapshot(&query.at).await?;
@@ -462,6 +447,21 @@ pub(in crate::storage) async fn schema_at(
     snapshot: &Snapshot,
     key: &SchemaKey,
 ) -> Result<(StorageSchema, RetainedMemory)> {
+    find_schema(inner, held, snapshot, key)
+        .await?
+        .ok_or(Error::InvalidInput {
+            field: "storage schema",
+            reason: "schema is unavailable at requested cursor",
+        })
+}
+
+/// The schema registered under `key` at the snapshot, or `None` when it was never written.
+pub(in crate::storage) async fn find_schema(
+    inner: &Arc<Inner>,
+    held: &Held,
+    snapshot: &Snapshot,
+    key: &SchemaKey,
+) -> Result<Option<(StorageSchema, RetainedMemory)>> {
     let selection = super::SchemaSelection {
         schema: Some(key.clone()),
     };
@@ -478,18 +478,35 @@ pub(in crate::storage) async fn schema_at(
                 bytes: scan_bytes,
             };
             let (mut schemas, _) = snapshot.scan::<StorageSchema>(&selection, page).await?;
-            let schema = schemas.pop().ok_or(Error::InvalidInput {
-                field: "storage schema",
-                reason: "schema is unavailable at requested cursor",
-            })?;
+            let Some(schema) = schemas.pop() else {
+                return Ok::<_, Error>(None);
+            };
             let retained = bank.reserve(schema.memory_size().saturating_add(ENTRY_OVERHEAD))?;
-            Ok::<_, Error>((schema, retained))
+            Ok(Some((schema, retained)))
         };
         match attempt.await {
             Ok(resolved) => return Ok(resolved),
             Err(error) => credit = retry(&bank, error, None)?,
         }
     }
+}
+
+/// An active scan slot, queueing within the pending bound when all are busy.
+pub(in crate::storage) async fn query_slot(inner: &Arc<Inner>) -> Result<OwnedSemaphorePermit> {
+    if let Ok(active) = Arc::clone(&inner.query_active).try_acquire_owned() {
+        return Ok(active);
+    }
+    let _pending = Arc::clone(&inner.query_pending)
+        .try_acquire_owned()
+        .map_err(|_| Error::ResourceExhausted {
+            resource: "pending storage queries",
+        })?;
+    Arc::clone(&inner.query_active)
+        .acquire_owned()
+        .await
+        .map_err(|_| Error::Closing {
+            domain: "storage queries",
+        })
 }
 
 /// Admit an attempt bank; an impossible credit is a precise capacity error.

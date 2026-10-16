@@ -344,6 +344,33 @@ instead of waiting on itself. Dropping a reader or an in-progress `next` cancels
 it and releases its query slot; batches already returned stay charged until
 they are dropped.
 
+Typed historical reads decode saved objects and records from their exact stored
+bytes in pages bounded by the response settings, so payloads never expand to
+Arrow and object size is not limited by the Arrow field bound. Optional filters
+use the query source columns (`_storage.*`, `payload.*`). A schema that was never
+written reads as no rows, whereas a `Query` over it is refused because it has no
+schema to emit.
+
+```rust
+let mut reader = storage
+    .read_objects(ObjectRead::<Execution> { at, key: None, versions: ObjectVersions::Latest, filters })
+    .await?;
+while let Some(page) = reader.next().await? {
+    // Vec<ObjectRevision<Execution>>
+}
+let records = storage
+    .read_records::<Reading>(RecordRead { at, selection, after: 0, filters: Vec::new() })
+    .await?
+    .collect()
+    .await?; // Vec<StoredRecord<Reading>>
+```
+
+`storage::query::Accumulator` folds scalars over rows a caller already holds
+with the same semantics as query aggregates: exact rational `Sum`, `Mean` and
+`Median`, ordering for `Min`, `Max` and `Last`, and signal kernels for floating
+statistics. Snapshot reads run concurrently; closing storage waits for those in
+flight.
+
 `StorageManager::read_file(ReadFile { file, range })` streams a byte range of a
 finished, immutable file in response-sized batches. `Follow`, `FollowStream`,
 `FollowObjects` and `FollowFile` are the live subscriptions: each delivers saved

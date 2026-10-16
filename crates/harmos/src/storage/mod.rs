@@ -77,7 +77,7 @@ pub use file_follow::FileFollower;
 pub use file_reads::FileReader;
 pub use manager::{ErasedCatalog, RecordWrite, StorageManager, StorageStatus, StreamWrite};
 pub use objects::ObjectGroup;
-pub use query::QueryReader;
+pub use query::{ObjectRead, ObjectReader, QueryReader, RecordRead, RecordReader};
 pub use receipts::{MutationReceipt, MutationValue};
 pub use schema_input::{SchemaInfo, SchemaInput};
 pub use staging::StorageFile;

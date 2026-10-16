@@ -114,6 +114,8 @@ pub struct Control {
     pub block_read: AtomicBool,
     pub read_entered: Notify,
     pub read_release: Notify,
+    pub reads_gated: AtomicUsize,
+    pub reads_gated_peak: AtomicUsize,
     pub accepted_file_read: Mutex<Option<AcceptedRead>>,
     pub block_write: AtomicBool,
     pub write_entered: Notify,
@@ -198,6 +200,18 @@ pub struct Recovery {
 
 /* === Implementations === */
 impl Control {
+    // Hold A Gated Read Inside The Backend, Recording How Many Overlap.
+    async fn gate_read(&self) {
+        if !self.block_read.load(Ordering::SeqCst) {
+            return;
+        }
+        let active = self.reads_gated.fetch_add(1, Ordering::SeqCst) + 1;
+        self.reads_gated_peak.fetch_max(active, Ordering::SeqCst);
+        self.read_entered.notify_one();
+        self.read_release.notified().await;
+        self.reads_gated.fetch_sub(1, Ordering::SeqCst);
+    }
+
     async fn write(&self, positions: impl IntoIterator<Item = u64>) -> Result<()> {
         let positions: Vec<_> = positions.into_iter().collect();
         self.write_sizes.lock().unwrap().push(positions.len());
@@ -683,10 +697,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
         page: ScanPage,
     ) -> StorageFuture<'a, Vec<ObjectEntry>> {
         Box::pin(async move {
-            if self.control.block_read.load(Ordering::SeqCst) {
-                self.control.read_entered.notify_one();
-                self.control.read_release.notified().await;
-            }
+            self.control.gate_read().await;
             let image = self.image(snapshot)?;
             // Complete Revision History Cannot Begin Before Pruned Revisions.
             if selection.versions == ObjectVersions::Revisions
@@ -746,10 +757,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
         page: ScanPage,
     ) -> StorageFuture<'a, Vec<StoredRecord>> {
         Box::pin(async move {
-            if self.control.block_read.load(Ordering::SeqCst) {
-                self.control.read_entered.notify_one();
-                self.control.read_release.notified().await;
-            }
+            self.control.gate_read().await;
             let image = self.image(snapshot)?;
             let mut entries = scan(
                 image.records.values(),
@@ -778,10 +786,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
         page: ScanPage,
     ) -> StorageFuture<'a, Vec<StoredRow>> {
         Box::pin(async move {
-            if self.control.block_read.load(Ordering::SeqCst) {
-                self.control.read_entered.notify_one();
-                self.control.read_release.notified().await;
-            }
+            self.control.gate_read().await;
             let image = self.image(snapshot)?;
             scan(
                 image.rows.values(),
@@ -836,10 +841,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
         query: &'a ObjectPoint,
     ) -> StorageFuture<'a, Option<ObjectEntry>> {
         Box::pin(async move {
-            if self.control.block_read.load(Ordering::SeqCst) {
-                self.control.read_entered.notify_one();
-                self.control.read_release.notified().await;
-            }
+            self.control.gate_read().await;
             let image = self.image(snapshot)?;
             let object = image.objects.values().rev().find(|object| {
                 object.position.sequence <= snapshot.at.sequence
