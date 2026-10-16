@@ -9,6 +9,7 @@
 
 /* === Modules === */
 mod admission;
+pub mod file;
 pub(crate) mod journal;
 mod reader;
 

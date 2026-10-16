@@ -321,6 +321,9 @@ Typed stream, record and object writers acknowledge acceptance and durability
 separately for each atomic logical batch. A disconnected invocation may have
 committed earlier batches; callers must not blindly replay unacknowledged data.
 Finished-file reads are separate from producing-file follow/resume operations.
+The built-in `storage::state::file::FileBackend` persists checksummed JSON checkpoints
+and a JSONL journal, using the supplied storage size settings.
+
 State persistence uses `storage::state::StateBackend`; the state manager owns
 transactions and replay while the storage manager owns admission and durability.
 

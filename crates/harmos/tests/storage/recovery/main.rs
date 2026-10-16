@@ -23,6 +23,7 @@ mod boot;
 mod capture;
 #[path = "composition.rs"]
 mod composition;
+mod files;
 #[path = "managed.rs"]
 mod managed;
 #[allow(dead_code, unused_imports)]
