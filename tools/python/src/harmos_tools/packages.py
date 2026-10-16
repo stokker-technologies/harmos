@@ -111,6 +111,13 @@ def source(repository: Path) -> str:
     return digest.hexdigest()
 
 
+def build_profile() -> str:
+    profile = os.environ.get("STKR_TEST_PROFILE", "dev")
+    if profile not in {"dev", "release"}:
+        raise ValueError("STKR_TEST_PROFILE must be dev or release")
+    return profile
+
+
 def build(repository: Path) -> None:
     target = _target(repository)
     metadata = json.loads(
@@ -141,7 +148,7 @@ def build(repository: Path) -> None:
             "cargo",
             "build",
             "--locked",
-            "--release",
+            *(["--release"] if build_profile() == "release" else []),
             "--timings",
             "--message-format=json-render-diagnostics",
             "-p",
@@ -192,7 +199,7 @@ def build(repository: Path) -> None:
             "build",
             "-p",
             "schematic-guest",
-            "--release",
+            *(["--release"] if build_profile() == "release" else []),
             "--timings",
             "--json",
         ],
@@ -230,6 +237,7 @@ def build(repository: Path) -> None:
     index.write_text(
         json.dumps(
             {
+                "profile": build_profile(),
                 "revision": _output(repository, ["git", "rev-parse", "HEAD"]),
                 "source": source(repository),
                 "inputs": release.inputs(repository),
@@ -293,6 +301,7 @@ def stage(repository: Path) -> None:
     versions = schema_index["versions"]
     manifest = {
         "schema": 2,
+        "profile": build_profile(),
         "platform": platform(),
         "target": schema_index["target"],
         "version": tomllib.loads(
@@ -548,6 +557,7 @@ def validate(repository: Path) -> None:
     root = location(repository)
     record = {
         "schema": 2,
+        "profile": build_profile(),
         "platform": platform(),
         "source": source(repository),
         "run": os.environ.get("GITHUB_RUN_ID"),
@@ -843,6 +853,10 @@ def _development() -> None:
 
 def _verify(repository: Path, root: Path) -> dict[str, Path]:
     manifest = json.loads((root / "reports/build.json").read_text(encoding="utf-8"))
+    if manifest.get("profile") != build_profile():
+        raise RuntimeError(
+            "artifact profile differs from the selected validation profile"
+        )
     if manifest.get("schema") != 2 or manifest.get("platform") != platform():
         raise RuntimeError("release package schema or platform does not match")
     if manifest.get("revision") != _output(repository, ["git", "rev-parse", "HEAD"]):
@@ -1146,7 +1160,8 @@ def _build_index(repository: Path, target: Path) -> dict:
         (target / "harmos-build/schemas.json").read_text(encoding="utf-8")
     )
     if (
-        index.get("revision") != _output(repository, ["git", "rev-parse", "HEAD"])
+        index.get("profile") != build_profile()
+        or index.get("revision") != _output(repository, ["git", "rev-parse", "HEAD"])
         or index.get("source") != source(repository)
         or index.get("inputs") != release.inputs(repository)
         or index.get("versions") != _tool_versions(repository)

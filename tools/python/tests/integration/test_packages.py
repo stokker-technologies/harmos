@@ -194,6 +194,13 @@ class PackageTests(unittest.TestCase):
             self._package(root)
             manifest = packages.location(root) / "reports/build.json"
             value = json.loads(manifest.read_text())
+            wrong_profile = dict(
+                value, profile="release" if packages.build_profile() == "dev" else "dev"
+            )
+            manifest.write_text(json.dumps(wrong_profile))
+            with self.assertRaisesRegex(RuntimeError, "artifact profile"):
+                packages.verify(root)
+            manifest.write_text(json.dumps(value))
             asset = packages.location(root) / next(iter(value["artifacts"].values()))
             original = asset.read_bytes()
             for damage in ("missing", "corrupt", "manifest"):
@@ -835,6 +842,7 @@ class PackageTests(unittest.TestCase):
             json.dumps(
                 {
                     "schema": 2,
+                    "profile": packages.build_profile(),
                     "platform": packages.platform(),
                     "version": "0.2.0",
                     "target": "x86_64-pc-windows-msvc"
