@@ -454,9 +454,40 @@ impl<T> StorageFollower<T> {
                     remaining,
                     started: tokio::time::Instant::now(),
                 };
-                (self.fetch)(&self.lease, &self.selection, limits)?
+                (self.fetch)(&self.lease, &self.selection, limits)
             } else {
-                (self.fetch)(&self.lease, &self.selection, limits)?
+                (self.fetch)(&self.lease, &self.selection, limits)
+            };
+            let page = match page {
+                Ok(page) => page,
+                Err(Error::ResourceExhausted {
+                    resource: "storage read memory",
+                }) => {
+                    let required = limits
+                        .rows
+                        .get()
+                        .checked_mul(ENTRY_OVERHEAD)
+                        .and_then(|overhead| limits.bytes.get().checked_add(overhead))
+                        .ok_or_else(super::query::decoded_limit)?;
+                    if required > self.lease.inner.settings.budget.read_memory_bytes.get() {
+                        return Err(super::query::decoded_limit());
+                    }
+                    let timeout = remaining
+                        .as_deref()
+                        .copied()
+                        .unwrap_or(self.lease.inner.settings.io_timeout);
+                    let started = tokio::time::Instant::now();
+                    let changed = tokio::time::timeout(timeout, self.changed.changed()).await;
+                    if let Some(remaining) = remaining.as_deref_mut() {
+                        *remaining = remaining.saturating_sub(started.elapsed());
+                    }
+                    changed
+                        .map_err(|_| super::query::execution_timeout())?
+                        .map_err(|_| Error::ViewExpired)?;
+                    self.lease.check()?;
+                    continue;
+                }
+                Err(error) => return Err(error),
             };
             if !page.entries.is_empty() {
                 return Ok(Some(StoragePage::new(
