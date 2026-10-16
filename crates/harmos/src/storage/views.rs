@@ -753,7 +753,7 @@ impl StorageView {
         map: impl FnOnce(T, NonZeroUsize) -> Result<U>,
     ) -> Result<QueryValue<U>> {
         input.check_origin(self.manager())?;
-        self.project_value(max_bytes, || input.try_map(max_bytes, map))
+        self.project_value(|| input.try_map(max_bytes, map))
     }
 
     pub fn project_shared<T: MemorySize, U: MemorySize>(
@@ -763,17 +763,13 @@ impl StorageView {
         map: impl FnOnce(&T, NonZeroUsize) -> Result<U>,
     ) -> Result<QueryValue<U>> {
         input.check_origin(self.manager())?;
-        self.project_value(max_bytes, || input.try_project(max_bytes, map))
+        self.project_value(|| input.try_project(max_bytes, map))
     }
 
     fn project_value<T>(
         &self,
-        max_bytes: NonZeroUsize,
         project: impl FnOnce() -> Result<QueryValue<T>>,
     ) -> Result<QueryValue<T>> {
-        if max_bytes > self.manager().inner.settings.query_decoded_bytes {
-            return Err(super::query::decoded_limit());
-        }
         let computation = self.computation()?.ok_or(Error::InvalidInput {
             field: "saved view projection",
             reason: "view has no bounded computation profile",

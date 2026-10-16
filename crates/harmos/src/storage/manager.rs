@@ -1898,9 +1898,6 @@ impl MemoryReservation {
 
     pub(super) fn reserve_projection(&mut self, bytes: std::num::NonZeroUsize) -> Result<()> {
         assert!(self.kind.is_read());
-        if bytes > self.inner.settings.query_decoded_bytes_ceiling {
-            return Err(super::query::decoded_limit());
-        }
         let additional = bytes
             .get()
             .checked_add(ENTRY_OVERHEAD)
