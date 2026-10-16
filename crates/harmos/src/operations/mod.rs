@@ -78,7 +78,7 @@ pub use harmos_contract::operations::GrpcVisitor;
 pub use harmos_contract::operations::{
     AuthoredContracts, AuthoredDeclarations, Backoff, CHILD_METHOD, CacheKey, CacheKeyError,
     CallValue, Codec, ContextError, ContextValue, Contract, ContractError, Contracts, Declarations,
-    Declares, Definition, Entry, Failure, Grpc, InputDeclaration, Jitter, MAX_CACHE_KEY_BYTES,
+    Declares, Definition, Entry, FailureKind, Grpc, InputDeclaration, Jitter, MAX_CACHE_KEY_BYTES,
     Operation, OperationDeclaration, OperationPolicy, OutputDeclaration, PORTABLE_BYTES,
     PORTABLE_VALUES, PolicyError, ReplaySafety, RestartPolicy, RetryPolicy, Serves, ServingError,
     Visibility, WIRE_METHOD, WireAnswer, WireBinding, WireChild, WireChildAction, WireChildCall,

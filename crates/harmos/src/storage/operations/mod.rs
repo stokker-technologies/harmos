@@ -181,7 +181,7 @@ const fn grpc(method: &'static str) -> crate::operations::Grpc {
     crate::operations::Grpc::new("harmos.storage.v1", "Storage", method)
 }
 
-fn classify(error: &crate::Error) -> crate::operations::Failure {
+fn classify(error: &crate::Error) -> crate::operations::FailureKind {
     let mut cause = error;
     while let crate::Error::Persistence { source } = cause {
         cause = source;
@@ -190,8 +190,8 @@ fn classify(error: &crate::Error) -> crate::operations::Failure {
         crate::Error::Backend {
             kind: crate::BackendFailure::Transient,
             ..
-        } => crate::operations::Failure::Transient,
-        _ => crate::operations::Failure::Permanent,
+        } => crate::operations::FailureKind::Transient,
+        _ => crate::operations::FailureKind::Permanent,
     }
 }
 

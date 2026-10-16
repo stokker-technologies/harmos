@@ -160,6 +160,7 @@ impl<A: Application> Snapshots<A> {
         }
         .await;
         if let Err(error) = result {
+            let error = harmos_contract::failure::Report(&error);
             tracing::warn!(%error, position = position.0, "snapshot skipped; recovery retains the journal");
         }
     }

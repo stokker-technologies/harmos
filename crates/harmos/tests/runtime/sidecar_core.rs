@@ -348,11 +348,14 @@ pub(super) fn contract_scenario() {
             };
             assert_eq!(failures.len(), 1);
             assert_eq!(failures[0].artifact, owner.as_str());
-            let mut cause: &dyn std::error::Error = &failures[0].error;
-            while let Some(source) = cause.source() {
-                cause = source;
-            }
-            assert!(cause.to_string().contains("controlled shutdown failure"));
+            let cause = failures[0]
+                .error
+                .failure()
+                .expect("the plugin's cleanup refusal crosses as a structured failure");
+            assert!(
+                cause.cause().contains("controlled shutdown failure"),
+                "{cause:?}"
+            );
             let failed = runtime.plugin.status(&owner).unwrap();
             assert_eq!(failed.attempts, 1);
             assert_eq!(failed.generation, original);

@@ -33,7 +33,7 @@ use std::task::{Poll, Waker};
 use serde::{Deserialize, Serialize};
 // Local Imports
 use super::{
-    AuthoredDeclarations, Contract, ContractError, Definition, Failure, Operation,
+    AuthoredDeclarations, Contract, ContractError, Definition, FailureKind, Operation,
     OperationDeclaration, WireOperation,
 };
 use crate::Message;
@@ -949,17 +949,17 @@ impl WireCommand {
 }
 
 impl ServingError {
-    pub fn classification(&self) -> Failure {
+    pub fn classification(&self) -> FailureKind {
         match self {
             Self::Handler(failure) => failure.code(),
-            Self::Panicked => Failure::Ambiguous,
+            Self::Panicked => FailureKind::Ambiguous,
             Self::Codec(_)
             | Self::Declaration(_)
             | Self::Lifecycle(_)
             | Self::Contract(_)
             | Self::Catalog
-            | Self::Streaming { .. } => Failure::Invalid,
-            _ => Failure::Permanent,
+            | Self::Streaming { .. } => FailureKind::Invalid,
+            _ => FailureKind::Permanent,
         }
     }
 }

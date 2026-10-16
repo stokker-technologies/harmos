@@ -50,7 +50,7 @@ pub struct Refusal {
 /* === Implementations === */
 impl Refusal {
     pub fn new(code: i64, message: impl fmt::Display) -> Self {
-        let failure = Failure::new(operations::Failure::Permanent, message.to_string());
+        let failure = Failure::new(operations::FailureKind::Permanent, message.to_string());
         Self::failed(code, failure)
     }
 
@@ -65,7 +65,7 @@ impl Refusal {
     // Refuses with the failure an error chain carries, or writes its cause.
     pub fn originate(
         code: i64,
-        classification: operations::Failure,
+        classification: operations::FailureKind,
         error: &(dyn std::error::Error + 'static),
         origin: Origin,
     ) -> Self {

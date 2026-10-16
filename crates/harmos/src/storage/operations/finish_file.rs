@@ -88,7 +88,7 @@ impl<C: 'static> Operation for Handler<C> {
         result.map(::core::convert::Into::into)
     }
 
-    fn classify(error: &Error) -> crate::operations::Failure {
+    fn classify(error: &Error) -> crate::operations::FailureKind {
         super::classify(error)
     }
 }

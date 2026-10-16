@@ -1122,8 +1122,13 @@ impl<G: Send + 'static, S: Send + 'static, E: Send + 'static> PluginManager<G, S
                     self.failure_classes
                         .insert(id.clone(), classify(source.as_ref()));
                     self.cancel_retry(&id);
-                    self.last_failures
-                        .insert(id.clone(), format!("plugin cleanup: {source}"));
+                    self.last_failures.insert(
+                        id.clone(),
+                        format!(
+                            "plugin cleanup: {}",
+                            harmos_contract::failure::Report(source.as_ref())
+                        ),
+                    );
                     self.failed.insert(id.clone());
                     failures.push(PluginCleanupFailure {
                         artifact: id,
@@ -1225,12 +1230,12 @@ impl<G, S, E> Drop for PluginManager<G, S, E> {
 
 /* === Private Functions === */
 #[cfg(any(feature = "plugin-sidecar", feature = "plugin-guest"))]
-fn remote_failure(failure: crate::operations::Failure) -> PluginFailureClass {
+fn remote_failure(failure: crate::operations::FailureKind) -> PluginFailureClass {
     match failure {
-        crate::operations::Failure::Transient | crate::operations::Failure::Ambiguous => {
+        crate::operations::FailureKind::Transient | crate::operations::FailureKind::Ambiguous => {
             PluginFailureClass::Recoverable
         }
-        crate::operations::Failure::Cancelled => PluginFailureClass::Cancelled,
+        crate::operations::FailureKind::Cancelled => PluginFailureClass::Cancelled,
         _ => PluginFailureClass::Terminal,
     }
 }

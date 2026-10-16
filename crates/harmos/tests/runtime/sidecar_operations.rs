@@ -336,8 +336,8 @@ impl Operation for ReadOperation {
         self.counts.finalized.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
-    fn classify(_: &Self::Error) -> harmos::operations::Failure {
-        harmos::operations::Failure::Transient
+    fn classify(_: &Self::Error) -> harmos::operations::FailureKind {
+        harmos::operations::FailureKind::Transient
     }
 }
 
@@ -1291,7 +1291,7 @@ fn contract_scenario() {
     };
     assert!(
         matches!(source.downcast_ref::<harmos::operations::NativeError>(),
-        Some(harmos::operations::NativeError::Preparation(failure)) if failure.code() == harmos::operations::Failure::Transient && failure.cause().contains("partial initialization failed"))
+        Some(harmos::operations::NativeError::Preparation(failure)) if failure.code() == harmos::operations::FailureKind::Transient && failure.cause().contains("partial initialization failed"))
     );
     assert_eq!(counts.prepared.load(Ordering::SeqCst), 1);
     assert_eq!(counts.operation_initialized.load(Ordering::SeqCst), 1);

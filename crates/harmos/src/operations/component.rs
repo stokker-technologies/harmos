@@ -27,7 +27,8 @@ use crate::catalog::{Catalog, Member, Visitor};
 use crate::guest::Error as GuestError;
 use crate::guest::host::session::Endpoint;
 use crate::operations::{
-    Declarations, Definition, Failure, OperationDeclaration, WireAnswer, WireCommand, WireOperation,
+    Declarations, Definition, FailureKind, OperationDeclaration, WireAnswer, WireCommand,
+    WireOperation,
 };
 use crate::schema::Described;
 use crate::{Error, Identifier, Message, operations::Lane};
@@ -113,7 +114,7 @@ pub enum ComponentError {
 
 /* === Implementations === */
 impl ComponentError {
-    pub(crate) fn classification(&self) -> Failure {
+    pub(crate) fn classification(&self) -> FailureKind {
         classify(self)
     }
 
@@ -321,7 +322,7 @@ where
         self.transferred.load(Ordering::Acquire)
     }
 
-    fn classify(error: &ComponentError) -> Failure {
+    fn classify(error: &ComponentError) -> FailureKind {
         classify(error)
     }
 }
@@ -637,7 +638,7 @@ impl Operation for SdkOperation {
             .map_err(|error| error.in_operation(operation))
     }
 
-    fn classify(error: &ComponentError) -> Failure {
+    fn classify(error: &ComponentError) -> FailureKind {
         classify(error)
     }
 }
@@ -703,23 +704,25 @@ fn sdk_dispatch(
     })
 }
 
-fn classify(error: &ComponentError) -> Failure {
+fn classify(error: &ComponentError) -> FailureKind {
     match error {
         ComponentError::Stream(source) => source.classification(),
         ComponentError::Remote(failure) => failure.code(),
-        ComponentError::Unauthorized(_) => Failure::Unauthorized,
+        ComponentError::Unauthorized(_) => FailureKind::Unauthorized,
         ComponentError::Preparation(failure) => match failure.code() {
-            code @ (Failure::Invalid | Failure::Unauthorized | Failure::Cancelled) => code,
-            _ => Failure::Permanent,
+            code @ (FailureKind::Invalid | FailureKind::Unauthorized | FailureKind::Cancelled) => {
+                code
+            }
+            _ => FailureKind::Permanent,
         },
         ComponentError::Transport(
             GuestError::Unavailable { .. } | GuestError::Execution { .. },
-        ) => Failure::Ambiguous,
+        ) => FailureKind::Ambiguous,
         ComponentError::Payload(_)
         | ComponentError::Declaration(_)
         | ComponentError::Catalog { .. }
-        | ComponentError::Transport(GuestError::Malformed { .. }) => Failure::Invalid,
-        _ => Failure::Permanent,
+        | ComponentError::Transport(GuestError::Malformed { .. }) => FailureKind::Invalid,
+        _ => FailureKind::Permanent,
     }
 }
 

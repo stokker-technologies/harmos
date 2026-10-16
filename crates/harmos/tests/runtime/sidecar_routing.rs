@@ -325,7 +325,7 @@ impl harmos::operations::Operation for PublishingCall {
             host.publisher::<Publishing>()
                 .publish_on::<MeterPulse>(&support::pulse(request.sample))
                 .await
-                .map_err(Refusal::of)
+                .map_err(Refusal::from)
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -350,7 +350,7 @@ impl harmos::Plugin for Publishing {
                 .publisher::<Self>()
                 .publish_on_context::<MeterPulse>(&support::pulse(sample), Some("initialization"))
                 .await
-                .map_err(Refusal::of)?;
+                .map_err(Refusal::from)?;
         }
         Ok(())
     }
@@ -404,12 +404,12 @@ impl harmos::Plugin for Dependent {
         context
             .call_as::<Amplify>(Amplify { value: 11 })
             .await
-            .map_err(Refusal::of)?;
+            .map_err(Refusal::from)?;
         if self.notify {
             context
                 .call_as::<Sample>(Sample { value: 99 })
                 .await
-                .map_err(Refusal::of)?;
+                .map_err(Refusal::from)?;
         }
         Ok(())
     }
@@ -550,8 +550,8 @@ impl harmos::operations::Operation for Retrying {
         self.resources.finalized.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
-    fn classify(_: &Refusal) -> harmos::operations::Failure {
-        harmos::operations::Failure::Transient
+    fn classify(_: &Refusal) -> harmos::operations::FailureKind {
+        harmos::operations::FailureKind::Transient
     }
 }
 

@@ -48,7 +48,7 @@ pub struct Failure(Box<Record>);
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Record {
-    code: operations::Failure,
+    code: operations::FailureKind,
     cause: String,
     context: Context,
     diagnostics: Option<Diagnostics>,
@@ -67,6 +67,11 @@ pub struct Context {
 // process enabled capture, the backtrace where its carrier received the error.
 // The origin names whose frames these are, so a host capture never poses as a
 // plugin's.
+// Renders an error chain on one line for logs and text sinks. Each link prints
+// its own line once; a link whose text an outer link already embeds is
+// skipped, so a cause is never repeated.
+pub struct Report<'a>(pub &'a (dyn std::error::Error + 'static));
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Diagnostics {
@@ -97,7 +102,7 @@ pub enum CodecError {
 
 /* === Implementations === */
 impl Failure {
-    pub fn new(code: operations::Failure, cause: impl Into<String>) -> Self {
+    pub fn new(code: operations::FailureKind, cause: impl Into<String>) -> Self {
         Self(Box::new(Record {
             code,
             cause: cause.into(),
@@ -112,7 +117,7 @@ impl Failure {
     // meaningful message becomes the cause and the whole chain moves into
     // diagnostics.
     pub fn originate(
-        code: operations::Failure,
+        code: operations::FailureKind,
         error: &(dyn std::error::Error + 'static),
         origin: Origin,
     ) -> Self {
@@ -161,7 +166,7 @@ impl Failure {
         carried(error)
     }
 
-    pub fn code(&self) -> operations::Failure {
+    pub fn code(&self) -> operations::FailureKind {
         self.0.code
     }
 
@@ -224,6 +229,23 @@ impl fmt::Display for Failure {
 }
 
 impl std::error::Error for Failure {}
+
+impl fmt::Display for Report<'_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut rendered = String::new();
+        for link in sources(self.0) {
+            let line = link.to_string();
+            if line.trim().is_empty() || rendered.contains(&line) {
+                continue;
+            }
+            if !rendered.is_empty() {
+                rendered.push_str(": ");
+            }
+            rendered.push_str(&line);
+        }
+        formatter.write_str(&rendered)
+    }
+}
 
 impl Context {
     pub fn operation(&self) -> Option<&str> {

@@ -45,6 +45,16 @@ pub enum PublishError {
 /* === Traits === */
 
 /* === Implementations === */
+// A refused publication forwards the host's failure unchanged.
+impl From<PublishError> for harmos_contract::Refusal {
+    fn from(error: PublishError) -> Self {
+        match error {
+            PublishError::Call(refusal) => refusal,
+            error => Self::of(error),
+        }
+    }
+}
+
 impl<P> Clone for Publisher<P> {
     fn clone(&self) -> Self {
         Self {

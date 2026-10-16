@@ -174,7 +174,7 @@ impl<T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>> Body<super::Response
         Phase::Stopping
     }
 
-    fn classify(&self, error: &Error) -> crate::operations::Failure {
+    fn classify(&self, error: &Error) -> crate::operations::FailureKind {
         super::binding::classify(error, T::classify)
     }
 

@@ -22,7 +22,7 @@ use tokio::sync::watch;
 
 // Local Imports
 use super::{EndpointSet, StreamInput, StreamOutput};
-use crate::operations::{Failure, WireAnswer, WireCommand};
+use crate::operations::{FailureKind, WireAnswer, WireCommand};
 use crate::{MemorySize, Message};
 
 /* === Constants === */
@@ -82,11 +82,11 @@ impl Drop for Transfer<'_> {
     }
 }
 impl RemoteStreamError {
-    pub(super) fn classification(&self) -> Failure {
+    pub(super) fn classification(&self) -> FailureKind {
         match self {
-            Self::Protocol(_) | Self::Payload(_) => Failure::Invalid,
+            Self::Protocol(_) | Self::Payload(_) => FailureKind::Invalid,
             Self::Remote(failure) => failure.code(),
-            Self::Output(_) => Failure::Permanent,
+            Self::Output(_) => FailureKind::Permanent,
         }
     }
 

@@ -23,7 +23,7 @@ use std::sync::OnceLock;
 use super::publications::{Lifecycle, Manager};
 use super::{load, runtime};
 use contract::{Counts, Read, Value};
-use harmos::operations::{ComponentError, ComponentOperation, Failure, OperationDeclaration};
+use harmos::operations::{ComponentError, ComponentOperation, FailureKind, OperationDeclaration};
 
 /* === Constants === */
 
@@ -257,7 +257,7 @@ pub(super) fn contract_scenario() {
                         };
                         assert!(matches!(source.downcast_ref::<ComponentError>(),
             Some(ComponentError::Remote(failure))
-                if failure.code() == Failure::Transient
+                if failure.code() == FailureKind::Transient
                     && failure.cause().contains("first cleanup retained")));
                     }
                     let error = runtime
@@ -520,7 +520,7 @@ pub(super) fn contract_scenario() {
         panic!("original initialization error")
     };
     assert!(
-        matches!(source.downcast_ref::<ComponentError>(), Some(ComponentError::Preparation(failure)) if failure.code() == Failure::Transient && failure.cause().contains("partial initialization failed"))
+        matches!(source.downcast_ref::<ComponentError>(), Some(ComponentError::Preparation(failure)) if failure.code() == FailureKind::Transient && failure.cause().contains("partial initialization failed"))
     );
     assert_eq!(
         invocation.status().phase(),

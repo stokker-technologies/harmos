@@ -21,8 +21,8 @@ use std::time::Duration;
 // Local Imports
 use super::{Failed, Lanes, Owner, runtime};
 use harmos::operations::{
-    Backoff, CacheKey, Context, Failure, Jitter, Operation, OperationDeclaration, OperationPolicy,
-    RestartPolicy, RetryPolicy, Visibility,
+    Backoff, CacheKey, Context, FailureKind, Jitter, Operation, OperationDeclaration,
+    OperationPolicy, RestartPolicy, RetryPolicy, Visibility,
 };
 use harmos::{Error, Message, Refusal};
 
@@ -366,7 +366,7 @@ impl Operation for Echoing {
             self.state.attempts += 1;
             if value.value == "retry" && self.state.attempts == 1 {
                 value.value.push_str(" retained");
-                return Err(Failed::Scripted(Failure::Transient));
+                return Err(Failed::Scripted(FailureKind::Transient));
             }
             if value.value == "block" {
                 let _joined = Joined(&self.resources.wire_joined);
@@ -379,7 +379,7 @@ impl Operation for Echoing {
         result.map(::core::convert::Into::into)
     }
 
-    fn classify(error: &Failed) -> Failure {
+    fn classify(error: &Failed) -> FailureKind {
         Owner::classify(error)
     }
 }
@@ -417,7 +417,7 @@ impl Operation for PrivateEchoing {
             self.state.attempts += 1;
             if value.value == "retry" && self.state.attempts == 1 {
                 value.value.push_str(" retained");
-                return Err(Failed::Scripted(Failure::Transient));
+                return Err(Failed::Scripted(FailureKind::Transient));
             }
             if value.value == "block" {
                 let _joined = Joined(&self.resources.wire_joined);

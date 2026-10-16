@@ -133,7 +133,7 @@ impl harmos::Plugin for Process {
                     data: b"shutdown".to_vec(),
                 })
                 .await
-                .map_err(Refusal::of)?;
+                .map_err(Refusal::from)?;
             self.resources.mark("shutdown-publication-acknowledged")?;
         }
         self.resources.mark("shutdown")
@@ -298,7 +298,7 @@ impl Operation for Publishing {
             host.publisher::<Process>()
                 .publish_on::<Blob>(&*request)
                 .await
-                .map_err(Refusal::of)?;
+                .map_err(Refusal::from)?;
             Ok(request.clone())
         }
         .await;

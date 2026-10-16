@@ -211,7 +211,7 @@ pub(crate) fn refused(error: Error) -> Refusal {
             // A Carried Failure Keeps Its Cause And Any Frame Closer To The Origin
             let failure = error.failure().cloned().unwrap_or_else(|| {
                 harmos_contract::Failure::originate(
-                    crate::operations::Failure::Permanent,
+                    crate::operations::FailureKind::Permanent,
                     &error,
                     harmos_contract::failure::Origin::Host,
                 )
@@ -228,7 +228,7 @@ pub(crate) fn refused(error: Error) -> Refusal {
         Error::OperationRefused(_) | Error::Closing { .. } => Refusal::new(-32_606, error),
         error => Refusal::originate(
             harmos_contract::FAILED,
-            crate::operations::Failure::Permanent,
+            crate::operations::FailureKind::Permanent,
             &error,
             harmos_contract::failure::Origin::Host,
         ),

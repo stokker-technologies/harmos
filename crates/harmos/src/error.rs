@@ -255,6 +255,20 @@ impl<E> Error<E> {
             Self::OperationFailed { source, .. } | Self::TaskFailed { source, .. } => {
                 carried(source.as_ref())
             }
+            // The Attempt's Outcome Names The Failure; Cleanup Is Secondary
+            Self::OperationFinalization {
+                outcome, source, ..
+            } => outcome
+                .as_deref()
+                .and_then(Error::failure)
+                .or_else(|| source.failure()),
+            Self::OperationSettlement { source } => source.failure(),
+            #[cfg(any(
+                feature = "plugin",
+                feature = "plugin-guest",
+                feature = "plugin-sidecar"
+            ))]
+            Self::PluginLifecycle { source } => carried(source.as_ref()),
             _ => None,
         }
     }
@@ -275,21 +289,25 @@ impl<E> Error<E> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+// The first failure along a source chain, read through the carrier that
+// transported it where that carrier hides it behind a transparent line.
 fn carried<'a>(
-    source: &'a (dyn std::error::Error + Send + Sync + 'static),
+    source: &'a (dyn std::error::Error + 'static),
 ) -> Option<&'a harmos_contract::Failure> {
-    if let Some(error) = source.downcast_ref::<Error>() {
-        return error.failure();
-    }
-    #[cfg(feature = "plugin-sidecar")]
-    if let Some(error) = source.downcast_ref::<crate::operations::NativeError>() {
-        return error.failure();
-    }
-    #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-    if let Some(error) = source.downcast_ref::<crate::operations::ComponentError>() {
-        return error.failure();
-    }
-    harmos_contract::Failure::find(source)
+    std::iter::successors(Some(source), |link| link.source()).find_map(|link| {
+        if let Some(error) = link.downcast_ref::<Error>() {
+            return error.failure();
+        }
+        #[cfg(feature = "plugin-sidecar")]
+        if let Some(error) = link.downcast_ref::<crate::operations::NativeError>() {
+            return error.failure();
+        }
+        #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
+        if let Some(error) = link.downcast_ref::<crate::operations::ComponentError>() {
+            return error.failure();
+        }
+        harmos_contract::Failure::find(link)
+    })
 }
 
 /* === Tests === */

@@ -27,7 +27,7 @@ use std::time::Duration;
 // Local Imports
 use super::{Lanes, app::App};
 use harmos::operations::{
-    Backoff, Context, Failure, Jitter, Operation, OperationDeclaration, OperationInstanceId,
+    Backoff, Context, FailureKind, Jitter, Operation, OperationDeclaration, OperationInstanceId,
     OperationPhase, OperationPolicy, RestartPolicy, RetryPolicy,
 };
 use harmos::{Message, Runtime};
@@ -172,8 +172,8 @@ impl Operation for Read {
         Ok(())
     }
 
-    fn classify(_: &Self::Error) -> Failure {
-        Failure::Transient
+    fn classify(_: &Self::Error) -> FailureKind {
+        FailureKind::Transient
     }
 }
 

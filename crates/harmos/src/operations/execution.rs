@@ -28,7 +28,7 @@ use super::finalization::{Finalize, Finalizer, Retained};
 use super::instances::{Instances, QueuePermit};
 use super::lane::Admission;
 use super::scope::{Scope, ScopeCore};
-use crate::operations::{Failure, OperationPolicy, ReplaySafety};
+use crate::operations::{FailureKind, OperationPolicy, ReplaySafety};
 use crate::supervision::instance::{Instance, Outcome, Phase};
 use crate::supervision::{executor, interruptible};
 use crate::{Error, Refusal, Result, state::Position};
@@ -83,8 +83,8 @@ pub(super) trait Body<O>: Send {
     }
 
     fn run<'a>(&'a mut self, scope: Scope<'a>) -> Attempt<'a, O>;
-    fn classify(&self, _error: &Error) -> Failure {
-        Failure::Permanent
+    fn classify(&self, _error: &Error) -> FailureKind {
+        FailureKind::Permanent
     }
 
     fn cleanup_phase(&self) -> Phase {
@@ -368,7 +368,7 @@ async fn attempts<O: Send + 'static>(
                 children.drain().await;
                 return Err(Refusal::Cancelled.into());
             }
-            Stage::Expired => (Refusal::TimedOut.into(), Failure::Ambiguous),
+            Stage::Expired => (Refusal::TimedOut.into(), FailureKind::Ambiguous),
         };
         if prepared.body.transferred() {
             children.drain().await;

@@ -20,7 +20,7 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use super::{Failure, OperationDeclaration};
+use super::{FailureKind, OperationDeclaration};
 
 /* === Constants === */
 
@@ -91,8 +91,8 @@ pub trait Operation: Send + Sized + 'static {
         false
     }
 
-    fn classify(_error: &Self::Error) -> Failure {
-        Failure::Permanent
+    fn classify(_error: &Self::Error) -> FailureKind {
+        FailureKind::Permanent
     }
 }
 

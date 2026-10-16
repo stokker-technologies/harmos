@@ -24,7 +24,7 @@ use tokio::sync::Notify;
 // Local Imports
 use super::{Lanes, runtime};
 use harmos::operations::{
-    Backoff, Context, Failure, Jitter, Operation, OperationDeclaration, OperationPolicy,
+    Backoff, Context, FailureKind, Jitter, Operation, OperationDeclaration, OperationPolicy,
     ReplaySafety, RestartPolicy, RetryPolicy,
 };
 use harmos::{Error, Refusal};
@@ -254,11 +254,11 @@ impl<O: OperationDeclaration<Request = Request, Response = usize>> Operation for
         .await;
         result.map(::core::convert::Into::into)
     }
-    fn classify(error: &Self::Error) -> Failure {
+    fn classify(error: &Self::Error) -> FailureKind {
         match error.kind() {
-            std::io::ErrorKind::Interrupted => Failure::Transient,
-            std::io::ErrorKind::PermissionDenied => Failure::Unauthorized,
-            _ => Failure::Permanent,
+            std::io::ErrorKind::Interrupted => FailureKind::Transient,
+            std::io::ErrorKind::PermissionDenied => FailureKind::Unauthorized,
+            _ => FailureKind::Permanent,
         }
     }
 }

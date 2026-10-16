@@ -245,15 +245,13 @@ pub(super) fn contract_scenario() {
                         .initialize()
                         .await
                         .expect_err("the actual SDK initialization refuses");
-                    let mut cause: &dyn std::error::Error = &failure;
-                    loop {
-                        if cause.to_string().contains("initialization refused") {
-                            break;
-                        }
-                        cause = cause
-                            .source()
-                            .expect("the original authored refusal remains in the cause chain");
-                    }
+                    let cause = failure
+                        .failure()
+                        .expect("the original authored refusal crosses as a structured failure");
+                    assert!(
+                        cause.cause().contains("initialization refused"),
+                        "{cause:?}"
+                    );
                     assert!(root.path().join("initialized").exists());
                     assert!(!*ready.borrow());
                     assert_eq!(

@@ -397,7 +397,7 @@ and guests submit unary children; streaming child sessions (`upload`,
 `download`, `exchange`) remain in-process for now.
 
 A plugin operation that fails reaches its caller as one `harmos::Failure`:
-a classification `code`, a `cause` written once where the handler's error
+a `code` (`operations::FailureKind`), a `cause` written once where the handler's error
 originated (the deepest message of its source chain), the operation frame the
 host adds where the call crosses from the plugin, and optional origin
 diagnostics holding the full chain. Sidecar frames, host refusals, guest

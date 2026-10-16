@@ -592,8 +592,8 @@ impl Operation for Retry {
     async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, Self::Error> {
         Ok(Self { attempts: 0 })
     }
-    fn classify(_: &Self::Error) -> harmos::operations::Failure {
-        harmos::operations::Failure::Transient
+    fn classify(_: &Self::Error) -> harmos::operations::FailureKind {
+        harmos::operations::FailureKind::Transient
     }
     async fn run<'a>(
         &mut self,

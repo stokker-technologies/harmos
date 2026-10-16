@@ -143,8 +143,8 @@ impl Operation for Read {
         events.push("finalize");
         Ok(())
     }
-    fn classify(_: &Self::Error) -> harmos::operations::Failure {
-        harmos::operations::Failure::Transient
+    fn classify(_: &Self::Error) -> harmos::operations::FailureKind {
+        harmos::operations::FailureKind::Transient
     }
 }
 
@@ -293,8 +293,8 @@ impl Streaming {
     fn transferred(&self) -> bool {
         self.1
     }
-    fn classify(_: &std::io::Error) -> harmos::operations::Failure {
-        harmos::operations::Failure::Transient
+    fn classify(_: &std::io::Error) -> harmos::operations::FailureKind {
+        harmos::operations::FailureKind::Transient
     }
     #[cfg(any())]
     async fn stop(&mut self) -> std::result::Result<(), std::io::Error> {

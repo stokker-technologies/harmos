@@ -28,7 +28,7 @@ use tokio::sync::{Notify, Semaphore};
 // Local Imports
 use super::{Lanes, app::App};
 use harmos::operations::{
-    Backoff, Context, Failure, Jitter, Operation, OperationPolicy, RestartPolicy, RetryPolicy,
+    Backoff, Context, FailureKind, Jitter, Operation, OperationPolicy, RestartPolicy, RetryPolicy,
 };
 use harmos::{Error, Refusal, Runtime};
 
@@ -145,10 +145,10 @@ impl Operation for Parent {
         result.map(::core::convert::Into::into)
     }
 
-    fn classify(error: &Failed) -> Failure {
+    fn classify(error: &Failed) -> FailureKind {
         match error {
-            Failed::Retry => Failure::Transient,
-            _ => Failure::Permanent,
+            Failed::Retry => FailureKind::Transient,
+            _ => FailureKind::Permanent,
         }
     }
 }

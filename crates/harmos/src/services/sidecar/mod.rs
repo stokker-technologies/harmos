@@ -231,7 +231,8 @@ enum Absorbed {
 impl SidecarError {
     // A refusal the host raises itself, before any plugin answered.
     pub(crate) fn refused(code: i64, message: impl Into<String>) -> Self {
-        let failure = harmos_contract::Failure::new(crate::operations::Failure::Permanent, message);
+        let failure =
+            harmos_contract::Failure::new(crate::operations::FailureKind::Permanent, message);
         Self::Refused { code, failure }
     }
 }
@@ -739,7 +740,10 @@ impl Cleanup {
                 continue;
             }
             if let Err(error) = (&mut task.running).await {
-                let failure = format!("native operation drain failed: {error}");
+                let failure = format!(
+                    "native operation drain failed: {}",
+                    harmos_contract::failure::Report(&error)
+                );
                 task.failure = Some(failure.clone());
                 self.failure.get_or_insert(failure);
                 continue;
@@ -1424,7 +1428,10 @@ where
                     .get_mut(&id)
                     .expect("the reply owns its slot");
                 if let Err(error) = (&mut task.running).await {
-                    let failure = format!("native operation drain failed: {error}");
+                    let failure = format!(
+                        "native operation drain failed: {}",
+                        harmos_contract::failure::Report(&error)
+                    );
                     task.failure = Some(failure.clone());
                     *self.cleanup_failure = Some(failure.clone());
                     return Absorbed::Malformed(failure);

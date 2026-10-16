@@ -403,7 +403,7 @@ async fn publish(
         attempted += rows;
         tokio::select! {
             _ = closing.changed() => return Ok(()),
-            result = publisher.publish_batch_on::<Sample>(&batch) => result.map_err(harmos_sidecar::Refusal::of)?,
+            result = publisher.publish_batch_on::<Sample>(&batch) => result.map_err(harmos_sidecar::Refusal::from)?,
         }
         accepted += rows;
         tokio::select! {
@@ -417,7 +417,7 @@ async fn publish(
     };
     tokio::select! {
         _ = closing.changed() => return Ok(()),
-        result = publisher.publish_on::<Done>(&done) => result.map_err(harmos_sidecar::Refusal::of)?,
+        result = publisher.publish_on::<Done>(&done) => result.map_err(harmos_sidecar::Refusal::from)?,
     }
     Ok(())
 }

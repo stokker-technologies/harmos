@@ -433,7 +433,7 @@ fn contract_scenario() {
         .unwrap_err();
     assert!(
         matches!(component_error(&refused), harmos::operations::ComponentError::Remote(failure)
-            if failure.code() == harmos::operations::Failure::Permanent
+            if failure.code() == harmos::operations::FailureKind::Permanent
                 && failure.cause().contains("the probe declines"))
     );
     assert!(harmos::operations::Definition::of::<Reserved>().is_err());
@@ -738,7 +738,7 @@ fn contract_scenario() {
             .await
             .unwrap_err();
         assert!(
-            matches!(component_error(&error), harmos::operations::ComponentError::Remote(failure) if failure.code() == harmos::operations::Failure::Permanent && failure.cause().contains(message)),
+            matches!(component_error(&error), harmos::operations::ComponentError::Remote(failure) if failure.code() == harmos::operations::FailureKind::Permanent && failure.cause().contains(message)),
             "{error:?}"
         );
     }

@@ -480,7 +480,7 @@ fn refused_request(source: &(dyn std::error::Error + Send + Sync + 'static)) -> 
     let crate::operations::NativeError::Preparation(failure) = source.downcast_ref()? else {
         return None;
     };
-    if failure.code() != crate::operations::Failure::Invalid {
+    if failure.code() != crate::operations::FailureKind::Invalid {
         return None;
     }
 

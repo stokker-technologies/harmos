@@ -68,7 +68,7 @@ impl harmos::Plugin for Client {
         let response = context
             .call_as::<Read>(Step { phase: 1 })
             .await
-            .map_err(Refusal::of)?;
+            .map_err(Refusal::from)?;
         if response.phase != 1 {
             return Err(Refusal::of("initialization used another provider response"));
         }
@@ -96,7 +96,7 @@ impl harmos::Plugin for Client {
         let response = context
             .call_as::<Read>(Step { phase: 2 })
             .await
-            .map_err(Refusal::of)?;
+            .map_err(Refusal::from)?;
         if response.phase != 2 {
             return Err(Refusal::of("shutdown used another provider response"));
         }

@@ -443,7 +443,7 @@ impl<S: Observer<H>, H: Send + Sync + 'static> Body for Bound<S, H> {
                 {
                     Ok(Ok(observer)) => self.observer = Some(observer),
                     Ok(Err(error)) => tracing::warn!(
-                        observer = name, activation_id = %activation, %error,
+                        observer = name, activation_id = %activation, error = %harmos_contract::failure::Report(&error),
                         "observer initialization failed; retrying next cadence"
                     ),
                     Err(_) => tracing::error!(
@@ -483,7 +483,7 @@ impl<S: Observer<H>, H: Send + Sync + 'static> Body for Bound<S, H> {
                 match observed {
                     Ok(Ok(())) => {}
                     Ok(Err(error)) => tracing::warn!(
-                        observer = name, activation_id = %activation, tick = tick.ordinal(), %error,
+                        observer = name, activation_id = %activation, tick = tick.ordinal(), error = %harmos_contract::failure::Report(&error),
                         "observer callback refused"
                     ),
                     Err(_) => {

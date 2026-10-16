@@ -24,7 +24,7 @@ pub(crate) use tokio::sync::Notify;
 // Local Imports
 use super::support;
 pub(crate) use harmos::operations::{
-    Backoff, CacheKey, Context, Failure, Jitter, Operation, OperationDeclaration,
+    Backoff, CacheKey, Context, FailureKind, Jitter, Operation, OperationDeclaration,
     OperationInstanceId, OperationPolicy, RestartPolicy, RetryPolicy,
 };
 pub(crate) use harmos::{Error, Refusal, Runtime};
@@ -47,7 +47,7 @@ pub(crate) struct Parent;
 pub(crate) struct Request {
     pub(crate) value: usize,
     pub(crate) failures: usize,
-    pub(crate) failure: Failure,
+    pub(crate) failure: FailureKind,
     pub(crate) valid: bool,
     pub(crate) keyed: bool,
     pub(crate) gate: Option<(Arc<Notify>, Arc<Notify>)>,
@@ -112,7 +112,7 @@ pub(crate) enum Lanes {
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Failed {
     #[error("scripted failure {0:?}")]
-    Scripted(Failure),
+    Scripted(FailureKind),
     #[error(transparent)]
     Nested(#[from] Error),
 }
@@ -193,7 +193,7 @@ impl Owner {
         context: Context<'_>,
     ) -> Result<Response, Failed> {
         if !request.valid {
-            return Err(Failed::Scripted(Failure::Invalid));
+            return Err(Failed::Scripted(FailureKind::Invalid));
         }
         self.runs.fetch_add(1, Ordering::SeqCst);
         self.seen.lock().unwrap().push(context.id());
@@ -214,10 +214,10 @@ impl Owner {
             attempts: state.attempts,
         })
     }
-    pub(crate) fn classify(error: &Failed) -> Failure {
+    pub(crate) fn classify(error: &Failed) -> FailureKind {
         match error {
             Failed::Scripted(failure) => *failure,
-            Failed::Nested(_) => Failure::Permanent,
+            Failed::Nested(_) => FailureKind::Permanent,
         }
     }
 }
@@ -243,7 +243,7 @@ impl Operation for ComputeCall {
             async move { self.owner.compute(request, &mut self.state, context).await }.await;
         result.map(::core::convert::Into::into)
     }
-    fn classify(error: &Failed) -> Failure {
+    fn classify(error: &Failed) -> FailureKind {
         Owner::classify(error)
     }
 }
@@ -345,7 +345,7 @@ pub(crate) fn request() -> Request {
     Request {
         value: 7,
         failures: 0,
-        failure: Failure::Transient,
+        failure: FailureKind::Transient,
         valid: true,
         keyed: false,
         gate: None,

@@ -92,7 +92,7 @@ impl Read {
                 value,
             })
             .await
-            .map_err(Refusal::of)?;
+            .map_err(Refusal::from)?;
         Ok(Value { value })
     }
 }

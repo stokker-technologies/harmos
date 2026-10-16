@@ -41,7 +41,7 @@ pub use grpc::GrpcVisitor;
 pub use instance::Instance;
 pub use key::{CacheKey, CacheKeyError, MAX_CACHE_KEY_BYTES};
 pub use policy::{
-    Backoff, Failure, Jitter, OperationPolicy, PolicyError, ReplaySafety, RestartPolicy,
+    Backoff, FailureKind, Jitter, OperationPolicy, PolicyError, ReplaySafety, RestartPolicy,
     RetryPolicy,
 };
 pub use response::Response;

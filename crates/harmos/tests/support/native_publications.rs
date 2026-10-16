@@ -181,12 +181,12 @@ impl Operation for Publishing {
                     publisher
                         .publish_on_context::<Sample>(&chunk[0], Some("bench"))
                         .await
-                        .map_err(Refusal::of)?;
+                        .map_err(Refusal::from)?;
                 } else {
                     publisher
                         .publish_batch_on_context::<Sample>(&batch, Some("bench"))
                         .await
-                        .map_err(Refusal::of)?;
+                        .map_err(Refusal::from)?;
                 }
                 let elapsed = u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX);
                 calls.extend_from_slice(&elapsed.to_le_bytes());

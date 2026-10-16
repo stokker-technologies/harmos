@@ -872,7 +872,7 @@ impl harmos::operations::Operation for Emitting {
             host.publisher::<Meter>()
                 .publish_on::<MeterPulse>(&support::pulse(request.value))
                 .await
-                .map_err(Refusal::of)
+                .map_err(Refusal::from)
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -2133,7 +2133,7 @@ fn own_contract() {
                     let failure = error
                         .failure()
                         .expect("handler refusal preserves its structured failure");
-                    assert_eq!(failure.code(), harmos::operations::Failure::Permanent);
+                    assert_eq!(failure.code(), harmos::operations::FailureKind::Permanent);
                     assert_eq!(failure.cause(), "this gauge measures no negative value");
                     assert_eq!(failure.context().operation(), Some(GetMeasure::ID));
                     assert_eq!(
@@ -2256,7 +2256,7 @@ fn own_contract() {
     assert!(
         matches!(source.downcast_ref::<harmos::operations::NativeError>(),
         Some(harmos::operations::NativeError::Remote(failure))
-            if failure.code() == harmos::operations::Failure::Permanent
+            if failure.code() == harmos::operations::FailureKind::Permanent
                 && failure.cause().contains("stream or schema differs from the frozen generation inventory")),
         "{source}"
     );

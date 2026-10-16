@@ -380,13 +380,13 @@ impl Operation for Echoing {
             if let Some(value) = request.say.strip_prefix("publish:") {
                 progress(context, value)
                     .await
-                    .map_err(OperationRefusal::of)?;
+                    .map_err(OperationRefusal::from)?;
             }
             if request.say == "publish-many" {
                 for index in 0..8 {
                     progress(context, &index.to_string())
                         .await
-                        .map_err(OperationRefusal::of)?;
+                        .map_err(OperationRefusal::from)?;
                 }
             }
             if request.say == "publish-foreign" {

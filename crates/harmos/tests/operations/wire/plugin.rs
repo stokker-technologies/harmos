@@ -27,7 +27,7 @@ use super::{
     ParentOwner, Request, Response, SlowCall, State, request, runtime,
 };
 use harmos::operations::{
-    CacheKey, Context, Failure, OperationDeclaration, OperationPolicy, PluginRegistration,
+    CacheKey, Context, FailureKind, OperationDeclaration, OperationPolicy, PluginRegistration,
     Visibility, WireDeclaration, WireOperation,
 };
 use harmos::plugin::{
@@ -305,7 +305,7 @@ impl harmos::operations::Operation for Cleaning {
         }
         if self.resources.fail.load(Ordering::SeqCst) {
             self.resources.failed.notify_one();
-            return Err(Failed::Scripted(Failure::Permanent));
+            return Err(Failed::Scripted(FailureKind::Permanent));
         }
         Ok(())
     }

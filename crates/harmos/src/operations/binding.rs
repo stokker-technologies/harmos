@@ -22,7 +22,7 @@ use super::admission::Admission;
 use super::caller::{Origin, Source};
 use super::execution::{Body, Prepared};
 use super::manager::Entry;
-use crate::operations::{Failure, OperationDeclaration};
+use crate::operations::{FailureKind, OperationDeclaration};
 use crate::{Error, Result};
 
 /* === Constants === */
@@ -98,16 +98,16 @@ pub(super) fn prepared<O>(
 
 pub(super) fn classify<E: std::error::Error + Send + Sync + 'static>(
     error: &Error,
-    classify: fn(&E) -> Failure,
-) -> Failure {
+    classify: fn(&E) -> FailureKind,
+) -> FailureKind {
     let Error::OperationFailed { source, .. } = error else {
-        return Failure::Permanent;
+        return FailureKind::Permanent;
     };
     source
         .downcast_ref::<E>()
-        .map_or(Failure::Permanent, |error| {
+        .map_or(FailureKind::Permanent, |error| {
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| classify(error)))
-                .unwrap_or(Failure::Permanent)
+                .unwrap_or(FailureKind::Permanent)
         })
 }
 

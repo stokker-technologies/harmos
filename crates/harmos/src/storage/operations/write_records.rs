@@ -113,7 +113,7 @@ impl<C: 'static> Operation for Handler<C> {
         Ok(completion.into())
     }
 
-    fn classify(error: &Error) -> crate::operations::Failure {
+    fn classify(error: &Error) -> crate::operations::FailureKind {
         super::classify(error)
     }
 }

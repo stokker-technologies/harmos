@@ -27,7 +27,7 @@ use super::children::{CHILD_REQUESTS, ChildRequest, Children};
 use super::{Context, Operation, OperationManager};
 use crate::catalog::{Catalog, Member, Visitor};
 use crate::operations::{
-    Definition, Failure, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy,
+    Definition, FailureKind, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy,
     WireAnswer, WireCommand, WireOperation,
 };
 use crate::schema::Described;
@@ -145,7 +145,7 @@ pub enum NativeError {
 
 /* === Implementations === */
 impl NativeError {
-    pub(crate) fn classification(&self) -> Failure {
+    pub(crate) fn classification(&self) -> FailureKind {
         classify(self)
     }
 
@@ -499,7 +499,7 @@ where
         self.transferred.load(Ordering::Acquire)
     }
 
-    fn classify(error: &NativeError) -> Failure {
+    fn classify(error: &NativeError) -> FailureKind {
         classify(error)
     }
 }
@@ -898,7 +898,7 @@ impl<E: super::StreamEndpoints> Operation for EncodedOperation<E> {
         self.transferred.load(Ordering::Acquire)
     }
 
-    fn classify(error: &NativeError) -> Failure {
+    fn classify(error: &NativeError) -> FailureKind {
         classify(error)
     }
 }
@@ -1273,23 +1273,25 @@ fn validate_inventory(native: &Native, scope: &crate::plugin::PluginScope) -> Re
     Ok(())
 }
 
-fn classify(error: &NativeError) -> Failure {
+fn classify(error: &NativeError) -> FailureKind {
     match error {
         NativeError::Stream(source) => source.classification(),
         NativeError::Remote(failure) => failure.code(),
-        NativeError::Unauthorized(_) => Failure::Unauthorized,
+        NativeError::Unauthorized(_) => FailureKind::Unauthorized,
         NativeError::Preparation(failure) => match failure.code() {
-            code @ (Failure::Invalid | Failure::Unauthorized | Failure::Cancelled) => code,
-            _ => Failure::Permanent,
+            code @ (FailureKind::Invalid | FailureKind::Unauthorized | FailureKind::Cancelled) => {
+                code
+            }
+            _ => FailureKind::Permanent,
         },
         NativeError::Transport(SidecarError::Unavailable | SidecarError::Deadline) => {
-            Failure::Ambiguous
+            FailureKind::Ambiguous
         }
         NativeError::Payload(_)
         | NativeError::Declaration(_)
         | NativeError::Catalog { .. }
-        | NativeError::Transport(SidecarError::Malformed(_)) => Failure::Invalid,
-        _ => Failure::Permanent,
+        | NativeError::Transport(SidecarError::Malformed(_)) => FailureKind::Invalid,
+        _ => FailureKind::Permanent,
     }
 }
 

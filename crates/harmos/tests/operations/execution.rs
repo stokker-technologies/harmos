@@ -95,10 +95,10 @@ pub(super) fn contract_scenario() {
                         .register_operation::<ComputeCall>("app", Lanes::Open, Arc::clone(&owner))
                         .unwrap();
                     for failure in [
-                        Failure::Permanent,
-                        Failure::Unauthorized,
-                        Failure::Invalid,
-                        Failure::Cancelled,
+                        FailureKind::Permanent,
+                        FailureKind::Unauthorized,
+                        FailureKind::Invalid,
+                        FailureKind::Cancelled,
                     ] {
                         assert!(matches!(
                             runtime

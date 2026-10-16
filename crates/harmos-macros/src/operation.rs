@@ -316,7 +316,7 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
             }),
             "classify" => lifecycle.push(quote! {
                 #(#gates)*
-                fn classify(error: &Self::Error) -> #sdk::operations::Failure {
+                fn classify(error: &Self::Error) -> #sdk::operations::FailureKind {
                     <#owner>::classify(error)
                 }
             }),

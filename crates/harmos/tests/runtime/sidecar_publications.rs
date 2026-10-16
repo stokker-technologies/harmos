@@ -395,17 +395,17 @@ impl harmos::Plugin for Twins {
             .publisher::<Self>()
             .publish_on_context::<Left>(&support::pulse(10), Some("execution-a"))
             .await
-            .map_err(harmos_sidecar::Refusal::of)?;
+            .map_err(harmos_sidecar::Refusal::from)?;
         context
             .publisher::<Self>()
             .publish_on::<Right>(&support::pulse(20))
             .await
-            .map_err(harmos_sidecar::Refusal::of)?;
+            .map_err(harmos_sidecar::Refusal::from)?;
         context
             .publisher::<Self>()
             .publish_on_context::<Left>(&support::pulse(11), Some("execution-b"))
             .await
-            .map_err(harmos_sidecar::Refusal::of)?;
+            .map_err(harmos_sidecar::Refusal::from)?;
         Ok(())
     }
     fn resources(&self) -> Arc<()> {
@@ -453,19 +453,19 @@ impl harmos::Plugin for Batches {
         publisher
             .publish_batch_on_context::<BatchedRows>(&pulses(1..=3), Some("execution-a"))
             .await
-            .map_err(harmos_sidecar::Refusal::of)?;
+            .map_err(harmos_sidecar::Refusal::from)?;
         publisher
             .publish_on::<BatchedRows>(&support::pulse(4))
             .await
-            .map_err(harmos_sidecar::Refusal::of)?;
+            .map_err(harmos_sidecar::Refusal::from)?;
         publisher
             .publish_batch_on::<BatchedRows>(&publisher.batch())
             .await
-            .map_err(harmos_sidecar::Refusal::of)?;
+            .map_err(harmos_sidecar::Refusal::from)?;
         publisher
             .publish_batch_on_context::<BatchedRows>(&pulses(5..=6), Some("execution-b"))
             .await
-            .map_err(harmos_sidecar::Refusal::of)?;
+            .map_err(harmos_sidecar::Refusal::from)?;
         let mut undeclared = publisher.batch::<Left>();
         undeclared.push(support::pulse(1));
         let undeclared = publisher.publish_batch_on::<Left>(&undeclared).await;
@@ -489,7 +489,7 @@ impl harmos::Plugin for Batches {
         publisher
             .publish_batch_on::<TimedRows>(&timed)
             .await
-            .map_err(harmos_sidecar::Refusal::of)?;
+            .map_err(harmos_sidecar::Refusal::from)?;
         // Kit Stamps: Each Row Carries The Time It Was Pushed, Not Sent
         let mut clocked = publisher.batch::<ClockedRows>();
         for sample in 0..100 {
@@ -499,7 +499,7 @@ impl harmos::Plugin for Batches {
         publisher
             .publish_batch_on::<ClockedRows>(&clocked)
             .await
-            .map_err(harmos_sidecar::Refusal::of)?;
+            .map_err(harmos_sidecar::Refusal::from)?;
         // A Refused Row Ends Its Batch; The Rows Before It Stay Published.
         let raw = |stream: &str,
                    sequence: u64,
@@ -543,7 +543,7 @@ impl harmos::Plugin for Batches {
         // Only The Staged Prefix Advanced The Producer Sequence.
         publish(raw(raw_id, 3, None, Vec::new()))
             .await
-            .map_err(harmos_sidecar::Refusal::of)?;
+            .map_err(harmos_sidecar::Refusal::from)?;
         // A Delta Without A Stamped Predecessor Refuses The Whole Call
         let stamped_id = <StampedRows as harmos::StreamSpec>::ID;
         if publish(raw(stamped_id, 1, None, vec![(pulse(2), Some(1_000))]))
@@ -573,7 +573,7 @@ impl harmos::Plugin for Batches {
         }
         publish(raw(stamped_id, 4, Some(TIMED_BASE), Vec::new()))
             .await
-            .map_err(harmos_sidecar::Refusal::of)?;
+            .map_err(harmos_sidecar::Refusal::from)?;
         Ok(())
     }
     fn resources(&self) -> Arc<()> {

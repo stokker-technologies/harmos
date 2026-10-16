@@ -526,7 +526,8 @@ impl<A: Application> Bridge<A> {
     }
 
     fn refusal(code: &str, message: impl Into<String>) -> sdk::capabilities::Refusal {
-        let failure = harmos_contract::Failure::new(crate::operations::Failure::Permanent, message);
+        let failure =
+            harmos_contract::Failure::new(crate::operations::FailureKind::Permanent, message);
         sdk::capabilities::Refusal {
             code: code.to_owned(),
             failure: failure.encode(),
@@ -561,7 +562,7 @@ fn refused(refusal: sdk::capabilities::Refusal) -> OperationRefusal {
         Ok(failure) => failure,
         Err(source) => {
             let cause = format!("the guest refusal is unreadable: {source}");
-            harmos_contract::Failure::new(crate::operations::Failure::Invalid, cause)
+            harmos_contract::Failure::new(crate::operations::FailureKind::Invalid, cause)
         }
     };
     match refusal.code.parse::<i64>() {

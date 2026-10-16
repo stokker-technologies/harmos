@@ -727,7 +727,7 @@ fn contract_scenario() {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
 
-    use harmos_guest::operations::Failure;
+    use harmos_guest::operations::FailureKind;
     let mut session = instantiate(Stub::default()).await;
     session.initialize(r#""idle""#).await.unwrap();
     for (invocation, operation) in [(2, "recorder.start"), (3, "harmos.register")] {
@@ -739,7 +739,7 @@ fn contract_scenario() {
             })
             .await;
         assert!(
-            matches!(&answer, WireAnswer::Failed { failure } if failure.code() == Failure::Permanent && failure.cause().contains(operation)),
+            matches!(&answer, WireAnswer::Failed { failure } if failure.code() == FailureKind::Permanent && failure.cause().contains(operation)),
             "{answer:?}"
         );
     }

@@ -85,7 +85,7 @@ pub enum Jitter {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum Failure {
+pub enum FailureKind {
     Permanent,
     Transient,
     Ambiguous,
@@ -172,7 +172,7 @@ impl RetryPolicy {
     pub fn retry_after(
         self,
         failed_attempt: usize,
-        failure: Failure,
+        failure: FailureKind,
         replay: ReplaySafety,
         entropy: u64,
     ) -> Option<Duration> {
@@ -186,8 +186,8 @@ impl RetryPolicy {
         if self.validate().is_err() || failed_attempt >= max_retries {
             return None;
         }
-        if !matches!(failure, Failure::Transient)
-            && !(failure == Failure::Ambiguous && replay != ReplaySafety::Unknown)
+        if !matches!(failure, FailureKind::Transient)
+            && !(failure == FailureKind::Ambiguous && replay != ReplaySafety::Unknown)
         {
             return None;
         }

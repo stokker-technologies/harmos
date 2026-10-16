@@ -30,7 +30,7 @@ use super::{
     support::{Bank, Ledger, catalog},
 };
 use harmos::operations::{
-    Backoff, Context, Failure, Jitter, Operation, OperationPolicy, RestartPolicy, RetryPolicy,
+    Backoff, Context, FailureKind, Jitter, Operation, OperationPolicy, RestartPolicy, RetryPolicy,
 };
 use harmos::{Error, Refusal, Runtime, state::FactSource, state::Position, state::SystemFact};
 
@@ -165,10 +165,10 @@ impl Operation for Compute {
         result.map(::core::convert::Into::into)
     }
 
-    fn classify(error: &Failed) -> Failure {
+    fn classify(error: &Failed) -> FailureKind {
         match error {
-            Failed::Backlog => Failure::Transient,
-            _ => Failure::Permanent,
+            Failed::Backlog => FailureKind::Transient,
+            _ => FailureKind::Permanent,
         }
     }
 

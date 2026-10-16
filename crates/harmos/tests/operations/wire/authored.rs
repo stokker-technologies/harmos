@@ -28,8 +28,8 @@ use tokio::sync::Notify;
 // Local Imports
 use super::{Lanes, app::App};
 use harmos::operations::{
-    Backoff, CacheKey, Context, Failure, Jitter, Operation, OperationInstanceId, OperationPhase,
-    OperationPolicy, ReplaySafety, RestartPolicy, RetryPolicy,
+    Backoff, CacheKey, Context, FailureKind, Jitter, Operation, OperationInstanceId,
+    OperationPhase, OperationPolicy, ReplaySafety, RestartPolicy, RetryPolicy,
 };
 use harmos::{Error, Refusal, Runtime};
 
@@ -204,8 +204,8 @@ impl Operation for Read {
         Ok(())
     }
 
-    fn classify(_: &Self::Error) -> Failure {
-        Failure::Transient
+    fn classify(_: &Self::Error) -> FailureKind {
+        FailureKind::Transient
     }
 }
 

@@ -32,8 +32,8 @@ use harmos_contract::plugin::{Declared, Plugin};
 use harmos_guest::Context;
 use harmos_guest::Host;
 use harmos_guest::operations::{
-    Failure, Operation, OperationPolicy, RestartPolicy, RetryPolicy, ServingError, WireDeclaration,
-    WireTable, lifecycle,
+    FailureKind, Operation, OperationPolicy, RestartPolicy, RetryPolicy, ServingError,
+    WireDeclaration, WireTable, lifecycle,
 };
 
 /* === Constants === */
@@ -285,8 +285,8 @@ impl Operation for ReadOperation {
         }
         Ok(())
     }
-    fn classify(_: &Self::Error) -> Failure {
-        Failure::Transient
+    fn classify(_: &Self::Error) -> FailureKind {
+        FailureKind::Transient
     }
 }
 

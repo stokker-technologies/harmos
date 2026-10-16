@@ -99,11 +99,11 @@ impl harmos::Plugin for Invoker {
         let first = core
             .call_as::<harmos::operations::host::Invoke>(request.clone())
             .await
-            .map_err(Refusal::of)?;
+            .map_err(Refusal::from)?;
         let second = core
             .call_as::<harmos::operations::host::Invoke>(request)
             .await
-            .map_err(Refusal::of)?;
+            .map_err(Refusal::from)?;
         if first != second || first.position == 0 {
             return Err(Refusal::of(
                 "keyed calls did not retain the same journal receipt",
