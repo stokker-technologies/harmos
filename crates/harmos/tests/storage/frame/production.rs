@@ -126,21 +126,17 @@ fn contract_scenario() {
                         memory_bytes: NonZeroUsize::new(8 * 1024 * 1024).unwrap(),
                         ..defaults
                     };
-                    // The Output Exceeds The Default Working Memory But Fits The View Budget.
+                    // The Same Output Uses Shared Capacity Under Either View Profile.
                     let output = NonZeroUsize::new(6 * 1024 * 1024).unwrap();
-                    assert!(matches!(
-                        f.storage.prepare_read_production(output),
-                        Err(Error::ResourceExhausted {
-                            resource: "query decoded memory"
-                        })
-                    ));
+                    let preparation = f.storage.prepare_read_production(output).unwrap();
+                    drop(preparation);
                     let interactive = f.storage.view_with_limits(defaults).await.unwrap();
-                    assert!(matches!(
-                        f.storage.prepare_read_production_in(&interactive, output),
-                        Err(Error::ResourceExhausted {
-                            resource: "query decoded memory"
-                        })
-                    ));
+                    let preparation = f
+                        .storage
+                        .prepare_read_production_in(&interactive, output)
+                        .unwrap();
+                    assert_eq!(preparation.execution_limits(), Some(defaults));
+                    drop(preparation);
                     drop(interactive);
                     let finalization = f.storage.view_with_limits(budget).await.unwrap();
                     let baseline = f.storage.status().read_bytes;
@@ -149,9 +145,7 @@ fn contract_scenario() {
                         .prepare_read_production_in(&finalization, output)
                         .unwrap();
                     assert_eq!(preparation.execution_limits(), Some(budget));
-                    // The Ceiling Reserved At Open Covers The Production; Only Its
-                    // Entry Overhead Weighs On The Pool.
-                    assert!(finalization.charged_bytes().unwrap() >= budget.memory_bytes.get());
+                    assert!(finalization.charged_bytes().unwrap() >= output.get());
                     assert!(f.storage.status().read_bytes < baseline + budget.memory_bytes.get());
                     drop(preparation);
                     assert_eq!(f.storage.status().read_bytes, baseline);

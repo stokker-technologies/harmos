@@ -120,8 +120,11 @@ impl<C> StorageManager<C> {
         let metadata = std::mem::size_of::<Execution>()
             .checked_add(2 * std::mem::size_of::<usize>())
             .ok_or_else(super::query::decoded_limit)?;
-        let working = limits
-            .memory_bytes
+        let working = self
+            .inner
+            .settings
+            .budget
+            .read_memory_bytes
             .get()
             .checked_sub(metadata)
             .and_then(|bytes| bytes.checked_sub(2 * ENTRY_OVERHEAD))
@@ -129,7 +132,7 @@ impl<C> StorageManager<C> {
         if max_bytes.get() > working {
             return Err(super::query::decoded_limit());
         }
-        // The Execution Limit Is A Ceiling, Not A Whole-Pool Reservation.
+        // Output And Scratch Draw From The Same Shared Read Pool.
         let scratch_bytes = self
             .inner
             .settings
