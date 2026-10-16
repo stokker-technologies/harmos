@@ -1456,3 +1456,42 @@ fn contract_scenario() {
         });
     }
 }
+
+#[tokio::test]
+async fn cancelled_output_admission_keeps_typed_cursor() {
+    let f = Fixture::new().await;
+    let position = f.append(7).await;
+    f.storage.flush().await.unwrap();
+    let mut query = RecordQuery::new(schema(), decode);
+    query.options.execution = Some(storage_settings().query_execution.elastic());
+    let mut reader = f.storage.query(query).await.unwrap();
+    let occupied = f.storage.status().read_bytes;
+    let probe = f.storage.reserve_arrow_memory(0).unwrap();
+    let overhead = f.storage.status().read_bytes - occupied;
+    drop(probe);
+    let capacity = storage_settings().budget.read_memory_bytes.get();
+    let external = f
+        .storage
+        .reserve_arrow_memory(capacity - occupied - overhead)
+        .unwrap();
+    let mut next = Box::pin(reader.next_page());
+    assert!(matches!(
+        std::future::poll_fn(|cx| std::task::Poll::Ready(std::future::Future::poll(
+            next.as_mut(),
+            cx
+        )))
+        .await,
+        std::task::Poll::Pending
+    ));
+    drop(next);
+    drop(external);
+
+    // Cancellation Before Fetch Must Leave The Original Typed Cursor Intact.
+    let page = reader.next_page().await.unwrap().unwrap();
+    assert_eq!(page.len(), 1);
+    assert_eq!(page[0].position, position.sequence);
+    drop(page);
+    assert!(reader.next_page().await.unwrap().is_none());
+    drop(reader);
+    f.finish().await;
+}
