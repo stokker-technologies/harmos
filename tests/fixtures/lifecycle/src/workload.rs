@@ -253,10 +253,11 @@ impl Workload {
                 });
             }
         }
+        // Queued Operations Never Initialize Or Acquire Cleanup Resources
         for (slot, runs) in [1, 0].into_iter().enumerate() {
             if self.trace.runs[slot].load(Ordering::SeqCst) != runs
-                || self.trace.stopped[slot].load(Ordering::SeqCst) != 1
-                || self.trace.finalized[slot].load(Ordering::SeqCst) != 1
+                || self.trace.stopped[slot].load(Ordering::SeqCst) != runs
+                || self.trace.finalized[slot].load(Ordering::SeqCst) != runs
             {
                 return Err(harmos::Error::NotReady {
                     domain: "shutdown exercise cleanup",
@@ -275,14 +276,14 @@ impl Workload {
                 domain: "shutdown exercise storage backlog",
             })?;
         let stops = self.trace.operation_stop.each_ref().map(OnceLock::get);
-        let (Some(running), Some(queued), Some(observer)) =
+        let (Some(running), None, Some(observer)) =
             (stops[0], stops[1], self.trace.observer_stop.get())
         else {
             return Err(harmos::Error::NotReady {
                 domain: "shutdown exercise timing",
             });
         };
-        if [running, queued, observer]
+        if [running, observer]
             .into_iter()
             .any(|time| *time > settlement)
         {
@@ -298,7 +299,7 @@ impl Workload {
                 "accepted_position": accepted,
                 "stored_position": stored,
                 "pending_entries": pending,
-                "operation_stop_ns": [running.as_nanos(), queued.as_nanos()],
+                "operation_stop_ns": running.as_nanos(),
                 "observer_stop_ns": observer.as_nanos(),
                 "settlement_ns": settlement.as_nanos(),
             }),

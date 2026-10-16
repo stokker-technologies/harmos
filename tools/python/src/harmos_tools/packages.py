@@ -191,6 +191,10 @@ def build(repository: Path) -> None:
                         f"multiple schema build contexts selected for {producer}"
                     )
         result.check_returncode()
+    # Keep Development Assertions With Basic Guest Optimization
+    guest_environment = os.environ.copy()
+    if build_profile() == "dev":
+        guest_environment["CARGO_PROFILE_DEV_OPT_LEVEL"] = "1"
     # The Reusable Guest Build Owns Compilation And Componentization Together.
     result = subprocess.run(
         [
@@ -204,6 +208,7 @@ def build(repository: Path) -> None:
             "--json",
         ],
         cwd=repository,
+        env=guest_environment,
         check=False,
         capture_output=True,
         text=True,

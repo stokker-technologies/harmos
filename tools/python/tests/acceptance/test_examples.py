@@ -227,9 +227,8 @@ def test_schematic_signal(
             )
             settlement = timings["settlement_ns"]
             assert 0 <= settlement < 1_000_000_000
-            assert len(timings["operation_stop_ns"]) == 2
             for dispatched in [
-                *timings["operation_stop_ns"],
+                timings["operation_stop_ns"],
                 timings["observer_stop_ns"],
             ]:
                 assert 0 <= dispatched <= settlement
