@@ -1970,9 +1970,9 @@ impl MemoryReservation {
                 // Retained Values Outlive Their Reader. Collection Already Moved
                 // Their Existing Charges Into The Shared, View-Less Read Ledger.
                 self.kind = ReservationKind::Read;
-            } else {
-                return Err(Error::ViewExpired);
             }
+            // A Released View Awaiting Backend Cleanup Still Ledgers Its Retained
+            // Values; Collection Moves Them To The Shared Ledger Once It Leaves.
         }
         state.charge_read(
             self.kind,

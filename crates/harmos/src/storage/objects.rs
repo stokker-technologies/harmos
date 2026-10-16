@@ -17,7 +17,7 @@ use std::num::NonZeroUsize;
 // Third Party Imports
 // Local Imports
 use super::manager::{Domain, ENTRY_OVERHEAD, Operation, encoded_size};
-use super::query::{execution_timeout, remaining_budget};
+use super::query::{decoded_limit, execution_timeout, remaining_budget};
 use super::{
     ObjectCatalog, ObjectEntry, ObjectPoint, ObjectReceipt, ObjectRevision, ObjectValue,
     ObjectVersion, ObjectVersionToken, QueryValue, StorageCursor, StorageManager, StorageSchema,
@@ -277,6 +277,9 @@ impl<C: ObjectCatalog> StorageManager<C> {
             }
             None => self.inner.settings.query_execution,
         };
+        if max_bytes > self.inner.settings.budget.read_memory_bytes {
+            return Err(decoded_limit());
+        }
         let schema = object_schema::<T>()?;
         let query = ObjectPoint {
             schema: schema.id.clone(),
@@ -314,11 +317,11 @@ impl<C: ObjectCatalog> StorageManager<C> {
                             })
                             .and_then(|size| size.checked_add(ENTRY_OVERHEAD))
                             .and_then(|size| size.checked_add(std::mem::size_of::<MessageError>()))
-                            .ok_or_else(super::query::decoded_limit)?;
+                            .ok_or_else(decoded_limit)?;
                         let allowance = bytes
                             .get()
                             .checked_sub(metadata)
-                            .ok_or_else(super::query::decoded_limit)?;
+                            .ok_or_else(decoded_limit)?;
                         let required =
                             T::decoding_memory(&object.value.payload).map_err(|error| {
                                 Error::backend(

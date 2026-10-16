@@ -980,6 +980,13 @@ impl<C> StorageManager<C> {
 
     fn query_page(&self, options: &QueryOptions) -> Result<ReadLimits> {
         let page = options.page.unwrap_or(self.inner.settings.query_page);
+        // A Page That Can Never Fit The Shared Budget Is Refused Rather Than Awaited.
+        if page.bytes > self.inner.settings.budget.read_memory_bytes {
+            return Err(Error::InvalidInput {
+                field: "read page",
+                reason: "page exceeds read memory budget",
+            });
+        }
         Ok(page)
     }
 }
@@ -1014,11 +1021,11 @@ impl<R, T: MemorySize> QueryResult<R, T> {
         map: impl FnOnce(&U, NonZeroUsize) -> Result<V>,
     ) -> Result<QueryValue<V>> {
         let view = self.view().cloned().ok_or(Error::ViewExpired)?;
+        input.check_origin(view.manager())?;
         let computation = view.computation()?.ok_or(Error::ViewExpired)?;
         let timeout = computation.timeout();
         let started = tokio::time::Instant::now();
         let _live = view.pin()?;
-        input.check_origin(view.manager())?;
         if started.elapsed() >= timeout {
             return Err(execution_timeout());
         }

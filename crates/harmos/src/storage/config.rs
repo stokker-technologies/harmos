@@ -40,10 +40,8 @@ pub struct StorageSettings {
     pub target_batch_bytes: NonZeroUsize,
     pub max_batch_bytes: NonZeroUsize,
     pub query_page: ReadLimits,
-
     pub query_decoded_bytes: NonZeroUsize,
     pub query_execution: QueryLimits,
-
     pub replication_limits: ReadLimits,
     pub replica_lag_positions: NonZeroU64,
     pub replication_shutdown: Duration,
