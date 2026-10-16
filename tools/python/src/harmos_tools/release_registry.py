@@ -15,6 +15,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import tempfile
 import urllib.error
 import urllib.parse
@@ -24,7 +25,6 @@ from pathlib import Path
 from typing import Any
 
 # Third Party Imports
-
 # Local Imports
 # isort: split
 from . import _policy
@@ -423,15 +423,44 @@ def route(
     )
 
 
+def require_tag(directory: Path, settings: dict) -> None:
+    tag = settings["tag"]
+    if re.fullmatch(r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", tag) is None:
+        raise _policy.ToolError("release requires a stable release tag")
+    if settings["provider"] == "github":
+        allowed = (
+            os.environ.get("GITHUB_EVENT_NAME") == "push"
+            and os.environ.get("GITHUB_REF") == "refs/tags/" + tag
+            and os.environ.get("GITHUB_REF_PROTECTED") == "true"
+        )
+        sha = os.environ.get("GITHUB_SHA")
+    else:
+        allowed = (
+            os.environ.get("CI_PIPELINE_SOURCE") == "push"
+            and os.environ.get("CI_COMMIT_TAG") == tag
+            and os.environ.get("CI_COMMIT_REF_PROTECTED") == "true"
+        )
+        sha = os.environ.get("CI_COMMIT_SHA")
+    if not allowed:
+        raise _policy.ToolError(
+            "release packaging requires a protected stable release-tag push"
+        )
+    actual = _policy.execute(
+        directory, ["git", "rev-parse", "HEAD"], capture=True
+    ).strip()
+    tagged = _policy.execute(
+        directory, ["git", "rev-parse", "refs/tags/" + tag + "^{commit}"], capture=True
+    ).strip()
+    if actual != sha or tagged != actual:
+        raise _policy.ToolError("release tag SHA differs from checkout")
+
+
 def check_route(directory: Path, settings: dict) -> None:
     if settings["provider"] == "github":
         event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
         proposal = event.get("pull_request")
         if not isinstance(proposal, dict):
-            if os.environ.get("GITHUB_REF") != "refs/heads/main":
-                raise _policy.ToolError(
-                    "release workflow must identify a PR or main push"
-                )
+            require_tag(directory, settings)
             authorize(directory, settings, {"sha": os.environ["GITHUB_SHA"]})
             return
         route(
@@ -451,31 +480,21 @@ def check_route(directory: Path, settings: dict) -> None:
                 os.environ["CI_MERGE_REQUEST_DIFF_BASE_SHA"],
             )
         else:
-            if (
-                os.environ.get("CI_PIPELINE_SOURCE") != "push"
-                or os.environ.get("CI_COMMIT_BRANCH") != "main"
-                or os.environ.get("CI_COMMIT_REF_PROTECTED") != "true"
-            ):
-                raise _policy.ToolError(
-                    "release route requires a protected main push or merge request"
-                )
-            actual = _policy.execute(
-                directory, ["git", "rev-parse", "HEAD"], capture=True
-            ).strip()
-            if actual != os.environ.get("CI_COMMIT_SHA"):
-                raise _policy.ToolError("native main push SHA differs from checkout")
+            require_tag(directory, settings)
+            authorize(directory, settings, {"sha": os.environ["CI_COMMIT_SHA"]})
 
 
 def authorize(directory: Path, settings: dict, manifest: dict) -> None:
+    require_tag(directory, settings)
     sha = manifest["sha"]
     if settings["provider"] == "github":
         if (
             os.environ.get("GITHUB_EVENT_NAME") != "push"
-            or os.environ.get("GITHUB_REF") != "refs/heads/main"
+            or os.environ.get("GITHUB_REF") != "refs/tags/" + settings["tag"]
             or os.environ.get("GITHUB_SHA") != sha
         ):
             raise _policy.ToolError(
-                "publication requires the protected main merge push"
+                "publication requires the protected release-tag push"
             )
         branch = document(settings, "branches/main")
         if not isinstance(branch, dict) or not branch.get("protected"):
@@ -503,12 +522,12 @@ def authorize(directory: Path, settings: dict, manifest: dict) -> None:
     else:
         if (
             os.environ.get("CI_PIPELINE_SOURCE") != "push"
-            or os.environ.get("CI_COMMIT_BRANCH") != "main"
+            or os.environ.get("CI_COMMIT_TAG") != settings["tag"]
             or os.environ.get("CI_COMMIT_SHA") != sha
             or os.environ.get("CI_COMMIT_REF_PROTECTED") != "true"
         ):
             raise _policy.ToolError(
-                "publication requires the protected main merge push"
+                "publication requires the protected release-tag push"
             )
         proposals = pages(settings, f"repository/commits/{sha}/merge_requests")
         matches = [
@@ -541,7 +560,7 @@ def authorize(directory: Path, settings: dict, manifest: dict) -> None:
             "main",
             proposal["diff_refs"]["base_sha"],
         )
-    # A merge authorizes publication; ancestry must survive promotion.
+    # A Release Tag Selects An Approved Merge; Ancestry Must Survive Promotion.
     source_sha = (
         proposal["head"]["sha"] if settings["provider"] == "github" else proposal["sha"]
     )
@@ -698,18 +717,9 @@ def finalize(directory: Path, settings: dict, root: Path, manifest: dict) -> Non
     tag = urllib.parse.quote(manifest["tag"], safe="")
     if settings["provider"] == "github":
         existing_tag = document(settings, "git/ref/tags/" + tag)
-        if (
-            existing_tag
-            and existing_tag.get("object", {}).get("sha") != manifest["sha"]
-        ):
-            raise _policy.ToolError("existing release tag differs")
-        if existing_tag is None:
-            document(
-                settings,
-                "git/refs",
-                "POST",
-                {"ref": "refs/tags/" + manifest["tag"], "sha": manifest["sha"]},
-            )
+        resolved = document(settings, "commits/" + tag) if existing_tag else None
+        if not resolved or resolved.get("sha") != manifest["sha"]:
+            raise _policy.ToolError("existing release tag is absent or differs")
         remote = document(settings, f"releases/{state['release_id']}")
         if not remote or not remote.get("draft"):
             raise _policy.ToolError(
@@ -721,7 +731,10 @@ def finalize(directory: Path, settings: dict, root: Path, manifest: dict) -> Non
             raise _policy.ToolError("published release visibility cannot be verified")
     else:
         existing_tag = document(settings, "repository/tags/" + tag)
-        if existing_tag and existing_tag.get("commit", {}).get("id") != manifest["sha"]:
+        if (
+            not existing_tag
+            or existing_tag.get("commit", {}).get("id") != manifest["sha"]
+        ):
             raise _policy.ToolError("existing release tag differs")
         created = document(
             settings,
@@ -777,7 +790,8 @@ def verify_publication(directory: Path, settings: dict) -> None:
         }
         data = request(settings, downloads["release.json"], binary=True)
         tagged = document(settings, "git/ref/tags/" + tag)
-        sha = tagged["object"]["sha"]
+        resolved = document(settings, "commits/" + tag) if tagged else None
+        sha = resolved.get("sha") if isinstance(resolved, dict) else None
     else:
         remote = document(settings, "releases/" + tag)
         if not remote:

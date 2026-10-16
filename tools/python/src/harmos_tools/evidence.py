@@ -61,6 +61,7 @@ SLOW_MILLISECONDS = {"unit": 100, "integration": 5_000, "acceptance": 30_000}
 # Instrumented runs multiply deadlines and never report ordinary slow findings.
 COVERAGE_FACTOR = 5
 COVERAGE_VARIABLE = "STKR_COVERAGE"
+PROFILE_VARIABLE = "STKR_TEST_PROFILE"
 VALIDATION = ".stkr/tests"
 BENCHMARKS = ".stkr/benchmarks"
 STATE = ".stkr/state"
@@ -168,7 +169,7 @@ class RustSelection:
     packages: tuple[str, ...] = ()
     exclude: tuple[str, ...] = ()
     coverage_host_only: bool = False
-    native_profile: str = "release"
+    native_profile: str = "dev"
     targets: tuple[str, ...] = ()
     filter: str | None = None
 
@@ -1541,7 +1542,8 @@ def _rust_selection(table: dict[str, Any], host_only: bool) -> RustSelection:
         coverage_host_only=host_only,
         native_profile=(
             _native_profile(table.get("native_profile"), "testing.rust.native_profile")
-            or "release"
+            or _native_profile(os.environ.get(PROFILE_VARIABLE))
+            or "dev"
         ),
     )
     if (selection.packages and selection.exclude) or any(
@@ -2312,8 +2314,9 @@ def _rust(
     units = ["--lib", "--bins"] if category == "unit" else []
     runner += [
         *(archived or [*cargo_selection(selection), *units]),
-        "--config-file",
-        str(native),
+        # Layer The Profile Under The Repository Config So Its Test Groups Apply.
+        "--tool-config-file",
+        f"stkr:{native.resolve()}",
         "--profile",
         "stkr",
         "--no-tests",
@@ -2382,6 +2385,8 @@ def _rust(
                     "cargo",
                     "llvm-cov",
                     "report",
+                    "--profile",
+                    selection.native_profile,
                     *report_archive,
                     "--cobertura",
                     "--ignore-filename-regex",
@@ -2401,6 +2406,8 @@ def _rust(
                     "cargo",
                     "llvm-cov",
                     "report",
+                    "--profile",
+                    selection.native_profile,
                     *report_archive,
                     "--html",
                     "--output-dir",
@@ -2508,8 +2515,8 @@ def _python(
     instrument = coverage and native and not preinstalled
     profile = (
         selection.native_profile
-        or manifest.get("tool", {}).get("maturin", {}).get("profile")
-        or "release"
+        or _native_profile(os.environ.get(PROFILE_VARIABLE))
+        or "dev"
     )
     suite = project / "tests" / category
     if not suite.is_dir():

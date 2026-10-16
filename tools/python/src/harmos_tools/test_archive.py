@@ -15,12 +15,11 @@ import argparse
 import hashlib
 import json
 import os
-from dataclasses import asdict, replace
 from contextlib import nullcontext
+from dataclasses import asdict, replace
 from pathlib import Path
 
 # Third Party Imports
-
 # Local Imports
 from . import evidence, release
 

@@ -36,6 +36,7 @@ Thumbs.db
 # Private Agent Artifacts
 /.stkr/state/
 /.stkr/task/
+/.stkr/specifications/
 /.stkr/generated/
 
 # Repository Tooling

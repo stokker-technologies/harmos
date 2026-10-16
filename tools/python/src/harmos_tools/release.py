@@ -18,11 +18,12 @@ import platform
 import re
 import shutil
 import subprocess
+import sys
 import time
+from functools import cache
 from pathlib import Path
 
 # Third Party Imports
-
 # Local Imports
 # isort: split
 from . import _policy, evidence, release_registry, version
@@ -60,6 +61,7 @@ def inputs(directory: Path) -> dict:
     if output(["git", "status", "--porcelain", "--untracked-files=normal"]).strip():
         tree = None
     graph = []
+    overrides = []
     if (directory / "Cargo.toml").is_file():
         metadata = json.loads(
             output(
@@ -71,11 +73,18 @@ def inputs(directory: Path) -> dict:
             source = package["source"]
             if source is None:
                 manifest = Path(package["manifest_path"]).resolve()
-                if not manifest.is_relative_to(directory.resolve()):
-                    raise _policy.ToolError(
-                        f"unpublished local dependency override: {package['name']}"
+                if manifest.is_relative_to(directory.resolve()):
+                    relative = manifest.relative_to(directory.resolve()).as_posix()
+                    source = "path:" + relative
+                else:
+                    overrides.append(
+                        {
+                            "package": package["name"],
+                            "manifest": manifest.as_posix(),
+                            "source": _override_source(manifest.parent),
+                        }
                     )
-                source = "path:" + manifest.relative_to(directory.resolve()).as_posix()
+                    source = "local:" + manifest.as_posix()
             identities[package["id"]] = (
                 f"{package['name']}@{package['version']}|{source}"
             )
@@ -106,12 +115,32 @@ def inputs(directory: Path) -> dict:
         name: os.environ.get(name)
         for name in ("RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS", "CARGO_BUILD_TARGET")
     }
-    return {
+    identity = {
         "source_tree": tree,
         "graph": sorted(graph, key=lambda node: node["package"]),
         "locks": locks,
         "build_environment": environment,
     }
+
+    # Local Overrides Mark The Identity Unpublishable; CI Refuses Them Outright.
+    if overrides:
+        overrides.sort(key=lambda override: (override["package"], override["manifest"]))
+        if continuous_integration():
+            names = ", ".join(override["package"] for override in overrides)
+            raise _policy.ToolError(f"unpublished local dependency override: {names}")
+        _warn_overrides(
+            tuple((item["package"], item["manifest"]) for item in overrides)
+        )
+        identity["local_overrides"] = overrides
+    return identity
+
+
+def continuous_integration() -> bool:
+    """Whether a CI runner executes this process."""
+    return any(
+        os.environ.get(name, "").lower() in {"1", "true"}
+        for name in ("CI", "GITHUB_ACTIONS", "GITLAB_CI")
+    )
 
 
 def tag_version(tag: str) -> str:
@@ -288,6 +317,7 @@ def prepare(directory: Path, settings: dict) -> None:
 
 
 def stage(directory: Path, settings: dict, folder: Path) -> None:
+    release_registry.require_tag(directory, settings)
     selected = assets(directory, settings)
     if _policy.policy(directory, "version").get("value") != tag_version(
         settings["tag"]
@@ -295,6 +325,8 @@ def stage(directory: Path, settings: dict, folder: Path) -> None:
         raise _policy.ToolError("prepared package version differs from release tag")
     version.run(directory, "check")
     identity = inputs(directory)
+    if identity.get("local_overrides"):
+        raise _policy.ToolError("release staging rejects local dependency overrides")
     sha = evidence.revision(directory)
     if not identity["source_tree"] or not sha:
         raise _policy.ToolError("release staging requires clean committed source")
@@ -398,6 +430,12 @@ def verify_platform(
             "release SHA or tag differs; new commits require a new build"
         )
     current = inputs(directory)
+    if current.get("local_overrides") or receipt.get("inputs", {}).get(
+        "local_overrides"
+    ):
+        raise _policy.ToolError(
+            "release verification rejects local dependency overrides"
+        )
     # Platform environment remains in the original receipt; common locked/source inputs must match.
     for name in ["source_tree", "graph", "locks"]:
         if (
@@ -496,6 +534,9 @@ def run(directory: Path, verb: str) -> None:
         prepare(directory, settings)
         return
     tag_version(settings["tag"])
+    if verb == "guard":
+        release_registry.require_tag(directory, settings)
+        return
     if verb == "route":
         release_registry.check_route(directory, settings)
         return
@@ -524,6 +565,49 @@ def run(directory: Path, verb: str) -> None:
 
 # === Private Functions === #
 
+
+def _override_source(directory: Path) -> str:
+    """Bind Local Development Evidence To The External Checkout Contents."""
+    root = Path(
+        subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=directory,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        ).stdout.strip()
+    )
+    files = subprocess.run(
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+        cwd=root,
+        capture_output=True,
+        check=True,
+    ).stdout.split(b"\0")
+    digest = hashlib.sha256()
+    for name in sorted(set(files) - {b""}):
+        path = root / os.fsdecode(name)
+        digest.update(name + b"\0")
+        if path.is_symlink():
+            digest.update(b"link\0" + os.fsencode(os.readlink(path)))
+        elif path.is_file():
+            digest.update(b"file\0" + hashlib.sha256(path.read_bytes()).digest())
+        else:
+            digest.update(b"missing\0")
+    return digest.hexdigest()
+
+
+@cache
+def _warn_overrides(overrides: tuple[tuple[str, str], ...]) -> None:
+    """Warn once per process that local overrides make evidence unpublishable."""
+    listing = "\n".join(f"  {package}: {manifest}" for package, manifest in overrides)
+    print(
+        "warning: unpublished local dependency overrides; local evidence is not "
+        f"publishable and CI refuses this tree:\n{listing}",
+        file=sys.stderr,
+    )
+
+
 # === Entry Point === #
 
 if __name__ == "__main__":
@@ -531,6 +615,7 @@ if __name__ == "__main__":
         _policy.main(
             "release",
             [
+                "guard",
                 "prepare",
                 "stage",
                 "validate",

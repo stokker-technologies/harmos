@@ -17,7 +17,6 @@ import tomllib
 from pathlib import Path
 
 # Third Party Imports
-
 # Local Imports
 from . import _policy
 
