@@ -1191,3 +1191,24 @@ fn owned_stream_admission() {
             });
     });
 }
+
+#[tokio::test]
+async fn completed_producer_releases_unused_output_reservation() {
+    let f = Fixture::new(storage_settings()).await;
+    let baseline = f.storage.status().read_bytes;
+    let allowance = NonZeroUsize::new(4096).unwrap();
+    let preparation = f.storage.prepare_read_production(allowance).unwrap();
+    let computation = preparation.computation().unwrap();
+    let reserved = f.storage.status().read_bytes;
+    let output = preparation.finish(7u64).unwrap();
+    assert_eq!(
+        reserved - f.storage.status().read_bytes,
+        allowance.get() - std::mem::size_of::<u64>()
+    );
+    assert_eq!(*output.value(), 7);
+    computation.check().unwrap();
+    drop(computation);
+    drop(output);
+    assert_eq!(f.storage.status().read_bytes, baseline);
+    f.finish().await;
+}

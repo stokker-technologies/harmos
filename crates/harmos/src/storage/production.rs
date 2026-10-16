@@ -206,10 +206,8 @@ impl StorageProductionPreparation {
                 field: "storage production",
                 reason: "size overflow",
             })?;
-        // A Live Source Retains Its Original Working Workspace For Later Reads.
-        if execution.is_none() {
-            reservation.retain_read(charged);
-        }
+        // Execution Scratch Has Its Own Reservation; Retain Only The Produced Value.
+        reservation.retain_read(charged);
         Ok(StorageProduction {
             value,
             _reservation: reservation,
