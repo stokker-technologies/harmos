@@ -250,9 +250,7 @@ fn reserve(
             resource: "file mutation command",
         });
     }
-    state
-        .receipts
-        .insert(mutation, fingerprint, outcome_bytes, settings)
+    state.receipts.insert(mutation, fingerprint, outcome_bytes)
 }
 
 fn invalid(reason: &'static str) -> Error {

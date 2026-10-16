@@ -92,7 +92,6 @@ impl Store {
             StorageBackends {
                 primary: self.data.clone(),
                 state: self.recovery.clone(),
-                replicas: Vec::new(),
             },
             config,
         )
@@ -622,8 +621,6 @@ pub(super) fn contract_scenario() {
                     let store = Store::new();
                     let mut config = config();
                     config.request.max_pending_write_bytes = NonZeroUsize::new(256 * 1024).unwrap();
-                    config.target_batch_bytes = config.request.max_pending_write_bytes;
-                    config.max_batch_bytes = config.request.max_pending_write_bytes;
                     let storage = store.manager(config);
                     assert!(
                         builder(policy(100))
@@ -654,8 +651,6 @@ pub(super) fn contract_scenario() {
                     let mut settings = config();
                     settings.request.max_pending_write_bytes =
                         NonZeroUsize::new(1024 * 1024).unwrap();
-                    settings.max_batch_bytes = NonZeroUsize::new(512 * 1024).unwrap();
-                    settings.target_batch_bytes = settings.max_batch_bytes;
                     let storage = store.manager(settings);
                     let runtime = builder(policy(1))
                         .runtime_with_storage(&storage)

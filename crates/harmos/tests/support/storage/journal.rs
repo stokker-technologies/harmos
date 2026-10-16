@@ -31,7 +31,7 @@ struct Commit {
     #[serde(default)]
     pruned: Vec<u64>,
     #[serde(default)]
-    release: Option<ObjectRetentionRelease>,
+    release: Option<Release>,
     through: StorageCursor,
     entries: Vec<Entry>,
 }
@@ -121,11 +121,13 @@ impl Journal {
                 {
                     return Err(failure(BackendFailure::Corrupt));
                 }
-                for position in commit.pruned {
-                    data.objects.lock().unwrap().remove(&position);
+                if !commit.pruned.is_empty() {
                     data.control
                         .lost_objects_through
-                        .fetch_max(position as usize, Ordering::SeqCst);
+                        .fetch_max(commit.through.sequence as usize, Ordering::SeqCst);
+                }
+                for position in commit.pruned {
+                    data.objects.lock().unwrap().remove(&position);
                 }
                 continue;
             }
@@ -287,7 +289,7 @@ impl Journal {
         file.sync_all().map_err(io_error)
     }
 
-    pub(super) fn release(&self, release: &ObjectRetentionRelease) -> Result<()> {
+    pub(super) fn release(&self, release: &Release) -> Result<()> {
         let _frontier = self.lock.lock().unwrap();
         let record = Commit {
             pruned: vec![],

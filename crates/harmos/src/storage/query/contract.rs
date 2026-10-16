@@ -23,9 +23,7 @@ use crate::storage::codec::{
     Code, Id, Nested, Optional, Repeated, Time, Unsigned, coded, product, variants,
 };
 use crate::storage::object_values::Key;
-use crate::storage::{
-    ObjectKey, ReadKind, ReadSelection, SchemaKey, SourceTimeRange, StorageCursor,
-};
+use crate::storage::{ObjectKey, SchemaKey, StorageCursor};
 use crate::{Identifier, MemorySize, Result};
 
 /* === Constants === */
@@ -119,7 +117,7 @@ pub enum QueryOutput {
 /* === Implementations === */
 impl Query {
     pub fn validate(&self) -> Result<()> {
-        self.source.selection()?;
+        self.source.validate()?;
         if self.transforms.len() > 64 {
             return Err(super::transform::invalid("too many query transforms"));
         }
@@ -154,44 +152,12 @@ impl Source {
         }
     }
 
-    pub fn selection(&self) -> Result<ReadSelection> {
-        let kind = match self {
-            Self::Objects(_) => ReadKind::Objects,
-            Self::Records(_) => ReadKind::Records,
-            Self::Stream(_) => ReadKind::Stream,
-            Self::Schemas(_) => ReadKind::Schemas,
-            Self::Files(_) => ReadKind::Files,
-        };
-        let mut selection = ReadSelection::new(kind);
+    pub fn validate(&self) -> Result<()> {
         match self {
-            Self::Objects(source) => {
-                selection.schema = source.schema.clone();
-                selection.object_key = source.key.clone();
-                selection.object_versions = match source.versions {
-                    ObjectVersions::Latest => crate::storage::ObjectVersions::Latest,
-                    ObjectVersions::Revisions => crate::storage::ObjectVersions::Revisions,
-                };
-            }
-            Self::Records(source) => {
-                selection.schema = Some(source.schema.clone());
-                selection.scope = source.scope.clone();
-                selection.item = source.item.clone();
-                selection.source_time = window(source.source_start, source.source_end)?;
-            }
-            Self::Stream(source) => {
-                selection.schema = Some(source.schema.clone());
-                selection.scope = source.scope.clone();
-                selection.item = source.item.clone();
-                selection.stream = source.stream.clone();
-                selection.source_time = window(source.source_start, source.source_end)?;
-            }
-            Self::Schemas(source) => selection.schema = source.schema.clone(),
-            Self::Files(source) => {
-                selection.scope = source.scope.clone();
-                selection.item = source.item.clone();
-            }
+            Self::Records(selection) => window(selection.source_start, selection.source_end),
+            Self::Stream(selection) => window(selection.source_start, selection.source_end),
+            Self::Objects(_) | Self::Schemas(_) | Self::Files(_) => Ok(()),
         }
-        Ok(selection)
     }
 }
 
@@ -295,10 +261,10 @@ impl MemorySize for QueryOutput {
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn window(start: Option<SystemTime>, end: Option<SystemTime>) -> Result<Option<SourceTimeRange>> {
+fn window(start: Option<SystemTime>, end: Option<SystemTime>) -> Result<()> {
     match (start, end) {
-        (None, None) => Ok(None),
-        (Some(start), Some(end)) if start < end => Ok(Some(SourceTimeRange { start, end })),
+        (None, None) => Ok(()),
+        (Some(start), Some(end)) if start < end => Ok(()),
         _ => Err(super::transform::invalid(
             "source window requires increasing start and end",
         )),

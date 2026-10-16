@@ -24,9 +24,6 @@ mod files;
 mod operations;
 #[path = "staging.rs"]
 mod staging;
-#[allow(dead_code, unused_imports)]
-#[path = "../../support/storage_views.rs"]
-mod views;
 
 /* === Re-Exports === */
 

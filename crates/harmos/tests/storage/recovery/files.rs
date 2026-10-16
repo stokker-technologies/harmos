@@ -15,7 +15,7 @@ use std::{fs::OpenOptions, io::Write};
 // Third Party Imports
 // Local Imports
 use harmos::storage::state::{RecoveryEntry, RecoverySnapshot, StateBackend, file::FileBackend};
-use harmos::storage::{RecoveryPosition, StorageCursor};
+use harmos::storage::{ReadLimits, RecoveryPosition, StorageCursor};
 
 /* === Constants === */
 /* === Macros === */
@@ -72,7 +72,7 @@ async fn checkpoint_tail_survives_reopen_and_incomplete_append() {
     assert_eq!(reopened.open().await.unwrap().sequence, 3);
     assert_eq!(
         reopened
-            .read_snapshot(settings.snapshot_bytes)
+            .read_snapshot(std::num::NonZeroUsize::new(1024 * 1024).unwrap())
             .await
             .unwrap(),
         Some(snapshot.clone())
@@ -82,7 +82,14 @@ async fn checkpoint_tail_survives_reopen_and_incomplete_append() {
         sequence: 3,
     };
     let page = reopened
-        .read_entries(&snapshot.through, &through, settings.query_page)
+        .read_entries(
+            &snapshot.through,
+            &through,
+            ReadLimits {
+                rows: std::num::NonZeroUsize::new(64).unwrap(),
+                bytes: std::num::NonZeroUsize::new(64 * 1024).unwrap(),
+            },
+        )
         .await
         .unwrap();
     assert_eq!(page.entries, entries[2..]);
@@ -162,7 +169,14 @@ async fn state_root_has_one_owner_until_close() {
         sequence: 0,
     };
     let page = second
-        .read_entries(&after, &position, settings.query_page)
+        .read_entries(
+            &after,
+            &position,
+            ReadLimits {
+                rows: std::num::NonZeroUsize::new(64).unwrap(),
+                bytes: std::num::NonZeroUsize::new(64 * 1024).unwrap(),
+            },
+        )
         .await
         .unwrap();
     assert_eq!(page.entries, vec![entry]);

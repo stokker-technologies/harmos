@@ -23,9 +23,9 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use super::{Data, Recovery, config, history, record, schema, schema_query};
+use super::{Data, Recovery, config, history, record, schema};
 use harmos::storage::*;
-use harmos::{Error, Identifier, Runtime, state::Envelope, state::Position};
+use harmos::{Identifier, Runtime, state::Envelope, state::Position};
 
 /* === Constants === */
 
@@ -166,7 +166,6 @@ impl Store {
             StorageBackends {
                 primary: self.data.clone(),
                 state: self.recovery.clone(),
-                replicas: Vec::new(),
             },
             config,
         )
@@ -219,33 +218,16 @@ fn limits(rows: usize, bytes: usize) -> ReadLimits {
     }
 }
 
-fn captured_query() -> RecordQuery<Vec<u8>> {
-    let mut query = RecordQuery::new(schema(), |bytes, allowance| {
-        let owned = bytes
-            .len()
-            .checked_add(std::mem::size_of::<Vec<u8>>())
-            .ok_or(Error::ResourceExhausted {
-                resource: "capture payload decode",
-            })?;
-        if owned > allowance.get() {
-            return Err(Error::ResourceExhausted {
-                resource: "capture payload decode",
-            });
-        }
-        Ok(bytes.to_vec())
-    });
-    query.options.page = Some(limits(1, 16 * 1024));
-    query
-}
-
-async fn read(storage: &StorageManager) -> Vec<StoredRecord> {
-    let query = captured_query();
-    let mut reader = storage.query(query).await.unwrap();
-    let mut records = Vec::new();
-    while let Some(page) = reader.next_page().await.unwrap() {
-        records.extend(page.iter().cloned());
-    }
-    records
+// Captured Payloads Are Opaque Bytes; Inspect The Backend's Durable Records.
+async fn read(store: &Store) -> Vec<StoredRecord> {
+    store
+        .data
+        .records
+        .lock()
+        .unwrap()
+        .values()
+        .cloned()
+        .collect()
 }
 
 #[test]
@@ -275,13 +257,13 @@ fn contract_scenario() {
                         .await
                         .unwrap();
                     assert_eq!(store.calls.load(Ordering::SeqCst), 5);
-                    assert!(read(&storage).await.is_empty());
+                    assert!(read(&store).await.is_empty());
                     storage.flush_recovery().await.unwrap();
                     assert_eq!(runtime.state.stored(), Position(9));
                     assert_eq!(storage.status().saved.sequence, 6);
-                    assert_eq!(read(&storage).await.len(), 5);
+                    assert_eq!(read(&store).await.len(), 5);
                     storage.flush().await.unwrap();
-                    let captured = read(&storage).await;
+                    let captured = read(&store).await;
                     assert_eq!(captured.len(), 5);
                     let entry: Envelope<serde_json::Value> =
                         serde_json::from_slice(&captured[0].payload).unwrap();
@@ -303,15 +285,15 @@ fn contract_scenario() {
                         4
                     );
                     assert_eq!(store.calls.load(Ordering::SeqCst), 5);
-                    assert_eq!(read(&storage).await, captured);
+                    assert_eq!(read(&store).await, captured);
                     runtime
                         .state
                         .commit(Advance { panic: false })
                         .await
                         .unwrap();
-                    assert_eq!(read(&storage).await.len(), 5);
+                    assert_eq!(read(&store).await.len(), 5);
                     storage.flush().await.unwrap();
-                    assert_eq!(read(&storage).await.len(), 6);
+                    assert_eq!(read(&store).await.len(), 6);
                     runtime.stop().await.unwrap();
                 });
         });
@@ -615,9 +597,9 @@ fn contract_scenario() {
                     tokio::time::timeout(Duration::from_secs(1), observed.notified())
                         .await
                         .unwrap();
-                    assert!(read(&storage).await.is_empty());
+                    assert!(read(&store).await.is_empty());
                     storage.flush().await.unwrap();
-                    assert_eq!(read(&storage).await.len(), 1);
+                    assert_eq!(read(&store).await.len(), 1);
                     assert_eq!(store.calls.load(Ordering::SeqCst), 1);
                     runtime.stop().await.unwrap();
                 });
@@ -726,45 +708,6 @@ fn contract_scenario() {
         });
     }
     {
-        scenario_runtime::check("policy_bounds_physical", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    for (entries, expected) in [(32, vec![32; 4]), (usize::MAX, vec![128])] {
-                        let store = Store::new();
-                        let mut policy = config();
-                        policy.request.max_pending_write_batches = NonZeroUsize::new(512).unwrap();
-                        policy.write_batch_entries = NonZeroUsize::new(entries).unwrap();
-                        policy.write_batch_bytes = NonZeroUsize::new(4 * 1024 * 1024).unwrap();
-                        policy.target_batch_bytes = policy.request.max_pending_write_bytes;
-                        policy.max_batch_bytes = policy.request.max_pending_write_bytes;
-                        let storage = store.manager(policy);
-                        let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
-                        store.ready(&storage).await;
-                        store.data.control.write_sizes.lock().unwrap().clear();
-                        store.recovery.control.write_sizes.lock().unwrap().clear();
-                        for _ in 0..128 {
-                            runtime
-                                .state
-                                .commit(Advance { panic: false })
-                                .await
-                                .unwrap();
-                        }
-                        storage.flush_recovery().await.unwrap();
-                        storage.flush().await.unwrap();
-                        assert_eq!(*store.data.control.write_sizes.lock().unwrap(), expected);
-                        assert_eq!(store.recovery.entries.lock().unwrap().len(), 128);
-                        assert_eq!(runtime.state.stored(), Position(256));
-                        assert_eq!(storage.status().pending_bytes, 0);
-                        runtime.stop().await.unwrap();
-                    }
-                });
-        });
-    }
-    {
         scenario_runtime::check("barrier_never_wait", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor
@@ -772,11 +715,9 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    for entries in [1, 64] {
+                    {
                         let store = Store::new();
-                        let mut policy = config();
-                        policy.write_batch_entries = NonZeroUsize::new(entries).unwrap();
-                        let storage = store.manager(policy);
+                        let storage = store.manager(config());
                         let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
                         store.ready(&storage).await;
                         for _ in 0..20 {
@@ -815,131 +756,6 @@ fn contract_scenario() {
         });
     }
     {
-        scenario_runtime::check("entry_limit_refuses", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    let mut policy = config();
-                    policy.max_batch_bytes = NonZeroUsize::new(256).unwrap();
-                    policy.target_batch_bytes = policy.max_batch_bytes;
-                    let storage = store.manager(policy);
-                    let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
-                    store.ready(&storage).await;
-                    assert!(
-                        runtime
-                            .state
-                            .commit(Advance { panic: false })
-                            .await
-                            .is_err()
-                    );
-                    assert_eq!(
-                        runtime
-                            .state
-                            .state()
-                            .read(|value| *value)
-                            .await
-                            .unwrap()
-                            .value,
-                        0
-                    );
-                    assert_eq!(storage.cursor_accepted().sequence, 1);
-                    assert_eq!(storage.status().recovery_accepted.sequence, 0);
-                    assert_eq!(storage.status().pending_bytes, 0);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("follow_replays_unsaved", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    let storage = store.manager(config());
-                    let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
-                    store.ready(&storage).await;
-                    for _ in 0..4 {
-                        runtime
-                            .state
-                            .commit(Advance { panic: false })
-                            .await
-                            .unwrap();
-                    }
-                    assert!(read(&storage).await.is_empty());
-                    let mut following = storage.follow(captured_query()).await.unwrap();
-                    assert_eq!(following.saved_boundary().sequence, 1);
-                    assert_eq!(following.accepted_boundary().sequence, 5);
-                    for before in 0..4 {
-                        let page = following.next_page().await.unwrap();
-                        assert_eq!(page.len(), 1);
-                        let entry: Envelope<serde_json::Value> =
-                            serde_json::from_slice(&page[0].payload).unwrap();
-                        assert_eq!(entry.payload["before"], before);
-                    }
-                    assert_eq!(storage.cursor_saved().sequence, 1);
-                    storage.flush().await.unwrap();
-                    runtime
-                        .state
-                        .commit(Advance { panic: false })
-                        .await
-                        .unwrap();
-                    let page = following.next_page().await.unwrap();
-                    assert_eq!(page[0].position.sequence, 6);
-                    let entry: Envelope<serde_json::Value> =
-                        serde_json::from_slice(&page[0].payload).unwrap();
-                    assert_eq!(entry.payload["before"], 4);
-                    drop(following);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("capture_replay_outlives", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    let storage = store.manager(config());
-                    let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
-                    store.ready(&storage).await;
-                    for _ in 0..4 {
-                        runtime
-                            .state
-                            .commit(Advance { panic: false })
-                            .await
-                            .unwrap();
-                    }
-                    let mut replay = storage.replay(captured_query()).await.unwrap();
-                    runtime
-                        .state
-                        .commit(Advance { panic: false })
-                        .await
-                        .unwrap();
-                    assert_eq!(replay.boundary().sequence, 5);
-                    for before in 0..4 {
-                        let page = replay.next_page().await.unwrap().unwrap();
-                        let entry: Envelope<serde_json::Value> =
-                            serde_json::from_slice(&page[0].payload).unwrap();
-                        assert_eq!(entry.payload["before"], before);
-                    }
-                    assert!(replay.next_page().await.unwrap().is_none());
-                    assert_eq!(storage.cursor_saved().sequence, 1);
-                    drop(replay);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
         scenario_runtime::check("ceiling_never_reserve", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor
@@ -950,8 +766,6 @@ fn contract_scenario() {
                     let store = Store::new();
                     let mut policy = config();
                     policy.request.max_pending_write_bytes = NonZeroUsize::new(512 * 1024).unwrap();
-                    policy.max_batch_bytes = policy.request.max_pending_write_bytes;
-                    policy.target_batch_bytes = policy.max_batch_bytes;
                     let storage = store.manager(policy);
                     let runtime = store
                         .boot(&storage, limits(4, 4 * 1024 * 1024), false)
@@ -996,8 +810,6 @@ fn contract_scenario() {
                         let mut policy = config();
                         policy.request.max_pending_write_bytes =
                             NonZeroUsize::new(256 * 1024).unwrap();
-                        policy.max_batch_bytes = policy.request.max_pending_write_bytes;
-                        policy.target_batch_bytes = policy.max_batch_bytes;
                         let storage = store.manager(policy);
                         let runtime = Runtime::<Model>::builder(0, ())
                             .register(Transactions::catalog())
@@ -1108,100 +920,49 @@ fn contract_scenario() {
                         .unwrap();
                     assert_eq!(runtime.state.applied(), Position::ORIGIN);
                     storage.flush().await.unwrap();
-                    let mut query = schema_query(limits(8, 16 * 1024));
-                    query.schema = Some(key.clone());
-                    let mut reader = storage.query(query).await.unwrap();
-                    let page = reader.next_page().await.unwrap().unwrap();
-                    assert_eq!(page.len(), 1);
-                    assert_eq!(page[0].key, key);
-                    assert_eq!(page[0].schema, *definition.graph());
+                    let mut reader = storage
+                        .query(harmos::storage::query::Query {
+                            at: storage.cursor_saved(),
+                            source: harmos::storage::query::Source::Schemas(
+                                harmos::storage::query::SchemaSelection {
+                                    schema: Some(key.clone()),
+                                },
+                            ),
+                            transforms: Vec::new(),
+                            slice: harmos::storage::query::RowSlice::default(),
+                        })
+                        .await
+                        .unwrap();
+                    let mut stored = Vec::new();
+                    while let Some(output) = reader.next().await.unwrap() {
+                        if let harmos::storage::query::QueryOutput::Batch(batch) = output {
+                            let batch = batch.as_record_batch();
+                            let definitions = batch
+                                .column_by_name("definition")
+                                .unwrap()
+                                .as_any()
+                                .downcast_ref::<arrow_array::BinaryArray>()
+                                .unwrap();
+                            for row in 0..batch.num_rows() {
+                                stored.push(
+                                    <harmos::schema::graph::Schema as harmos::Message>::decode(
+                                        definitions.value(row),
+                                    )
+                                    .unwrap(),
+                                );
+                            }
+                        }
+                    }
+                    assert_eq!(stored, vec![definition.graph().clone()]);
                     let payload = harmos::Message::encode_to_vec(&Message {
                         value: "retained".into(),
                     });
                     drop(definition);
-                    Validator::from_schema(
-                        &page[0].schema,
-                        &harmos::config::SchemaSettings::default(),
-                    )
-                    .unwrap()
-                    .validate(&payload)
-                    .unwrap();
-                    assert!(reader.next_page().await.unwrap().is_none());
+                    Validator::from_schema(&stored[0], &harmos::config::SchemaSettings::default())
+                        .unwrap()
+                        .validate(&payload)
+                        .unwrap();
                     drop(reader);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("replica_lag_rolls", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    let target = Arc::new(Data::new(history()));
-                    target.control.permanent.store(true, Ordering::SeqCst);
-                    let mut policy = config();
-                    policy.replica_lag_positions = std::num::NonZeroU64::new(2).unwrap();
-                    let id = Identifier::new("capture-replica").unwrap();
-                    let storage = StorageManager::new(
-                        StorageBackends {
-                            primary: store.data.clone(),
-                            state: store.recovery.clone(),
-                            replicas: vec![ReplicaTarget {
-                                id: id.clone(),
-                                backend: target.clone(),
-                            }],
-                        },
-                        policy,
-                    )
-                    .unwrap();
-                    let runtime = store.boot(&storage, limits(4, 16 * 1024), true).await;
-                    store.ready(&storage).await;
-                    assert!(
-                        runtime
-                            .state
-                            .commit(Advance { panic: false })
-                            .await
-                            .is_err()
-                    );
-                    assert_eq!(
-                        runtime
-                            .state
-                            .state()
-                            .read(|value| *value)
-                            .await
-                            .unwrap()
-                            .value,
-                        0
-                    );
-                    assert_eq!(storage.status().accepted.sequence, 1);
-                    assert_eq!(storage.status().recovery_accepted.sequence, 0);
-                    assert!(store.data.records.lock().unwrap().is_empty());
-                    assert!(storage.status().failure.is_none());
-                    target.control.permanent.store(false, Ordering::SeqCst);
-                    storage
-                        .wait_replicas(&storage.cursor_saved(), &[id])
-                        .await
-                        .unwrap();
-                    runtime
-                        .state
-                        .commit(Advance { panic: false })
-                        .await
-                        .unwrap();
-                    assert_eq!(
-                        runtime
-                            .state
-                            .state()
-                            .read(|value| *value)
-                            .await
-                            .unwrap()
-                            .value,
-                        1
-                    );
-                    assert_eq!(storage.status().accepted.sequence, 3);
                     runtime.stop().await.unwrap();
                 });
         });

@@ -16,16 +16,15 @@
 use std::num::NonZeroUsize;
 // Third Party Imports
 // Local Imports
-use super::manager::{Domain, ENTRY_OVERHEAD, Operation, encoded_size};
-use super::query::{decoded_limit, execution_timeout, remaining_budget};
+use super::capacity::{Held, Pool, Refusal, Reservation};
+use super::manager::{Domain, ENTRY_OVERHEAD, Operation};
 use super::{
     ObjectCatalog, ObjectEntry, ObjectPoint, ObjectReceipt, ObjectRevision, ObjectValue,
-    ObjectVersion, ObjectVersionToken, QueryValue, StorageCursor, StorageManager, StorageSchema,
-    StorageView, StoredObject,
+    ObjectVersion, ObjectVersionToken, StorageManager, StorageSchema, StoredObject,
 };
 use crate::catalog::Contains;
-use crate::storage::catalog::{check_length, decode_admitted, invalid, object_key, object_schema};
-use crate::{Error, MemorySize, MessageError, Result};
+use crate::storage::catalog::{decode_admitted, invalid, object_key, object_schema};
+use crate::{Error, MemorySize, Result};
 
 /* === Constants === */
 
@@ -126,7 +125,7 @@ impl<C> ObjectGroup<'_, C> {
             .ok_or_else(|| invalid("object metadata exceeds allowance"))?;
         definition.validate_admitted(
             value,
-            self.manager.inner.settings.max_batch_bytes,
+            self.manager.inner.settings.max_batch_bytes(),
             verification,
         )?;
         let retained = metadata
@@ -227,129 +226,61 @@ impl<C: ObjectCatalog> StorageManager<C> {
         self.admit_object_group(max_bytes, count, None, build).await
     }
 
+    /// Read one object revision from the saved image: the latest, or an exact version.
     pub async fn read_object<T: StoredObject>(
         &self,
         key: &T::Key,
         version: ObjectVersion,
-        max_bytes: NonZeroUsize,
-    ) -> Result<Option<QueryValue<ObjectRevision<T>>>>
+    ) -> Result<Option<ObjectRevision<T>>>
     where
         C: Contains<T>,
     {
-        self.read_object_at(None, key, version, max_bytes).await
-    }
-
-    pub async fn read_object_in<T: StoredObject>(
-        &self,
-        view: &StorageView,
-        key: &T::Key,
-        version: ObjectVersion,
-        max_bytes: NonZeroUsize,
-    ) -> Result<Option<QueryValue<ObjectRevision<T>>>>
-    where
-        C: Contains<T>,
-    {
-        self.read_object_at(Some(view), key, version, max_bytes)
-            .await
-    }
-
-    async fn read_object_at<T: StoredObject>(
-        &self,
-        view: Option<&StorageView>,
-        key: &T::Key,
-        version: ObjectVersion,
-        max_bytes: NonZeroUsize,
-    ) -> Result<Option<QueryValue<ObjectRevision<T>>>>
-    where
-        C: Contains<T>,
-    {
-        let started = tokio::time::Instant::now();
-        // A Supplied View Lends Its Own Budget; Standalone Reads Use The Defaults.
-        let execution = match view {
-            Some(view) => {
-                if !self.same_instance(view.manager()) {
-                    return Err(Error::InvalidInput {
-                        field: "query view",
-                        reason: "view belongs to another manager",
-                    });
-                }
-                view.inherited_budget(None)?
-            }
-            None => self.inner.settings.query_execution,
-        };
-        if max_bytes > self.inner.settings.budget.read_memory_bytes {
-            return Err(decoded_limit());
-        }
         let schema = object_schema::<T>()?;
-        let query = ObjectPoint {
+        let budget = self.inner.settings.scan_bytes();
+        let point = ObjectPoint {
             schema: schema.id.clone(),
-            item: object_key(key, max_bytes)?,
+            item: object_key(key, budget)?,
             version,
         };
-        let bytes = self.inner.settings.query_decoded_bytes;
-        let reservation = self.reserve_read_now(bytes.get(), 1)?;
-        let timeout = remaining_budget(execution.timeout, started)?;
-        tokio::time::timeout(timeout, async {
-            let view = match view {
-                Some(view) => view.clone(),
-                None => self.view_with_limits(execution).await?,
-            };
-            view.limit_computation(remaining_budget(execution.timeout, started)?)?;
-            view.compute(view.read_object_mapped(&query, max_bytes, |object| {
-                let value = object
-                    .map(|object| {
-                        // Preflight Native Decoding Within The Original Output Reservation.
-                        let metadata = std::mem::size_of::<ObjectRevision<T>>()
-                            .saturating_sub(std::mem::size_of::<T>())
-                            .checked_add(
-                                object
-                                    .position
-                                    .memory_size()
-                                    .saturating_sub(std::mem::size_of::<StorageCursor>()),
-                            )
-                            .and_then(|size| {
-                                size.checked_add(
-                                    object
-                                        .version
-                                        .memory_size()
-                                        .saturating_sub(std::mem::size_of::<ObjectVersionToken>()),
-                                )
-                            })
-                            .and_then(|size| size.checked_add(ENTRY_OVERHEAD))
-                            .and_then(|size| size.checked_add(std::mem::size_of::<MessageError>()))
-                            .ok_or_else(decoded_limit)?;
-                        let allowance = bytes
-                            .get()
-                            .checked_sub(metadata)
-                            .ok_or_else(decoded_limit)?;
-                        let required =
-                            T::decoding_memory(&object.value.payload).map_err(|error| {
-                                Error::backend(
-                                    "preflight object",
-                                    crate::BackendFailure::Corrupt,
-                                    error,
-                                )
-                            })?;
-                        if required > allowance {
-                            return Err(super::query::decoded_limit());
-                        }
-                        let value = ObjectRevision {
-                            value: decode_admitted::<T>(&object.value, &schema)?,
-                            position: object.position,
-                            version: object.version,
-                        };
-                        QueryValue::retain(value, reservation)
-                    })
-                    .transpose()?;
-                if started.elapsed() >= execution.timeout {
-                    return Err(execution_timeout());
-                }
-                Ok(value)
-            }))
-            .await
-        })
+        let saved = self.cursor_saved();
+        if let ObjectVersion::Exact(version) = &point.version {
+            version.history.check(&saved.history)?;
+            if version.revision.get() > saved.sequence {
+                return Ok(None);
+            }
+        }
+
+        // Charge The Bounded Raw Read, Then Its Decoded Value.
+        let held = Held::default();
+        let mut charge = Reservation::wait(
+            &self.inner,
+            Pool::Read,
+            &held,
+            budget.get().saturating_add(ENTRY_OVERHEAD),
+            None,
+        )
         .await
-        .map_err(|_| execution_timeout())?
+        .map_err(Refusal::into_error)?;
+        let snapshot = self.snapshot(&saved).await?;
+        let Some(object) = snapshot.read_object(&point).await? else {
+            return Ok(None);
+        };
+        if matches!(&point.version, ObjectVersion::Exact(version) if version != &object.version) {
+            return Err(invalid("backend returned a different object revision"));
+        }
+        let decoded = T::decoding_memory(&object.value.payload).map_err(|error| {
+            Error::backend("preflight object", crate::BackendFailure::Corrupt, error)
+        })?;
+        charge
+            .grow(decoded, None)
+            .await
+            .map_err(Refusal::into_error)?;
+        let value = decode_admitted::<T>(&object.value, &schema)?;
+        Ok(Some(ObjectRevision {
+            value,
+            position: object.position,
+            version: object.version,
+        }))
     }
 }
 
@@ -358,7 +289,7 @@ impl<C> StorageManager<C> {
         NonZeroUsize::new(
             self.inner
                 .settings
-                .max_batch_bytes
+                .max_batch_bytes()
                 .get()
                 .saturating_mul(4)
                 .min(self.inner.settings.request.max_pending_write_bytes.get()),
@@ -451,55 +382,6 @@ impl<C> StorageManager<C> {
                 }
             })
             .collect())
-    }
-}
-
-impl StorageView {
-    pub(super) async fn read_object_mapped<T>(
-        &self,
-        query: &ObjectPoint,
-        max_bytes: NonZeroUsize,
-        map: impl FnOnce(Option<ObjectEntry>) -> Result<T>,
-    ) -> Result<T> {
-        check_length(query.item.as_str().len(), max_bytes)?;
-        let _activity = self.activity()?;
-        let manager = self.manager();
-        let _lifecycle = manager.inner.lifecycle.lock().await;
-        let metadata = encoded_size(query)?
-            .checked_add(encoded_size(manager.inner.primary.history())?)
-            .and_then(|n| n.checked_add(ENTRY_OVERHEAD))
-            .and_then(|n| n.checked_mul(3))
-            .and_then(|n| n.checked_add(max_bytes.get()))
-            .ok_or_else(|| invalid("object read size overflow"))?;
-        let _reservation = manager.reserve_read(metadata, 1).await?;
-        let (_pin, view) = self.pin()?;
-        if let ObjectVersion::Exact(version) = &query.version {
-            version.history.check(&view.saved().history)?;
-            if version.revision.get() > view.saved().sequence {
-                drop(_lifecycle);
-                return map(None);
-            }
-        }
-        let object = manager
-            .inner
-            .bounded(manager.inner.primary.read_object(&view, query, max_bytes))
-            .await?;
-        if let Some(object) = &object {
-            check_length(encoded_size(object)?, max_bytes)?;
-            object.version.check_position(&object.position)?;
-            if object.position.sequence == 0
-                || !view.saved().covers(&object.position)?
-                || object.value.schema.id != query.schema
-                || object.value.item != query.item
-                || matches!(&query.version, ObjectVersion::Exact(version) if version != &object.version)
-            {
-                return Err(invalid("backend returned a different object revision"));
-            }
-            // The Typed Mapper Verifies Schema, Payload And Key After Its Preclaim.
-        }
-        let _still_live = self.pin()?;
-        drop(_lifecycle);
-        map(object)
     }
 }
 

@@ -483,35 +483,6 @@ pub(crate) fn decode_admitted<T: StoredObject>(
     Ok(decoded)
 }
 
-pub(super) fn verification_bytes(payload: NonZeroUsize) -> Result<usize> {
-    payload
-        .get()
-        .checked_mul(4)
-        .and_then(|bytes| bytes.checked_add(std::mem::size_of::<crate::MessageError>()))
-        .and_then(|bytes| bytes.checked_add(MAX_IDENTITY_BYTES * 2))
-        .ok_or_else(|| invalid("object verification size overflow"))
-}
-
-pub(super) fn validate_transfer<C: ObjectCatalog>(
-    value: &ObjectValue,
-    payload: NonZeroUsize,
-) -> Result<()> {
-    check_length(value.payload.len(), payload)?;
-    check_length(value.item.as_str().len(), payload)?;
-    let allowance = verification_bytes(payload)?;
-    let mut verify = None;
-    C::definitions().try_for_each(|entry| {
-        if verify.is_none() && entry.schema()? == value.schema {
-            verify = Some(entry.verify_admitted);
-        }
-        Ok::<(), Error>(())
-    })?;
-    match verify {
-        Some(verify) => verify(value, payload, allowance),
-        None => Err(invalid("object schema is absent from the catalog")),
-    }
-}
-
 pub(crate) fn check_length(length: usize, max_payload_bytes: NonZeroUsize) -> Result<()> {
     if length > max_payload_bytes.get() {
         return Err(invalid("object payload exceeds byte limit"));

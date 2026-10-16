@@ -22,7 +22,8 @@ use arrow_schema::Schema;
 // Local Imports
 use super::{FieldPath, invalid, scalar_type, take};
 use crate::storage::codec::{Flag, Nested, Repeated, product};
-use crate::storage::reduce::{ScalarValue, sort_values};
+use crate::storage::query::accumulate::sort_values;
+use crate::storage::query::scalar::ScalarValue;
 use crate::{MemorySize, Result};
 
 /* === Constants === */

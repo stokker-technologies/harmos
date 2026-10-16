@@ -31,7 +31,7 @@ use arrow_array::{
 use arrow_schema::{DataType, Field, Schema, TimeUnit};
 // Local Imports
 use crate::storage::codec::{Many, Nested, Text, product, variants};
-use crate::storage::reduce::{ExactNumber, ScalarValue};
+use crate::storage::query::scalar::{ExactNumber, ScalarValue};
 use crate::{Error, MemorySize, Result};
 
 /* === Constants === */
@@ -445,7 +445,7 @@ pub(super) fn values_array(data_type: &DataType, values: &[ScalarValue]) -> Resu
                 .iter()
                 .map(|value| match value {
                     ScalarValue::Null | ScalarValue::Missing => Ok(None),
-                    value => crate::storage::reduce::scalar::exact(value)
+                    value => crate::storage::query::scalar::exact(value)
                         .map(Some)
                         .ok_or_else(|| invalid("exact output type mismatch")),
                 })

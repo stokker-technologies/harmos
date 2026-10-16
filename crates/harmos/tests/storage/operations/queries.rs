@@ -23,6 +23,7 @@ use arrow_array::{StringArray, StructArray, UInt64Array};
 use super::super::{Bank, Data, Ledger, Recovery, catalog, history};
 use super::{Fixture, Lanes, Operations, config};
 use harmos::storage::operations::Query;
+use harmos::storage::query::scalar::ScalarValue;
 use harmos::storage::query::transform::{
     Transform,
     filter::{Clause, Compare, Condition, Filter, Term},
@@ -30,7 +31,6 @@ use harmos::storage::query::transform::{
     sort::{Sort, SortKey},
 };
 use harmos::storage::query::{Query as Request, QueryOutput, RecordSelection, RowSlice, Source};
-use harmos::storage::reduce::ScalarValue;
 use harmos::storage::{
     ObjectKey, ObjectRetention, PayloadEncoding, RecordWrite, SchemaKey, StorageBackends,
     StorageManager, StoredObject,
@@ -293,11 +293,10 @@ fn objects_scenario() {
             .build()
             .unwrap()
             .block_on(async {
-                let storage = StorageManager::new(
+                let storage = StorageManager::<Objects>::new(
                     StorageBackends {
                         primary: Arc::new(Data::<Objects>::with_catalog(history())),
                         state: Arc::new(Recovery::new(history())),
-                        replicas: vec![],
                     },
                     config(),
                 )

@@ -141,7 +141,6 @@ impl Store {
             StorageBackends {
                 primary: self.data.clone(),
                 state: self.recovery.clone(),
-                replicas: Vec::new(),
             },
             config,
         )
@@ -487,9 +486,7 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let store = Store::new();
-                    let mut config = config();
-                    config.flush_interval = Duration::from_millis(5);
-                    let storage = store.manager(config);
+                    let storage = store.manager(config());
                     let runtime = store.boot(&storage).await;
                     let receipt = runtime.state.commit(deposit(1)).await.unwrap();
                     until(|| runtime.state.stored() == receipt.frontier).await;
@@ -653,7 +650,6 @@ pub(super) fn contract_scenario() {
                     let store = Store::new();
                     let mut policy = config();
                     policy.request.max_pending_write_batches = NonZeroUsize::new(4).unwrap();
-                    policy.flush_interval = Duration::from_millis(2);
                     let storage = store.manager(policy);
                     let runtime = store.boot(&storage).await;
                     let mutations = {

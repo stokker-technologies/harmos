@@ -240,13 +240,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .ok_or("missing FollowObjects storage contract")?,
                 declaration: "::harmos::storage::operations::FollowObjects",
             },
-            harmos::grpc::Method {
-                name: "Acknowledge",
-                contract: storage_contracts.iter().find(|contract| contract.operation().id.as_str()
-                    == <harmos::storage::operations::Acknowledge as harmos::operations::OperationDeclaration>::ID)
-                    .ok_or("missing Acknowledge storage contract")?,
-                declaration: "::harmos::storage::operations::Acknowledge",
-            },
         ],
     )?;
     std::fs::write(output.join("storage_server.rs"), storage.source)?;

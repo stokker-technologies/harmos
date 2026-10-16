@@ -222,10 +222,7 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let mut policy = config();
-                    policy.max_retries = 2;
-                    policy.flush_interval = Duration::from_millis(50);
-                    let f = Fixture::new(policy).await;
+                    let f = Fixture::new(config()).await;
                     f.data.control.failures.store(1, Ordering::SeqCst);
                     write(&f.storage, "one").await;
                     assert!(f.storage.flush().await.is_err());
@@ -281,11 +278,10 @@ fn contract_scenario() {
                     let data = Arc::new(Data::new(history()));
                     let recovery = Arc::new(Recovery::new(history()));
                     recovery.control.fail_open.store(true, Ordering::SeqCst);
-                    let storage = StorageManager::new(
+                    let storage: StorageManager = StorageManager::new(
                         StorageBackends {
                             primary: data.clone(),
                             state: recovery.clone(),
-                            replicas: Vec::new(),
                         },
                         config(),
                     )
@@ -417,9 +413,7 @@ fn contract_scenario() {
             scenario_executor.start_paused(true);
             scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
 
-    let mut policy = config();
-    policy.io_timeout = Duration::from_millis(10);
-    let f = Fixture::new(policy).await;
+    let f = Fixture::new(config()).await;
     f.data.control.block_write.store(true, Ordering::SeqCst);
     write(&f.storage, "one").await;
     let error = f.storage.flush().await.unwrap_err();
@@ -444,8 +438,6 @@ fn contract_scenario() {
                 .block_on(async {
                     let mut policy = config();
                     policy.request.max_pending_write_bytes = NonZeroUsize::new(2048).unwrap();
-                    policy.target_batch_bytes = policy.request.max_pending_write_bytes;
-                    policy.max_batch_bytes = policy.request.max_pending_write_bytes;
                     let f = Fixture::new(policy).await;
                     let payload = vec![255; 4096];
                     let key = schema();
@@ -454,10 +446,7 @@ fn contract_scenario() {
                         f.storage
                             .write_records(&[record(&key, &item, &payload)])
                             .await,
-                        Err(Error::InvalidInput {
-                            field: "storage admission",
-                            ..
-                        })
+                        Err(Error::ResourceExhausted { .. })
                     ));
                     assert_eq!(f.storage.status().accepted.sequence, 0);
                     assert_eq!(f.storage.status().pending_bytes, 0);
@@ -513,9 +502,7 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let mut policy = config();
-                    policy.flush_interval = Duration::from_millis(10);
-                    let f = Fixture::new(policy).await;
+                    let f = Fixture::new(config()).await;
                     write(&f.storage, "automatic").await;
                     f.storage.write_recovery(&[b"state"]).await.unwrap();
 

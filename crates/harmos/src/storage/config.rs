@@ -14,72 +14,71 @@
 /* === Re-Exports === */
 
 /* === Imports === */
-use super::{QueryLimits, ReadLimits};
-use serde::{Deserialize, Serialize};
-use std::num::{NonZeroU64, NonZeroUsize};
+// Standard Library Imports
+use std::num::NonZeroUsize;
 use std::time::Duration;
 
-// Standard Library Imports
-
 // Third Party Imports
+use serde::{Deserialize, Serialize};
 
 // Local Imports
 
 /* === Constants === */
+// Persistence Cadence And Batching Are Private Storage Algorithm Choices.
+pub(super) const FLUSH_INTERVAL: Duration = Duration::from_millis(100);
+pub(super) const MAX_BATCH_BYTES: usize = 16 * 1024 * 1024;
+pub(super) const TARGET_BATCH_BYTES: usize = 128 * 1024;
+pub(super) const WRITE_BATCH_ENTRIES: NonZeroUsize = NonZeroUsize::new(4096).unwrap();
+pub(super) const OBJECT_PRUNE_ENTRIES: NonZeroUsize = NonZeroUsize::new(256).unwrap();
+pub(super) const SNAPSHOT_BYTES: usize = 1024 * 1024;
+
+// Backend I/O And Transient Persistence Retry.
+pub(super) const IO_TIMEOUT: Duration = Duration::from_secs(30);
+pub(super) const MAX_RETRIES: usize = 3;
+pub(super) const RETRY_BASE: Duration = Duration::from_millis(10);
+pub(super) const RETRY_CAP: Duration = Duration::from_secs(1);
+
+// Producer Sessions And Idempotent Mutation Receipts.
+pub(super) const MAX_FILES: NonZeroUsize = NonZeroUsize::new(256).unwrap();
+pub(super) const FILE_SESSION_TIMEOUT: Duration = Duration::from_secs(60);
+pub(super) const MAX_MUTATIONS: NonZeroUsize = NonZeroUsize::new(1024).unwrap();
+pub(super) const MUTATION_MEMORY_BYTES: NonZeroUsize = NonZeroUsize::new(1024 * 1024).unwrap();
+pub(super) const MUTATION_RETENTION: Duration = Duration::from_secs(300);
+
+// Internal Scan Pages; Response Sizing Belongs To StorageResponseSettings.
+pub(super) const SCAN_ROWS: NonZeroUsize = NonZeroUsize::new(1024).unwrap();
+pub(super) const SCAN_BYTES: usize = 1024 * 1024;
 
 /* === Macros === */
 
 /* === Type Aliases === */
 
 /* === Structs === */
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StorageSettings {
     pub budget: StorageBudget,
     pub request: StorageRequestSettings,
     pub response: StorageResponseSettings,
-    pub target_batch_bytes: NonZeroUsize,
-    pub max_batch_bytes: NonZeroUsize,
-    pub query_page: ReadLimits,
-    pub query_decoded_bytes: NonZeroUsize,
-    pub query_execution: QueryLimits,
-    pub replication_limits: ReadLimits,
-    pub replica_lag_positions: NonZeroU64,
-    pub replication_shutdown: Duration,
-    pub max_files: NonZeroUsize,
-    pub max_mutations: NonZeroUsize,
-    pub mutation_memory_bytes: NonZeroUsize,
-    pub mutation_retention: Duration,
-    // Resume Retention For Disconnected/Recovered Producers And Inactivity
-    // Retention For Token-Only Producers Without A Retained Native Handle.
-    pub file_session_timeout: Duration,
-    pub view_idle_timeout: Duration,
-    pub snapshot_bytes: NonZeroUsize,
-    pub write_batch_entries: NonZeroUsize,
-    pub object_prune_entries: NonZeroUsize,
-    pub write_batch_bytes: NonZeroUsize,
-    pub flush_interval: Duration,
-    pub io_timeout: Duration,
-    pub max_retries: usize,
-    pub retry_base: Duration,
-    pub retry_cap: Duration,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StorageBudget {
     pub read_memory_bytes: NonZeroUsize,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StorageRequestSettings {
     pub max_pending_queries: NonZeroUsize,
     pub max_active_queries: NonZeroUsize,
     pub max_pending_write_batches: NonZeroUsize,
     pub max_pending_write_bytes: NonZeroUsize,
-    pub reserved_control_batches: usize,
-    pub reserved_control_bytes: usize,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StorageResponseSettings {
     pub batch_rows: NonZeroUsize,
     pub batch_bytes: NonZeroUsize,
@@ -100,71 +99,36 @@ impl StorageSettings {
                 reason: "query counts exceed semaphore capacity",
             });
         }
-        if self.request.reserved_control_batches >= self.request.max_pending_write_batches.get()
-            || self.request.reserved_control_bytes >= self.request.max_pending_write_bytes.get()
-        {
+        if self.response.batch_bytes > self.budget.read_memory_bytes {
             return Err(crate::Error::InvalidInput {
-                field: "storage control reserve",
-                reason: "reserved capacity must be smaller than total write capacity",
-            });
-        }
-
-        if self.mutation_retention.is_zero()
-            || tokio::time::Instant::now()
-                .checked_add(self.mutation_retention)
-                .is_none()
-            || std::time::SystemTime::now()
-                .checked_add(self.mutation_retention)
-                .is_none()
-        {
-            return Err(crate::Error::InvalidInput {
-                field: "mutation retention",
-                reason: "must be positive and representable",
-            });
-        }
-        self.query_execution.check()?;
-        if self.query_decoded_bytes > self.budget.read_memory_bytes {
-            return Err(crate::Error::InvalidInput {
-                field: "query decoding",
-                reason: "default decoded capacity exceeds shared read capacity",
-            });
-        }
-        if self.query_execution.memory_bytes > self.budget.read_memory_bytes {
-            return Err(crate::Error::InvalidInput {
-                field: "query execution",
-                reason: "default working memory exceeds shared read capacity",
-            });
-        }
-        if self.target_batch_bytes > self.max_batch_bytes
-            || self.max_batch_bytes > self.request.max_pending_write_bytes
-        {
-            return Err(crate::Error::InvalidInput {
-                field: "storage policy",
-                reason: "require target_batch_bytes <= max_batch_bytes <= queue_capacity_bytes",
-            });
-        }
-        if self.file_session_timeout.is_zero()
-            || std::time::Instant::now()
-                .checked_add(self.file_session_timeout)
-                .is_none()
-            || self.view_idle_timeout.is_zero()
-            || self.flush_interval.is_zero()
-            || self.io_timeout.is_zero()
-            || self.retry_base.is_zero()
-            || self.retry_cap < self.retry_base
-        {
-            return Err(crate::Error::InvalidInput {
-                field: "storage policy",
-                reason: "invalid persistence or retry timing",
+                field: "storage response",
+                reason: "response batches cannot exceed the shared read budget",
             });
         }
         Ok(())
     }
-}
 
-impl StorageSettings {
-    pub(crate) fn check(&self) -> crate::Result<()> {
-        self.validate()
+    // Largest Atomic Batch: The Private Ceiling Within The Pending Write Budget.
+    pub(super) fn max_batch_bytes(&self) -> NonZeroUsize {
+        self.request
+            .max_pending_write_bytes
+            .min(NonZeroUsize::new(MAX_BATCH_BYTES).unwrap())
+    }
+
+    pub(super) fn target_batch_bytes(&self) -> usize {
+        TARGET_BATCH_BYTES.min(self.max_batch_bytes().get())
+    }
+
+    // Scan Page Bytes, Small Enough That Several Active Queries Share The Budget.
+    pub(super) fn scan_bytes(&self) -> NonZeroUsize {
+        let shared = self.budget.read_memory_bytes.get()
+            / self
+                .request
+                .max_active_queries
+                .get()
+                .saturating_mul(4)
+                .max(1);
+        NonZeroUsize::new(SCAN_BYTES.min(shared).max(1)).unwrap()
     }
 }
 

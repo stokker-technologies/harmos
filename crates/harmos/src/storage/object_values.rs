@@ -80,13 +80,6 @@ pub struct ObjectReceipt {
 }
 
 /* === Enums === */
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ObjectVersions {
-    #[default]
-    Revisions,
-    Latest,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ObjectVersion {
     Latest,
@@ -96,12 +89,6 @@ pub enum ObjectVersion {
 /* === Traits === */
 
 /* === Implementations === */
-impl ObjectVersions {
-    pub(crate) fn is_revisions(&self) -> bool {
-        *self == Self::Revisions
-    }
-}
-
 impl MemorySize for ObjectEntry {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()

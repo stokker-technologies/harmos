@@ -28,13 +28,13 @@ use super::backend::{Data, history, storage_settings};
 use super::support::{Bank, Ledger, catalog};
 use super::waveforms;
 use harmos::Runtime;
+use harmos::storage::query::scalar::ScalarValue;
 use harmos::storage::query::transform::{
     Transform,
     aggregate::{Aggregate, Measure},
     filter::{Clause, Compare, Condition, Filter, Term},
 };
 use harmos::storage::query::{Query, QueryOutput, RowSlice, Source, StreamSelection};
-use harmos::storage::reduce::ScalarValue;
 use harmos::storage::*;
 
 /* === Constants === */
@@ -64,12 +64,9 @@ async fn external_pressure_reloads_uncommitted_page_once_and_cancellation_releas
         let directory = tempfile::tempdir().unwrap();
         let mut settings = storage_settings();
         settings.request.max_active_queries = NonZeroUsize::new(1).unwrap();
-        settings.query_execution.admission = Admission::Elastic;
-        settings.query_page.rows = NonZeroUsize::new(16).unwrap();
-        settings.query_page.bytes = NonZeroUsize::new(16 * 1024).unwrap();
         let capacity = settings.budget.read_memory_bytes.get();
         let data = Arc::new(Data::<()>::journaled(directory.path(), history()).unwrap());
-        let storage = StorageManager::new(
+        let storage: StorageManager = StorageManager::new(
             StorageBackends {
                 primary: data.clone(),
                 state: Arc::new(harmos::storage::state::file::FileBackend::new(
@@ -77,7 +74,6 @@ async fn external_pressure_reloads_uncommitted_page_once_and_cancellation_releas
                     history(),
                     &settings,
                 )),
-                replicas: vec![],
             },
             settings,
         )
@@ -252,7 +248,7 @@ async fn cancelled_schema_admission_releases_query_slot() {
     let mut settings = storage_settings();
     settings.request.max_active_queries = NonZeroUsize::MIN;
     let capacity = settings.budget.read_memory_bytes.get();
-    let storage = StorageManager::new(
+    let storage: StorageManager = StorageManager::new(
         StorageBackends {
             primary: Arc::new(Data::<()>::journaled(directory.path(), history()).unwrap()),
             state: Arc::new(harmos::storage::state::file::FileBackend::new(
@@ -260,7 +256,6 @@ async fn cancelled_schema_admission_releases_query_slot() {
                 history(),
                 &settings,
             )),
-            replicas: vec![],
         },
         settings,
     )

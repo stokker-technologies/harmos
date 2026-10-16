@@ -32,15 +32,11 @@ async fn exhaustion() {
     let directory = tempfile::tempdir().unwrap();
     let mut settings = storage_settings();
     settings.request.max_pending_write_bytes = NonZeroUsize::new(8192).unwrap();
-    settings.target_batch_bytes = NonZeroUsize::new(2048).unwrap();
-    settings.max_batch_bytes = NonZeroUsize::new(8192).unwrap();
-    settings.write_batch_bytes = NonZeroUsize::new(8192).unwrap();
     let data = Arc::new(Data::<()>::journaled(directory.path(), history()).unwrap());
-    let storage = StorageManager::new(
+    let storage: StorageManager = StorageManager::new(
         StorageBackends {
             primary: data.clone(),
             state: Arc::new(Recovery::new(history())),
-            replicas: vec![],
         },
         settings,
     )

@@ -24,7 +24,9 @@ use std::time::Duration;
 // Local Imports
 use super::{Fixture, Lanes, Operations, config};
 use harmos::Identifier;
-use harmos::storage::operations::{FileBytes, FileSelection, FollowFile, ReadFile};
+use harmos::storage::files::FileBatch as FileBytes;
+use harmos::storage::follow::File as FileSelection;
+use harmos::storage::operations::{FollowFile, ReadFile};
 use harmos::storage::{FileMetadata, FilePhase, StagedFile};
 
 /* === Constants === */
@@ -72,7 +74,6 @@ async fn setup() -> (Fixture, harmos::storage::StorageFile, FileSelection) {
             id: session.id.clone(),
         },
         offset: 0,
-        chunk_bytes: 2,
     };
     (fixture, producer, request)
 }
@@ -199,16 +200,10 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let (fixture, mut producer, request) = setup().await;
-                    for invalid in [
-                        FileSelection {
-                            offset: 7,
-                            ..request.clone()
-                        },
-                        FileSelection {
-                            chunk_bytes: 0,
-                            ..request
-                        },
-                    ] {
+                    for invalid in [FileSelection {
+                        offset: 7,
+                        ..request
+                    }] {
                         let (sender, mut receiver) =
                             harmos::operations::stream::<FileBytes>(limits()).unwrap();
                         let result = fixture

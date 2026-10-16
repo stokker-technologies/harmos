@@ -22,13 +22,16 @@ use serde::Serialize;
 use tokio::sync::watch;
 // Local Imports
 use super::admissions::Mutation;
+use super::arrow::RetainedMemory;
+use super::capacity::{Attempt, Held, Pool, Refusal, Reservation};
+use super::config::{IO_TIMEOUT, MUTATION_RETENTION};
 use super::queue::PendingQueue;
 use super::receipts::{MutationValue, ReceiptState};
 use super::state::{RecoveryEntry, RecoveryPage, RecoverySnapshot, StateBackend};
 use super::worker::Worker;
 use super::{
-    ReadLimits, RecoveryPosition, SchemaKey, StorageBackends, StorageCursor, StorageFuture,
-    StorageSchema, StorageSettings, StoredRecord, StoredRow,
+    ReadLimits, RecoveryPosition, SchemaKey, StorageBackend, StorageBackends, StorageCursor,
+    StorageFuture, StorageSchema, StorageSettings, StoredRecord, StoredRow,
 };
 use crate::operations::{OperationManager, resident::Lease};
 use crate::services::{Once, ServiceDefinition};
@@ -93,14 +96,11 @@ pub(super) struct Inner {
     pub(super) query_active: Arc<tokio::sync::Semaphore>,
     pub(super) query_pending: Arc<tokio::sync::Semaphore>,
     pub(super) settings: StorageSettings,
-    pub(super) primary: Arc<dyn super::backend::ErasedBackend>,
+    pub(super) primary: Arc<dyn StorageBackend>,
     pub(super) recovery: Arc<dyn StateBackend>,
     pub(super) has_objects: bool,
     pub(super) object_definition:
         fn(&SchemaKey) -> Result<crate::storage::catalog::ObjectDefinition>,
-    pub(super) validate_object: fn(&super::ObjectValue, std::num::NonZeroUsize) -> Result<()>,
-    pub(super) replicas: Vec<Arc<super::replication::Replica>>,
-    pub(super) receipts: super::replication::Receipts,
     pub(super) state: Mutex<State>,
     pub(super) changed: watch::Sender<u64>,
     pub(super) lifecycle: tokio::sync::Mutex<Lifecycle>,
@@ -138,8 +138,6 @@ pub(super) struct State {
     pub(super) queue: PendingQueue,
     pub(super) scratch_bytes: usize,
     pub(super) read_bytes: usize,
-    pub(super) replica_base_bytes: usize,
-    pub(super) replication_bytes: usize,
     pub(super) data_attempted: u64,
     pub(super) objects_pruned: u64,
     pub(super) objects_prune_owed: bool,
@@ -152,7 +150,7 @@ pub(super) struct State {
     pub(super) data_request: Option<Target>,
     pub(super) recovery_request: Option<Target>,
     pub(super) retry: u64,
-    pub(super) views: BTreeMap<u64, super::views::ViewState>,
+    pub(super) snapshots: BTreeMap<u64, super::snapshot::SnapshotState>,
     pub(super) followers: BTreeMap<u64, super::follow::Following>,
     pub(super) files: BTreeMap<u64, super::staging::FileState>,
     pub(super) receipts: super::receipts::Receipts,
@@ -182,10 +180,9 @@ struct Admission {
     active: bool,
 }
 
-pub(super) struct MemoryReservation {
-    pub(super) inner: Arc<Inner>,
-    pub(super) bytes: usize,
-    pub(super) kind: ReservationKind,
+enum Admitted {
+    Replayed(u64),
+    Reserved(u64, u64, u64),
 }
 
 struct WriteWaiter {
@@ -195,15 +192,6 @@ struct WriteWaiter {
 
 /* === Enums === */
 pub enum ErasedCatalog {}
-
-#[derive(Clone, Copy)]
-pub(super) enum ReservationKind {
-    Read,
-    // A Read Charge Attributed To One View's Ceiling And Charged Bytes.
-    View(u64),
-    Write,
-    Replication,
-}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Domain {
@@ -250,17 +238,14 @@ impl<C> StorageManager<C> {
 }
 
 impl<C: super::ObjectCatalog> StorageManager<C> {
-    pub fn new(backends: StorageBackends<C>, settings: StorageSettings) -> Result<Self> {
+    pub fn new(backends: StorageBackends, settings: StorageSettings) -> Result<Self> {
         C::validate()?;
-        settings.check()?;
+        settings.validate()?;
         let StorageBackends {
             primary,
             state: state_backend,
-            replicas: targets,
         } = backends;
         primary.history().check(state_backend.history())?;
-        let (replicas, replica_base_bytes) =
-            super::replication::configure(&settings, &primary, &targets)?;
         let history = primary.history().clone();
         let position = StorageCursor {
             history: history.clone(),
@@ -270,7 +255,7 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
             history,
             sequence: 0,
         };
-        let receipts = super::receipts::Receipts::new(settings.mutation_retention)?;
+        let receipts = super::receipts::Receipts::new(MUTATION_RETENTION)?;
         Ok(Self {
             catalog: PhantomData,
             inner: Arc::new(Inner {
@@ -286,13 +271,10 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
                     settings.request.max_pending_queries.get(),
                 )),
                 settings,
-                primary: super::backend::erase(primary),
+                primary,
                 recovery: state_backend,
-                validate_object: crate::storage::catalog::validate_transfer::<C>,
                 has_objects: C::definition_count() != 0,
                 object_definition: crate::storage::catalog::definition::<C>,
-                replicas,
-                receipts: super::replication::Receipts::default(),
                 state: Mutex::new(State {
                     prefer_measurement: false,
                     journal_required_data: position.clone(),
@@ -305,7 +287,7 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
                         saved: position,
                         recovery_accepted: recovery_position.clone(),
                         recovery_saved: recovery_position,
-                        pending_bytes: replica_base_bytes,
+                        pending_bytes: 0,
                         read_bytes: 0,
                         mutation_bytes: 0,
                         pending_batches: 0,
@@ -320,8 +302,6 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
                     queue: PendingQueue::default(),
                     scratch_bytes: 0,
                     read_bytes: 0,
-                    replica_base_bytes,
-                    replication_bytes: 0,
                     data_attempted: 0,
                     objects_pruned: 0,
                     objects_prune_owed: false,
@@ -334,7 +314,7 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
                     data_request: None,
                     recovery_request: None,
                     retry: 0,
-                    views: BTreeMap::new(),
+                    snapshots: BTreeMap::new(),
                     followers: BTreeMap::new(),
                     files: BTreeMap::new(),
                     saves: BTreeMap::new(),
@@ -390,33 +370,9 @@ impl<C> StorageManager<C> {
         state.ready = true;
         state.status.running = true;
         drop(state);
-        let mut owner = Owner {
+        let owner = Owner {
             leases: Mutex::new(vec![primary]),
         };
-        for replica in &self.inner.replicas {
-            let name = format!("harmos-storage-replica-{}", replica.config.id);
-            replica.started();
-            let worker = super::replication::Worker {
-                manager: self.erased(),
-                replica: replica.clone(),
-                reservation: None,
-            };
-            match operations.start_service::<A>(
-                Once::new(ServiceDefinition::new(name.clone()), worker),
-                true,
-                false,
-            ) {
-                Ok(lease) => {
-                    owner.leases.get_mut().unwrap().push(lease);
-                }
-                Err(error) => {
-                    replica.state.lock().unwrap().status.running = false;
-                    lifecycle.owner = Some(Box::new(owner));
-                    self.inner.notify();
-                    return Err(error);
-                }
-            }
-        }
         lifecycle.owner = Some(Box::new(owner));
         lifecycle.startup_complete = true;
         self.inner.notify();
@@ -563,73 +519,56 @@ impl<C> StorageManager<C> {
     }
 
     pub fn record_batch_len(&self, records: &[RecordWrite<'_>]) -> Result<usize> {
-        self.batch_prefix(
-            records.iter().map(|record| {
-                let value = StoredRecord {
-                    position: self.position(u64::MAX),
-                    schema: record.schema.clone(),
-                    scope: record.scope.cloned(),
-                    item: record.item.clone(),
-                    source: record.source.cloned(),
-                    source_time: record.source_time,
-                    payload: record.payload,
-                };
-                Ok((
-                    encoded_size(&value)?,
-                    record.resident_bytes(self.inner.primary.history())?,
-                ))
-            }),
-            false,
-        )
+        self.batch_prefix(records.iter().map(|record| {
+            let value = StoredRecord {
+                position: self.position(u64::MAX),
+                schema: record.schema.clone(),
+                scope: record.scope.cloned(),
+                item: record.item.clone(),
+                source: record.source.cloned(),
+                source_time: record.source_time,
+                payload: record.payload,
+            };
+            Ok((
+                encoded_size(&value)?,
+                record.resident_bytes(self.inner.primary.history())?,
+            ))
+        }))
     }
 
     pub fn stream_batch_len(&self, rows: &[StreamWrite<'_>]) -> Result<usize> {
-        self.batch_prefix(
-            rows.iter().map(|row| {
-                let value = StoredRow {
-                    record: StoredRecord {
-                        position: self.position(u64::MAX),
-                        schema: row.record.schema.clone(),
-                        scope: row.record.scope.cloned(),
-                        item: row.record.item.clone(),
-                        source: row.record.source.cloned(),
-                        source_time: row.record.source_time,
-                        payload: row.record.payload,
-                    },
-                    stream: row.stream.clone(),
-                    sequence: row.sequence,
-                };
-                let resident = row
-                    .record
-                    .resident_bytes(self.inner.primary.history())?
-                    .checked_add(
-                        std::mem::size_of::<StoredRow>() - std::mem::size_of::<StoredRecord>(),
-                    )
-                    .and_then(|bytes| bytes.checked_add(row.stream.as_str().len()))
-                    .ok_or(Error::ResourceExhausted {
-                        resource: "stream batch memory",
-                    })?;
-                Ok((encoded_size(&value)?, resident))
-            }),
-            true,
-        )
+        self.batch_prefix(rows.iter().map(|row| {
+            let value = StoredRow {
+                record: StoredRecord {
+                    position: self.position(u64::MAX),
+                    schema: row.record.schema.clone(),
+                    scope: row.record.scope.cloned(),
+                    item: row.record.item.clone(),
+                    source: row.record.source.cloned(),
+                    source_time: row.record.source_time,
+                    payload: row.record.payload,
+                },
+                stream: row.stream.clone(),
+                sequence: row.sequence,
+            };
+            let resident = row
+                .record
+                .resident_bytes(self.inner.primary.history())?
+                .checked_add(std::mem::size_of::<StoredRow>() - std::mem::size_of::<StoredRecord>())
+                .and_then(|bytes| bytes.checked_add(row.stream.as_str().len()))
+                .ok_or(Error::ResourceExhausted {
+                    resource: "stream batch memory",
+                })?;
+            Ok((encoded_size(&value)?, resident))
+        }))
     }
 
-    fn batch_prefix(
-        &self,
-        sizes: impl Iterator<Item = Result<(usize, usize)>>,
-        measurement: bool,
-    ) -> Result<usize> {
+    fn batch_prefix(&self, sizes: impl Iterator<Item = Result<(usize, usize)>>) -> Result<usize> {
         let mut bytes = 0usize;
         let mut rows = 0usize;
         let mut resident = 0usize;
-        let memory = self.inner.settings.request.max_pending_write_bytes.get()
-            - if measurement {
-                self.inner.settings.request.reserved_control_bytes
-            } else {
-                0
-            };
-        let maximum = self.inner.settings.max_batch_bytes.get();
+        let memory = self.inner.settings.request.max_pending_write_bytes.get();
+        let maximum = self.inner.settings.max_batch_bytes().get();
         for size in sizes {
             let (size, held) = size?;
             if size > maximum || held > memory {
@@ -828,9 +767,15 @@ impl<C> StorageManager<C> {
         limits: ReadLimits,
     ) -> Result<RecoveryPage> {
         let _lifecycle = self.inner.lifecycle.lock().await;
-        let _reservation = self
-            .reserve_read(limits.bytes.get(), limits.rows.get())
-            .await?;
+        let charge = limits
+            .rows
+            .get()
+            .saturating_mul(ENTRY_OVERHEAD)
+            .saturating_add(limits.bytes.get());
+        let _reservation =
+            Reservation::wait(&self.inner, Pool::Read, &Held::default(), charge, None)
+                .await
+                .map_err(Refusal::into_error)?;
         let status = self.status();
         if !status.recovery_saved.covers(through)? {
             return Err(Error::InvalidInput {
@@ -838,7 +783,6 @@ impl<C> StorageManager<C> {
                 reason: "frontier is not durable",
             });
         }
-        self.check_read_limit(limits.bytes.get())?;
         let page = self
             .inner
             .bounded(self.inner.recovery.read_entries(after, through, limits))
@@ -857,8 +801,11 @@ impl<C> StorageManager<C> {
         max_bytes: std::num::NonZeroUsize,
     ) -> Result<Option<RecoverySnapshot>> {
         let _lifecycle = self.inner.lifecycle.lock().await;
-        let _reservation = self.reserve_read(max_bytes.get(), 1).await?;
-        self.check_read_limit(max_bytes.get())?;
+        let charge = max_bytes.get().saturating_add(ENTRY_OVERHEAD);
+        let _reservation =
+            Reservation::wait(&self.inner, Pool::Read, &Held::default(), charge, None)
+                .await
+                .map_err(Refusal::into_error)?;
         let snapshot = self
             .inner
             .bounded(self.inner.recovery.read_snapshot(max_bytes))
@@ -877,7 +824,11 @@ impl<C> StorageManager<C> {
     }
 
     pub async fn close(&self) -> Result<()> {
-        self.inner.state.lock().unwrap().status.closing = true;
+        {
+            let mut state = self.inner.state.lock().unwrap();
+            state.status.closing = true;
+            state.close_followers();
+        }
         self.inner.notify();
 
         let mut lifecycle = self.inner.lifecycle.lock().await;
@@ -896,10 +847,8 @@ impl<C> StorageManager<C> {
             self.retire_files();
             self.flush_recovery().await?;
         }
-        self.settle_replicas(ready && lifecycle.startup_complete)
-            .await?;
         if ready {
-            self.release_views().await?;
+            self.release_snapshots().await?;
         }
         // Closing prevents new maintenance; let an in-flight backend call settle
         // before releasing its physical owner, including uncertain failed calls.
@@ -983,78 +932,20 @@ impl<C> StorageManager<C> {
             })
     }
 
-    fn check_read_limit(&self, bytes: usize) -> Result<()> {
-        if bytes > self.inner.settings.budget.read_memory_bytes.get() {
-            return Err(Error::InvalidInput {
-                field: "storage read",
-                reason: "page exceeds read memory budget",
-            });
-        }
-        Ok(())
+    async fn reserve_scratch(&self, bytes: usize) -> Result<Reservation> {
+        Reservation::wait(&self.inner, Pool::Write, &Held::default(), bytes, None)
+            .await
+            .map_err(Refusal::into_error)
     }
 
-    async fn reserve_scratch(&self, bytes: usize) -> Result<MemoryReservation> {
-        if bytes > self.inner.settings.request.max_pending_write_bytes.get() {
-            return Err(Error::InvalidInput {
-                field: "storage schema",
-                reason: "validation scratch exceeds write memory budget",
-            });
-        }
-        let mut changed = self.inner.changed.subscribe();
-        loop {
-            {
-                let mut state = self.inner.state.lock().unwrap();
-                if state.status.closing {
-                    return Err(Error::Closing { domain: "storage" });
-                }
-                if !state.ready || !state.status.running {
-                    return Err(Error::NotReady { domain: "storage" });
-                }
-                if let Some(source) = &state.status.failure {
-                    return Err(Error::Persistence {
-                        source: source.clone(),
-                    });
-                }
-                state.collect();
-                if state.status.pending_bytes
-                    <= self.inner.settings.request.max_pending_write_bytes.get() - bytes
-                {
-                    state.scratch_bytes += bytes;
-                    state.collect();
-                    return Ok(MemoryReservation {
-                        inner: self.inner.clone(),
-                        bytes,
-                        kind: ReservationKind::Write,
-                    });
-                }
-                self.inner.relieve_pressure(&mut state, bytes, 0);
-            }
-            changed.changed().await.map_err(|_| Error::NotReady {
-                domain: "storage worker",
-            })?;
-        }
-    }
-
+    /// The schema registered under `key` in the current saved image.
     pub(crate) async fn lookup_schema(
         &self,
-        view: &super::StorageView,
         key: &SchemaKey,
-    ) -> Result<super::QueryValue<StorageSchema>> {
-        let mut selection = super::ReadSelection::new(super::ReadKind::Schemas);
-        selection.schema = Some(key.clone());
-        selection.order = super::ReadOrder::Descending;
-        let mut reader = view.reader::<StorageSchema>(selection)?;
-        let page = reader
-            .next_page(ReadLimits {
-                rows: std::num::NonZeroUsize::MIN,
-                bytes: self.inner.settings.query_page.bytes,
-            })
-            .await?;
-        page.ok_or(Error::InvalidInput {
-            field: "storage schema",
-            reason: "schema is unavailable at requested cursor",
-        })?
-        .into_single()
+    ) -> Result<(StorageSchema, RetainedMemory)> {
+        let held = Held::default();
+        let snapshot = self.snapshot(&self.cursor_saved()).await?;
+        super::query::schema_at(&self.inner, &held, &snapshot, key).await
     }
 
     pub(crate) async fn admit_arrow_records(
@@ -1063,8 +954,7 @@ impl<C> StorageManager<C> {
         batch: &super::writes::DataBatch,
     ) -> Result<StorageCursor> {
         let scratch = self.reserve_arrow_write(batch).await?;
-        let view = self.view().await?;
-        let schema = self.lookup_schema(&view, &batch.schema).await?;
+        let (schema, _schema_memory) = self.lookup_schema(&batch.schema).await?;
         let mut records = super::writes::convert::records(scope, batch, &schema.schema)?;
         for record in &mut records {
             if record
@@ -1092,8 +982,7 @@ impl<C> StorageManager<C> {
         batch: &super::writes::DataBatch,
     ) -> Result<StorageCursor> {
         let scratch = self.reserve_arrow_write(batch).await?;
-        let view = self.view().await?;
-        let schema = self.lookup_schema(&view, &batch.schema).await?;
+        let (schema, _schema_memory) = self.lookup_schema(&batch.schema).await?;
         let rows = super::writes::convert::streams(scope, batch, &schema.schema)?;
         let result = self
             .admit_stream(rows.iter().map(super::StreamInput::borrowed), None)
@@ -1119,7 +1008,7 @@ impl<C> StorageManager<C> {
         let definition = (self.inner.object_definition)(&batch.schema)?;
         let graph = definition.graph(&harmos_contract::config::SchemaSettings::default())?;
         let values =
-            super::writes::convert::objects(batch, &graph, self.inner.settings.max_batch_bytes)?;
+            super::writes::convert::objects(batch, &graph, self.inner.settings.max_batch_bytes())?;
         let count = std::num::NonZeroUsize::new(values.len()).ok_or(Error::InvalidInput {
             field: "object batch",
             reason: "empty atomic batch",
@@ -1142,7 +1031,7 @@ impl<C> StorageManager<C> {
             resource: "object atomic batch",
         })?;
         if scratch
-            .bytes
+            .bytes()
             .checked_add(allowance.get())
             .is_none_or(|bytes| bytes > self.inner.settings.request.max_pending_write_bytes.get())
             || values.memory_size() > allowance.get()
@@ -1197,7 +1086,9 @@ impl<C> StorageManager<C> {
                 field: "object revision",
                 reason: "expected_revision must be nullable UInt64",
             })?;
-        let view = self.view().await?;
+        let snapshot = self.snapshot(&self.cursor_saved()).await?;
+        let held = Held::default();
+        let page_bytes = self.inner.settings.scan_bytes();
         let store = metadata
             .column_by_name("store")
             .and_then(|array| array.as_any().downcast_ref::<arrow_array::StringArray>());
@@ -1222,20 +1113,30 @@ impl<C> StorageManager<C> {
                     reason: "expected revision belongs to a different storage history",
                 });
             }
-            let mut selection = super::ReadSelection::new(super::ReadKind::Objects);
-            selection.schema = Some(value.schema.clone());
-            selection.object_key = Some(value.item.clone());
-            selection.object_versions = super::ObjectVersions::Latest;
-            let mut reader = view.read_objects(selection)?;
-            let page = reader
-                .next_page(ReadLimits {
-                    rows: std::num::NonZeroUsize::MIN,
-                    bytes: self.inner.settings.query_page.bytes,
-                })
+            let selection = super::query::ObjectSelection {
+                schema: Some(value.schema.clone()),
+                key: Some(value.item.clone()),
+                versions: super::query::ObjectVersions::Latest,
+            };
+            let page = super::ScanPage {
+                after: 0,
+                rows: std::num::NonZeroUsize::MIN,
+                bytes: page_bytes,
+            };
+            let _page = Reservation::wait(
+                &self.inner,
+                Pool::Read,
+                &held,
+                page_bytes.get().saturating_add(ENTRY_OVERHEAD),
+                None,
+            )
+            .await
+            .map_err(Refusal::into_error)?;
+            let (latest, _) = snapshot
+                .scan::<super::ObjectEntry>(&selection, page)
                 .await?;
-            let revision = page
-                .as_ref()
-                .and_then(|page| page.first())
+            let revision = latest
+                .first()
                 .map_or(0, |entry| entry.version.revision.get());
             if revision != expected.value(row) {
                 return Err(Error::InvalidInput {
@@ -1247,10 +1148,7 @@ impl<C> StorageManager<C> {
         Ok(())
     }
 
-    async fn reserve_arrow_write(
-        &self,
-        batch: &super::writes::DataBatch,
-    ) -> Result<MemoryReservation> {
+    async fn reserve_arrow_write(&self, batch: &super::writes::DataBatch) -> Result<Reservation> {
         use crate::MemorySize;
         if batch.data.as_record_batch().num_rows() == 0 {
             return Err(Error::InvalidInput {
@@ -1277,47 +1175,12 @@ impl<C> StorageManager<C> {
         self.reserve_conversion(bytes).await
     }
 
-    async fn reserve_conversion(&self, bytes: usize) -> Result<MemoryReservation> {
-        let capacity = self.inner.settings.request.max_pending_write_bytes.get();
-        let scratch_capacity = capacity / 2;
-        if bytes > scratch_capacity {
-            return Err(Error::ResourceExhausted {
-                resource: "storage write conversion",
-            });
-        }
-        let mut changed = self.inner.changed.subscribe();
-        loop {
-            {
-                let mut state = self.inner.state.lock().unwrap();
-                state.collect();
-                if state.status.closing {
-                    return Err(Error::Closing { domain: "storage" });
-                }
-                if !state.ready || !state.status.running {
-                    return Err(Error::NotReady { domain: "storage" });
-                }
-                if let Some(source) = &state.status.failure {
-                    return Err(Error::Persistence {
-                        source: source.clone(),
-                    });
-                }
-                if state.scratch_bytes <= scratch_capacity - bytes
-                    && state.status.pending_bytes <= capacity - bytes
-                {
-                    state.scratch_bytes += bytes;
-                    state.collect();
-                    return Ok(MemoryReservation {
-                        inner: self.inner.clone(),
-                        bytes,
-                        kind: ReservationKind::Write,
-                    });
-                }
-                self.inner.relieve_pressure(&mut state, bytes, 0);
-            }
-            changed.changed().await.map_err(|_| Error::NotReady {
-                domain: "storage worker",
-            })?;
-        }
+    // Conversion Scratch Draws On At Most Half The Write Budget So The Admitted
+    // Native Copy Always Has Coexistence Space.
+    async fn reserve_conversion(&self, bytes: usize) -> Result<Reservation> {
+        Reservation::wait(&self.inner, Pool::Write, &Held::default(), bytes, None)
+            .await
+            .map_err(Refusal::into_error)
     }
 
     pub(crate) fn check_state_dependency(&self, required: &StorageCursor) -> Result<()> {
@@ -1355,8 +1218,11 @@ impl<C> StorageManager<C> {
         true
     }
 
-    pub fn reserve_arrow_memory(&self, bytes: usize) -> Result<super::arrow::RetainedMemory> {
-        self.reserve_read_now(bytes, 1).map(retain_memory)
+    /// Charge consumer-retained Arrow data to the shared read budget without waiting.
+    pub fn reserve_arrow_memory(&self, bytes: usize) -> Result<RetainedMemory> {
+        Reservation::try_new(&self.inner, Pool::Read, &Held::default(), bytes)
+            .map(Reservation::retain)
+            .map_err(Refusal::into_error)
     }
 
     pub(crate) fn write_receipt_capacity(&self) -> usize {
@@ -1389,64 +1255,8 @@ impl<C> StorageManager<C> {
             )
             .await?;
         self.inner.state.lock().unwrap().objects_pruned = 0;
-        super::replication::object_history_released(&self.inner, through);
         self.inner.notify();
         Ok(())
-    }
-
-    pub(super) async fn reserve_read(
-        &self,
-        bytes: usize,
-        entries: usize,
-    ) -> Result<MemoryReservation> {
-        self.reserve_read_now(bytes, entries)
-    }
-
-    pub(super) fn reserve_read_now(
-        &self,
-        bytes: usize,
-        entries: usize,
-    ) -> Result<MemoryReservation> {
-        self.reserve_read_for(ReservationKind::Read, bytes, entries)
-    }
-
-    pub(super) fn reserve_read_for(
-        &self,
-        kind: ReservationKind,
-        bytes: usize,
-        entries: usize,
-    ) -> Result<MemoryReservation> {
-        let bytes = entries
-            .checked_mul(ENTRY_OVERHEAD)
-            .and_then(|overhead| bytes.checked_add(overhead))
-            .ok_or(Error::InvalidInput {
-                field: "storage read",
-                reason: "size overflow",
-            })?;
-        self.check_read_limit(bytes)?;
-        let mut state = self.inner.state.lock().unwrap();
-        if state.status.closing {
-            return Err(Error::Closing { domain: "storage" });
-        }
-        if !state.ready || !state.status.running {
-            return Err(Error::NotReady { domain: "storage" });
-        }
-        state.collect();
-        if let Some(id) = kind.view()
-            && state.views.get(&id).is_none_or(|view| view.expired)
-        {
-            return Err(Error::ViewExpired);
-        }
-        state.charge_read(
-            kind,
-            bytes,
-            self.inner.settings.budget.read_memory_bytes.get(),
-        )?;
-        Ok(MemoryReservation {
-            inner: self.inner.clone(),
-            bytes,
-            kind,
-        })
     }
 
     pub(super) async fn admit(
@@ -1492,53 +1302,38 @@ impl<C> StorageManager<C> {
             measurement,
         };
         let bytes = bytes.max(1);
-        let byte_capacity = self.inner.settings.request.max_pending_write_bytes.get()
-            - if measurement {
-                self.inner.settings.request.reserved_control_bytes
-            } else {
-                0
-            };
-        let batch_capacity = self.inner.settings.request.max_pending_write_batches.get()
-            - if measurement {
-                self.inner.settings.request.reserved_control_batches
-            } else {
-                0
-            };
-        let mut changed = self.inner.changed.subscribe();
-        let (sequence, last, index) = loop {
-            let replica_ceiling = self.inner.replica_ceiling();
-            {
-                let mut state = self.inner.state.lock().unwrap();
-                if state.status.closing {
-                    return Err(Error::Closing { domain: "storage" });
-                }
-                if !state.ready || !state.status.running {
-                    return Err(Error::NotReady { domain: "storage" });
+        let byte_capacity = self.inner.settings.request.max_pending_write_bytes.get();
+        let batch_capacity = self.inner.settings.request.max_pending_write_batches.get();
+        let admitted = self
+            .inner
+            .wait(None, |state| {
+                if let Err(error) = super::capacity::admitting(state, Pool::Write) {
+                    return Attempt::Refuse(Refusal::Failed(error));
                 }
                 if let Some(mutation) = mutation {
-                    match state.receipts.lookup(mutation.id, &mutation.fingerprint)? {
-                        ReceiptState::Complete(value) => return Ok(value.cursor()?.sequence),
-                        ReceiptState::Pending => {
-                            return Err(Error::InvalidInput {
+                    match state.receipts.lookup(mutation.id, &mutation.fingerprint) {
+                        Ok(ReceiptState::Complete(value)) => {
+                            return match value.cursor() {
+                                Ok(cursor) => Attempt::Ready(Admitted::Replayed(cursor.sequence)),
+                                Err(error) => Attempt::Refuse(Refusal::Failed(error)),
+                            };
+                        }
+                        Ok(ReceiptState::Pending) => {
+                            return Attempt::Refuse(Refusal::Failed(Error::InvalidInput {
                                 field: "storage mutation",
                                 reason: "mutation already owns different work",
-                            });
+                            }));
                         }
-                        ReceiptState::Missing => {}
+                        Ok(ReceiptState::Missing) => {}
+                        Err(error) => return Attempt::Refuse(Refusal::Failed(error)),
                     }
                 }
                 if bytes > byte_capacity {
-                    return Err(Error::InvalidInput {
-                        field: "storage admission",
-                        reason: "batch exceeds memory budget",
-                    });
-                }
-                if let Some(source) = &state.status.failure {
-                    return Err(Error::Persistence {
-                        source: source.clone(),
-                    });
+                    return Attempt::Refuse(Refusal::Exceeded(Pool::Write));
                 }
                 state.collect();
+
+                // FIFO Within Each Class; Alternate Classes When Both Are Waiting.
                 let opposite = if measurement {
                     &self.inner.control_waiting
                 } else {
@@ -1546,42 +1341,38 @@ impl<C> StorageManager<C> {
                 };
                 let turn = state.prefer_measurement == measurement
                     || opposite.load(std::sync::atomic::Ordering::SeqCst) == 0;
-                if turn
+                if !(turn
                     && state.reserved_batches == 0
                     && state.finishing.is_none()
                     && state.status.pending_bytes <= byte_capacity - bytes
-                    && state.status.pending_batches < batch_capacity
+                    && state.status.pending_batches < batch_capacity)
                 {
-                    let sequence = match domain {
-                        Domain::Data => state.status.accepted.sequence,
-                        Domain::Recovery => state.status.recovery_accepted.sequence,
-                    };
-                    let last = sequence
-                        .checked_add(count as u64)
-                        .ok_or(Error::InvalidInput {
-                            field: "storage admission",
-                            reason: "position overflow",
-                        })?;
-                    if domain == Domain::Data && last > replica_ceiling {
-                        return Err(Error::ResourceExhausted {
-                            resource: "replica retained history",
-                        });
-                    }
-                    let index = state.next.checked_add(1).ok_or(Error::InvalidInput {
-                        field: "storage admission",
-                        reason: "queue order overflow",
-                    })?;
-                    state.reserved = bytes;
-                    state.reserved_batches = 1;
-                    state.collect();
-                    break (sequence, last, index);
+                    self.inner.relieve_pressure(state, bytes, 1);
+                    return Attempt::Wait;
                 }
-                self.inner.relieve_pressure(&mut state, bytes, 1);
-            }
-            changed
-                .changed()
-                .await
-                .map_err(|_| Error::NotReady { domain: "storage" })?;
+                let sequence = match domain {
+                    Domain::Data => state.status.accepted.sequence,
+                    Domain::Recovery => state.status.recovery_accepted.sequence,
+                };
+                let (Some(last), Some(index)) = (
+                    sequence.checked_add(count as u64),
+                    state.next.checked_add(1),
+                ) else {
+                    return Attempt::Refuse(Refusal::Failed(Error::InvalidInput {
+                        field: "storage admission",
+                        reason: "position overflow",
+                    }));
+                };
+                state.reserved = bytes;
+                state.reserved_batches = 1;
+                state.collect();
+                Attempt::Ready(Admitted::Reserved(sequence, last, index))
+            })
+            .await
+            .map_err(Refusal::into_error)?;
+        let (sequence, last, index) = match admitted {
+            Admitted::Replayed(sequence) => return Ok(sequence),
+            Admitted::Reserved(sequence, last, index) => (sequence, last, index),
         };
         // The original exclusive reservation owns capacity and capture order.
         // Producer code runs without the state mutex; unwind releases the permit.
@@ -1590,7 +1381,7 @@ impl<C> StorageManager<C> {
             active: true,
         };
         let operation = build(if count == 0 { sequence } else { sequence + 1 })?;
-        operation.check_entry_bytes(self.inner.settings.max_batch_bytes)?;
+        operation.check_entry_bytes(self.inner.settings.max_batch_bytes())?;
         if let Operation::Snapshot(snapshot) = &operation
             && snapshot.through.sequence > sequence
         {
@@ -1627,7 +1418,6 @@ impl<C> StorageManager<C> {
                     mutation.id,
                     mutation.fingerprint,
                     crate::MemorySize::memory_size(&outcome),
-                    &self.inner.settings,
                 )?;
                 state.receipts.complete(mutation.id, outcome);
             }
@@ -1722,9 +1512,29 @@ impl<C> StorageManager<C> {
 }
 
 impl State {
-    pub(super) fn snapshot_released(&mut self) {
-        self.objects_pruned = 0;
-        self.objects_prune_owed = true;
+    /// Recompute the published pending and read totals from their owners.
+    pub(super) fn collect(&mut self) {
+        let now = executor::now();
+        self.receipts.purge(now);
+        self.status.mutation_bytes = self.receipts.snapshot_bytes();
+        self.status.pending_batches = self.reserved_batches
+            + self.queue.len()
+            + self
+                .files
+                .values()
+                .filter(|file| file.pending_batch())
+                .count();
+        self.status.pending_bytes = self.reserved
+            + self.scratch_bytes
+            + self.queue.bytes()
+            + self.files.values().map(|file| file.bytes()).sum::<usize>();
+        self.status.read_bytes = self.read_bytes
+            + self
+                .deletions
+                .values()
+                .map(|deletion| deletion.bytes)
+                .sum::<usize>()
+            + self.saves.values().map(|save| save.bytes).sum::<usize>();
     }
 
     pub(super) fn needs_write(&self, entry: &Pending) -> bool {
@@ -1758,32 +1568,6 @@ impl State {
 }
 
 impl Inner {
-    pub(super) fn replica_floor(&self) -> u64 {
-        self.replicas
-            .iter()
-            .map(|replica| {
-                replica
-                    .state
-                    .lock()
-                    .unwrap()
-                    .status
-                    .saved
-                    .as_ref()
-                    .map_or(0, |saved| saved.sequence)
-            })
-            .min()
-            .unwrap_or(u64::MAX)
-    }
-
-    pub(super) fn retention_floor(&self) -> u64 {
-        self.replica_floor().min(self.receipts.floor())
-    }
-
-    pub(super) fn replica_ceiling(&self) -> u64 {
-        self.replica_floor()
-            .saturating_add(self.settings.replica_lag_positions.get())
-    }
-
     pub(super) fn notify(&self) {
         self.changed
             .send_modify(|revision| *revision = revision.wrapping_add(1));
@@ -1804,15 +1588,13 @@ impl Inner {
     }
 
     pub(super) async fn bounded<T>(&self, future: StorageFuture<'_, T>) -> Result<T> {
-        executor::timeout(self.settings.io_timeout, future)
-            .await
-            .map_err(|_| {
-                Error::backend(
-                    "storage I/O",
-                    crate::BackendFailure::Transient,
-                    io::Error::new(io::ErrorKind::TimedOut, "backend deadline exceeded"),
-                )
-            })?
+        executor::timeout(IO_TIMEOUT, future).await.map_err(|_| {
+            Error::backend(
+                "storage I/O",
+                crate::BackendFailure::Transient,
+                io::Error::new(io::ErrorKind::TimedOut, "backend deadline exceeded"),
+            )
+        })?
     }
 }
 
@@ -1871,130 +1653,6 @@ impl RecordWrite<'_> {
     }
 }
 
-impl ReservationKind {
-    pub(super) fn is_read(self) -> bool {
-        matches!(self, Self::Read | Self::View(_))
-    }
-
-    pub(super) fn view(self) -> Option<u64> {
-        match self {
-            Self::View(id) => Some(id),
-            Self::Read | Self::Write | Self::Replication => None,
-        }
-    }
-}
-
-impl MemoryReservation {
-    pub(super) fn projection(&self, bytes: std::num::NonZeroUsize) -> Result<Self> {
-        assert!(self.kind.is_read());
-        let mut output = Self {
-            inner: Arc::clone(&self.inner),
-            bytes: 0,
-            kind: self.kind,
-        };
-        output.reserve_projection(bytes)?;
-        Ok(output)
-    }
-
-    pub(super) async fn projection_wait(
-        &self,
-        bytes: std::num::NonZeroUsize,
-        timeout: std::time::Duration,
-    ) -> Result<Self> {
-        let required = self
-            .bytes
-            .checked_add(bytes.get())
-            .and_then(|total| total.checked_add(ENTRY_OVERHEAD))
-            .ok_or_else(super::query::decoded_limit)?;
-        if required > self.inner.settings.budget.read_memory_bytes.get() {
-            return Err(super::query::decoded_limit());
-        }
-        let started = tokio::time::Instant::now();
-        let mut changed = self.inner.changed.subscribe();
-        loop {
-            match self.projection(bytes) {
-                Ok(reservation) => return Ok(reservation),
-                Err(Error::ResourceExhausted {
-                    resource: "storage read memory",
-                }) => {}
-                Err(error) => return Err(error),
-            }
-            let remaining = timeout.saturating_sub(started.elapsed());
-            if remaining.is_zero() {
-                return Err(super::query::execution_timeout());
-            }
-            tokio::time::timeout(remaining, changed.changed())
-                .await
-                .map_err(|_| super::query::execution_timeout())?
-                .map_err(|_| Error::Closing {
-                    domain: "storage read admission",
-                })?;
-        }
-    }
-
-    pub(super) fn reserve_projection(&mut self, bytes: std::num::NonZeroUsize) -> Result<()> {
-        assert!(self.kind.is_read());
-        let additional = bytes
-            .get()
-            .checked_add(ENTRY_OVERHEAD)
-            .ok_or_else(super::query::decoded_limit)?;
-        self.grow_read(additional)
-    }
-
-    pub(super) fn grow_read(&mut self, additional: usize) -> Result<()> {
-        assert!(self.kind.is_read());
-        if additional == 0 {
-            return Ok(());
-        }
-        let bytes = self
-            .bytes
-            .checked_add(additional)
-            .ok_or(Error::ResourceExhausted {
-                resource: "storage read memory",
-            })?;
-        let mut state = self.inner.state.lock().unwrap();
-        if state.status.closing {
-            return Err(Error::Closing { domain: "storage" });
-        }
-        if !state.ready || !state.status.running {
-            return Err(Error::NotReady { domain: "storage" });
-        }
-        state.collect();
-        if let Some(id) = self.kind.view()
-            && state.views.get(&id).is_none_or(|view| view.expired)
-        {
-            if let Some(follower) = state.followers.get(&id) {
-                // Live Followers Retain Their Own Lease After Saved History Closes.
-                follower.check()?;
-            } else if !state.views.contains_key(&id) {
-                // Retained Values Outlive Their Reader. Collection Already Moved
-                // Their Existing Charges Into The Shared, View-Less Read Ledger.
-                self.kind = ReservationKind::Read;
-            }
-            // A Released View Awaiting Backend Cleanup Still Ledgers Its Retained
-            // Values; Collection Moves Them To The Shared Ledger Once It Leaves.
-        }
-        state.charge_read(
-            self.kind,
-            additional,
-            self.inner.settings.budget.read_memory_bytes.get(),
-        )?;
-        self.bytes = bytes;
-        Ok(())
-    }
-
-    pub(super) fn retain_read(&mut self, bytes: usize) {
-        assert!(self.kind.is_read());
-        assert!(bytes <= self.bytes);
-        let mut state = self.inner.state.lock().unwrap();
-        state.release_read(self.kind, self.bytes - bytes);
-        self.bytes = bytes;
-        state.collect();
-        drop(state);
-        self.inner.notify();
-    }
-}
-
 impl Drop for WriteWaiter {
     fn drop(&mut self) {
         let counter = if self.measurement {
@@ -2021,29 +1679,6 @@ impl Drop for Admission {
     }
 }
 
-impl Drop for MemoryReservation {
-    fn drop(&mut self) {
-        // Failed Admission Owns Nothing And Must Not Wake Its Own Waiter.
-        if self.bytes == 0 {
-            return;
-        }
-        let mut state = self.inner.state.lock().unwrap();
-        match self.kind {
-            ReservationKind::Read | ReservationKind::View(_) => {
-                state.release_read(self.kind, self.bytes)
-            }
-            ReservationKind::Write => state.scratch_bytes -= self.bytes,
-            ReservationKind::Replication => {
-                state.scratch_bytes -= self.bytes;
-                state.replication_bytes -= self.bytes;
-            }
-        }
-        state.collect();
-        drop(state);
-        self.inner.notify();
-    }
-}
-
 impl Write for Counter {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
         self.0 = self
@@ -2056,22 +1691,6 @@ impl Write for Counter {
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
-}
-
-pub(super) fn retain_memory(reservation: MemoryReservation) -> super::arrow::RetainedMemory {
-    let owner = Arc::new(Mutex::new(reservation));
-    let shrink_owner = owner.clone();
-    super::arrow::RetainedMemory::new(owner, move |bytes| {
-        let mut held = shrink_owner.lock().unwrap();
-        if !held.kind.is_read() || bytes > held.bytes {
-            return Err(Error::InvalidInput {
-                field: "storage retained memory",
-                reason: "reservation can only shrink within its original read claim",
-            });
-        }
-        held.retain_read(bytes);
-        Ok(())
-    })
 }
 
 /* === Public Functions === */

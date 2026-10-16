@@ -28,7 +28,7 @@ use super::{
     Bank, Data, Ledger, Recovery, StorageBackends, StorageManager, catalog, config, history,
     record, schema,
 };
-use harmos::storage::{ReadLimits, RecordQuery};
+use harmos::storage::ReadLimits;
 use harmos::{
     Builder, Error, Identifier, Runtime, services::Fault, services::Service, state::Position,
 };
@@ -40,6 +40,11 @@ use harmos::{
 /* === Type Aliases === */
 
 /* === Structs === */
+#[harmos::message]
+struct Balance {
+    value: i64,
+}
+
 struct Store {
     data: Arc<Data>,
     recovery: Arc<Recovery>,
@@ -68,7 +73,6 @@ impl Store {
             StorageBackends {
                 primary: self.data.clone(),
                 state: self.recovery.clone(),
-                replicas: Vec::new(),
             },
             config(),
         )
@@ -80,18 +84,20 @@ impl Store {
         storage
             .write_schema(
                 &schema(),
-                &harmos::schema::graph::Schema {
-                    root: 0,
-                    definitions: vec![vec![]],
-                },
+                &harmos::schema::graph::Schema::from_declaration(
+                    <Balance as harmos::schema::Described>::DEFINITION,
+                    &harmos::config::SchemaSettings::default(),
+                )
+                .unwrap(),
             )
             .await
             .unwrap();
+        let payload = harmos::Message::encode_to_vec(&Balance { value: 8 });
         storage
             .write_records(&[record(
                 &schema(),
                 &Identifier::new("saved-balance").unwrap(),
-                b"8",
+                &payload,
             )])
             .await
             .unwrap();
@@ -137,23 +143,45 @@ async fn restore(
     journal: harmos::state::StateManager<Bank>,
     storage: StorageManager<harmos::storage::ErasedCatalog>,
 ) -> harmos::Result<()> {
-    let mut query = RecordQuery::new(schema(), |bytes, allowance| {
-        if allowance.get() < std::mem::size_of::<i64>() {
-            return Err(Error::ResourceExhausted {
-                resource: "saved balance decode",
-            });
-        }
-        serde_json::from_slice::<i64>(bytes).map_err(|_| Error::InvalidInput {
-            field: "saved balance",
-            reason: "stored balance is malformed",
+    use harmos::storage::query::transform::{
+        Transform,
+        project::{Project, Projection},
+    };
+    use harmos::storage::query::{Query, QueryOutput, RecordSelection, RowSlice, Source};
+    let mut reader = storage
+        .query(Query {
+            at: storage.cursor_saved(),
+            source: Source::Records(RecordSelection {
+                schema: schema(),
+                scope: None,
+                item: Some(Identifier::new("saved-balance").unwrap()),
+                source_start: None,
+                source_end: None,
+            }),
+            transforms: vec![Transform::Project(Project {
+                fields: vec![Projection {
+                    field: "payload.value".into(),
+                    name: "value".into(),
+                }],
+            })],
+            slice: RowSlice::default(),
         })
-    });
-    query.item = Some(Identifier::new("saved-balance").unwrap());
-    query.options.page = Some(limits());
-    let mut reader = storage.query(query).await?;
-    let page = reader.next_page().await?.unwrap();
-    let saved = page[0].payload;
-    assert!(reader.next_page().await?.is_none());
+        .await?;
+    let mut saved = Vec::new();
+    while let Some(output) = reader.next().await? {
+        if let QueryOutput::Batch(batch) = output {
+            let values = batch
+                .as_record_batch()
+                .column_by_name("value")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<arrow_array::Int64Array>()
+                .unwrap();
+            saved.extend(values.values().iter().copied());
+        }
+    }
+    assert_eq!(saved.len(), 1);
+    let saved = saved[0];
     let current = journal
         .state()
         .read(|state| state.balances.get(&HOUSE).copied().unwrap_or(0))

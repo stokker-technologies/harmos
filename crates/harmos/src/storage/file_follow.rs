@@ -17,8 +17,8 @@ use std::num::NonZeroUsize;
 // Third Party Imports
 use tokio::sync::watch;
 // Local Imports
-use super::manager::MemoryReservation;
-use super::{ErasedCatalog, FileChunk, FilePhase, FileProgress, StagedFile, StorageManager};
+use super::capacity::{Held, Pool, Refusal, Reservation};
+use super::{ErasedCatalog, FileBatch, FilePhase, FileProgress, StagedFile, StorageManager};
 use crate::{Error, MemorySize, Result};
 
 /* === Constants === */
@@ -34,7 +34,8 @@ pub struct FileFollower {
     offset: u64,
     progress: FileProgress,
     changed: watch::Receiver<u64>,
-    _metadata: MemoryReservation,
+    held: Held,
+    _metadata: Reservation,
 }
 
 /* === Enums === */
@@ -45,13 +46,17 @@ pub struct FileFollower {
 impl<C> StorageManager<C> {
     pub async fn follow_file(&self, file: &StagedFile, offset: u64) -> Result<FileFollower> {
         self.inner.primary.history().check(&file.history)?;
-        let metadata = self
-            .reserve_read(
-                file.memory_size()
-                    .saturating_add(std::mem::size_of::<FileFollower>()),
-                1,
-            )
-            .await?;
+        let held = Held::default();
+        let metadata = Reservation::wait(
+            &self.inner,
+            Pool::Read,
+            &held,
+            file.memory_size()
+                .saturating_add(std::mem::size_of::<FileFollower>()),
+            None,
+        )
+        .await
+        .map_err(Refusal::into_error)?;
         let changed = self.inner.changed.subscribe();
         let progress = self.file_progress(file).await?;
         if offset > progress.length {
@@ -67,6 +72,7 @@ impl<C> StorageManager<C> {
             offset,
             progress,
             changed,
+            held,
             _metadata: metadata,
         })
     }
@@ -104,7 +110,8 @@ impl FileFollower {
         self.progress
     }
 
-    pub async fn next_chunk(&mut self, max_bytes: NonZeroUsize) -> Result<Option<FileChunk>> {
+    /// The next retained byte batch, waiting while the file is still producing.
+    pub async fn next_batch(&mut self, max_bytes: NonZeroUsize) -> Result<Option<FileBatch>> {
         loop {
             self.changed.borrow_and_update();
             let progress = self.manager.file_progress(&self.file).await?;
@@ -121,7 +128,10 @@ impl FileFollower {
                     .min(self.manager.inner.settings.response.batch_bytes.get())
                     .min(usize::try_from(progress.length - self.offset).unwrap_or(usize::MAX));
                 let maximum = NonZeroUsize::new(size).expect("nonempty file prefix");
-                let reservation = self.manager.reserve_read(size, 1).await?;
+                let _transfer =
+                    Reservation::wait(&self.manager.inner, Pool::Read, &self.held, size, None)
+                        .await
+                        .map_err(Refusal::into_error)?;
                 let _lifecycle = self.manager.inner.lifecycle.lock().await;
                 if self.manager.inner.state.lock().unwrap().status.closing {
                     return Err(Error::Closing {
@@ -139,15 +149,13 @@ impl FileFollower {
                     .await?;
                 if bytes.is_empty() || bytes.len() > size || bytes.capacity() > size {
                     return Err(Error::InvalidInput {
-                        field: "file chunk",
+                        field: "file batch",
                         reason: "backend returned an empty or oversized retained prefix",
                     });
                 }
+                let offset = self.offset;
                 self.offset += bytes.len() as u64;
-                return Ok(Some(FileChunk {
-                    bytes,
-                    _reservation: reservation,
-                }));
+                return Ok(Some(FileBatch { offset, bytes }));
             }
             if progress.phase != FilePhase::Producing {
                 return Ok(None);

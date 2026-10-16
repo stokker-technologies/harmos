@@ -21,13 +21,13 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use super::ObjectSelection;
 
 use crate::operations::{Context, Operation, StreamOutput};
 use crate::operations::{OperationDeclaration, OutputDeclaration, Visibility, WireOperation};
 use crate::schema::Described;
 
 use crate::storage::StorageManager;
+use crate::storage::follow::Objects;
 use crate::storage::{ObjectEntry, StorageCursor};
 
 use crate::{Error, MemorySize, Result};
@@ -51,7 +51,7 @@ pub(super) struct Handler<C> {
 
 /* === Implementations === */
 impl OperationDeclaration for FollowObjects {
-    type Request = ObjectSelection;
+    type Request = Objects;
     type Response = StorageCursor;
     const ID: &'static str = "storage.follow_objects";
     const POLICY: crate::operations::OperationPolicy = super::STREAM_POLICY;
@@ -87,34 +87,27 @@ impl<C: 'static> Operation for Handler<C> {
     async fn run<'a>(
         &mut self,
         _: Self::Context<'a>,
-        selection: &mut ObjectSelection,
+        request: &mut Objects,
         output: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<StorageCursor>> {
-        async {
-            selection.validate_follow()?;
-
-            let query = selection.query(true)?;
-            let mut reader = self.storage.follow(query).await?;
-            let boundary = reader.accepted_boundary();
-            if let Some(after) = &selection.selection.after
-                && !boundary.covers(after)?
-            {
-                return Err(Error::InvalidInput {
-                    field: "storage query",
-                    reason: "start exceeds accepted boundary",
-                });
-            }
-            loop {
-                let page = reader.next_page().await?;
-                for entry in page.iter() {
-                    output
-                        .send_with(entry.memory_size(), || Ok(entry.clone()))
-                        .await?;
-                }
+        if !request.selection.follows_revisions() {
+            return Err(Error::InvalidInput {
+                field: "storage follow",
+                reason: "following delivers every object revision",
+            });
+        }
+        let mut follower = self
+            .storage
+            .follow::<ObjectEntry>(request.after.as_ref(), request.selection.clone())
+            .await?;
+        loop {
+            let page = follower.next().await?;
+            for entry in page.entries() {
+                output
+                    .send_with(entry.memory_size(), || Ok(entry.clone()))
+                    .await?;
             }
         }
-        .await
-        .map(|value: StorageCursor| value.into())
     }
 }
 

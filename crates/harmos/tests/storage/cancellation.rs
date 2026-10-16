@@ -34,14 +34,11 @@ async fn cancellation() {
     let mut settings = storage_settings();
     settings.request.max_active_queries = NonZeroUsize::new(1).unwrap();
     settings.request.max_pending_write_batches = NonZeroUsize::new(1).unwrap();
-    settings.request.reserved_control_batches = 0;
-    settings.request.reserved_control_bytes = 0;
     let data = Arc::new(Data::<()>::journaled(directory.path(), history()).unwrap());
-    let storage = StorageManager::new(
+    let storage: StorageManager = StorageManager::new(
         StorageBackends {
             primary: data.clone(),
             state: Arc::new(Recovery::new(history())),
-            replicas: vec![],
         },
         settings,
     )

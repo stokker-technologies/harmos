@@ -31,13 +31,8 @@ mod managed;
 mod operations;
 #[path = "reconcile.rs"]
 mod reconcile;
-#[path = "replicas.rs"]
-mod replicas;
 #[path = "snapshots.rs"]
 mod snapshots;
-#[allow(dead_code, unused_imports)]
-#[path = "../../support/storage_views.rs"]
-mod views;
 
 /* === Re-Exports === */
 
@@ -78,7 +73,6 @@ fn journal_recovery() {
 }
 
 #[test]
-fn replica_recovery() {
-    replicas::contract_scenario();
+fn snapshot_recovery() {
     snapshots::contract_scenario();
 }

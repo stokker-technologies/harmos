@@ -7,18 +7,30 @@
  * ***
  */
 
+// Stored Entry Kinds Shared By Scans And Live Subscriptions
+
 /* === Modules === */
 
 /* === Re-Exports === */
 
 /* === Imports === */
 // Standard Library Imports
+use std::time::SystemTime;
 
 // Third Party Imports
 use serde::Serialize;
+
 // Local Imports
+use super::backend::{BackendSnapshot, ScanPage, StorageBackend};
 use super::manager::Operation;
-use super::*;
+use super::query::{
+    FileSelection, ObjectSelection, ObjectVersions, RecordSelection, SchemaSelection,
+    StreamSelection,
+};
+use super::{
+    FileReference, ObjectEntry, StorageCursor, StorageFuture, StorageSchema, StoredRecord,
+    StoredRow,
+};
 use crate::Identifier;
 
 /* === Constants === */
@@ -32,56 +44,41 @@ use crate::Identifier;
 /* === Enums === */
 
 /* === Traits === */
+/// One stored entry kind: how it is scanned, matched, positioned and found in
+/// the accepted queue.
 pub(super) trait Entry: Clone + Serialize + Send + Sync + 'static {
-    const KIND: ReadKind;
-    fn pending(operation: &Operation) -> &[Self];
-    fn read_limits(limits: ReadLimits) -> ReadLimits {
-        if Self::KIND == ReadKind::Schemas {
-            ReadLimits {
-                rows: std::num::NonZeroUsize::MIN,
-                ..limits
-            }
-        } else {
-            limits
-        }
-    }
-
-    fn decoding_overhead(limits: ReadLimits) -> Option<usize> {
-        if Self::KIND == ReadKind::Schemas {
-            StorageSchema::decoding_memory_bytes(limits.bytes.get())
-        } else {
-            Some(0)
-        }
-    }
-
-    fn validate(&self, _: &super::manager::Inner, _: ReadLimits) -> crate::Result<()> {
-        Ok(())
-    }
-
-    fn validate_read(
-        &self,
-        inner: &super::manager::Inner,
-        limits: ReadLimits,
-    ) -> crate::Result<()> {
-        self.validate(inner, limits)
-    }
+    type Selection: Send + Sync;
 
     fn position(&self) -> &StorageCursor;
-    fn part(entries: &[Self]) -> StoragePart<'_>;
-    fn matches(&self, selection: &ReadSelection) -> bool;
-    fn fetch<'a>(
-        backend: &'a dyn super::backend::ErasedBackend,
-        view: &'a ReadView,
-        selection: &'a ReadSelection,
-        cursor: Option<&'a ReadCursor>,
-        limits: ReadLimits,
-    ) -> StorageFuture<'a, ReadPage<Self>>;
+    fn matches(&self, selection: &Self::Selection) -> bool;
+    fn pending(operation: &Operation) -> &[Self];
+    fn scan<'a>(
+        backend: &'a dyn StorageBackend,
+        snapshot: &'a BackendSnapshot,
+        selection: &'a Self::Selection,
+        page: ScanPage,
+    ) -> StorageFuture<'a, Vec<Self>>;
 }
 
 /* === Implementations === */
 impl Entry for ObjectEntry {
-    fn part(entries: &[Self]) -> StoragePart<'_> {
-        StoragePart::Objects(entries)
+    type Selection = ObjectSelection;
+
+    fn position(&self) -> &StorageCursor {
+        &self.position
+    }
+
+    // Latest selection is resolved by the backend; matching checks identity only.
+    fn matches(&self, selection: &ObjectSelection) -> bool {
+        self.version.check_position(&self.position).is_ok()
+            && selection
+                .schema
+                .as_ref()
+                .is_none_or(|key| key == &self.value.schema)
+            && selection
+                .key
+                .as_ref()
+                .is_none_or(|key| key == &self.value.item)
     }
 
     fn pending(operation: &Operation) -> &[Self] {
@@ -90,46 +87,33 @@ impl Entry for ObjectEntry {
             _ => &[],
         }
     }
-    const KIND: ReadKind = ReadKind::Objects;
-    fn position(&self) -> &StorageCursor {
-        &self.position
-    }
 
-    fn matches(&self, selection: &ReadSelection) -> bool {
-        selection
-            .schema
-            .as_ref()
-            .is_none_or(|key| key == &self.value.schema)
-            && selection
-                .object_key
-                .as_ref()
-                .is_none_or(|key| key == &self.value.item)
-    }
-
-    fn validate(&self, inner: &super::manager::Inner, limits: ReadLimits) -> crate::Result<()> {
-        self.version.check_position(&self.position)?;
-        (inner.validate_object)(&self.value, limits.bytes)
-    }
-
-    fn validate_read(&self, _: &super::manager::Inner, _: ReadLimits) -> crate::Result<()> {
-        // Typed Reads Verify Payload And Key Under Their Original Output Preclaim.
-        self.version.check_position(&self.position)
-    }
-
-    fn fetch<'a>(
-        backend: &'a dyn super::backend::ErasedBackend,
-        view: &'a ReadView,
-        selection: &'a ReadSelection,
-        cursor: Option<&'a ReadCursor>,
-        limits: ReadLimits,
-    ) -> StorageFuture<'a, ReadPage<Self>> {
-        backend.read_objects(view, selection, cursor, limits)
+    fn scan<'a>(
+        backend: &'a dyn StorageBackend,
+        snapshot: &'a BackendSnapshot,
+        selection: &'a ObjectSelection,
+        page: ScanPage,
+    ) -> StorageFuture<'a, Vec<Self>> {
+        backend.read_objects(snapshot, selection, page)
     }
 }
 
 impl Entry for StoredRecord {
-    fn part(entries: &[Self]) -> StoragePart<'_> {
-        StoragePart::Records(entries)
+    type Selection = RecordSelection;
+
+    fn position(&self) -> &StorageCursor {
+        &self.position
+    }
+
+    fn matches(&self, selection: &RecordSelection) -> bool {
+        self.schema == selection.schema
+            && optional(&selection.scope, self.scope.as_ref())
+            && optional(&selection.item, Some(&self.item))
+            && within(
+                selection.source_start,
+                selection.source_end,
+                self.source_time,
+            )
     }
 
     fn pending(operation: &Operation) -> &[Self] {
@@ -138,38 +122,35 @@ impl Entry for StoredRecord {
             _ => &[],
         }
     }
-    const KIND: ReadKind = ReadKind::Records;
-    fn position(&self) -> &StorageCursor {
-        &self.position
-    }
 
-    fn matches(&self, selection: &ReadSelection) -> bool {
-        selection
-            .schema
-            .as_ref()
-            .is_none_or(|key| key == &self.schema)
-            && selection
-                .source_time
-                .as_ref()
-                .is_none_or(|range| range.contains(self.source_time))
-            && optional(&selection.scope, self.scope.as_ref())
-            && optional(&selection.item, Some(&self.item))
-    }
-
-    fn fetch<'a>(
-        backend: &'a dyn super::backend::ErasedBackend,
-        view: &'a ReadView,
-        selection: &'a ReadSelection,
-        cursor: Option<&'a ReadCursor>,
-        limits: ReadLimits,
-    ) -> StorageFuture<'a, ReadPage<Self>> {
-        backend.read_records(view, selection, cursor, limits)
+    fn scan<'a>(
+        backend: &'a dyn StorageBackend,
+        snapshot: &'a BackendSnapshot,
+        selection: &'a RecordSelection,
+        page: ScanPage,
+    ) -> StorageFuture<'a, Vec<Self>> {
+        backend.read_records(snapshot, selection, page)
     }
 }
 
 impl Entry for StoredRow {
-    fn part(entries: &[Self]) -> StoragePart<'_> {
-        StoragePart::Stream(entries)
+    type Selection = StreamSelection;
+
+    fn position(&self) -> &StorageCursor {
+        &self.record.position
+    }
+
+    fn matches(&self, selection: &StreamSelection) -> bool {
+        let record = &self.record;
+        record.schema == selection.schema
+            && optional(&selection.scope, record.scope.as_ref())
+            && optional(&selection.item, Some(&record.item))
+            && optional(&selection.stream, Some(&self.stream))
+            && within(
+                selection.source_start,
+                selection.source_end,
+                record.source_time,
+            )
     }
 
     fn pending(operation: &Operation) -> &[Self] {
@@ -178,115 +159,78 @@ impl Entry for StoredRow {
             _ => &[],
         }
     }
-    const KIND: ReadKind = ReadKind::Stream;
-    fn position(&self) -> &StorageCursor {
-        &self.record.position
-    }
 
-    fn matches(&self, selection: &ReadSelection) -> bool {
-        self.record.matches(selection) && optional(&selection.stream, Some(&self.stream))
-    }
-
-    fn fetch<'a>(
-        backend: &'a dyn super::backend::ErasedBackend,
-        view: &'a ReadView,
-        selection: &'a ReadSelection,
-        cursor: Option<&'a ReadCursor>,
-        limits: ReadLimits,
-    ) -> StorageFuture<'a, ReadPage<Self>> {
-        backend.read_stream(view, selection, cursor, limits)
+    fn scan<'a>(
+        backend: &'a dyn StorageBackend,
+        snapshot: &'a BackendSnapshot,
+        selection: &'a StreamSelection,
+        page: ScanPage,
+    ) -> StorageFuture<'a, Vec<Self>> {
+        backend.read_stream(snapshot, selection, page)
     }
 }
 
 impl Entry for StorageSchema {
-    fn validate(&self, _: &super::manager::Inner, limits: ReadLimits) -> crate::Result<()> {
-        self.schema
-            .prepare(&harmos_contract::config::SchemaSettings::default())
-            .map_err(|_| crate::Error::InvalidInput {
-                field: "storage schema",
-                reason: "invalid stored shared schema",
-            })?;
-        let bound = limits
-            .bytes
-            .get()
-            .checked_mul(4)
-            .and_then(|bytes| {
-                bytes.checked_add(StorageSchema::decoding_memory_bytes(limits.bytes.get())?)
-            })
-            .ok_or(crate::Error::InvalidInput {
-                field: "storage schema",
-                reason: "decoded size overflow",
-            })?;
-        if crate::MemorySize::memory_size(self) > bound {
-            return Err(crate::Error::InvalidInput {
-                field: "storage schema",
-                reason: "decoded schema exceeds its original read reservation",
-            });
-        }
-        Ok(())
+    type Selection = SchemaSelection;
+
+    fn position(&self) -> &StorageCursor {
+        &self.position
     }
 
-    fn part(entries: &[Self]) -> StoragePart<'_> {
-        StoragePart::Schemas(entries)
+    fn matches(&self, selection: &SchemaSelection) -> bool {
+        selection.schema.as_ref().is_none_or(|key| key == &self.key)
     }
 
     fn pending(operation: &Operation) -> &[Self] {
         match operation {
-            Operation::Schema(values) => std::slice::from_ref(values),
+            Operation::Schema(value) => std::slice::from_ref(value),
             Operation::ObjectGroup { schemas, .. } => schemas,
             _ => &[],
         }
     }
-    const KIND: ReadKind = ReadKind::Schemas;
-    fn position(&self) -> &StorageCursor {
-        &self.position
-    }
 
-    fn matches(&self, selection: &ReadSelection) -> bool {
-        selection.schema.as_ref().is_none_or(|key| key == &self.key)
-            && optional(&selection.item, Some(&self.key.id))
-    }
-
-    fn fetch<'a>(
-        backend: &'a dyn super::backend::ErasedBackend,
-        view: &'a ReadView,
-        selection: &'a ReadSelection,
-        cursor: Option<&'a ReadCursor>,
-        limits: ReadLimits,
-    ) -> StorageFuture<'a, ReadPage<Self>> {
-        backend.read_schemas(view, selection, cursor, limits)
+    fn scan<'a>(
+        backend: &'a dyn StorageBackend,
+        snapshot: &'a BackendSnapshot,
+        selection: &'a SchemaSelection,
+        page: ScanPage,
+    ) -> StorageFuture<'a, Vec<Self>> {
+        backend.read_schemas(snapshot, selection, page)
     }
 }
 
 impl Entry for FileReference {
-    fn part(entries: &[Self]) -> StoragePart<'_> {
-        StoragePart::Files(entries)
-    }
+    type Selection = FileSelection;
 
-    fn pending(operation: &Operation) -> &[Self] {
-        match operation {
-            Operation::File(values) => std::slice::from_ref(values),
-            _ => &[],
-        }
-    }
-    const KIND: ReadKind = ReadKind::Files;
     fn position(&self) -> &StorageCursor {
         &self.position
     }
 
-    fn matches(&self, selection: &ReadSelection) -> bool {
+    fn matches(&self, selection: &FileSelection) -> bool {
         optional(&selection.scope, self.metadata.scope.as_ref())
             && optional(&selection.item, Some(&self.metadata.id))
     }
 
-    fn fetch<'a>(
-        backend: &'a dyn super::backend::ErasedBackend,
-        view: &'a ReadView,
-        selection: &'a ReadSelection,
-        cursor: Option<&'a ReadCursor>,
-        limits: ReadLimits,
-    ) -> StorageFuture<'a, ReadPage<Self>> {
-        backend.read_files(view, selection, cursor, limits)
+    fn pending(operation: &Operation) -> &[Self] {
+        match operation {
+            Operation::File(value) => std::slice::from_ref(value),
+            _ => &[],
+        }
+    }
+
+    fn scan<'a>(
+        backend: &'a dyn StorageBackend,
+        snapshot: &'a BackendSnapshot,
+        selection: &'a FileSelection,
+        page: ScanPage,
+    ) -> StorageFuture<'a, Vec<Self>> {
+        backend.read_files(snapshot, selection, page)
+    }
+}
+
+impl ObjectSelection {
+    pub(super) fn follows_revisions(&self) -> bool {
+        self.versions == ObjectVersions::Revisions
     }
 }
 
@@ -297,6 +241,14 @@ fn optional(expected: &Option<Identifier>, actual: Option<&Identifier>) -> bool 
     expected
         .as_ref()
         .is_none_or(|expected| Some(expected) == actual)
+}
+
+// Half-Open Source Windows Select Only Records Carrying A Source Time.
+fn within(start: Option<SystemTime>, end: Option<SystemTime>, time: Option<SystemTime>) -> bool {
+    match (start, end) {
+        (Some(start), Some(end)) => time.is_some_and(|time| time >= start && time < end),
+        _ => true,
+    }
 }
 
 /* === Tests === */

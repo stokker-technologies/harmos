@@ -90,10 +90,6 @@ where
     }
 }
 
-pub(crate) async fn yield_now() {
-    tokio::task::yield_now().await;
-}
-
 /* === Private Functions === */
 
 /* === Tests === */

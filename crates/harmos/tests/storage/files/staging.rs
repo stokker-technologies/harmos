@@ -20,7 +20,6 @@ mod recovery;
 /* === Re-Exports === */
 
 /* === Imports === */
-use crate::backend::storage_settings;
 // Standard Library Imports
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -267,17 +266,11 @@ fn own_contract() {
                         };
                         let mut reader = f.storage.follow_file(&identity, 0).await.unwrap();
                         let max = NonZeroUsize::new(3).unwrap();
-                        assert_eq!(
-                            reader.next_chunk(max).await.unwrap().unwrap().as_bytes(),
-                            b"fir"
-                        );
-                        assert_eq!(
-                            reader.next_chunk(max).await.unwrap().unwrap().as_bytes(),
-                            b"st"
-                        );
+                        assert_eq!(reader.next_batch(max).await.unwrap().unwrap().bytes, b"fir");
+                        assert_eq!(reader.next_batch(max).await.unwrap().unwrap().bytes, b"st");
                         assert_eq!(reader.offset(), 5);
                         {
-                            let next = reader.next_chunk(max);
+                            let next = reader.next_batch(max);
                             tokio::pin!(next);
                             std::future::poll_fn(|cx| {
                                 assert!(std::future::Future::poll(next.as_mut(), cx).is_pending());
@@ -285,24 +278,24 @@ fn own_contract() {
                             })
                             .await;
                             producer.write_all(b"second").await.unwrap();
-                            assert_eq!(next.await.unwrap().unwrap().as_bytes(), b"sec");
+                            assert_eq!(next.await.unwrap().unwrap().bytes, b"sec");
                         }
                         drop(reader);
                         let mut resumed = f.storage.follow_file(&identity, 8).await.unwrap();
                         assert_eq!(
-                            resumed.next_chunk(max).await.unwrap().unwrap().as_bytes(),
+                            resumed.next_batch(max).await.unwrap().unwrap().bytes,
                             b"ond"
                         );
                         producer.finish().await.unwrap();
-                        assert!(resumed.next_chunk(max).await.unwrap().is_none());
+                        assert!(resumed.next_batch(max).await.unwrap().is_none());
                         assert_eq!(resumed.progress().phase, FilePhase::Finished);
                         assert_eq!(resumed.offset(), 11);
                         assert!(f.storage.follow_file(&identity, 12).await.is_err());
                         drop(resumed);
                         let mut replay = f.storage.follow_file(&identity, 0).await.unwrap();
                         let mut all = Vec::new();
-                        while let Some(chunk) = replay.next_chunk(max).await.unwrap() {
-                            all.extend_from_slice(&chunk);
+                        while let Some(chunk) = replay.next_batch(max).await.unwrap() {
+                            all.extend_from_slice(&chunk.bytes);
                         }
                         assert_eq!(all, b"firstsecond");
                         drop(replay);
@@ -339,18 +332,18 @@ fn own_contract() {
                     producer.abort().await.unwrap();
                     let max = NonZeroUsize::new(100).unwrap();
                     assert_eq!(
-                        reader.next_chunk(max).await.unwrap().unwrap().as_bytes(),
+                        reader.next_batch(max).await.unwrap().unwrap().bytes,
                         b"partial"
                     );
-                    assert!(reader.next_chunk(max).await.unwrap().is_none());
+                    assert!(reader.next_batch(max).await.unwrap().is_none());
                     assert_eq!(reader.progress().phase, FilePhase::Abandoned);
                     drop(reader);
                     let mut replay = f.storage.follow_file(&identity, 3).await.unwrap();
                     assert_eq!(
-                        replay.next_chunk(max).await.unwrap().unwrap().as_bytes(),
+                        replay.next_batch(max).await.unwrap().unwrap().bytes,
                         b"tial"
                     );
-                    assert!(replay.next_chunk(max).await.unwrap().is_none());
+                    assert!(replay.next_batch(max).await.unwrap().is_none());
                     assert_eq!(replay.progress().phase, FilePhase::Abandoned);
                     drop(replay);
                     f.finish().await;
@@ -382,7 +375,7 @@ fn own_contract() {
                     let mut reader = f.storage.follow_file(&identity, 0).await.unwrap();
                     f.data.control.block_read.store(true, Ordering::SeqCst);
                     {
-                        let read = reader.next_chunk(NonZeroUsize::new(3).unwrap());
+                        let read = reader.next_batch(NonZeroUsize::new(3).unwrap());
                         tokio::pin!(read);
                         tokio::select! {
                             biased;
@@ -419,68 +412,6 @@ fn own_contract() {
                     assert!(f.storage.file_progress(&identity).await.is_err());
                     private.abort().await.unwrap();
                     f.finish().await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("chunks_retain_read", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    use harmos::storage::StagedFile;
-                    use std::num::NonZeroUsize;
-                    let f = Fixture::new(config()).await;
-                    let mut producer = f.storage.produce_file(metadata("charged")).await.unwrap();
-                    producer.write_all(b"retained payload").await.unwrap();
-                    let token = producer.session().unwrap();
-                    let identity = StagedFile {
-                        history: token.history.clone(),
-                        id: token.id.clone(),
-                    };
-                    let mut reader = f.storage.follow_file(&identity, 0).await.unwrap();
-                    let chunk = reader
-                        .next_chunk(NonZeroUsize::new(4).unwrap())
-                        .await
-                        .unwrap()
-                        .unwrap();
-                    let held = f.storage.status().read_bytes;
-                    drop(reader);
-                    assert!(f.storage.status().read_bytes < held);
-                    assert!(f.storage.status().read_bytes >= chunk.len());
-                    drop(chunk);
-                    assert_eq!(f.storage.status().read_bytes, 0);
-                    producer.abort().await.unwrap();
-                    f.finish().await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("expired_leases_unchanged", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let mut settings = config();
-                    settings.file_session_timeout = Duration::from_secs(2);
-                    let f = Fixture::new(settings).await;
-                    let mut producer = f.storage.produce_file(metadata("late")).await.unwrap();
-                    let token = producer.session().unwrap().clone();
-                    producer.write_all(b"retained").await.unwrap();
-                    drop(producer);
-                    tokio::time::advance(Duration::from_secs(2)).await;
-                    assert!(f.storage.resume_file(&token).await.is_err());
-                    assert_eq!(f.data.staged.lock().unwrap()["late"].1, b"retained");
-                    f.finish().await;
-                    assert_eq!(
-                        storage_settings().file_session_timeout,
-                        Duration::from_secs(60)
-                    );
                 });
         });
     }
@@ -532,9 +463,8 @@ fn own_contract() {
                         .await
                         .unwrap();
                     producer.write_all(b"complete").await.unwrap();
+                    // An Uncertain Publication Is Retried At The Same Position.
                     f.data.control.finish_failures.store(1, Ordering::SeqCst);
-                    assert!(producer.finish().await.is_err());
-                    tokio::time::advance(Duration::from_secs(61)).await;
                     let reference = producer.finish().await.unwrap();
                     assert_eq!(reference.length, 8);
                     assert_eq!(f.data.blobs.lock().unwrap().len(), 1);

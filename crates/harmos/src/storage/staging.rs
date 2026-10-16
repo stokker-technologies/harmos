@@ -169,13 +169,12 @@ impl<C> StorageManager<C> {
         }
         // The charged envelope includes worst-case position, length and digest
         // metadata. Refuse before creating bytes that cannot later be published.
-        if reference_bytes > self.inner.settings.max_batch_bytes.get() {
+        if reference_bytes > self.inner.settings.max_batch_bytes().get() {
             return Err(Error::InvalidInput {
                 field: "file metadata",
                 reason: "reference envelope exceeds max_batch_bytes",
             });
         }
-        let mut changed = self.inner.changed.subscribe();
         let progress = Arc::new(Mutex::new(Progress {
             generation: u64::from(resumable),
             ..Progress::default()
@@ -185,24 +184,26 @@ impl<C> StorageManager<C> {
             id: metadata.id.clone(),
             generation: 1,
         });
-        let id = loop {
-            {
-                let mut state = self.inner.state.lock().unwrap();
-                admission(&state)?;
+        let mut metadata = Some(metadata);
+        let id = self
+            .inner
+            .admit_when(|state| {
+                admission(state)?;
+                let candidate = metadata.as_ref().expect("unadmitted file metadata");
                 if state
                     .files
                     .values()
-                    .any(|file| file.metadata.id == metadata.id)
-                    || state.deleting(&metadata.id)
+                    .any(|file| file.metadata.id == candidate.id)
+                    || state.deleting(&candidate.id)
                 {
                     return Err(Error::AlreadyRegistered {
                         domain: "storage file",
-                        name: metadata.id.to_string(),
+                        name: candidate.id.to_string(),
                     });
                 }
                 state.collect();
-                // Leave at least one byte for chunk progress even with tiny policies.
-                if state.files.len() < self.inner.settings.max_files.get()
+                // Leave at least one byte for batch progress even with tiny policies.
+                if state.files.len() < crate::storage::config::MAX_FILES.get()
                     && state.status.pending_batches
                         < self.inner.settings.request.max_pending_write_batches.get()
                     && state.status.pending_bytes
@@ -211,6 +212,7 @@ impl<C> StorageManager<C> {
                     let id = NEXT_FILE
                         .try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
                         .map_err(|_| size_error())?;
+                    let metadata = metadata.take().expect("unadmitted file metadata");
                     let staging = StagedFile {
                         history: self.inner.primary.history().clone(),
                         id: metadata.id.clone(),
@@ -236,12 +238,12 @@ impl<C> StorageManager<C> {
                         },
                     );
                     state.collect();
-                    break id;
+                    return Ok(Some(id));
                 }
-                self.inner.relieve_pressure(&mut state, base_bytes + 1, 1);
-            }
-            changed.changed().await.map_err(|_| closed())?;
-        };
+                self.inner.relieve_pressure(state, base_bytes + 1, 1);
+                Ok(None)
+            })
+            .await?;
         let mut cancel = CancelProduction {
             manager: self.erased(),
             id,
@@ -324,7 +326,7 @@ impl<C> StorageManager<C> {
                     session.disconnect(
                         &file.staging,
                         file.length,
-                        self.inner.settings.file_session_timeout,
+                        crate::storage::config::FILE_SESSION_TIMEOUT,
                     );
                 }
                 self.inner.notify();
@@ -360,73 +362,76 @@ impl StorageFile {
             armed: true,
             generation: self.session.as_ref().map(|token| token.generation),
         };
-        let mut changed = self.manager.inner.changed.subscribe();
         loop {
-            let admitted = {
-                let mut state = self.manager.inner.state.lock().unwrap();
-                admission(&state)?;
-                state.collect();
-                let available = self
-                    .manager
-                    .inner
-                    .settings
-                    .request
-                    .max_pending_write_bytes
-                    .get()
-                    .saturating_sub(state.status.pending_bytes);
-                let capacity = state.status.pending_batches
-                    < self
+            let session = self.session.as_ref();
+            let id = self.id;
+            let admitted = self
+                .manager
+                .inner
+                .admit_when(|state| {
+                    admission(state)?;
+                    state.collect();
+                    let available = self
                         .manager
                         .inner
                         .settings
                         .request
-                        .max_pending_write_batches
-                        .get();
-                let file = state.files.get_mut(&self.id).ok_or_else(closed)?;
-                file.check_session(self.session.as_ref())?;
-                if file.abandoned || file.command.is_some() {
-                    return Err(closed());
-                }
-                let total = file
-                    .length
-                    .checked_add(u64::try_from(bytes.len()).map_err(|_| size_error())?)
-                    .ok_or(size_error())?;
-                if file
-                    .metadata
-                    .expected_length
-                    .is_some_and(|expected| total > expected)
-                {
-                    return Err(Error::InvalidInput {
-                        field: "file length",
-                        reason: "input exceeds expected length",
-                    });
-                }
-                if bytes.is_empty() {
-                    cancel.armed = false;
-                    return Ok(());
-                }
-                if available != 0 && capacity {
-                    let count = bytes
-                        .len()
-                        .min(available)
-                        .min(self.manager.inner.settings.response.batch_bytes.get());
-                    file.ticket = file.ticket.checked_add(1).ok_or(size_error())?;
-                    file.command = Some(Command::Write(Arc::from(&bytes[..count])));
-                    let ticket = file.ticket;
-                    state.collect();
-                    Some((count, ticket))
-                } else {
-                    self.manager.inner.relieve_pressure(&mut state, 1, 1);
-                    None
-                }
+                        .max_pending_write_bytes
+                        .get()
+                        .saturating_sub(state.status.pending_bytes);
+                    let capacity = state.status.pending_batches
+                        < self
+                            .manager
+                            .inner
+                            .settings
+                            .request
+                            .max_pending_write_batches
+                            .get();
+                    let file = state.files.get_mut(&id).ok_or_else(closed)?;
+                    file.check_session(session)?;
+                    if file.abandoned || file.command.is_some() {
+                        return Err(closed());
+                    }
+                    let total = file
+                        .length
+                        .checked_add(u64::try_from(bytes.len()).map_err(|_| size_error())?)
+                        .ok_or(size_error())?;
+                    if file
+                        .metadata
+                        .expected_length
+                        .is_some_and(|expected| total > expected)
+                    {
+                        return Err(Error::InvalidInput {
+                            field: "file length",
+                            reason: "input exceeds expected length",
+                        });
+                    }
+                    if bytes.is_empty() {
+                        return Ok(Some(None));
+                    }
+                    if available != 0 && capacity {
+                        let count = bytes
+                            .len()
+                            .min(available)
+                            .min(self.manager.inner.settings.response.batch_bytes.get());
+                        file.ticket = file.ticket.checked_add(1).ok_or(size_error())?;
+                        file.command = Some(Command::Write(Arc::from(&bytes[..count])));
+                        let ticket = file.ticket;
+                        state.collect();
+                        Ok(Some(Some((count, ticket))))
+                    } else {
+                        self.manager.inner.relieve_pressure(state, 1, 1);
+                        Ok(None)
+                    }
+                })
+                .await?;
+            let Some((count, ticket)) = admitted else {
+                cancel.armed = false;
+                return Ok(());
             };
-            if let Some((count, ticket)) = admitted {
-                self.manager.inner.notify();
-                self.wait(Await::Written(ticket)).await?;
-                bytes = &bytes[count..];
-            } else {
-                changed.changed().await.map_err(|_| closed())?;
-            }
+            self.manager.inner.notify();
+            self.wait(Await::Written(ticket)).await?;
+            bytes = &bytes[count..];
         }
     }
 
@@ -435,11 +440,11 @@ impl StorageFile {
         if let Some(reference) = &self.progress.lock().unwrap().reference {
             return Ok(reference.clone());
         }
-        let mut changed = self.manager.inner.changed.subscribe();
-        loop {
-            let replica_ceiling = self.manager.inner.replica_ceiling();
-            let ready = {
-                let mut state = self.manager.inner.state.lock().unwrap();
+        let session = self.session.as_ref();
+        let id = self.id;
+        self.manager
+            .inner
+            .admit_when(|state| {
                 if state.status.closing {
                     return Err(closed());
                 }
@@ -457,16 +462,15 @@ impl StorageFile {
                         .request
                         .max_pending_write_batches
                         .get();
-                let lag_full = state.status.accepted.sequence >= replica_ceiling;
-                let file = state.files.get_mut(&self.id).ok_or_else(closed)?;
+                let file = state.files.get_mut(&id).ok_or_else(closed)?;
                 if let Some(Command::Finish { .. }) = file.command {
                     file.progress.lock().unwrap().failure = None;
                     file.retrying = false;
                     state.status.failure = None;
                     state.retry = state.retry.wrapping_add(1);
-                    true
+                    Ok(Some(()))
                 } else {
-                    file.check_session(self.session.as_ref())?;
+                    file.check_session(session)?;
                     if file.abandoned || file.command.is_some() {
                         return Err(closed());
                     }
@@ -488,29 +492,20 @@ impl StorageFile {
                             reason: "length or digest does not match",
                         });
                     }
-                    if lag_full {
-                        return Err(Error::ResourceExhausted {
-                            resource: "replica retained history",
-                        });
-                    }
                     if capacity {
                         file.command = Some(Command::Finish {
                             target: None,
                             sha256: digest,
                         });
                         state.collect();
-                        true
+                        Ok(Some(()))
                     } else {
-                        self.manager.inner.relieve_pressure(&mut state, 0, 1);
-                        false
+                        self.manager.inner.relieve_pressure(state, 0, 1);
+                        Ok(None)
                     }
                 }
-            };
-            if ready {
-                break;
-            }
-            changed.changed().await.map_err(|_| closed())?;
-        }
+            })
+            .await?;
         self.manager.inner.notify();
         self.wait(Await::Finished).await?;
         self.progress
@@ -705,7 +700,7 @@ impl FileAction {
 }
 
 impl State {
-    pub(super) fn file_action(&mut self, replica_ceiling: u64) -> Option<FileAction> {
+    pub(super) fn file_action(&mut self) -> Option<FileAction> {
         let ids: Vec<_> = self.files.keys().copied().collect();
         let id = ids
             .iter()
@@ -716,8 +711,6 @@ impl State {
                 let file = &self.files[id];
                 !file.in_flight
                     && (file.abandoned || file.command.is_some())
-                    && (!matches!(file.command, Some(Command::Finish { target: None, .. }))
-                        || self.status.accepted.sequence < replica_ceiling)
                     && (!matches!(file.command, Some(Command::Finish { .. }))
                         || (self.reserved == 0 && self.finishing.is_none_or(|owner| owner == *id)))
             })?;
@@ -886,7 +879,7 @@ impl State {
             }
             FileCompleted::Written => {
                 let Some(Command::Write(bytes)) = file.command.take() else {
-                    unreachable!("one owned chunk")
+                    unreachable!("one owned batch")
                 };
                 file.hash.update(&bytes);
                 file.length += bytes.len() as u64;

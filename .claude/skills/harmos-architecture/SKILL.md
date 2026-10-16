@@ -201,7 +201,7 @@ backends merely because acknowledgments mention both.
 
 Consumers own lifecycle retention policy, including preserving all revisions
 needed by active executions. Generic retention releases must survive ordinary
-persistence, replication and bootstrap. Subject sealing cannot race active
+persistence and restart. Subject sealing cannot race active
 materializations or accepted late writes. Report finalization, stop behavior,
 renderer resources and stopped-report evidence boundaries belong to Dokime,
 not Harmos. Temporary contention may wait; impossible working sets or retained

@@ -24,7 +24,8 @@ use arrow_schema::{DataType, Field, Schema};
 use super::project::Projection;
 use super::{FieldPath, exact_type, invalid, numeric_type, scalar_type, values_array};
 use crate::storage::codec::{Nested, Repeated, Text, product};
-use crate::storage::reduce::{Accumulator, Agg, ScalarValue, Scratch, sort_values};
+use crate::storage::query::accumulate::{Accumulator, Scratch};
+use crate::storage::query::scalar::{Agg, ScalarValue};
 use crate::{MemorySize, Result};
 
 /* === Constants === */
@@ -39,6 +40,20 @@ pub struct Aggregate {
     pub groups: Vec<Projection>,
     pub measures: Vec<Measure>,
 }
+/// Incremental aggregate state: groups in key order with their accumulators.
+pub struct Groups {
+    plan: Aggregate,
+    schema: Arc<Schema>,
+    groups: Vec<Group>,
+    capture: u64,
+    retained: usize,
+}
+
+struct Group {
+    keys: Vec<ScalarValue>,
+    accumulators: Vec<Accumulator>,
+}
+
 #[derive(Clone, Debug)]
 pub struct Measure {
     pub field: FieldPath,
@@ -124,72 +139,158 @@ impl Aggregate {
         Ok(Schema::new(fields))
     }
 
+    /// Start an incremental reduction over batches of `input`.
+    pub fn start(&self, input: &Schema) -> Result<Groups> {
+        let schema = Arc::new(self.output_schema(input)?);
+        let mut groups = Groups {
+            plan: self.clone(),
+            schema,
+            groups: Vec::new(),
+            capture: 0,
+            retained: 0,
+        };
+        // An ungrouped reduction always yields its identity row, even for no input.
+        if self.groups.is_empty() {
+            groups.retained = group_bound(self, &[])?;
+            groups.groups.push(new_group(self, Vec::new()));
+        }
+        Ok(groups)
+    }
+
     pub fn apply(
         &self,
         input: &RecordBatch,
         check: &mut impl FnMut() -> Result<()>,
     ) -> Result<RecordBatch> {
-        let schema = Arc::new(self.output_schema(input.schema().as_ref())?);
-        let mut order = (0..input.num_rows()).collect::<Vec<_>>();
-        sort_values(&mut order, |left, right| {
+        let mut groups = self.start(input.schema().as_ref())?;
+        groups.push(input, check)?;
+        groups.finish(check)
+    }
+}
+
+impl Groups {
+    /// Bytes retained by group keys and accumulator state between batches.
+    pub fn retained_bytes(&self) -> usize {
+        self.retained
+    }
+
+    /// Bytes needed to materialize the final output batch.
+    pub fn finish_bytes(&self) -> Result<usize> {
+        let text = self
+            .groups
+            .iter()
+            .flat_map(|group| &group.keys)
+            .map(MemorySize::memory_size)
+            .try_fold(0usize, |total, bytes| total.checked_add(bytes))
+            .ok_or_else(|| invalid("aggregate output estimate overflow"))?;
+        self.groups
+            .len()
+            .max(1)
+            .checked_mul(self.schema.fields().len())
+            .and_then(|cells| cells.checked_mul(512))
+            .and_then(|bytes| bytes.checked_add(text.saturating_mul(4)))
+            .and_then(|bytes| bytes.checked_add(65536))
+            .ok_or_else(|| invalid("aggregate finish estimate overflow"))
+    }
+
+    /// Fold one batch into the groups. A failed batch leaves no partial update.
+    pub fn push(
+        &mut self,
+        input: &RecordBatch,
+        check: &mut impl FnMut() -> Result<()>,
+    ) -> Result<()> {
+        // Extract Keys And Values Before Any Group Changes.
+        let mut rows = Vec::with_capacity(input.num_rows());
+        for row in 0..input.num_rows() {
             check()?;
-            let comparison = self.compare_groups(input, left, right)?;
-            Ok(comparison.then(left.cmp(&right)))
-        })?;
-        let mut output = vec![Vec::new(); schema.fields().len()];
-        let mut start = 0usize;
-        // An ungrouped empty input still yields the aggregate identity row.
-        while start < order.len() || (order.is_empty() && self.groups.is_empty() && start == 0) {
+            let keys = self
+                .plan
+                .groups
+                .iter()
+                .map(|group| group.field.value(input, row).map(normalized))
+                .collect::<Result<Vec<_>>>()?;
+            let values = self
+                .plan
+                .measures
+                .iter()
+                .map(|measure| measure.field.value(input, row).map(normalized))
+                .collect::<Result<Vec<_>>>()?;
+            rows.push((keys, values));
+        }
+
+        // Fold Rows Into Sorted Groups.
+        for (keys, values) in rows {
             check()?;
-            let mut end = start;
-            while end < order.len()
-                && (end == start
-                    || self
-                        .compare_groups(input, order[start], order[end])?
-                        .is_eq())
-            {
-                end += 1;
-            }
-            for (index, group) in self.groups.iter().enumerate() {
-                output[index].push(normalized(group.field.value(input, order[start])?));
-            }
-            for (index, measure) in self.measures.iter().enumerate() {
-                let mut accumulator = Accumulator::new(Agg::Of(measure.statistic));
-                let slots = (end - start)
-                    .checked_mul(2)
-                    .and_then(|slots| slots.checked_add(4))
-                    .ok_or_else(|| invalid("aggregate scratch size overflow"))?;
-                let mut scratch = Scratch::new(slots);
-                for row in &order[start..end] {
-                    check()?;
-                    let value = normalized(measure.field.value(input, *row)?);
-                    accumulator.push(*row as u64, &value, &mut scratch)?;
+            let index = match self.find(&keys)? {
+                Ok(index) => index,
+                Err(index) => {
+                    let bytes = group_bound(&self.plan, &keys)?;
+                    self.groups.insert(index, new_group(&self.plan, keys));
+                    self.retained = self.retained.saturating_add(bytes);
+                    index
                 }
-                output[self.groups.len() + index].push(accumulator.finish(check)?);
+            };
+            let group = &mut self.groups[index];
+            for ((measure, accumulator), value) in self
+                .plan
+                .measures
+                .iter()
+                .zip(&mut group.accumulators)
+                .zip(values)
+            {
+                // Retained order statistics grow only by the selected scalars.
+                if Agg::Of(measure.statistic).retains_values()
+                    || matches!(value, ScalarValue::Text(_))
+                {
+                    let bytes = value.memory_size().saturating_mul(4).saturating_add(128);
+                    self.retained = self.retained.saturating_add(bytes);
+                }
+                accumulator.push(self.capture, &value, &mut Scratch::new(usize::MAX))?;
             }
-            if end == order.len() {
-                break;
+            self.capture = self
+                .capture
+                .checked_add(1)
+                .ok_or_else(|| invalid("query capture count overflow"))?;
+        }
+        Ok(())
+    }
+
+    pub fn finish(self, check: &mut impl FnMut() -> Result<()>) -> Result<RecordBatch> {
+        check()?;
+        let width = self.schema.fields().len();
+        let mut values = vec![Vec::with_capacity(self.groups.len()); width];
+        for group in self.groups {
+            check()?;
+            for (column, key) in group.keys.into_iter().enumerate() {
+                values[column].push(key);
             }
-            start = end;
+            for (column, accumulator) in group.accumulators.into_iter().enumerate() {
+                values[self.plan.groups.len() + column].push(accumulator.finish(check)?);
+            }
         }
-        let mut columns = Vec::with_capacity(output.len());
-        for (field, values) in schema.fields().iter().zip(output) {
-            columns.push(values_array(field.data_type(), &values)?);
-        }
-        RecordBatch::try_new(schema, columns)
+        let columns = self
+            .schema
+            .fields()
+            .iter()
+            .zip(values)
+            .map(|(field, values)| values_array(field.data_type(), &values))
+            .collect::<Result<Vec<_>>>()?;
+        RecordBatch::try_new(self.schema, columns)
             .map_err(|_| invalid("aggregate output batch is invalid"))
     }
 
-    fn compare_groups(&self, input: &RecordBatch, left: usize, right: usize) -> Result<Ordering> {
-        for group in &self.groups {
-            let left = normalized(group.field.value(input, left)?);
-            let right = normalized(group.field.value(input, right)?);
-            let comparison = left.compare(&right)?;
-            if !comparison.is_eq() {
-                return Ok(comparison);
+    // Binary Search Over Groups Kept In Key Order.
+    fn find(&self, keys: &[ScalarValue]) -> Result<std::result::Result<usize, usize>> {
+        let (mut low, mut high) = (0usize, self.groups.len());
+        while low < high {
+            let middle = low + (high - low) / 2;
+            match compare_keys(&self.groups[middle].keys, keys)? {
+                Ordering::Less => low = middle + 1,
+                Ordering::Greater => high = middle,
+                Ordering::Equal => return Ok(Ok(middle)),
             }
         }
-        Ok(Ordering::Equal)
+        Ok(Err(low))
     }
 }
 product!(Aggregate { groups: Repeated<Projection> => 1, measures: Repeated<Measure> => 2 });
@@ -221,6 +322,42 @@ impl MemorySize for Measure {
 /* === Public Functions === */
 
 /* === Private Functions === */
+fn group_bound(plan: &Aggregate, keys: &[ScalarValue]) -> Result<usize> {
+    keys.iter()
+        .map(MemorySize::memory_size)
+        .try_fold(0usize, |total, bytes| total.checked_add(bytes))
+        .and_then(|bytes| {
+            plan.measures
+                .len()
+                .checked_mul(std::mem::size_of::<Accumulator>() * 4)
+                .and_then(|accumulators| bytes.checked_add(accumulators))
+        })
+        .and_then(|bytes| bytes.checked_mul(4))
+        .and_then(|bytes| bytes.checked_add(1024))
+        .ok_or_else(|| invalid("aggregate group memory overflow"))
+}
+
+fn new_group(plan: &Aggregate, keys: Vec<ScalarValue>) -> Group {
+    Group {
+        keys,
+        accumulators: plan
+            .measures
+            .iter()
+            .map(|measure| Accumulator::new(Agg::Of(measure.statistic)))
+            .collect(),
+    }
+}
+
+fn compare_keys(left: &[ScalarValue], right: &[ScalarValue]) -> Result<Ordering> {
+    for (left, right) in left.iter().zip(right) {
+        let comparison = left.compare(right)?;
+        if !comparison.is_eq() {
+            return Ok(comparison);
+        }
+    }
+    Ok(left.len().cmp(&right.len()))
+}
+
 fn normalized(value: ScalarValue) -> ScalarValue {
     match value {
         ScalarValue::Float(number) if !number.is_finite() => ScalarValue::Null,

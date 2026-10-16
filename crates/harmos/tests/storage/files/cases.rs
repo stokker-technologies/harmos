@@ -15,7 +15,6 @@ use crate::scenario_runtime;
 /* === Imports === */
 
 // Standard Library Imports
-use std::sync::atomic::AtomicUsize;
 
 // Third Party Imports
 use sha2::{Digest, Sha256};
@@ -53,64 +52,18 @@ fn metadata(id: &str, bytes: &[u8]) -> FileMetadata {
     }
 }
 
+fn whole(file: &harmos::storage::FileReference) -> harmos::storage::ReadFile {
+    harmos::storage::ReadFile {
+        file: file.clone(),
+        range: harmos::storage::ByteRange {
+            offset: 0,
+            limit: None,
+        },
+    }
+}
+
 #[test]
 fn contract_scenario() {
-    {
-        scenario_runtime::check("file_wait_retains", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let mut settings = config();
-                    settings.query_execution.timeout = Duration::from_secs(10);
-                    let f = Fixture::new(settings).await;
-                    let reference = f
-                        .storage
-                        .write_file(metadata("owned-read", b"original"), b"original")
-                        .await
-                        .unwrap();
-                    f.storage.flush().await.unwrap();
-                    let view = f.storage.view_with_limits(f.execution).await.unwrap();
-                    let mut reader = view.read_file(&reference).await.unwrap();
-                    let (started, entered) = tokio::sync::oneshot::channel();
-                    let (release, waiting) = tokio::sync::oneshot::channel();
-                    *f.data.control.accepted_file_read.lock().unwrap() = Some((started, waiting));
-                    let observer = tokio::spawn(async move {
-                        reader.next_chunk(NonZeroUsize::new(8).unwrap()).await
-                    });
-                    entered.await.unwrap();
-                    observer.abort();
-                    assert!(observer.await.unwrap_err().is_cancelled());
-                    assert!(matches!(
-                        view.begin_computation(),
-                        Err(Error::NotReady { .. })
-                    ));
-                    let releases = f.data.control.releases.load(Ordering::SeqCst);
-                    tokio::time::advance(Duration::from_secs(11)).await;
-                    assert_eq!(f.data.control.releases.load(Ordering::SeqCst), releases);
-                    assert!(matches!(
-                        view.begin_computation(),
-                        Err(Error::NotReady { .. })
-                    ));
-                    release.send(()).unwrap();
-                    for _ in 0..100 {
-                        tokio::task::yield_now().await;
-                        if matches!(
-                            view.begin_computation(),
-                            Err(Error::ResourceExhausted { .. })
-                        ) {
-                            drop(view);
-                            f.finish().await;
-                            return;
-                        }
-                    }
-                    panic!("physical result did not settle its original computation");
-                });
-        });
-    }
     {
         scenario_runtime::check("streams_flush_controls", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
@@ -140,21 +93,29 @@ fn contract_scenario() {
                     assert_eq!(f.storage.status().saved.sequence, 0);
                     let mut durable = f
                         .storage
-                        .query(file_query(ReadLimits {
-                            rows: NonZeroUsize::new(16).unwrap(),
-                            bytes: NonZeroUsize::new(4096).unwrap(),
-                        }))
+                        .query(harmos::storage::query::Query {
+                            at: f.storage.cursor_saved(),
+                            source: harmos::storage::query::Source::Files(
+                                harmos::storage::query::FileSelection {
+                                    scope: None,
+                                    item: None,
+                                },
+                            ),
+                            transforms: Vec::new(),
+                            slice: harmos::storage::query::RowSlice::default(),
+                        })
                         .await
                         .unwrap();
-                    assert!(durable.next_page().await.unwrap().is_none());
-                    let mut reader = f.storage.read_file(&reference).await.unwrap();
+                    assert!(matches!(
+                        durable.next().await.unwrap(),
+                        Some(harmos::storage::query::QueryOutput::Schema(_))
+                    ));
+                    assert!(durable.next().await.unwrap().is_none());
+                    let mut reader = f.storage.read_file(whole(&reference)).await.unwrap();
                     let mut actual = Vec::new();
-                    while let Some(chunk) = reader
-                        .next_chunk(NonZeroUsize::new(47).unwrap())
-                        .await
-                        .unwrap()
-                    {
-                        actual.extend_from_slice(chunk.as_bytes());
+                    while let Some(batch) = reader.next().await.unwrap() {
+                        assert!(batch.bytes.len() <= 31);
+                        actual.extend_from_slice(&batch.bytes);
                     }
                     assert_eq!(actual, bytes);
                     f.storage.flush().await.unwrap();
@@ -176,9 +137,7 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let mut policy = config();
-                    policy.max_retries = 1;
-                    let f = Fixture::new(policy).await;
+                    let f = Fixture::new(config()).await;
                     f.data.control.chunk_failures.store(1, Ordering::SeqCst);
                     let bytes = b"one chunk";
                     let reference = f
@@ -191,16 +150,8 @@ fn contract_scenario() {
                         &[0, 0]
                     );
                     assert_eq!(reference.length, bytes.len() as u64);
-                    let mut reader = f.storage.read_file(&reference).await.unwrap();
-                    assert_eq!(
-                        reader
-                            .next_chunk(NonZeroUsize::new(100).unwrap())
-                            .await
-                            .unwrap()
-                            .unwrap()
-                            .as_bytes(),
-                        bytes
-                    );
+                    let mut reader = f.storage.read_file(whole(&reference)).await.unwrap();
+                    assert_eq!(reader.next().await.unwrap().unwrap().bytes, bytes);
                     drop(reader);
                     f.finish().await;
                 });
@@ -222,14 +173,18 @@ fn contract_scenario() {
                         .await
                         .unwrap();
                     file.write_all(bytes).await.unwrap();
+                    // An Uncertain Publication Is Retried At The Same Position.
                     f.data.control.finish_failures.store(1, Ordering::SeqCst);
-                    assert!(file.finish().await.is_err());
-                    assert_eq!(f.storage.status().accepted.sequence, 0);
                     let reference = file.finish().await.unwrap();
                     assert_eq!(reference.position.sequence, 1);
-                    assert_eq!(
-                        f.data.control.finish_positions.lock().unwrap().as_slice(),
-                        &[1, 1]
+                    assert!(
+                        f.data
+                            .control
+                            .finish_positions
+                            .lock()
+                            .unwrap()
+                            .iter()
+                            .all(|position| *position == 1)
                     );
                     assert_eq!(f.data.blobs.lock().unwrap().len(), 1);
                     assert!(f.data.files.lock().unwrap().is_empty());
@@ -338,25 +293,12 @@ fn contract_scenario() {
                         .write_file(metadata("read", bytes), bytes)
                         .await
                         .unwrap();
-                    let mut reader = f.storage.read_file(&reference).await.unwrap();
+                    let mut reader = f.storage.read_file(whole(&reference)).await.unwrap();
                     f.data.control.corrupt_file.store(true, Ordering::SeqCst);
-                    assert!(
-                        reader
-                            .next_chunk(NonZeroUsize::new(100).unwrap())
-                            .await
-                            .is_err()
-                    );
+                    assert!(reader.next().await.is_err());
                     assert_eq!(reader.offset(), 0);
                     f.data.control.corrupt_file.store(false, Ordering::SeqCst);
-                    assert_eq!(
-                        reader
-                            .next_chunk(NonZeroUsize::new(100).unwrap())
-                            .await
-                            .unwrap()
-                            .unwrap()
-                            .as_bytes(),
-                        bytes
-                    );
+                    assert_eq!(reader.next().await.unwrap().unwrap().bytes, bytes);
                     drop(reader);
                     f.finish().await;
                 });
@@ -436,97 +378,6 @@ fn contract_scenario() {
         });
     }
     {
-        scenario_runtime::check("read_preserves_offset", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let f = Fixture::new(config()).await;
-                    let bytes = b"read retry";
-                    let reference = f
-                        .storage
-                        .write_file(metadata("reader", bytes), bytes)
-                        .await
-                        .unwrap();
-                    let mut reader = f.storage.read_file(&reference).await.unwrap();
-                    f.data.control.block_read.store(true, Ordering::SeqCst);
-                    {
-                        let read = reader.next_chunk(NonZeroUsize::new(100).unwrap());
-                        tokio::pin!(read);
-                        tokio::select! {
-                            biased;
-                            _ = &mut read => panic!("read must block"),
-                            _ = f.data.control.read_entered.notified() => {}
-                        }
-                    }
-                    assert_eq!(reader.offset(), 0);
-                    f.data.control.block_read.store(false, Ordering::SeqCst);
-                    assert_eq!(
-                        reader
-                            .next_chunk(NonZeroUsize::new(100).unwrap())
-                            .await
-                            .unwrap()
-                            .unwrap()
-                            .as_bytes(),
-                        bytes
-                    );
-                    drop(reader);
-                    f.finish().await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("reads_survive_save", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let f = Fixture::new(config()).await;
-                    let bytes = b"captured";
-                    let first = f
-                        .storage
-                        .write_file(metadata("first", bytes), bytes)
-                        .await
-                        .unwrap();
-                    let mut file = f.storage.read_file(&first).await.unwrap();
-                    let view = f.storage.view_with_limits(f.execution).await.unwrap();
-                    f.storage.flush().await.unwrap();
-                    let later = f
-                        .storage
-                        .write_file(metadata("later", b"later"), b"later")
-                        .await
-                        .unwrap();
-                    let limits = ReadLimits {
-                        rows: NonZeroUsize::new(1).unwrap(),
-                        bytes: NonZeroUsize::new(4096).unwrap(),
-                    };
-                    let mut reader = f.storage.query_in(&view, file_query(limits)).unwrap();
-                    assert!(reader.next_page().await.unwrap().is_none());
-                    assert!(view.read_file(&first).await.is_err());
-                    assert!(view.read_file(&later).await.is_err());
-                    let mut saved = f.storage.query(file_query(limits)).await.unwrap();
-                    assert_eq!(&*saved.next_page().await.unwrap().unwrap(), &[first]);
-                    assert!(saved.next_page().await.unwrap().is_none());
-                    assert_eq!(
-                        file.next_chunk(NonZeroUsize::new(100).unwrap())
-                            .await
-                            .unwrap()
-                            .unwrap()
-                            .as_bytes(),
-                        bytes
-                    );
-                    drop(file);
-                    drop(reader);
-                    drop(view);
-                    f.finish().await;
-                });
-        });
-    }
-    {
         scenario_runtime::check("tiny_budget_streams", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor
@@ -536,8 +387,6 @@ fn contract_scenario() {
                 .block_on(async {
                     let mut policy = config();
                     policy.request.max_pending_write_bytes = NonZeroUsize::new(20_000).unwrap();
-                    policy.target_batch_bytes = policy.request.max_pending_write_bytes;
-                    policy.max_batch_bytes = policy.request.max_pending_write_bytes;
                     let f = Fixture::new(policy).await;
                     let bytes = vec![42; 100_000];
                     let mut file = f
@@ -602,47 +451,6 @@ fn contract_scenario() {
         });
     }
     {
-        scenario_runtime::check("file_chunks_renew", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let mut policy = config();
-                    policy.view_idle_timeout = Duration::from_millis(10);
-                    let f = Fixture::new(policy).await;
-                    let file = f
-                        .storage
-                        .write_file(metadata("idle", b"abcd"), b"abcd")
-                        .await
-                        .unwrap();
-                    let mut reader = f.storage.read_file(&file).await.unwrap();
-                    for byte in b"abcd" {
-                        tokio::time::advance(Duration::from_millis(6)).await;
-                        assert_eq!(
-                            reader
-                                .next_chunk(NonZeroUsize::new(1).unwrap())
-                                .await
-                                .unwrap()
-                                .unwrap()
-                                .as_bytes(),
-                            [*byte]
-                        );
-                    }
-                    assert!(
-                        reader
-                            .next_chunk(NonZeroUsize::new(1).unwrap())
-                            .await
-                            .unwrap()
-                            .is_none()
-                    );
-                    f.finish().await;
-                });
-        });
-    }
-    {
         scenario_runtime::check("reads_reject_forged", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor
@@ -674,20 +482,12 @@ fn contract_scenario() {
                                 _ => forged.position.sequence = 0,
                             }
                             assert!(
-                                f.storage.read_file(&forged).await.is_err(),
+                                f.storage.read_file(whole(&forged)).await.is_err(),
                                 "saved={saved}, field={field}"
                             );
                         }
-                        let mut reader = f.storage.read_file(&file).await.unwrap();
-                        assert_eq!(
-                            reader
-                                .next_chunk(NonZeroUsize::new(3).unwrap())
-                                .await
-                                .unwrap()
-                                .unwrap()
-                                .as_bytes(),
-                            b"abc"
-                        );
+                        let mut reader = f.storage.read_file(whole(&file)).await.unwrap();
+                        assert_eq!(reader.next().await.unwrap().unwrap().bytes, b"abc");
                         assert_eq!(f.storage.status().saved.sequence, u64::from(saved));
                     }
                     f.finish().await;
@@ -708,19 +508,12 @@ fn contract_scenario() {
                         .write_file(metadata("owned", b"abc"), b"abc")
                         .await
                         .unwrap();
-                    let mut reader = f.storage.read_file(&file).await.unwrap();
+                    let mut reader = f.storage.read_file(whole(&file)).await.unwrap();
                     f.storage.flush().await.unwrap();
                     assert_eq!(f.storage.status().pending_bytes, 0);
                     assert!(f.storage.status().read_bytes > 0);
-                    assert_eq!(
-                        reader
-                            .next_chunk(NonZeroUsize::new(3).unwrap())
-                            .await
-                            .unwrap()
-                            .unwrap()
-                            .as_bytes(),
-                        b"abc"
-                    );
+                    assert_eq!(reader.next().await.unwrap().unwrap().bytes, b"abc");
+                    assert!(reader.next().await.unwrap().is_none());
                     tokio::time::timeout(Duration::from_secs(1), async {
                         while f.data.control.releases.load(Ordering::SeqCst) == 0 {
                             tokio::task::yield_now().await;
@@ -733,134 +526,6 @@ fn contract_scenario() {
                     assert!(f.storage.status().read_bytes > 0);
                     drop(reader);
                     assert_eq!(f.storage.status().read_bytes, 0);
-                    f.finish().await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("chunk_retains_charge", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let f = Fixture::new(config()).await;
-                    let file = f
-                        .storage
-                        .write_file(metadata("loan", b"abc"), b"abc")
-                        .await
-                        .unwrap();
-                    let mut reader = f.storage.read_file(&file).await.unwrap();
-                    let metadata_bytes = f.storage.status().read_bytes;
-                    let chunk = reader
-                        .next_chunk(NonZeroUsize::new(3).unwrap())
-                        .await
-                        .unwrap()
-                        .unwrap();
-                    assert!(f.storage.status().read_bytes > metadata_bytes);
-                    drop(reader);
-                    let charged = f.storage.status().read_bytes;
-                    assert!(charged >= 3);
-                    assert_eq!(chunk.as_bytes(), b"abc");
-                    f.storage.flush().await.unwrap();
-                    let retained = f.storage.status().read_bytes;
-                    assert!(retained >= chunk.len());
-                    assert!(retained <= charged);
-                    let pointer = chunk.as_bytes().as_ptr();
-                    let input = chunk.into_query_value();
-                    assert_eq!(input.as_ptr(), pointer);
-                    assert_eq!(input.as_slice(), b"abc");
-                    input.check_origin(&f.storage).unwrap();
-                    assert_eq!(f.storage.status().read_bytes, retained);
-                    drop(input);
-                    assert_eq!(f.storage.status().read_bytes, 0);
-                    f.finish().await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("projection_retains_input", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let f = Fixture::new(config()).await;
-                    let file = f
-                        .storage
-                        .write_file(metadata("native", b"17"), b"17")
-                        .await
-                        .unwrap();
-                    f.storage.flush().await.unwrap();
-                    let mut query = FileQuery::default();
-                    query.options.decoded_bytes = Some(NonZeroUsize::new(4096).unwrap());
-                    let mut reader = f.storage.query(query).await.unwrap();
-                    reader.retain_view().unwrap();
-                    let view = reader.view().unwrap().clone();
-                    let mut bytes = view.read_file(&file).await.unwrap();
-                    let input = bytes
-                        .next_chunk(NonZeroUsize::new(2).unwrap())
-                        .await
-                        .unwrap()
-                        .unwrap()
-                        .into_query_value();
-                    drop(bytes);
-                    let page = reader.next_page().await.unwrap().unwrap();
-                    assert_eq!(page[0], file);
-                    drop(page);
-                    assert!(reader.next_page().await.unwrap().is_none());
-                    let retained = f.storage.status().read_bytes;
-                    let calls = AtomicUsize::new(0);
-                    // Output Beyond The Shared Read Budget Is Refused Before The Callback.
-                    let oversized =
-                        NonZeroUsize::new(config().budget.read_memory_bytes.get() + 1).unwrap();
-                    let refused = reader.project(&input, oversized, |_, _| {
-                        calls.fetch_add(1, Ordering::SeqCst);
-                        Ok(0u64)
-                    });
-                    assert!(matches!(refused, Err(Error::ResourceExhausted { .. })));
-                    assert_eq!(calls.load(Ordering::SeqCst), 0);
-                    assert_eq!(f.storage.status().read_bytes, retained);
-                    let failure = reader.project(
-                        &input,
-                        NonZeroUsize::new(64).unwrap(),
-                        |_, _| -> harmos::Result<u64> {
-                            calls.fetch_add(1, Ordering::SeqCst);
-                            Err(Error::InvalidInput {
-                                field: "fixture decode",
-                                reason: "retry original input",
-                            })
-                        },
-                    );
-                    assert!(matches!(
-                        failure,
-                        Err(Error::InvalidInput {
-                            field: "fixture decode",
-                            ..
-                        })
-                    ));
-                    assert_eq!(input.as_slice(), b"17");
-                    assert_eq!(f.storage.status().read_bytes, retained);
-                    let output = reader
-                        .project(&input, NonZeroUsize::new(64).unwrap(), |value, _| {
-                            calls.fetch_add(1, Ordering::SeqCst);
-                            serde_json::from_slice::<u64>(value).map_err(|source| {
-                                Error::backend(
-                                    "fixture native decode",
-                                    BackendFailure::Corrupt,
-                                    source,
-                                )
-                            })
-                        })
-                        .unwrap();
-                    assert_eq!(*output, 17);
-                    assert_eq!(calls.load(Ordering::SeqCst), 2);
-                    assert_eq!(input.as_slice(), b"17");
-                    drop(output);
-                    assert_eq!(f.storage.status().read_bytes, retained);
-                    drop((input, reader, view));
                     f.finish().await;
                 });
         });

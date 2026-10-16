@@ -11,8 +11,6 @@
 #[path = "storage_settings.rs"]
 mod settings;
 pub use settings::storage_settings;
-#[path = "storage/frame.rs"]
-mod frame;
 #[path = "storage/journal.rs"]
 mod journal;
 
@@ -22,9 +20,8 @@ mod journal;
 
 // Standard Library Imports
 use std::collections::BTreeMap;
-use std::io::{self, Write};
 use std::marker::PhantomData;
-use std::num::{NonZeroU64, NonZeroUsize};
+use std::num::NonZeroUsize;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
@@ -34,6 +31,10 @@ use tokio::sync::Notify;
 
 // Local Imports
 use harmos::catalog::Projection;
+use harmos::storage::query::{
+    FileSelection, ObjectSelection, ObjectVersions, RecordSelection, SchemaSelection,
+    StreamSelection,
+};
 use harmos::storage::state::*;
 use harmos::storage::*;
 use harmos::{BackendFailure, Error, Identifier, MemorySize, Result};
@@ -49,18 +50,6 @@ type AcceptedRead = (
 );
 
 /* === Structs === */
-struct PageView<'a> {
-    view: &'a ReadView,
-    pinned_bytes: usize,
-}
-
-struct QueryCounter {
-    bytes: usize,
-    limit: usize,
-    started: tokio::time::Instant,
-    timeout: std::time::Duration,
-}
-
 #[derive(Default)]
 pub struct Control {
     pub delete_failures: AtomicUsize,
@@ -76,28 +65,6 @@ pub struct Control {
     pub block_checkpoint: AtomicBool,
     pub checkpoint_entered: Notify,
     pub checkpoint_release: Notify,
-    pub allow_bootstrap: AtomicBool,
-    pub fail_bootstrap_begin: AtomicBool,
-    pub block_bootstrap_finish: AtomicBool,
-    pub bootstrap_finish_entered: Notify,
-    pub bootstrap_finish_release: Notify,
-    pub uncertain_bootstrap_finish: AtomicBool,
-    pub fail_bootstrap_abort: AtomicBool,
-    pub bootstrap_begins: AtomicUsize,
-    pub bootstrap_aborts: AtomicUsize,
-    pub bootstrap_file_writes: AtomicUsize,
-    pub bootstrap_file_finishes: AtomicUsize,
-    pub bootstrap_file_aborts: AtomicUsize,
-    pub refuse_latest_objects: AtomicBool,
-    pub refuse_record_filters: AtomicBool,
-    pub allow_empty_browse: AtomicBool,
-    pub browse_request: Mutex<Option<ObjectBrowseRequest>>,
-    pub browse_rows: Mutex<Option<Vec<ObjectMetadata>>>,
-    pub query_views: AtomicUsize,
-    pub frame_pages: AtomicUsize,
-    pub frame_decodes: AtomicUsize,
-    pub frame_sorted: Mutex<Option<frame::SortedScan>>,
-    pub frame_capture_only: AtomicBool,
     pub lost_objects_through: AtomicUsize,
     pub prune_calls: Mutex<Vec<(u64, usize)>>,
     pub prune_removed: Mutex<Vec<usize>>,
@@ -147,7 +114,6 @@ pub struct Control {
     pub block_read: AtomicBool,
     pub read_entered: Notify,
     pub read_release: Notify,
-    pub accepted_record_read: Mutex<Option<AcceptedRead>>,
     pub accepted_file_read: Mutex<Option<AcceptedRead>>,
     pub block_write: AtomicBool,
     pub write_entered: Notify,
@@ -164,7 +130,6 @@ pub struct Control {
     pub flush_advance: AtomicUsize,
     pub flush_failures: AtomicUsize,
     pub regressed_saved: AtomicBool,
-    pub view_ids: Mutex<Vec<Identifier>>,
     pub open: AtomicBool,
     pub closes: AtomicUsize,
     pub writes: Mutex<Vec<u64>>,
@@ -173,12 +138,9 @@ pub struct Control {
     pub flushes: Mutex<Vec<u64>>,
 }
 
+#[derive(Clone)]
 struct Snapshot {
-    object_releases: Vec<ObjectRetentionRelease>,
-    query_bytes: usize,
     lost_objects_through: u64,
-    lost_files_through: u64,
-    retention_generation: u64,
     objects: BTreeMap<u64, ObjectEntry>,
     files: BTreeMap<u64, FileReference>,
     schemas: BTreeMap<u64, StorageSchema>,
@@ -186,14 +148,16 @@ struct Snapshot {
     rows: BTreeMap<u64, StoredRow>,
 }
 
-struct Import {
-    identity: BootstrapId,
-    prior: StorageCursor,
-    entries: Snapshot,
+/// One persisted object lifecycle release frontier.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Release {
+    pub schema: SchemaKey,
+    pub item: ObjectKey,
+    pub through: StorageCursor,
 }
 
 pub struct Data<C = ()> {
-    pub object_releases: Mutex<Vec<ObjectRetentionRelease>>,
+    pub object_releases: Mutex<Vec<Release>>,
     catalog: PhantomData<fn() -> C>,
     journal: Option<journal::Journal>,
     pub objects: Mutex<BTreeMap<u64, ObjectEntry>>,
@@ -206,7 +170,6 @@ pub struct Data<C = ()> {
     pub mutation_receipts: Mutex<BTreeMap<MutationId, MutationReceipt>>,
     pub deleted_files: Mutex<std::collections::BTreeSet<String>>,
     pub lost_files_through: AtomicUsize,
-    pub retention_generation: AtomicUsize,
     file_io: Mutex<()>,
     pub files: Mutex<BTreeMap<u64, FileReference>>,
     pub blobs: Mutex<BTreeMap<String, (FileReference, Vec<u8>)>>,
@@ -218,8 +181,6 @@ pub struct Data<C = ()> {
     pub rows: Mutex<BTreeMap<u64, StoredRow>>,
     pub schemas: Mutex<BTreeMap<u64, StorageSchema>>,
     pub saved: AtomicUsize,
-    import: Mutex<Option<Import>>,
-    committed_import: Mutex<Option<BootstrapManifest>>,
 }
 
 pub struct Recovery {
@@ -236,23 +197,6 @@ pub struct Recovery {
 /* === Traits === */
 
 /* === Implementations === */
-impl Write for QueryCounter {
-    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        if self.started.elapsed() >= self.timeout {
-            return Err(io::Error::other("query time exceeded"));
-        }
-        self.bytes = self
-            .bytes
-            .checked_add(bytes.len())
-            .filter(|bytes| *bytes <= self.limit)
-            .ok_or_else(|| io::Error::other("query allocation bound exceeded"))?;
-        Ok(bytes.len())
-    }
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
-
 impl Control {
     async fn write(&self, positions: impl IntoIterator<Item = u64>) -> Result<()> {
         let positions: Vec<_> = positions.into_iter().collect();
@@ -316,7 +260,6 @@ impl<C: ObjectCatalog> Data<C> {
             mutation_receipts: Mutex::default(),
             deleted_files: Mutex::default(),
             lost_files_through: AtomicUsize::new(0),
-            retention_generation: AtomicUsize::new(1),
             file_io: Mutex::default(),
             files: Mutex::default(),
             blobs: Mutex::default(),
@@ -328,8 +271,6 @@ impl<C: ObjectCatalog> Data<C> {
             rows: Mutex::new(BTreeMap::new()),
             schemas: Mutex::new(BTreeMap::new()),
             saved: AtomicUsize::new(0),
-            import: Mutex::default(),
-            committed_import: Mutex::default(),
         }
     }
     #[allow(
@@ -363,7 +304,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
             if through.sequence > self.saved.load(Ordering::SeqCst) as u64 {
                 return Err(failure(BackendFailure::Conflict));
             }
-            let release = ObjectRetentionRelease {
+            let release = Release {
                 schema: schema.clone(),
                 item: item.clone(),
                 through: through.clone(),
@@ -375,216 +316,6 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
             Ok(())
         })
     }
-    fn read_object_releases<'a>(
-        &'a self,
-        view: &'a ReadView,
-        cursor: Option<&'a ObjectReleaseCursor>,
-        limits: ReadLimits,
-    ) -> StorageFuture<'a, ObjectReleasePage> {
-        Box::pin(async move {
-            let snapshots = self.snapshots.lock().unwrap();
-            let snapshot = snapshots
-                .get(&view.snapshot().token)
-                .ok_or(Error::ViewExpired)?;
-            let mut entries = Vec::new();
-            let mut bytes = 0;
-            let mut more = false;
-            for release in &snapshot.object_releases {
-                if !view.saved().covers(&release.through)?
-                    || cursor.is_some_and(|cursor| !cursor.precedes(&release.cursor()))
-                {
-                    continue;
-                }
-                let length = serde_json::to_vec(release).unwrap().len();
-                if entries.len() == limits.rows.get() || bytes + length > limits.bytes.get() {
-                    if entries.is_empty() {
-                        return Err(Error::ResourceExhausted {
-                            resource: "test release page",
-                        });
-                    }
-                    more = true;
-                    break;
-                }
-                bytes += length;
-                entries.push(release.clone());
-            }
-            let next = if more {
-                entries.last().map(ObjectRetentionRelease::cursor)
-            } else {
-                None
-            };
-            Ok(ObjectReleasePage { entries, next })
-        })
-    }
-    fn write_bootstrap_releases<'a>(
-        &'a self,
-        identity: &'a BootstrapId,
-        releases: &'a [ObjectRetentionRelease],
-    ) -> StorageFuture<'a, ()> {
-        Box::pin(async move {
-            let mut imports = self.import.lock().unwrap();
-            let import = imports
-                .as_mut()
-                .ok_or_else(|| failure(BackendFailure::Conflict))?;
-            if import.identity != *identity {
-                return Err(failure(BackendFailure::Conflict));
-            }
-            for release in releases {
-                if !identity.cut().covers(&release.through)? {
-                    return Err(failure(BackendFailure::Conflict));
-                }
-                upsert_release(&mut import.entries.object_releases, release.clone());
-            }
-            Ok(())
-        })
-    }
-    fn supports_scan_order(
-        &self,
-        _scan: &harmos::storage::frame::Scan,
-        order: &harmos::storage::frame::ScanOrder,
-    ) -> bool {
-        matches!(order, harmos::storage::frame::ScanOrder::Capture)
-            || !self.control.frame_capture_only.load(Ordering::SeqCst)
-    }
-    fn scan_ordered<'a>(
-        &'a self,
-        view: &'a ReadView,
-        scan: &'a harmos::storage::frame::Scan,
-        order: &'a harmos::storage::frame::ScanOrder,
-        cursor: Option<&'a harmos::storage::frame::ScanCursor>,
-        limits: ReadLimits,
-    ) -> StorageFuture<'a, harmos::storage::frame::ScanPage> {
-        self.frame_scan(view, scan, order, cursor, limits)
-    }
-    fn validate_object_versions(&self, versions: ObjectVersions) -> Result<()> {
-        if versions == ObjectVersions::Latest
-            && self.control.refuse_latest_objects.load(Ordering::SeqCst)
-        {
-            return Err(Error::InvalidInput {
-                field: "object query",
-                reason: "test backend refuses latest object selection",
-            });
-        }
-        Ok(())
-    }
-    fn validate_record_filter(&self, selection: &ReadSelection, limits: QueryLimits) -> Result<()> {
-        if self.control.refuse_record_filters.load(Ordering::SeqCst) {
-            return Err(Error::InvalidInput {
-                field: "record filter",
-                reason: "test backend refuses filtered records",
-            });
-        }
-        limits.check()?;
-        let filter = selection
-            .record_filter
-            .as_ref()
-            .ok_or(Error::InvalidInput {
-                field: "record filter",
-                reason: "missing filter",
-            })?;
-        filter.check()?;
-        if filter.memory_size() > limits.memory_bytes.get() {
-            return Err(Error::ResourceExhausted {
-                resource: "record filter memory",
-            });
-        }
-        Ok(())
-    }
-    fn validate_query_limits(&self, limits: QueryLimits) -> Result<()> {
-        limits.check()
-    }
-
-    fn read_query_view<'a>(
-        &'a self,
-        saved: &'a StorageCursor,
-        limits: QueryLimits,
-    ) -> StorageFuture<'a, BackendSnapshot> {
-        Box::pin(async move {
-            self.control.query_views.fetch_add(1, Ordering::SeqCst);
-            self.validate_query_limits(limits)?;
-            let started = tokio::time::Instant::now();
-            if self.control.block_view.load(Ordering::SeqCst) {
-                self.control.view_entered.notify_one();
-                self.control.view_release.notified().await;
-            }
-            // Lock all source maps while measuring and cloning. Refuse before
-            // allocation; this fixture has no disk spill or detached work.
-            let objects = self.objects.lock().unwrap();
-            let files = self.files.lock().unwrap();
-            let schemas = self.schemas.lock().unwrap();
-            let records = self.records.lock().unwrap();
-            let rows = self.rows.lock().unwrap();
-            // Preclaim Native Snapshot Maps, Index Nodes And Both Token Buffers.
-            let query_bytes = [
-                self.object_releases
-                    .lock()
-                    .unwrap()
-                    .iter()
-                    .fold(0usize, |bytes, release| {
-                        bytes
-                            .saturating_add(std::mem::size_of::<ObjectRetentionRelease>())
-                            .saturating_add(release.schema.memory_size())
-                            .saturating_add(release.item.memory_size())
-                            .saturating_add(release.through.memory_size())
-                    }),
-                snapshot_map_memory(&objects),
-                snapshot_map_memory(&files),
-                snapshot_map_memory(&schemas),
-                snapshot_map_memory(&records),
-                snapshot_map_memory(&rows),
-                harmos::btree_map_memory::<Vec<u8>, Snapshot>(1),
-                saved.memory_size(),
-                2 * std::mem::size_of::<u64>(),
-            ]
-            .into_iter()
-            .try_fold(std::mem::size_of::<Snapshot>(), |bytes, next| {
-                bytes
-                    .checked_add(next)
-                    .filter(|bytes| *bytes <= limits.memory_bytes.get())
-                    .ok_or(Error::ResourceExhausted {
-                        resource: "test query memory",
-                    })
-            })?;
-            if started.elapsed() >= limits.timeout {
-                return Err(Error::ResourceExhausted {
-                    resource: "test query time",
-                });
-            }
-            let snapshot = Snapshot {
-                object_releases: self.object_releases.lock().unwrap().clone(),
-                lost_files_through: self.lost_files_through.load(Ordering::SeqCst) as u64,
-                retention_generation: self.retention_generation.load(Ordering::SeqCst) as u64,
-                query_bytes,
-                lost_objects_through: self.control.lost_objects_through.load(Ordering::SeqCst)
-                    as u64,
-                objects: snapshot_map(&objects),
-                files: snapshot_map(&files),
-                schemas: snapshot_map(&schemas),
-                records: snapshot_map(&records),
-                rows: snapshot_map(&rows),
-            };
-            if started.elapsed() >= limits.timeout {
-                return Err(Error::ResourceExhausted {
-                    resource: "test query time",
-                });
-            }
-            let token = self
-                .next_snapshot
-                .fetch_add(1, Ordering::SeqCst)
-                .to_le_bytes()
-                .to_vec();
-            self.snapshots
-                .lock()
-                .unwrap()
-                .insert(token.clone(), snapshot);
-            Ok(BackendSnapshot {
-                saved: saved.clone(),
-                token,
-            })
-        })
-    }
-
-    type Catalog = C;
     fn history(&self) -> &StoreHistory {
         &self.history
     }
@@ -609,324 +340,8 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
             Ok(self.at(self.saved.load(Ordering::SeqCst) as u64))
         })
     }
-    fn supports_retained_snapshots(&self) -> bool {
-        self.control.allow_bootstrap.load(Ordering::SeqCst)
-    }
-    fn read_retained_view<'a>(
-        &'a self,
-        through: &'a StorageCursor,
-        limits: QueryLimits,
-    ) -> StorageFuture<'a, RetainedSnapshot> {
-        Box::pin(async move {
-            if !self.control.allow_bootstrap.load(Ordering::SeqCst) {
-                return Err(failure(BackendFailure::Permanent));
-            }
-            let snapshot = self.read_query_view(through, limits).await?;
-            let snapshots = self.snapshots.lock().unwrap();
-            let retained = snapshots.get(&snapshot.token).unwrap();
-            let complete_after = retained
-                .lost_objects_through
-                .max(retained.lost_files_through);
-            let generation = NonZeroU64::new(retained.retention_generation).unwrap();
-            Ok(RetainedSnapshot {
-                snapshot,
-                coverage: RetainedCoverage {
-                    cut: through.clone(),
-                    complete_after,
-                    retention_generation: generation,
-                },
-            })
-        })
-    }
-    fn begin_bootstrap<'a>(
-        &'a self,
-        identity: &'a BootstrapId,
-        saved: &'a StorageCursor,
-        _limits: QueryLimits,
-    ) -> StorageFuture<'a, ()> {
-        Box::pin(async move {
-            self.control.bootstrap_begins.fetch_add(1, Ordering::SeqCst);
-            if !self.control.allow_bootstrap.load(Ordering::SeqCst)
-                || self.control.fail_bootstrap_begin.load(Ordering::SeqCst)
-                || self.at(self.saved.load(Ordering::SeqCst) as u64) != *saved
-                || !identity.cut().covers(saved)?
-            {
-                return Err(failure(BackendFailure::Conflict));
-            }
-            let mut import = self.import.lock().unwrap();
-            if let Some(previous) = import.as_ref() {
-                return if previous.identity == *identity && previous.prior == *saved {
-                    Ok(())
-                } else {
-                    Err(failure(BackendFailure::Conflict))
-                };
-            }
-            *import = Some(Import {
-                identity: identity.clone(),
-                prior: saved.clone(),
-                entries: Snapshot {
-                    object_releases: Vec::new(),
-                    query_bytes: 0,
-                    lost_objects_through: 0,
-                    lost_files_through: 0,
-                    retention_generation: 1,
-                    objects: BTreeMap::new(),
-                    files: BTreeMap::new(),
-                    schemas: BTreeMap::new(),
-                    records: BTreeMap::new(),
-                    rows: BTreeMap::new(),
-                },
-            });
-            Ok(())
-        })
-    }
-    fn write_bootstrap<'a>(&'a self, batch: RetainedBatch<'a>) -> StorageFuture<'a, ()> {
-        Box::pin(async move {
-            let mut state = self.import.lock().unwrap();
-            let import = state
-                .as_mut()
-                .ok_or_else(|| failure(BackendFailure::Conflict))?;
-            if import.identity != *batch.identity() {
-                return Err(failure(BackendFailure::Conflict));
-            }
-            for entry in batch.part().entries() {
-                let position = entry.position().sequence;
-                let existing = usize::from(import.entries.objects.contains_key(&position))
-                    + usize::from(import.entries.schemas.contains_key(&position))
-                    + usize::from(import.entries.records.contains_key(&position))
-                    + usize::from(import.entries.rows.contains_key(&position))
-                    + usize::from(import.entries.files.contains_key(&position));
-                macro_rules! insert {
-                    ($map:ident, $entry:expr) => {{
-                        if existing > 0 && import.entries.$map.get(&position) != Some($entry) {
-                            return Err(failure(BackendFailure::Conflict));
-                        }
-                        import.entries.$map.insert(position, $entry.clone());
-                    }};
-                }
-                match entry {
-                    StorageEntry::Schema(value) => insert!(schemas, value),
-                    StorageEntry::Object(value) => insert!(objects, value),
-                    StorageEntry::Record(value) => insert!(records, value),
-                    StorageEntry::Row(value) => insert!(rows, value),
-                    StorageEntry::File(value) => insert!(files, value),
-                }
-            }
-            Ok(())
-        })
-    }
-    fn create_bootstrap_file<'a>(
-        &'a self,
-        identity: &'a BootstrapId,
-        metadata: &'a FileMetadata,
-    ) -> StorageFuture<'a, StagedFile> {
-        Box::pin(async move {
-            if self
-                .import
-                .lock()
-                .unwrap()
-                .as_ref()
-                .is_none_or(|import| import.identity != *identity)
-            {
-                return Err(failure(BackendFailure::Conflict));
-            }
-            self.create_file(metadata).await
-        })
-    }
-    fn write_bootstrap_file<'a>(
-        &'a self,
-        identity: &'a BootstrapId,
-        staging: &'a StagedFile,
-        offset: u64,
-        bytes: &'a [u8],
-    ) -> StorageFuture<'a, ()> {
-        Box::pin(async move {
-            if self
-                .import
-                .lock()
-                .unwrap()
-                .as_ref()
-                .is_none_or(|import| import.identity != *identity)
-            {
-                return Err(failure(BackendFailure::Conflict));
-            }
-            self.control
-                .bootstrap_file_writes
-                .fetch_add(1, Ordering::SeqCst);
-            self.write_file(staging, offset, bytes).await
-        })
-    }
-    fn finish_bootstrap_file<'a>(
-        &'a self,
-        identity: &'a BootstrapId,
-        staging: &'a StagedFile,
-        position: &'a StorageCursor,
-        length: u64,
-        sha256: [u8; 32],
-    ) -> StorageFuture<'a, FileReference> {
-        Box::pin(async move {
-            if self
-                .import
-                .lock()
-                .unwrap()
-                .as_ref()
-                .is_none_or(|import| import.identity != *identity)
-            {
-                return Err(failure(BackendFailure::Conflict));
-            }
-            self.control
-                .bootstrap_file_finishes
-                .fetch_add(1, Ordering::SeqCst);
-            self.finish_file(staging, position, length, sha256).await
-        })
-    }
-    fn abort_bootstrap_file<'a>(
-        &'a self,
-        identity: &'a BootstrapId,
-        staging: &'a StagedFile,
-    ) -> StorageFuture<'a, ()> {
-        Box::pin(async move {
-            if self
-                .import
-                .lock()
-                .unwrap()
-                .as_ref()
-                .is_none_or(|import| import.identity != *identity)
-            {
-                return Err(failure(BackendFailure::Conflict));
-            }
-            self.control
-                .bootstrap_file_aborts
-                .fetch_add(1, Ordering::SeqCst);
-            self.abort_file(staging).await
-        })
-    }
-    fn finish_bootstrap<'a>(
-        &'a self,
-        manifest: &'a BootstrapManifest,
-    ) -> StorageFuture<'a, StorageCursor> {
-        Box::pin(async move {
-            if self.control.block_bootstrap_finish.load(Ordering::SeqCst) {
-                self.control.bootstrap_finish_entered.notify_one();
-                self.control.bootstrap_finish_release.notified().await;
-            }
-            manifest.check_complete()?;
-            let _io = self.file_io.lock().unwrap();
-            if let Some(committed) = self.committed_import.lock().unwrap().as_ref()
-                && committed.identity() == manifest.identity()
-            {
-                return if committed == manifest {
-                    Ok(manifest.identity().cut().clone())
-                } else {
-                    Err(failure(BackendFailure::Conflict))
-                };
-            }
-            let mut state = self.import.lock().unwrap();
-            let import = state
-                .as_ref()
-                .ok_or_else(|| failure(BackendFailure::Conflict))?;
-            if import.identity != *manifest.identity()
-                || self.at(self.saved.load(Ordering::SeqCst) as u64) != import.prior
-            {
-                return Err(failure(BackendFailure::Conflict));
-            }
-            let mut actual = BootstrapManifest::new(import.identity.clone());
-            macro_rules! verify {
-                ($map:ident, $part:ident, $kind:ident) => {{
-                    let values: Vec<_> = import.entries.$map.values().cloned().collect();
-                    if !values.is_empty() {
-                        let batch = RetainedBatch::new(
-                            &import.identity,
-                            StoragePart::$part(&values),
-                            ReadLimits {
-                                rows: NonZeroUsize::MAX,
-                                bytes: NonZeroUsize::MAX,
-                            },
-                        )?;
-                        actual.record(batch)?;
-                    }
-                    actual.finish_collection(ReadKind::$kind);
-                }};
-            }
-            verify!(schemas, Schemas, Schemas);
-            verify!(objects, Objects, Objects);
-            verify!(records, Records, Records);
-            verify!(rows, Stream, Stream);
-            verify!(files, Files, Files);
-            actual.record_releases(&import.entries.object_releases)?;
-            actual.finish_releases();
-            if actual != *manifest {
-                return Err(failure(BackendFailure::Corrupt));
-            }
-            for file in import.entries.files.values() {
-                if self
-                    .blobs
-                    .lock()
-                    .unwrap()
-                    .get(file.metadata.id.as_str())
-                    .is_none_or(|(reference, bytes)| {
-                        reference != file
-                            || bytes.len() as u64 != file.length
-                            || <[u8; 32]>::from(Sha256::digest(bytes)) != file.sha256
-                    })
-                {
-                    return Err(failure(BackendFailure::Corrupt));
-                }
-            }
-            *self.object_releases.lock().unwrap() = import.entries.object_releases.clone();
-            *self.schemas.lock().unwrap() = import.entries.schemas.clone();
-            *self.objects.lock().unwrap() = import.entries.objects.clone();
-            *self.records.lock().unwrap() = import.entries.records.clone();
-            *self.rows.lock().unwrap() = import.entries.rows.clone();
-            {
-                let mut files = self.files.lock().unwrap();
-                *files = import.entries.files.clone();
-                // Import Retains The Source's Certified Floor, Including Holes.
-                self.control
-                    .lost_objects_through
-                    .fetch_max(import.identity.complete_after() as usize, Ordering::SeqCst);
-                self.lost_files_through
-                    .fetch_max(import.identity.complete_after() as usize, Ordering::SeqCst);
-                self.retention_generation.fetch_max(
-                    import.identity.retention_generation().get() as usize,
-                    Ordering::SeqCst,
-                );
-            }
-            self.saved
-                .store(import.identity.cut().sequence as usize, Ordering::SeqCst);
-            *self.committed_import.lock().unwrap() = Some(manifest.clone());
-            *state = None;
-            if self
-                .control
-                .uncertain_bootstrap_finish
-                .swap(false, Ordering::SeqCst)
-            {
-                return Err(failure(BackendFailure::Transient));
-            }
-            Ok(manifest.identity().cut().clone())
-        })
-    }
-    fn abort_bootstrap<'a>(&'a self, identity: &'a BootstrapId) -> StorageFuture<'a, ()> {
-        Box::pin(async move {
-            self.control.bootstrap_aborts.fetch_add(1, Ordering::SeqCst);
-            if self.control.fail_bootstrap_abort.load(Ordering::SeqCst) {
-                return Err(failure(BackendFailure::Transient));
-            }
-            let mut import = self.import.lock().unwrap();
-            if import
-                .as_ref()
-                .is_some_and(|import| import.identity == *identity)
-            {
-                *import = None;
-            }
-            Ok(())
-        })
-    }
     fn write<'a>(&'a self, batch: StorageBatch<'a>) -> StorageFuture<'a, StorageCursor> {
         Box::pin(async move {
-            if self.import.lock().unwrap().is_some() {
-                return Err(failure(BackendFailure::Conflict));
-            }
             self.history.check(&batch.first().history)?;
             self.control
                 .write_bytes
@@ -1156,9 +571,12 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
                 }
                 for position in &remove {
                     objects.remove(position);
+                }
+                // Images Before This Cut May Have Needed A Reclaimed Revision.
+                if !remove.is_empty() {
                     self.control
                         .lost_objects_through
-                        .fetch_max(*position as usize, Ordering::SeqCst);
+                        .fetch_max(through.sequence as usize, Ordering::SeqCst);
                 }
                 self.control
                     .prune_removed
@@ -1185,48 +603,46 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
     fn close(&self) -> StorageFuture<'_, ()> {
         Box::pin(async { self.control.close() })
     }
-    fn read_view<'a>(&'a self, saved: &'a StorageCursor) -> StorageFuture<'a, BackendSnapshot> {
+    fn open_snapshot<'a>(&'a self, at: &'a StorageCursor) -> StorageFuture<'a, BackendSnapshot> {
         Box::pin(async move {
             if self.control.block_view.load(Ordering::SeqCst) {
                 self.control.view_entered.notify_one();
                 self.control.view_release.notified().await;
             }
+            self.history.check(&at.history)?;
+            let lost_objects_through =
+                self.control.lost_objects_through.load(Ordering::SeqCst) as u64;
+            // Pruned Revisions No Longer Reconstruct An Older Image.
+            if at.sequence < lost_objects_through {
+                return Err(Error::Gap {
+                    requested: at.sequence,
+                    available: lost_objects_through,
+                });
+            }
+            let snapshot = Snapshot {
+                lost_objects_through,
+                objects: self.objects.lock().unwrap().clone(),
+                files: self.files.lock().unwrap().clone(),
+                schemas: self.schemas.lock().unwrap().clone(),
+                records: self.records.lock().unwrap().clone(),
+                rows: self.rows.lock().unwrap().clone(),
+            };
             let token = self
                 .next_snapshot
                 .fetch_add(1, Ordering::SeqCst)
                 .to_le_bytes()
                 .to_vec();
-            let (objects, lost_objects_through) = {
-                let objects = self.objects.lock().unwrap();
-                (
-                    objects.clone(),
-                    self.control.lost_objects_through.load(Ordering::SeqCst) as u64,
-                )
-            };
-            let files = self.files.lock().unwrap();
-            let snapshot = Snapshot {
-                object_releases: self.object_releases.lock().unwrap().clone(),
-                lost_files_through: self.lost_files_through.load(Ordering::SeqCst) as u64,
-                retention_generation: self.retention_generation.load(Ordering::SeqCst) as u64,
-                query_bytes: 0,
-                objects,
-                lost_objects_through,
-                files: files.clone(),
-                schemas: self.schemas.lock().unwrap().clone(),
-                records: self.records.lock().unwrap().clone(),
-                rows: self.rows.lock().unwrap().clone(),
-            };
             self.snapshots
                 .lock()
                 .unwrap()
                 .insert(token.clone(), snapshot);
             Ok(BackendSnapshot {
-                saved: saved.clone(),
+                at: at.clone(),
                 token,
             })
         })
     }
-    fn release_view<'a>(&'a self, snapshot: &'a BackendSnapshot) -> StorageFuture<'a, ()> {
+    fn release_snapshot<'a>(&'a self, snapshot: &'a BackendSnapshot) -> StorageFuture<'a, ()> {
         Box::pin(async move {
             self.control.releases.fetch_add(1, Ordering::SeqCst);
             if self.control.block_release.load(Ordering::SeqCst) {
@@ -1245,414 +661,161 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
     }
     fn read_schemas<'a>(
         &'a self,
-        view: &'a ReadView,
-        selection: &'a ReadSelection,
-        cursor: Option<&'a ReadCursor>,
-        limits: ReadLimits,
-    ) -> StorageFuture<'a, ReadPage<StorageSchema>> {
+        snapshot: &'a BackendSnapshot,
+        selection: &'a SchemaSelection,
+        page: ScanPage,
+    ) -> StorageFuture<'a, Vec<StorageSchema>> {
         Box::pin(async move {
-            view.check_kind(ReadKind::Schemas, selection, cursor)?;
-            self.control
-                .view_ids
-                .lock()
-                .unwrap()
-                .push(view.id().clone());
-            let held = self.snapshots.lock().unwrap();
-            let snapshot = held.get(&view.snapshot().token).ok_or(Error::ViewExpired)?;
-            page(
-                snapshot.schemas.values(),
-                PageView {
-                    view,
-                    pinned_bytes: snapshot.query_bytes,
-                },
-                selection,
-                cursor,
-                limits,
+            let image = self.image(snapshot)?;
+            scan(
+                image.schemas.values(),
+                snapshot,
+                page,
                 |row| &row.position,
-                |row| {
-                    selection.schema.as_ref().is_none_or(|key| key == &row.key)
-                        && selection
-                            .item
-                            .as_ref()
-                            .is_none_or(|item| item == &row.key.id)
-                },
+                |row| selection.schema.as_ref().is_none_or(|key| key == &row.key),
             )
-        })
-    }
-    fn validate_object_browse(
-        &self,
-        request: &ObjectBrowseRequest,
-        _limits: QueryLimits,
-    ) -> Result<()> {
-        *self.control.browse_request.lock().unwrap() = Some(request.clone());
-        if self.control.browse_rows.lock().unwrap().is_some()
-            || (self.control.allow_empty_browse.load(Ordering::SeqCst)
-                && self.objects.lock().unwrap().is_empty())
-        {
-            Ok(())
-        } else {
-            Err(Error::InvalidInput {
-                field: "object browse",
-                reason: "test backend only supports explicitly enabled empty browsing",
-            })
-        }
-    }
-    fn read_object_browse<'a>(
-        &'a self,
-        view: &'a ReadView,
-        request: &'a ObjectBrowseRequest,
-        cursor: Option<&'a ObjectBrowseCursor>,
-        limits: ReadLimits,
-    ) -> StorageFuture<'a, ObjectBrowsePage> {
-        Box::pin(async move {
-            let _computation = view.retain_computation()?;
-            let scripted = self.control.browse_rows.lock().unwrap();
-            let Some(rows) = &*scripted else {
-                return Ok(ObjectBrowsePage {
-                    entries: Vec::new(),
-                    next: None,
-                });
-            };
-            // Scripts Supply Already Selected And Globally Ordered Backend Rows.
-            // The Original Reader Still Checks The Plan, Values And Continuation.
-            let bound = limits.bytes.get().saturating_mul(4);
-            let count = rows.len().min(limits.rows.get());
-            let mut retained = count
-                .saturating_mul(std::mem::size_of::<ObjectMetadata>())
-                .saturating_add(std::mem::size_of::<ObjectBrowsePage>())
-                .saturating_add(request.memory_size())
-                .saturating_add(view.id().memory_size())
-                .saturating_add(std::mem::size_of::<ObjectBrowseCursor>());
-            if retained > bound {
-                return Err(Error::ResourceExhausted {
-                    resource: "test scalar page",
-                });
-            }
-            let mut entries = Vec::with_capacity(count);
-            let mut more = false;
-            for row in rows {
-                if let Some(cursor) = cursor
-                    && request.compare(cursor.last(), row)? != std::cmp::Ordering::Less
-                {
-                    continue;
-                }
-                if entries.len() == count {
-                    more = true;
-                    break;
-                }
-                retained = retained.saturating_add(row.memory_size().saturating_mul(2));
-                if retained > bound {
-                    return Err(Error::ResourceExhausted {
-                        resource: "test scalar page",
-                    });
-                }
-                entries.push(row.clone());
-            }
-            let next = if more {
-                Some(ObjectBrowseCursor::new(
-                    view,
-                    request.clone(),
-                    entries.last().unwrap().clone(),
-                )?)
-            } else {
-                None
-            };
-            let page = ObjectBrowsePage { entries, next };
-            page.check(view, request, cursor, limits)?;
-            Ok(page)
-        })
-    }
-    fn read_object<'a>(
-        &'a self,
-        view: &'a ReadView,
-        query: &'a ObjectPoint,
-        max_bytes: NonZeroUsize,
-    ) -> StorageFuture<'a, Option<ObjectEntry>> {
-        Box::pin(async move {
-            let _computation = view.retain_computation()?;
-            if self.control.block_read.load(Ordering::SeqCst) {
-                self.control.read_entered.notify_one();
-                self.control.read_release.notified().await;
-            }
-            let held = self.snapshots.lock().unwrap();
-            let snapshot = held.get(&view.snapshot().token).ok_or(Error::ViewExpired)?;
-            let object = snapshot.objects.values().rev().find(|object| {
-                object.position.sequence <= view.saved().sequence
-                    && object.value.schema.id == query.schema
-                    && object.value.item == query.item
-                    && match &query.version {
-                        ObjectVersion::Latest => true,
-                        ObjectVersion::Exact(version) => version == &object.version,
-                    }
-            });
-            if let Some(object) = object {
-                check_query_copy(view, snapshot.query_bytes, object)?;
-                let mut counter = QueryCounter {
-                    bytes: 0,
-                    limit: max_bytes.get(),
-                    started: tokio::time::Instant::now(),
-                    timeout: view
-                        .execution_limits()
-                        .map_or(std::time::Duration::MAX, |limits| limits.timeout),
-                };
-                serde_json::to_writer(&mut counter, object).map_err(|_| Error::InvalidInput {
-                    field: "test object",
-                    reason: "oversized value",
-                })?;
-            }
-            let mut object = object.cloned();
-            if self.control.invalid_page.load(Ordering::SeqCst)
-                && let Some(object) = &mut object
-            {
-                object.value.payload = vec![0xff];
-            }
-            Ok(object)
         })
     }
     fn read_objects<'a>(
         &'a self,
-        view: &'a ReadView,
-        selection: &'a ReadSelection,
-        cursor: Option<&'a ReadCursor>,
-        limits: ReadLimits,
-    ) -> StorageFuture<'a, ReadPage<ObjectEntry>> {
+        snapshot: &'a BackendSnapshot,
+        selection: &'a ObjectSelection,
+        page: ScanPage,
+    ) -> StorageFuture<'a, Vec<ObjectEntry>> {
         Box::pin(async move {
-            view.check_kind(ReadKind::Objects, selection, cursor)?;
-            self.validate_object_versions(selection.object_versions)?;
-            let held = self.snapshots.lock().unwrap();
-            let snapshot = held.get(&view.snapshot().token).ok_or(Error::ViewExpired)?;
-            let lost = snapshot.lost_objects_through;
-            if selection.history == ReadHistory::Complete && selection.after < lost {
+            if self.control.block_read.load(Ordering::SeqCst) {
+                self.control.read_entered.notify_one();
+                self.control.read_release.notified().await;
+            }
+            let image = self.image(snapshot)?;
+            // Complete Revision History Cannot Begin Before Pruned Revisions.
+            if selection.versions == ObjectVersions::Revisions
+                && page.after < image.lost_objects_through
+            {
                 return Err(Error::Gap {
-                    requested: selection.after + 1,
-                    available: lost + 1,
+                    requested: page.after + 1,
+                    available: image.lost_objects_through + 1,
                 });
             }
-            // This in-memory fixture builds a borrowed winner index. Charge its
-            // nodes before allocation and retain that charge while copying pages.
-            let mut latest = BTreeMap::new();
-            let mut working = snapshot.query_bytes;
-            if selection.object_versions == ObjectVersions::Latest {
-                let execution = view
-                    .execution_limits()
-                    .expect("latest requires a query view");
-                let started = tokio::time::Instant::now();
-                let through = selection.through.unwrap_or(view.saved().sequence);
-                for object in snapshot.objects.values() {
-                    if started.elapsed() >= execution.timeout {
-                        return Err(Error::ResourceExhausted {
-                            resource: "test query time",
-                        });
+            let selected = |object: &ObjectEntry| {
+                selection
+                    .schema
+                    .as_ref()
+                    .is_none_or(|schema| schema == &object.value.schema)
+                    && selection
+                        .key
+                        .as_ref()
+                        .is_none_or(|item| item == &object.value.item)
+            };
+            // Latest Keeps Each Selected Key's Newest Revision At The Snapshot.
+            let latest = (selection.versions == ObjectVersions::Latest).then(|| {
+                let mut latest = BTreeMap::new();
+                for object in image.objects.values() {
+                    if object.position.sequence <= snapshot.at.sequence && selected(object) {
+                        latest.insert(
+                            (object.value.schema.id.clone(), object.value.item.clone()),
+                            object.position.sequence,
+                        );
                     }
-                    if object.position.sequence > through {
-                        break;
-                    }
-                    let key = (object.value.schema.id.as_str(), object.value.item.as_str());
-                    if let Some(position) = latest.get_mut(&key) {
-                        *position = object.position.sequence;
-                        continue;
-                    }
-                    working = working
-                        .checked_add(1024)
-                        .filter(|bytes| *bytes <= execution.memory_bytes.get())
-                        .ok_or(Error::ResourceExhausted {
-                            resource: "test query memory",
-                        })?;
-                    latest.insert(key, object.position.sequence);
                 }
-            }
-            let mut page = page(
-                snapshot.objects.values(),
-                PageView {
-                    view,
-                    pinned_bytes: working,
-                },
-                selection,
-                cursor,
-                limits,
-                |object| &object.position,
+                latest
+            });
+            let mut entries = scan(
+                image.objects.values(),
+                snapshot,
+                page,
+                |row| &row.position,
                 |object| {
-                    (selection.object_versions == ObjectVersions::Revisions
-                        || latest
-                            .get(&(object.value.schema.id.as_str(), object.value.item.as_str()))
-                            == Some(&object.position.sequence))
-                        && selection
-                            .schema
-                            .as_ref()
-                            .is_none_or(|schema| schema == &object.value.schema)
-                        && selection
-                            .object_key
-                            .as_ref()
-                            .is_none_or(|item| item == &object.value.item)
+                    selected(object)
+                        && latest.as_ref().is_none_or(|latest| {
+                            latest.get(&(object.value.schema.id.clone(), object.value.item.clone()))
+                                == Some(&object.position.sequence)
+                        })
                 },
             )?;
-            if self.control.invalid_page.load(Ordering::SeqCst) && !page.entries.is_empty() {
-                page.entries[0].value.payload = vec![0xff];
+            if self.control.invalid_page.load(Ordering::SeqCst) && !entries.is_empty() {
+                entries[0].value.payload = vec![0xff];
             }
-            Ok(page)
+            Ok(entries)
         })
     }
     fn read_records<'a>(
         &'a self,
-        view: &'a ReadView,
-        selection: &'a ReadSelection,
-        cursor: Option<&'a ReadCursor>,
-        limits: ReadLimits,
-    ) -> StorageFuture<'a, ReadPage<StoredRecord>> {
+        snapshot: &'a BackendSnapshot,
+        selection: &'a RecordSelection,
+        page: ScanPage,
+    ) -> StorageFuture<'a, Vec<StoredRecord>> {
         Box::pin(async move {
-            view.check_kind(ReadKind::Records, selection, cursor)?;
-            let computation = view.retain_computation()?;
-            let accepted = self.control.accepted_record_read.lock().unwrap().take();
-            let _computation = if let Some((started, release)) = accepted {
-                tokio::spawn(async move {
-                    started.send(()).unwrap();
-                    release.await.unwrap();
-                    computation
-                })
-                .await
-                .map_err(|_| failure(BackendFailure::Permanent))?
-            } else {
-                computation
-            };
             if self.control.block_read.load(Ordering::SeqCst) {
                 self.control.read_entered.notify_one();
                 self.control.read_release.notified().await;
             }
-            let held = self.snapshots.lock().unwrap();
-            let snapshot = held.get(&view.snapshot().token).ok_or(Error::ViewExpired)?;
-            let projection = selection
-                .record_filter
-                .as_ref()
-                .map(|filter| {
-                    let fields = &snapshot
-                        .schemas
-                        .values()
-                        .find(|schema| Some(&schema.key) == selection.schema.as_ref())
-                        .ok_or(Error::InvalidInput {
-                            field: "record filter",
-                            reason: "selected schema absent from saved view",
-                        })?
-                        .schema;
-                    let schema_view = fields.root().map_err(|_| Error::InvalidInput {
-                        field: "record filter",
-                        reason: "invalid shared schema root",
-                    })?;
-                    filter.check_schema(schema_view)?;
-                    let remaining = view
-                        .execution_limits()
-                        .ok_or(Error::InvalidInput {
-                            field: "record filter",
-                            reason: "requires bounded saved query",
-                        })?
-                        .memory_bytes
-                        .get()
-                        .checked_sub(snapshot.query_bytes)
-                        .and_then(NonZeroUsize::new)
-                        .ok_or(Error::ResourceExhausted {
-                            resource: "record projection memory",
-                        })?;
-                    harmos::storage::frame::ScalarProjection::new(
-                        schema_view,
-                        filter.columns.clone(),
-                        remaining,
-                    )
-                })
-                .transpose()?;
-            let mut page = filtered_page(
-                snapshot.records.values(),
-                PageView {
-                    view,
-                    pinned_bytes: snapshot.query_bytes,
-                },
-                selection,
-                cursor,
-                limits,
+            let image = self.image(snapshot)?;
+            let mut entries = scan(
+                image.records.values(),
+                snapshot,
+                page,
                 |row| &row.position,
                 |row| {
-                    if !matches_record(row, selection) {
-                        return Ok(false);
-                    }
-                    if let (Some(filter), Some(projection)) =
-                        (&selection.record_filter, &projection)
-                    {
-                        let values = projection.project(
-                            &row.payload,
-                            |path, allowance| frame::metadata(row, None, path, allowance),
-                            limits.bytes,
-                        )?;
-                        filter.matches(&values)
-                    } else {
-                        Ok(true)
-                    }
+                    record_matches(row, &selection.schema, &selection.scope, &selection.item)
+                        && window(
+                            selection.source_start,
+                            selection.source_end,
+                            row.source_time,
+                        )
                 },
             )?;
-            if self.control.invalid_page.load(Ordering::SeqCst) && !page.entries.is_empty() {
-                page.entries[0].item = Identifier::new("wrong-item").unwrap();
+            if self.control.invalid_page.load(Ordering::SeqCst) && !entries.is_empty() {
+                entries[0].item = Identifier::new("wrong-item").unwrap();
             }
-            Ok(page)
+            Ok(entries)
         })
     }
     fn read_stream<'a>(
         &'a self,
-        view: &'a ReadView,
-        selection: &'a ReadSelection,
-        cursor: Option<&'a ReadCursor>,
-        limits: ReadLimits,
-    ) -> StorageFuture<'a, ReadPage<StoredRow>> {
+        snapshot: &'a BackendSnapshot,
+        selection: &'a StreamSelection,
+        page: ScanPage,
+    ) -> StorageFuture<'a, Vec<StoredRow>> {
         Box::pin(async move {
-            view.check_kind(ReadKind::Stream, selection, cursor)?;
-            let _computation = view.retain_computation()?;
             if self.control.block_read.load(Ordering::SeqCst) {
                 self.control.read_entered.notify_one();
                 self.control.read_release.notified().await;
             }
-            let held = self.snapshots.lock().unwrap();
-            let snapshot = held.get(&view.snapshot().token).ok_or(Error::ViewExpired)?;
-            page(
-                snapshot.rows.values(),
-                PageView {
-                    view,
-                    pinned_bytes: snapshot.query_bytes,
-                },
-                selection,
-                cursor,
-                limits,
+            let image = self.image(snapshot)?;
+            scan(
+                image.rows.values(),
+                snapshot,
+                page,
                 |row| &row.record.position,
                 |row| {
-                    matches_record(&row.record, selection)
-                        && selection.stream.as_ref().is_none_or(|id| id == &row.stream)
+                    record_matches(
+                        &row.record,
+                        &selection.schema,
+                        &selection.scope,
+                        &selection.item,
+                    ) && selection.stream.as_ref().is_none_or(|id| id == &row.stream)
+                        && window(
+                            selection.source_start,
+                            selection.source_end,
+                            row.record.source_time,
+                        )
                 },
             )
         })
     }
     fn read_files<'a>(
         &'a self,
-        view: &'a ReadView,
-        selection: &'a ReadSelection,
-        cursor: Option<&'a ReadCursor>,
-        limits: ReadLimits,
-    ) -> StorageFuture<'a, ReadPage<FileReference>> {
+        snapshot: &'a BackendSnapshot,
+        selection: &'a FileSelection,
+        page: ScanPage,
+    ) -> StorageFuture<'a, Vec<FileReference>> {
         Box::pin(async move {
-            view.check_kind(ReadKind::Files, selection, cursor)?;
-            let held = self.snapshots.lock().unwrap();
-            let snapshot = held.get(&view.snapshot().token).ok_or(Error::ViewExpired)?;
-            if selection.history == ReadHistory::Complete
-                && selection.after < snapshot.lost_files_through
-            {
-                return Err(Error::Gap {
-                    requested: selection.after + 1,
-                    available: snapshot.lost_files_through + 1,
-                });
-            }
-            page(
-                snapshot.files.values(),
-                PageView {
-                    view,
-                    pinned_bytes: snapshot.query_bytes,
-                },
-                selection,
-                cursor,
-                limits,
+            let image = self.image(snapshot)?;
+            scan(
+                image.files.values(),
+                snapshot,
+                page,
                 |file| &file.position,
                 |file| {
                     selection
@@ -1665,6 +828,35 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
                             .is_none_or(|scope| Some(scope) == file.metadata.scope.as_ref())
                 },
             )
+        })
+    }
+    fn read_object<'a>(
+        &'a self,
+        snapshot: &'a BackendSnapshot,
+        query: &'a ObjectPoint,
+    ) -> StorageFuture<'a, Option<ObjectEntry>> {
+        Box::pin(async move {
+            if self.control.block_read.load(Ordering::SeqCst) {
+                self.control.read_entered.notify_one();
+                self.control.read_release.notified().await;
+            }
+            let image = self.image(snapshot)?;
+            let object = image.objects.values().rev().find(|object| {
+                object.position.sequence <= snapshot.at.sequence
+                    && object.value.schema.id == query.schema
+                    && object.value.item == query.item
+                    && match &query.version {
+                        ObjectVersion::Latest => true,
+                        ObjectVersion::Exact(version) => version == &object.version,
+                    }
+            });
+            let mut object = object.cloned();
+            if self.control.invalid_page.load(Ordering::SeqCst)
+                && let Some(object) = &mut object
+            {
+                object.value.payload = vec![0xff];
+            }
+            Ok(object)
         })
     }
     fn supports_file_sessions(&self) -> bool {
@@ -2019,7 +1211,6 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
                     .unwrap_or(0);
                 self.lost_files_through
                     .fetch_max(last as usize, Ordering::SeqCst);
-                self.retention_generation.fetch_add(1, Ordering::SeqCst);
             }
             files.retain(|_, value| value.metadata.id != file.id);
             staged.remove(id);
@@ -2270,7 +1461,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
     }
     fn read_file<'a>(
         &'a self,
-        view: &'a ReadView,
+        snapshot: &'a BackendSnapshot,
         file: &'a FileReference,
         offset: u64,
         max_bytes: NonZeroUsize,
@@ -2280,17 +1471,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
                 self.control.read_entered.notify_one();
                 self.control.read_release.notified().await;
             }
-            if !self
-                .snapshots
-                .lock()
-                .unwrap()
-                .contains_key(&view.snapshot().token)
-            {
-                return Err(Error::ViewExpired);
-            }
-            if !view.accepted().covers(&file.position)? {
-                return Err(failure(BackendFailure::Conflict));
-            }
+            self.image(snapshot)?;
             let mut result = {
                 let blobs = self.blobs.lock().unwrap();
                 let (actual, bytes) = blobs
@@ -2301,20 +1482,6 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
                 }
                 let offset = usize::try_from(offset).unwrap();
                 let end = bytes.len().min(offset.saturating_add(max_bytes.get()));
-                if let Some(limits) = view.execution_limits() {
-                    let held = self.snapshots.lock().unwrap();
-                    let snapshot = held.get(&view.snapshot().token).ok_or(Error::ViewExpired)?;
-                    if end.saturating_sub(offset)
-                        > limits
-                            .memory_bytes
-                            .get()
-                            .saturating_sub(snapshot.query_bytes)
-                    {
-                        return Err(Error::ResourceExhausted {
-                            resource: "test query memory",
-                        });
-                    }
-                }
                 bytes[offset..end].to_vec()
             };
             if self.control.corrupt_file.load(Ordering::SeqCst) && !result.is_empty() {
@@ -2322,19 +1489,24 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
             }
             let accepted = self.control.accepted_file_read.lock().unwrap().take();
             if let Some((started, release)) = accepted {
-                let active = view.retain_computation()?.unwrap();
-                let work = tokio::spawn(async move {
-                    started.send(()).unwrap();
-                    release.await.unwrap();
-                    // The Actual Payload And Original Guard Share Mailbox Disposal.
-                    (result, active)
-                });
-                let (result, _active) =
-                    work.await.map_err(|_| failure(BackendFailure::Permanent))?;
-                return Ok(result);
+                started.send(()).unwrap();
+                release.await.unwrap();
             }
             Ok(result)
         })
+    }
+}
+
+impl<C: ObjectCatalog> Data<C> {
+    fn image(&self, snapshot: &BackendSnapshot) -> Result<Snapshot> {
+        self.snapshots
+            .lock()
+            .unwrap()
+            .get(&snapshot.token)
+            .cloned()
+            .ok_or(Error::Closing {
+                domain: "test snapshot",
+            })
     }
 }
 
@@ -2478,198 +1650,58 @@ fn failure(kind: BackendFailure) -> Error {
     )
 }
 
-fn matches_record(row: &StoredRecord, selection: &ReadSelection) -> bool {
-    selection
-        .source_time
-        .as_ref()
-        .is_none_or(|range| range.contains(row.source_time))
-        && selection
-            .schema
-            .as_ref()
-            .is_none_or(|key| key == &row.schema)
-        && selection.item.as_ref().is_none_or(|id| id == &row.item)
-        && selection
-            .scope
+fn record_matches(
+    row: &StoredRecord,
+    schema: &SchemaKey,
+    scope: &Option<Identifier>,
+    item: &Option<Identifier>,
+) -> bool {
+    &row.schema == schema
+        && item.as_ref().is_none_or(|id| id == &row.item)
+        && scope
             .as_ref()
             .is_none_or(|scope| Some(scope) == row.scope.as_ref())
 }
 
-fn check_query_copy<T: serde::Serialize>(
-    view: &ReadView,
-    pinned_bytes: usize,
-    value: &T,
-) -> Result<()> {
-    let Some(limits) = view.execution_limits() else {
-        return Ok(());
-    };
-    let mut counter = QueryCounter {
-        bytes: 0,
-        limit: limits
-            .memory_bytes
-            .get()
-            .saturating_sub(pinned_bytes)
-            .saturating_sub(1024)
-            / 8,
-        started: tokio::time::Instant::now(),
-        timeout: limits.timeout,
-    };
-    serde_json::to_writer(&mut counter, value).map_err(|_| Error::ResourceExhausted {
-        resource: "test query memory/time",
-    })?;
-    Ok(())
-}
-
-fn snapshot_map_memory<T: MemorySize>(map: &BTreeMap<u64, T>) -> usize {
-    if map.is_empty() {
-        std::mem::size_of::<BTreeMap<u64, T>>()
-    } else {
-        map.memory_size()
+fn window(
+    start: Option<std::time::SystemTime>,
+    end: Option<std::time::SystemTime>,
+    time: Option<std::time::SystemTime>,
+) -> bool {
+    match (start, end) {
+        (Some(start), Some(end)) => time.is_some_and(|time| time >= start && time < end),
+        _ => true,
     }
 }
 
-fn snapshot_map<T: Clone>(map: &BTreeMap<u64, T>) -> BTreeMap<u64, T> {
-    if map.is_empty() {
-        BTreeMap::new()
-    } else {
-        map.clone()
-    }
-}
-
-fn page<'a, T: Clone + MemorySize + serde::Serialize + 'a>(
-    entries: impl DoubleEndedIterator<Item = &'a T> + Clone,
-    held: PageView<'_>,
-    selection: &ReadSelection,
-    cursor: Option<&ReadCursor>,
-    limits: ReadLimits,
+// Ascending Entries In (page.after, snapshot.at]; At Least One While Any Remain.
+fn scan<'a, T: Clone + serde::Serialize + 'a>(
+    entries: impl Iterator<Item = &'a T>,
+    snapshot: &BackendSnapshot,
+    page: ScanPage,
     position: impl Fn(&T) -> &StorageCursor,
     matches: impl Fn(&T) -> bool,
-) -> Result<ReadPage<T>> {
-    filtered_page(
-        entries,
-        held,
-        selection,
-        cursor,
-        limits,
-        position,
-        |entry| Ok(matches(entry)),
-    )
-}
-fn filtered_page<'a, T: Clone + MemorySize + serde::Serialize + 'a>(
-    entries: impl DoubleEndedIterator<Item = &'a T> + Clone,
-    held: PageView<'_>,
-    selection: &ReadSelection,
-    cursor: Option<&ReadCursor>,
-    limits: ReadLimits,
-    position: impl Fn(&T) -> &StorageCursor,
-    matches: impl Fn(&T) -> Result<bool>,
-) -> Result<ReadPage<T>> {
-    let PageView { view, pinned_bytes } = held;
-    let _computation = view.retain_computation()?;
-    let execution = view.execution_limits();
-    let started = tokio::time::Instant::now();
-    if execution.is_some_and(|execution| pinned_bytes > execution.memory_bytes.get()) {
-        return Err(Error::ResourceExhausted {
-            resource: "test query memory",
-        });
-    }
-    let selected = |entry: &T| {
-        let at = position(entry).sequence;
-        Ok::<bool, Error>(
-            at > selection.after
-                && at <= selection.through.unwrap_or(view.accepted().sequence)
-                && at <= view.saved().sequence
-                && matches(entry)?
-                && cursor.is_none_or(|cursor| match selection.order {
-                    ReadOrder::Ascending => at > cursor.position().sequence,
-                    ReadOrder::Descending => at < cursor.position().sequence,
-                }),
-        )
-    };
-    let next = |entries: &mut dyn DoubleEndedIterator<Item = &'a T>| match selection.order {
-        ReadOrder::Ascending => entries.next(),
-        ReadOrder::Descending => entries.next_back(),
-    };
-    let mut inspecting = entries.clone();
-    let mut count = 0usize;
+) -> Result<Vec<T>> {
+    let mut output = Vec::new();
     let mut bytes = 0usize;
-    let mut resident = std::mem::size_of::<Vec<T>>();
-    let mut more = false;
-    while let Some(entry) = next(&mut inspecting) {
-        if execution.is_some_and(|limits| started.elapsed() >= limits.timeout) {
-            return Err(Error::ResourceExhausted {
-                resource: "test query time",
-            });
-        }
-        if !selected(entry)? {
+    for entry in entries {
+        let at = position(entry).sequence;
+        if at <= page.after || at > snapshot.at.sequence || !matches(entry) {
             continue;
         }
-        if count == limits.rows.get() {
-            more = true;
+        let size = serde_json::to_vec(entry).unwrap().len();
+        if output.len() == page.rows.get()
+            || (!output.is_empty() && bytes + size > page.bytes.get())
+        {
             break;
         }
-        let mut counter = QueryCounter {
-            bytes: 0,
-            limit: limits.bytes.get().saturating_sub(bytes),
-            started,
-            timeout: execution.map_or(std::time::Duration::MAX, |limits| limits.timeout),
-        };
-        let encoded = serde_json::to_writer(&mut counter, entry).is_ok();
-        let native = resident
-            .checked_add(entry.memory_size())
-            .filter(|bytes| *bytes <= limits.bytes.get());
-        if !encoded || native.is_none() {
-            if execution.is_some_and(|limits| started.elapsed() >= limits.timeout) {
-                return Err(Error::ResourceExhausted {
-                    resource: "test query time",
-                });
-            }
-            if count == 0 {
-                return Err(Error::InvalidInput {
-                    field: "test page",
-                    reason: "oversized entry",
-                });
-            }
-            more = true;
-            break;
-        }
-        resident = native.expect("preflighted native output");
-        bytes += counter.bytes;
-        count += 1;
+        bytes += size;
+        output.push(entry.clone());
     }
-    // Page Output Has Its Own Original Reservation, Separate From Pinned Working Memory.
-    let mut result =
-        harmos::__private::decoding_vector(count).map_err(|_| Error::ResourceExhausted {
-            resource: "test page layout",
-        })?;
-    let mut copying = entries;
-    while result.len() < count {
-        if execution.is_some_and(|limits| started.elapsed() >= limits.timeout) {
-            return Err(Error::ResourceExhausted {
-                resource: "test query time",
-            });
-        }
-        let entry =
-            next(&mut copying).expect("same immutable snapshot retains preflighted entries");
-        if selected(entry)? {
-            result.push(entry.clone());
-        }
-    }
-    let next = if more {
-        Some(ReadCursor::new(
-            view,
-            selection.clone(),
-            position(result.last().unwrap()).clone(),
-        )?)
-    } else {
-        None
-    };
-    Ok(ReadPage {
-        entries: result,
-        next,
-    })
+    Ok(output)
 }
 
-fn upsert_release(releases: &mut Vec<ObjectRetentionRelease>, release: ObjectRetentionRelease) {
+fn upsert_release(releases: &mut Vec<Release>, release: Release) {
     if let Some(prior) = releases
         .iter_mut()
         .find(|prior| prior.schema == release.schema && prior.item == release.item)
@@ -2680,15 +1712,6 @@ fn upsert_release(releases: &mut Vec<ObjectRetentionRelease>, release: ObjectRet
     } else {
         releases.push(release);
     }
-    releases.sort_by(|left, right| {
-        if left.cursor().precedes(&right.cursor()) {
-            std::cmp::Ordering::Less
-        } else if right.cursor().precedes(&left.cursor()) {
-            std::cmp::Ordering::Greater
-        } else {
-            std::cmp::Ordering::Equal
-        }
-    });
 }
 
 /* === Tests === */

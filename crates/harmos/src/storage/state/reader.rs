@@ -21,9 +21,9 @@ use tokio::sync::{MutexGuard, watch};
 
 // Local Imports
 use super::{RecoveryPage, RecoverySnapshot};
+use crate::storage::capacity::{Pool, Reservation};
 use crate::storage::manager::{
-    ENTRY_OVERHEAD, Lifecycle, MemoryReservation, ReservationKind, encoded_size,
-    recovery_preparation_bytes,
+    ENTRY_OVERHEAD, Lifecycle, encoded_size, recovery_preparation_bytes,
 };
 use crate::storage::{ReadLimits, RecoveryPosition, StorageManager};
 use crate::{Error, Result, state::Position};
@@ -38,7 +38,7 @@ use crate::{Error, Result, state::Position};
 pub(crate) struct RecoveryReader<'a, C> {
     storage: &'a StorageManager<C>,
     // Release Budget Before Unlocking The Recovery Lifecycle.
-    _reservation: MemoryReservation,
+    _reservation: Reservation,
     _lifecycle: MutexGuard<'a, Lifecycle>,
     through: RecoveryPosition,
     limits: ReadLimits,
@@ -110,11 +110,7 @@ impl<C> StorageManager<C> {
         Ok(RecoveryReader {
             storage: self,
             _lifecycle: lifecycle,
-            _reservation: MemoryReservation {
-                inner: self.inner.clone(),
-                bytes,
-                kind: ReservationKind::Write,
-            },
+            _reservation: Reservation::charged(&self.inner, Pool::Write, bytes),
             through,
             limits,
             snapshot_bound,

@@ -14,8 +14,7 @@ pub(crate) mod attachments;
 mod backend;
 mod batch;
 mod batching;
-mod bootstrap;
-mod browse;
+mod capacity;
 pub(crate) mod capture;
 pub(crate) mod catalog;
 pub(crate) mod codec;
@@ -27,42 +26,28 @@ mod file_checkpoint;
 mod file_follow;
 mod file_reads;
 pub mod files;
-pub(crate) mod mutations;
-pub(crate) mod object_fields;
-pub(crate) mod object_values;
-pub mod operations;
-pub(crate) mod position;
-pub(crate) mod read_selection;
-pub(crate) mod schema_input;
-pub(crate) mod timestamp;
-
-mod follow;
-pub mod frame;
+pub mod follow;
 pub(crate) mod manager;
 mod memory;
+pub(crate) mod mutations;
 mod object_admissions;
+pub(crate) mod object_values;
 mod objects;
-mod production;
+pub mod operations;
+pub(crate) mod position;
 pub mod query;
 mod queue;
-mod reads;
 mod receipts;
-mod record_filter;
-pub mod reduce;
-mod replication;
 mod saving;
 mod schema;
+pub(crate) mod schema_input;
 mod selection;
+mod snapshot;
 mod staging;
 pub mod state;
-mod transfer;
-mod views;
-mod work;
+pub(crate) mod timestamp;
 mod worker;
 pub mod writes;
-
-#[cfg(feature = "signal")]
-pub mod series;
 
 /* === Re-Exports === */
 pub use crate::storage::catalog::{
@@ -75,57 +60,28 @@ pub use crate::storage::files::{
     FileSession, ReadFile, StagedFile,
 };
 pub use crate::storage::mutations::{FileProducer, MutationId, MutationWindow, StorageInfo};
-pub use crate::storage::object_fields::{
-    ObjectComparison, ObjectFields, ObjectFilter, ObjectMetadata, ObjectNullOrder, ObjectScalar,
-    ObjectScalarKind, ObjectSort,
-};
 pub use crate::storage::object_values::{
     ObjectEntry, ObjectPoint, ObjectReceipt, ObjectRevision, ObjectVersion, ObjectVersionToken,
-    ObjectVersions,
 };
 pub use crate::storage::position::{RecoveryPosition, StorageCursor, StoreHistory};
 pub use attachments::{Horizon, Payload, Recovery, Source};
-pub use backend::{StorageBackend, StorageBackends, StorageFuture};
+pub use backend::{
+    BackendSnapshot, ReadLimits, ScanPage, StorageBackend, StorageBackends, StorageFuture,
+};
 pub use batch::{StorageBatch, StorageEntry, StoragePart};
-pub use bootstrap::{
-    BootstrapId, BootstrapManifest, CollectionDigest, ObjectReleaseCursor, ObjectReleasePage,
-    ObjectRetentionRelease, ReleaseDigest, RetainedBatch, RetainedCoverage, RetainedSnapshot,
-};
-pub use browse::{
-    ObjectBrowseCursor, ObjectBrowsePage, ObjectBrowseQuery, ObjectBrowseRequest,
-    ObjectBrowseResult, ObjectColumn, ObjectFieldsQuery, ObjectOrder, ObjectPredicate,
-};
 pub use capture::{ProjectedRecords, RecordProjection};
 pub use config::{StorageBudget, StorageRequestSettings, StorageResponseSettings, StorageSettings};
 pub use consumer::{Batch, Cursor, JournalConsumer, Series, StreamConsumer};
 pub use file_checkpoint::FileCheckpoint;
 pub use file_follow::FileFollower;
-pub use file_reads::{FileChunk, StorageFileReader};
-pub use follow::{QueryFollower, QueryReplay};
-pub use frame::{Collected, Explain, Frame, FrameQuery, FrameResult};
+pub use file_reads::FileReader;
 pub use manager::{ErasedCatalog, RecordWrite, StorageManager, StorageStatus, StreamWrite};
 pub use objects::ObjectGroup;
-pub use production::{
-    StorageProduction, StorageProductionComputation, StorageProductionPreparation,
-};
-pub use query::{
-    Admission, EncodedObjectQuery, FileQuery, FileQueryResult, FollowQuery, ObjectQuery,
-    ObjectQueryResult, QueryLimits, QueryOptions, QueryPage, QueryResult, QueryValue, RecordQuery,
-    RecordQueryResult, SchemaQuery, SchemaQueryResult, SharedQueryValue, StorageQuery, StreamQuery,
-    StreamQueryResult,
-};
-pub use reads::{
-    BackendSnapshot, ReadCursor, ReadHistory, ReadKind, ReadLimits, ReadOrder, ReadPage,
-    ReadSelection, ReadView, SourceTimeRange,
-};
+pub use query::QueryReader;
 pub use receipts::{MutationReceipt, MutationValue};
-pub use record_filter::{RecordClause, RecordFilter};
-pub use replication::{ReplicaHolder, ReplicaReceipt, ReplicaStatus, ReplicaTarget};
 pub use schema_input::{SchemaInfo, SchemaInput};
 pub use staging::StorageFile;
 pub(crate) use staging::checkpoint::FileSave;
-pub use views::{StoragePage, StorageReader, StorageView, StorageViewComputation};
-pub use work::{StorageReadWork, StorageReadWorkPreparation};
 pub use writes::StorageSchema;
 
 /* === Imports === */

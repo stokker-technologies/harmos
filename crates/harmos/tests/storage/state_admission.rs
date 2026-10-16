@@ -111,6 +111,18 @@ impl RecordProjection for Projection {
 /* === Public Functions === */
 
 /* === Private Functions === */
+// A Query Pins A Snapshot Through The Worker, Holding It At The Backend View Gate.
+fn gate(at: StorageCursor) -> harmos::storage::query::Query {
+    harmos::storage::query::Query {
+        at,
+        source: harmos::storage::query::Source::Files(harmos::storage::query::FileSelection {
+            scope: None,
+            item: None,
+        }),
+        transforms: Vec::new(),
+        slice: harmos::storage::query::RowSlice::default(),
+    }
+}
 
 /* === Tests === */
 
@@ -119,9 +131,9 @@ async fn ready_journal_bypasses_unrelated_primary_backlog_in_order() {
     let f = Fixture::new(config()).await;
     let durable = f.storage.cursor_saved();
 
-    // Hold The Worker At A View Gate Until Both Domains Have Been Admitted.
+    // Hold The Worker At A Snapshot Gate Until Both Domains Have Been Admitted.
     f.data.control.block_view.store(true, Ordering::SeqCst);
-    let mut acquiring = Box::pin(f.storage.view_with_limits(f.execution));
+    let mut acquiring = Box::pin(f.storage.query(gate(f.storage.cursor_saved())));
     tokio::select! {
         result = &mut acquiring => { let _ = result; panic!("view must reach its gate") },
         _ = f.data.control.view_entered.notified() => {}
@@ -175,13 +187,11 @@ async fn assert_pending<F: Future>(mut future: Pin<&mut F>) {
 async fn projected_journal_waits_for_real_primary_dependency() {
     let data = Arc::new(Data::new(history()));
     let state = Arc::new(Recovery::new(history()));
-    let mut policy = config();
-    policy.write_batch_entries = NonZeroUsize::new(1).unwrap();
-    let storage = StorageManager::new(
+    let policy = config();
+    let storage: StorageManager = StorageManager::new(
         StorageBackends {
             primary: data.clone(),
             state: state.clone(),
-            replicas: vec![],
         },
         policy.clone(),
     )
@@ -211,7 +221,7 @@ async fn projected_journal_waits_for_real_primary_dependency() {
 
     // Keep Both Transactions In The Queue Until The Recovery Barrier Exists.
     data.control.block_view.store(true, Ordering::SeqCst);
-    let mut acquiring = Box::pin(storage.view_with_limits(policy.query_execution));
+    let mut acquiring = Box::pin(storage.query(gate(storage.cursor_saved())));
     tokio::select! {
         result = &mut acquiring => { let _ = result; panic!("view must reach its gate") },
         _ = data.control.view_entered.notified() => {}

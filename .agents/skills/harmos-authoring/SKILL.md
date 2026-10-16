@@ -38,23 +38,15 @@ Use the original runtime and resource owners. Consult the relevant section only;
   through `Into`; an implementation may return the owned response directly.
   Use an explicit shared declaration when the response handle is imported under
   an alias. The wrapper adds no protobuf field or wire definition.
-- Storage producers return their admitted payload through
-  `preparation.finish(wire)?.try_into_value()?.try_into_response()?`.
-  This fallible conversion admits a conservative delivery allowance covering
-  the larger response or stream-item handle against the original read ledger
-  before creating its sole shared owner. Clones and cached responses
-  retain that same allocation and loan. Encoding releases its delivery owner;
-  the loan remains until the last cache, stream, or shared owner is dropped.
-  Never replace this path with a copied payload, a second reservation, or an
-  ambient context retention slot. `try_into_shared()` retains its existing
-  accounting for the separate shared query handle.
+- Storage reads go through `StorageManager::query(Query)` (Arrow output) and
+  `StorageManager::read_file(ReadFile)` (finished-file bytes). Returned Arrow
+  batches keep their read-budget charge through clones and slices; never copy
+  a result to escape that accounting or add a second reservation path.
 - Send an admitted owned streamed payload with `output.send_owned(response).await?`.
   This retains its original payload and loan alongside the existing channel
   permits, with no additional payload owner allocation or wire field. Ordinary
   `send_with` items still require only `Send`; owned items require `Send + Sync`.
-  `FileChunk::into_query_value()` retains its existing file-read reservation;
-  project the canonical frame through the admitted query-value API before
-  converting it into an owned response. `StreamItem::into_request` is fallible:
+  `StreamItem::into_request` is fallible:
   a borrowed owned payload cannot be moved out into a mutable request. Likewise,
   consuming `project` refuses an owned item instead of silently copying it.
 - Declare portable child metadata through `operations::ContextValue`. Every
@@ -335,37 +327,20 @@ declare operation metadata.
 
 
 
-## Saved-View Frame Filters
+## Storage Reads
 
-- `storage::frame::Predicate` has `Compare { expr, compare, value }`,
-  `In { expr, values }` and `Exists { expr, present }` variants. Filter vectors
-  combine with AND; membership alternatives combine with OR and are capped at
-  64. Empty membership matches nothing; duplicate alternatives do not duplicate
-  rows. `Exists` excludes both missing and null values.
-- Use `ScalarPath::Payload` for validated nested scalar fields and compose
-  separate predicates for compound ownership. Keep product scope identifiers in
-  the consumer. The original saved view, schema validation and query budgets
-  remain authoritative; frame filters do not create a new storage owner.
-- Raw saved paging uses `RecordQuery::filter: Option<RecordFilter>` and Core
-  `DataSelection::record_filter`. `RecordFilter { columns, clauses }` shares
-  1..64 scalar columns across `RecordClause { predicates }` alternatives.
-  Clauses combine with OR, predicates within each with AND. Clauses must be
-  nonempty; the complete filter admits at most 64 predicates over `Expr::Col`.
-  Membership remains capped at 64 values. Backends implement
-  `StorageBackend::validate_record_filter`, validate selected schema paths, and
-  apply the shared `RecordFilter::matches` contract under the existing cut,
-  continuation, memory and time bounds. Typed output retains its original
-  decoded allowance; unsupported backends refuse filters.
-- Original raw paging uses a bounded `StorageManager::view_with_limits`, then
-  `StorageView::read_records(ReadSelection)` and
-  `StorageReader::next_page(ReadLimits)`. Specify `ReadSelection::through` for a
-  fixed cut. Pages retain the original storage reservation, view and cursor;
-  do not union independent readers or copy their budget authority. Keep envelope
-  process scope separate from nested product ownership. Direct follow/replay
-  rejects filters; poll saved history with an explicit cut for filtered watching.
+- One `Query` covers objects, records, streams, schemas and file metadata at a
+  full storage cursor. Filter, Project, Aggregate, Histogram, Downsample and
+  Sort form the single transform catalog; row `offset`/`limit` apply last.
+  Do not add per-kind readers, record-filter pushdown or a second executor.
+- Live subscriptions are the `Follow`, `FollowStream`, `FollowObjects` and
+  `FollowFile` operations. A subscription delivers saved history after its
+  `after` cursor, then accepted entries; there is no separate replay API.
+- Read admission waits for capacity held by others and fails explicitly when
+  the requester's own retained bytes plus its demand can never fit.
 - A connected `StorageFile` retains production during idle periods. The original
   resident service owns that handle independently of viewers. Drop or pending
-  write cancellation starts `file_session_timeout`; recovered disconnected
+  write cancellation starts the bounded resume window; recovered disconnected
   sessions have the same resume window. Resume fences the old producer and
   clears its deadline only when a native handle adopts the result. Token-only
   mutation producers retain bounded inactivity expiry; cancelled, unadopted

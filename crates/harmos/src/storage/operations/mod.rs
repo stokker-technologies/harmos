@@ -9,26 +9,20 @@
 
 /* === Modules === */
 mod abandon_file;
-mod acknowledge;
 mod append_file;
 mod create_file;
-mod data_selection;
 mod delete_file;
 mod file_mutation;
-mod file_selection;
 mod finish_file;
 mod follow;
 mod follow_file;
 mod follow_objects;
 mod follow_stream;
-mod object_result;
-mod object_selection;
 mod query;
 mod query_storage;
 mod read_file;
 mod resume_file;
 mod save;
-mod selection;
 mod write_file;
 mod write_objects;
 mod write_records;
@@ -37,26 +31,20 @@ mod write_stream;
 
 /* === Re-Exports === */
 pub use abandon_file::AbandonFile;
-pub use acknowledge::{Acknowledge, AcknowledgeRequest};
 pub use append_file::{AppendFile, AppendFileRequest};
 pub use create_file::{CreateFile, CreateFileRequest};
-pub use data_selection::DataSelection;
 pub use delete_file::{DeleteFile, DeleteFileRequest};
 pub use file_mutation::FileMutation;
-pub use file_selection::{FileBytes, FileSelection};
 pub use finish_file::FinishFile;
 pub use follow::{Follow, FollowBoundaries, Followed};
 pub use follow_file::FollowFile;
 pub use follow_objects::FollowObjects;
 pub use follow_stream::FollowStream;
-pub use object_result::ObjectResult;
-pub use object_selection::ObjectSelection;
 pub use query::Query;
 pub use query_storage::{QueryStorage, QueryStorageRequest};
 pub use read_file::ReadFile;
 pub use resume_file::ResumeFile;
 pub use save::{Save, SaveRequest};
-pub use selection::Selection;
 pub use write_file::WriteFile;
 pub use write_objects::WriteObjects;
 pub use write_records::WriteRecords;
@@ -151,7 +139,6 @@ catalog! {
     WriteSchema => write_schema,
     WriteObjects => write_objects,
     FollowObjects => follow_objects,
-    Acknowledge => acknowledge,
 }
 
 /* === Type Aliases === */

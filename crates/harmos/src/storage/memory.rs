@@ -7,24 +7,24 @@
  * ***
  */
 
-// Storage Read Memory Admission
+// Storage Read Work Budget: One Admitted Attempt Growing On Concrete Demand
 
 /* === Modules === */
 
 /* === Re-Exports === */
 
 /* === Imports === */
-use super::arrow::RetainedMemory;
-use super::manager::MemoryReservation;
-use crate::{Error, Result};
-use std::sync::atomic::{AtomicUsize, Ordering};
+// Standard Library Imports
 use std::sync::{Arc, Mutex};
 
-// Standard Library Imports
-
 // Third Party Imports
+use tokio::time::Instant;
 
 // Local Imports
+use super::arrow::RetainedMemory;
+use super::capacity::{Held, Pool, Refusal, Reservation};
+use super::manager::Inner;
+use crate::{Error, Result};
 
 /* === Constants === */
 
@@ -33,50 +33,70 @@ use std::sync::{Arc, Mutex};
 /* === Type Aliases === */
 
 /* === Structs === */
+/// The budget of one reloadable unit of read work. Scoped claims cover transient
+/// scratch; retained claims move bytes into their own reservations that outlive
+/// the attempt. Growth never waits; a refusal is recorded so the caller can
+/// release the attempt, wait for the recorded demand and retry the same work.
 pub(super) struct MemoryBank {
     state: Arc<Mutex<BankState>>,
 }
+
 pub(super) struct MemoryScope<'a> {
     bank: &'a MemoryBank,
     used: usize,
 }
 
 struct BankState {
-    reservation: Option<MemoryReservation>,
-    capacity: usize,
-    requested: usize,
+    reservation: Reservation,
     used: usize,
-    closed: bool,
-}
-struct Claim {
-    bank: Arc<Mutex<BankState>>,
-    bytes: AtomicUsize,
+    retained: usize,
+    requested: usize,
+    refusal: Option<Shortfall>,
 }
 
 /* === Enums === */
+/// Why an attempt could not grow: other owners hold capacity, or it can never fit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Shortfall {
+    Busy,
+    Exceeded,
+}
 
 /* === Traits === */
 
 /* === Implementations === */
 impl MemoryBank {
-    pub(super) fn new(reservation: MemoryReservation, capacity: usize) -> Self {
+    pub(super) fn new(reservation: Reservation) -> Self {
         Self {
             state: Arc::new(Mutex::new(BankState {
-                reservation: Some(reservation),
-                capacity,
-                requested: capacity,
+                requested: reservation.bytes(),
+                reservation,
                 used: 0,
-                closed: false,
+                retained: 0,
+                refusal: None,
             })),
         }
     }
 
+    /// Admit `bytes` of credit for the attempt, waiting for other owners.
+    pub(super) async fn admit(
+        inner: &Arc<Inner>,
+        held: &Held,
+        bytes: usize,
+        deadline: Option<Instant>,
+    ) -> std::result::Result<Self, Refusal> {
+        let reservation = Reservation::wait(inner, Pool::Read, held, bytes, deadline).await?;
+        Ok(Self::new(reservation))
+    }
+
+    /// Total demand observed during this attempt, including refused growth.
     pub(super) fn requested(&self) -> usize {
         self.state.lock().unwrap().requested
     }
 
-    pub(super) fn capacity(&self) -> usize {
-        self.state.lock().unwrap().capacity
+    /// The refusal that stopped this attempt, if growth was refused.
+    pub(super) fn shortfall(&self) -> Option<Shortfall> {
+        self.state.lock().unwrap().refusal
     }
 
     pub(super) fn scope(&self) -> MemoryScope<'_> {
@@ -86,111 +106,56 @@ impl MemoryBank {
         }
     }
 
+    /// Claim bytes that outlive this attempt, such as a retained Arrow batch.
     pub(super) fn reserve(&self, bytes: usize) -> Result<RetainedMemory> {
-        self.state.lock().unwrap().claim(bytes)?;
-        let claim = Arc::new(Claim {
-            bank: self.state.clone(),
-            bytes: AtomicUsize::new(bytes),
-        });
-        let shrink = claim.clone();
-        Ok(RetainedMemory::new(claim, move |bytes| {
-            shrink.shrink_to(bytes)
-        }))
+        let mut state = self.state.lock().unwrap();
+        state.ensure(bytes)?;
+        state.retained += bytes;
+        Ok(state.reservation.split(bytes).retain())
     }
 }
 
 impl MemoryScope<'_> {
     pub(super) fn claim(&mut self, bytes: usize) -> Result<()> {
-        let used = self
-            .used
-            .checked_add(bytes)
-            .ok_or(Error::ResourceExhausted {
-                resource: "storage read memory",
-            })?;
-        self.bank.state.lock().unwrap().claim(bytes)?;
-        self.used = used;
+        let mut state = self.bank.state.lock().unwrap();
+        state.ensure(bytes)?;
+        state.used += bytes;
+        self.used += bytes;
         Ok(())
     }
 }
 
 impl Drop for MemoryScope<'_> {
     fn drop(&mut self) {
-        let mut state = self.bank.state.lock().unwrap();
-        state.used -= self.used;
-        state.release_unused();
-    }
-}
-
-impl Claim {
-    fn shrink_to(&self, bytes: usize) -> Result<()> {
-        let mut state = self.bank.lock().unwrap();
-        let previous = self.bytes.load(Ordering::Relaxed);
-        if bytes > previous {
-            return Err(Error::InvalidInput {
-                field: "query kernel memory",
-                reason: "retained claim cannot grow after allocation",
-            });
-        }
-        self.bytes.store(bytes, Ordering::Relaxed);
-        state.used -= previous - bytes;
-        state.release_unused();
-        Ok(())
+        self.bank.state.lock().unwrap().used -= self.used;
     }
 }
 
 impl BankState {
-    fn claim(&mut self, bytes: usize) -> Result<()> {
-        if self.closed {
-            return Err(Error::NotReady {
-                domain: "closed query allocation owner",
-            });
-        }
+    // Grow The Attempt's Reservation So `bytes` More Fit Beside Current Claims.
+    fn ensure(&mut self, bytes: usize) -> Result<()> {
         let required = self
             .used
             .checked_add(bytes)
             .ok_or(Error::ResourceExhausted {
                 resource: "storage read memory",
             })?;
-        self.requested = self.requested.max(required);
-        if required > self.capacity {
-            self.reservation
-                .as_mut()
-                .expect("open bank owns reservation")
-                .grow_read(required - self.capacity)?;
-            self.capacity = required;
+        self.requested = self.requested.max(required.saturating_add(self.retained));
+        let available = self.reservation.bytes();
+        if required <= available {
+            return Ok(());
         }
-        self.used = required;
-        Ok(())
-    }
-
-    fn release_unused(&mut self) {
-        if !self.closed {
-            return;
+        match self.reservation.try_grow(required - available) {
+            Ok(()) => Ok(()),
+            Err(refusal) => {
+                self.refusal = Some(match refusal {
+                    Refusal::Busy => Shortfall::Busy,
+                    Refusal::Exceeded(_) => Shortfall::Exceeded,
+                    Refusal::Elapsed | Refusal::Failed(_) => return Err(refusal.into_error()),
+                });
+                Err(Refusal::Busy.into_error())
+            }
         }
-        if self.used == 0 {
-            self.reservation.take();
-            return;
-        }
-        // The Original Queue/Owner Metadata Charge Covers This Small Bank.
-        if let Some(reservation) = &mut self.reservation {
-            reservation.retain_read(self.used.saturating_add(super::manager::ENTRY_OVERHEAD));
-        }
-    }
-}
-
-impl Drop for Claim {
-    fn drop(&mut self) {
-        let mut state = self.bank.lock().unwrap();
-        state.used -= self.bytes.load(Ordering::Relaxed);
-        state.release_unused();
-    }
-}
-
-impl Drop for MemoryBank {
-    fn drop(&mut self) {
-        let mut state = self.state.lock().unwrap();
-        state.closed = true;
-        state.release_unused();
     }
 }
 

@@ -18,11 +18,11 @@ use harmos::storage::query::transform::{
     aggregate::{Aggregate, Measure},
     downsample::{Algorithm, Downsample},
     histogram::Histogram,
-    project::Projection,
+    project::{Project, Projection},
 };
 use harmos::storage::query::{Query, QueryOutput, RowSlice, Source, StreamSelection};
 use harmos::storage::*;
-use harmos::{Identifier, Message, Runtime};
+use harmos::{Identifier, Runtime};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
@@ -36,6 +36,35 @@ use std::time::{Duration, UNIX_EPOCH};
 /* === Implementations === */
 /* === Public Functions === */
 /* === Private Functions === */
+async fn read_range<C>(
+    storage: &StorageManager<C>,
+    file: &FileReference,
+    range: ByteRange,
+) -> Vec<u8> {
+    let mut reader = storage
+        .read_file(ReadFile {
+            file: file.clone(),
+            range,
+        })
+        .await
+        .unwrap();
+    let mut bytes = Vec::new();
+    while let Some(batch) = reader.next().await.unwrap() {
+        assert_eq!(batch.offset, range.offset + bytes.len() as u64);
+        bytes.extend_from_slice(&batch.bytes);
+    }
+    assert_eq!(reader.completion().unwrap().bytes, bytes.len() as u64);
+    bytes
+}
+
+fn column<'a, T: 'static>(batch: &'a arrow_array::RecordBatch, name: &str) -> &'a T {
+    batch
+        .column_by_name(name)
+        .unwrap()
+        .as_any()
+        .downcast_ref::<T>()
+        .unwrap()
+}
 /* === Tests === */
 #[tokio::test]
 async fn nominal() {
@@ -44,11 +73,10 @@ async fn nominal() {
     let identity = history();
     let settings = storage_settings();
     let data = Arc::new(Data::<Objects>::journaled(directory.path(), identity.clone()).unwrap());
-    let storage = StorageManager::new(
+    let storage = StorageManager::<Objects>::new(
         StorageBackends {
             primary: data.clone(),
             state: Arc::new(Recovery::new(identity.clone())),
-            replicas: vec![],
         },
         settings.clone(),
     )
@@ -114,95 +142,108 @@ async fn nominal() {
     );
     // Round Trip Typed Objects And Finished File Bytes.
     let found = storage
-        .read_object::<Experiment>(
-            &object.id,
-            ObjectVersion::Exact(object_receipt.version),
-            NonZeroUsize::new(16 * 1024).unwrap(),
-        )
+        .read_object::<Experiment>(&object.id, ObjectVersion::Exact(object_receipt.version))
         .await
         .unwrap()
         .unwrap();
     assert_eq!(found.value, object);
-    drop(found);
     for (reference, expected) in &files {
-        let mut reader = storage.read_file(reference).await.unwrap();
-        let mut received = Vec::new();
-        while let Some(batch) = reader
-            .next_chunk(settings.response.batch_bytes)
-            .await
-            .unwrap()
-        {
-            received.extend_from_slice(&batch);
-        }
-        assert_eq!(&received, expected);
+        let whole = read_range(
+            &storage,
+            reference,
+            ByteRange {
+                offset: 0,
+                limit: None,
+            },
+        )
+        .await;
+        assert_eq!(&whole, expected);
+
         // Finished References Support Checked Half-Open Byte Ranges.
         let offset = reference.length.min(3);
-        let mut range = storage
-            .read_file(reference)
-            .await
-            .unwrap()
-            .range(harmos::storage::files::ByteRange {
+        let selected = read_range(
+            &storage,
+            reference,
+            ByteRange {
                 offset,
                 limit: Some(7),
-            })
-            .unwrap();
-        let mut selected = Vec::new();
-        while let Some(batch) = range
-            .next_chunk(settings.response.batch_bytes)
-            .await
-            .unwrap()
-        {
-            selected.extend_from_slice(&batch);
-        }
+            },
+        )
+        .await;
         assert_eq!(
             selected,
             expected[offset as usize..expected.len().min(offset as usize + 7)]
         );
-        let mut eof = storage
-            .read_file(reference)
-            .await
-            .unwrap()
-            .range(harmos::storage::files::ByteRange {
+        let end = read_range(
+            &storage,
+            reference,
+            ByteRange {
                 offset: reference.length,
                 limit: None,
-            })
-            .unwrap();
-        assert!(
-            eof.next_chunk(settings.response.batch_bytes)
-                .await
-                .unwrap()
-                .is_none()
-        );
-        assert!(
-            storage
-                .read_file(reference)
-                .await
-                .unwrap()
-                .range(harmos::storage::files::ByteRange {
+            },
+        )
+        .await;
+        assert!(end.is_empty());
+        let beyond = storage
+            .read_file(ReadFile {
+                file: reference.clone(),
+                range: ByteRange {
                     offset: reference.length + 1,
-                    limit: None
-                })
-                .is_err()
-        );
+                    limit: None,
+                },
+            })
+            .await;
+        assert!(beyond.is_err());
     }
 
     // Persisted Stream Values Independently Match The Generator And Analytical RMS.
-    let mut query = StreamQuery::new(schema.clone(), |bytes, allowance| {
-        if Sample::decoding_memory(bytes).unwrap() > allowance.get() {
-            return Err(harmos::Error::ResourceExhausted {
-                resource: "sample decode",
+    let mut reader = storage
+        .query(Query {
+            at: durable.clone(),
+            source: Source::Stream(StreamSelection {
+                schema: schema.clone(),
+                scope: None,
+                item: None,
+                stream: None,
+                source_start: None,
+                source_end: None,
+            }),
+            transforms: vec![Transform::Project(Project {
+                fields: vec![
+                    Projection {
+                        field: "payload.phase".into(),
+                        name: "phase".into(),
+                    },
+                    Projection {
+                        field: "payload.ordinal".into(),
+                        name: "ordinal".into(),
+                    },
+                    Projection {
+                        field: "payload.value".into(),
+                        name: "value".into(),
+                    },
+                ],
+            })],
+            slice: RowSlice::default(),
+        })
+        .await
+        .unwrap();
+    let mut received = Vec::new();
+    while let Some(output) = reader.next().await.unwrap() {
+        let QueryOutput::Batch(batch) = output else {
+            continue;
+        };
+        let batch = batch.as_record_batch();
+        let phase = column::<arrow_array::UInt32Array>(batch, "phase");
+        let ordinal = column::<arrow_array::UInt64Array>(batch, "ordinal");
+        let value = column::<arrow_array::Float64Array>(batch, "value");
+        for row in 0..batch.num_rows() {
+            received.push(Sample {
+                phase: phase.value(row),
+                ordinal: ordinal.value(row),
+                value: value.value(row),
             });
         }
-        Sample::decode(bytes).map_err(|_| harmos::Error::InvalidInput {
-            field: "sample",
-            reason: "invalid payload",
-        })
-    });
-    query.options.through = Some(durable.sequence);
-    let mut reader = storage.query(query).await.unwrap();
-    let mut received = Vec::new();
-    while let Some(page) = reader.next_page().await.unwrap() {
-        received.extend(page.iter().map(|row| row.record.payload.clone()));
     }
     assert_eq!(received, samples);
     for phase in 0..3 {

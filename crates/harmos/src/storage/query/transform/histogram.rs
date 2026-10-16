@@ -23,7 +23,7 @@ use arrow_schema::{DataType, Field, Schema};
 use super::downsample::number;
 use super::{FieldPath, invalid, numeric_type};
 use crate::storage::codec::{Float, Many, Nested, product};
-use crate::storage::reduce::ScalarValue;
+use crate::storage::query::scalar::ScalarValue;
 use crate::{MemorySize, Result};
 
 /* === Constants === */
@@ -37,6 +37,13 @@ use crate::{MemorySize, Result};
 pub struct Histogram {
     pub field: FieldPath,
     pub edges: Vec<f64>,
+}
+
+/// Incremental histogram state.
+pub struct Bins {
+    plan: Histogram,
+    schema: Arc<Schema>,
+    counts: Vec<u64>,
 }
 
 /* === Enums === */
@@ -65,17 +72,49 @@ impl Histogram {
         ]))
     }
 
+    /// Start incremental binning over batches of `input`.
+    pub fn start(&self, input: &Schema) -> Result<Bins> {
+        Ok(Bins {
+            schema: Arc::new(self.output_schema(input)?),
+            plan: self.clone(),
+            counts: vec![0; self.edges.len() + 1],
+        })
+    }
+
     pub fn apply(
         &self,
         input: &RecordBatch,
         check: &mut impl FnMut() -> Result<()>,
     ) -> Result<RecordBatch> {
-        let schema = Arc::new(self.output_schema(input.schema().as_ref())?);
-        // First and last rows explicitly account for finite values outside the edges.
-        let mut counts = vec![0u64; self.edges.len() + 1];
+        let mut bins = self.start(input.schema().as_ref())?;
+        bins.push(input, check)?;
+        bins.finish()
+    }
+}
+
+impl Bins {
+    /// Bytes retained by bin counts between batches.
+    pub fn retained_bytes(&self) -> usize {
+        self.counts.len().saturating_mul(16).saturating_add(1024)
+    }
+
+    /// Bytes needed to materialize the final output batch.
+    pub fn finish_bytes(&self) -> usize {
+        self.counts.len().saturating_mul(96).saturating_add(4096)
+    }
+
+    /// Count one batch. First and last bins hold finite values outside the
+    /// edges; a failed batch leaves the counts unchanged.
+    pub fn push(
+        &mut self,
+        input: &RecordBatch,
+        check: &mut impl FnMut() -> Result<()>,
+    ) -> Result<()> {
+        let edges = &self.plan.edges;
+        let mut counts = self.counts.clone();
         for row in 0..input.num_rows() {
             check()?;
-            let value = self.field.value(input, row)?;
+            let value = self.plan.field.value(input, row)?;
             if matches!(value, ScalarValue::Null | ScalarValue::Missing) {
                 continue;
             }
@@ -83,23 +122,29 @@ impl Histogram {
             if !value.is_finite() {
                 continue;
             }
-            let bin = if value < self.edges[0] {
+            let bin = if value < edges[0] {
                 0
-            } else if value > self.edges[self.edges.len() - 1] {
-                self.edges.len()
-            } else if value == self.edges[self.edges.len() - 1] {
-                self.edges.len() - 1
+            } else if value > edges[edges.len() - 1] {
+                edges.len()
+            } else if value == edges[edges.len() - 1] {
+                edges.len() - 1
             } else {
-                self.edges.partition_point(|edge| *edge <= value)
+                edges.partition_point(|edge| *edge <= value)
             };
             counts[bin] = counts[bin]
                 .checked_add(1)
                 .ok_or_else(|| invalid("histogram count overflow"))?;
         }
+        self.counts = counts;
+        Ok(())
+    }
+
+    pub fn finish(self) -> Result<RecordBatch> {
         let lower = std::iter::once(None)
-            .chain(self.edges.iter().copied().map(Some))
+            .chain(self.plan.edges.iter().copied().map(Some))
             .collect::<Vec<_>>();
         let upper = self
+            .plan
             .edges
             .iter()
             .copied()
@@ -107,11 +152,11 @@ impl Histogram {
             .chain(std::iter::once(None))
             .collect::<Vec<_>>();
         RecordBatch::try_new(
-            schema,
+            self.schema,
             vec![
                 Arc::new(Float64Array::from(lower)),
                 Arc::new(Float64Array::from(upper)),
-                Arc::new(UInt64Array::from(counts)),
+                Arc::new(UInt64Array::from(self.counts)),
             ],
         )
         .map_err(|_| invalid("histogram output batch is invalid"))

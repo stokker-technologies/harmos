@@ -7,6 +7,8 @@
  * ***
  */
 
+// Storage Backend Contract
+
 /* === Modules === */
 
 /* === Re-Exports === */
@@ -14,325 +16,238 @@
 /* === Imports === */
 // Standard Library Imports
 use std::future::Future;
+use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
+
 // Third Party Imports
 
 // Local Imports
-use super::frame::{Scan, ScanCursor, ScanOrder, ScanPage};
-use super::{
-    BackendSnapshot, BootstrapId, BootstrapManifest, FileCheckpoint, FileMetadata, FileProgress,
-    FileReference, MutationReceipt, ObjectBrowseCursor, ObjectBrowsePage, ObjectBrowseRequest,
-    ObjectCatalog, ObjectEntry, ObjectPoint, ObjectVersions, QueryLimits, ReadCursor, ReadLimits,
-    ReadPage, ReadSelection, ReadView, ReplicaTarget, RetainedBatch, RetainedSnapshot, StagedFile,
-    StorageBatch, StorageCursor, StorageSchema, StoreHistory, StoredRecord, StoredRow,
+use super::query::{
+    FileSelection, ObjectSelection, RecordSelection, SchemaSelection, StreamSelection,
 };
+use super::{
+    FileCheckpoint, FileMetadata, FileProgress, FileReference, MutationReceipt, ObjectEntry,
+    ObjectKey, ObjectPoint, SchemaKey, StagedFile, StorageBatch, StorageCursor, StorageSchema,
+    StoreHistory, StoredRecord, StoredRow,
+};
+use crate::{Error, Result};
 
 /* === Constants === */
 
 /* === Macros === */
-// Keep the physical method contract and private forwarding adapter in one list.
-macro_rules! backend_contract {
-    ($(#[$trait_doc:meta])* pub trait StorageBackend {
-        $($(#[$doc:meta])* fn $method:ident $(<$lt:lifetime>)? (
-            &$($borrow:lifetime)? self $(, $arg:ident: $ty:ty)* $(,)?
-        ) -> $result:ty $(= $default:expr)?;)*
-    }) => {
-        $(#[$trait_doc])*
-        pub trait StorageBackend: Send + Sync + 'static {
-                        type Catalog: ObjectCatalog;
-                                                            fn validate_object_browse(&self, _request: &ObjectBrowseRequest, _limits: QueryLimits) -> crate::Result<()> {
-                Err(crate::Error::InvalidInput { field: "object browse", reason: "backend does not support scalar object browsing" })
-            }
-                                                            fn read_object_browse<'a>(&'a self, _view: &'a ReadView, _request: &'a ObjectBrowseRequest,
-                _cursor: Option<&'a ObjectBrowseCursor>, _limits: ReadLimits) -> StorageFuture<'a, ObjectBrowsePage> {
-                Box::pin(async { Err(crate::Error::InvalidInput { field: "object browse", reason: "backend does not support scalar object browsing" }) })
-            }
-                                                            fn validate_object_versions(&self, versions: ObjectVersions) -> crate::Result<()> {
-                if versions == ObjectVersions::Latest {
-                    return Err(crate::Error::InvalidInput {
-                        field: "object query",
-                        reason: "backend does not support latest object selection",
-                    });
-                }
-                Ok(())
-            }
-                                                fn validate_query_limits(&self, _limits: QueryLimits) -> crate::Result<()> {
-                Err(crate::Error::InvalidInput {
-                    field: "query execution",
-                    reason: "backend cannot enforce requested execution limits",
-                })
-            }
-                                                fn read_query_view<'a>(&'a self, through: &'a StorageCursor, limits: QueryLimits) -> StorageFuture<'a, BackendSnapshot> {
-                Box::pin(async move {
-                    self.validate_query_limits(limits)?;
-                    self.read_view(through).await
-                })
-            }
-                                                fn supports_scan_order(&self, _scan: &Scan, order: &ScanOrder) -> bool {
-                matches!(order, ScanOrder::Capture)
-            }
-                                                                                    fn scan_ordered<'a>(&'a self, _view: &'a ReadView, _scan: &'a Scan, _order: &'a ScanOrder,
-                _cursor: Option<&'a ScanCursor>, _limits: ReadLimits) -> StorageFuture<'a, ScanPage> {
-                Box::pin(async { Err(crate::Error::InvalidInput {
-                    field: "storage frame",
-                    reason: "backend does not support ordered frame scans",
-                }) })
-            }
-            $(backend_contract!(@method $(#[$doc])* fn $method $(<$lt>)? (
-                &$($borrow)? self $(, $arg: $ty)*
-            ) -> $result $(= $default)?);)*
-        }
 
-        pub(super) trait ErasedBackend: Send + Sync + 'static {
-            fn validate_object_browse(&self, request: &ObjectBrowseRequest, limits: QueryLimits) -> crate::Result<()>;
-            fn read_object_browse<'a>(&'a self, view: &'a ReadView, request: &'a ObjectBrowseRequest,
-                cursor: Option<&'a ObjectBrowseCursor>, limits: ReadLimits) -> StorageFuture<'a, ObjectBrowsePage>;
-            fn validate_object_versions(&self, versions: ObjectVersions) -> crate::Result<()>;
-            fn validate_query_limits(&self, limits: QueryLimits) -> crate::Result<()>;
-            fn supports_scan_order(&self, scan: &Scan, order: &ScanOrder) -> bool;
-            fn scan_ordered<'a>(&'a self, view: &'a ReadView, scan: &'a Scan, order: &'a ScanOrder,
-                cursor: Option<&'a ScanCursor>, limits: ReadLimits) -> StorageFuture<'a, ScanPage>;
-            fn read_query_view<'a>(&'a self, through: &'a StorageCursor, limits: QueryLimits) -> StorageFuture<'a, BackendSnapshot>;
-            $(fn $method $(<$lt>)? (&$($borrow)? self $(, $arg: $ty)*) -> $result;)*
-        }
+/* === Type Aliases === */
+pub type StorageFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
-        impl<C: ObjectCatalog> ErasedBackend for Adapter<C> {
-            fn validate_object_browse(&self, request: &ObjectBrowseRequest, limits: QueryLimits) -> crate::Result<()> {
-                self.0.validate_object_browse(request, limits)
-            }
-            fn read_object_browse<'a>(&'a self, view: &'a ReadView, request: &'a ObjectBrowseRequest,
-                cursor: Option<&'a ObjectBrowseCursor>, limits: ReadLimits) -> StorageFuture<'a, ObjectBrowsePage> {
-                self.0.read_object_browse(view, request, cursor, limits)
-            }
-            fn validate_object_versions(&self, versions: ObjectVersions) -> crate::Result<()> {
-                self.0.validate_object_versions(versions)
-            }
-            fn supports_scan_order(&self, scan: &Scan, order: &ScanOrder) -> bool {
-                self.0.supports_scan_order(scan, order)
-            }
-            fn scan_ordered<'a>(&'a self, view: &'a ReadView, scan: &'a Scan, order: &'a ScanOrder,
-                cursor: Option<&'a ScanCursor>, limits: ReadLimits) -> StorageFuture<'a, ScanPage> {
-                self.0.scan_ordered(view, scan, order, cursor, limits)
-            }
-            fn validate_query_limits(&self, limits: QueryLimits) -> crate::Result<()> {
-                self.0.validate_query_limits(limits)
-            }
-            fn read_query_view<'a>(&'a self, through: &'a StorageCursor, limits: QueryLimits) -> StorageFuture<'a, BackendSnapshot> {
-                self.0.read_query_view(through, limits)
-            }
-            $(fn $method $(<$lt>)? (&$($borrow)? self $(, $arg: $ty)*) -> $result {
-                self.0.$method($($arg),*)
-            })*
-        }
-    };
-    (@method $(#[$doc:meta])* fn $method:ident $(<$lt:lifetime>)? (
-        &$($borrow:lifetime)? self $(, $arg:ident: $ty:ty)*
-    ) -> $result:ty = $default:expr) => {
-        $(#[$doc])* fn $method $(<$lt>)? (&$($borrow)? self $(, $arg: $ty)*) -> $result {
-            $default
-        }
-    };
-    (@method $(#[$doc:meta])* fn $method:ident $(<$lt:lifetime>)? (
-        &$($borrow:lifetime)? self $(, $arg:ident: $ty:ty)*
-    ) -> $result:ty) => {
-        $(#[$doc])* fn $method $(<$lt>)? (&$($borrow)? self $(, $arg: $ty)*) -> $result;
-    };
+/* === Structs === */
+pub struct StorageBackends {
+    pub primary: Arc<dyn StorageBackend>,
+    pub state: Arc<dyn super::state::StateBackend>,
 }
 
-backend_contract! {
-pub trait StorageBackend {
-    /// Read durable lifecycle-release metadata from the same pinned image as the data.
-    /// Order by schema ID/version/encoding and object key; emit only releases covered by
-    /// the view's saved cursor. A continuation identifies the final emitted entry.
-    fn read_object_releases<'a>(&'a self, _view: &'a ReadView,
-        _cursor: Option<&'a super::bootstrap::ObjectReleaseCursor>, _limits: ReadLimits)
-        -> StorageFuture<'a, super::bootstrap::ObjectReleasePage> = Box::pin(async {
-        Err(crate::Error::InvalidInput { field: "object retention", reason: "backend does not export lifecycle releases" })
-    });
-    /// Stage lifecycle releases privately under the bootstrap identity. Successful
-    /// finish replaces the target ledger atomically with the imported image; abort
-    /// must discard staged releases. Repeating an identical page is idempotent.
-    fn write_bootstrap_releases<'a>(&'a self, _identity: &'a BootstrapId,
-        _releases: &'a [super::bootstrap::ObjectRetentionRelease]) -> StorageFuture<'a, ()> = Box::pin(async {
-        Err(crate::Error::InvalidInput { field: "object retention", reason: "backend does not import lifecycle releases" })
-    });
-    /// Persist a monotonic release frontier before permitting its stale revisions
-    /// to be reclaimed. Repeating a covered release must not advance metadata.
-    fn release_object_history<'a>(&'a self, _schema: &'a super::SchemaKey,
-        _item: &'a super::ObjectKey, _through: &'a StorageCursor) -> StorageFuture<'a, ()> = Box::pin(async {
-        Err(crate::Error::InvalidInput { field: "object retention", reason: "backend does not support lifecycle release" })
-    });
+/// A pinned historical image of the primary store at one saved cursor.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BackendSnapshot {
+    pub at: StorageCursor,
+    pub token: Vec<u8>,
+}
+
+/// One bounded scan page: entries after `after`, within the row and byte bounds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ScanPage {
+    pub after: u64,
+    pub rows: NonZeroUsize,
+    pub bytes: NonZeroUsize,
+}
+
+/// Row and byte bounds of one recovery page.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ReadLimits {
+    pub rows: NonZeroUsize,
+    pub bytes: NonZeroUsize,
+}
+
+/* === Enums === */
+
+/* === Traits === */
+/// The physical store behind a `StorageManager`.
+///
+/// Scans return entries strictly ascending by storage position within
+/// `(page.after, snapshot.at]` that match the selection. A page holds at least
+/// one entry while any remain, otherwise it stays within `page.rows` and
+/// `page.bytes` of encoded entries; an empty page means the scan is exhausted.
+/// Latest object selection returns each selected key's newest revision at the
+/// snapshot, ordered by that revision's position.
+pub trait StorageBackend: Send + Sync + 'static {
+    // Lifecycle
     fn history(&self) -> &StoreHistory;
-            fn open(&self) -> StorageFuture<'_, StorageCursor>;
+    fn open(&self) -> StorageFuture<'_, StorageCursor>;
     fn cursor_saved(&self) -> StorageFuture<'_, StorageCursor>;
-                fn supports_retained_snapshots(&self) -> bool = false;
-                        fn read_retained_view<'a>(&'a self, _through: &'a StorageCursor, _limits: QueryLimits) -> StorageFuture<'a, RetainedSnapshot> = Box::pin(async {
-        Err(crate::Error::InvalidInput { field: "replica bootstrap", reason: "backend does not support retained snapshots" })
-    });
-                        fn begin_bootstrap<'a>(&'a self, _identity: &'a BootstrapId, _saved: &'a StorageCursor, _limits: QueryLimits) -> StorageFuture<'a, ()> = Box::pin(async {
-        Err(crate::Error::InvalidInput { field: "replica bootstrap", reason: "backend does not support private import" })
-    });
-                fn write_bootstrap<'a>(&'a self, _batch: RetainedBatch<'a>) -> StorageFuture<'a, ()> = Box::pin(async {
-        Err(crate::Error::InvalidInput { field: "replica bootstrap", reason: "backend does not support private import" })
-    });
-                    fn create_bootstrap_file<'a>(&'a self, _identity: &'a BootstrapId, _metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile> = Box::pin(async {
-        Err(crate::Error::InvalidInput { field: "replica bootstrap", reason: "backend does not support private file import" })
-    });
-            fn write_bootstrap_file<'a>(&'a self, _identity: &'a BootstrapId, _staging: &'a StagedFile, _offset: u64, _bytes: &'a [u8]) -> StorageFuture<'a, ()> = Box::pin(async {
-        Err(crate::Error::InvalidInput { field: "replica bootstrap", reason: "backend does not support private file import" })
-    });
-            fn finish_bootstrap_file<'a>(&'a self, _identity: &'a BootstrapId, _staging: &'a StagedFile, _position: &'a StorageCursor, _length: u64, _sha256: [u8; 32]) -> StorageFuture<'a, FileReference> = Box::pin(async {
-        Err(crate::Error::InvalidInput { field: "replica bootstrap", reason: "backend does not support private file import" })
-    });
-                fn abort_bootstrap_file<'a>(&'a self, _identity: &'a BootstrapId, _staging: &'a StagedFile) -> StorageFuture<'a, ()> = Box::pin(async {
-        Err(crate::Error::InvalidInput { field: "replica bootstrap", reason: "backend does not support private file import" })
-    });
-                        fn finish_bootstrap<'a>(&'a self, _manifest: &'a BootstrapManifest) -> StorageFuture<'a, StorageCursor> = Box::pin(async {
-        Err(crate::Error::InvalidInput { field: "replica bootstrap", reason: "backend does not support private import" })
-    });
-                    fn abort_bootstrap<'a>(&'a self, _identity: &'a BootstrapId) -> StorageFuture<'a, ()> = Box::pin(async { Ok(()) });
-                                    fn write<'a>(&'a self, batch: StorageBatch<'a>) -> StorageFuture<'a, StorageCursor>;
-                    fn read_view<'a>(&'a self, through: &'a StorageCursor) -> StorageFuture<'a, BackendSnapshot>;
-                        fn release_view<'a>(&'a self, snapshot: &'a BackendSnapshot) -> StorageFuture<'a, ()>;
+    fn close(&self) -> StorageFuture<'_, ()>;
+
+    // Atomic Durable Writes
+    fn write<'a>(&'a self, batch: StorageBatch<'a>) -> StorageFuture<'a, StorageCursor>;
+
+    // Historical Reads
+    fn open_snapshot<'a>(&'a self, at: &'a StorageCursor) -> StorageFuture<'a, BackendSnapshot>;
+    fn release_snapshot<'a>(&'a self, snapshot: &'a BackendSnapshot) -> StorageFuture<'a, ()>;
     fn read_schemas<'a>(
         &'a self,
-        view: &'a ReadView,
-        selection: &'a ReadSelection,
-        cursor: Option<&'a ReadCursor>,
-        limits: ReadLimits,
-    ) -> StorageFuture<'a, ReadPage<StorageSchema>>;
-        fn read_files<'a>(
+        snapshot: &'a BackendSnapshot,
+        selection: &'a SchemaSelection,
+        page: ScanPage,
+    ) -> StorageFuture<'a, Vec<StorageSchema>>;
+    fn read_objects<'a>(
         &'a self,
-        view: &'a ReadView,
-        selection: &'a ReadSelection,
-        cursor: Option<&'a ReadCursor>,
-        limits: ReadLimits,
-    ) -> StorageFuture<'a, ReadPage<FileReference>>;
-                    fn read_object<'a>(
-        &'a self,
-        view: &'a ReadView,
-        query: &'a ObjectPoint,
-        max_bytes: std::num::NonZeroUsize,
-    ) -> StorageFuture<'a, Option<ObjectEntry>>;
-                    fn read_objects<'a>(
-        &'a self,
-        view: &'a ReadView,
-        selection: &'a ReadSelection,
-        cursor: Option<&'a ReadCursor>,
-        limits: ReadLimits,
-    ) -> StorageFuture<'a, ReadPage<ObjectEntry>>;
-    // Validate support before opening a filtered saved query. Implementations
-    // validate the selected schema and fixed candidates before predicates,
-    // preserving the original cut, continuation and execution bounds.
-    fn validate_record_filter(&self, _selection: &ReadSelection, _limits: QueryLimits) -> crate::Result<()> = Err(crate::Error::InvalidInput {
-        field: "record filter",
-        reason: "backend does not support filtered record queries",
-    });
+        snapshot: &'a BackendSnapshot,
+        selection: &'a ObjectSelection,
+        page: ScanPage,
+    ) -> StorageFuture<'a, Vec<ObjectEntry>>;
     fn read_records<'a>(
         &'a self,
-        view: &'a ReadView,
-        selection: &'a ReadSelection,
-        cursor: Option<&'a ReadCursor>,
-        limits: ReadLimits,
-    ) -> StorageFuture<'a, ReadPage<StoredRecord>>;
+        snapshot: &'a BackendSnapshot,
+        selection: &'a RecordSelection,
+        page: ScanPage,
+    ) -> StorageFuture<'a, Vec<StoredRecord>>;
     fn read_stream<'a>(
         &'a self,
-        view: &'a ReadView,
-        selection: &'a ReadSelection,
-        cursor: Option<&'a ReadCursor>,
-        limits: ReadLimits,
-    ) -> StorageFuture<'a, ReadPage<StoredRow>>;
-                fn supports_file_sessions(&self) -> bool = false;
-        fn supports_mutation_receipts(&self) -> bool = false;
-                fn save_mutations<'a>(&'a self, _receipts: &'a [MutationReceipt]) -> StorageFuture<'a, ()> = Box::pin(async {
-        Err(crate::Error::InvalidInput { field: "storage mutations", reason: "backend does not support durable mutation receipts" })
-    });
-        fn recover_mutations(&self, _limits: ReadLimits) -> StorageFuture<'_, Vec<MutationReceipt>> = Box::pin(async {
-        Err(crate::Error::InvalidInput { field: "storage mutations", reason: "backend does not support receipt recovery" })
-    });
-                    fn create_production<'a>(&'a self, _metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile> = Box::pin(async {
-        Err(crate::Error::InvalidInput { field: "file session", reason: "backend does not support resumable production" })
-    });
-                    fn fence_production<'a>(&'a self, _file: &'a StagedFile, _expected: u64, _next: u64) -> StorageFuture<'a, ()> = Box::pin(async {
-        Err(crate::Error::InvalidInput { field: "file session", reason: "backend does not support durable fencing" })
-    });
-                    fn save_production<'a>(&'a self, _checkpoint: &'a FileCheckpoint) -> StorageFuture<'a, ()> = Box::pin(async {
-        Err(crate::Error::InvalidInput { field: "file checkpoint", reason: "backend does not support production checkpoints" })
-    });
-                        fn recover_productions(&self, _limits: ReadLimits) -> StorageFuture<'_, Vec<FileCheckpoint>> = Box::pin(async {
-        Err(crate::Error::InvalidInput { field: "file recovery", reason: "backend does not support production recovery" })
-    });
-                fn file_progress<'a>(&'a self, _file: &'a StagedFile) -> StorageFuture<'a, FileProgress> = Box::pin(async {
-        Err(crate::Error::InvalidInput { field: "file following", reason: "backend does not support file progress" })
-    });
-                    fn read_production<'a>(&'a self, _file: &'a StagedFile, _offset: u64, _max_bytes: std::num::NonZeroUsize) -> StorageFuture<'a, Vec<u8>> = Box::pin(async {
-        Err(crate::Error::InvalidInput { field: "file following", reason: "backend does not support production reads" })
-    });
-            fn supports_file_deletion(&self) -> bool = false;
-                                    fn delete_file<'a>(&'a self, _file: &'a StagedFile) -> StorageFuture<'a, ()> = Box::pin(async {
-        Err(crate::Error::InvalidInput { field: "file deletion", reason: "backend does not support deletion" })
-    });
-                        fn abandon_file<'a>(&'a self, _staging: &'a StagedFile) -> StorageFuture<'a, ()> = Box::pin(async {
-        Err(crate::Error::InvalidInput { field: "file session", reason: "backend does not support retained abandonment" })
-    });
-                        fn create_file<'a>(&'a self, metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile>;
-            fn write_file<'a>(
+        snapshot: &'a BackendSnapshot,
+        selection: &'a StreamSelection,
+        page: ScanPage,
+    ) -> StorageFuture<'a, Vec<StoredRow>>;
+    fn read_files<'a>(
+        &'a self,
+        snapshot: &'a BackendSnapshot,
+        selection: &'a FileSelection,
+        page: ScanPage,
+    ) -> StorageFuture<'a, Vec<FileReference>>;
+    fn read_object<'a>(
+        &'a self,
+        snapshot: &'a BackendSnapshot,
+        point: &'a ObjectPoint,
+    ) -> StorageFuture<'a, Option<ObjectEntry>>;
+    fn read_file<'a>(
+        &'a self,
+        snapshot: &'a BackendSnapshot,
+        file: &'a FileReference,
+        offset: u64,
+        max_bytes: NonZeroUsize,
+    ) -> StorageFuture<'a, Vec<u8>>;
+
+    // Object Lifecycle Retention
+    /// Persist a monotonic release frontier before its stale revisions may be
+    /// reclaimed. Repeating a covered release must not advance metadata.
+    fn release_object_history<'a>(
+        &'a self,
+        schema: &'a SchemaKey,
+        item: &'a ObjectKey,
+        through: &'a StorageCursor,
+    ) -> StorageFuture<'a, ()>;
+    /// Reclaim released revisions through `through`; `true` when nothing remains.
+    fn prune_objects<'a>(
+        &'a self,
+        through: &'a StorageCursor,
+        max_entries: NonZeroUsize,
+    ) -> StorageFuture<'a, bool>;
+
+    // Finished File Publication
+    fn create_file<'a>(&'a self, metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile>;
+    fn write_file<'a>(
         &'a self,
         staging: &'a StagedFile,
         offset: u64,
         bytes: &'a [u8],
     ) -> StorageFuture<'a, ()>;
-                                            fn finish_file<'a>(
+    fn finish_file<'a>(
         &'a self,
         staging: &'a StagedFile,
         position: &'a StorageCursor,
         length: u64,
         sha256: [u8; 32],
     ) -> StorageFuture<'a, FileReference>;
-            fn abort_file<'a>(&'a self, staging: &'a StagedFile) -> StorageFuture<'a, ()>;
-                            fn read_file<'a>(
+    fn abort_file<'a>(&'a self, staging: &'a StagedFile) -> StorageFuture<'a, ()>;
+
+    // Resumable File Sessions
+    fn supports_file_sessions(&self) -> bool {
+        false
+    }
+    fn create_production<'a>(
         &'a self,
-        view: &'a ReadView,
-        file: &'a FileReference,
-        offset: u64,
-        max_bytes: std::num::NonZeroUsize,
-    ) -> StorageFuture<'a, Vec<u8>>;
-                                                fn prune_objects<'a>(
+        _metadata: &'a FileMetadata,
+    ) -> StorageFuture<'a, StagedFile> {
+        unsupported("file session")
+    }
+    fn fence_production<'a>(
         &'a self,
-        through: &'a StorageCursor,
-        max_entries: std::num::NonZeroUsize,
-    ) -> StorageFuture<'a, bool>;
-    fn close(&self) -> StorageFuture<'_, ()>;
+        _file: &'a StagedFile,
+        _expected: u64,
+        _next: u64,
+    ) -> StorageFuture<'a, ()> {
+        unsupported("file session")
+    }
+    fn save_production<'a>(&'a self, _checkpoint: &'a FileCheckpoint) -> StorageFuture<'a, ()> {
+        unsupported("file checkpoint")
+    }
+    fn recover_productions(&self, _limits: ReadLimits) -> StorageFuture<'_, Vec<FileCheckpoint>> {
+        unsupported("file recovery")
+    }
+    fn file_progress<'a>(&'a self, _file: &'a StagedFile) -> StorageFuture<'a, FileProgress> {
+        unsupported("file following")
+    }
+    fn read_production<'a>(
+        &'a self,
+        _file: &'a StagedFile,
+        _offset: u64,
+        _max_bytes: NonZeroUsize,
+    ) -> StorageFuture<'a, Vec<u8>> {
+        unsupported("file following")
+    }
+    fn abandon_file<'a>(&'a self, _staging: &'a StagedFile) -> StorageFuture<'a, ()> {
+        unsupported("file session")
+    }
+    fn supports_file_deletion(&self) -> bool {
+        false
+    }
+    fn delete_file<'a>(&'a self, _file: &'a StagedFile) -> StorageFuture<'a, ()> {
+        unsupported("file deletion")
+    }
+
+    // Idempotent Mutation Receipts
+    fn supports_mutation_receipts(&self) -> bool {
+        false
+    }
+    fn save_mutations<'a>(&'a self, _receipts: &'a [MutationReceipt]) -> StorageFuture<'a, ()> {
+        unsupported("storage mutations")
+    }
+    fn recover_mutations(&self, _limits: ReadLimits) -> StorageFuture<'_, Vec<MutationReceipt>> {
+        unsupported("storage mutations")
+    }
 }
-
-}
-
-/* === Type Aliases === */
-pub type StorageFuture<'a, T> = Pin<Box<dyn Future<Output = crate::Result<T>> + Send + 'a>>;
-
-/* === Structs === */
-pub struct StorageBackends<C: ObjectCatalog = ()> {
-    pub primary: Arc<dyn StorageBackend<Catalog = C>>,
-    pub state: Arc<dyn super::state::StateBackend>,
-    pub replicas: Vec<ReplicaTarget<C>>,
-}
-
-struct Adapter<C: ObjectCatalog>(Arc<dyn StorageBackend<Catalog = C>>);
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
-
-/* === Public Functions === */
-pub(super) fn erase<C: ObjectCatalog>(
-    backend: Arc<dyn StorageBackend<Catalog = C>>,
-) -> Arc<dyn ErasedBackend> {
-    Arc::new(Adapter(backend))
+impl ReadLimits {
+    pub fn check(&self, rows: usize, bytes: usize) -> Result<()> {
+        if rows > self.rows.get() || bytes > self.bytes.get() {
+            return Err(Error::InvalidInput {
+                field: "read page",
+                reason: "row or byte bound exceeded",
+            });
+        }
+        Ok(())
+    }
 }
 
+/* === Public Functions === */
+
 /* === Private Functions === */
+fn unsupported<'a, T>(field: &'static str) -> StorageFuture<'a, T> {
+    Box::pin(async move {
+        Err(Error::InvalidInput {
+            field,
+            reason: "backend does not support this capability",
+        })
+    })
+}
 
 /* === Tests === */

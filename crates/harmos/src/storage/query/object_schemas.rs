@@ -21,10 +21,16 @@ use arrow_array::{RecordBatch, make_array};
 use arrow_data::ArrayData;
 use arrow_schema::{DataType, Field, Schema};
 // Local Imports
+use super::ObjectSelection;
+use super::reader::{admit, retry, schema_at};
 use super::transform::{Transform, project::Project};
-use super::{ObjectSelection, Source};
 use crate::storage::arrow::{RetainedMemory, resident_bytes};
-use crate::storage::{ObjectEntry, QueryValue, ReadLimits, StorageSchema, StorageView};
+use crate::storage::backend::ScanPage;
+use crate::storage::capacity::Held;
+use crate::storage::config::SCAN_ROWS;
+use crate::storage::manager::{ENTRY_OVERHEAD, Inner};
+use crate::storage::snapshot::Snapshot;
+use crate::storage::{ObjectEntry, SchemaKey, StorageSchema};
 use crate::{Error, MemorySize, Result};
 
 // Standard Library Imports
@@ -43,7 +49,7 @@ use crate::{Error, MemorySize, Result};
 /// Resolved schemas for one finite object selection. A leading projection may
 /// normalize heterogeneous payloads before the common query pipeline begins.
 pub(super) struct NormalizedObjects {
-    schemas: Vec<QueryValue<StorageSchema>>,
+    schemas: Vec<(StorageSchema, RetainedMemory)>,
     projection: Option<Project>,
     output: Arc<Schema>,
     _metadata: RetainedMemory,
@@ -56,89 +62,63 @@ pub(super) struct NormalizedObjects {
 /* === Implementations === */
 impl NormalizedObjects {
     pub(super) async fn resolve(
-        view: &StorageView,
+        inner: &Arc<Inner>,
+        held: &Held,
+        snapshot: &Snapshot,
         selection: &ObjectSelection,
         transforms: &mut Vec<Transform>,
-        page: ReadLimits,
     ) -> Result<Self> {
-        let manager = view.manager();
-        let mut schemas: Vec<QueryValue<StorageSchema>> = Vec::new();
+        let mut schemas: Vec<(StorageSchema, RetainedMemory)> = Vec::new();
         if let Some(key) = &selection.schema {
-            schemas.push(manager.lookup_schema(view, key).await?);
+            schemas.push(schema_at(inner, held, snapshot, key).await?);
         } else {
             // Inspect Actual Selected Objects, Not Unrelated Schema Registrations.
-            let selected = Source::Objects(selection.clone()).selection()?;
-            let mut reader = view.read_objects(selected)?;
-            let mut credit = None;
+            let scan_bytes = inner.settings.scan_bytes();
+            let mut after = 0u64;
+            let mut rows = SCAN_ROWS;
             loop {
-                let Some(rows) = reader.stage_page(page).await? else {
+                let mut credit = 0usize;
+                let (keys, last) = loop {
+                    let bank = admit(inner, held, credit).await?;
+                    let attempt = async {
+                        let mut raw = bank.scope();
+                        raw.claim(
+                            rows.get()
+                                .saturating_mul(ENTRY_OVERHEAD)
+                                .saturating_add(scan_bytes.get()),
+                        )?;
+                        let page = ScanPage {
+                            after,
+                            rows,
+                            bytes: scan_bytes,
+                        };
+                        let (objects, bytes) =
+                            snapshot.scan::<ObjectEntry>(selection, page).await?;
+                        raw.claim(bytes.saturating_sub(scan_bytes.get()))?;
+                        let last = objects.last().map(|object| object.position.sequence);
+                        let mut keys: Vec<SchemaKey> = Vec::new();
+                        for object in &objects {
+                            let key = &object.value.schema;
+                            if schemas.iter().all(|(schema, _)| &schema.key != key)
+                                && keys.iter().all(|known| known != key)
+                            {
+                                keys.push(key.clone());
+                            }
+                        }
+                        Ok::<_, Error>((keys, last))
+                    };
+                    match attempt.await {
+                        Ok(found) => break found,
+                        Err(error) => credit = retry(&bank, error, Some(&mut rows))?,
+                    }
+                };
+                let Some(last) = last else {
                     break;
                 };
-                let (count, bytes) = rows.iter().enumerate().try_fold(
-                    (0usize, 0usize),
-                    |(count, total), (index, row)| -> Result<(usize, usize)> {
-                        if schemas.iter().any(|schema| schema.key == row.value.schema)
-                            || rows
-                                .iter()
-                                .take(index)
-                                .any(|prior| prior.value.schema == row.value.schema)
-                        {
-                            return Ok((count, total));
-                        }
-                        let bytes = total
-                            .checked_add(row.value.schema.memory_size())
-                            .ok_or_else(exhausted)?;
-                        Ok((count.checked_add(1).ok_or_else(exhausted)?, bytes))
-                    },
-                )?;
-                if count == 0 {
-                    reader.commit_staged_page();
-                    drop(rows);
-                    drop(credit.take());
-                    continue;
-                }
-                let bytes = bytes
-                    .checked_add(std::mem::size_of::<Vec<crate::storage::SchemaKey>>())
-                    .ok_or_else(exhausted)?;
-                let working = bytes
-                    .checked_add(crate::storage::manager::ENTRY_OVERHEAD)
-                    .ok_or_else(exhausted)?;
-                if credit.is_none() {
-                    match view.try_reserve_working(working) {
-                        Ok(admitted) => credit = Some(admitted),
-                        Err(Error::ResourceExhausted { .. }) => {
-                            let peak = rows
-                                .reserved_bytes()
-                                .checked_add(working)
-                                .ok_or_else(exhausted)?;
-                            drop(rows);
-                            reader.discard_staged_page();
-                            credit = Some(view.reserve_working_wait(peak).await?);
-                            continue;
-                        }
-                        Err(error) => return Err(error),
-                    }
-                }
-                let reservation =
-                    crate::storage::manager::retain_memory(view.reserve_read(bytes, 1)?);
-                let mut keys = Vec::with_capacity(count);
-                for row in rows.iter() {
-                    if schemas.iter().any(|schema| schema.key == row.value.schema)
-                        || keys.iter().any(|key| key == &row.value.schema)
-                    {
-                        continue;
-                    }
-                    keys.push(row.value.schema.clone());
-                }
-                reader.commit_staged_page();
-                // Only The Small, Admitted Key Descriptions Survive Schema I/O.
-                // Raw Pages Are Reloadable And Must Never Occupy A Wait Cycle.
-                drop(rows);
-                drop(credit.take());
+                after = last;
                 for key in keys {
-                    schemas.push(manager.lookup_schema(view, &key).await?);
+                    schemas.push(schema_at(inner, held, snapshot, &key).await?);
                 }
-                drop(reservation);
             }
         }
         if schemas.is_empty() {
@@ -150,45 +130,54 @@ impl NormalizedObjects {
             Some(Transform::Project(project)) => Some(project.clone()),
             _ => None,
         };
-        let bank = crate::storage::memory::MemoryBank::new(view.reserve_read_wait(0, 1).await?, 0);
-        let mut output: Option<Arc<Schema>> = None;
-        for schema in &schemas {
-            let empty = super::source::objects(schema, &[], &bank)?;
-            let candidate = match &projection {
-                Some(project) => canonical_schema(&project.output_schema(empty.schema().as_ref())?),
-                None => empty.schema().as_ref().clone(),
-            };
-            crate::storage::arrow::validate_schema(&candidate)?;
-            if output
-                .as_ref()
-                .is_some_and(|schema| schema.as_ref() != &candidate)
-            {
-                return Err(invalid(
-                    "selected object schemas require a leading projection to compatible fields",
-                ));
+
+        // Every Selected Schema Must Normalize To One Output Schema.
+        let mut credit = 0usize;
+        loop {
+            let bank = admit(inner, held, credit).await?;
+            let attempt = (|| {
+                let mut output: Option<Arc<Schema>> = None;
+                for (schema, _) in &schemas {
+                    let empty = super::source::objects(schema, &[], &bank)?;
+                    let candidate = match &projection {
+                        Some(project) => {
+                            canonical_schema(&project.output_schema(empty.schema().as_ref())?)
+                        }
+                        None => empty.schema().as_ref().clone(),
+                    };
+                    crate::storage::arrow::validate_schema(&candidate)?;
+                    if output
+                        .as_ref()
+                        .is_some_and(|schema| schema.as_ref() != &candidate)
+                    {
+                        return Err(invalid(
+                            "selected object schemas require a leading projection to compatible fields",
+                        ));
+                    }
+                    output.get_or_insert_with(|| Arc::new(candidate));
+                }
+                let output = output.expect("nonempty selected schemas");
+                let retained = crate::storage::arrow::schema_memory(&output)
+                    .saturating_add(projection.as_ref().map_or(0, MemorySize::memory_size))
+                    .saturating_add(std::mem::size_of::<Self>());
+                let metadata = bank.reserve(retained)?;
+                Ok((output, metadata))
+            })();
+            match attempt {
+                Ok((output, metadata)) => {
+                    if projection.is_some() {
+                        transforms.remove(0);
+                    }
+                    return Ok(Self {
+                        schemas,
+                        projection,
+                        output,
+                        _metadata: metadata,
+                    });
+                }
+                Err(error) => credit = retry(&bank, error, None)?,
             }
-            output.get_or_insert_with(|| Arc::new(candidate));
         }
-        if projection.is_some() {
-            transforms.remove(0);
-        }
-        let output = output.expect("nonempty selected schemas");
-        let schema_slots = schemas
-            .capacity()
-            .checked_mul(std::mem::size_of::<QueryValue<StorageSchema>>())
-            .ok_or_else(exhausted)?;
-        let retained = crate::storage::arrow::schema_memory(&output)
-            .checked_add(projection.as_ref().map_or(0, MemorySize::memory_size))
-            .and_then(|bytes| bytes.checked_add(schema_slots))
-            .and_then(|bytes| bytes.checked_add(std::mem::size_of::<Self>()))
-            .ok_or_else(exhausted)?;
-        let metadata = bank.reserve(retained)?;
-        Ok(Self {
-            schemas,
-            projection,
-            output,
-            _metadata: metadata,
-        })
     }
 
     pub(super) fn empty(&self) -> RecordBatch {
@@ -217,7 +206,8 @@ impl NormalizedObjects {
             let schema = self
                 .schemas
                 .iter()
-                .find(|schema| &schema.key == key)
+                .find(|(schema, _)| &schema.key == key)
+                .map(|(schema, _)| schema)
                 .ok_or_else(|| {
                     invalid("object schema was not resolved at the requested boundary")
                 })?;

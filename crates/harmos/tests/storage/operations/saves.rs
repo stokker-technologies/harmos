@@ -71,8 +71,7 @@ pub(super) fn contract_scenario() {
                         .control
                         .block_checkpoint
                         .store(true, Ordering::SeqCst);
-                    let mut saving =
-                        Box::pin(f.storage.save_once(&request.mutation, &request.through));
+                    let mut saving = Box::pin(f.storage.save_once(&request.mutation, &request.at));
                     tokio::select! {
                         biased;
                         _ = &mut saving => panic!("save must block"),
@@ -87,10 +86,10 @@ pub(super) fn contract_scenario() {
                     f.data.control.checkpoint_release.notify_one();
                     assert_eq!(
                         f.storage
-                            .save_once(&request.mutation, &request.through)
+                            .save_once(&request.mutation, &request.at)
                             .await
                             .unwrap(),
-                        request.through
+                        request.at
                     );
                     assert!(
                         f.data
@@ -102,7 +101,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(f.storage.status().read_bytes, 0);
                     producer.write_all(b"later").await.unwrap();
                     f.storage
-                        .save_once(&request.mutation, &request.through)
+                        .save_once(&request.mutation, &request.at)
                         .await
                         .unwrap();
                     assert_eq!(
@@ -112,7 +111,7 @@ pub(super) fn contract_scenario() {
                     let mut fresh = request.clone();
                     fresh.mutation.key = Identifier::new("fresh-save").unwrap();
                     f.storage
-                        .save_once(&fresh.mutation, &fresh.through)
+                        .save_once(&fresh.mutation, &fresh.at)
                         .await
                         .unwrap();
                     assert_eq!(
@@ -143,8 +142,7 @@ pub(super) fn contract_scenario() {
                         .control
                         .block_checkpoint
                         .store(true, Ordering::SeqCst);
-                    let mut saving =
-                        Box::pin(f.storage.save_once(&request.mutation, &request.through));
+                    let mut saving = Box::pin(f.storage.save_once(&request.mutation, &request.at));
                     tokio::select! {
                         biased;
                         _ = &mut saving => panic!("save must block"),
@@ -221,13 +219,12 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let mut settings = config();
                     settings.budget.read_memory_bytes = std::num::NonZeroUsize::new(128).unwrap();
-                    settings.query_decoded_bytes = settings.budget.read_memory_bytes;
-                    settings.query_execution.memory_bytes = settings.budget.read_memory_bytes;
+                    settings.response.batch_bytes = settings.budget.read_memory_bytes;
                     let f = Fixture::new(settings).await;
                     let request = save_request(&f, f.storage.cursor_accepted());
                     assert!(
                         f.storage
-                            .save_once(&request.mutation, &request.through)
+                            .save_once(&request.mutation, &request.at)
                             .await
                             .is_err()
                     );

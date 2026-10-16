@@ -49,7 +49,7 @@ impl<C> StorageManager<C> {
         hash_part(&mut hash, bytes);
         let fingerprint = hash.finalize().into();
         self.mutate_file(mutation, fingerprint, |state| {
-            if bytes.is_empty() || bytes.len() > self.inner.settings.response.batch_bytes.get() { return Err(invalid("append requires a nonempty bounded chunk")); }
+            if bytes.is_empty() || bytes.len() > self.inner.settings.response.batch_bytes.get() { return Err(invalid("append requires a nonempty bounded batch")); }
             let (id, file) = active(state, token)?;
             file.check_session(Some(token))?;
             if file.command.is_some() || file.in_flight { return Ok(false); }
