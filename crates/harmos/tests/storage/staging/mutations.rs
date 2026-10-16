@@ -15,7 +15,6 @@ use crate::scenario_runtime;
 /* === Imports === */
 
 // Standard Library Imports
-use std::num::NonZeroUsize;
 use std::sync::{Arc, atomic::Ordering};
 use std::time::Duration;
 
@@ -23,9 +22,9 @@ use std::time::Duration;
 
 // Local Imports
 use super::{Fixture, config, metadata};
+use harmos::Identifier;
 use harmos::storage::operations::{FileMutation, Operations, ResumeFile};
 use harmos::storage::{MutationId, StorageManager};
-use harmos::{Error, Identifier};
 
 /* === Constants === */
 
@@ -164,74 +163,6 @@ pub(super) fn contract_scenario() {
         });
     }
     {
-        scenario_runtime::check("identity_never_becomes", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let mut settings = config();
-                    settings.mutation_retention = Duration::from_secs(1);
-                    let f = Fixture::new(settings).await;
-                    let file = f.storage.produce_file(metadata("expiry")).await.unwrap();
-                    let token = file.session().unwrap().clone();
-                    let id = identity(&f.storage, "resume");
-                    let result = f.storage.resume_file_once(&id, &token).await.unwrap();
-                    tokio::time::advance(Duration::from_secs(1)).await;
-                    let next = identity(&f.storage, "resume");
-                    assert_ne!(id.window, next.window);
-                    assert!(f.storage.resume_file_once(&id, &token).await.is_err());
-                    assert_eq!(
-                        f.storage
-                            .resume_file_once(&next, &result.session)
-                            .await
-                            .unwrap()
-                            .session
-                            .generation,
-                        3
-                    );
-                    assert!(f.storage.resume_file_once(&id, &token).await.is_err());
-                    tokio::time::advance(Duration::from_secs(61)).await;
-                    for _ in 0..10 {
-                        tokio::task::yield_now().await;
-                    }
-                    assert!(f.data.abandoned_files.lock().unwrap().contains("expiry"));
-                    f.finish().await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("capacity_refuses_work", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let mut settings = config();
-                    settings.max_mutations = NonZeroUsize::MIN;
-                    let f = Fixture::new(settings).await;
-                    let file = f.storage.produce_file(metadata("bounded")).await.unwrap();
-                    let token = file.session().unwrap().clone();
-                    let first_id = identity(&f.storage, "first");
-                    let first = f.storage.resume_file_once(&first_id, &token).await.unwrap();
-                    let second_id = identity(&f.storage, "second");
-                    assert!(matches!(
-                        f.storage.resume_file_once(&second_id, &first.session).await,
-                        Err(Error::ResourceExhausted { .. })
-                    ));
-                    assert_eq!(
-                        f.storage.resume_file_once(&first_id, &token).await.unwrap(),
-                        first
-                    );
-                    assert_eq!(f.data.file_generations.lock().unwrap()["bounded"], 2);
-                    f.finish().await;
-                });
-        });
-    }
-    {
         scenario_runtime::check("receipts_replay_restart", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor
@@ -279,32 +210,6 @@ pub(super) fn contract_scenario() {
                         3
                     );
                     restored.finish().await;
-                    f.finish().await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("receipt_memory_checked", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let mut settings = config();
-                    settings.mutation_memory_bytes = NonZeroUsize::new(128).unwrap();
-                    let f = Fixture::new(settings).await;
-                    let mut file = f.storage.produce_file(metadata("memory")).await.unwrap();
-                    let token = file.session().unwrap().clone();
-                    let id = identity(&f.storage, "bounded");
-                    assert!(matches!(
-                        f.storage.resume_file_once(&id, &token).await,
-                        Err(Error::ResourceExhausted { .. })
-                    ));
-                    assert_eq!(f.storage.status().mutation_bytes, 0);
-                    assert_eq!(f.data.file_generations.lock().unwrap()["memory"], 1);
-                    file.write_all(b"still owned").await.unwrap();
-                    file.abort().await.unwrap();
                     f.finish().await;
                 });
         });
@@ -363,9 +268,7 @@ pub(super) fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let mut settings = config();
-                    settings.max_retries = 3;
-                    let f = Fixture::new(settings).await;
+                    let f = Fixture::new(config()).await;
                     Operations::register(
                         &f.runtime.operations,
                         "storage",

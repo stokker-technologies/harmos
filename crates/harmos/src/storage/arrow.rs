@@ -19,12 +19,12 @@ pub use super::writes::convert::encode_payloads;
 
 /* === Imports === */
 // Standard Library Imports
-use std::panic::RefUnwindSafe;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 // Third Party Imports
 use arrow_array::RecordBatch;
 use arrow_schema::{DataType, Field, Schema, TimeUnit};
 // Local Imports
+use super::capacity::Reservation;
 use crate::{Error, MemorySize, Result};
 
 /* === Constants === */
@@ -40,11 +40,9 @@ pub(crate) const MAX_FIELDS: usize = 4096;
 /// result's charge while retaining its native zero-copy arrays.
 #[derive(Clone)]
 pub struct RetainedMemory {
-    // Arrow Allocation Requires Unwind-Safe Shared Ownership. Constructors Keep
-    // Mutable Accounting Behind Mutex/Atomic Owners Rather Than Erasing This
-    // Contract Or Asserting Unwind Safety Around Arbitrary Callbacks.
-    _owner: Arc<dyn Send + Sync + RefUnwindSafe>,
-    shrink: Arc<dyn Fn(usize) -> Result<()> + Send + Sync + RefUnwindSafe>,
+    // Arrow Allocation Requires Unwind-Safe Shared Ownership; The Mutex Owner
+    // Keeps The One Storage Reservation Type Behind That Contract.
+    owner: Arc<Mutex<Reservation>>,
 }
 
 /// Native Arrow schema with an explicitly encoded, immutable IPC representation.
@@ -73,18 +71,19 @@ struct Retained(RetainedMemory);
 
 /* === Implementations === */
 impl RetainedMemory {
-    pub(crate) fn new(
-        owner: Arc<dyn Send + Sync + RefUnwindSafe>,
-        shrink: impl Fn(usize) -> Result<()> + Send + Sync + RefUnwindSafe + 'static,
-    ) -> Self {
-        Self {
-            _owner: owner,
-            shrink: Arc::new(shrink),
-        }
+    pub(super) fn new(owner: Arc<Mutex<Reservation>>) -> Self {
+        Self { owner }
     }
 
+    /// Shrink the charge after construction scratch is released. Growing a
+    /// retained charge is refused: allocations must be admitted before they exist.
     pub(crate) fn shrink_to(&self, bytes: usize) -> Result<()> {
-        (self.shrink)(bytes)
+        let mut held = self.owner.lock().unwrap();
+        if bytes > held.bytes() {
+            return Err(invalid("retained memory cannot grow after allocation"));
+        }
+        held.shrink_to(bytes);
+        Ok(())
     }
 }
 

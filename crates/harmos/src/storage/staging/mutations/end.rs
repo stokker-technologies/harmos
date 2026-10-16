@@ -41,12 +41,10 @@ impl<C> StorageManager<C> {
     ) -> Result<FileReference> {
         self.inner.primary.history().check(&token.history)?;
         let fingerprint = fingerprint("storage.finish_file:v1", token);
-        let replica_ceiling = self.inner.replica_ceiling();
         self.mutate_file(mutation, fingerprint, |state| {
             let (id, file) = active(state, token)?;
             file.check_session(Some(token))?;
             if file.command.is_some() || file.in_flight { return Ok(false); }
-            if state.status.accepted.sequence >= replica_ceiling { return Err(Error::ResourceExhausted { resource: "replica retained history" }); }
             let digest: [u8; 32] = file.hash.clone().finalize().into();
             let valid = file.metadata.expected_length.is_none_or(|length| length == file.length) && file.metadata.expected_sha256.is_none_or(|expected| expected == digest);
             let bytes = file.base_bytes.checked_add(std::mem::size_of::<MutationValue>()).ok_or_else(size_error)?;

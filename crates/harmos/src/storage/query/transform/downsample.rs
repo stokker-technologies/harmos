@@ -20,7 +20,7 @@ use arrow_schema::{DataType, Schema, TimeUnit};
 // Local Imports
 use super::{FieldPath, invalid, numeric_type, take};
 use crate::storage::codec::{Code, Index, Nested, Optional, coded, product};
-use crate::storage::reduce::ScalarValue;
+use crate::storage::query::scalar::ScalarValue;
 use crate::{MemorySize, Result};
 
 /* === Constants === */
@@ -203,7 +203,7 @@ pub(in crate::storage::query) fn number(value: &ScalarValue) -> Result<f64> {
     match value {
         ScalarValue::Float(value) => Ok(*value),
         value => {
-            let exact = crate::storage::reduce::scalar::exact(value)
+            let exact = crate::storage::query::scalar::exact(value)
                 .ok_or_else(|| invalid("numeric field has a null or nonnumeric value"))?;
             let value = exact.numerator as f64 / exact.denominator.get() as f64;
             Ok(if exact.negative { -value } else { value })

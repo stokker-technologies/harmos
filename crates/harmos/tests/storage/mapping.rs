@@ -43,7 +43,7 @@ async fn mapping() {
     let directory = tempfile::tempdir().unwrap();
     let settings = storage_settings();
     let data = Arc::new(Data::<()>::journaled(directory.path(), history()).unwrap());
-    let storage = StorageManager::new(
+    let storage: StorageManager = StorageManager::new(
         StorageBackends {
             primary: data,
             state: Arc::new(harmos::storage::state::file::FileBackend::new(
@@ -51,7 +51,6 @@ async fn mapping() {
                 history(),
                 &settings,
             )),
-            replicas: vec![],
         },
         settings,
     )
@@ -221,15 +220,9 @@ async fn mapping_exhaustion() {
     let directory = tempfile::tempdir().unwrap();
     let mut settings = storage_settings();
     settings.budget.read_memory_bytes = std::num::NonZeroUsize::new(512 * 1024).unwrap();
-    settings.query_execution.memory_bytes = std::num::NonZeroUsize::new(128 * 1024).unwrap();
-    settings.query_decoded_bytes = std::num::NonZeroUsize::new(8 * 1024).unwrap();
-    settings.query_page = ReadLimits {
-        rows: std::num::NonZeroUsize::MIN,
-        bytes: std::num::NonZeroUsize::new(16 * 1024).unwrap(),
-    };
 
     let data = Arc::new(Data::<()>::journaled(directory.path(), history()).unwrap());
-    let storage = StorageManager::new(
+    let storage: StorageManager = StorageManager::new(
         StorageBackends {
             primary: data,
             state: Arc::new(harmos::storage::state::file::FileBackend::new(
@@ -237,7 +230,6 @@ async fn mapping_exhaustion() {
                 history(),
                 &settings,
             )),
-            replicas: vec![],
         },
         settings.clone(),
     )
@@ -263,7 +255,7 @@ async fn mapping_exhaustion() {
         values: vec![String::new(); 4096],
     }
     .encode_to_vec();
-    assert!(payload.len() < settings.query_page.bytes.get());
+    assert!(payload.len() < 16 * 1024);
     storage
         .write_records(&[RecordWrite {
             schema: &schema,
@@ -327,15 +319,9 @@ async fn mapping_growth() {
     let directory = tempfile::tempdir().unwrap();
     let mut settings = storage_settings();
     settings.budget.read_memory_bytes = std::num::NonZeroUsize::new(16 * 1024 * 1024).unwrap();
-    settings.query_execution.memory_bytes = std::num::NonZeroUsize::new(128 * 1024).unwrap();
-    settings.query_decoded_bytes = std::num::NonZeroUsize::new(8 * 1024).unwrap();
-    settings.query_page = ReadLimits {
-        rows: std::num::NonZeroUsize::MIN,
-        bytes: std::num::NonZeroUsize::new(16 * 1024).unwrap(),
-    };
 
     let data = Arc::new(Data::<()>::journaled(directory.path(), history()).unwrap());
-    let storage = StorageManager::new(
+    let storage: StorageManager = StorageManager::new(
         StorageBackends {
             primary: data,
             state: Arc::new(harmos::storage::state::file::FileBackend::new(
@@ -343,7 +329,6 @@ async fn mapping_growth() {
                 history(),
                 &settings,
             )),
-            replicas: vec![],
         },
         settings.clone(),
     )
@@ -369,7 +354,7 @@ async fn mapping_growth() {
         values: vec![String::new(); 4096],
     }
     .encode_to_vec();
-    assert!(payload.len() < settings.query_page.bytes.get());
+    assert!(payload.len() < 16 * 1024);
     storage
         .write_records(&[RecordWrite {
             schema: &schema,
@@ -428,12 +413,16 @@ async fn mapping_growth() {
     assert!(strings.iter().all(|value| value == Some("")));
     assert!(reader.next().await.unwrap().is_none());
     assert_eq!(reader.completion().unwrap().rows, 1);
+    // A Consumer's Zero-Length Slice Still Owns The Charged Allocation.
+    let empty = retained.column(0).slice(retained.num_rows(), 0);
     drop(values);
     drop(batch);
     drop(reader);
     assert!(storage.status().read_bytes > 0);
     assert!(storage.status().read_bytes <= settings.budget.read_memory_bytes.get());
     drop(retained);
+    assert!(storage.status().read_bytes > 0);
+    drop(empty);
     storage.close().await.unwrap();
     runtime.stop().await.unwrap();
 }

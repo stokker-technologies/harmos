@@ -22,9 +22,6 @@ mod objects;
 #[allow(dead_code, unused_imports)]
 #[path = "../../support/storage_operations.rs"]
 mod operations;
-#[allow(dead_code, unused_imports)]
-#[path = "../../support/storage_views.rs"]
-mod views;
 
 /* === Re-Exports === */
 

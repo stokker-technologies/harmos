@@ -68,7 +68,6 @@ impl Probe {
                 StorageBackends {
                     primary: data.clone(),
                     state: recovery.clone(),
-                    replicas: Vec::new(),
                 },
                 config(),
             )
@@ -413,20 +412,14 @@ pub(super) fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    for name in ["harmos-storage", "harmos-storage-replica-remote"] {
+                    for name in ["harmos-storage"] {
                         let data = Arc::new(Data::new(history()));
                         let recovery = Arc::new(Backend::new(history()));
-                        let target = Arc::new(Data::new(history()));
                         let policy = config();
-                        let replicas = vec![harmos::storage::ReplicaTarget {
-                            id: harmos::Identifier::new("remote").unwrap(),
-                            backend: target.clone(),
-                        }];
-                        let storage = StorageManager::new(
+                        let storage: StorageManager = StorageManager::new(
                             StorageBackends {
                                 primary: data.clone(),
                                 state: recovery.clone(),
-                                replicas,
                             },
                             policy,
                         )
@@ -443,7 +436,6 @@ pub(super) fn contract_scenario() {
                         assert!(storage.status().closed);
                         assert!(!data.control.open.load(Ordering::SeqCst));
                         assert!(!recovery.control.open.load(Ordering::SeqCst));
-                        assert!(!target.control.open.load(Ordering::SeqCst));
                     }
                 });
         });

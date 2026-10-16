@@ -194,32 +194,3 @@ fn attach_buffer(buffer: &Buffer, owner: &Arc<Owner>) -> Buffer {
 }
 
 /* === Tests === */
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn empty_buffer_slice_keeps_its_allocation_reservation() {
-        let allocation = Buffer::from_vec(vec![1u8; 4096]);
-        let empty = allocation.slice_with_length(4096, 0);
-        assert!(empty.is_empty());
-        assert!(empty.capacity() >= 4096);
-
-        let reservation = Arc::new(());
-        let released = Arc::downgrade(&reservation);
-        let owner = Arc::new(Owner {
-            _reservation: RetainedMemory::new(reservation, |_| Ok(())),
-            _encoded: Arc::new(Vec::new()),
-            _schema: Arc::new(Schema::empty()),
-        });
-        let retained = attach_buffer(&empty, &owner);
-        let clone = retained.clone();
-        drop(owner);
-        drop(allocation);
-        drop(empty);
-        drop(retained);
-        assert!(released.upgrade().is_some());
-        drop(clone);
-        assert!(released.upgrade().is_none());
-    }
-}

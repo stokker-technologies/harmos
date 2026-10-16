@@ -19,6 +19,7 @@ mod mapping;
 mod nominal;
 mod policy;
 mod query_pressure;
+mod retention;
 #[path = "../../../../tests/support/scenarios.rs"]
 mod scenario_runtime;
 mod state_admission;
@@ -38,9 +39,6 @@ mod cursors;
 mod operations;
 #[path = "../storage/runtime.rs"]
 mod runtime;
-#[allow(dead_code, unused_imports)]
-#[path = "../support/storage_views.rs"]
-mod views;
 
 /* === Re-Exports === */
 

@@ -18,7 +18,7 @@ use std::num::NonZeroUsize;
 // Local Imports
 use super::*;
 use crate::MemorySize;
-use crate::storage::manager::{MemoryReservation, ReservationKind};
+use crate::storage::capacity::{Pool, Reservation};
 
 /* === Constants === */
 
@@ -29,7 +29,7 @@ use crate::storage::manager::{MemoryReservation, ReservationKind};
 /* === Structs === */
 pub(crate) struct FileSave {
     snapshot: FileSnapshot,
-    _reservation: MemoryReservation,
+    _reservation: Reservation,
 }
 
 pub(in crate::storage) struct FileSnapshot {
@@ -63,11 +63,7 @@ impl<C> StorageManager<C> {
         state.collect();
         Ok(Some(FileSave {
             snapshot,
-            _reservation: MemoryReservation {
-                inner: self.inner.clone(),
-                bytes,
-                kind: ReservationKind::Read,
-            },
+            _reservation: Reservation::charged(&self.inner, Pool::Read, bytes),
         }))
     }
 
@@ -87,7 +83,7 @@ impl<C> StorageManager<C> {
         let capacity = self.inner.settings.budget.read_memory_bytes.get();
         let bytes = capacity / 2;
         let limits = ReadLimits {
-            rows: self.inner.settings.max_files,
+            rows: crate::storage::config::MAX_FILES,
             bytes: NonZeroUsize::new(bytes).ok_or_else(size_error)?,
         };
         let reservation = {
@@ -100,11 +96,7 @@ impl<C> StorageManager<C> {
             }
             state.read_bytes += bytes;
             state.collect();
-            MemoryReservation {
-                inner: self.inner.clone(),
-                bytes,
-                kind: ReservationKind::Read,
-            }
+            Reservation::charged(&self.inner, Pool::Read, bytes)
         };
         let checkpoints = self
             .inner
@@ -133,11 +125,7 @@ impl<C> StorageManager<C> {
             }
             state.scratch_bytes += write_bytes;
             state.collect();
-            MemoryReservation {
-                inner: self.inner.clone(),
-                bytes: write_bytes,
-                kind: ReservationKind::Write,
-            }
+            Reservation::charged(&self.inner, Pool::Write, write_bytes)
         };
         let mut restored = std::collections::BTreeMap::new();
         let mut names = std::collections::BTreeSet::new();
@@ -157,7 +145,7 @@ impl<C> StorageManager<C> {
             let (reference_bytes, base_bytes) =
                 file_bytes(&checkpoint.metadata, &checkpoint.session.history)?;
             total = total.checked_add(base_bytes).ok_or_else(size_error)?;
-            if reference_bytes > self.inner.settings.max_batch_bytes.get()
+            if reference_bytes > self.inner.settings.max_batch_bytes().get()
                 || total >= self.inner.settings.request.max_pending_write_bytes.get()
             {
                 return Err(Error::ResourceExhausted {
@@ -183,7 +171,7 @@ impl<C> StorageManager<C> {
                 },
                 session: Some(Session::recovered(
                     checkpoint.session.generation,
-                    self.inner.settings.file_session_timeout,
+                    crate::storage::config::FILE_SESSION_TIMEOUT,
                 )),
                 extra: None,
                 mutation: None,
@@ -208,8 +196,7 @@ impl<C> StorageManager<C> {
                     name: "active productions".into(),
                 });
             }
-            state.scratch_bytes -= write_reservation.bytes;
-            write_reservation.bytes = 0;
+            state.scratch_bytes -= write_reservation.disown();
             state.files = restored;
             state.collect();
         }

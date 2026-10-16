@@ -40,7 +40,6 @@ pub(crate) struct Fixture {
     pub(crate) storage: StorageManager,
     pub(crate) data: Arc<Data>,
     pub(crate) recovery: Arc<Recovery>,
-    pub(crate) execution: QueryLimits,
 }
 
 /* === Enums === */
@@ -49,14 +48,7 @@ pub(crate) struct Fixture {
 
 /* === Implementations === */
 impl Fixture {
-    pub(crate) async fn new(settings: StorageSettings) -> Self {
-        Self::with_replicas(settings, Vec::new()).await
-    }
-
-    pub(crate) async fn with_replicas(
-        config: StorageSettings,
-        replicas: Vec<ReplicaTarget>,
-    ) -> Self {
+    pub(crate) async fn new(config: StorageSettings) -> Self {
         let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
             .register(catalog())
             .register(operations::Lanes::catalog())
@@ -65,12 +57,10 @@ impl Fixture {
             .unwrap();
         let data = Arc::new(Data::new(history()));
         let recovery = Arc::new(Recovery::new(history()));
-        let execution = config.query_execution;
         let storage = StorageManager::new(
             StorageBackends {
                 primary: data.clone(),
                 state: recovery.clone(),
-                replicas,
             },
             config,
         )
@@ -81,7 +71,6 @@ impl Fixture {
             storage,
             data,
             recovery,
-            execution,
         }
     }
 
@@ -101,11 +90,7 @@ impl Fixture {
 
 /* === Private Functions === */
 pub(crate) fn config() -> StorageSettings {
-    StorageSettings {
-        flush_interval: Duration::from_secs(60),
-        max_retries: 0,
-        ..storage_settings()
-    }
+    storage_settings()
 }
 
 pub(crate) fn schema() -> SchemaKey {
@@ -131,62 +116,53 @@ pub(crate) fn record<'a>(
     }
 }
 
-pub(crate) fn decode_bytes(bytes: &[u8], allowance: NonZeroUsize) -> harmos::Result<Vec<u8>> {
-    let required = bytes
-        .len()
-        .checked_add(std::mem::size_of::<Vec<u8>>())
-        .ok_or(Error::ResourceExhausted {
-            resource: "query decoded memory",
-        })?;
-    if required > allowance.get() {
-        return Err(Error::ResourceExhausted {
-            resource: "query decoded memory",
-        });
-    }
-    Ok(Box::<[u8]>::from(bytes).into_vec())
-}
-
-pub(crate) fn record_query(page: ReadLimits) -> RecordQuery<Vec<u8>> {
-    let mut query = RecordQuery::new(schema(), decode_bytes);
-    query.options.page = Some(page);
-    query.options.decoded_bytes = Some(page.bytes);
-    query
-}
-
-pub(crate) fn refusing_record_query(page: ReadLimits) -> RecordQuery<Vec<u8>> {
-    let first = std::sync::atomic::AtomicBool::new(true);
-    let mut query = RecordQuery::new(schema(), move |bytes, allowance| {
-        if first.swap(false, Ordering::SeqCst) {
-            return Err(Error::ResourceExhausted {
-                resource: "query decoded memory",
-            });
+/// Saved records of `schema` as (position, item), read through the Query operation contract.
+pub(crate) async fn saved_records<C>(
+    storage: &StorageManager<C>,
+    schema: &SchemaKey,
+) -> Vec<(u64, Identifier)> {
+    use harmos::storage::query::{Query, QueryOutput, RecordSelection, RowSlice, Source};
+    let mut reader = storage
+        .query(Query {
+            at: storage.cursor_saved(),
+            source: Source::Records(RecordSelection {
+                schema: schema.clone(),
+                scope: None,
+                item: None,
+                source_start: None,
+                source_end: None,
+            }),
+            transforms: Vec::new(),
+            slice: RowSlice::default(),
+        })
+        .await
+        .unwrap();
+    let mut records = Vec::new();
+    while let Some(output) = reader.next().await.unwrap() {
+        let QueryOutput::Batch(batch) = output else {
+            continue;
+        };
+        let batch = batch.as_record_batch();
+        let positions = batch
+            .column_by_name("position")
+            .unwrap()
+            .as_any()
+            .downcast_ref::<arrow_array::UInt64Array>()
+            .unwrap();
+        let items = batch
+            .column_by_name("item")
+            .unwrap()
+            .as_any()
+            .downcast_ref::<arrow_array::StringArray>()
+            .unwrap();
+        for row in 0..batch.num_rows() {
+            records.push((
+                positions.value(row),
+                Identifier::new(items.value(row)).unwrap(),
+            ));
         }
-        decode_bytes(bytes, allowance)
-    });
-    query.options.page = Some(page);
-    query.options.decoded_bytes = Some(page.bytes);
-    query
-}
-
-pub(crate) fn stream_query(page: ReadLimits) -> StreamQuery<Vec<u8>> {
-    let mut query = StreamQuery::new(schema(), decode_bytes);
-    query.options.page = Some(page);
-    query.options.decoded_bytes = Some(page.bytes);
-    query
-}
-
-pub(crate) fn schema_query(page: ReadLimits) -> SchemaQuery {
-    let mut query = SchemaQuery::new();
-    query.options.page = Some(page);
-    query.options.decoded_bytes = Some(page.bytes);
-    query
-}
-
-pub(crate) fn file_query(page: ReadLimits) -> FileQuery {
-    let mut query = FileQuery::new();
-    query.options.page = Some(page);
-    query.options.decoded_bytes = Some(page.bytes);
-    query
+    }
+    records
 }
 
 pub(crate) async fn write<C>(storage: &StorageManager<C>, id: &str) -> StorageCursor {

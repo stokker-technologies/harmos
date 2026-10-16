@@ -21,16 +21,16 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use super::{FileBytes, FileSelection};
 
 use crate::operations::{Context, Operation, StreamOutput};
 use crate::operations::{OperationDeclaration, OutputDeclaration, Visibility, WireOperation};
 use crate::schema::Described;
-use crate::storage::FileProgress;
+use crate::storage::follow::File;
+use crate::storage::{FileBatch, FileProgress};
 
 use crate::storage::StorageManager;
 
-use crate::{Error, Result};
+use crate::{Error, MemorySize, Result};
 
 /* === Constants === */
 
@@ -51,21 +51,21 @@ pub(super) struct Handler<C> {
 
 /* === Implementations === */
 impl OperationDeclaration for FollowFile {
-    type Request = FileSelection;
+    type Request = File;
     type Response = FileProgress;
     const ID: &'static str = "storage.follow_file";
     const POLICY: crate::operations::OperationPolicy = super::STREAM_POLICY;
     const VISIBILITY: Visibility = Visibility::Host;
     fn endpoint_types() -> (Option<TypeId>, Option<TypeId>) {
-        (None, Some(TypeId::of::<FileBytes>()))
+        (None, Some(TypeId::of::<FileBatch>()))
     }
 }
 impl OutputDeclaration for FollowFile {
-    type Item = FileBytes;
+    type Item = FileBatch;
 }
 impl WireOperation for FollowFile {
     const VERSION: u32 = 1;
-    const OUTPUT: Option<crate::schema::declaration::Definition> = Some(FileBytes::DEFINITION);
+    const OUTPUT: Option<crate::schema::declaration::Definition> = Some(FileBatch::DEFINITION);
 }
 
 impl<C: 'static> Operation for Handler<C> {
@@ -73,7 +73,7 @@ impl<C: 'static> Operation for Handler<C> {
     type Resources = StorageManager<C>;
     type Error = Error;
     type Context<'a> = Context<'a>;
-    type Endpoints = StreamOutput<FileBytes>;
+    type Endpoints = StreamOutput<FileBatch>;
     async fn initialize<'ctx>(
         storage: Arc<StorageManager<C>>,
         _: Self::Context<'ctx>,
@@ -84,16 +84,18 @@ impl<C: 'static> Operation for Handler<C> {
     async fn run<'a>(
         &mut self,
         _: Self::Context<'a>,
-        selection: &mut FileSelection,
+        request: &mut File,
         output: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<FileProgress>> {
-        let result: ::core::result::Result<FileProgress, Self::Error> = async move {
-            selection.maximum()?;
-
-            selection.transfer(&self.storage, output, true).await
+        let mut follower = self
+            .storage
+            .follow_file(&request.file, request.offset)
+            .await?;
+        let batch_bytes = self.storage.inner.settings.response.batch_bytes;
+        while let Some(batch) = follower.next_batch(batch_bytes).await? {
+            output.send_with(batch.memory_size(), || Ok(batch)).await?;
         }
-        .await;
-        result.map(::core::convert::Into::into)
+        Ok(follower.progress().into())
     }
 }
 

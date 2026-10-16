@@ -33,11 +33,9 @@ use harmos::storage::query::{
 use prost::Message as _;
 
 // Local Imports
-use harmos::storage::operations::{
-    DataSelection, Followed, Operations, Save, SaveRequest, Selection,
-};
+use harmos::storage::operations::{Followed, Operations, Save, SaveRequest};
 use harmos::storage::{
-    FileMetadata, FileReference, StorageBackends, StorageCursor, StorageManager, StorageSettings,
+    FileMetadata, FileReference, StorageBackends, StorageCursor, StorageManager,
 };
 use harmos::{Identifier, Runtime};
 use harmos_grpc_fixture::storage::v1::{
@@ -228,16 +226,12 @@ async fn storage_uses_data() {
             backend::history(),
         ));
         let storage = Arc::new(
-            StorageManager::new(
+            StorageManager::<StoredObjects>::new(
                 StorageBackends {
                     primary: data.clone(),
                     state: Arc::new(backend::Recovery::new(backend::history())),
-                    replicas: Vec::new(),
                 },
-                StorageSettings {
-                    flush_interval: Duration::from_secs(60),
-                    ..backend::storage_settings()
-                },
+                backend::storage_settings(),
             )
             .unwrap(),
         );
@@ -311,7 +305,6 @@ async fn storage_uses_data() {
             .await
             .unwrap();
         let through = storage.cursor_accepted();
-        assert!(storage.cursor_saved().sequence < through.sequence);
         // Arrow Frames Retain Schema, Arrays And IPC Bytes Together.
         // This Round Trip Uses The Same Capacity As The Typed Write Stories.
         let capacity = harmos::operations::StreamSettings {
@@ -357,7 +350,7 @@ async fn storage_uses_data() {
                 window: storage.mutation_window().unwrap().id,
                 key: Identifier::new("initial-save").unwrap(),
             },
-            through: through.clone(),
+            at: through.clone(),
         };
         let encoded = harmos::Protobuf::encode_to_vec(&save);
         let request = storage_messages::save::Row1::decode(encoded.as_slice()).unwrap();
@@ -406,13 +399,13 @@ async fn storage_uses_data() {
                 .value(0),
             file.length
         );
-        let selection = DataSelection {
-            selection: Selection::default(),
+        let selection = StreamSelection {
             schema: key.clone(),
+            scope: None,
+            item: None,
             stream: None,
             source_start: Some(std::time::UNIX_EPOCH - Duration::from_secs(1)),
             source_end: Some(std::time::UNIX_EPOCH),
-            record_filter: None,
         };
         // Finished File Bytes Use The Same Operation Until Explicit Completion.
         let request = harmos::storage::files::ReadFile {
@@ -600,7 +593,16 @@ async fn storage_uses_data() {
                 .value(0),
             "native bytes"
         );
-        let encoded = harmos::Protobuf::encode_to_vec(&selection);
+        let encoded = harmos::Protobuf::encode_to_vec(&harmos::storage::follow::Records {
+            after: None,
+            selection: RecordSelection {
+                schema: selection.schema.clone(),
+                scope: None,
+                item: None,
+                source_start: selection.source_start,
+                source_end: selection.source_end,
+            },
+        });
         let query = storage_messages::follow::Row1::decode(encoded.as_slice()).unwrap();
         let mut following = client.follow(query).await.unwrap().into_inner();
         let storage_follow_output::Value::Item(boundaries) =
@@ -646,6 +648,10 @@ async fn storage_uses_data() {
         assert_eq!(next.item, live);
         assert_eq!(next.position, position);
         drop(following);
+        let encoded = harmos::Protobuf::encode_to_vec(&harmos::storage::follow::Stream {
+            after: None,
+            selection: selection.clone(),
+        });
         let query = storage_messages::follow_stream::Row1::decode(encoded.as_slice()).unwrap();
         let mut following_rows = client.follow_stream(query).await.unwrap().into_inner();
         let storage_follow_stream_output::Value::Item(first) = following_rows
@@ -695,7 +701,8 @@ async fn storage_uses_data() {
         assert_eq!(next.sequence, 124);
         assert_eq!(next.record.payload, live_row_payload);
         // Native Production And Generated Readers Share The Original File Owner.
-        use harmos::storage::operations::{FileBytes, FileSelection};
+        use harmos::storage::files::FileBatch as FileBytes;
+        use harmos::storage::follow::File as FileSelection;
         use harmos::storage::{FilePhase, FileProgress, StagedFile};
         use harmos_grpc_fixture::storage::v1::storage_follow_file_output;
         let mut producer = storage
@@ -745,19 +752,18 @@ async fn storage_uses_data() {
                 id: token.id.clone(),
             },
             offset: 0,
-            chunk_bytes: 2,
         };
         // Staging Bytes Remain Owned By The Production Follower.
         let mut reading = storage.follow_file(&selection.file, 0).await.unwrap();
         let mut prefix = Vec::new();
         while prefix.len() < 3 {
-            let chunk = reading
-                .next_chunk(NonZeroUsize::new(2).unwrap())
+            let batch = reading
+                .next_batch(NonZeroUsize::new(2).unwrap())
                 .await
                 .unwrap()
                 .unwrap();
-            assert!(chunk.len() <= 2);
-            prefix.extend_from_slice(&chunk);
+            assert!(batch.bytes.len() <= 2);
+            prefix.extend_from_slice(&batch.bytes);
         }
         assert_eq!(prefix, b"old");
         assert_eq!(reading.progress().length, 3);
@@ -868,12 +874,12 @@ async fn storage_uses_data() {
             };
             let mut native = storage.follow_file(&staged, 0).await.unwrap();
             let mut bytes = Vec::new();
-            while let Some(chunk) = native
-                .next_chunk(NonZeroUsize::new(3).unwrap())
+            while let Some(batch) = native
+                .next_batch(NonZeroUsize::new(3).unwrap())
                 .await
                 .unwrap()
             {
-                bytes.extend_from_slice(chunk.as_bytes());
+                bytes.extend_from_slice(&batch.bytes);
             }
             assert_eq!(bytes, b"payload");
             let deletion = harmos::storage::operations::DeleteFileRequest {
@@ -1102,7 +1108,6 @@ async fn storage_uses_data() {
             .read_object::<StoredDocument>(
                 &"path/document".into(),
                 harmos::storage::ObjectVersion::Latest,
-                NonZeroUsize::new(4096).unwrap(),
             )
             .await
             .unwrap()
@@ -1112,7 +1117,6 @@ async fn storage_uses_data() {
             .read_object::<StoredDocument>(
                 &"path/document".into(),
                 harmos::storage::ObjectVersion::Exact(found.version.clone()),
-                NonZeroUsize::new(4096).unwrap(),
             )
             .await
             .unwrap()
@@ -1199,16 +1203,14 @@ async fn storage_uses_data() {
             "network"
         );
 
-        use harmos::storage::operations::ObjectSelection;
         use harmos_grpc_fixture::storage::v1::storage_follow_objects_output;
-        let selection = ObjectSelection {
-            versions: harmos::storage::ObjectVersions::Revisions,
-            selection: Selection {
-                after: Some(object_position),
-                page_rows: 1,
-                ..Default::default()
+        let selection = harmos::storage::follow::Objects {
+            after: Some(object_position),
+            selection: harmos::storage::query::ObjectSelection {
+                schema: None,
+                key: None,
+                versions: harmos::storage::query::ObjectVersions::Revisions,
             },
-            ..Default::default()
         };
         let wire = storage_messages::follow_objects::Row1::decode(
             harmos::Protobuf::encode_to_vec(&selection).as_slice(),

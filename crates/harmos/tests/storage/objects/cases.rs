@@ -10,11 +10,6 @@
 /* === Modules === */
 use crate::scenario_runtime;
 
-#[path = "persistence.rs"]
-mod persistence;
-#[path = "retention.rs"]
-mod retention;
-
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -23,15 +18,13 @@ use crate::backend::storage_settings;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
-use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use super::{Bank, Data, Ledger, Recovery, catalog, history, write};
+use super::{Bank, Data, Ledger, Recovery, catalog, history};
 use harmos::Runtime;
 use harmos::storage::{
-    ObjectCatalog, ObjectRetention, ReplicaTarget, StorageBackends, StorageManager,
-    StorageSettings, StoredObject,
+    ObjectCatalog, ObjectRetention, StorageBackends, StorageManager, StoredObject,
 };
 use harmos::{DefinitionId, Identified, Identifier, Message};
 
@@ -196,58 +189,6 @@ fn document(status: &str) -> Document {
 
 fn own_contract() {
     {
-        scenario_runtime::check("catalog_shares_runtime", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let primary = Arc::new(Data::<Objects>::with_catalog(history()));
-                    let replica = Arc::new(Data::<Objects>::with_catalog(history()));
-                    let recovery = Arc::new(Recovery::new(history()));
-                    let replica_id = Identifier::new("remote").unwrap();
-                    let config = StorageSettings {
-                        flush_interval: Duration::from_secs(60),
-                        ..storage_settings()
-                    };
-                    // Neither the catalog nor its members need Clone to share these owners.
-                    let storage = StorageManager::new(
-                        StorageBackends {
-                            primary: primary.clone(),
-                            state: recovery.clone(),
-                            replicas: vec![ReplicaTarget {
-                                id: replica_id.clone(),
-                                backend: replica.clone(),
-                            }],
-                        },
-                        config.clone(),
-                    )
-                    .unwrap();
-                    let same = storage.clone();
-                    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-                        .register(catalog())
-                        .runtime_with_storage(&storage)
-                        .await
-                        .unwrap();
-                    runtime.start_storage(same.clone()).await.unwrap();
-                    let admitted = write(&storage, "typed").await;
-                    assert_eq!(runtime.storage().unwrap().status().accepted, admitted);
-                    let second = write(runtime.handle().storage().unwrap(), "erased").await;
-                    assert_eq!(same.status().accepted, second);
-                    let saved = same.flush().await.unwrap();
-                    storage.wait_replicas(&saved, &[replica_id]).await.unwrap();
-                    assert_eq!(primary.records.lock().unwrap().len(), 2);
-                    assert_eq!(replica.records.lock().unwrap().len(), 2);
-                    runtime.stop().await.unwrap();
-                    assert!(storage.status().closed);
-                    assert_eq!(primary.control.closes.load(Ordering::SeqCst), 1);
-                    assert_eq!(recovery.control.closes.load(Ordering::SeqCst), 1);
-                    assert_eq!(replica.control.closes.load(Ordering::SeqCst), 1);
-                });
-        });
-    }
-    {
         scenario_runtime::check("numeric_keys_typed", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor
@@ -256,11 +197,10 @@ fn own_contract() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let primary = Arc::new(Data::<NumericObjects>::with_catalog(history()));
-                    let storage = StorageManager::new(
+                    let storage = StorageManager::<NumericObjects>::new(
                         StorageBackends {
                             primary,
                             state: Arc::new(Recovery::new(history())),
-                            replicas: Vec::new(),
                         },
                         storage_settings(),
                     )
@@ -277,7 +217,6 @@ fn own_contract() {
                         .read_object::<Counter>(
                             &42,
                             harmos::storage::ObjectVersion::Exact(admitted.version.clone()),
-                            limit(),
                         )
                         .await
                         .unwrap()
@@ -286,11 +225,7 @@ fn own_contract() {
                     assert_eq!(found.version, admitted.version);
                     assert!(
                         storage
-                            .read_object::<Counter>(
-                                &43,
-                                harmos::storage::ObjectVersion::Latest,
-                                limit()
-                            )
+                            .read_object::<Counter>(&43, harmos::storage::ObjectVersion::Latest,)
                             .await
                             .unwrap()
                             .is_none()
@@ -406,11 +341,10 @@ fn own_contract() {
         scenario_runtime::check("invalid_object_catalog", || {
             let primary = Arc::new(Data::<Ambiguous>::with_catalog(history()));
             let recovery = Arc::new(Recovery::new(history()));
-            let result = StorageManager::new(
+            let result = StorageManager::<Ambiguous>::new(
                 StorageBackends {
                     primary: primary.clone(),
                     state: recovery.clone(),
-                    replicas: Vec::new(),
                 },
                 storage_settings(),
             );
@@ -425,39 +359,6 @@ fn own_contract() {
             assert!(!recovery.control.open.load(Ordering::SeqCst));
         });
     }
-    {
-        scenario_runtime::check("replicas_reject_physical", || {
-            let primary = Arc::new(Data::<Objects>::with_catalog(history()));
-            let other = Arc::new(Data::<Objects>::with_catalog(history()));
-            let recovery = Arc::new(Recovery::new(history()));
-            for backends in [
-                [primary.clone(), other.clone()],
-                [other.clone(), other.clone()],
-            ] {
-                let replicas = backends
-                    .into_iter()
-                    .enumerate()
-                    .map(|(index, backend)| ReplicaTarget {
-                        id: Identifier::new(format!("replica-{index}")).unwrap(),
-                        backend,
-                    })
-                    .collect();
-                assert!(
-                    StorageManager::new(
-                        StorageBackends {
-                            primary: primary.clone(),
-                            state: recovery.clone(),
-                            replicas
-                        },
-                        storage_settings()
-                    )
-                    .is_err()
-                );
-            }
-            assert!(!primary.control.open.load(Ordering::SeqCst));
-            assert!(!other.control.open.load(Ordering::SeqCst));
-        });
-    }
 }
 
 /* === Tests === */
@@ -465,6 +366,4 @@ fn own_contract() {
 #[test]
 fn object_lifetime() {
     own_contract();
-    persistence::contract_scenario();
-    retention::contract_scenario();
 }

@@ -115,11 +115,10 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let storage = StorageManager::new(
+                    let storage = StorageManager::<Objects>::new(
                         StorageBackends {
                             primary: Arc::new(Data::<Objects>::with_catalog(history())),
                             state: Arc::new(Recovery::new(history())),
-                            replicas: Vec::new(),
                         },
                         config(),
                     )
@@ -198,11 +197,7 @@ fn contract_scenario() {
                     assert_eq!(completion.batches, 1);
                     assert_eq!(storage.cursor_saved(), completion.cursor);
                     let exact = storage
-                        .read_object::<Document>(
-                            &"a/b".into(),
-                            ObjectVersion::Latest,
-                            NonZeroUsize::new(4096).unwrap(),
-                        )
+                        .read_object::<Document>(&"a/b".into(), ObjectVersion::Latest)
                         .await
                         .unwrap()
                         .unwrap();
@@ -220,11 +215,10 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let storage = StorageManager::new(
+                    let storage = StorageManager::<Objects>::new(
                         StorageBackends {
                             primary: Arc::new(Data::<Objects>::with_catalog(history())),
                             state: Arc::new(Recovery::new(history())),
-                            replicas: Vec::new(),
                         },
                         config(),
                     )
@@ -275,11 +269,10 @@ fn contract_scenario() {
                 .block_on(async {
                     use std::sync::atomic::Ordering;
                     let data = Arc::new(Data::<Objects>::with_catalog(history()));
-                    let storage = StorageManager::new(
+                    let storage = StorageManager::<Objects>::new(
                         StorageBackends {
                             primary: data.clone(),
                             state: Arc::new(Recovery::new(history())),
-                            replicas: Vec::new(),
                         },
                         config(),
                     )
@@ -333,11 +326,10 @@ fn contract_scenario() {
                         .collect();
                     *recovered.mutation_receipts.lock().unwrap() =
                         data.mutation_receipts.lock().unwrap().clone();
-                    let restored = StorageManager::new(
+                    let restored = StorageManager::<Objects>::new(
                         StorageBackends {
                             primary: recovered,
                             state: Arc::new(Recovery::new(history())),
-                            replicas: Vec::new(),
                         },
                         config(),
                     )
@@ -373,8 +365,8 @@ fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     use harmos::storage::{
-                        ObjectEntry, ObjectVersions,
-                        operations::{FollowObjects, ObjectSelection},
+                        ObjectEntry, follow::Objects as ObjectSelection, operations::FollowObjects,
+                        query::ObjectVersions,
                     };
                     tokio::time::timeout(std::time::Duration::from_secs(5), async {
                         let (runtime, storage, _) = query_fixture().await;
@@ -387,10 +379,13 @@ fn contract_scenario() {
                             .unwrap();
                         storage.flush().await.unwrap();
                         let mut request = ObjectSelection {
-                            versions: ObjectVersions::Revisions,
-                            ..Default::default()
+                            after: None,
+                            selection: harmos::storage::query::ObjectSelection {
+                                schema: None,
+                                key: None,
+                                versions: ObjectVersions::Revisions,
+                            },
                         };
-                        request.selection.page_rows = 1;
                         let limits = harmos::operations::StreamSettings {
                             items: NonZeroUsize::MIN,
                             bytes: NonZeroUsize::new(4096).unwrap(),
@@ -418,7 +413,7 @@ fn contract_scenario() {
                         call.cancel();
                         assert!(call.await.is_err());
                         drop(receiver);
-                        request.selection.after = Some(second.position);
+                        request.after = Some(second.position);
                         let (sender, mut receiver) =
                             harmos::operations::stream::<ObjectEntry>(limits).unwrap();
                         let call = runtime
@@ -446,44 +441,6 @@ fn contract_scenario() {
         });
     }
     {
-        scenario_runtime::check("encoded_queries_verify", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    use harmos::storage::EncodedObjectQuery;
-                    let (runtime, storage, data) = query_fixture().await;
-                    storage
-                        .write_object(&Document {
-                            id: "key".into(),
-                            text: "value".into(),
-                        })
-                        .await
-                        .unwrap();
-                    storage.flush().await.unwrap();
-                    let mut query = EncodedObjectQuery::default();
-                    query.options.decoded_bytes = Some(NonZeroUsize::new(128).unwrap());
-                    let mut reader = storage.query(query).await.unwrap();
-                    assert!(reader.next_page().await.is_err());
-                    drop(reader);
-                    let mut query = EncodedObjectQuery {
-                        schema: Some(value("key", "").schema),
-                        ..Default::default()
-                    };
-                    query.schema.as_mut().unwrap().id = Identifier::new("unknown").unwrap();
-                    assert!(storage.query(query).await.is_err());
-                    data.objects.lock().unwrap().get_mut(&2).unwrap().value.item =
-                        value("forged", "").item;
-                    let mut reader = storage.query(EncodedObjectQuery::default()).await.unwrap();
-                    assert!(reader.next_page().await.is_err());
-                    drop(reader);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
         scenario_runtime::check("follow_reports_pruned", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor
@@ -492,8 +449,8 @@ fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     use harmos::storage::{
-                        ObjectEntry, ObjectVersions,
-                        operations::{FollowObjects, ObjectSelection},
+                        ObjectEntry, follow::Objects as ObjectSelection, operations::FollowObjects,
+                        query::ObjectVersions,
                     };
                     tokio::time::timeout(std::time::Duration::from_secs(5), async {
                         let (runtime, storage, data) = query_fixture().await;
@@ -511,8 +468,12 @@ fn contract_scenario() {
                             tokio::task::yield_now().await;
                         }
                         let request = ObjectSelection {
-                            versions: ObjectVersions::Revisions,
-                            ..Default::default()
+                            after: None,
+                            selection: harmos::storage::query::ObjectSelection {
+                                schema: None,
+                                key: None,
+                                versions: ObjectVersions::Revisions,
+                            },
                         };
                         let (sender, mut receiver) = harmos::operations::stream::<ObjectEntry>(
                             harmos::operations::StreamSettings {
@@ -550,7 +511,6 @@ async fn query_fixture() -> (Runtime<Bank>, StorageManager<Objects>, Arc<Data<Ob
         StorageBackends {
             primary: data.clone(),
             state: Arc::new(Recovery::new(history())),
-            replicas: Vec::new(),
         },
         config(),
     )

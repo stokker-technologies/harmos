@@ -44,7 +44,7 @@ crate::storage::codec::product!(StorageInfo {
     accepted: crate::storage::codec::Nested<StorageCursor> => 1,
     saved: crate::storage::codec::Nested<StorageCursor> => 2,
     mutations: crate::storage::codec::Optional<crate::storage::codec::Nested<MutationWindow>> => 3,
-    file_chunk_bytes: crate::storage::codec::Unsigned => 4,
+    file_batch_bytes: crate::storage::codec::Unsigned => 4,
 });
 
 /* === Type Aliases === */
@@ -76,7 +76,7 @@ pub struct StorageInfo {
     pub accepted: StorageCursor,
     pub saved: StorageCursor,
     pub mutations: Option<MutationWindow>,
-    pub file_chunk_bytes: u64,
+    pub file_batch_bytes: u64,
 }
 
 /* === Enums === */

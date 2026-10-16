@@ -112,7 +112,7 @@ impl<C> StorageManager<C> {
                                 source: source.clone(),
                             });
                         }
-                        if state.saves.len() >= self.inner.settings.max_mutations.get() {
+                        if state.saves.len() >= super::config::MAX_MUTATIONS.get() {
                             return Err(exhausted());
                         }
                         let target = state.data_target(through)?;
@@ -129,12 +129,9 @@ impl<C> StorageManager<C> {
                             extra,
                         )?;
                         let outcome = MutationValue::Cursor(through.clone());
-                        state.receipts.insert(
-                            mutation,
-                            fingerprint,
-                            outcome.memory_size(),
-                            &self.inner.settings,
-                        )?;
+                        state
+                            .receipts
+                            .insert(mutation, fingerprint, outcome.memory_size())?;
                         let receipt = state.receipts.prepared(mutation, outcome);
                         state.saves.insert(
                             mutation.clone(),

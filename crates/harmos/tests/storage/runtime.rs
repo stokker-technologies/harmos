@@ -73,12 +73,10 @@ async fn dormant() -> Fixture {
     let data = Arc::new(Data::new(history()));
     let recovery = Arc::new(Recovery::new(history()));
     let settings = config();
-    let execution = settings.query_execution;
     let storage = StorageManager::new(
         StorageBackends {
             primary: data.clone(),
             state: recovery.clone(),
-            replicas: Vec::new(),
         },
         settings,
     )
@@ -88,7 +86,6 @@ async fn dormant() -> Fixture {
         storage,
         data,
         recovery,
-        execution,
     }
 }
 
@@ -393,7 +390,6 @@ fn contract_scenario() {
                         StorageBackends {
                             primary: data.clone(),
                             state: recovery,
-                            replicas: Vec::new(),
                         },
                         config(),
                     )
@@ -408,39 +404,6 @@ fn contract_scenario() {
                     runtime.stop().await.unwrap();
                     assert_eq!(data.saved.load(Ordering::SeqCst), 1);
                     assert_eq!(data.records.lock().unwrap().len(), 1);
-                });
-        });
-    }
-    {
-        scenario_runtime::check("replica_stop_failure", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let mut policy = config();
-                    policy.replication_shutdown = std::time::Duration::from_millis(10);
-                    policy.io_timeout = std::time::Duration::from_secs(60);
-                    let target = Arc::new(Data::new(history()));
-                    let replicas = vec![harmos::storage::ReplicaTarget {
-                        id: harmos::Identifier::new("remote").unwrap(),
-                        backend: target.clone(),
-                    }];
-                    target.control.block_flush.store(true, Ordering::SeqCst);
-                    let f = Fixture::with_replicas(policy, replicas).await;
-                    f.runtime.start_storage(f.storage.clone()).await.unwrap();
-                    write(&f.storage, "replicated").await;
-                    f.storage.flush().await.unwrap();
-                    target.control.flush_entered.notified().await;
-                    assert!(f.runtime.stop().await.is_err());
-                    assert!(f.data.control.open.load(Ordering::SeqCst));
-                    target.control.block_flush.store(false, Ordering::SeqCst);
-                    target.control.flush_release.notify_one();
-                    f.runtime.stop().await.unwrap();
-                    assert_eq!(target.saved.load(Ordering::SeqCst), 1);
-                    assert!(!target.control.open.load(Ordering::SeqCst));
                 });
         });
     }

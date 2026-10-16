@@ -109,50 +109,6 @@ impl<'a> StorageBatch<'a> {
         self.parts().flat_map(StoragePart::entries)
     }
 
-    pub(super) fn prefix(
-        parts: &'a [StoragePart<'a>],
-        after: u64,
-        max_bytes: NonZeroUsize,
-    ) -> Result<Self> {
-        let mut entries = parts
-            .iter()
-            .copied()
-            .map(|part| part.slice(part.partition(after, true), part.len()))
-            .flat_map(StoragePart::entries);
-        let first = entries
-            .next()
-            .ok_or(invalid("batch has no remaining entries"))?;
-        if after.checked_add(1) != Some(first.position().sequence) {
-            return Err(invalid("batch starts after a missing position"));
-        }
-        let mut bytes = first.encoded_bytes()?;
-        if bytes > max_bytes.get() {
-            return Err(invalid("one entry exceeds max_batch_bytes"));
-        }
-        let mut through = first.position();
-        let mut len = 1;
-        for entry in entries {
-            let size = entry.encoded_bytes()?;
-            if size > max_bytes.get() - bytes {
-                break;
-            }
-            through.history.check(&entry.position().history)?;
-            if through.sequence.checked_add(1) != Some(entry.position().sequence) {
-                return Err(invalid("batch positions are not contiguous"));
-            }
-            bytes += size;
-            len += 1;
-            through = entry.position();
-        }
-        Ok(Self {
-            parts,
-            first: first.position(),
-            through,
-            len,
-            bytes,
-        })
-    }
-
     pub fn first(&self) -> &'a StorageCursor {
         self.first
     }

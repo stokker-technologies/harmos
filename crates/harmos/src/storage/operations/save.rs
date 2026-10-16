@@ -34,7 +34,7 @@ use crate::{Error, Result};
 /* === Macros === */
 crate::storage::codec::product!(SaveRequest {
     mutation: crate::storage::codec::Nested<MutationId> => 1,
-    through: crate::storage::codec::Nested<StorageCursor> => 2,
+    at: crate::storage::codec::Nested<StorageCursor> => 2,
 });
 
 /* === Type Aliases === */
@@ -43,7 +43,7 @@ crate::storage::codec::product!(SaveRequest {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SaveRequest {
     pub mutation: MutationId,
-    pub through: StorageCursor,
+    pub at: StorageCursor,
 }
 
 pub struct Save;
@@ -61,7 +61,7 @@ impl crate::MemorySize for SaveRequest {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>() + self.mutation.memory_size()
             - std::mem::size_of::<MutationId>()
-            + self.through.memory_size()
+            + self.at.memory_size()
             - std::mem::size_of::<StorageCursor>()
     }
 }
@@ -99,12 +99,8 @@ impl<C: 'static> Operation for Handler<C> {
         request: &mut SaveRequest,
         _: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<StorageCursor>> {
-        let result: ::core::result::Result<StorageCursor, Self::Error> = async move {
-            self.storage
-                .save_once(&request.mutation, &request.through)
-                .await
-        }
-        .await;
+        let result: ::core::result::Result<StorageCursor, Self::Error> =
+            async move { self.storage.save_once(&request.mutation, &request.at).await }.await;
         result.map(::core::convert::Into::into)
     }
 

@@ -61,7 +61,7 @@ impl<C> StorageManager<C> {
                 return Err(invalid("backend does not support resumable production"));
             }
             let (reference_bytes, base_bytes) = file_bytes(metadata, self.inner.primary.history())?;
-            if reference_bytes > self.inner.settings.max_batch_bytes.get() {
+            if reference_bytes > self.inner.settings.max_batch_bytes().get() {
                 return Err(invalid("reference exceeds max_batch_bytes"));
             }
             if state
@@ -75,7 +75,7 @@ impl<C> StorageManager<C> {
                     name: metadata.id.to_string(),
                 });
             }
-            if state.files.len() >= self.inner.settings.max_files.get() {
+            if state.files.len() >= crate::storage::config::MAX_FILES.get() {
                 return Err(Error::ResourceExhausted {
                     resource: "file producers",
                 });
@@ -104,7 +104,7 @@ impl<C> StorageManager<C> {
                         history: self.inner.primary.history().clone(),
                         id: metadata.id.clone(),
                     },
-                    session: Some(Session::token(self.inner.settings.file_session_timeout)),
+                    session: Some(Session::token(crate::storage::config::FILE_SESSION_TIMEOUT)),
                     mutation: Some(Mutation {
                         id: mutation.clone(),
                         kind: Kind::Create,

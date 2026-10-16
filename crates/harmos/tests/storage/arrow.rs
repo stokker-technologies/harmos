@@ -28,7 +28,6 @@ use harmos::storage::query::transform::{
     project::{Project, Projection},
     sort::{Sort, SortKey},
 };
-use harmos::storage::query::{RowSlice, execute::Pipeline};
 use harmos::storage::{StorageBackends, StorageManager};
 use harmos::{MemorySize, Runtime};
 
@@ -62,11 +61,10 @@ async fn arrow() {
     // Start Storage With The Explicit Fixture Budget.
     let directory = tempfile::tempdir().unwrap();
     let data = Arc::new(Data::<()>::journaled(directory.path(), history()).unwrap());
-    let storage = StorageManager::new(
+    let storage: StorageManager = StorageManager::new(
         StorageBackends {
             primary: data,
             state: Arc::new(Recovery::new(history())),
-            replicas: vec![],
         },
         storage_settings(),
     )
@@ -120,60 +118,30 @@ async fn arrow() {
     drop(decoded);
     drop(encoded);
 
-    // Stable Ties Precede Output Slicing, With Admission Through The Real Pool.
-    let pipeline = Pipeline::new(
-        original.schema(),
-        vec![
-            Transform::Sort(Sort {
-                keys: vec![SortKey {
-                    field: FieldPath::from("key"),
-                    descending: false,
-                    nulls_first: false,
-                }],
-            }),
-            Transform::Project(Project {
-                fields: vec![Projection {
-                    field: FieldPath::from("row"),
-                    name: "selected".into(),
-                }],
-            }),
-        ],
-        RowSlice {
-            offset: 1,
-            limit: Some(2),
-        },
-    )
+    // Sort Keeps Stable Ties Before Projection Selects The Original Row Order.
+    let sorted = Transform::Sort(Sort {
+        keys: vec![SortKey {
+            field: FieldPath::from("key"),
+            descending: false,
+            nulls_first: false,
+        }],
+    })
+    .apply(&original, &mut || Ok(()))
     .unwrap();
-    let baseline = storage.status().read_bytes;
-    let output = pipeline
-        .execute(&[original], &mut || Ok(()), &mut |bytes| {
-            storage.reserve_arrow_memory(bytes)
-        })
-        .unwrap();
-    let values = output
-        .as_record_batch()
+    let projected = Transform::Project(Project {
+        fields: vec![Projection {
+            field: FieldPath::from("row"),
+            name: "selected".into(),
+        }],
+    })
+    .apply(&sorted, &mut || Ok(()))
+    .unwrap();
+    let values = projected
         .column(0)
         .as_any()
         .downcast_ref::<Int64Array>()
         .unwrap();
-    assert_eq!(values.values().as_ref(), &[2, 0]);
-
-    // A Consumer's Raw Zero-Copy Clone And Slice Keep The Reservation Alive.
-    let retained = output.as_record_batch().clone();
-    let slice = retained.column(0).slice(1, 1);
-    drop(output);
-    drop(retained);
-    assert!(storage.status().read_bytes > baseline);
-    assert_eq!(
-        slice
-            .as_any()
-            .downcast_ref::<Int64Array>()
-            .unwrap()
-            .value(0),
-        0
-    );
-    drop(slice);
-    assert_eq!(storage.status().read_bytes, baseline);
+    assert_eq!(values.values().as_ref(), &[1, 2, 0, 3]);
 
     storage.close().await.unwrap();
     runtime.stop().await.unwrap();

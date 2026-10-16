@@ -253,33 +253,15 @@ impl Permit {
             .sequence
             .checked_add(self.records.len() as u64)
             .ok_or_else(invalid)?;
-        if position.sequence > self.inner.replica_ceiling() {
-            return Err(Error::ResourceExhausted {
-                resource: "replica retained history",
-            });
-        }
-        let mut changed = self.inner.changed.subscribe();
-        loop {
-            {
-                let mut state = self.inner.state.lock().unwrap();
-                if state.status.closing {
-                    return Err(Error::Closing { domain: "storage" });
-                }
-                if !state.ready || !state.status.running {
-                    return Err(Error::NotReady { domain: "storage" });
-                }
-                if let Some(source) = &state.status.failure {
-                    return Err(Error::Persistence {
-                        source: source.clone(),
-                    });
-                }
+        let capacity = self.inner.settings.request.max_pending_write_bytes.get();
+        self.inner
+            .admit_when(|state| {
+                super::super::capacity::admitting(state, super::super::capacity::Pool::Write)?;
                 state.collect();
-                if state.status.pending_bytes
-                    <= self.inner.settings.request.max_pending_write_bytes.get() - bytes
-                {
+                if state.status.pending_bytes <= capacity - bytes {
                     state.reserved += bytes;
                     state.collect();
-                    break;
+                    return Ok(Some(()));
                 }
                 // File finalization also needs this exclusive permit to end.
                 // Only queued writes and saver scratch can drain underneath us;
@@ -289,18 +271,15 @@ impl Permit {
                     .pending_bytes
                     .saturating_sub(state.queue.bytes())
                     .saturating_sub(state.scratch_bytes);
-                if held > self.inner.settings.request.max_pending_write_bytes.get() - bytes {
+                if held > capacity - bytes {
                     return Err(invalid());
                 }
                 // Flush accepted work only; this permit owns the uncommitted
                 // position and partial projection until the whole group settles.
-                self.inner.relieve_pressure(&mut state, bytes, 0);
-            }
-            changed
-                .changed()
-                .await
-                .map_err(|_| Error::NotReady { domain: "storage" })?;
-        }
+                self.inner.relieve_pressure(state, bytes, 0);
+                Ok(None)
+            })
+            .await?;
         self.records.push(record.stored(position));
         self.record_bytes = total;
         self.capture_bytes = capture_total;

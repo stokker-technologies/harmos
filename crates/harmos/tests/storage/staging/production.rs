@@ -197,16 +197,16 @@ pub(super) fn contract_scenario() {
                     let mut reader = restored.storage.follow_file(&identity, 0).await.unwrap();
                     assert_eq!(
                         reader
-                            .next_chunk(NonZeroUsize::new(16).unwrap())
+                            .next_batch(NonZeroUsize::new(16).unwrap())
                             .await
                             .unwrap()
                             .unwrap()
-                            .as_bytes(),
+                            .bytes,
                         b"onetwo"
                     );
                     assert!(
                         reader
-                            .next_chunk(NonZeroUsize::MIN)
+                            .next_batch(NonZeroUsize::MIN)
                             .await
                             .unwrap()
                             .is_none()
@@ -456,14 +456,14 @@ pub(super) fn contract_scenario() {
                         };
                         let mut reader = recovered.storage.follow_file(&identity, 0).await.unwrap();
                         let chunk = reader
-                            .next_chunk(NonZeroUsize::new(32).unwrap())
+                            .next_batch(NonZeroUsize::new(32).unwrap())
                             .await
                             .unwrap()
                             .unwrap();
-                        assert_eq!(chunk.as_bytes(), expected);
+                        assert_eq!(chunk.bytes, expected);
                         assert!(
                             reader
-                                .next_chunk(NonZeroUsize::MIN)
+                                .next_batch(NonZeroUsize::MIN)
                                 .await
                                 .unwrap()
                                 .is_none()
@@ -526,9 +526,7 @@ pub(super) fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let mut settings = config();
-                    settings.max_retries = 3;
-                    let f = Fixture::new(settings).await;
+                    let f = Fixture::new(config()).await;
                     Operations::register(
                         &f.runtime.operations,
                         "storage",

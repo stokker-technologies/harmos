@@ -315,10 +315,6 @@ name = "storage_recovery"
 path = "tests/storage/recovery/main.rs"
 
 [[test]]
-name = "storage_reads"
-path = "tests/storage/reads/main.rs"
-
-[[test]]
 name = "storage_files"
 path = "tests/storage/files/main.rs"
 
@@ -329,10 +325,6 @@ path = "tests/storage/objects/main.rs"
 [[test]]
 name = "storage_operations"
 path = "tests/storage/operations/main.rs"
-
-[[test]]
-name = "storage_frame"
-path = "tests/storage/frame/main.rs"
 
 [[test]]
 name = "operations_wire"

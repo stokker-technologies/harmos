@@ -54,10 +54,6 @@ fn crash_image(source: &Fixture) -> Arc<Data> {
         source.data.lost_files_through.load(Ordering::SeqCst),
         Ordering::SeqCst,
     );
-    data.retention_generation.store(
-        source.data.retention_generation.load(Ordering::SeqCst),
-        Ordering::SeqCst,
-    );
     *data.blobs.lock().unwrap() = source.data.blobs.lock().unwrap().clone();
     let saved = source.data.saved.load(Ordering::SeqCst) as u64;
     *data.files.lock().unwrap() = source
@@ -94,12 +90,10 @@ pub(super) async fn restart(source: &Fixture) -> Fixture {
         .await
         .unwrap();
     let settings = config();
-    let execution = settings.query_execution;
     let storage = StorageManager::new(
         StorageBackends {
             primary: data.clone(),
             state: recovery.clone(),
-            replicas: Vec::new(),
         },
         settings,
     )
@@ -110,7 +104,6 @@ pub(super) async fn restart(source: &Fixture) -> Fixture {
         storage,
         data,
         recovery,
-        execution,
     }
 }
 
@@ -287,11 +280,10 @@ pub(super) fn contract_scenario() {
                             .unwrap()
                             .contains("close-restart")
                     );
-                    let restored = StorageManager::new(
+                    let restored: StorageManager = StorageManager::new(
                         StorageBackends {
                             primary: f.data.clone(),
                             state: f.recovery.clone(),
-                            replicas: Vec::new(),
                         },
                         config(),
                     )
@@ -314,9 +306,7 @@ pub(super) fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let mut settings = config();
-                    settings.max_retries = 3;
-                    let f = Fixture::new(settings).await;
+                    let f = Fixture::new(config()).await;
                     let mut producer = f
                         .storage
                         .produce_file(metadata("fence-retry"))
@@ -411,13 +401,11 @@ pub(super) fn contract_scenario() {
                         .await
                         .unwrap();
                     source.storage.flush().await.unwrap();
-                    for failure in 0..3 {
+                    for failure in 1..3 {
                         let data = crash_image(&source);
                         let recovery = Arc::new(Recovery::new(data.history.clone()));
-                        let mut settings = config();
+                        let settings = config();
                         match failure {
-                            // The Complete Active Set Must Fit; Partial Recovery Is Forbidden.
-                            0 => settings.max_files = std::num::NonZeroUsize::MIN,
                             1 => {
                                 data.saved_productions
                                     .lock()
@@ -439,7 +427,6 @@ pub(super) fn contract_scenario() {
                             StorageBackends {
                                 primary: data.clone(),
                                 state: recovery,
-                                replicas: Vec::new(),
                             },
                             settings,
                         )
@@ -539,7 +526,7 @@ pub(super) fn contract_scenario() {
                     f.data.control.receipt_failures.store(1, Ordering::SeqCst);
                     assert!(
                         f.storage
-                            .save_once(&request.mutation, &request.through)
+                            .save_once(&request.mutation, &request.at)
                             .await
                             .is_err()
                     );
@@ -554,10 +541,10 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         restored
                             .storage
-                            .save_once(&request.mutation, &request.through)
+                            .save_once(&request.mutation, &request.at)
                             .await
                             .unwrap(),
-                        request.through
+                        request.at
                     );
                     assert_eq!(
                         restored.data.saved_productions.lock().unwrap()["lost-save"].1,
@@ -604,10 +591,6 @@ pub(super) fn contract_scenario() {
                     );
                     assert!(recovered.storage.follow_file(&file, 0).await.is_err());
                     assert!(recovered.storage.produce_file(metadata).await.is_err());
-                    assert_eq!(
-                        recovered.data.retention_generation.load(Ordering::SeqCst),
-                        2
-                    );
                     recovered.finish().await;
                     f.finish().await;
                 });

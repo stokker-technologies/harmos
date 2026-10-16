@@ -23,8 +23,8 @@ use std::task::Poll;
 // Local Imports
 use super::batching::{Batch, Progress, write_data};
 use super::manager::{Domain, Inner, Operation, Pending, Target};
+use super::snapshot::SnapshotAction;
 use super::staging::{FileAction, FileCompleted};
-use super::views::ViewAction;
 use super::{RecoveryPosition, StorageManager, StoragePart};
 use crate::supervision::executor;
 use crate::{
@@ -46,7 +46,7 @@ struct Running(Arc<Inner>);
 /* === Enums === */
 enum Action {
     Write(Arc<Pending>),
-    View(ViewAction),
+    Snapshot(SnapshotAction),
     File(FileAction),
     Save(Arc<super::saving::SaveWork>),
     Delete(Arc<super::deletion::DeleteWork>),
@@ -86,11 +86,11 @@ impl<A: Application> Resident<A> for Worker {
         let inner = &self.0.inner;
         let _running = Running(inner.clone());
         let mut changed = inner.changed.subscribe();
-        let mut next_flush = executor::now() + inner.settings.flush_interval;
+        let mut next_flush = executor::now() + super::config::FLUSH_INTERVAL;
         let mut retry_at = None;
         let mut failures = 0usize;
         let mut retry_generation = 0;
-        let mut prefer_views = true;
+        let mut prefer_control = true;
         let mut prefer_files = true;
         let mut prefer_pruning = true;
         let mut prefer_state = true;
@@ -98,16 +98,6 @@ impl<A: Application> Resident<A> for Worker {
         loop {
             changed.borrow_and_update();
             let now = executor::now();
-            let replica_floor = inner.replica_floor();
-            let retention_floor = inner.retention_floor();
-            let deletion_replicas_ready = inner.replicas.iter().all(|replica| {
-                let state = replica.state.lock().unwrap();
-                state.status.saved.is_some()
-                    && !state.status.closed
-                    && state.status.failure.is_none()
-            });
-            let replica_ceiling =
-                replica_floor.saturating_add(inner.settings.replica_lag_positions.get());
             let action = {
                 let mut state = inner.state.lock().unwrap();
                 if state.status.closed {
@@ -125,24 +115,20 @@ impl<A: Application> Resident<A> for Worker {
                 }
                 if now >= next_flush {
                     state.request_flush();
-                    next_flush = now + inner.settings.flush_interval;
+                    next_flush = now + super::config::FLUSH_INTERVAL;
                 }
                 state.expire_files();
                 state.request_saves();
                 state.request_deletions();
                 state.collect();
-                if state.queue.bytes() >= inner.settings.target_batch_bytes.get() {
+                if state.queue.bytes() >= inner.settings.target_batch_bytes() {
                     state.request_flush();
                 }
                 // Already registered snapshots acquire their pins before maintenance.
-                let prune_through = if state
-                    .views
-                    .values()
-                    .any(|view| !view.expired && view.result.is_none())
-                {
+                let prune_through = if state.snapshot_opening() {
                     0
                 } else {
-                    state.status.saved.sequence.min(retention_floor)
+                    state.status.saved.sequence
                 };
                 let mut prune = (inner.has_objects
                     && state.ready
@@ -156,10 +142,7 @@ impl<A: Application> Resident<A> for Worker {
                     None
                 } else if let Some(save) = state.save_action() {
                     Some(Action::Save(save))
-                } else if let Some(deletion) = deletion_replicas_ready
-                    .then(|| state.deletion_action(replica_floor))
-                    .flatten()
-                {
+                } else if let Some(deletion) = state.deletion_action() {
                     Some(Action::Delete(deletion))
                 } else if let Some(target) = state
                     .recovery_request
@@ -213,18 +196,18 @@ impl<A: Application> Resident<A> for Worker {
                 let data = data.or(prune);
                 // Alternate persistence with bounded control work; rotate files
                 // and views so neither producer churn nor reads can starve a peer.
-                let selected = if prefer_views || data.is_none() {
+                let selected = if prefer_control || data.is_none() {
                     let healthy = state.status.failure.is_none();
                     let file = if prefer_files && healthy {
-                        state.file_action(replica_ceiling).map(Action::File)
+                        state.file_action().map(Action::File)
                     } else {
                         None
                     };
                     let control = file
-                        .or_else(|| state.view_action(healthy).map(Action::View))
+                        .or_else(|| state.snapshot_action(healthy).map(Action::Snapshot))
                         .or_else(|| {
                             if healthy {
-                                state.file_action(replica_ceiling).map(Action::File)
+                                state.file_action().map(Action::File)
                             } else {
                                 None
                             }
@@ -247,7 +230,7 @@ impl<A: Application> Resident<A> for Worker {
                     prefer_state = entry.operation.domain() != Domain::Recovery;
                 }
                 prefer_pruning = !matches!(action, Action::Prune(_));
-                prefer_views = !matches!(action, Action::View(_) | Action::File(_));
+                prefer_control = !matches!(action, Action::Snapshot(_) | Action::File(_));
                 let Some(result) = context.until_stopping(perform(inner, &action)).await else {
                     return Ok(());
                 };
@@ -255,13 +238,7 @@ impl<A: Application> Resident<A> for Worker {
                     inner.state.lock().unwrap().pruning_objects = false;
                 }
                 if let Ok(Completed::Opened(id, snapshot)) = result {
-                    inner.state.lock().unwrap().opened(
-                        id,
-                        Arc::downgrade(inner),
-                        snapshot,
-                        inner.settings.snapshot_bytes.get(),
-                        inner.settings.view_idle_timeout,
-                    );
+                    inner.state.lock().unwrap().snapshot_opened(id, snapshot);
                     inner.notify();
                     continue;
                 }
@@ -292,12 +269,12 @@ impl<A: Application> Resident<A> for Worker {
                                 .file_completed(
                                     action,
                                     result,
-                                    inner.settings.file_session_timeout,
+                                    super::config::FILE_SESSION_TIMEOUT,
                                 ),
-                            (Action::View(ViewAction::Release(..)), Completed::Released(id)) => {
-                                state.remove_view(id);
-                                state.snapshot_released();
-                            }
+                            (
+                                Action::Snapshot(SnapshotAction::Release(..)),
+                                Completed::Released(id),
+                            ) => state.snapshot_removed(id),
                             (Action::Write(_), Completed::Write(progress)) => {
                                 if let Some(target) = progress.data {
                                     let saved =
@@ -372,7 +349,7 @@ impl<A: Application> Resident<A> for Worker {
                             {
                                 0
                             }
-                            _ => inner.settings.max_retries,
+                            _ => super::config::MAX_RETRIES,
                         };
                         retry_at = if transient(&error) && failures <= retries {
                             let multiplier = 1u32
@@ -380,11 +357,9 @@ impl<A: Application> Resident<A> for Worker {
                                 .unwrap_or(u32::MAX);
                             Some(
                                 executor::now()
-                                    + inner
-                                        .settings
-                                        .retry_base
+                                    + super::config::RETRY_BASE
                                         .saturating_mul(multiplier)
-                                        .min(inner.settings.retry_cap),
+                                        .min(super::config::RETRY_CAP),
                             )
                         } else {
                             None
@@ -415,12 +390,6 @@ impl<A: Application> Resident<A> for Worker {
                 inner.notify();
             } else {
                 let deadline = retry_at.map_or(next_flush, |retry| retry.min(next_flush));
-                let deadline = inner
-                    .state
-                    .lock()
-                    .unwrap()
-                    .view_deadline()
-                    .map_or(deadline, |view| view.min(deadline));
                 let deadline = inner
                     .state
                     .lock()
@@ -552,31 +521,21 @@ async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
             .bounded(
                 inner
                     .primary
-                    .prune_objects(through, inner.settings.object_prune_entries),
+                    .prune_objects(through, super::config::OBJECT_PRUNE_ENTRIES),
             )
             .await
             .map(Completed::Pruned),
         Action::File(action) => super::staging::perform(inner, action)
             .await
             .map(Completed::File),
-        Action::View(ViewAction::Open(id, saved, execution)) => {
-            let acquired = match execution {
-                Some(limits) => tokio::time::timeout(
-                    limits.timeout,
-                    inner.bounded(inner.primary.read_query_view(saved, *limits)),
-                )
-                .await
-                .unwrap_or_else(|_| {
-                    Err(Error::ResourceExhausted {
-                        resource: "query computation time",
-                    })
-                }),
-                None => inner.bounded(inner.primary.read_view(saved)).await,
-            };
-            Ok(Completed::Opened(*id, acquired))
+        Action::Snapshot(SnapshotAction::Open(id, at)) => {
+            let opened = inner.bounded(inner.primary.open_snapshot(at)).await;
+            Ok(Completed::Opened(*id, opened))
         }
-        Action::View(ViewAction::Release(id, snapshot)) => {
-            inner.primary.release_view(snapshot).await?;
+        Action::Snapshot(SnapshotAction::Release(id, snapshot)) => {
+            inner
+                .bounded(inner.primary.release_snapshot(snapshot))
+                .await?;
             Ok(Completed::Released(*id))
         }
         Action::Write(entry) => {

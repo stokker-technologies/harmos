@@ -9,10 +9,10 @@
 /* === Modules === */
 /* === Re-Exports === */
 /* === Imports === */
-use super::{fixture::Fixture, nonzero, waveforms};
+use super::{fixture::Fixture, waveforms};
 use criterion::{BenchmarkId, Criterion, Throughput};
 use harmos::Identifier;
-use harmos::storage::FileMetadata;
+use harmos::storage::{ByteRange, FileMetadata, ReadFile};
 use std::time::{Duration, Instant};
 /* === Constants === */
 /* === Macros === */
@@ -58,13 +58,20 @@ pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
                                     .unwrap();
                                 let publication = started.elapsed();
                                 let started = Instant::now();
-                                let mut reader =
-                                    fixture.storage.read_file(&reference).await.unwrap();
+                                let mut reader = fixture
+                                    .storage
+                                    .read_file(ReadFile {
+                                        file: reference,
+                                        range: ByteRange {
+                                            offset: 0,
+                                            limit: None,
+                                        },
+                                    })
+                                    .await
+                                    .unwrap();
                                 let mut received = Vec::with_capacity(payload.len());
-                                while let Some(batch) =
-                                    reader.next_chunk(nonzero(64 * 1024)).await.unwrap()
-                                {
-                                    received.extend_from_slice(&batch);
+                                while let Some(batch) = reader.next().await.unwrap() {
+                                    received.extend_from_slice(&batch.bytes);
                                 }
                                 let read = started.elapsed();
                                 resources.merge(probe.finish());

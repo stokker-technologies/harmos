@@ -29,7 +29,7 @@ use harmos::plugin::{
     PluginDefinitions, PluginEndpoint, PluginLifecycle, PluginLifecycleAuthority, PluginManager,
     PluginTransition, Router,
 };
-use harmos::storage::operations::{Acknowledge, AcknowledgeRequest, Query, WriteRecords};
+use harmos::storage::operations::{Query, WriteRecords};
 use harmos::storage::query::transform::{
     Transform,
     aggregate::{Aggregate as AggregateTransform, Measure},
@@ -226,7 +226,6 @@ pub(super) fn contract_scenario() {
                                         WriteRecords::ID,
                                         "bench",
                                     )]),
-                                    required::<Acknowledge>(Vec::new()),
                                 ],
                             ),
                             plugin("bystander", Vec::new()),
@@ -234,7 +233,7 @@ pub(super) fn contract_scenario() {
                         [],
                     )
                     .unwrap();
-                    assert_eq!(definitions.host_requirements().count(), 2);
+                    assert_eq!(definitions.host_requirements().count(), 1);
                     let mut manager = PluginManager::new(definitions).unwrap();
                     manager.initialize(&mut host).await.unwrap();
                     let writer = fixture
@@ -290,32 +289,6 @@ pub(super) fn contract_scenario() {
                         Err(Error::OperationUnauthorized { .. })
                     ));
 
-                    // A Receipt Binds To The Calling Plugin And Its Generation
-                    let receipt = writer
-                        .submit_as::<Acknowledge>(AcknowledgeRequest {
-                            replica: Identifier::new("mirror").unwrap(),
-                            cursor: (*cursor).clone(),
-                        })
-                        .unwrap()
-                        .await
-                        .unwrap();
-                    assert_eq!(*receipt, *cursor);
-                    let receipts = fixture.storage.receipts();
-                    assert_eq!(receipts.len(), 1);
-                    assert_eq!(receipts[0].holder.owner, "writer");
-                    assert!(
-                        fixture
-                            .runtime
-                            .operations
-                            .submit_as::<Acknowledge>(AcknowledgeRequest {
-                                replica: Identifier::new("mirror").unwrap(),
-                                cursor: (*cursor).clone(),
-                            })
-                            .unwrap()
-                            .await
-                            .is_err(),
-                        "the host itself holds no replica"
-                    );
                     manager.shutdown(&mut host).await.unwrap();
                     fixture.finish().await;
                 });

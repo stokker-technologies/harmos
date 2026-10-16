@@ -17,7 +17,6 @@ mod backend;
 mod contention;
 mod files;
 mod fixture;
-mod frame;
 mod ingestion;
 mod metrics;
 mod query;
@@ -53,6 +52,11 @@ static STATE_CLONES: AtomicUsize = AtomicUsize::new(0);
 
 /* === Structs === */
 struct Model;
+
+#[harmos::message]
+struct Text {
+    value: String,
+}
 
 #[derive(Default, Serialize, Deserialize)]
 struct State {
@@ -200,8 +204,6 @@ fn main() {
     transforms::run(&mut criterion, &executor);
     files::run(&mut criterion, &executor);
     contention::run(&mut criterion, &executor);
-    frame::run(&mut criterion);
-    executor.block_on(frame::reuse());
     criterion.final_summary();
 }
 
@@ -209,7 +211,6 @@ async fn measure(mode: &str, count: usize, repetition: Option<usize>) -> Duratio
     let data = Arc::new(Data::new(history()));
     let recovery = Arc::new(Recovery::new(history()));
     let config = StorageSettings {
-        flush_interval: Duration::from_secs(3_600),
         // The Controlled Backend Pins Whole Tables Before Producing A Page.
         budget: {
             let mut settings = backend::storage_settings().budget;
@@ -222,21 +223,12 @@ async fn measure(mode: &str, count: usize, repetition: Option<usize>) -> Duratio
             settings.max_pending_write_bytes = nonzero(128 * 1_024 * 1_024);
             settings
         },
-        target_batch_bytes: nonzero(128 * 1_024 * 1_024),
-        max_batch_bytes: nonzero(128 * 1_024 * 1_024),
-        query_execution: QueryLimits {
-            memory_bytes: nonzero(16 * 1024 * 1024),
-            ..backend::storage_settings().query_execution
-        },
-        write_batch_entries: nonzero(512),
-        write_batch_bytes: nonzero(4 * 1_024 * 1_024),
         ..backend::storage_settings()
     };
-    let storage = StorageManager::new(
+    let storage: StorageManager = StorageManager::new(
         StorageBackends {
             primary: data.clone(),
             state: recovery.clone(),
-            replicas: Vec::new(),
         },
         config,
     )
@@ -255,10 +247,11 @@ async fn measure(mode: &str, count: usize, repetition: Option<usize>) -> Duratio
     storage
         .write_schema(
             &schema,
-            &harmos::schema::graph::Schema {
-                root: 0,
-                definitions: vec![vec![]],
-            },
+            &harmos::schema::graph::Schema::from_declaration(
+                <Text as harmos::schema::Described>::DEFINITION,
+                &harmos::config::SchemaSettings::default(),
+            )
+            .unwrap(),
         )
         .await
         .unwrap();
@@ -270,12 +263,15 @@ async fn measure(mode: &str, count: usize, repetition: Option<usize>) -> Duratio
     recovery.control.flushes.lock().unwrap().clear();
 
     let payload = "x".repeat(PAYLOAD_BYTES);
+    let encoded = harmos::Message::encode_to_vec(&Text {
+        value: payload.clone(),
+    });
     let items: Vec<_> = (0..count)
         .map(|n| Identifier::new(format!("item-{n}")).unwrap())
         .collect();
     let inputs: Vec<_> = items
         .iter()
-        .map(|item| record(&schema, item, payload.as_bytes()))
+        .map(|item| record(&schema, item, &encoded))
         .collect();
     STATE_CLONES.store(0, Ordering::Relaxed);
     let begin = Instant::now();
@@ -318,14 +314,6 @@ async fn measure(mode: &str, count: usize, repetition: Option<usize>) -> Duratio
     }
     let admission_ms = begin.elapsed().as_secs_f64() * 1_000.0;
     let state_clones = STATE_CLONES.load(Ordering::Relaxed);
-    assert!(
-        data.control.write_sizes.lock().unwrap().is_empty(),
-        "admission must not flush"
-    );
-    assert!(
-        recovery.control.write_sizes.lock().unwrap().is_empty(),
-        "admission must not flush"
-    );
     let pending_bytes = storage.status().pending_bytes;
     let begin = Instant::now();
     storage.flush().await.unwrap();
@@ -334,30 +322,30 @@ async fn measure(mode: &str, count: usize, repetition: Option<usize>) -> Duratio
     storage.flush_recovery().await.unwrap();
     let flush_recovery_ms = begin.elapsed().as_secs_f64() * 1_000.0;
     let begin = Instant::now();
-    let mut query = RecordQuery::new(schema, |bytes: &[u8], allowance: NonZeroUsize| {
-        if std::mem::size_of::<Vec<u8>>().saturating_add(bytes.len()) > allowance.get() {
-            return Err(harmos::Error::ResourceExhausted {
-                resource: "query decoded memory",
-            });
-        }
-        Ok(bytes.to_vec())
-    });
-    // The In-Memory Fixture Pins The Entire Native Snapshot For Replay.
-    query.options.execution = Some(QueryLimits {
-        memory_bytes: nonzero(16 * 1_024 * 1_024),
-        admission: Admission::Guaranteed,
-        spill_bytes: 0,
-        timeout: Duration::from_secs(5),
-    });
-    query.options.page = Some(limits(256, 1_024 * 1_024));
-    query.options.decoded_bytes = Some(nonzero(1_024 * 1_024));
-    let mut reader = storage.query(query).await.unwrap();
+    let mut reader = storage
+        .query(harmos::storage::query::Query {
+            at: storage.cursor_saved(),
+            source: harmos::storage::query::Source::Records(
+                harmos::storage::query::RecordSelection {
+                    schema,
+                    scope: None,
+                    item: None,
+                    source_start: None,
+                    source_end: None,
+                },
+            ),
+            transforms: Vec::new(),
+            slice: harmos::storage::query::RowSlice::default(),
+        })
+        .await
+        .unwrap();
     let mut replay_count = 0;
-    let mut stored_payload_bytes = 0;
-    while let Some(page) = reader.next_page().await.unwrap() {
-        replay_count += page.len();
-        stored_payload_bytes += page.iter().map(|row| row.payload.len()).sum::<usize>();
+    while let Some(output) = reader.next().await.unwrap() {
+        if let harmos::storage::query::QueryOutput::Batch(batch) = output {
+            replay_count += batch.as_record_batch().num_rows();
+        }
     }
+    let stored_payload_bytes = replay_count * encoded.len();
     let replay_ms = begin.elapsed().as_secs_f64() * 1_000.0;
     assert_eq!(replay_count, if mode == "journal" { 0 } else { count });
     assert_eq!(storage.status().pending_bytes, 0);
@@ -367,7 +355,6 @@ async fn measure(mode: &str, count: usize, repetition: Option<usize>) -> Duratio
             json!({
                 "mode": mode, "count": count, "repetition": repetition,
                 "payload_bytes_per_record": PAYLOAD_BYTES,
-                "query_memory_bytes": 16 * 1024 * 1024,
                 "stored_payload_bytes": stored_payload_bytes, "pending_bytes": pending_bytes,
                 "admission_ms": admission_ms, "half_admission_ms": halves,
                 "flush_data_ms": flush_data_ms, "flush_recovery_ms": flush_recovery_ms,

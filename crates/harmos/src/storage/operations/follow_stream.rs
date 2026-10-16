@@ -21,14 +21,14 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use super::DataSelection;
 
 use crate::operations::{Context, Operation, StreamOutput};
 use crate::operations::{OperationDeclaration, OutputDeclaration, Visibility, WireOperation};
 use crate::schema::Described;
 use crate::storage::{StorageCursor, StoredRow};
 
-use crate::storage::{StorageManager, StreamQuery};
+use crate::storage::StorageManager;
+use crate::storage::follow::Stream;
 
 use crate::{Error, MemorySize, Result};
 
@@ -51,7 +51,7 @@ pub(super) struct Handler<C> {
 
 /* === Implementations === */
 impl OperationDeclaration for FollowStream {
-    type Request = DataSelection;
+    type Request = Stream;
     type Response = StorageCursor;
     const ID: &'static str = "storage.follow_stream";
     const POLICY: crate::operations::OperationPolicy = super::STREAM_POLICY;
@@ -87,46 +87,22 @@ impl<C: 'static> Operation for Handler<C> {
     async fn run<'a>(
         &mut self,
         _: Self::Context<'a>,
-        selection: &mut DataSelection,
+        request: &mut Stream,
         output: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<StorageCursor>> {
-        async {
-            selection.validate()?;
-            if selection.selection.descending || selection.selection.through.is_some() {
-                return Err(Error::InvalidInput {
-                    field: "storage follow",
-                    reason: "following requires ascending open-ended selection",
-                });
-            }
-
-            let mut query =
-                StreamQuery::new(selection.schema.clone(), super::data_selection::decode);
-            query.scope = selection.selection.scope.clone();
-            query.item = selection.selection.item.clone();
-            query.source_time = selection.source_time();
-            query.options = selection.selection.options()?;
-            query.stream = selection.stream.clone();
-            let mut reader = self.storage.follow(query).await?;
-            let boundary = reader.accepted_boundary();
-            if let Some(after) = &selection.selection.after
-                && !boundary.covers(after)?
-            {
-                return Err(Error::InvalidInput {
-                    field: "storage query",
-                    reason: "start exceeds accepted boundary",
-                });
-            }
-            loop {
-                let page = reader.next_page().await?;
-                for entry in page.iter() {
-                    output
-                        .send_with(entry.memory_size(), || Ok(entry.clone()))
-                        .await?;
-                }
+        crate::storage::query::Source::Stream(request.selection.clone()).validate()?;
+        let mut follower = self
+            .storage
+            .follow::<StoredRow>(request.after.as_ref(), request.selection.clone())
+            .await?;
+        loop {
+            let page = follower.next().await?;
+            for entry in page.entries() {
+                output
+                    .send_with(entry.memory_size(), || Ok(entry.clone()))
+                    .await?;
             }
         }
-        .await
-        .map(|value: StorageCursor| value.into())
     }
 }
 

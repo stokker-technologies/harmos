@@ -41,7 +41,7 @@ use std::sync::Arc;
 // Local Imports
 use super::{Fixture, config, write};
 use harmos::operations::Contracts;
-use harmos::storage::operations::{Operations, Save, SaveRequest, Selection};
+use harmos::storage::operations::{Operations, Save, SaveRequest};
 
 /* === Constants === */
 
@@ -76,6 +76,16 @@ fn followed(
     }
 }
 
+fn records() -> harmos::storage::query::RecordSelection {
+    harmos::storage::query::RecordSelection {
+        schema: super::schema(),
+        scope: None,
+        item: None,
+        source_start: None,
+        source_end: None,
+    }
+}
+
 pub(super) fn save_request(
     fixture: &Fixture,
     through: harmos::storage::StorageCursor,
@@ -85,7 +95,7 @@ pub(super) fn save_request(
             window: fixture.storage.mutation_window().unwrap().id,
             key: harmos::Identifier::new("save").unwrap(),
         },
-        through,
+        at: through,
     }
 }
 
@@ -282,9 +292,7 @@ fn own_contract() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let mut settings = config();
-                    settings.max_retries = 3;
-                    let fixture = Fixture::new(settings).await;
+                    let fixture = Fixture::new(config()).await;
                     Operations::register(
                         &fixture.runtime.operations,
                         "storage",
@@ -338,7 +346,7 @@ fn own_contract() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    use harmos::storage::operations::{DataSelection, Follow, Followed};
+                    use harmos::storage::operations::{Follow, Followed};
                     tokio::time::timeout(std::time::Duration::from_secs(5), async {
                         let fixture = Fixture::new(config()).await;
                         Operations::register(
@@ -350,17 +358,9 @@ fn own_contract() {
                         .unwrap();
                         write(&fixture.storage, "historical").await;
                         fixture.storage.flush().await.unwrap();
-                        let request = DataSelection {
-                            selection: Selection {
-                                page_rows: 1,
-                                page_bytes: 4096,
-                                ..Selection::default()
-                            },
-                            schema: super::schema(),
-                            stream: None,
-                            source_start: None,
-                            source_end: None,
-                            record_filter: None,
+                        let request = harmos::storage::follow::Records {
+                            after: None,
+                            selection: records(),
                         };
                         let limits = harmos::operations::StreamSettings {
                             items: NonZeroUsize::MIN,
@@ -392,7 +392,7 @@ fn own_contract() {
                         assert!(instance.await.is_err());
                         drop(receiver);
                         let mut request = request;
-                        request.selection.after = Some(second_position);
+                        request.after = Some(second_position);
                         let (sender, mut receiver) =
                             harmos::operations::stream::<Followed>(limits).unwrap();
                         let instance = fixture
@@ -421,7 +421,7 @@ fn own_contract() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    use harmos::storage::operations::{DataSelection, FollowStream};
+                    use harmos::storage::operations::FollowStream;
                     use harmos::storage::{StoredRow, StreamWrite};
                     tokio::time::timeout(std::time::Duration::from_secs(5), async {
                         let fixture = Fixture::new(config()).await;
@@ -435,13 +435,16 @@ fn own_contract() {
                         let key = super::schema();
                         let stream = harmos::Identifier::new("voltage").unwrap();
                         let item = harmos::Identifier::new("row").unwrap();
-                        let request = DataSelection {
-                            selection: Selection::default(),
-                            schema: key.clone(),
-                            stream: Some(stream.clone()),
-                            source_start: None,
-                            source_end: None,
-                            record_filter: None,
+                        let request = harmos::storage::follow::Stream {
+                            after: None,
+                            selection: harmos::storage::query::StreamSelection {
+                                schema: key.clone(),
+                                scope: None,
+                                item: None,
+                                stream: Some(stream.clone()),
+                                source_start: None,
+                                source_end: None,
+                            },
                         };
                         let limits = harmos::operations::StreamSettings {
                             items: NonZeroUsize::MIN,
@@ -472,7 +475,7 @@ fn own_contract() {
                         let mut foreign = fixture.storage.cursor_accepted();
                         foreign.history.epoch = harmos::Identifier::new("foreign").unwrap();
                         let mut request = request;
-                        request.selection.after = Some(foreign);
+                        request.after = Some(foreign);
                         let (sender, mut receiver) =
                             harmos::operations::stream::<StoredRow>(limits).unwrap();
                         let instance = fixture
@@ -498,7 +501,7 @@ fn own_contract() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    use harmos::storage::operations::{DataSelection, Follow, Followed};
+                    use harmos::storage::operations::{Follow, Followed};
                     use std::time::Duration;
                     let fixture = Fixture::new(config()).await;
                     Operations::register(
@@ -516,13 +519,9 @@ fn own_contract() {
                         },
                     )
                     .unwrap();
-                    let request = DataSelection {
-                        selection: Selection::default(),
-                        schema: super::schema(),
-                        stream: None,
-                        source_start: None,
-                        source_end: None,
-                        record_filter: None,
+                    let request = harmos::storage::follow::Records {
+                        after: None,
+                        selection: records(),
                     };
                     let instance = fixture
                         .runtime

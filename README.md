@@ -261,13 +261,9 @@ before decoding; add their own entry bookkeeping and reject `None` on overflow.
 
 Native managed calls return `operations::Response<T>`, which dereferences to the
 original declared payload. Response clones and cache entries share its owner.
-Storage producers can use
-`preparation.finish(wire)?.try_into_value()?.try_into_response()?` to retain the
-original admitted read loan through delivery and encoding. The conversion admits
-a conservative response or stream-item bookkeeping allowance on that same
-ledger; the loan is released when its last owner is dropped. Stream producers
-use `output.send_owned(response).await?` to retain the same owner through queueing
-and encoding; ordinary stream payloads keep their existing `Send` contract. Protobuf payloads and RPC paths remain unchanged.
+Stream producers use `output.send_owned(response).await?` to retain the same owner
+through queueing and encoding; ordinary stream payloads keep their existing `Send`
+contract. Protobuf payloads and RPC paths remain unchanged.
 
 Harmos serves no built-in operation by default. `builtin::Catalog::register`
 serves `host.operations.status`, `host.operations.cancel` and
@@ -310,6 +306,22 @@ unread streams, are aborted after half of `shutdown_timeout`. The application
 runtime stays available for a new attachment. Accepted sockets
 use TCP_NODELAY so small flow-control windows do not add Nagle buffering delays.
 
+Storage is configured by three explicit groups, with no defaults:
+
+```rust
+let settings = StorageSettings {
+    budget: StorageBudget { read_memory_bytes },
+    request: StorageRequestSettings {
+        max_pending_queries,
+        max_active_queries,
+        max_pending_write_batches,
+        max_pending_write_bytes,
+    },
+    response: StorageResponseSettings { batch_rows, batch_bytes },
+};
+let storage = StorageManager::new(StorageBackends { primary, state }, settings)?;
+```
+
 Finite storage queries select a source at a full persisted storage cursor,
 apply an ordered transform plan, and apply row `offset`/`limit` to the final
 result. Delivery emits a schema, bounded Arrow record batches, and a final
@@ -317,49 +329,39 @@ operation completion. Response `batch_rows` and `batch_bytes` bound each deliver
 batch; they do not truncate the query result. Consumers retain the storage
 memory ownership of shared Arrow buffers through clones and slices.
 
+```rust
+let mut reader = storage.query(Query { at, source, transforms, slice }).await?;
+while let Some(output) = reader.next().await? {
+    // One QueryOutput::Schema, then QueryOutput::Batch values.
+}
+let completion = reader.completion()?;
+```
+
+Every read shares the one read budget. Work that cannot fit while other queries
+hold memory waits for released capacity; work that can never fit the budget, even
+after splitting source pages down to one row, fails with `ResourceExhausted`
+instead of waiting on itself. Dropping a reader or an in-progress `next` cancels
+it and releases its query slot; batches already returned stay charged until
+they are dropped.
+
+`StorageManager::read_file(ReadFile { file, range })` streams a byte range of a
+finished, immutable file in response-sized batches. `Follow`, `FollowStream`,
+`FollowObjects` and `FollowFile` are the live subscriptions: each delivers saved
+history after its `after` cursor, then newly accepted entries.
+
 Typed stream, record and object writers acknowledge acceptance and durability
 separately for each atomic logical batch. A disconnected invocation may have
 committed earlier batches; callers must not blindly replay unacknowledged data.
 Finished-file reads are separate from producing-file follow/resume operations.
 The built-in `storage::state::file::FileBackend` persists checksummed JSON checkpoints
-and a JSONL journal, using the supplied storage size settings.
+and a JSONL journal, bounded by the storage batch ceiling.
 
 State persistence uses `storage::state::StateBackend`; the state manager owns
 transactions and replay while the storage manager owns admission and durability.
 
-Saved-view frame queries combine `Predicate::Compare`, `Predicate::In` and
-`Predicate::Exists` filters with AND. Membership accepts at most 64 scalar
-alternatives; an empty set matches nothing. Presence excludes missing and null
-values, so nested ownership fields can be required without admitting unscoped
-records. Queries keep the original saved cut; read allocations and retained
-results are charged to the shared storage read budget.
-
-Raw saved record paging accepts bounded disjunction through
-the native `RecordQuery::filter` adapter:
-
-```rust
-RecordFilter {
-    columns,
-    clauses: vec![
-        RecordClause { predicates: execution_owner },
-        RecordClause { predicates: subscribed_items },
-    ],
-}
-```
-
-Clauses combine with OR and their predicates with AND. A filter has 1..64 scalar
-columns and 1..64 total predicates in nonempty clauses; membership remains
-capped at 64 values. Supporting backends validate the selected schema and apply
-predicates within the original cut, continuation and query limits. For original
-raw pages, acquire `StorageManager::view_with_limits` and call
-`StorageView::read_records` with `ReadSelection::through`; its `StorageReader`
-returns budget-owned `StoragePage<StoredRecord>` values. Keep envelope process
-scope separate from nested payload ownership. Filtered queries require saved
-paging; direct follow and replay reject them.
-
 A retained, connected `StorageFile` stays live during idle periods under its
 original producer owner. Dropping the producer or cancelling its pending write
-starts the consumer-configured `file_session_timeout` resume window;
+starts a bounded resume window;
 recovered sessions have the same bounded window. Token-only mutation
 producers retain bounded inactivity expiry because no native handle owns their
 lifetime. An unadopted native resume remains disconnected. Resume fences the old

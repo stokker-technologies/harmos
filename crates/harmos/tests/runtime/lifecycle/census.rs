@@ -1248,8 +1248,7 @@ fn operation_facility_gate(path: &str, attribute: &str) -> bool {
         "#[cfg(any(feature=\"plugin-sidecar\",test))]" => &["supervision/instance.rs"],
         // Native And Remote Observer Adapters Share Retained Cleanup Ownership.
         "#[cfg(any(feature=\"plugin\",feature=\"plugin-guest\",feature=\"plugin-sidecar\"))]"
-        | "#[cfg(not(any(feature=\"plugin\",feature=\"plugin-guest\",feature=\"plugin-sidecar\")))]" =>
-        {
+        | "#[cfg(not(any(feature=\"plugin\",feature=\"plugin-guest\",feature=\"plugin-sidecar\")))]" => {
             &[
                 "grpc/server.rs",
                 "error.rs",
@@ -1268,8 +1267,6 @@ fn operation_facility_gate(path: &str, attribute: &str) -> bool {
                 "records/mod.rs",
                 "records/registration.rs",
                 "runtime/lifecycle.rs",
-                // A Replica Receipt Binds To Its Calling Plugin Generation.
-                "storage/operations/acknowledge.rs",
                 "streams/definition.rs",
                 "streams/mod.rs",
                 "streams/publications.rs",
@@ -1314,7 +1311,6 @@ fn operation_facility_gate(path: &str, attribute: &str) -> bool {
             "plugin/mod.rs",
             "plugin/host.rs",
         ],
-        "#[cfg(feature=\"signal-fft\")]" => &["storage/series/transform.rs"],
         "#[cfg(feature=\"plugin-sidecar\")]" => &[
             "config.rs",
             "plugin/definition.rs",

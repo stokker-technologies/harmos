@@ -18,7 +18,7 @@ pub(crate) use timestamp::Time;
 // Standard Library Imports
 use std::borrow::Cow;
 use std::marker::PhantomData;
-use std::num::{NonZeroU32, NonZeroUsize};
+use std::num::NonZeroU32;
 
 // Third Party Imports
 
@@ -305,13 +305,11 @@ pub(crate) struct Float;
 pub(crate) struct Text;
 pub(crate) struct Code<E>(PhantomData<fn() -> E>);
 pub(crate) struct Index;
-pub(crate) struct Count;
 pub(crate) struct Wide;
 pub(crate) struct WideNonZero;
 pub(crate) struct WideSigned;
 pub(crate) struct Wrap<A>(PhantomData<fn() -> A>);
 pub(crate) struct Many<A>(PhantomData<fn() -> A>);
-pub(crate) struct Both<A, B>(PhantomData<fn() -> (A, B)>);
 
 /* === Enums === */
 
@@ -895,51 +893,6 @@ impl Value for Index {
     }
 }
 
-impl Value for Count {
-    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Count));
-    type Native = NonZeroUsize;
-    const KIND: Kind = Kind::U64;
-    fn postcard_write(value: &NonZeroUsize, bytes: &mut Vec<u8>) {
-        Index::postcard_write(&value.get(), bytes);
-    }
-
-    fn postcard_size(value: &NonZeroUsize) -> usize {
-        Index::postcard_size(&value.get())
-    }
-
-    fn postcard_memory(input: &mut PostcardReader<'_>) -> Result<usize> {
-        Self::postcard_read(input)?;
-        Ok(0)
-    }
-
-    fn postcard_read(input: &mut PostcardReader<'_>) -> Result<NonZeroUsize> {
-        NonZeroUsize::new(Index::postcard_read(input)?)
-            .ok_or_else(|| MessageError::borrowed("count must be nonzero"))
-    }
-
-    #[cfg(feature = "grpc")]
-    fn write(value: &NonZeroUsize, tag: u32, bytes: &mut Vec<u8>) {
-        Index::write(&value.get(), tag, bytes);
-    }
-
-    #[cfg(feature = "grpc")]
-    fn size(value: &NonZeroUsize, tag: u32) -> usize {
-        Index::size(&value.get(), tag)
-    }
-
-    #[cfg(feature = "grpc")]
-    fn memory(input: DecodeInput<'_>, tag: u32) -> Result<usize> {
-        Self::read(input, tag)?;
-        Ok(0)
-    }
-
-    #[cfg(feature = "grpc")]
-    fn read(input: DecodeInput<'_>, tag: u32) -> Result<NonZeroUsize> {
-        NonZeroUsize::new(Index::read(input, tag)?)
-            .ok_or_else(|| MessageError::borrowed("count must be nonzero"))
-    }
-}
-
 // 128-Bit Values Travel As A Message Of Lossless High And Low Halves.
 macro_rules! wide {
     ($adapter:ty, $native:ty, $high:ty, $high_codec:ty, $split:expr, $join:expr) => {
@@ -1203,86 +1156,6 @@ impl<A: Value> Value for Many<A> {
 }
 
 // One Message Holding A Pair At Tags 1 And 2.
-impl<A: Value, B: Value> Described for Both<A, B> {
-    const NAME: &'static str = <Self as Value>::NAME;
-    const FIELDS: &'static [Field] = &[
-        crate::schema::declaration::Field {
-            name: Cow::Borrowed("first"),
-            tag: 1,
-            kind: A::KIND,
-            cardinality: A::CARDINALITY,
-        },
-        crate::schema::declaration::Field {
-            name: Cow::Borrowed("second"),
-            tag: 2,
-            kind: B::KIND,
-            cardinality: B::CARDINALITY,
-        },
-    ];
-    const MARKER: &'static [u8] =
-        declaration::encode_buffer::<2048>(<Self as Described>::NAME, Self::FIELDS)
-            .split_at(declaration::encoded_len(
-                <Self as Described>::NAME,
-                Self::FIELDS,
-            ))
-            .0;
-}
-impl<A: Value, B: Value> Value for Both<A, B> {
-    const NAME: &'static str = declaration::Name::new(
-        concat!(module_path!(), "::", stringify!(Both)),
-        &[A::NAME, B::NAME],
-    )
-    .as_str();
-    type Native = (A::Native, B::Native);
-    const KIND: Kind = Kind::Message {
-        definition: <Self as Described>::DEFINITION,
-    };
-    fn postcard_write(value: &Self::Native, bytes: &mut Vec<u8>) {
-        A::postcard_write(&value.0, bytes);
-        B::postcard_write(&value.1, bytes);
-    }
-
-    fn postcard_size(value: &Self::Native) -> usize {
-        A::postcard_size(&value.0).saturating_add(B::postcard_size(&value.1))
-    }
-
-    fn postcard_memory(input: &mut PostcardReader<'_>) -> Result<usize> {
-        crate::__private::decoding_add(A::postcard_memory(input)?, B::postcard_memory(input)?)
-    }
-
-    fn postcard_read(input: &mut PostcardReader<'_>) -> Result<Self::Native> {
-        Ok((A::postcard_read(input)?, B::postcard_read(input)?))
-    }
-
-    #[cfg(feature = "grpc")]
-    fn write(value: &Self::Native, tag: u32, bytes: &mut Vec<u8>) {
-        let length = A::size(&value.0, 1).saturating_add(B::size(&value.1, 2));
-        write_header(tag, length, bytes);
-        A::write(&value.0, 1, bytes);
-        B::write(&value.1, 2, bytes);
-    }
-
-    #[cfg(feature = "grpc")]
-    fn size(value: &Self::Native, tag: u32) -> usize {
-        length_delimited_size(
-            tag,
-            A::size(&value.0, 1).saturating_add(B::size(&value.1, 2)),
-        )
-    }
-
-    #[cfg(feature = "grpc")]
-    fn memory(input: DecodeInput<'_>, tag: u32) -> Result<usize> {
-        let child = input.child(bytes_field(input, tag)?.unwrap_or(&[]))?;
-        crate::__private::decoding_add(A::memory(child, 1)?, B::memory(child, 2)?)
-    }
-
-    #[cfg(feature = "grpc")]
-    fn read(input: DecodeInput<'_>, tag: u32) -> Result<Self::Native> {
-        let child = input.child(bytes_field(input, tag)?.unwrap_or(&[]))?;
-        Ok((A::read(child, 1)?, B::read(child, 2)?))
-    }
-}
-
 /* === Public Functions === */
 
 /* === Private Functions === */

@@ -36,16 +36,11 @@ impl Fixture {
         let mut settings = backend::storage_settings();
         settings.request.max_active_queries = super::nonzero(concurrency);
         settings.budget.read_memory_bytes = super::nonzero(128 * 1024 * 1024);
-        settings.query_execution.memory_bytes = super::nonzero(32 * 1024 * 1024);
         settings.request.max_pending_write_bytes = super::nonzero(32 * 1024 * 1024);
-        settings.target_batch_bytes = super::nonzero(4 * 1024 * 1024);
-        settings.max_batch_bytes = super::nonzero(8 * 1024 * 1024);
-        settings.write_batch_bytes = super::nonzero(8 * 1024 * 1024);
         let storage = StorageManager::new(
             StorageBackends {
                 primary: data.clone(),
                 state: Arc::new(backend::Recovery::new(backend::history())),
-                replicas: vec![],
             },
             settings.clone(),
         )

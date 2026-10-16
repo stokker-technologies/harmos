@@ -45,7 +45,6 @@ fn construct(settings: StorageSettings) -> harmos::Result<StorageManager> {
     let backends = StorageBackends {
         primary: Arc::new(Data::new(history())),
         state: Arc::new(Recovery::new(history())),
-        replicas: Vec::new(),
     };
     StorageManager::new(backends, settings)
 }
@@ -55,30 +54,25 @@ use super::*;
 #[test]
 fn contract_scenario() {
     {
-        scenario_runtime::check("producer_timeout_explicit", || {
+        scenario_runtime::check("response_fits_read_budget", || {
             let mut settings = storage_settings();
-            assert_eq!(settings.file_session_timeout, Duration::from_secs(60));
-            settings.file_session_timeout = Duration::ZERO;
-            assert!(construct(settings.clone()).is_err());
-            settings.file_session_timeout = Duration::MAX;
-            assert!(construct(settings.clone()).is_err());
-            settings.file_session_timeout = Duration::from_millis(1);
             construct(settings.clone()).unwrap();
+            settings.response.batch_bytes =
+                NonZeroUsize::new(settings.budget.read_memory_bytes.get() + 1).unwrap();
+            assert!(construct(settings.clone()).is_err());
+            settings.response.batch_bytes = settings.budget.read_memory_bytes;
+            construct(settings).unwrap();
         });
     }
     {
-        scenario_runtime::check("byte_limits_checked", || {
+        scenario_runtime::check("query_counts_bounded", || {
             let mut settings = storage_settings();
-            construct(settings.clone()).unwrap();
-            settings.target_batch_bytes =
-                NonZeroUsize::new(settings.max_batch_bytes.get() + 1).unwrap();
+            settings.request.max_active_queries =
+                NonZeroUsize::new(tokio::sync::Semaphore::MAX_PERMITS + 1).unwrap();
             assert!(construct(settings.clone()).is_err());
-            settings.target_batch_bytes = NonZeroUsize::new(1).unwrap();
-            settings.max_batch_bytes =
-                NonZeroUsize::new(settings.request.max_pending_write_bytes.get() + 1).unwrap();
-            assert!(construct(settings.clone()).is_err());
-            settings.max_batch_bytes = settings.request.max_pending_write_bytes;
-            construct(settings.clone()).unwrap();
+            settings.request.max_active_queries = NonZeroUsize::MIN;
+            settings.request.max_pending_queries = NonZeroUsize::MIN;
+            construct(settings).unwrap();
         });
     }
 }

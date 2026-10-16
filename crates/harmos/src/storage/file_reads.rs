@@ -7,21 +7,28 @@
  * ***
  */
 
+// Finished File Reads
+
 /* === Modules === */
 
 /* === Re-Exports === */
 
 /* === Imports === */
 // Standard Library Imports
-use std::fmt;
 use std::io;
 use std::num::NonZeroUsize;
-use std::ops::Deref;
+use std::sync::Arc;
+
 // Third Party Imports
 use sha2::{Digest, Sha256};
+
 // Local Imports
-use super::manager::{MemoryReservation, Operation, encoded_size};
-use super::*;
+use super::backend::ScanPage;
+use super::capacity::{Held, Pool, Refusal, Reservation};
+use super::manager::{ENTRY_OVERHEAD, Inner, Operation, encoded_size};
+use super::query::FileSelection;
+use super::snapshot::Snapshot;
+use super::{FileBatch, FileCompletion, FileReference, ReadFile, StorageManager};
 use crate::{BackendFailure, Error, Result};
 
 /* === Constants === */
@@ -31,19 +38,18 @@ use crate::{BackendFailure, Error, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
-pub struct StorageFileReader {
-    view: Option<StorageView>,
+/// Streams a byte range of one finished, immutable file in response batches.
+pub struct FileReader {
+    inner: Arc<Inner>,
+    held: Held,
+    snapshot: Option<Snapshot>,
     file: FileReference,
     offset: u64,
     end: u64,
-    verify_hash: bool,
+    bytes: u64,
+    verify: bool,
     hash: Sha256,
-    _metadata: MemoryReservation,
-}
-
-pub struct FileChunk {
-    pub(super) bytes: Vec<u8>,
-    pub(super) _reservation: MemoryReservation,
+    _metadata: Reservation,
 }
 
 /* === Enums === */
@@ -51,142 +57,76 @@ pub struct FileChunk {
 /* === Traits === */
 
 /* === Implementations === */
-impl FileChunk {
-    pub fn as_bytes(&self) -> &[u8] {
-        &self.bytes
-    }
-
-    pub fn into_query_value(self) -> QueryValue<Vec<u8>> {
-        QueryValue::from_file_chunk(self)
-    }
-
-    pub(super) fn into_charged_parts(self) -> (Vec<u8>, MemoryReservation) {
-        (self.bytes, self._reservation)
-    }
-}
-
-impl Deref for FileChunk {
-    type Target = [u8];
-
-    fn deref(&self) -> &Self::Target {
-        self.as_bytes()
-    }
-}
-
-impl AsRef<[u8]> for FileChunk {
-    fn as_ref(&self) -> &[u8] {
-        self.as_bytes()
-    }
-}
-
-impl fmt::Debug for FileChunk {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_tuple("FileChunk")
-            .field(&self.as_bytes())
-            .finish()
-    }
-}
-
 impl<C> StorageManager<C> {
-    pub async fn read_file(&self, file: &FileReference) -> Result<StorageFileReader> {
-        // Validate pending provenance before awaiting snapshot acquisition. Saving
-        // may then release queue metadata without making an owned read depend on it.
-        let pending = {
+    /// Open a finished file reference for reading. Producing files are refused.
+    pub async fn read_file(&self, request: ReadFile) -> Result<FileReader> {
+        let ReadFile { file, range } = request;
+        let end = range.end(file.length)?;
+        self.inner.primary.history().check(&file.position.history)?;
+
+        // Accepted References Not Yet Saved Must Match The Queued Publication.
+        let (saved, pending) = {
             let state = self.inner.state.lock().unwrap();
             if !state.status.accepted.covers(&file.position)? {
-                return Err(Error::InvalidInput {
-                    field: "file reference",
-                    reason: "file has not been admitted",
-                });
+                return Err(invalid("file has not been admitted"));
             }
-            state.queue.iter().find_map(|entry| match &entry.operation {
-                Operation::File(actual) if actual.position == file.position => Some(actual == file),
+            let pending = state.queue.iter().find_map(|entry| match &entry.operation {
+                Operation::File(actual) if actual.position == file.position => {
+                    Some(actual == &file)
+                }
                 _ => None,
-            })
+            });
+            (state.status.saved.clone(), pending)
         };
         if pending == Some(false) {
-            return Err(Error::InvalidInput {
-                field: "file reference",
-                reason: "immutable metadata does not match a finished file",
-            });
+            return Err(invalid("immutable metadata does not match a finished file"));
         }
-        let view = self.view().await?;
-        if pending == Some(true) {
-            StorageFileReader::new(view, file).await
-        } else {
-            view.read_file(file).await
-        }
-    }
-}
-
-impl StorageView {
-    pub(super) fn read_files(
-        &self,
-        selection: ReadSelection,
-    ) -> Result<StorageReader<FileReference>> {
-        self.reader::<FileReference>(selection)
-    }
-
-    pub async fn read_file(&self, file: &FileReference) -> Result<StorageFileReader> {
-        self.compute(async {
-            let mut selection = ReadSelection::new(ReadKind::Files);
-            selection.history = ReadHistory::Retained;
-            selection.item = Some(file.metadata.id.clone());
-            selection.scope = file.metadata.scope.clone();
-            selection.after = file
-                .position
-                .sequence
-                .checked_sub(1)
-                .ok_or(Error::InvalidInput {
-                    field: "file reference",
-                    reason: "file has no admission position",
-                })?;
-            selection.through = Some(file.position.sequence);
-            let mut reader = self.read_files(selection)?;
-            let limits = ReadLimits {
-                rows: NonZeroUsize::new(1).unwrap(),
-                bytes: NonZeroUsize::new(encoded_size(file)?).unwrap(),
-            };
-            let page =
-                reader
-                    .next_page_in_computation(limits)
-                    .await?
-                    .ok_or(Error::InvalidInput {
-                        field: "file reference",
-                        reason: "file is not visible in this view",
-                    })?;
-            let actual = page.first().ok_or(Error::InvalidInput {
-                field: "file reference",
-                reason: "file is not visible in this view",
-            })?;
-            if actual != file {
-                return Err(Error::InvalidInput {
-                    field: "file reference",
-                    reason: "immutable metadata does not match the stored file",
-                });
-            }
-            StorageFileReader::new(self.clone(), actual).await
-        })
+        let held = Held::default();
+        let metadata = Reservation::wait(
+            &self.inner,
+            Pool::Read,
+            &held,
+            encoded_size(&file)?
+                .saturating_mul(2)
+                .saturating_add(ENTRY_OVERHEAD),
+            None,
+        )
         .await
+        .map_err(Refusal::into_error)?;
+        let snapshot = self.snapshot(&saved).await?;
+
+        // Saved References Must Be Visible In The Pinned Image.
+        if pending.is_none() {
+            let selection = FileSelection {
+                scope: file.metadata.scope.clone(),
+                item: Some(file.metadata.id.clone()),
+            };
+            let page = ScanPage {
+                after: file.position.sequence.saturating_sub(1),
+                rows: NonZeroUsize::MIN,
+                bytes: NonZeroUsize::new(encoded_size(&file)?.max(1)).unwrap(),
+            };
+            let (stored, _) = snapshot.scan::<FileReference>(&selection, page).await?;
+            if stored.first() != Some(&file) {
+                return Err(invalid("immutable metadata does not match the stored file"));
+            }
+        }
+        Ok(FileReader {
+            inner: Arc::clone(&self.inner),
+            held,
+            snapshot: Some(snapshot),
+            offset: range.offset,
+            verify: range.offset == 0 && end == file.length,
+            end,
+            file,
+            bytes: 0,
+            hash: Sha256::new(),
+            _metadata: metadata,
+        })
     }
 }
 
-impl StorageFileReader {
-    async fn new(view: StorageView, file: &FileReference) -> Result<Self> {
-        let (_pin, _) = view.pin()?;
-        let reservation = view.reserve_read(encoded_size(file)?, 1)?;
-        Ok(Self {
-            view: Some(view),
-            file: file.clone(),
-            offset: 0,
-            end: file.length,
-            verify_hash: true,
-            hash: Sha256::new(),
-            _metadata: reservation,
-        })
-    }
-
+impl FileReader {
     pub fn reference(&self) -> &FileReference {
         &self.file
     }
@@ -195,117 +135,96 @@ impl StorageFileReader {
         self.offset
     }
 
-    pub fn range(mut self, range: super::files::ByteRange) -> Result<Self> {
-        if self.offset != 0 {
-            return Err(Error::InvalidInput {
-                field: "file byte range",
-                reason: "range must be selected before reading",
-            });
-        }
-        self.end = range.end(self.file.length)?;
-        self.offset = range.offset;
-        self.verify_hash = range.offset == 0 && self.end == self.file.length;
-        Ok(self)
-    }
-
-    pub(super) async fn reserve_delivery(
-        &self,
-        maximum: NonZeroUsize,
-    ) -> Result<super::views::WorkingCredit> {
-        let view = self.view.as_ref().ok_or(Error::ViewExpired)?;
-        let bytes = maximum
-            .get()
-            .checked_mul(2)
-            .and_then(|bytes| bytes.checked_add(std::mem::size_of::<super::files::FileBatch>() * 2))
-            .and_then(|bytes| bytes.checked_add(super::StorageView::computation_memory_bytes()))
-            .and_then(|bytes| bytes.checked_add(super::manager::ENTRY_OVERHEAD * 3))
-            .ok_or(Error::ResourceExhausted {
-                resource: "file delivery memory",
-            })?;
-        view.reserve_working_wait(bytes).await
-    }
-
-    pub async fn next_chunk(&mut self, max_bytes: NonZeroUsize) -> Result<Option<FileChunk>> {
-        let Some(view) = self.view.clone() else {
+    /// The next byte batch within the response byte ceiling, or `None` at the range end.
+    pub async fn next(&mut self) -> Result<Option<FileBatch>> {
+        let Some(snapshot) = &self.snapshot else {
             return Ok(None);
         };
-        let computation = view.computation()?;
-        let work = async {
-            let _activity = view.activity()?;
-            let manager = view.manager();
-            let (_pin, metadata) = view.pin()?;
-            if self.offset == self.end {
-                if self.verify_hash
-                    && <[u8; 32]>::from(self.hash.clone().finalize()) != self.file.sha256
-                {
-                    return Err(corrupt("file digest mismatch"));
-                }
-                if let Some(active) = &computation {
-                    active.check()?;
-                }
-                self.view = None;
-                return Ok(None);
-            }
-            let maximum = NonZeroUsize::new(
-                max_bytes
-                    .get()
-                    .min(usize::try_from(self.end - self.offset).unwrap_or(usize::MAX)),
-            )
-            .expect("nonempty remaining range");
-            let reservation = view.reserve_read_wait(maximum.get(), 1).await?;
-            let _lifecycle = manager.inner.lifecycle.lock().await;
-            let bytes = manager
-                .inner
-                .bounded(manager.inner.primary.read_file(
-                    &metadata,
-                    &self.file,
-                    self.offset,
-                    maximum,
-                ))
-                .await?;
-            let _live = view.pin()?;
-            if bytes.is_empty()
-                || bytes.capacity() > maximum.get()
-                || bytes.len() as u64 > self.end - self.offset
-            {
-                return Err(corrupt(
-                    "file chunk is empty or outside the immutable length",
-                ));
-            }
-            let next = self.offset + bytes.len() as u64;
-            let mut hash = self.hash.clone();
-            hash.update(&bytes);
-            if self.verify_hash
-                && next == self.end
-                && <[u8; 32]>::from(hash.clone().finalize()) != self.file.sha256
+        if self.offset == self.end {
+            // An Empty Whole File Still Proves Its Digest.
+            if self.verify
+                && self.end == 0
+                && <[u8; 32]>::from(self.hash.clone().finalize()) != self.file.sha256
             {
                 return Err(corrupt("file digest mismatch"));
             }
-            if let Some(active) = &computation {
-                active.check()?;
-            }
-            self.offset = next;
-            self.hash = hash;
-            if next == self.end {
-                self.view = None;
-            }
-            Ok(Some(FileChunk {
-                bytes,
-                _reservation: reservation,
-            }))
-        };
-        match &computation {
-            Some(active) => tokio::time::timeout(active.timeout(), work)
-                .await
-                .map_err(|_| super::query::execution_timeout())?,
-            None => work.await,
+            self.snapshot = None;
+            return Ok(None);
         }
+
+        // The Response Envelope Shares The Batch Byte Ceiling.
+        let ceiling = self.inner.settings.response.batch_bytes.get();
+        let overhead = 2 + varint_bytes(self.offset) + varint_bytes(ceiling as u64);
+        let remaining = usize::try_from(self.end - self.offset).unwrap_or(usize::MAX);
+        let maximum = ceiling
+            .checked_sub(overhead)
+            .map(|bytes| bytes.min(remaining))
+            .and_then(NonZeroUsize::new)
+            .ok_or(Error::ResourceExhausted {
+                resource: "file response batch bytes",
+            })?;
+        let charge = maximum
+            .get()
+            .saturating_mul(2)
+            .saturating_add(std::mem::size_of::<FileBatch>() + ENTRY_OVERHEAD);
+        let _transfer = Reservation::wait(&self.inner, Pool::Read, &self.held, charge, None)
+            .await
+            .map_err(Refusal::into_error)?;
+        let bytes = snapshot.read_file(&self.file, self.offset, maximum).await?;
+        if bytes.is_empty()
+            || bytes.len() > maximum.get()
+            || bytes.len() as u64 > self.end - self.offset
+        {
+            return Err(corrupt(
+                "file batch is empty or outside the immutable length",
+            ));
+        }
+        // Verify The Whole-File Digest Before Delivering Its Final Batch.
+        let mut hash = self.hash.clone();
+        hash.update(&bytes);
+        let next = self.offset + bytes.len() as u64;
+        if self.verify
+            && next == self.end
+            && <[u8; 32]>::from(hash.clone().finalize()) != self.file.sha256
+        {
+            return Err(corrupt("file digest mismatch"));
+        }
+        let offset = self.offset;
+        self.hash = hash;
+        self.offset = next;
+        self.bytes += bytes.len() as u64;
+        Ok(Some(FileBatch { offset, bytes }))
+    }
+
+    pub fn completion(&self) -> Result<FileCompletion> {
+        if self.offset != self.end || self.snapshot.is_some() {
+            return Err(Error::NotReady {
+                domain: "file read completion",
+            });
+        }
+        Ok(FileCompletion { bytes: self.bytes })
     }
 }
 
 /* === Public Functions === */
 
 /* === Private Functions === */
+fn varint_bytes(mut value: u64) -> usize {
+    let mut bytes = 1;
+    while value >= 128 {
+        value >>= 7;
+        bytes += 1;
+    }
+    bytes
+}
+
+fn invalid(reason: &'static str) -> Error {
+    Error::InvalidInput {
+        field: "file reference",
+        reason,
+    }
+}
+
 fn corrupt(reason: &'static str) -> Error {
     Error::backend(
         "file read",

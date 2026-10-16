@@ -23,9 +23,8 @@ use serde::{Deserialize, Serialize};
 use tokio::time::Instant;
 
 // Local Imports
-use super::{
-    FileProducer, MutationId, MutationWindow, StorageManager, StorageSettings, StoreHistory,
-};
+use super::config::{MAX_MUTATIONS, MUTATION_MEMORY_BYTES, MUTATION_RETENTION};
+use super::{FileProducer, MutationId, MutationWindow, StorageManager, StoreHistory};
 use crate::supervision::executor;
 use crate::{Error, Identifier, MemorySize, Result};
 
@@ -152,7 +151,6 @@ impl Receipts {
         id: &MutationId,
         fingerprint: [u8; 32],
         outcome_bytes: usize,
-        settings: &StorageSettings,
     ) -> Result<()> {
         self.purge(executor::now());
         if !matches!(self.lookup(id, &fingerprint)?, ReceiptState::Missing) {
@@ -162,12 +160,8 @@ impl Receipts {
             });
         }
         let bytes = charge(id, outcome_bytes)?;
-        if self.entries.len() >= settings.max_mutations.get()
-            || bytes
-                > settings
-                    .mutation_memory_bytes
-                    .get()
-                    .saturating_sub(self.bytes)
+        if self.entries.len() >= MAX_MUTATIONS.get()
+            || bytes > MUTATION_MEMORY_BYTES.get().saturating_sub(self.bytes)
         {
             return Err(Error::ResourceExhausted {
                 resource: "storage mutation receipts",
@@ -249,11 +243,7 @@ impl Receipts {
         receipts
     }
 
-    pub(super) fn restore(
-        &mut self,
-        receipts: Vec<MutationReceipt>,
-        settings: &StorageSettings,
-    ) -> Result<()> {
+    pub(super) fn restore(&mut self, receipts: Vec<MutationReceipt>) -> Result<()> {
         let now = executor::now();
         let wall = SystemTime::now();
         let mut restored = BTreeMap::new();
@@ -262,15 +252,13 @@ impl Receipts {
             let Ok(remaining) = receipt.expires_at.duration_since(wall) else {
                 continue;
             };
-            let remaining = remaining.min(settings.mutation_retention);
+            let remaining = remaining.min(MUTATION_RETENTION);
             if remaining.is_zero() {
                 continue;
             }
             let bytes = charge(&receipt.mutation, receipt.value.memory_size())?;
             total = total.checked_add(bytes).ok_or_else(exhausted)?;
-            if total > settings.mutation_memory_bytes.get()
-                || restored.len() >= settings.max_mutations.get()
-            {
+            if total > MUTATION_MEMORY_BYTES.get() || restored.len() >= MAX_MUTATIONS.get() {
                 return Err(exhausted());
             }
             let entry = Entry {
@@ -313,26 +301,16 @@ impl<C> StorageManager<C> {
             return Ok(());
         }
         let bytes = (self.inner.settings.budget.read_memory_bytes.get() / 2)
-            .min(self.inner.settings.mutation_memory_bytes.get());
+            .min(MUTATION_MEMORY_BYTES.get());
         let limits = super::ReadLimits {
-            rows: self.inner.settings.max_mutations,
+            rows: MAX_MUTATIONS,
             bytes: std::num::NonZeroUsize::new(bytes).ok_or_else(exhausted)?,
         };
-        let _reservation = {
-            let mut state = self.inner.state.lock().unwrap();
-            state.collect();
-            if state.status.read_bytes > self.inner.settings.budget.read_memory_bytes.get() - bytes
-            {
-                return Err(exhausted());
-            }
-            state.read_bytes += bytes;
-            state.collect();
-            super::manager::MemoryReservation {
-                inner: self.inner.clone(),
-                bytes,
-                kind: super::manager::ReservationKind::Read,
-            }
-        };
+        let _reservation = super::capacity::Reservation::lifecycle(
+            &self.inner,
+            super::capacity::Pool::Read,
+            bytes,
+        )?;
         let receipts = self
             .inner
             .bounded(self.inner.primary.recover_mutations(limits))
@@ -382,7 +360,7 @@ impl<C> StorageManager<C> {
             }
         }
         let mut state = self.inner.state.lock().unwrap();
-        state.receipts.restore(receipts, &self.inner.settings)?;
+        state.receipts.restore(receipts)?;
         state.collect();
         Ok(())
     }
@@ -393,10 +371,11 @@ impl<C> StorageManager<C> {
             return Err(Error::NotReady { domain: "storage" });
         }
         let mutations = if self.inner.primary.supports_mutation_receipts() {
-            Some(state.receipts.window(
-                self.inner.primary.history(),
-                self.inner.settings.mutation_retention,
-            )?)
+            Some(
+                state
+                    .receipts
+                    .window(self.inner.primary.history(), MUTATION_RETENTION)?,
+            )
         } else {
             None
         };
@@ -404,7 +383,7 @@ impl<C> StorageManager<C> {
             accepted: state.status.accepted.clone(),
             saved: state.status.saved.clone(),
             mutations,
-            file_chunk_bytes: self.inner.settings.response.batch_bytes.get() as u64,
+            file_batch_bytes: self.inner.settings.response.batch_bytes.get() as u64,
         })
     }
 
@@ -421,10 +400,9 @@ impl<C> StorageManager<C> {
                 domain: "storage mutations",
             });
         }
-        let window = state.receipts.window(
-            self.inner.primary.history(),
-            self.inner.settings.mutation_retention,
-        )?;
+        let window = state
+            .receipts
+            .window(self.inner.primary.history(), MUTATION_RETENTION)?;
         state.collect();
         Ok(window)
     }

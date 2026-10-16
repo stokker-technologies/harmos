@@ -20,10 +20,10 @@ use std::sync::Arc;
 use sha2::{Digest, Sha256};
 
 // Local Imports
+use super::config::MAX_MUTATIONS;
 use super::manager::{Inner, State, Target};
 use super::receipts::ReceiptState;
 use super::{MutationId, MutationReceipt, MutationValue, StagedFile, StorageManager};
-use crate::supervision::executor;
 use crate::{Error, Identifier, MemorySize, Result};
 
 /* === Constants === */
@@ -59,21 +59,13 @@ impl<C> StorageManager<C> {
         self.inner.primary.history().check(&file.history)?;
         if !self.inner.primary.supports_mutation_receipts()
             || !self.inner.primary.supports_file_deletion()
-            || self
-                .inner
-                .replicas
-                .iter()
-                .any(|replica| !replica.config.backend.supports_file_deletion())
         {
-            return Err(invalid(
-                "primary and replica backends must support durable deletion",
-            ));
+            return Err(invalid("backend must support durable deletion"));
         }
         let fingerprint = fingerprint(file);
         let mut retry = true;
         let mut changed = self.inner.changed.subscribe();
         loop {
-            let replica_failure = self.deletion_replica_failure();
             let mut notify = false;
             {
                 let mut state = self.inner.state.lock().unwrap();
@@ -90,9 +82,6 @@ impl<C> StorageManager<C> {
                 match state.receipts.lookup(mutation, &fingerprint)? {
                     ReceiptState::Complete(value) => return value.deleted(),
                     ReceiptState::Pending => {
-                        if let Some(error) = replica_failure {
-                            return Err(error);
-                        }
                         let deletion = state
                             .deletions
                             .get(mutation)
@@ -120,9 +109,6 @@ impl<C> StorageManager<C> {
                         retry = false;
                     }
                     ReceiptState::Missing => {
-                        if let Some(error) = replica_failure {
-                            return Err(error);
-                        }
                         if let Some(source) = &state.status.failure {
                             return Err(Error::Persistence {
                                 source: source.clone(),
@@ -137,7 +123,7 @@ impl<C> StorageManager<C> {
                         if state.deleting(&file.id) {
                             return Err(invalid("another deletion owns this file"));
                         }
-                        if state.deletions.len() >= self.inner.settings.max_mutations.get() {
+                        if state.deletions.len() >= MAX_MUTATIONS.get() {
                             return Err(exhausted());
                         }
                         let bytes = crate::btree_map_memory::<MutationId, Deletion>(1)
@@ -153,12 +139,9 @@ impl<C> StorageManager<C> {
                             return Err(exhausted());
                         }
                         let outcome = MutationValue::Deleted(file.clone());
-                        state.receipts.insert(
-                            mutation,
-                            fingerprint,
-                            outcome.memory_size(),
-                            &self.inner.settings,
-                        )?;
+                        state
+                            .receipts
+                            .insert(mutation, fingerprint, outcome.memory_size())?;
                         let receipt = state.receipts.prepared(mutation, outcome);
                         let target = state.data_accepted;
                         state.deletions.insert(
@@ -188,22 +171,6 @@ impl<C> StorageManager<C> {
         }
     }
 
-    fn deletion_replica_failure(&self) -> Option<Error> {
-        self.inner.replicas.iter().find_map(|replica| {
-            replica
-                .state
-                .lock()
-                .unwrap()
-                .status
-                .failure
-                .clone()
-                .map(|source| Error::OperationFailed {
-                    operation: "file deletion replica barrier".into(),
-                    source,
-                })
-        })
-    }
-
     pub(super) async fn settle_deletions(&self) -> Result<()> {
         let mut changed = self.inner.changed.subscribe();
         {
@@ -217,53 +184,28 @@ impl<C> StorageManager<C> {
             state.status.failure = None;
             state.retry = state.retry.wrapping_add(1);
         }
-        for replica in &self.inner.replicas {
-            replica.retry();
-        }
         self.inner.notify();
-        let settling = async {
-            loop {
-                let replica_failure = self.deletion_replica_failure();
-                {
-                    let state = self.inner.state.lock().unwrap();
-                    if state.deletions.is_empty() {
-                        return Ok(());
-                    }
-                    if let Some(error) = replica_failure {
-                        return Err(error);
-                    }
-                    if let Some(source) = &state.status.failure {
-                        return Err(Error::Persistence {
-                            source: source.clone(),
-                        });
-                    }
-                    if !state.status.running {
-                        return Err(Error::NotReady {
-                            domain: "file deletion worker",
-                        });
-                    }
+        loop {
+            {
+                let state = self.inner.state.lock().unwrap();
+                if state.deletions.is_empty() {
+                    return Ok(());
                 }
-                changed.changed().await.map_err(|_| Error::Closing {
-                    domain: "file deletion",
-                })?;
+                if let Some(source) = &state.status.failure {
+                    return Err(Error::Persistence {
+                        source: source.clone(),
+                    });
+                }
+                if !state.status.running {
+                    return Err(Error::NotReady {
+                        domain: "file deletion worker",
+                    });
+                }
             }
-        };
-        // Zero Means No Replication Bound: In-Flight Deletions Settle Through
-        // Their Own Success Or Failure, Never Through An Instant Deadline.
-        let bound = self.inner.settings.replication_shutdown;
-        if bound.is_zero() {
-            return settling.await;
+            changed.changed().await.map_err(|_| Error::Closing {
+                domain: "file deletion",
+            })?;
         }
-        executor::timeout(bound, settling).await.map_err(|_| {
-            Error::backend(
-                "file deletion shutdown",
-                crate::BackendFailure::Transient,
-                std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    "deletion barrier did not settle",
-                ),
-            )
-        })?
     }
 }
 
@@ -291,13 +233,11 @@ impl State {
         }
     }
 
-    pub(super) fn deletion_action(&self, floor: u64) -> Option<Arc<DeleteWork>> {
+    pub(super) fn deletion_action(&self) -> Option<Arc<DeleteWork>> {
         self.deletions
             .values()
             .find(|deletion| {
-                deletion.failure.is_none()
-                    && deletion.work.target.index <= self.data_flushed
-                    && deletion.work.target.sequence <= floor
+                deletion.failure.is_none() && deletion.work.target.index <= self.data_flushed
             })
             .map(|deletion| deletion.work.clone())
     }
@@ -329,11 +269,6 @@ impl State {
 impl DeleteWork {
     pub(super) async fn perform(&self, inner: &Arc<Inner>) -> Result<()> {
         inner.bounded(inner.primary.delete_file(&self.file)).await?;
-        for replica in &inner.replicas {
-            inner
-                .bounded(replica.config.backend.delete_file(&self.file))
-                .await?;
-        }
         inner
             .bounded(
                 inner

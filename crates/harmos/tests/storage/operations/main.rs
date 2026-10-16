@@ -19,9 +19,6 @@ mod support;
 use fixture::*;
 #[path = "cases.rs"]
 mod operations;
-#[allow(dead_code, unused_imports)]
-#[path = "../../support/storage_views.rs"]
-mod views;
 
 /* === Re-Exports === */
 

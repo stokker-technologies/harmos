@@ -49,8 +49,8 @@ impl FileBackend {
         Self {
             root,
             history,
-            entry_bytes: settings.max_batch_bytes.get(),
-            snapshot_bytes: settings.snapshot_bytes.get(),
+            entry_bytes: settings.max_batch_bytes().get(),
+            snapshot_bytes: settings.max_batch_bytes().get(),
             journal: Arc::new(Mutex::new(None)),
         }
     }

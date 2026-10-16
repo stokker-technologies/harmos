@@ -93,21 +93,6 @@ impl Wire {
 }
 
 /* === Public Functions === */
-pub(super) fn serialize<S: Serializer>(
-    value: &Timestamp,
-    serializer: S,
-) -> Result<S::Ok, S::Error> {
-    Wire::from(*value).serialize(serializer)
-}
-
-pub(super) fn deserialize<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Timestamp, D::Error> {
-    Wire::deserialize(deserializer)?
-        .timestamp()
-        .map_err(serde::de::Error::custom)
-}
-
 /* === Private Functions === */
 fn is_false(value: &bool) -> bool {
     !*value

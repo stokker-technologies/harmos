@@ -20,6 +20,7 @@ use crate::operations::{
 };
 use crate::schema::Described;
 use crate::storage::StorageManager;
+use crate::storage::config::IO_TIMEOUT;
 use crate::storage::query::{Query as Request, QueryCompletion, QueryOutput};
 use crate::{Error, MemorySize, Result};
 use harmos_contract::plugin::Grant;
@@ -99,7 +100,7 @@ impl<C: 'static> Operation for Handler<C> {
         while let Some(item) = reader.next().await? {
             ctx.admit_stream_grant(&grant)?;
             tokio::time::timeout(
-                self.storage.inner.settings.io_timeout,
+                IO_TIMEOUT,
                 output.send_with(item.memory_size(), || Ok(item)),
             )
             .await

@@ -18,10 +18,10 @@ use std::sync::Arc;
 
 // Local Imports
 use super::manager::{
-    Domain, ENTRY_OVERHEAD, Inner, MemoryReservation, Operation, Pending, ReservationKind, Target,
-    recovery_resident_bytes,
+    Domain, ENTRY_OVERHEAD, Inner, Operation, Pending, Target, recovery_resident_bytes,
 };
 use super::{StorageBatch, StorageCursor, StoragePart};
+use crate::storage::capacity::{Pool, Reservation};
 use crate::{Error, Result};
 
 /* === Constants === */
@@ -33,7 +33,7 @@ use crate::{Error, Result};
 /* === Structs === */
 pub(super) struct Batch {
     entries: Vec<Arc<Pending>>,
-    _reservation: MemoryReservation,
+    _reservation: Reservation,
 }
 
 #[derive(Default)]
@@ -84,7 +84,7 @@ impl Batch {
             .max_pending_write_bytes
             .get()
             .saturating_sub(state.status.pending_bytes)
-            .min(inner.settings.write_batch_bytes.get());
+            .min(inner.settings.max_batch_bytes().get());
         let mut bytes = 0usize;
         let mut count = 0usize;
         let mut operations = 0;
@@ -111,14 +111,14 @@ impl Batch {
             let (length, charge) = charge(&entry.operation)?;
             let next_encoded =
                 encoded_bytes.checked_add(entry.operation.encoded_batch_bytes().ok()?)?;
-            if next_encoded > inner.settings.max_batch_bytes.get() {
+            if next_encoded > inner.settings.max_batch_bytes().get() {
                 break;
             }
             let next_count = count.checked_add(length)?;
             let next_bytes = bytes
                 .checked_add(charge)?
                 .checked_add(std::mem::size_of::<Arc<Pending>>())?;
-            if next_count > inner.settings.write_batch_entries.get() || next_bytes > available {
+            if next_count > super::config::WRITE_BATCH_ENTRIES.get() || next_bytes > available {
                 break;
             }
             encoded_bytes = next_encoded;
@@ -150,11 +150,7 @@ impl Batch {
         drop(state);
         Some(Self {
             entries,
-            _reservation: MemoryReservation {
-                inner: inner.clone(),
-                bytes,
-                kind: ReservationKind::Write,
-            },
+            _reservation: Reservation::charged(inner, Pool::Write, bytes),
         })
     }
 
@@ -207,7 +203,7 @@ impl Batch {
 /* === Public Functions === */
 pub(super) async fn write_data(inner: &Inner, parts: &[StoragePart<'_>]) -> Result<StorageCursor> {
     // Logical admissions are indivisible; never persist a prefix of one batch.
-    let batch = StorageBatch::new(parts, inner.settings.max_batch_bytes)?;
+    let batch = StorageBatch::new(parts, inner.settings.max_batch_bytes())?;
     inner.primary.history().check(&batch.first().history)?;
     let through = batch.through();
     {

@@ -22,15 +22,15 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use super::DataSelection;
 
 use crate::operations::{Context, Operation, StreamOutput};
 use crate::operations::{Grpc, OperationDeclaration, OutputDeclaration, Visibility, WireOperation};
 use crate::schema::declaration::{Field, Kind};
 use crate::schema::{Cardinality, Described};
 
+use crate::storage::StorageManager;
 use crate::storage::codec::{Nested, product};
-use crate::storage::{RecordQuery, StorageManager};
+use crate::storage::follow::Records;
 use crate::storage::{StorageCursor, StoredRecord};
 
 use crate::{Error, Result};
@@ -234,7 +234,7 @@ crate::with_protobuf! {
 }
 
 impl OperationDeclaration for Follow {
-    type Request = DataSelection;
+    type Request = Records;
     type Response = StorageCursor;
     const ID: &'static str = "storage.follow";
     const POLICY: crate::operations::OperationPolicy = super::STREAM_POLICY;
@@ -243,8 +243,11 @@ impl OperationDeclaration for Follow {
         (None, Some(TypeId::of::<Followed>()))
     }
 
-    fn grant(selection: &DataSelection) -> Option<Grant> {
-        Some(Grant::of(Self::ID, selection.schema.id.as_str().to_owned()))
+    fn grant(request: &Records) -> Option<Grant> {
+        Some(Grant::of(
+            Self::ID,
+            request.selection.schema.id.as_str().to_owned(),
+        ))
     }
 }
 
@@ -280,59 +283,30 @@ impl<C: 'static> Operation for Handler<C> {
     async fn run<'a>(
         &mut self,
         _: Self::Context<'a>,
-        selection: &mut DataSelection,
+        request: &mut Records,
         output: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<StorageCursor>> {
-        async {
-            selection.validate()?;
-            if selection.selection.descending || selection.selection.through.is_some() {
-                return Err(Error::InvalidInput {
-                    field: "storage follow",
-                    reason: "following requires ascending open-ended selection",
-                });
-            }
-            if selection.stream.is_some() {
-                return Err(Error::InvalidInput {
-                    field: "storage record query",
-                    reason: "stream selectors require FollowStream",
-                });
-            }
-
-            let mut query =
-                RecordQuery::new(selection.schema.clone(), super::data_selection::decode);
-            query.scope = selection.selection.scope.clone();
-            query.item = selection.selection.item.clone();
-            query.source_time = selection.source_time();
-            query.options = selection.selection.options()?;
-            let mut reader = self.storage.follow(query).await?;
-            let boundaries = FollowBoundaries {
-                saved: reader.saved_boundary().clone(),
-                accepted: reader.accepted_boundary().clone(),
-            };
-            if let Some(after) = &selection.selection.after
-                && !boundaries.accepted.covers(after)?
-            {
-                return Err(Error::InvalidInput {
-                    field: "storage query",
-                    reason: "start exceeds accepted boundary",
-                });
-            }
-            let first = Followed::Boundaries(boundaries);
-            output
-                .send_with(first.memory_size(), || Ok(first.clone()))
-                .await?;
-            loop {
-                let page = reader.next_page().await?;
-                for entry in page.iter() {
-                    let wrapped = Followed::wrapping_memory(entry.memory_size());
-                    output
-                        .send_with(wrapped, || Ok(Followed::Record(entry.clone())))
-                        .await?;
-                }
+        crate::storage::query::Source::Records(request.selection.clone()).validate()?;
+        let mut follower = self
+            .storage
+            .follow::<StoredRecord>(request.after.as_ref(), request.selection.clone())
+            .await?;
+        let first = Followed::Boundaries(FollowBoundaries {
+            saved: follower.saved_boundary().clone(),
+            accepted: follower.accepted_boundary().clone(),
+        });
+        output
+            .send_with(first.memory_size(), || Ok(first.clone()))
+            .await?;
+        loop {
+            let page = follower.next().await?;
+            for entry in page.entries() {
+                let wrapped = Followed::wrapping_memory(entry.memory_size());
+                output
+                    .send_with(wrapped, || Ok(Followed::Record(entry.clone())))
+                    .await?;
             }
         }
-        .await
-        .map(|value: StorageCursor| value.into())
     }
 }
 

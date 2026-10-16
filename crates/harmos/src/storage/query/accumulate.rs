@@ -8,10 +8,8 @@
  */
 
 /* === Modules === */
-pub(crate) mod scalar;
 
 /* === Re-Exports === */
-pub use crate::storage::reduce::scalar::{Agg, ExactNumber, ScalarKind, ScalarValue};
 
 /* === Imports === */
 // Standard Library Imports
@@ -21,6 +19,7 @@ use std::{cmp::Ordering, num::NonZeroU128};
 use harmos_signal::{Series, Summary};
 
 // Local Imports
+use super::scalar::{self, Agg, ExactNumber, ScalarKind, ScalarValue};
 use crate::aggregate;
 use crate::{Aggregate, Error, Result};
 
@@ -62,10 +61,6 @@ impl Scratch {
     pub fn new(slots: usize) -> Self {
         Self { remaining: slots }
     }
-
-    pub fn remaining(&self) -> usize {
-        self.remaining
-    }
 }
 impl Accumulator {
     pub fn new(agg: Agg) -> Self {
@@ -78,17 +73,6 @@ impl Accumulator {
             total: ExactNumber::new(false, 0, NonZeroU128::MIN),
             running: Summary::new(),
             scratch: Vec::new(),
-        }
-    }
-
-    pub fn agg(&self) -> Agg {
-        self.agg
-    }
-
-    pub fn text_bytes(&self) -> usize {
-        match &self.selected {
-            Some((_, ScalarValue::Text(text))) => text.capacity(),
-            _ => 0,
         }
     }
 
