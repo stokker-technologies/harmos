@@ -995,10 +995,6 @@ impl<C> StorageManager<C> {
 
     fn query_page(&self, options: &QueryOptions) -> Result<ReadLimits> {
         let page = options.page.unwrap_or(self.inner.settings.query_page);
-        self.inner
-            .settings
-            .query_page_ceiling
-            .check(page.rows.get(), page.bytes.get())?;
         Ok(page)
     }
 }

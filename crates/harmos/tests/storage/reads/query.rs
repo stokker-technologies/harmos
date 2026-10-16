@@ -106,7 +106,7 @@ impl Fixture {
     async fn new() -> Self {
         Self::with_settings(StorageSettings {
             query_page: limits(1, 4096),
-            query_page_ceiling: limits(4, 8192),
+
             flush_interval: Duration::from_secs(60),
             max_retries: 0,
             ..storage_settings()
@@ -546,7 +546,7 @@ fn contract_scenario() {
         });
     }
     {
-        scenario_runtime::check("obey_page_ceilings", || {
+        scenario_runtime::check("obey_requested_page_bounds", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor
                 .enable_all()
@@ -574,17 +574,16 @@ fn contract_scenario() {
                     for page in [limits(5, 4096), limits(1, 8193)] {
                         let mut query = RecordQuery::new(schema(), decode);
                         query.options.page = Some(page);
-                        assert!(f.storage.query(query).await.is_err());
-                        assert_eq!(f.storage.status().read_bytes, 0);
+                        let mut reader = f.storage.query(query).await.unwrap();
+                        let rows = reader.next_page().await.unwrap().unwrap();
+                        assert_eq!(rows.len(), page.rows.get().min(3));
+                        drop((rows, reader));
                     }
                     let view = f
                         .storage
                         .view_with_limits(storage_settings().query_execution)
                         .await
                         .unwrap();
-                    let mut invalid = RecordQuery::new(schema(), decode);
-                    invalid.options.page = Some(limits(5, 4096));
-                    assert!(f.storage.query_in(&view, invalid).is_err());
                     let mut query = RecordQuery::new(schema(), decode);
                     query.options.page = Some(limits(1, 4096));
                     let mut reader = f.storage.query_in(&view, query).unwrap();
@@ -1434,25 +1433,6 @@ fn contract_scenario() {
                     until(|| f.storage.status().read_bytes == 0).await;
                     f.finish().await;
                 });
-        });
-    }
-    {
-        scenario_runtime::check("must_fit_configured", || {
-            let data = Arc::new(Data::<Objects>::with_catalog(history()));
-            let result = StorageManager::new(
-                StorageBackends {
-                    primary: data.clone(),
-                    state: Arc::new(Recovery::new(history())),
-                    replicas: vec![],
-                },
-                StorageSettings {
-                    query_page: limits(5, 4096),
-                    query_page_ceiling: limits(4, 8192),
-                    ..storage_settings()
-                },
-            );
-            assert!(result.is_err());
-            assert!(!data.control.open.load(Ordering::SeqCst));
         });
     }
 }

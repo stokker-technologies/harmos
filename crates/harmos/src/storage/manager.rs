@@ -1047,7 +1047,7 @@ impl<C> StorageManager<C> {
         let page = reader
             .next_page(ReadLimits {
                 rows: std::num::NonZeroUsize::MIN,
-                bytes: self.inner.settings.query_page_ceiling.bytes,
+                bytes: self.inner.settings.query_page.bytes,
             })
             .await?;
         page.ok_or(Error::InvalidInput {
@@ -1230,7 +1230,7 @@ impl<C> StorageManager<C> {
             let page = reader
                 .next_page(ReadLimits {
                     rows: std::num::NonZeroUsize::MIN,
-                    bytes: self.inner.settings.query_page_ceiling.bytes,
+                    bytes: self.inner.settings.query_page.bytes,
                 })
                 .await?;
             let revision = page

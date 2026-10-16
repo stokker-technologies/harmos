@@ -1068,11 +1068,6 @@ impl<T> StorageReader<T> {
         let Some(view) = &self.view else {
             return Ok(None);
         };
-        view.manager()
-            .inner
-            .settings
-            .query_page_ceiling
-            .check(limits.rows.get(), limits.bytes.get())?;
         let fetched = (self.fetch)(view, &self.selection, self.cursor.as_ref(), limits).await?;
         let Fetched { page, reservation } = fetched;
         // A failed typed decoder must leave the same page available for retry.

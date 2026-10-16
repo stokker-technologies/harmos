@@ -277,10 +277,6 @@ impl<C: ObjectCatalog> StorageManager<C> {
             }
             None => self.inner.settings.query_execution,
         };
-        self.inner
-            .settings
-            .query_page_ceiling
-            .check(1, max_bytes.get())?;
         let schema = object_schema::<T>()?;
         let query = ObjectPoint {
             schema: schema.id.clone(),

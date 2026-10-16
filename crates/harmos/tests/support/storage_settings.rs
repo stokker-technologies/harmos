@@ -44,10 +44,7 @@ pub fn storage_settings() -> StorageSettings {
             rows: NonZeroUsize::new(64).unwrap(),
             bytes: NonZeroUsize::new(64 * 1024).unwrap(),
         },
-        query_page_ceiling: ReadLimits {
-            rows: NonZeroUsize::new(4096).unwrap(),
-            bytes: NonZeroUsize::new(4 * 1024 * 1024).unwrap(),
-        },
+
         query_decoded_bytes: NonZeroUsize::new(4 * 1024 * 1024).unwrap(),
         query_execution: QueryLimits {
             memory_bytes: NonZeroUsize::new(4 * 1024 * 1024).unwrap(),

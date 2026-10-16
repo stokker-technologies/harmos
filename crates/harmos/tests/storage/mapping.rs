@@ -228,10 +228,7 @@ async fn mapping_exhaustion() {
         rows: std::num::NonZeroUsize::MIN,
         bytes: std::num::NonZeroUsize::new(16 * 1024).unwrap(),
     };
-    settings.query_page_ceiling = ReadLimits {
-        rows: std::num::NonZeroUsize::MIN,
-        bytes: std::num::NonZeroUsize::new(64 * 1024).unwrap(),
-    };
+
     let data = Arc::new(Data::<()>::journaled(directory.path(), history()).unwrap());
     let storage = StorageManager::new(
         StorageBackends {
@@ -338,10 +335,7 @@ async fn mapping_growth() {
         rows: std::num::NonZeroUsize::MIN,
         bytes: std::num::NonZeroUsize::new(16 * 1024).unwrap(),
     };
-    settings.query_page_ceiling = ReadLimits {
-        rows: std::num::NonZeroUsize::MIN,
-        bytes: std::num::NonZeroUsize::new(64 * 1024).unwrap(),
-    };
+
     let data = Arc::new(Data::<()>::journaled(directory.path(), history()).unwrap());
     let storage = StorageManager::new(
         StorageBackends {
