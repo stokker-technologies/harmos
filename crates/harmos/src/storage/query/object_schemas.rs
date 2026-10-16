@@ -136,10 +136,10 @@ impl NormalizedObjects {
                 // Raw Pages Are Reloadable And Must Never Occupy A Wait Cycle.
                 drop(rows);
                 drop(credit.take());
-                metadata.push(reservation);
                 for key in keys {
                     schemas.push(manager.lookup_schema(view, &key).await?);
                 }
+                drop(reservation);
             }
         }
         if schemas.is_empty() {
