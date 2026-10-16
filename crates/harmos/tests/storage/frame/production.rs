@@ -1220,6 +1220,26 @@ async fn producer_work_claim_survives_detached_waiter() {
     release.send(()).unwrap();
     completed.await.unwrap();
     assert_eq!(f.storage.status().read_bytes, occupied);
+    let probe = f.storage.reserve_arrow_memory(0).unwrap();
+    let overhead = f.storage.status().read_bytes - occupied;
+    drop(probe);
+    let capacity = storage_settings().budget.read_memory_bytes.get();
+    let external = f
+        .storage
+        .reserve_arrow_memory(capacity - occupied - overhead)
+        .unwrap();
+    assert!(matches!(
+        source.reserve_work(NonZeroUsize::new(1).unwrap()),
+        Err(Error::ResourceExhausted {
+            resource: "storage read memory"
+        })
+    ));
+    drop(external);
+    let memory = source
+        .reserve_work(NonZeroUsize::new(4096).unwrap())
+        .unwrap();
+    drop(memory);
+    assert_eq!(f.storage.status().read_bytes, occupied);
     drop(source);
     assert_eq!(f.storage.status().read_bytes, baseline);
     f.finish().await;
