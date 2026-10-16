@@ -743,7 +743,7 @@ impl StorageView {
     }
 
     pub fn prepare_work(&self) -> Result<super::StorageReadWorkPreparation> {
-        super::StorageReadWorkPreparation::saved(self.clone(), self.decoded_bytes()?)
+        super::StorageReadWorkPreparation::saved(self.clone())
     }
 
     pub fn project_owned<T: MemorySize, U: MemorySize>(

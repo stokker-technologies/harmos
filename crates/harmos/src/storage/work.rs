@@ -49,10 +49,7 @@ pub struct StorageReadWork<F> {
 
 /* === Enums === */
 enum Profile {
-    Saved {
-        view: StorageView,
-        decoded_bytes: NonZeroUsize,
-    },
+    Saved(StorageView),
     Producer(Arc<Execution>),
 }
 
@@ -65,16 +62,13 @@ enum Active {
 
 /* === Implementations === */
 impl StorageReadWorkPreparation {
-    pub(super) fn saved(view: StorageView, decoded_bytes: NonZeroUsize) -> Result<Self> {
+    pub(super) fn saved(view: StorageView) -> Result<Self> {
         let active = view.computation()?.ok_or(Error::InvalidInput {
             field: "storage read work",
             reason: "original view has no bounded computation profile",
         })?;
         Ok(Self {
-            profile: Profile::Saved {
-                view,
-                decoded_bytes,
-            },
+            profile: Profile::Saved(view),
             active: Active::Saved(active),
         })
     }
@@ -108,15 +102,7 @@ impl StorageReadWorkPreparation {
 impl Profile {
     fn reserve(&self, bytes: NonZeroUsize) -> Result<MemoryReservation> {
         match self {
-            Self::Saved {
-                view,
-                decoded_bytes,
-            } => {
-                if bytes > *decoded_bytes {
-                    return Err(super::query::decoded_limit());
-                }
-                view.reserve_read(bytes.get(), 1)
-            }
+            Self::Saved(view) => view.reserve_read(bytes.get(), 1),
             Self::Producer(execution) => execution.reserve_output(bytes),
         }
     }

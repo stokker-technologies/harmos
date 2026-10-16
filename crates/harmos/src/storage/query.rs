@@ -1006,7 +1006,7 @@ impl<C> StorageManager<C> {
 impl<R, T: MemorySize> QueryResult<R, T> {
     pub fn prepare_work(&self) -> Result<super::StorageReadWorkPreparation> {
         let view = self.view().cloned().ok_or(Error::ViewExpired)?;
-        super::StorageReadWorkPreparation::saved(view, self.decoded_bytes)
+        super::StorageReadWorkPreparation::saved(view)
     }
 
     pub fn decoded_bytes(&self) -> NonZeroUsize {
