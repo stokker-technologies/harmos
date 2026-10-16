@@ -353,10 +353,15 @@ schema to emit.
 
 ```rust
 let mut reader = storage
-    .read_objects(ObjectRead::<Execution> { at, key: None, versions: ObjectVersions::Latest, filters })
+    .read_objects(ObjectRead::<Experiment> {
+        at: at.clone(),
+        key: None,
+        versions: ObjectVersions::Latest,
+        filters,
+    })
     .await?;
 while let Some(page) = reader.next().await? {
-    // Vec<ObjectRevision<Execution>>
+    // Vec<ObjectRevision<Experiment>>
 }
 let records = storage
     .read_records::<Reading>(RecordRead { at, selection, after: 0, filters: Vec::new() })

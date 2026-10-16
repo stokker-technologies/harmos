@@ -437,6 +437,29 @@ fn own_contract() {
         ));
         assert_eq!(storage.status().read_bytes, 0);
         runtime.stop().await.unwrap();
+
+        // An Admitted Reader Refuses A Page No Budget Split Can Hold.
+        let mut settings = paged();
+        settings.budget.read_memory_bytes = NonZeroUsize::new(8 * 1024).unwrap();
+        settings.response.batch_bytes = settings.budget.read_memory_bytes;
+        let (runtime, storage, _) = manager(settings).await;
+        write(&storage, "large", &"x".repeat(16 * 1024)).await;
+        let mut reader = storage
+            .read_objects(ObjectRead::<Experiment> {
+                at: storage.cursor_saved(),
+                key: None,
+                versions: ObjectVersions::Latest,
+                filters: Vec::new(),
+            })
+            .await
+            .unwrap();
+        assert!(matches!(
+            reader.next().await,
+            Err(Error::ResourceExhausted { .. })
+        ));
+        drop(reader);
+        assert_eq!(storage.status().read_bytes, 0);
+        runtime.stop().await.unwrap();
     });
     story("public_scalar_fold", || async {
         let unsigned = [1u64, 2, 3, 4].map(ScalarValue::Unsigned);
