@@ -370,7 +370,7 @@ fn contract_scenario() {
         });
     }
     {
-        scenario_runtime::check("point_page_ceiling", || {
+        scenario_runtime::check("point_exceeding_budget", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor
                 .enable_all()
@@ -385,7 +385,10 @@ fn contract_scenario() {
                             .read_object::<Document>(
                                 &7,
                                 ObjectVersion::Latest,
-                                NonZeroUsize::new(8193).unwrap()
+                                NonZeroUsize::new(
+                                    storage_settings().budget.read_memory_bytes.get() + 1
+                                )
+                                .unwrap()
                             )
                             .await
                             .is_err()

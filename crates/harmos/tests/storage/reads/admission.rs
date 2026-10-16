@@ -115,7 +115,7 @@ fn contract_scenario() {
         });
     }
     {
-        scenario_runtime::check("guaranteed_refused_where_elastic_fits", || {
+        scenario_runtime::check("guaranteed_waits_where_elastic_fits", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor
                 .enable_all()
@@ -128,9 +128,15 @@ fn contract_scenario() {
                     assert_eq!(guaranteed.admission, Admission::Guaranteed);
                     let held = f.storage.view_with_limits(guaranteed).await.unwrap();
                     assert!(pool(&f) > 12 * MIB);
-                    assert!(read_memory_refusal(
-                        f.storage.view_with_limits(guaranteed).await
-                    ));
+                    // A Second Guarantee Waits For Shared Capacity Instead Of Failing.
+                    let mut waiting = Box::pin(f.storage.view_with_limits(guaranteed));
+                    assert!(
+                        std::future::poll_fn(|cx| std::task::Poll::Ready(
+                            std::future::Future::poll(waiting.as_mut(), cx)
+                        ))
+                        .await
+                        .is_pending()
+                    );
                     let elastic = f
                         .storage
                         .view_with_limits(guaranteed.elastic())
@@ -138,6 +144,9 @@ fn contract_scenario() {
                         .unwrap();
                     assert_eq!(first_position(&f.storage, &elastic).await, 1);
                     drop((held, elastic));
+                    let admitted = waiting.await.unwrap();
+                    assert_eq!(admitted.execution_limits().unwrap(), Some(guaranteed));
+                    drop(admitted);
                     until(|| pool(&f) == 0).await;
                     f.finish().await;
                 });
@@ -172,7 +181,8 @@ fn contract_scenario() {
                         .await
                         .unwrap();
                     assert_eq!(pool(&f), capacity - MIB);
-                    let output = NonZeroUsize::new(64).unwrap();
+                    // Elastic Output Larger Than The Free MiB Must Wait For The Guarantee.
+                    let output = NonZeroUsize::new(2 * MIB).unwrap();
                     assert!(read_memory_refusal(
                         f.storage.prepare_read_production_in(&elastic, output)
                     ));
@@ -185,7 +195,7 @@ fn contract_scenario() {
                         .prepare_read_production_in(&elastic, output)
                         .unwrap();
                     let charged = elastic.charged_bytes().unwrap();
-                    assert!(charged >= 4 * MIB);
+                    assert!(charged >= 2 * MIB);
                     assert_eq!(pool(&f), floor + charged);
                     drop(production);
                     assert_eq!(elastic.charged_bytes().unwrap(), 0);

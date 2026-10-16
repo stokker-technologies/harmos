@@ -813,11 +813,13 @@ fn contract_scenario() {
                     assert!(reader.next_page().await.unwrap().is_none());
                     let retained = f.storage.status().read_bytes;
                     let calls = AtomicUsize::new(0);
-                    let refused =
-                        reader.project(&input, NonZeroUsize::new(4097).unwrap(), |_, _| {
-                            calls.fetch_add(1, Ordering::SeqCst);
-                            Ok(0u64)
-                        });
+                    // Output Beyond The Shared Read Budget Is Refused Before The Callback.
+                    let oversized =
+                        NonZeroUsize::new(config().budget.read_memory_bytes.get() + 1).unwrap();
+                    let refused = reader.project(&input, oversized, |_, _| {
+                        calls.fetch_add(1, Ordering::SeqCst);
+                        Ok(0u64)
+                    });
                     assert!(matches!(refused, Err(Error::ResourceExhausted { .. })));
                     assert_eq!(calls.load(Ordering::SeqCst), 0);
                     assert_eq!(f.storage.status().read_bytes, retained);

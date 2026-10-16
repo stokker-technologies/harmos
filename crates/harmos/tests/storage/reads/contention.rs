@@ -187,7 +187,6 @@ fn contract_scenario() {
                     write(&f.storage, "saved").await;
                     f.storage.flush().await.unwrap();
                     let refusals = Arc::new(Refusals::default());
-                    let started = tokio::time::Instant::now();
                     let members = (0..MEMBERS)
                         .map(|_| {
                             tokio::spawn(member(f.storage.clone(), f.execution, refusals.clone()))
@@ -204,9 +203,7 @@ fn contract_scenario() {
                     })
                     .await
                     .expect("shared-budget contention must settle after owners release charges");
-                    let elapsed = started.elapsed();
                     let refusals = refusals.lock().unwrap().clone();
-                    eprintln!("Settled In {elapsed:?} With Refusals {refusals:?}");
                     // A View Guarantees Only Its Own Work. Assembly May Be Refused
                     // By The Same Pool And Must Make Progress After Other Owners Drop.
                     assert!(

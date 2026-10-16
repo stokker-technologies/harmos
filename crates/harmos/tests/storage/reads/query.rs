@@ -106,7 +106,6 @@ impl Fixture {
     async fn new() -> Self {
         Self::with_settings(StorageSettings {
             query_page: limits(1, 4096),
-
             flush_interval: Duration::from_secs(60),
             max_retries: 0,
             ..storage_settings()

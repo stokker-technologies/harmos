@@ -669,14 +669,18 @@ fn contract_scenario() {
                         .unwrap();
                     let view = f.storage.view_with_limits(f.execution).await.unwrap();
                     f.storage.flush().await.unwrap();
-                    let mut query = record_query(limits(1, 64_000));
+                    // The Page Fits The Shared Budget Only Without Its Cursor Metadata.
+                    let mut query = record_query(limits(1, 150_000));
                     query.options.decoded_bytes = NonZeroUsize::new(40_000);
                     query.item = Some(item);
                     let mut reader = f.storage.query_in(&view, query).unwrap();
                     f.data.control.block_read.store(true, Ordering::SeqCst);
                     assert!(matches!(
                         reader.next_page().await,
-                        Err(Error::ResourceExhausted { .. })
+                        Err(Error::InvalidInput {
+                            field: "storage read",
+                            ..
+                        })
                     ));
                     assert!(f.storage.status().read_bytes <= 200_000);
                     drop(reader);
@@ -1051,17 +1055,20 @@ fn contract_scenario() {
                     policy.budget.read_memory_bytes = NonZeroUsize::new(bytes * 2 - 1).unwrap();
                     let f = Fixture::new(policy).await;
                     let view = f.storage.view_with_limits(f.execution).await.unwrap();
-                    assert!(matches!(
-                        f.storage.view_with_limits(f.execution).await,
-                        Err(Error::ResourceExhausted {
-                            resource: "storage read memory"
-                        })
-                    ));
+                    // A Second View Waits For Shared Capacity Without Charging The Pool.
+                    let mut waiting = Box::pin(f.storage.view_with_limits(f.execution));
+                    assert!(
+                        std::future::poll_fn(|cx| std::task::Poll::Ready(
+                            std::future::Future::poll(waiting.as_mut(), cx)
+                        ))
+                        .await
+                        .is_pending()
+                    );
                     assert_eq!(view.saved().unwrap().sequence, 0);
                     assert_eq!(f.storage.status().read_bytes, bytes);
                     drop(view);
-                    wait_release(&f, 1).await;
-                    let next = f.storage.view_with_limits(f.execution).await.unwrap();
+                    let next = waiting.await.unwrap();
+                    assert_eq!(f.storage.status().read_bytes, bytes);
                     drop(next);
                     f.finish().await;
                 });

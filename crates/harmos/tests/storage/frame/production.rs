@@ -215,21 +215,36 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    let settings = StorageSettings {
-                        query_decoded_bytes: NonZeroUsize::new(128).unwrap(),
-                        ..storage_settings()
-                    };
-                    let f = Fixture::new(settings).await;
-                    let view = f.storage.view_with_limits(f.execution).await.unwrap();
+                    let f = Fixture::new(storage_settings()).await;
+                    let view = f
+                        .storage
+                        .view_with_limits(f.execution.elastic())
+                        .await
+                        .unwrap();
                     let baseline = f.storage.status().read_bytes;
                     let preparation = view.prepare_work().unwrap();
+                    let occupied = f.storage.status().read_bytes;
+                    let probe = f.storage.reserve_arrow_memory(0).unwrap();
+                    let overhead = f.storage.status().read_bytes - occupied;
+                    drop(probe);
+                    // Leave Less Shared Capacity Than The Boxed Work Needs.
+                    let capacity = storage_settings().budget.read_memory_bytes.get();
+                    let external = f
+                        .storage
+                        .reserve_arrow_memory(capacity - occupied - overhead - 64)
+                        .unwrap();
+                    let held = f.storage.status().read_bytes - occupied;
                     let bytes = [1_u8; 129];
                     let future = async move { std::hint::black_box(bytes) };
                     assert!(matches!(
                         preparation.boxed(future),
-                        Err(Error::ResourceExhausted { .. })
+                        Err(Error::ResourceExhausted {
+                            resource: "storage read memory"
+                        })
                     ));
-                    assert_eq!(f.storage.status().read_bytes, baseline);
+                    // The Refused Preparation Releases Its Own Charge.
+                    assert_eq!(f.storage.status().read_bytes, baseline + held);
+                    drop(external);
                     let active = view.begin_computation().unwrap();
                     let same = active.clone();
                     assert_eq!(active.deadline(), same.deadline());
@@ -684,8 +699,12 @@ fn contract_scenario() {
                         Err(Error::NotReady { .. })
                     ));
                     let called = Cell::new(false);
+                    // Output Beyond The Shared Read Budget Is Refused Before The Callback.
+                    let oversized =
+                        NonZeroUsize::new(storage_settings().budget.read_memory_bytes.get() + 1)
+                            .unwrap();
                     assert!(
-                        work.project_shared(&source, NonZeroUsize::new(129).unwrap(), |_, _| {
+                        work.project_shared(&source, oversized, |_, _| {
                             called.set(true);
                             Ok(Vec::<u8>::new())
                         })
