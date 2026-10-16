@@ -65,6 +65,7 @@ impl FileBackend {
             let journal = owner
                 .as_mut()
                 .ok_or_else(|| format::invalid("state backend is closed"))?;
+            journal.check()?;
             action(journal)
         })
         .await
@@ -88,7 +89,9 @@ impl StateBackend for FileBackend {
                 if owner.is_none() {
                     *owner = Some(Journal::open(&root, history, entry_bytes, snapshot_bytes)?);
                 }
-                Ok(owner.as_ref().expect("opened journal").position())
+                let journal = owner.as_ref().expect("opened journal");
+                journal.check()?;
+                Ok(journal.position())
             })
             .await
             .map_err(task)?
@@ -146,10 +149,11 @@ impl StateBackend for FileBackend {
         Box::pin(async move {
             let mut owner = self.journal.clone().lock_owned().await;
             tokio::task::spawn_blocking(move || {
-                if let Some(journal) = owner.as_mut() {
-                    journal.flush(&journal.position())?;
-                }
-                owner.take();
+                let Some(mut journal) = owner.take() else {
+                    return Ok(());
+                };
+                journal.check()?;
+                journal.flush(&journal.position())?;
                 Ok(())
             })
             .await

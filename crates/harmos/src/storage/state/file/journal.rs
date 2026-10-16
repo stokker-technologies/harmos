@@ -32,6 +32,7 @@ use crate::{BackendFailure, Error, Result};
 pub(super) struct Journal {
     files: Files,
     file: File,
+    poisoned: bool,
     history: StoreHistory,
     saved: u64,
     base: u64,
@@ -111,12 +112,22 @@ impl Journal {
         Ok(Self {
             files,
             file,
+            poisoned: false,
             history,
             saved,
             base,
             entry_bytes,
             snapshot_bytes,
         })
+    }
+
+    pub(super) fn check(&self) -> Result<()> {
+        if self.poisoned {
+            return Err(io(std::io::Error::other(
+                "state journal requires close and reopen after an unresolved I/O failure",
+            )));
+        }
+        Ok(())
     }
 
     pub(super) fn position(&self) -> RecoveryPosition {
@@ -222,8 +233,10 @@ impl Journal {
         })();
         if let Err(error) = result {
             // Preserve The Acknowledged Prefix Before Permitting Another Append.
+            self.poisoned = true;
             self.file.set_len(start).map_err(io)?;
             self.file.sync_all().map_err(io)?;
+            self.poisoned = false;
             return Err(error);
         }
         self.saved = next;
@@ -283,7 +296,9 @@ impl Journal {
             Ok(())
         });
         // Rename May Succeed Before Directory Sync Fails; Always Reopen The Named File.
+        self.poisoned = true;
         self.file = self.files.journal()?;
+        self.poisoned = false;
         replaced
     }
 
@@ -333,3 +348,37 @@ fn conflict(reason: &'static str) -> Error {
 }
 
 /* === Tests === */
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn failed_rollback_requires_reopen() {
+        let root = tempfile::tempdir().unwrap();
+        let history = StoreHistory {
+            store: crate::Identifier::new("state.test").unwrap(),
+            epoch: crate::Identifier::new("epoch.one").unwrap(),
+        };
+        let mut journal = Journal::open(root.path(), history.clone(), 4096, 4096).unwrap();
+        // A Read-Only Handle Forces Both Append And Rollback To Fail.
+        journal.file = File::open(root.path().join("state.jsonl")).unwrap();
+        let entry = RecoveryEntry {
+            position: RecoveryPosition {
+                history: history.clone(),
+                sequence: 1,
+            },
+            required_data: crate::storage::StorageCursor {
+                history: history.clone(),
+                sequence: 0,
+            },
+            payload: vec![1],
+        };
+        assert!(journal.append(std::slice::from_ref(&entry)).is_err());
+        assert!(journal.check().is_err());
+        drop(journal);
+        let mut reopened = Journal::open(root.path(), history, 4096, 4096).unwrap();
+        assert_eq!(reopened.position().sequence, 0);
+        reopened.append(&[entry]).unwrap();
+        assert_eq!(reopened.position().sequence, 1);
+    }
+}
