@@ -972,17 +972,6 @@ impl<T> StorageReader<T> {
         self.view.as_ref()
     }
 
-    pub(super) async fn reserve_output(
-        &self,
-        bytes: std::num::NonZeroUsize,
-    ) -> Result<MemoryReservation> {
-        let view = self.view.as_ref().ok_or(Error::ResourceExhausted {
-            resource: "exhausted query",
-        })?;
-        let _live = view.pin()?;
-        view.reserve_read_wait(bytes.get(), 1).await
-    }
-
     pub(super) fn exhausted(&self) -> bool {
         self.view.is_none()
     }
@@ -1057,10 +1046,10 @@ impl<T> StorageReader<T> {
     pub(super) async fn stage_page_mapped<U>(
         &mut self,
         limits: ReadLimits,
-        map: impl FnOnce(Vec<T>) -> Result<U>,
+        map: impl FnOnce(Vec<T>, usize) -> Result<U>,
     ) -> Result<Option<(U, bool)>> {
         self.stage_page_reserved(limits, |entries, reservation| {
-            let entries = map(entries)?;
+            let entries = map(entries, reservation.bytes)?;
             drop(reservation);
             Ok(entries)
         })

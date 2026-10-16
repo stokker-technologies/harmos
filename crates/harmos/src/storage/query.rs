@@ -1098,59 +1098,81 @@ impl<R, T: MemorySize> QueryResult<R, T> {
         let computation = view.begin_computation_wait().await?;
         let timeout = computation.timeout();
         let started = tokio::time::Instant::now();
-        if self.pending.is_none() {
-            let mut reservation = self.reader.reserve_output(self.decoded_bytes).await?;
+        let mut working = None;
+        while self.pending.is_none() {
+            let mut required = 0usize;
             let decode = &self.decode;
             let bytes = self.decoded_bytes;
             let page = tokio::time::timeout(
-                timeout,
-                self.reader.stage_page_mapped(self.page, |entries| {
-                    let inline = entries
-                        .len()
-                        .checked_mul(std::mem::size_of::<T>())
-                        .and_then(|bytes| bytes.checked_add(std::mem::size_of::<Vec<T>>()))
-                        .ok_or_else(decoded_limit)?;
-                    if inline > bytes.get() {
-                        return Err(decoded_limit());
-                    }
-                    let mut result = Vec::with_capacity(entries.len());
-                    let mut retained = std::mem::size_of::<Vec<T>>()
-                        .saturating_add(result.capacity().saturating_mul(std::mem::size_of::<T>()));
-                    if retained > bytes.get() {
-                        return Err(decoded_limit());
-                    }
-                    for entry in entries {
-                        if started.elapsed() >= timeout {
-                            return Err(execution_timeout());
+                timeout.saturating_sub(started.elapsed()),
+                self.reader
+                    .stage_page_mapped(self.page, |entries, raw_bytes| {
+                        required = raw_bytes
+                            .checked_add(bytes.get())
+                            .and_then(|total| total.checked_add(ENTRY_OVERHEAD))
+                            .ok_or_else(decoded_limit)?;
+                        let mut reservation = view.reserve_read(bytes.get(), 1)?;
+                        let inline = entries
+                            .len()
+                            .checked_mul(std::mem::size_of::<T>())
+                            .and_then(|bytes| bytes.checked_add(std::mem::size_of::<Vec<T>>()))
+                            .ok_or_else(decoded_limit)?;
+                        if inline > bytes.get() {
+                            return Err(decoded_limit());
                         }
-                        let allowance =
-                            NonZeroUsize::new(bytes.get() - retained).ok_or_else(decoded_limit)?;
-                        let value = decode(entry, allowance)?;
-                        retained = retained.saturating_add(
-                            value.memory_size().saturating_sub(std::mem::size_of::<T>()),
+                        let mut result = Vec::with_capacity(entries.len());
+                        let mut retained = std::mem::size_of::<Vec<T>>().saturating_add(
+                            result.capacity().saturating_mul(std::mem::size_of::<T>()),
                         );
                         if retained > bytes.get() {
                             return Err(decoded_limit());
                         }
-                        result.push(value);
-                    }
-                    if started.elapsed() >= timeout {
-                        return Err(execution_timeout());
-                    }
-                    reservation.retain_read(retained.saturating_add(ENTRY_OVERHEAD));
-                    Ok(QueryPage {
-                        entries: result,
-                        _reservation: reservation,
-                    })
-                }),
+                        for entry in entries {
+                            if started.elapsed() >= timeout {
+                                return Err(execution_timeout());
+                            }
+                            let allowance = NonZeroUsize::new(bytes.get() - retained)
+                                .ok_or_else(decoded_limit)?;
+                            let value = decode(entry, allowance)?;
+                            retained = retained.saturating_add(
+                                value.memory_size().saturating_sub(std::mem::size_of::<T>()),
+                            );
+                            if retained > bytes.get() {
+                                return Err(decoded_limit());
+                            }
+                            result.push(value);
+                        }
+                        if started.elapsed() >= timeout {
+                            return Err(execution_timeout());
+                        }
+                        reservation.retain_read(retained.saturating_add(ENTRY_OVERHEAD));
+                        Ok(QueryPage {
+                            entries: result,
+                            _reservation: reservation,
+                        })
+                    }),
             )
             .await
-            .map_err(|_| execution_timeout())??;
+            .map_err(|_| execution_timeout())?;
+            let page = match page {
+                Ok(page) => page,
+                Err(Error::ResourceExhausted {
+                    resource: "storage read memory",
+                }) if required != 0 => {
+                    // The Failed Mapping Released Raw And Partial Decoded Data.
+                    // Admit Their Combined Peak Before Reloading The Same Cursor.
+                    drop(working.take());
+                    working = Some(view.reserve_working_wait(required).await?);
+                    continue;
+                }
+                Err(error) => return Err(error),
+            };
             let Some((page, _empty)) = page else {
                 return Ok(None);
             };
             self.pending = Some(page);
         }
+        drop(working);
         if !include_empty && self.pending.as_ref().is_some_and(|page| page.is_empty()) {
             computation.check()?;
             self.pending.take();
