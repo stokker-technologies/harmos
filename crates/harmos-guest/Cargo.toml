@@ -10,13 +10,6 @@ version = { workspace = true }
 
 # === Package Targets ===
 
-[[bin]]
-name = "harmos-component-fixture"
-path = "tests/fixtures/componentizer.rs"
-required-features = ["componentize"]
-test = false
-bench = false
-
 # === Features ===
 
 [features]
@@ -32,7 +25,6 @@ streaming = ["harmos-sdk/streaming"]
 # custom sections, and a native host that only does that has no world to bind.
 # Any Authored Async Lifecycle Or Operation May Wait On Rust-Originating Events.
 kit = ["dep:wit-bindgen", "wit-bindgen/inter-task-wakeup"]
-componentize = ["dep:wit-component"]
 
 # === Dependencies ===
 
@@ -95,7 +87,6 @@ wit-bindgen = { workspace = true, default-features = true, features = [
 # Utilities
 
 # Serialization
-wit-component = { workspace = true, default-features = true, optional = true }
 
 # Configuration
 

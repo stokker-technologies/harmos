@@ -10,9 +10,6 @@
 /* === Modules === */
 mod error;
 
-#[cfg(all(not(target_arch = "wasm32"), feature = "componentize"))]
-pub mod component;
-
 #[cfg(feature = "kit")]
 pub mod kit;
 
@@ -26,8 +23,6 @@ pub use harmos_sdk::operations::{
 pub use harmos_domain::{catalog, listeners};
 pub use harmos_sdk::operations;
 
-#[cfg(all(not(target_arch = "wasm32"), feature = "componentize"))]
-pub use component::componentize;
 pub use harmos_domain::inventory;
 pub use harmos_domain::{
     ConfigError, Failure, Refusal, Registrar, Registration, RegistrationError, StreamSpec,

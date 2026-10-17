@@ -268,3 +268,28 @@ impl Inputs {
 /* === Private Functions === */
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn inputs_exclude_generated_outputs_before_explicit_files() {
+        let root = PathBuf::from("workspace");
+        let output = root.join("generated");
+        let inputs = Inputs {
+            roots: BTreeSet::from([root.clone(), PathBuf::from("dependency")]),
+            files: BTreeSet::from([output.join("schema.rs"), root.join("Cargo.toml")]),
+            excluded: BTreeSet::from([output.clone()]),
+        };
+        assert!(!inputs.relevant(&output.join("schema.rs")));
+        assert!(!inputs.relevant(&output.join("nested/new.rs")));
+        for directory in ["target", "dist", ".git", ".stkr", ".venv", "node_modules"] {
+            assert!(!inputs.relevant(&root.join(directory).join("output")));
+        }
+        assert!(inputs.relevant(&root.join("src/model.rs")));
+        assert!(inputs.relevant(&root.join("Cargo.toml")));
+        assert!(inputs.relevant(&PathBuf::from("dependency/src/lib.rs")));
+        assert!(!inputs.relevant(&PathBuf::from("unrelated/src/lib.rs")));
+    }
+}
