@@ -9,7 +9,10 @@
 /* === Modules === */
 /* === Re-Exports === */
 /* === Imports === */
-use super::waveforms;
+// Standard Library Imports
+use std::sync::Arc;
+
+// Third Party Imports
 use arrow_array::{ArrayRef, Float64Array, RecordBatch, UInt32Array};
 use arrow_schema::{DataType, Field, Schema};
 use criterion::{BenchmarkId, Criterion, Throughput};
@@ -21,7 +24,10 @@ use harmos::storage::query::transform::{
     histogram::Histogram,
     project::Projection,
 };
-use std::sync::Arc;
+
+// Local Imports
+use super::waveforms;
+
 /* === Constants === */
 /* === Macros === */
 /* === Type Aliases === */

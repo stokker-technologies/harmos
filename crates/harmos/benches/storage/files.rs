@@ -9,11 +9,17 @@
 /* === Modules === */
 /* === Re-Exports === */
 /* === Imports === */
-use super::{fixture::Fixture, waveforms};
+// Standard Library Imports
+use std::time::{Duration, Instant};
+
+// Third Party Imports
 use criterion::{BenchmarkId, Criterion, Throughput};
 use harmos::Identifier;
 use harmos::storage::{ByteRange, FileMetadata, ReadFile};
-use std::time::{Duration, Instant};
+
+// Local Imports
+use super::{fixture::Fixture, waveforms};
+
 /* === Constants === */
 /* === Macros === */
 /* === Type Aliases === */

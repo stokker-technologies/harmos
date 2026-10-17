@@ -29,8 +29,8 @@ pub use sort::SortExecution;
 /* === Imports === */
 // Standard Library Imports
 use std::sync::Arc;
+
 // Third Party Imports
-use crate::{Error, Result};
 use arrow_array::{
     Array, ArrayRef, BinaryArray, BooleanArray, Float32Array, Float64Array, Int8Array, Int16Array,
     Int32Array, Int64Array, NullArray, RecordBatch, StringArray, StructArray,
@@ -38,6 +38,9 @@ use arrow_array::{
 };
 use arrow_schema::{DataType, Field, Schema, TimeUnit};
 use harmos_domain::model::storage::query::scalar::{ExactNumber, ScalarValue};
+
+// Local Imports
+use crate::{Error, Result};
 
 /* === Constants === */
 

@@ -10,7 +10,12 @@
 /* === Modules === */
 /* === Re-Exports === */
 /* === Imports === */
-use super::{Fixture, Lanes, config};
+// Standard Library Imports
+use std::borrow::Cow;
+use std::num::{NonZeroU32, NonZeroUsize};
+use std::sync::Arc;
+
+// Third Party Imports
 use harmos::Identifier;
 use harmos::schema::Cardinality;
 use harmos::schema::graph::{Field, Kind, Schema};
@@ -19,9 +24,10 @@ use harmos::storage::query::{
     Query as QueryRequest, QueryArrow, RowSlice, SchemaSelection, Source,
 };
 use harmos::storage::{MutationId, SchemaInput, SchemaKey};
-use std::borrow::Cow;
-use std::num::{NonZeroU32, NonZeroUsize};
-use std::sync::Arc;
+
+// Local Imports
+use super::{Fixture, Lanes, config};
+
 /* === Constants === */
 /* === Macros === */
 /* === Type Aliases === */

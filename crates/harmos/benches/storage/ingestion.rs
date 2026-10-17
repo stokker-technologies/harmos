@@ -9,9 +9,15 @@
 /* === Modules === */
 /* === Re-Exports === */
 /* === Imports === */
-use super::{fixture::Fixture, waveforms};
-use criterion::{BenchmarkId, Criterion, Throughput};
+// Standard Library Imports
 use std::time::{Duration, Instant};
+
+// Third Party Imports
+use criterion::{BenchmarkId, Criterion, Throughput};
+
+// Local Imports
+use super::{fixture::Fixture, waveforms};
+
 /* === Constants === */
 /* === Macros === */
 /* === Type Aliases === */

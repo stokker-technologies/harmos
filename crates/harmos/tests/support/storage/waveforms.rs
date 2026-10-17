@@ -10,11 +10,16 @@
 /* === Modules === */
 /* === Re-Exports === */
 /* === Imports === */
-use harmos::storage::*;
-use harmos::{DefinitionId, Identified, Identifier, Message};
+// Standard Library Imports
 use std::f64::consts::TAU;
 use std::num::NonZeroU32;
 use std::time::{Duration, UNIX_EPOCH};
+
+// Third Party Imports
+use harmos::storage::*;
+use harmos::{DefinitionId, Identified, Identifier, Message};
+
+// Local Imports
 
 /* === Constants === */
 pub const AMPLITUDE: f64 = 12.0;

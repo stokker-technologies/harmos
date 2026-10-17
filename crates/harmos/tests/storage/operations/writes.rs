@@ -9,7 +9,11 @@
 /* === Modules === */
 /* === Re-Exports === */
 /* === Imports === */
-use super::{Fixture, Lanes, config};
+// Standard Library Imports
+use std::num::NonZeroUsize;
+use std::sync::Arc;
+
+// Third Party Imports
 use arrow_array::{Array, ArrayRef, RecordBatch, StringArray, StructArray, UInt64Array};
 use arrow_schema::{DataType, Field, Fields, Schema};
 use harmos::operations::StreamSettings;
@@ -17,8 +21,10 @@ use harmos::storage::arrow::ArrowBatch;
 use harmos::storage::operations::{WriteRecords, WriteStreams};
 use harmos::storage::writes::{DataBatch, WriteReceipt, WriteRequest};
 use harmos::{Identifier, MemorySize, Message};
-use std::num::NonZeroUsize;
-use std::sync::Arc;
+
+// Local Imports
+use super::{Fixture, Lanes, config};
+
 /* === Constants === */
 /* === Macros === */
 /* === Type Aliases === */

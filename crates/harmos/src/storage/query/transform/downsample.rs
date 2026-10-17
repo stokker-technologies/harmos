@@ -15,14 +15,17 @@
 pub use harmos_domain::model::storage::query::transform::downsample::{Algorithm, Downsample};
 
 /* === Imports === */
-use crate::storage::query::transform::FieldPathExecution;
+// Standard Library Imports
+
 // Third Party Imports
 use arrow_array::RecordBatch;
 use arrow_schema::{DataType, Schema, TimeUnit};
+use harmos_domain::model::storage::query::scalar::ScalarValue;
+
 // Local Imports
 use super::{invalid, numeric_type, take};
 use crate::Result;
-use harmos_domain::model::storage::query::scalar::ScalarValue;
+use crate::storage::query::transform::FieldPathExecution;
 
 /* === Constants === */
 

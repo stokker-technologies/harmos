@@ -17,14 +17,17 @@ pub use harmos_domain::model::storage::query::transform::filter::{
 };
 
 /* === Imports === */
-use crate::storage::query::transform::FieldPathExecution;
+// Standard Library Imports
+
 // Third Party Imports
 use arrow_array::RecordBatch;
 use arrow_schema::Schema;
+use harmos_domain::model::storage::query::scalar::ScalarValue;
+
 // Local Imports
 use super::{invalid, scalar_type, take};
 use crate::Result;
-use harmos_domain::model::storage::query::scalar::ScalarValue;
+use crate::storage::query::transform::FieldPathExecution;
 
 /* === Constants === */
 

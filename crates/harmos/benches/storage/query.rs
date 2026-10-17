@@ -9,7 +9,10 @@
 /* === Modules === */
 /* === Re-Exports === */
 /* === Imports === */
-use super::{fixture::Fixture, waveforms};
+// Standard Library Imports
+use std::time::{Duration, Instant, UNIX_EPOCH};
+
+// Third Party Imports
 use criterion::{BenchmarkId, Criterion, Throughput};
 use harmos::storage::query::transform::{
     Transform,
@@ -17,7 +20,10 @@ use harmos::storage::query::transform::{
 };
 use harmos::storage::query::{Query, QueryArrow, RowSlice, Source, StreamSelection};
 use harmos::storage::*;
-use std::time::{Duration, Instant, UNIX_EPOCH};
+
+// Local Imports
+use super::{fixture::Fixture, waveforms};
+
 /* === Constants === */
 /* === Macros === */
 /* === Type Aliases === */
