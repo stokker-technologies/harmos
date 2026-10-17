@@ -173,21 +173,7 @@ impl<const N: u8> harmos_runtime::Message for Declaration<N> {
     }
 }
 
-#[cfg(feature = "grpc")]
-impl<const N: u8> harmos_runtime::Protobuf for Declaration<N> {
-    fn encode_to_vec(&self) -> Vec<u8> {
-        harmos_runtime::Protobuf::encode_to_vec(&Consume { consume: self.consume })
-    }
-    fn encoded_len(&self) -> usize {
-        harmos_runtime::Protobuf::encoded_len(&Consume { consume: self.consume })
-    }
-    fn decoding_memory(bytes: &[u8]) -> Result<usize, harmos_runtime::MessageError> {
-        <Consume as harmos_runtime::Protobuf>::decoding_memory(bytes)
-    }
-    fn decode(bytes: &[u8]) -> Result<Self, harmos_runtime::MessageError> {
-        <Consume as harmos_runtime::Protobuf>::decode(bytes).map(|value| Self { consume: value.consume })
-    }
-}
+
 
 impl<const N: u8> harmos_runtime::MemorySize for Declaration<N> {
     fn memory_size(&self) -> usize {

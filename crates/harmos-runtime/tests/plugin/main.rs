@@ -227,27 +227,7 @@ impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> harmos_runtime:
     }
 }
 
-#[cfg(feature = "grpc")]
-impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> harmos_runtime::Protobuf
-    for Run<OWNER, MILLIS, PRIVATE>
-{
-    fn encode_to_vec(&self) -> Vec<u8> {
-        harmos_runtime::Protobuf::encode_to_vec(&self.wire())
-    }
-    fn encoded_len(&self) -> usize {
-        harmos_runtime::Protobuf::encoded_len(&self.wire())
-    }
-    fn decoding_memory(
-        bytes: &[u8],
-    ) -> ::core::result::Result<usize, harmos_runtime::MessageError> {
-        <RunRequest as harmos_runtime::Protobuf>::decoding_memory(bytes)
-    }
-    fn decode(bytes: &[u8]) -> ::core::result::Result<Self, harmos_runtime::MessageError> {
-        <RunRequest as harmos_runtime::Protobuf>::decode(bytes).map(|request| Self {
-            value: request.value,
-        })
-    }
-}
+
 
 impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> harmos_runtime::MemorySize
     for Run<OWNER, MILLIS, PRIVATE>

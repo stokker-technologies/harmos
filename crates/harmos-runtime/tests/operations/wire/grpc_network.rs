@@ -117,12 +117,12 @@ async fn builtin_grpc_roundtrip() {
 
 #[tokio::test]
 async fn external_authority_parity() {
-    use harmos_runtime::operations::discovery::Discovery;
+    use harmos_runtime::operations::listing;
     use harmos_domain::plugin::Grant;
     let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
     runtime.operations.register_wire_operation::<Guard>("app", Lanes::Open, Arc::new(())).unwrap();
     runtime.operations.register_wire_operation::<Descend>("app", Lanes::Open, Arc::new(())).unwrap();
-    runtime.operations.register_wire_operation::<Discovery>("host", Lanes::Open, Arc::new(())).unwrap();
+    listing::register::<()>(&runtime.operations, "host", Lanes::Open, None).unwrap();
     // Internal Boot Work Does Not Freeze The Later Listener Policy.
     assert_eq!(runtime.operations.call(Guarded {}).await.unwrap().actor, "host:anonymous");
     let mode = Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -281,7 +281,7 @@ async fn stalled_listener_settles() {
             .server_streaming(
                 request,
                 http::uri::PathAndQuery::from_static("/fixture.Identity/Hold"),
-                Codec::<OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<Ask>>::new(decode, encode).unwrap(),
+                Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<Ask>>::new(decode, encode).unwrap(),
             )
             .await
             .unwrap()
@@ -332,7 +332,7 @@ async fn shutdown_streams_unavailable() {
         .server_streaming(
             request,
             http::uri::PathAndQuery::from_static("/fixture.Identity/Hold"),
-            Codec::<OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<Ask>>::new(decode, encode).unwrap(),
+            Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<Ask>>::new(decode, encode).unwrap(),
         )
         .await
         .unwrap()
@@ -352,7 +352,7 @@ async fn shutdown_streams_unavailable() {
             .client_streaming(
                 request,
                 http::uri::PathAndQuery::from_static("/fixture.Identity/Upload"),
-                Codec::<Reply, harmos_runtime::operations::Response<InputEnvelope<Ask, Reply>>>::new(decode, encode).unwrap(),
+                Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<InputEnvelope<Ask, Reply>>>::new(decode, encode).unwrap(),
             )
             .await
             .err()
@@ -569,7 +569,7 @@ async fn streaming_preserves_principals() {
         .server_streaming(
             request,
             http::uri::PathAndQuery::from_static("/fixture.Identity/Download"),
-            Codec::<OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<Ask>>::new(decode, encode).unwrap(),
+            Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<Ask>>::new(decode, encode).unwrap(),
         )
         .await
         .unwrap();
@@ -590,7 +590,7 @@ async fn streaming_preserves_principals() {
                 .streaming(
                     request,
                     http::uri::PathAndQuery::from_static("/fixture.Identity/Exchange"),
-                    Codec::<OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<InputEnvelope<Ask, Reply>>>::new(decode, encode)
+                    Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<InputEnvelope<Ask, Reply>>>::new(decode, encode)
                         .unwrap(),
                 )
                 .await
@@ -604,7 +604,7 @@ async fn streaming_preserves_principals() {
                 .client_streaming(
                     request,
                     http::uri::PathAndQuery::from_static("/fixture.Identity/Upload"),
-                    Codec::<Reply, harmos_runtime::operations::Response<InputEnvelope<Ask, Reply>>>::new(decode, encode).unwrap(),
+                    Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<InputEnvelope<Ask, Reply>>>::new(decode, encode).unwrap(),
                 )
                 .await
                 .unwrap();
@@ -678,7 +678,7 @@ async fn observes_cancel_deadline() {
             .server_streaming(
                 request,
                 http::uri::PathAndQuery::from_static("/fixture.Identity/Hold"),
-                Codec::<OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<Ask>>::new(decode, encode).unwrap(),
+                Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<Ask>>::new(decode, encode).unwrap(),
             )
             .await
             .unwrap();

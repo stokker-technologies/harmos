@@ -1018,6 +1018,7 @@ version = "0.2.0"
 dependencies = [
  "harmos-macros",
  "harmos-packaging",
+ "harmos-sdk",
  "memchr",
  "postcard",
  "prost-reflect",
@@ -1066,6 +1067,7 @@ name = "harmos-packaging"
 version = "0.2.0"
 dependencies = [
  "harmos-domain",
+ "harmos-sdk",
  "heck",
  "notify",
  "process-wrap",

@@ -27,6 +27,7 @@ use std::process::{Command, Stdio};
 // Third Party Imports
 
 // Local Imports
+use harmos_sdk::grpc::{self, DecodeInput};
 use harmos_packaging::{proto::Artifacts, python::{self, Settings}};
 use harmos_domain::operations::{
     Codec, Contract, Contracts, Grpc, OperationPolicy, RestartPolicy, RetryPolicy,
@@ -36,7 +37,7 @@ use harmos_domain::schema::{
     graph::{Field, Kind, Schema},
 };
 use harmos_domain::config::SchemaSettings;
-use harmos_domain::{Aggregate, Identifier, Protobuf};
+use harmos_domain::{Aggregate, Identifier};
 
 /* === Constants === */
 const POLICY: OperationPolicy = OperationPolicy {
@@ -341,10 +342,10 @@ fn python_reads_rust() {
         optional: Some(u32::MAX),
         values: vec![i64::MIN, -1, 0, i64::MAX],
     };
-    let encoded = Protobuf::encode_to_vec(&value);
+    let encoded = { let mut bytes = Vec::new(); grpc::encode(&value, &mut bytes).unwrap(); bytes };
 
     for echoed in both("wire", &exported, &encoded) {
-        let decoded = <Payload as Protobuf>::decode(&echoed[..]).unwrap();
+        let decoded = grpc::decode::<Payload>(DecodeInput::new(&echoed[..])).unwrap();
         assert_eq!(decoded.text, value.text);
         assert_eq!(decoded.optional, value.optional);
         assert_eq!(decoded.values, value.values);
@@ -422,6 +423,6 @@ fn aggregate_members_typed() {
         aggregates: vec![Aggregate::Count, Aggregate::Percentile(99)],
     };
     let source = package.join("src");
-    let output = scene("aggregate", &[&source], false, &Protobuf::encode_to_vec(&value));
-    assert!(<Summary as Protobuf>::decode(&output[..]).unwrap() == value);
+    let output = scene("aggregate", &[&source], false, &{ let mut bytes = Vec::new(); grpc::encode(&value, &mut bytes).unwrap(); bytes });
+    assert!(grpc::decode::<Summary>(DecodeInput::new(&output[..])).unwrap() == value);
 }

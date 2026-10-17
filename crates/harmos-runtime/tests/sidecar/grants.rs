@@ -297,7 +297,7 @@ async fn fetch(
         .insert("authorization", bearer.parse().unwrap());
     let settings = harmos_runtime::grpc::server::Settings::default();
     let codec =
-        harmos_runtime::grpc::Codec::<Fetch, harmos_runtime::operations::Response<Fetch>>::new(
+        harmos_runtime::grpc::Codec::<harmos_runtime::grpc::Transcoded, Fetch, harmos_runtime::operations::Response<Fetch>>::new(
             settings.decode,
             settings.encode,
         )?;

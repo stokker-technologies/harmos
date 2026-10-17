@@ -100,20 +100,7 @@ macro_rules! scripted_codec {
             }
         }
 
-        #[cfg(feature = "grpc")]
-        impl harmos_runtime::Protobuf for $ty {
-            fn encode_to_vec(&self) -> Vec<u8> {
-                harmos_runtime::Protobuf::encode_to_vec(&self.0)
-            }
 
-            fn encoded_len(&self) -> usize {
-                harmos_runtime::Protobuf::encoded_len(&self.0)
-            }
-
-            fn decode(bytes: &[u8]) -> Result<Self, harmos_runtime::MessageError> {
-                <Text as harmos_runtime::Protobuf>::decode(bytes).map(Self)
-            }
-        }
 
         impl harmos_runtime::MemorySize for $ty {
             fn memory_size(&self) -> usize {

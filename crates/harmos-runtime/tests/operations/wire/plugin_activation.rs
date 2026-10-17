@@ -21,6 +21,7 @@
 // Third Party Imports
 
 // Local Imports
+use harmos_sdk::grpc::{self, DecodeInput};
 use super::*;
 
 
@@ -245,7 +246,7 @@ async fn plugin_caller_authorization() {
         let bytes = body.to_bytes();
         assert_eq!(bytes[0], 0);
         assert_eq!(u32::from_be_bytes(bytes[1..5].try_into().unwrap()) as usize, bytes.len() - 5);
-        assert_eq!(<String as harmos_runtime::Protobuf>::decode(&bytes[5..]).unwrap(), "grpc:1");
+        assert_eq!(grpc::decode::<String>(DecodeInput::new(&bytes[5..])).unwrap(), "grpc:1");
         let response = grpc_call::<super::super::cases::PrivateEcho>(harmos_runtime::grpc::server::Authority::Plugin(caller.clone())).await;
         assert_eq!(response.headers()["grpc-status"], "7");
     }
@@ -550,12 +551,12 @@ where
         output: channel,
         opening_timeout: std::time::Duration::from_secs(1),
     };
-    let mut codec = harmos_runtime::grpc::Codec::<Text, harmos_runtime::operations::Response<Text>>::new(decode, encode).unwrap();
+    let mut codec = harmos_runtime::grpc::Codec::<harmos_runtime::grpc::Transcoded, Text, harmos_runtime::operations::Response<Text>>::new(decode, encode).unwrap();
     let message = futures_util::stream::iter([Ok(harmos_runtime::operations::Response::new(Text::from("grpc")))]);
     let body = tonic::codec::EncodeBody::new_client(codec.encoder(), message, None, Some(4096));
     let request =
         tonic::codegen::http::Request::builder().header("content-type", "application/grpc").body(tonic::body::Body::new(body)).unwrap();
-    harmos_runtime::grpc::server::unary::<O>(authority, settings, request).await
+    harmos_runtime::grpc::server::unary::<O, harmos_runtime::grpc::Transcoded>(authority, settings, request).await
 }
 
 /* === Tests === */

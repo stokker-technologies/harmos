@@ -595,6 +595,7 @@ async fn grpc_original_owner() {
     client.ready().await.unwrap();
     let settings = harmos_runtime::grpc::server::Settings::default();
     let codec = harmos_runtime::grpc::Codec::<
+        harmos_runtime::grpc::Transcoded,
         propose::Route,
         harmos_runtime::operations::Response<propose::ProposeRoute>,
     >::new(settings.decode, settings.encode)

@@ -127,7 +127,7 @@ async fn embedded_wire_contracts() {
         let mut client = tonic::client::Grpc::new(channel);
         client.ready().await.unwrap();
         let settings = harmos_runtime::grpc::server::Settings::default();
-        let codec = harmos_runtime::grpc::Codec::<String, harmos_runtime::operations::Response<RunRequest>>::new(settings.decode, settings.encode).unwrap();
+        let codec = harmos_runtime::grpc::Codec::<harmos_runtime::grpc::Transcoded, String, harmos_runtime::operations::Response<RunRequest>>::new(settings.decode, settings.encode).unwrap();
         let response: tonic::Response<harmos_runtime::operations::StreamItem<String>> = client
             .unary(
                 tonic::Request::new(harmos_runtime::operations::Response::new(RunRequest { value: "grpc embedded provider".into() })),

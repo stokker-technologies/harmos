@@ -91,7 +91,8 @@ use std::fmt::Debug;
 // Third Party Imports
 
 // Local Imports
-use harmos_domain::{Message, Protobuf};
+use harmos_sdk::grpc::{self, DecodeInput};
+use harmos_domain::Message;
 
 /* === Constants === */
 
@@ -131,7 +132,7 @@ fn absent_variant_defaults() {
             let run = read::<known::Run>(&bare);
             assert_eq!(run.mode, known::Mode::Automatic);
             assert_eq!(*read::<known::Boxed>(&bare).mode, run.mode);
-            <known::Run as Protobuf>::decoding_memory(&bare).unwrap();
+            grpc::decoding_memory::<known::Run>(DecodeInput::new(&bare)).unwrap();
         }
 
 #[test]
@@ -185,21 +186,21 @@ fn enum_postcard_parity() {
 
 
 /* === Private Functions === */
-fn wire<T: Protobuf>(value: &T) -> Vec<u8> {
-    Protobuf::encode_to_vec(value)
+fn wire<T: harmos_domain::Message + harmos_domain::schema::Described>(value: &T) -> Vec<u8> {
+    crate::encode(value)
 }
 
-fn read<T: Protobuf>(bytes: &[u8]) -> T {
-    <T as Protobuf>::decode(bytes).unwrap()
+fn read<T: harmos_domain::Message + harmos_domain::schema::Described>(bytes: &[u8]) -> T {
+    grpc::decode::<T>(DecodeInput::new(bytes)).unwrap()
 }
 
-fn refused<T: Protobuf + Debug>(bytes: &[u8]) {
-    let error = <T as Protobuf>::decode(bytes).unwrap_err();
+fn refused<T: harmos_domain::Message + harmos_domain::schema::Described + Debug>(bytes: &[u8]) {
+    let error = grpc::decode::<T>(DecodeInput::new(bytes)).unwrap_err();
     assert!(
         error.to_string().contains("unknown protobuf enum variant"),
         "{error}"
     );
-    assert!(<T as Protobuf>::decoding_memory(bytes).is_err());
+    assert!(grpc::decoding_memory::<T>(DecodeInput::new(bytes)).is_err());
 }
 
 /* === Tests === */

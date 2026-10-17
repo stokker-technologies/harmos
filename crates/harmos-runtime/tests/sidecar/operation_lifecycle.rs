@@ -361,7 +361,7 @@ async fn grpc_original_owner() {
     client.ready().await.unwrap();
     let settings = harmos_runtime::grpc::server::Settings::default();
     // Unknown Protobuf Fields Are Legal For Unit; Postcard Unit Rejects These Bytes.
-    let codec = harmos_runtime::grpc::Codec::<(), harmos_runtime::operations::Response<u32>>::new(
+    let codec = harmos_runtime::grpc::Codec::<harmos_runtime::grpc::Transcoded, (), harmos_runtime::operations::Response<u32>>::new(
         settings.decode,
         settings.encode,
     )

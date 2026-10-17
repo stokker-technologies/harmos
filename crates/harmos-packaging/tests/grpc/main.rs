@@ -19,6 +19,7 @@
 use prost_reflect::DescriptorPool;
 
 // Local Imports
+use harmos_sdk::grpc::{self, DecodeInput};
 use harmos_domain::operations::{Contracts, OperationPolicy, RestartPolicy, RetryPolicy};
 use harmos_packaging::proto::{self, Artifacts};
 
@@ -151,13 +152,13 @@ fn annotated() -> Annotated {
 
 #[test]
 fn portable_messages_cross() {
-            use harmos_domain::{Message, Protobuf};
+            use harmos_domain::Message;
             let value = annotated();
             let postcard = Message::encode_to_vec(&value);
             assert!(<Annotated as Message>::decode(&postcard).unwrap() == value);
-            let protobuf = Protobuf::encode_to_vec(&value);
-            assert!(<Annotated as Protobuf>::decode(&protobuf).unwrap() == value);
-            assert!(<Annotated as Protobuf>::decoding_memory(&protobuf).is_ok());
+            let protobuf = { let mut bytes = Vec::new(); grpc::encode(&value, &mut bytes).unwrap(); bytes };
+            assert!(grpc::decode::<Annotated>(DecodeInput::new(&protobuf)).unwrap() == value);
+            assert!(grpc::decoding_memory::<Annotated>(DecodeInput::new(&protobuf)).is_ok());
             let contracts = Contracts::of::<Portable>().unwrap();
             let artifacts = Artifacts::new(&contracts).unwrap();
             let target = tempfile::tempdir().unwrap();
@@ -186,7 +187,7 @@ fn portable_messages_cross() {
 
 #[test]
 fn boxed_messages_cross() {
-            use harmos_domain::{Message, Protobuf};
+            use harmos_domain::Message;
             let request = Envelope {
                 inner: Box::new(annotated()),
                 sequence: 3,
@@ -194,8 +195,8 @@ fn boxed_messages_cross() {
             let response = Delivered::Boxed(Box::new(annotated()));
             let postcard = Message::encode_to_vec(&request);
             assert!(<Envelope as Message>::decode(&postcard).unwrap() == request);
-            let protobuf = Protobuf::encode_to_vec(&response);
-            assert!(<Delivered as Protobuf>::decode(&protobuf).unwrap() == response);
+            let protobuf = { let mut bytes = Vec::new(); grpc::encode(&response, &mut bytes).unwrap(); bytes };
+            assert!(grpc::decode::<Delivered>(DecodeInput::new(&protobuf)).unwrap() == response);
             let contracts = Contracts::of::<Boxed>().unwrap();
             let artifacts = Artifacts::new(&contracts).unwrap();
             let target = tempfile::tempdir().unwrap();
@@ -238,12 +239,12 @@ fn boxed_messages_cross() {
             assert!(nested.get_field_by_name("identifier").is_some());
             let decoded = prost_reflect::DynamicMessage::decode(
                 envelope,
-                Protobuf::encode_to_vec(&request).as_slice(),
+                { let mut bytes = Vec::new(); grpc::encode(&request, &mut bytes).unwrap(); bytes }.as_slice(),
             )
             .unwrap();
             assert_eq!(
                 prost_reflect::prost::Message::encode_to_vec(&decoded),
-                Protobuf::encode_to_vec(&request)
+                { let mut bytes = Vec::new(); grpc::encode(&request, &mut bytes).unwrap(); bytes }
             );
         }
 

@@ -293,13 +293,13 @@ impl Service<http::Request<Body>> for Endpoint {
         let authority = self.authority.clone();
         Box::pin(async move {
             Ok(match request.uri().path() {
-                "/fixture.Identity/Hold" => harmos_runtime::grpc::server::download::<Hold>(authority, wire_settings(), request).await,
-                "/fixture.Identity/Download" => harmos_runtime::grpc::server::download::<Download>(authority, wire_settings(), request).await,
-                "/fixture.Identity/Upload" => harmos_runtime::grpc::server::upload::<Upload>(authority, wire_settings(), request).await,
-                "/fixture.Identity/Exchange" => harmos_runtime::grpc::server::exchange::<Exchange>(authority, wire_settings(), request).await,
-                "/fixture.Identity/Guarded" => harmos_runtime::grpc::server::unary::<Guarded>(authority, wire_settings(), request).await,
-                "/fixture.Identity/Descendant" => harmos_runtime::grpc::server::unary::<Descendant>(authority, wire_settings(), request).await,
-                _ => harmos_runtime::grpc::server::unary::<Who>(authority, wire_settings(), request).await,
+                "/fixture.Identity/Hold" => harmos_runtime::grpc::server::download::<Hold, harmos_runtime::grpc::Transcoded>(authority, wire_settings(), request).await,
+                "/fixture.Identity/Download" => harmos_runtime::grpc::server::download::<Download, harmos_runtime::grpc::Transcoded>(authority, wire_settings(), request).await,
+                "/fixture.Identity/Upload" => harmos_runtime::grpc::server::upload::<Upload, harmos_runtime::grpc::Transcoded>(authority, wire_settings(), request).await,
+                "/fixture.Identity/Exchange" => harmos_runtime::grpc::server::exchange::<Exchange, harmos_runtime::grpc::Transcoded>(authority, wire_settings(), request).await,
+                "/fixture.Identity/Guarded" => harmos_runtime::grpc::server::unary::<Guarded, harmos_runtime::grpc::Transcoded>(authority, wire_settings(), request).await,
+                "/fixture.Identity/Descendant" => harmos_runtime::grpc::server::unary::<Descendant, harmos_runtime::grpc::Transcoded>(authority, wire_settings(), request).await,
+                _ => harmos_runtime::grpc::server::unary::<Who, harmos_runtime::grpc::Transcoded>(authority, wire_settings(), request).await,
             })
         })
     }
@@ -586,7 +586,7 @@ async fn call(channel: tonic::transport::Channel, token: Option<&'static str>) -
         .unary(
             request,
             http::uri::PathAndQuery::from_static("/fixture.Identity/Who"),
-            Codec::<Reply, harmos_runtime::operations::Response<Ask>>::new(decode, encode)?,
+            Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<Ask>>::new(decode, encode)?,
         )
         .await?;
     Ok(response.into_inner().actor.clone())
@@ -603,7 +603,7 @@ async fn external_call(
     }
     let (decode, encode) = limits();
     let response = client
-        .unary(request, http::uri::PathAndQuery::from_static(path), Codec::<Reply, harmos_runtime::operations::Response<Ask>>::new(decode, encode)?)
+        .unary(request, http::uri::PathAndQuery::from_static(path), Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<Ask>>::new(decode, encode)?)
         .await?;
     Ok(response.into_inner().actor.clone())
 }
@@ -611,15 +611,15 @@ async fn external_call(
 // One unary call to a built-in operation over its declared gRPC route.
 async fn builtin_call<Q, R>(channel: tonic::transport::Channel, path: &'static str, request: Q) -> Result<R, tonic::Status>
 where
-    Q: harmos_runtime::Protobuf + Send + Sync + 'static,
-    R: harmos_runtime::Protobuf + harmos_runtime::MemorySize + Clone + Send + Sync + 'static,
+    Q: harmos_domain::Portable,
+    R: harmos_domain::Message + harmos_domain::schema::Described + harmos_runtime::MemorySize + Clone + Send + Sync + 'static,
 {
     let mut client = tonic::client::Grpc::new(channel);
     client.ready().await.map_err(|_| tonic::Status::unavailable("channel"))?;
     let request = tonic::Request::new(harmos_runtime::operations::Response::new(request));
     let (decode, encode) = limits();
     let response: tonic::Response<harmos_runtime::operations::StreamItem<R>> = client
-        .unary(request, http::uri::PathAndQuery::from_static(path), Codec::<R, harmos_runtime::operations::Response<Q>>::new(decode, encode)?)
+        .unary(request, http::uri::PathAndQuery::from_static(path), Codec::<harmos_runtime::grpc::Transcoded, R, harmos_runtime::operations::Response<Q>>::new(decode, encode)?)
         .await?;
     Ok((*response.into_inner()).clone())
 }
@@ -627,22 +627,22 @@ where
 async fn external_catalog(
     channel: tonic::transport::Channel, token: Option<&'static str>,
 ) -> Result<Vec<harmos_runtime::operations::host::DiscoveredOperation>, tonic::Status> {
-    use harmos_runtime::operations::host::{Operations, OperationsResponse};
+    use harmos_runtime::operations::host::{Catalog, CatalogKind, CatalogPage};
     let mut client = tonic::client::Grpc::new(channel);
     client.ready().await.map_err(|_| tonic::Status::unavailable("channel"))?;
-    let mut request = tonic::Request::new(harmos_runtime::operations::Response::new(Operations { after: None, rows: None, bytes: None }));
+    let mut request = tonic::Request::new(harmos_runtime::operations::Response::new(Catalog { kind: CatalogKind::Operations, schema: None, after: None, rows: None, bytes: None }));
     if let Some(token) = token {
         request.metadata_mut().insert("authorization", token.parse().unwrap());
     }
     let (decode, encode) = limits();
-    let response: tonic::Response<harmos_runtime::operations::StreamItem<OperationsResponse>> = client
+    let response: tonic::Response<harmos_runtime::operations::StreamItem<CatalogPage>> = client
         .unary(
             request,
-            http::uri::PathAndQuery::from_static("/harmos.host.v1.Host/Operations"),
-            Codec::<OperationsResponse, harmos_runtime::operations::Response<Operations>>::new(decode, encode)?,
+            http::uri::PathAndQuery::from_static("/harmos.host.v1.Host/Catalog"),
+            Codec::<harmos_runtime::grpc::Transcoded, CatalogPage, harmos_runtime::operations::Response<Catalog>>::new(decode, encode)?,
         )
         .await?;
-    Ok(serde_json::from_slice(&response.into_inner().catalog).unwrap())
+    Ok(serde_json::from_slice(&response.into_inner().entries).unwrap())
 }
 
 async fn web(address: std::net::SocketAddr, method: &str, path: &str, headers: &[(&str, &str)]) -> String {
@@ -682,7 +682,7 @@ async fn failures(register: impl FnOnce(&harmos_runtime::operations::OperationMa
         .server_streaming(
             request,
             http::uri::PathAndQuery::from_static("/fixture.Identity/Download"),
-            Codec::<OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<Ask>>::new(decode, encode).unwrap(),
+            Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<Ask>>::new(decode, encode).unwrap(),
         )
         .await
     {
@@ -697,7 +697,7 @@ async fn failures(register: impl FnOnce(&harmos_runtime::operations::OperationMa
         .client_streaming(
             request,
             http::uri::PathAndQuery::from_static("/fixture.Identity/Upload"),
-            Codec::<Reply, harmos_runtime::operations::Response<InputEnvelope<Ask, Reply>>>::new(decode, encode).unwrap(),
+            Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<InputEnvelope<Ask, Reply>>>::new(decode, encode).unwrap(),
         )
         .await
         .err()
@@ -710,7 +710,7 @@ async fn failures(register: impl FnOnce(&harmos_runtime::operations::OperationMa
         .streaming(
             request,
             http::uri::PathAndQuery::from_static("/fixture.Identity/Exchange"),
-            Codec::<OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<InputEnvelope<Ask, Reply>>>::new(decode, encode).unwrap(),
+            Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<InputEnvelope<Ask, Reply>>>::new(decode, encode).unwrap(),
         )
         .await
     {

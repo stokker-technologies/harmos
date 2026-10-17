@@ -230,20 +230,7 @@ impl<const OVERALL: u64, const ATTEMPT: u64, const RETRIES: usize, const DELAY: 
     }
 }
 
-#[cfg(feature = "grpc")]
-impl<const OVERALL: u64, const ATTEMPT: u64, const RETRIES: usize, const DELAY: u64, const REPLAY: bool> harmos_runtime::Protobuf
-    for Policy<OVERALL, ATTEMPT, RETRIES, DELAY, REPLAY>
-{
-    fn encode_to_vec(&self) -> Vec<u8> {
-        unreachable!("in-process fixture values are never encoded")
-    }
-    fn encoded_len(&self) -> usize {
-        unreachable!("in-process fixture values are never encoded")
-    }
-    fn decode(_: &[u8]) -> Result<Self, harmos_runtime::MessageError> {
-        Err(harmos_runtime::MessageError::borrowed("in-process fixture values are never decoded"))
-    }
-}
+
 
 impl<const OVERALL: u64, const ATTEMPT: u64, const RETRIES: usize, const DELAY: u64, const REPLAY: bool> harmos_runtime::schema::Described
     for Policy<OVERALL, ATTEMPT, RETRIES, DELAY, REPLAY>

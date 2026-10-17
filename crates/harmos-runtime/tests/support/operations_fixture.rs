@@ -52,18 +52,7 @@ macro_rules! in_process {
             }
         }
 
-        #[cfg(feature = "grpc")]
-        impl harmos_runtime::Protobuf for $ty {
-            fn encode_to_vec(&self) -> Vec<u8> {
-                unreachable!("in-process fixture values are never encoded")
-            }
-            fn encoded_len(&self) -> usize {
-                unreachable!("in-process fixture values are never encoded")
-            }
-            fn decode(_: &[u8]) -> ::core::result::Result<Self, harmos_runtime::MessageError> {
-                Err(harmos_runtime::MessageError::borrowed("in-process fixture values are never decoded"))
-            }
-        }
+
 
         impl harmos_runtime::schema::Described for $ty {
             const NAME: &'static str = concat!(module_path!(), "::", stringify!($ty));

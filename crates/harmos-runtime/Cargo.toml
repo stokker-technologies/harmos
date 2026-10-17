@@ -133,6 +133,7 @@ tower-http = { workspace = true, optional = true }
 # === Dev Dependencies ===
 
 [dev-dependencies]
+harmos-sdk = { workspace = true, features = ["grpc"] }
 # Local
 harmos-packaging = { workspace = true, features = ["bindings-proto"] }
 schematic-domain = { path = "../../examples/schematic/domain" }

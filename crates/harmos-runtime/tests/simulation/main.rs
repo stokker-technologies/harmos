@@ -291,18 +291,7 @@ impl harmos_runtime::Message for Drawing {
     }
 }
 
-#[cfg(feature = "grpc")]
-impl harmos_runtime::Protobuf for Drawing {
-    fn encode_to_vec(&self) -> Vec<u8> {
-        unreachable!("the in-process draw request is never encoded")
-    }
-    fn encoded_len(&self) -> usize {
-        unreachable!("the in-process draw request is never encoded")
-    }
-    fn decode(_: &[u8]) -> Result<Self, harmos_runtime::MessageError> {
-        Err(harmos_runtime::MessageError::borrowed("the in-process draw request is never decoded"))
-    }
-}
+
 
 impl harmos_runtime::MemorySize for Drawing {
     fn memory_size(&self) -> usize {

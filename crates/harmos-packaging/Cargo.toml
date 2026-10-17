@@ -80,6 +80,7 @@ process-wrap = { workspace = true, features = ["std", "job-object", "process-gro
 # === Dev Dependencies === #
 
 [dev-dependencies]
+harmos-sdk = { workspace = true, features = ["grpc"] }
 # Local
 harmos-domain = { workspace = true, features = ["derive"] }
 

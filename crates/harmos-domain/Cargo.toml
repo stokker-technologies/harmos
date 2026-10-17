@@ -67,6 +67,7 @@ memchr = { workspace = true, default-features = true }
 # === Dev Dependencies ===
 
 [dev-dependencies]
+harmos-sdk = { workspace = true, features = ["grpc"] }
 # Local
 harmos-packaging = { workspace = true, features = ["bindings-proto"] }
 harmos-macros = { workspace = true }

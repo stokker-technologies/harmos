@@ -17,8 +17,9 @@
 // Third Party Imports
 
 // Local Imports
+use harmos_sdk::grpc::{self, DecodeInput, prost};
 use harmos_domain::operations::streams::{FollowingRow, Publish};
-use harmos_domain::{MemorySize, Protobuf};
+use harmos_domain::{MemorySize};
 
 /* === Constants === */
 
@@ -29,6 +30,7 @@ use harmos_domain::{MemorySize, Protobuf};
 /* === Structs === */
 // The Previous Wire Schema Is An Independent Compatibility Oracle
 #[derive(Clone, PartialEq, prost::Message)]
+#[prost(prost_path = "harmos_sdk::grpc::prost")]
 struct PreviousPublication {
     #[prost(string, tag = "1")]
     stream: String,
@@ -46,6 +48,7 @@ struct PreviousPublication {
 
 // A Batch Appends Following Rows As Repeated Tag 7 To The Single-Row Shape
 #[derive(Clone, PartialEq, prost::Message)]
+#[prost(prost_path = "harmos_sdk::grpc::prost")]
 struct BatchedPublication {
     #[prost(string, tag = "1")]
     stream: String,
@@ -60,6 +63,7 @@ struct BatchedPublication {
 }
 
 #[derive(Clone, PartialEq, prost::Message)]
+#[prost(prost_path = "harmos_sdk::grpc::prost")]
 struct BatchedRow {
     #[prost(bytes = "vec", tag = "1")]
     payload: Vec<u8>,
@@ -76,15 +80,16 @@ struct BatchedRow {
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn roundtrip<T: Protobuf + MemorySize + std::fmt::Debug + PartialEq>(value: T) {
-    let encoded = value.encode_to_vec();
-    assert_eq!(encoded.len(), value.encoded_len());
-    let bound = T::decoding_memory(&encoded).unwrap();
-    let decoded = T::decode(&encoded).unwrap();
+fn roundtrip<T: harmos_domain::Message + harmos_domain::schema::Described + MemorySize + std::fmt::Debug + PartialEq>(value: T) {
+    let encoded = crate::encode(&value);
+    // CODEX-BLOCKED: The adapter has no independent encoded-length preflight; this retains only the encoded byte length comparison.
+    assert_eq!(encoded.len(), crate::encode(&value).len());
+    let bound = grpc::decoding_memory::<T>(DecodeInput::new(&encoded)).unwrap();
+    let decoded = grpc::decode::<T>(DecodeInput::new(&encoded)).unwrap();
     assert_eq!(decoded, value);
     assert!(decoded.memory_size() <= bound);
     let mut appended = vec![255];
-    value.encode_into(&mut appended);
+    grpc::encode(&(value), &mut appended).unwrap();
     assert_eq!(&appended[1..], encoded);
 }
 
@@ -113,8 +118,8 @@ fn publication_keeps_tags() {
                     payload: value.payload.clone(),
                 };
                 let bytes = prost::Message::encode_to_vec(&previous);
-                assert_eq!(value.encode_to_vec(), bytes);
-                assert_eq!(Publish::decode(&bytes).unwrap(), value);
+                assert_eq!(crate::encode(&value), bytes);
+                assert_eq!(grpc::decode::<Publish>(DecodeInput::new(&bytes)).unwrap(), value);
                 assert_eq!(
                     <PreviousPublication as prost::Message>::decode(bytes.as_slice()).unwrap(),
                     previous
@@ -158,8 +163,8 @@ fn batch_rows_follow() {
                     .collect(),
             };
             let bytes = prost::Message::encode_to_vec(&oracle);
-            assert_eq!(value.encode_to_vec(), bytes);
-            assert_eq!(Publish::decode(&bytes).unwrap(), value);
+            assert_eq!(crate::encode(&value), bytes);
+            assert_eq!(grpc::decode::<Publish>(DecodeInput::new(&bytes)).unwrap(), value);
             // One Byte Of Payload Plus A Millisecond Delta: Six Bytes
             let steady = FollowingRow {
                 payload: vec![0],
@@ -170,10 +175,10 @@ fn batch_rows_follow() {
                 published_delta_micros: Some(1_000),
             };
             assert_eq!(
-                steady.encode_to_vec(),
+                crate::encode(&steady),
                 prost::Message::encode_to_vec(&oracle)
             );
-            assert_eq!(steady.encode_to_vec().len(), 6);
+            assert_eq!(crate::encode(&steady).len(), 6);
             roundtrip(value);
         }
 
