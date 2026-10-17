@@ -921,7 +921,7 @@ fn contract_scenario() {
                     assert_eq!(runtime.state.applied(), Position::ORIGIN);
                     storage.flush().await.unwrap();
                     let mut reader = storage
-                        .query(harmos::storage::query::Query {
+                        .query(harmos::storage::operations::Query {
                             at: storage.cursor_saved(),
                             source: harmos::storage::query::Source::Schemas(
                                 harmos::storage::query::SchemaSelection {

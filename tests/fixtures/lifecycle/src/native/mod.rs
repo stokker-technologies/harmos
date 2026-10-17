@@ -75,7 +75,7 @@ impl harmos::Plugin for Plugin {
         &self,
         table: &mut WireTable<Supervisor>,
     ) -> std::result::Result<(), ServingError> {
-        table.bind_operation::<operations::exchange::Exchange>(self.resources())
+        table.bind_operation::<operations::exchange::Exchanging>(self.resources())
     }
     async fn initialize(&mut self, _: &Supervisor) -> Result<()> {
         Ok(())

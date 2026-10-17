@@ -150,7 +150,6 @@ struct ObserverSeed {
     _counts: Arc<ObserverCounts>,
 }
 
-struct ObserveControl;
 
 struct ObserverResources {
     counts: ObserverCounts,
@@ -197,11 +196,6 @@ enum FloodObservers {
     Producer(Flooding),
 }
 
-#[harmos::catalog]
-enum ObserverOperations {
-    Observe(ObserveControl),
-}
-
 /* === Traits === */
 
 /* === Implementations === */
@@ -236,8 +230,8 @@ impl<S: harmos_sidecar::Attach> harmos_sidecar::Attach for Advertised<S> {
     ) -> harmos_domain::Result<Option<[harmos::operations::lifecycle::Descriptor; 2]>> {
         self.inner.sdk_lifecycle()
     }
-    fn observer_control(&self) -> harmos_domain::Result<Option<harmos::operations::Contract>> {
-        self.inner.observer_control()
+    fn observe_contract(&self) -> harmos_domain::Result<Option<harmos::operations::Contract>> {
+        self.inner.observe_contract()
     }
     fn listener_declarations(
         &self,
@@ -293,8 +287,8 @@ impl harmos::operations::lifecycle::Policy for Ticking {
     const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos::plugin(description = "Observer Demand During SDK Initialization.", id = "ticking", provides = ObserverOperations, requires(harmos::operations::streams::Publish),
-    observers = TickingObservers, observer_control = ObserveControl, streams(TickingPulse))]
+#[harmos::plugin(description = "Observer Demand During SDK Initialization.", id = "ticking", provides = (), requires(harmos::operations::streams::Publish),
+    observers = TickingObservers, streams(TickingPulse))]
 impl harmos::Plugin for Ticking {
     type Config = usize;
     type Context = harmos_sidecar::Supervisor;
@@ -328,7 +322,7 @@ impl harmos::Plugin for Ticking {
         &self,
         table: &mut harmos::operations::WireTable<Self::Context>,
     ) -> Result<(), harmos::operations::ServingError> {
-        self.attachment.bind::<ObserveControl>(table)
+        self.attachment.bind(table)
     }
     fn attachment(&self) -> Option<Arc<dyn harmos_domain::plugin::Attachment<Self::Context>>> {
         Some(self.attachment.clone())
@@ -622,18 +616,6 @@ impl Drop for ObserverSeed {
     }
 }
 
-impl harmos::operations::OperationDeclaration for ObserveControl {
-    type Request = harmos_domain::observers::Control;
-    type Response = ();
-    const ID: &'static str = "publications.observer.observe";
-    const VISIBILITY: harmos::operations::Visibility = harmos::operations::Visibility::Host;
-    const POLICY: harmos::operations::OperationPolicy = harmos_domain::observers::POLICY;
-}
-
-impl harmos::operations::WireOperation for ObserveControl {
-    const VERSION: u32 = 1;
-}
-
 const LIFECYCLE: harmos::operations::OperationPolicy = harmos::operations::OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_millis(500),
@@ -646,8 +628,8 @@ impl harmos::operations::lifecycle::Policy for SampledTwins {
     const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos::plugin(description = "Independent Observers Sharing The Original Initialized Resources.", id = "twin-observers", provides = ObserverOperations, requires(harmos::operations::streams::Publish),
-    observers = TwinObservers, observer_control = ObserveControl, streams(Left, Right))]
+#[harmos::plugin(description = "Independent Observers Sharing The Original Initialized Resources.", id = "twin-observers", provides = (), requires(harmos::operations::streams::Publish),
+    observers = TwinObservers, streams(Left, Right))]
 impl harmos::Plugin for SampledTwins {
     type Config = usize;
     type Context = harmos_sidecar::Supervisor;
@@ -687,7 +669,7 @@ impl harmos::Plugin for SampledTwins {
         &self,
         table: &mut harmos::operations::WireTable<Self::Context>,
     ) -> Result<(), harmos::operations::ServingError> {
-        self.attachment.bind::<ObserveControl>(table)
+        self.attachment.bind(table)
     }
     fn attachment(&self) -> Option<Arc<dyn harmos_domain::plugin::Attachment<Self::Context>>> {
         Some(self.attachment.clone())
@@ -792,8 +774,8 @@ impl harmos::operations::lifecycle::Policy for MultiStream {
     const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos::plugin(description = "One Observer Publishing Two Rows.", id = "multi-stream", provides = ObserverOperations, requires(harmos::operations::streams::Publish),
-    observers = MultiObservers, observer_control = ObserveControl, streams(Left, Right))]
+#[harmos::plugin(description = "One Observer Publishing Two Rows.", id = "multi-stream", provides = (), requires(harmos::operations::streams::Publish),
+    observers = MultiObservers, streams(Left, Right))]
 impl harmos::Plugin for MultiStream {
     type Config = ();
     type Context = harmos_sidecar::Supervisor;
@@ -820,7 +802,7 @@ impl harmos::Plugin for MultiStream {
         &self,
         table: &mut harmos::operations::WireTable<Self::Context>,
     ) -> Result<(), harmos::operations::ServingError> {
-        self.attachment.bind::<ObserveControl>(table)
+        self.attachment.bind(table)
     }
     fn attachment(&self) -> Option<Arc<dyn harmos_domain::plugin::Attachment<Self::Context>>> {
         Some(self.attachment.clone())
@@ -858,8 +840,8 @@ impl harmos::operations::lifecycle::Policy for Flood {
     const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos::plugin(description = "Publishes Faster Than Its Host Ingests.", id = "flood", provides = ObserverOperations, requires(harmos::operations::streams::Publish),
-    observers = FloodObservers, observer_control = ObserveControl, streams(FloodRows))]
+#[harmos::plugin(description = "Publishes Faster Than Its Host Ingests.", id = "flood", provides = (), requires(harmos::operations::streams::Publish),
+    observers = FloodObservers, streams(FloodRows))]
 impl harmos::Plugin for Flood {
     type Config = ();
     type Context = harmos_sidecar::Supervisor;
@@ -886,7 +868,7 @@ impl harmos::Plugin for Flood {
         &self,
         table: &mut harmos::operations::WireTable<Self::Context>,
     ) -> Result<(), harmos::operations::ServingError> {
-        self.attachment.bind::<ObserveControl>(table)
+        self.attachment.bind(table)
     }
     fn attachment(&self) -> Option<Arc<dyn harmos_domain::plugin::Attachment<Self::Context>>> {
         Some(self.attachment.clone())
@@ -1606,7 +1588,6 @@ pub(super) fn contract_scenario() {
                 lifecycle: inner.sdk_lifecycle().unwrap(),
                 streams: inner.publications(),
                 observers: observers.clone(),
-                observer_control: inner.observer_control().unwrap(),
                 listeners: inner.listener_declarations().unwrap().unwrap(),
                 ..PluginContributions::default()
             },

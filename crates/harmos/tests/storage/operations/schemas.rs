@@ -19,10 +19,9 @@ use std::sync::Arc;
 use harmos::Identifier;
 use harmos::schema::Cardinality;
 use harmos::schema::graph::{Field, Kind, Schema};
+use harmos::storage::operations::Query as QueryRequest;
 use harmos::storage::operations::{Query, WriteSchema};
-use harmos::storage::query::{
-    Query as QueryRequest, QueryArrow, RowSlice, SchemaSelection, Source,
-};
+use harmos::storage::query::{QueryArrow, RowSlice, SchemaSelection, Source};
 use harmos::storage::{MutationId, SchemaInput, SchemaKey};
 
 // Local Imports

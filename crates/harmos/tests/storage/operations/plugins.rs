@@ -23,7 +23,7 @@ use std::sync::Arc;
 use super::{Fixture, Lanes, config};
 use harmos::Aggregate;
 use harmos::Message;
-use harmos::operations::{OperationDeclaration, OperationManager, WireDeclaration, WireOperation};
+use harmos::operations::{OperationDeclaration, OperationManager, WireDeclaration};
 use harmos::plugin::{
     PluginArtifact, PluginBackend, PluginCaller, PluginContributions, PluginDefinition,
     PluginDefinitions, PluginEndpoint, PluginLifecycle, PluginLifecycleAuthority, PluginManager,
@@ -34,12 +34,10 @@ use harmos::storage::query::transform::{
     Transform,
     aggregate::{Aggregate as AggregateTransform, Measure},
 };
-use harmos::storage::query::{
-    Query as QueryRequest, QueryArrow, RecordSelection, RowSlice, Source,
-};
+use harmos::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
 
 use harmos::storage::SchemaKey;
-use harmos::storage::writes::{WriteReceipt, WriteRequest};
+use harmos::storage::writes::WriteReceipt;
 use harmos::{Error, Identifier, Result};
 use harmos_domain::inventory::contracts::Required;
 use harmos_domain::plugin::Grant;
@@ -112,7 +110,7 @@ impl PluginLifecycle for Host {
 /* === Private Functions === */
 fn required<O>(grants: Vec<Grant>) -> Required
 where
-    O: WireOperation,
+    O: OperationDeclaration,
 {
     Required {
         contract: WireDeclaration::of::<O>().contract().unwrap(),
@@ -136,8 +134,8 @@ fn plugin(id: &str, required: Vec<Required>) -> PluginDefinition {
     }
 }
 
-fn query(fixture: &Fixture, schema: SchemaKey) -> QueryRequest {
-    QueryRequest {
+fn query(fixture: &Fixture, schema: SchemaKey) -> Query {
+    Query {
         at: fixture.storage.cursor_saved(),
         source: Source::Records(RecordSelection {
             schema,
@@ -248,7 +246,7 @@ pub(super) fn contract_scenario() {
                     super::writes::seed(&fixture).await;
                     let mut exchange = writer
                         .exchange::<WriteRecords>(
-                            WriteRequest { scope: None },
+                            WriteRecords { scope: None },
                             super::writes::settings(),
                             super::writes::settings(),
                         )
@@ -280,7 +278,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(fixture.storage.cursor_accepted(), *cursor);
                     assert!(matches!(
                         bystander.exchange::<WriteRecords>(
-                            WriteRequest { scope: None },
+                            WriteRecords { scope: None },
                             super::writes::settings(),
                             super::writes::settings()
                         ),

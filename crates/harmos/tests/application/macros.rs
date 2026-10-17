@@ -215,20 +215,13 @@ mod unified_plugins {
 
     use harmos::__private::{PluginDeclared, PluginInventory};
     use harmos::operations::{
-        Contracts, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, ServingError,
-        WireOperation, WireTable, lifecycle,
+        Contracts, OperationPolicy, RestartPolicy, RetryPolicy, ServingError, WireDeclaration,
+        WireTable, lifecycle,
     };
 
-    struct Echo;
-    impl OperationDeclaration for Echo {
-        type Request = ();
-        type Response = ();
-        const ID: &'static str = "fixture.unified.echo";
-        const POLICY: OperationPolicy = POLICY;
-    }
-    impl WireOperation for Echo {
-        const VERSION: u32 = 3;
-    }
+    #[harmos::message]
+    #[harmos::operation(id = "fixture.unified.echo", version = 3, response = (), policy = POLICY)]
+    struct Echo {}
 
     #[harmos::catalog]
     enum Leaves {
@@ -301,22 +294,10 @@ mod unified_plugins {
         }
     }
 
-    struct ObserverObserve;
-    impl OperationDeclaration for ObserverObserve {
-        type Request = harmos::operations::observers::Control;
-        type Response = ();
-        const ID: &'static str = "fixture.unified.observer-observe";
-        const POLICY: OperationPolicy = harmos::operations::observers::POLICY;
-        const VISIBILITY: harmos::operations::Visibility = harmos::operations::Visibility::Host;
-    }
-    impl WireOperation for ObserverObserve {
-        const VERSION: u32 = 2;
-    }
     #[harmos::catalog]
     enum ObserverOperations {
         #[nested]
         Selected(Selected),
-        Observe(ObserverObserve),
     }
 
     struct CustomHost;
@@ -368,7 +349,6 @@ mod unified_plugins {
             harmos::operations::lifecycle::Status: scope("reading", "power")
         ),
         observers = ObserverCatalog,
-        observer_control = ObserverObserve,
         context = harmos::sidecar::Supervisor,
         config = SdkInitialization,
         restart = "never"
@@ -447,9 +427,12 @@ mod unified_plugins {
                 assert_eq!(inert.id, physical.id);
                 assert_eq!(inert.interval, physical.interval);
                 assert_eq!(inert.streams.len(), physical.streams.len());
-                let control = declaration.observer_control().unwrap().clone();
-                assert_eq!(control, provides[1]);
-                assert_eq!(control.version(), 2);
+                // The Observe Control Is Built In, Never An Authored Provision.
+                let control = WireDeclaration::of::<harmos::operations::observers::Control>()
+                    .contract()
+                    .unwrap();
+                assert_eq!(control.operation().id.as_str(), "harmos.observe");
+                assert!(!provides.contains(&control));
             });
         }
         {
@@ -517,7 +500,7 @@ mod unified_plugins {
                 parts
                     .iter_mut()
                     .find(|part| part["kind"] == "listeners")
-                    .unwrap()["listeners"][0]["callback"]["version"] = 5.into();
+                    .unwrap()["listeners"][0]["callback"]["version"] = 2.into();
                 assert!(
                     harmos::sidecar::inventory::Declaration::inspect(
                         &bytes(&parts),
@@ -528,7 +511,7 @@ mod unified_plugins {
                 parts
                     .iter_mut()
                     .find(|part| part["kind"] == "listeners")
-                    .unwrap()["listeners"][0]["callback"]["version"] = 4.into();
+                    .unwrap()["listeners"][0]["callback"]["version"] = 1.into();
                 parts
                     .iter_mut()
                     .find(|part| part["kind"] == "contracts")
@@ -561,7 +544,7 @@ mod unified_plugins {
                     harmos::listeners::Declarations::of::<Audience>().unwrap()
                 );
                 assert_eq!(selected[0].callback(), &declaration.contracts.provides[0]);
-                assert_eq!(selected[0].callback().version(), 4);
+                assert_eq!(selected[0].callback().version(), 1);
                 let guest_markers: Vec<_> = ListeningGuest::markers()
                     .unwrap()
                     .into_iter()
@@ -725,18 +708,12 @@ mod unified_plugins {
         }
     }
 
-    struct Heard;
-    impl OperationDeclaration for Heard {
-        type Request = harmos::listeners::Delivery<Row>;
-        type Response = ();
-        const ID: &'static str = "fixture.unified.heard";
-        const POLICY: OperationPolicy = POLICY;
-        const VISIBILITY: harmos::operations::Visibility = harmos::operations::Visibility::Shared;
-    }
-    impl WireOperation for Heard {
-        const VERSION: u32 = 4;
-    }
-    #[harmos::listener(id = "fixture.row-listener", stream = Row, callback = Heard)]
+    #[harmos::listener(
+        id = "fixture.row-listener",
+        stream = Row,
+        callback = "fixture.unified.heard",
+        policy = POLICY
+    )]
     struct RowListener;
     #[harmos::catalog]
     enum Audience {
@@ -744,7 +721,7 @@ mod unified_plugins {
     }
     #[harmos::catalog]
     enum Callbacks {
-        Heard(Heard),
+        Heard(harmos::listeners::Delivery<RowListener>),
     }
 
     struct Listening;

@@ -60,18 +60,21 @@ struct Trace {
     finalized: [AtomicUsize; 2],
 }
 
+#[harmos::message]
 #[harmos::operation(
-    request = bool,
-    response = (),
     id = "shutdown-exercise.hold",
+    version = 1,
     policy = OperationPolicy {
         timeout: Duration::from_secs(300),
         attempt_timeout: Duration::from_secs(300),
         retries: RetryPolicy::Never,
         restart: RestartPolicy::Never,
-    }
+    },
+    response = (),
 )]
-struct HoldDeclaration;
+struct HoldDeclaration {
+    queued: bool,
+}
 
 struct Hold {
     trace: Arc<Trace>,
@@ -128,14 +131,18 @@ impl ObserverBackend for Watch {
     }
 }
 
-#[harmos::operation(declaration = HoldDeclaration)]
+#[harmos::operation]
 impl Hold {
     async fn initialize(trace: Arc<Trace>, _: Context<'_>) -> Result<Self, Infallible> {
         Ok(Self { trace, slot: None })
     }
 
-    async fn run(&mut self, _: Context<'_>, queued: &mut bool) -> Result<(), Infallible> {
-        self.slot = Some(usize::from(*queued));
+    async fn run(
+        &mut self,
+        _: Context<'_>,
+        request: &mut HoldDeclaration,
+    ) -> Result<(), Infallible> {
+        self.slot = Some(usize::from(request.queued));
         self.trace.runs[self.slot.expect("running slot")].fetch_add(1, Ordering::SeqCst);
         self.trace.started.notify_one();
         std::future::pending().await
@@ -163,9 +170,9 @@ impl Workload {
             Lanes::Analysis,
             trace.clone(),
         )?;
-        let running = runtime.operations.submit(false)?;
+        let running = runtime.operations.submit(HoldDeclaration { queued: false })?;
         trace.started.notified().await;
-        let queued = runtime.operations.submit(true)?;
+        let queued = runtime.operations.submit(HoldDeclaration { queued: true })?;
         runtime.operations.register_observer(Watch)?;
         let observer = runtime
             .operations

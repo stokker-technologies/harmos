@@ -15,13 +15,12 @@
 use super::backend::{Data, Recovery, history, storage_settings};
 use super::support::{Bank, Ledger, catalog};
 use super::waveforms::{Experiment, Objects};
+use harmos::storage::operations::Query;
 use harmos::storage::query::transform::{
     Transform,
     project::{Project, Projection},
 };
-use harmos::storage::query::{
-    ObjectSelection, ObjectVersions, Query, QueryArrow, RowSlice, Source,
-};
+use harmos::storage::query::{ObjectSelection, ObjectVersions, QueryArrow, RowSlice, Source};
 use harmos::storage::*;
 use harmos::{Identifier, Runtime};
 use std::num::NonZeroUsize;

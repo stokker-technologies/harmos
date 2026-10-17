@@ -1383,7 +1383,6 @@ fn contract_facility_gate(path: &str, attribute: &str) -> bool {
             "crates/harmos-domain/src/operations/streaming.rs",
             "crates/harmos-domain/src/schema.rs",
             "crates/harmos-domain/src/schema/graph/codec.rs",
-            "crates/harmos-guest/examples/operation_component/contract.rs",
             "crates/harmos/src/operations/mod.rs",
             "crates/harmos/src/operations/native.rs",
             "crates/harmos/src/operations/registration.rs",

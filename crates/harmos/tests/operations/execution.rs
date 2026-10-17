@@ -133,7 +133,7 @@ pub(super) fn contract_scenario() {
                         .register_operation::<SlowCall>("app", Lanes::Open, Arc::clone(&owner))
                         .unwrap();
                     assert!(matches!(
-                        runtime.operations.call(request()).await,
+                        runtime.operations.call(Slow(request())).await,
                         Err(Error::OperationRefused(Refusal::TimedOut))
                     ));
                     assert_eq!(owner.runs.load(Ordering::SeqCst), 1);
@@ -303,7 +303,7 @@ pub(super) fn contract_scenario() {
     assert_eq!(
         runtime
             .operations
-            .call(request())
+            .call(Parent(request()))
             .await
             .unwrap()
             .value,
@@ -315,7 +315,7 @@ pub(super) fn contract_scenario() {
         .register_operation::<ComputeCall>("app", Lanes::Serial, Arc::new(Owner::default()))
         .unwrap();
     assert!(
-        matches!(runtime.operations.call(request()).await, Err(Error::OperationFailed { source, .. }) if matches!(source.downcast_ref::<Failed>(), Some(Failed::Nested(Error::OperationLaneCycle { .. }))))
+        matches!(runtime.operations.call(Parent(request())).await, Err(Error::OperationFailed { source, .. }) if matches!(source.downcast_ref::<Failed>(), Some(Failed::Nested(Error::OperationLaneCycle { .. }))))
     );
     runtime.stop().await.unwrap();
 
@@ -339,7 +339,7 @@ pub(super) fn contract_scenario() {
         .unwrap();
 
     assert!(
-        matches!(runtime.operations.call(request()).await, Err(Error::OperationFailed { source, .. }) if matches!(source.downcast_ref::<Failed>(), Some(Failed::Nested(Error::OperationLaneCycle { .. }))))
+        matches!(runtime.operations.call(Parent(request())).await, Err(Error::OperationFailed { source, .. }) if matches!(source.downcast_ref::<Failed>(), Some(Failed::Nested(Error::OperationLaneCycle { .. }))))
     );
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
     assert_eq!(owner.runs.load(Ordering::SeqCst), 0);

@@ -25,7 +25,6 @@ use std::time::Duration;
 use super::{Fixture, Lanes, config};
 use harmos::Identifier;
 use harmos::storage::files::FileBatch as FileBytes;
-use harmos::storage::follow::File as FileSelection;
 use harmos::storage::operations::{FollowFile, ReadFile};
 use harmos::storage::{FileMetadata, FilePhase, StagedFile};
 
@@ -46,7 +45,7 @@ use harmos::storage::{FileMetadata, FilePhase, StagedFile};
 /* === Public Functions === */
 
 /* === Private Functions === */
-async fn setup() -> (Fixture, harmos::storage::StorageFile, FileSelection) {
+async fn setup() -> (Fixture, harmos::storage::StorageFile, FollowFile) {
     let fixture = Fixture::new(config()).await;
     harmos::storage::operations::register(
         &fixture.runtime.operations,
@@ -68,7 +67,7 @@ async fn setup() -> (Fixture, harmos::storage::StorageFile, FileSelection) {
         .unwrap();
     producer.write_all(b"prefix").await.unwrap();
     let session = producer.session().unwrap();
-    let request = FileSelection {
+    let request = FollowFile {
         file: StagedFile {
             history: session.history.clone(),
             id: session.id.clone(),
@@ -100,7 +99,7 @@ pub(super) fn contract_scenario() {
                         let (fixture, mut producer, _) = setup().await;
                         let finished = producer.finish().await.unwrap();
                         fixture.storage.flush().await.unwrap();
-                        let request = harmos::storage::files::ReadFile {
+                        let request = harmos::storage::operations::ReadFile {
                             file: finished,
                             range: harmos::storage::files::ByteRange {
                                 offset: 0,
@@ -200,7 +199,7 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let (fixture, mut producer, request) = setup().await;
-                    for invalid in [FileSelection {
+                    for invalid in [FollowFile {
                         offset: 7,
                         ..request
                     }] {

@@ -24,7 +24,7 @@ use std::time::Duration;
 // Local Imports
 use super::{Fixture, config, metadata};
 use harmos::Identifier;
-use harmos::storage::operations::{AbandonFile, AppendFile, CreateFile, FileMutation, FinishFile};
+use harmos::storage::operations::{AbandonFile, AppendFile, CreateFile, FinishFile};
 use harmos::storage::{FilePhase, MutationId, StagedFile};
 
 /* === Constants === */
@@ -112,7 +112,7 @@ pub(super) fn contract_scenario() {
                         ..first
                     };
                     assert!(f.runtime.operations.call(wrong_offset).await.is_err());
-                    let finish = FileMutation {
+                    let finish = FinishFile {
                         mutation: key(&f, "finish"),
                         session: producer.session.clone(),
                     };
@@ -203,7 +203,7 @@ pub(super) fn contract_scenario() {
                         vec![0, 0, 0, 0]
                     );
                     f.data.control.abandon_failures.store(3, Ordering::SeqCst);
-                    let abandon = FileMutation {
+                    let abandon = AbandonFile {
                         mutation: key(&f, "abandon"),
                         session: producer.session.clone(),
                     };
@@ -419,7 +419,7 @@ pub(super) fn contract_scenario() {
                         .await
                         .unwrap();
                     f.data.control.finish_failures.store(1, Ordering::SeqCst);
-                    let request = FileMutation {
+                    let request = FinishFile {
                         mutation: key(&f, "finish"),
                         session: producer.session,
                     };

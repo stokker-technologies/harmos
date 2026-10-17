@@ -141,9 +141,10 @@ impl Operation for Inspecting {
     async fn run<'ctx>(
         &mut self,
         _context: Self::Context<'ctx>,
-        name: &mut String,
+        request: &mut Inspect,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<String>, Refusal> {
+        let name = &request.name;
         let result: ::core::result::Result<String, Self::Error> = async move {
             if name == "crash" {
                 std::process::exit(75);

@@ -230,7 +230,7 @@ impl OperationManager {
         #[cfg(feature = "plugin-sidecar")]
         for entry in &bindings.entries {
             if let Some(native) = &entry.native
-                && let Err(error) = native.capture_observer_control()
+                && let Err(error) = native.capture_observe_contract()
             {
                 self.fence(&bindings.entries, true);
                 self.remove_settled(&bindings.entries);

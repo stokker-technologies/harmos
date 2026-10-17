@@ -17,9 +17,7 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use harmos::operations::{
-    OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireOperation,
-};
+use harmos::operations::{OperationPolicy, RestartPolicy, RetryPolicy, Visibility};
 
 /* === Constants === */
 pub const POLICY: OperationPolicy = OperationPolicy {
@@ -32,16 +30,17 @@ pub const POLICY: OperationPolicy = OperationPolicy {
 /* === Macros === */
 macro_rules! operation {
     ($name:ident, $id:literal, $visibility:ident) => {
-        pub struct $name;
-        impl OperationDeclaration for $name {
-            type Request = Blob;
-            type Response = Blob;
-            const ID: &'static str = $id;
-            const POLICY: OperationPolicy = POLICY;
-            const VISIBILITY: Visibility = Visibility::$visibility;
-        }
-        impl WireOperation for $name {
-            const VERSION: u32 = 1;
+        #[harmos::message]
+        #[harmos::operation(
+            id = $id,
+            version = 1,
+            policy = POLICY,
+            response = Blob,
+            visibility = Visibility::$visibility,
+        )]
+        #[derive(Clone, PartialEq)]
+        pub struct $name {
+            pub blob: Blob,
         }
     };
 }

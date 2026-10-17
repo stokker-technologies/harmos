@@ -22,10 +22,10 @@ use tokio::task::JoinHandle;
 // Local Imports
 use harmos_domain::catalog::Node;
 use harmos_domain::inventory::{contracts, listeners, observers, publications};
-use harmos_domain::operations::{ServingError, WireDeclaration, WireOperation, lifecycle};
+use harmos_domain::operations::{ServingError, WireDeclaration, lifecycle};
 use harmos_domain::plugin::{Declared, Plugin};
 use harmos_sidecar::operations::{
-    Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, WireTable,
+    Operation, OperationPolicy, RestartPolicy, RetryPolicy, WireTable,
 };
 use harmos_sidecar::{StreamSpec, Supervisor};
 
@@ -81,8 +81,8 @@ static LISTENERS: [u8; listeners::encoded_len("sidecar", TransportPlugin::ID, &[
     listeners::encode("sidecar", TransportPlugin::ID, &[]);
 
 #[used]
-static OBSERVERS: [u8; observers::encoded_tree_len("sidecar", TransportPlugin::ID, &[], &[])] =
-    observers::encode_tree("sidecar", TransportPlugin::ID, &[], &[]);
+static OBSERVERS: [u8; observers::encoded_tree_len("sidecar", TransportPlugin::ID, &[])] =
+    observers::encode_tree("sidecar", TransportPlugin::ID, &[]);
 
 /* === Macros === */
 
@@ -90,6 +90,18 @@ static OBSERVERS: [u8; observers::encoded_tree_len("sidecar", TransportPlugin::I
 
 /* === Structs === */
 #[harmos_sidecar::message(harmos_path = ::harmos_sidecar)]
+#[harmos_sidecar::operation(
+    harmos_path = ::harmos_sidecar,
+    id = "bench.start",
+    version = 1,
+    response = (),
+    policy = OperationPolicy {
+        timeout: Duration::from_secs(30),
+        attempt_timeout: Duration::from_secs(30),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    },
+)]
 #[derive(Clone, PartialEq)]
 pub struct Start {
     pub samples: u32,
@@ -111,6 +123,18 @@ pub struct Done {
 }
 
 #[harmos_sidecar::message(harmos_path = ::harmos_sidecar)]
+#[harmos_sidecar::operation(
+    harmos_path = ::harmos_sidecar,
+    id = "bench.echo",
+    version = 1,
+    response = Echo,
+    policy = OperationPolicy {
+        timeout: Duration::from_secs(5),
+        attempt_timeout: Duration::from_secs(5),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    },
+)]
 #[derive(Clone, PartialEq)]
 pub struct Echo {
     pub nonce: u64,
@@ -140,37 +164,11 @@ pub struct Handler {
 /* === Traits === */
 
 /* === Implementations === */
-impl OperationDeclaration for Start {
-    type Request = Self;
-    const ID: &'static str = "bench.start";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(30),
-        attempt_timeout: Duration::from_secs(30),
-        retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
-    };
-
-    type Response = ();
-}
-
 impl StreamSpec for Done {
     type Row = Self;
     const ID: &'static str = "bench.done";
     const VERSION: u32 = 1;
     const WINDOW: usize = 1;
-}
-
-impl OperationDeclaration for Echo {
-    type Request = Self;
-    const ID: &'static str = "bench.echo";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(5),
-        attempt_timeout: Duration::from_secs(5),
-        retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
-    };
-
-    type Response = Self;
 }
 
 impl StreamSpec for Sample {
@@ -281,14 +279,6 @@ impl Operation for Starting {
         .await;
         result.map(::core::convert::Into::into)
     }
-}
-
-impl WireOperation for Echo {
-    const VERSION: u32 = 1;
-}
-
-impl WireOperation for Start {
-    const VERSION: u32 = 1;
 }
 
 impl lifecycle::Policy for TransportPlugin {

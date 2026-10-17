@@ -36,19 +36,30 @@ use harmos::operations::{Context, Operation, OperationPolicy, RestartPolicy, Ret
 /* === Structs === */
 struct Measure;
 
-/* === Enums === */
+#[harmos::message]
 #[harmos::operation(
-        request = Duration,
-        response = (Duration, Duration),
-        id = "clock.measure",
-        policy = OperationPolicy {
-            timeout: Duration::from_secs(600),
-            attempt_timeout: Duration::from_secs(600),
-            retries: RetryPolicy::Never,
-            restart: RestartPolicy::Never,
-        },
-    )]
-struct MeasureContract;
+    response = Measured,
+    id = "clock.measure",
+    version = 1,
+    policy = OperationPolicy {
+        timeout: Duration::from_secs(600),
+        attempt_timeout: Duration::from_secs(600),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    },
+)]
+struct MeasureContract {
+    wait_nanos: u64,
+}
+
+// The Scope's Elapsed Clock, Then The Wall Clock, Across One Wait.
+#[harmos::message]
+struct Measured {
+    scoped_nanos: u64,
+    wall_nanos: u64,
+}
+
+/* === Enums === */
 
 #[harmos::catalog]
 enum Operations {
@@ -75,15 +86,18 @@ impl Operation for Measure {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        wait: &mut Duration,
+        wait: &mut MeasureContract,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos::operations::Response<(Duration, Duration)>, Self::Error> {
-        let result: ::core::result::Result<(Duration, Duration), Self::Error> = async move {
+    ) -> Result<harmos::operations::Response<Measured>, Self::Error> {
+        let result: ::core::result::Result<Measured, Self::Error> = async move {
             let scope = context.scope();
             let scoped = scope.now();
             let wall = Instant::now();
-            tokio::time::sleep(*wait).await;
-            Ok((scope.now() - scoped, wall.elapsed()))
+            tokio::time::sleep(Duration::from_nanos(wait.wait_nanos)).await;
+            Ok(Measured {
+                scoped_nanos: nanos(scope.now() - scoped),
+                wall_nanos: nanos(wall.elapsed()),
+            })
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -93,6 +107,10 @@ impl Operation for Measure {
 /* === Public Functions === */
 
 /* === Private Functions === */
+fn nanos(duration: Duration) -> u64 {
+    u64::try_from(duration.as_nanos()).expect("measured waits fit in u64 nanoseconds")
+}
+
 fn bypasses(directory: &Path, found: &mut Vec<String>) {
     for entry in fs::read_dir(directory).expect("lifecycle sources are readable") {
         let path = entry.expect("source entry is readable").path();
@@ -161,12 +179,14 @@ pub(super) fn contract_scenario() {
 
                     let answer = runtime
                         .operations
-                        .submit(scripted)
+                        .submit(MeasureContract {
+                            wait_nanos: nanos(scripted),
+                        })
                         .unwrap()
                         .await
                         .expect("the attempt measures its own wait");
 
-                    let (scoped, _) = *answer;
+                    let scoped = Duration::from_nanos(answer.scoped_nanos);
                     assert_eq!(
                         scoped, scripted,
                         "the scope's clock is the one the attempt's wait was taken on"
@@ -176,11 +196,13 @@ pub(super) fn contract_scenario() {
                     // duration every time it is run.
                     let again = runtime
                         .operations
-                        .submit(scripted)
+                        .submit(MeasureContract {
+                            wait_nanos: nanos(scripted),
+                        })
                         .unwrap()
                         .await
                         .expect("the second attempt measures its own wait");
-                    assert_eq!(again.0, scoped);
+                    assert_eq!(Duration::from_nanos(again.scoped_nanos), scoped);
                     runtime.stop().await.unwrap();
                 });
         });

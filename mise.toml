@@ -82,8 +82,6 @@ run = [
   "{{vars.cargo_guard}}cargo check --locked -p harmos-domain --target wasm32-wasip2",
   "{{vars.cargo_guard}}cargo check --locked -p schematic-domain --target wasm32-unknown-unknown",
   "{{vars.cargo_guard}}cargo check --locked -p schematic-guest --target wasm32-unknown-unknown",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos-guest --example operation-component --features componentize,kit,streaming --target wasm32-unknown-unknown",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos-guest --example plugin-component --features componentize,kit --target wasm32-unknown-unknown",
 ]
 
 [tasks."check:sidecar:bench"]

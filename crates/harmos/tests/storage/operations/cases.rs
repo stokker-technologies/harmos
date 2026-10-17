@@ -153,7 +153,7 @@ fn own_contract() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    use harmos::storage::operations::{Follow, Followed};
+                    use harmos::storage::operations::{FollowRecords, Followed};
                     tokio::time::timeout(std::time::Duration::from_secs(5), async {
                         let fixture = Fixture::new(config()).await;
                         harmos::storage::operations::register(
@@ -165,7 +165,7 @@ fn own_contract() {
                         .unwrap();
                         write(&fixture.storage, "historical").await;
                         fixture.storage.flush().await.unwrap();
-                        let request = harmos::storage::follow::Records {
+                        let request = harmos::storage::operations::FollowRecords {
                             after: None,
                             selection: records(),
                         };
@@ -178,7 +178,7 @@ fn own_contract() {
                         let instance = fixture
                             .runtime
                             .operations
-                            .submit_endpoints::<Follow, _>(request.clone(), sender)
+                            .submit_endpoints::<FollowRecords, _>(request.clone(), sender)
                             .unwrap();
                         let Followed::Boundaries(boundaries) =
                             (*receiver.recv().await.unwrap()).clone()
@@ -205,7 +205,7 @@ fn own_contract() {
                         let instance = fixture
                             .runtime
                             .operations
-                            .submit_endpoints::<Follow, _>(request, sender)
+                            .submit_endpoints::<FollowRecords, _>(request, sender)
                             .unwrap();
                         drop(receiver.recv().await.unwrap());
                         write(&fixture.storage, "reconnected").await;
@@ -242,7 +242,7 @@ fn own_contract() {
                         let key = super::schema();
                         let stream = harmos::Identifier::new("voltage").unwrap();
                         let item = harmos::Identifier::new("row").unwrap();
-                        let request = harmos::storage::follow::Stream {
+                        let request = harmos::storage::operations::FollowStream {
                             after: None,
                             selection: harmos::storage::query::StreamSelection {
                                 schema: key.clone(),
@@ -309,7 +309,7 @@ fn own_contract() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    use harmos::storage::operations::{Follow, Followed};
+                    use harmos::storage::operations::{FollowRecords, Followed};
                     use std::time::Duration;
                     let fixture = Fixture::new(config()).await;
                     harmos::storage::operations::register(
@@ -327,14 +327,14 @@ fn own_contract() {
                         },
                     )
                     .unwrap();
-                    let request = harmos::storage::follow::Records {
+                    let request = harmos::storage::operations::FollowRecords {
                         after: None,
                         selection: records(),
                     };
                     let instance = fixture
                         .runtime
                         .operations
-                        .submit_endpoints::<Follow, _>(request, sender)
+                        .submit_endpoints::<FollowRecords, _>(request, sender)
                         .unwrap();
                     drop(receiver.recv().await.unwrap());
                     drop(receiver.recv().await.unwrap());

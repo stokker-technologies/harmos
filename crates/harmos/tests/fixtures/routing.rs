@@ -173,9 +173,10 @@ impl Operation for Echoing {
     async fn run<'ctx>(
         &mut self,
         _: Self::Context<'ctx>,
-        request: &mut Blob,
+        request: &mut Echo,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Blob>, Refusal> {
+        let request = &mut request.blob;
         let result: ::core::result::Result<Blob, Self::Error> = async move {
             self.id = Some(request.id);
             self.resources
@@ -241,9 +242,10 @@ impl Operation for Probing {
     async fn run<'ctx>(
         &mut self,
         _: Self::Context<'ctx>,
-        request: &mut Blob,
+        request: &mut Probe,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Blob>, Refusal> {
+        let request = &mut request.blob;
         let result: ::core::result::Result<Blob, Self::Error> = async move {
             // Report Construction Count Without Filesystem Effects In The Constructor.
             if request.id == u64::MAX {
@@ -288,9 +290,10 @@ impl Operation for Publishing {
     async fn run<'ctx>(
         &mut self,
         host: Self::Context<'ctx>,
-        request: &mut Blob,
+        request: &mut Nested,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Blob>, Refusal> {
+        let request = &mut request.blob;
         let result: ::core::result::Result<Blob, Self::Error> = async move {
             self.id = Some(request.id);
             self.resources

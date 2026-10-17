@@ -477,7 +477,7 @@ fn contract_scenario() {
                             &sender,
                             &mut receiver,
                             1,
-                            Initialize::<TransportPlugin>::ID,
+                            Initialize::ID,
                             initialization.encode_to_vec(),
                         )
                         .await;
@@ -498,7 +498,7 @@ fn contract_scenario() {
                             &sender,
                             &mut receiver,
                             3,
-                            Shutdown::<TransportPlugin>::ID,
+                            Shutdown::ID,
                             Vec::new(),
                         )
                         .await;
@@ -598,7 +598,7 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    use super::protocol::{Echo, TransportPlugin};
+                    use super::protocol::Echo;
                     use harmos_sidecar::operations::{
                         OperationDeclaration,
                         lifecycle::{Initialize, Shutdown},
@@ -631,7 +631,7 @@ fn contract_scenario() {
                                 &sending,
                                 &mut receiver,
                                 1,
-                                Initialize::<TransportPlugin>::ID,
+                                Initialize::ID,
                                 request.encode_to_vec(),
                             )
                             .await;
@@ -652,7 +652,7 @@ fn contract_scenario() {
                                 &sending,
                                 &mut receiver,
                                 3,
-                                Shutdown::<TransportPlugin>::ID,
+                                Shutdown::ID,
                                 Vec::new(),
                             )
                             .await;

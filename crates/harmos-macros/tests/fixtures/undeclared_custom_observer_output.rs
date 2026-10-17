@@ -9,7 +9,7 @@
 
 
 /* === Modules === */
-#[path = "observer_controls.rs"]
+#[path = "policy.rs"]
 mod controls;
 
 /* === Re-Exports === */
@@ -61,8 +61,7 @@ impl Watch {
 }
 
 #[harmos::plugin(id = "missing-output", context = harmos::sidecar::Supervisor, config = (),
-    provides = controls::Operations, requires = (), observers = Observers,
-    observer_control = controls::Observe, restart = "never")]
+    provides = (), requires = (), observers = Observers, restart = "never")]
 impl ProductPlugin for Bridge {}
 
 /* === Public Functions === */

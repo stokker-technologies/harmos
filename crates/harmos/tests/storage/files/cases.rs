@@ -52,8 +52,8 @@ fn metadata(id: &str, bytes: &[u8]) -> FileMetadata {
     }
 }
 
-fn whole(file: &harmos::storage::FileReference) -> harmos::storage::ReadFile {
-    harmos::storage::ReadFile {
+fn whole(file: &harmos::storage::FileReference) -> harmos::storage::operations::ReadFile {
+    harmos::storage::operations::ReadFile {
         file: file.clone(),
         range: harmos::storage::ByteRange {
             offset: 0,
@@ -93,7 +93,7 @@ fn contract_scenario() {
                     assert_eq!(f.storage.status().saved.sequence, 0);
                     let mut durable = f
                         .storage
-                        .query(harmos::storage::query::Query {
+                        .query(harmos::storage::operations::Query {
                             at: f.storage.cursor_saved(),
                             source: harmos::storage::query::Source::Files(
                                 harmos::storage::query::FileSelection {

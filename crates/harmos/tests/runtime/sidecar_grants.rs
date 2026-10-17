@@ -26,8 +26,7 @@ use super::operations::{Lanes, Managed};
 use harmos::grpc::authentication::{Authenticate, Authentication, Authenticator};
 use harmos::grpc::middleware::Invocation;
 use harmos::operations::{
-    Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility,
-    WireOperation, WireTable,
+    Operation, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireTable,
 };
 use harmos_domain::plugin::Grant;
 use harmos_sidecar::{Refusal, Supervisor};
@@ -75,13 +74,39 @@ struct Fetch {
     value: u32,
 }
 
-struct RemoteFetch;
+#[harmos::message]
+#[harmos::operation(
+    id = "gated.remote",
+    version = 1,
+    policy = POLICY,
+    response = Fetch,
+    visibility = Visibility::Host,
+    grpc(package = "fixture.gated.v1", service = "Remote", method = "Fetch"),
+    grant = |request: &RemoteFetch| scoped("gated.remote", request.value),
+)]
+#[derive(Clone)]
+struct RemoteFetch {
+    value: u32,
+}
 
 struct RemoteFetching {
     runs: Arc<Runs>,
 }
 
-struct LocalFetch;
+#[harmos::message]
+#[harmos::operation(
+    id = "gated.local",
+    version = 1,
+    policy = POLICY,
+    response = Fetch,
+    visibility = Visibility::Host,
+    grpc(package = "fixture.gated.v1", service = "Local", method = "Fetch"),
+    grant = |request: &LocalFetch| scoped("gated.local", request.value),
+)]
+#[derive(Clone)]
+struct LocalFetch {
+    value: u32,
+}
 
 struct LocalFetching {
     runs: Arc<Runs>,
@@ -192,32 +217,6 @@ impl harmos::Plugin for Provider {
     }
 }
 
-impl OperationDeclaration for RemoteFetch {
-    type Request = Fetch;
-    type Response = Fetch;
-    const ID: &'static str = "gated.remote";
-    const VISIBILITY: Visibility = Visibility::Host;
-    const POLICY: OperationPolicy = POLICY;
-    fn visit_wire<V: harmos::operations::WireVisitor>(visitor: V) -> Option<V::Entry> {
-        Some(visitor.unary::<Self>())
-    }
-    fn grant(request: &Fetch) -> Option<Grant> {
-        scoped(Self::ID, request)
-    }
-}
-
-impl WireOperation for RemoteFetch {
-    const VERSION: u32 = 1;
-    const GRPC: Option<harmos::operations::Grpc> = Some(harmos::operations::Grpc::new(
-        "fixture.gated.v1",
-        "Remote",
-        "Fetch",
-    ));
-    fn visit_grpc<V: harmos::operations::GrpcVisitor>(visitor: V) -> Option<V::Entry> {
-        Some(visitor.unary::<Self>())
-    }
-}
-
 impl Operation for RemoteFetching {
     type Declaration = RemoteFetch;
     type Resources = Runs;
@@ -230,7 +229,7 @@ impl Operation for RemoteFetching {
     async fn run<'a>(
         &mut self,
         _: Self::Context<'a>,
-        request: &mut Fetch,
+        request: &mut RemoteFetch,
         _: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Fetch>, Refusal> {
         self.runs.0.fetch_add(1, Ordering::SeqCst);
@@ -238,32 +237,6 @@ impl Operation for RemoteFetching {
             value: request.value + 1,
         }
         .into())
-    }
-}
-
-impl OperationDeclaration for LocalFetch {
-    type Request = Fetch;
-    type Response = Fetch;
-    const ID: &'static str = "gated.local";
-    const VISIBILITY: Visibility = Visibility::Host;
-    const POLICY: OperationPolicy = POLICY;
-    fn visit_wire<V: harmos::operations::WireVisitor>(visitor: V) -> Option<V::Entry> {
-        Some(visitor.unary::<Self>())
-    }
-    fn grant(request: &Fetch) -> Option<Grant> {
-        scoped(Self::ID, request)
-    }
-}
-
-impl WireOperation for LocalFetch {
-    const VERSION: u32 = 1;
-    const GRPC: Option<harmos::operations::Grpc> = Some(harmos::operations::Grpc::new(
-        "fixture.gated.v1",
-        "Local",
-        "Fetch",
-    ));
-    fn visit_grpc<V: harmos::operations::GrpcVisitor>(visitor: V) -> Option<V::Entry> {
-        Some(visitor.unary::<Self>())
     }
 }
 
@@ -279,7 +252,7 @@ impl Operation for LocalFetching {
     async fn run<'a>(
         &mut self,
         _: Self::Context<'a>,
-        request: &mut Fetch,
+        request: &mut LocalFetch,
         _: &mut Self::Endpoints,
     ) -> harmos::Result<harmos::operations::Response<Fetch>> {
         self.runs.0.fetch_add(1, Ordering::SeqCst);
@@ -295,8 +268,8 @@ impl Operation for LocalFetching {
 /* === Private Functions === */
 // Value 20 needs the held scope, 21 one nobody holds, 22 the held scope on
 // another operation, anything else no grant.
-fn scoped(operation: &'static str, request: &Fetch) -> Option<Grant> {
-    match request.value {
+fn scoped(operation: &'static str, value: u32) -> Option<Grant> {
+    match value {
         20 => Some(Grant::of(operation, ALLOWED)),
         21 => Some(Grant::of(operation, REFUSED)),
         22 => Some(Grant::of("gated.elsewhere", ALLOWED)),

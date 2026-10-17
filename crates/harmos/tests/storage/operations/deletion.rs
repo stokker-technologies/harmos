@@ -113,7 +113,7 @@ pub(super) fn contract_scenario() {
                     );
                     let mut query = f
                         .storage
-                        .query(harmos::storage::query::Query {
+                        .query(harmos::storage::operations::Query {
                             at: f.storage.cursor_saved(),
                             source: harmos::storage::query::Source::Files(
                                 harmos::storage::query::FileSelection {
@@ -314,12 +314,14 @@ pub(super) fn contract_scenario() {
                         .await
                         .unwrap();
                     f.storage.flush().await.unwrap();
-                    let whole = |file: &harmos::storage::FileReference| harmos::storage::ReadFile {
-                        file: file.clone(),
-                        range: harmos::storage::ByteRange {
-                            offset: 0,
-                            limit: None,
-                        },
+                    let whole = |file: &harmos::storage::FileReference| {
+                        harmos::storage::operations::ReadFile {
+                            file: file.clone(),
+                            range: harmos::storage::ByteRange {
+                                offset: 0,
+                                limit: None,
+                            },
+                        }
                     };
                     let mut pinned = f.storage.read_file(whole(&removed)).await.unwrap();
                     let request = request(&f, "removed-last");

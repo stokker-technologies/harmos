@@ -143,11 +143,12 @@ async fn restore(
     journal: harmos::state::StateManager<Bank>,
     storage: StorageManager<harmos::storage::ErasedCatalog>,
 ) -> harmos::Result<()> {
+    use harmos::storage::operations::Query;
     use harmos::storage::query::transform::{
         Transform,
         project::{Project, Projection},
     };
-    use harmos::storage::query::{Query, QueryArrow, RecordSelection, RowSlice, Source};
+    use harmos::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
     let mut reader = storage
         .query(Query {
             at: storage.cursor_saved(),

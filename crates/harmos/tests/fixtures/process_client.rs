@@ -66,7 +66,7 @@ impl harmos::Plugin for Client {
         std::fs::create_dir_all(&self.resources.root).map_err(Refusal::of)?;
         self.resources.mark("initializing")?;
         let response = context
-            .call(Step { phase: 1 })
+            .call(Read { phase: 1 })
             .await
             .map_err(Refusal::from)?;
         if response.phase != 1 {
@@ -94,7 +94,7 @@ impl harmos::Plugin for Client {
 
     async fn stop(&mut self, context: &Supervisor) -> Result<(), Refusal> {
         let response = context
-            .call(Step { phase: 2 })
+            .call(Read { phase: 2 })
             .await
             .map_err(Refusal::from)?;
         if response.phase != 2 {
@@ -134,12 +134,14 @@ impl Operation for Probing {
     async fn run<'ctx>(
         &mut self,
         _: Self::Context<'ctx>,
-        request: &mut Step,
+        request: &mut Probe,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Step>, Refusal> {
         let result: ::core::result::Result<Step, Self::Error> = async move {
             self.resources.mark("probe-started")?;
-            Ok(request.clone())
+            Ok(Step {
+                phase: request.phase,
+            })
         }
         .await;
         result.map(::core::convert::Into::into)

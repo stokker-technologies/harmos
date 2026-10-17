@@ -94,12 +94,38 @@ inert_plugin!(
 /* === Type Aliases === */
 
 /* === Structs === */
-struct Selected;
-
-struct Unselected;
+#[harmos::message]
+#[harmos::operation(
+    id = "fixture.selected",
+    version = 1,
+    response = Response,
+    description = "Selected \"operation\" Русский",
+    visibility = Visibility::Shared,
+    replay = ReplaySafety::Deduplicated,
+    policy = OperationPolicy {
+        timeout: Duration::from_secs(2),
+        attempt_timeout: Duration::from_nanos(17),
+        retries: RetryPolicy::OnTransient {
+            max_retries: 3,
+            backoff: Backoff::Exponential {
+                initial: Duration::from_nanos(3),
+                maximum: Duration::from_millis(10),
+                jitter: harmos::operations::Jitter::Deterministic,
+            },
+        },
+        restart: RestartPolicy::Never,
+    },
+)]
+struct Selected {}
 
 #[harmos::message]
-struct Request {}
+#[harmos::operation(
+    id = "fixture.unselected",
+    version = 1,
+    response = Response,
+    policy = Selected::POLICY
+)]
+struct Unselected {}
 
 #[harmos::message]
 struct Response {
@@ -147,39 +173,6 @@ enum Operations {
 /* === Traits === */
 
 /* === Implementations === */
-impl OperationDeclaration for Selected {
-    type Request = Request;
-    type Response = Response;
-    const ID: &'static str = "fixture.selected";
-    const DESCRIPTION: &'static str = "Selected \"operation\" Русский";
-    const VISIBILITY: Visibility = Visibility::Shared;
-    const REPLAY: ReplaySafety = ReplaySafety::Deduplicated;
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(2),
-        attempt_timeout: Duration::from_nanos(17),
-        retries: RetryPolicy::OnTransient {
-            max_retries: 3,
-            backoff: Backoff::Exponential {
-                initial: Duration::from_nanos(3),
-                maximum: Duration::from_millis(10),
-                jitter: harmos::operations::Jitter::Deterministic,
-            },
-        },
-        restart: RestartPolicy::Never,
-    };
-}
-
-impl OperationDeclaration for Unselected {
-    type Request = Request;
-    type Response = Response;
-    const ID: &'static str = "fixture.unselected";
-    const POLICY: OperationPolicy = Selected::POLICY;
-}
-
-impl harmos::operations::WireOperation for Selected {
-    const VERSION: u32 = 1;
-}
-
 /* === Public Functions === */
 
 /* === Private Functions === */

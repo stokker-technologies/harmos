@@ -43,11 +43,18 @@ use crate::scenario_runtime;
 use harmos::operations::*;
 use harmos::operations::{Backoff, Jitter, OperationPolicy, RestartPolicy, RetryPolicy};
 use std::sync::Arc;
-use std::{cell::Cell, sync::Mutex, time::Duration};
+use std::{sync::Mutex, time::Duration};
 
+// The Request Carries The Shared Event Log, So It Stays In Process.
 struct Request {
-    value: Cell<u32>,
+    value: u32,
     events: Arc<Mutex<Vec<&'static str>>>,
+}
+crate::in_process!(Request);
+impl harmos::MemorySize for Request {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+    }
 }
 impl Drop for Request {
     fn drop(&mut self) {
@@ -60,11 +67,12 @@ enum LifecycleLanes {
     Owned,
 }
 
-struct Declaration;
-impl OperationDeclaration for Declaration {
-    type Request = Request;
+impl OperationDeclaration for Request {
     type Response = u32;
+    type Input = NoStream;
+    type Output = NoStream;
     const ID: &'static str = "borrowed.request";
+    const VERSION: u32 = 1;
     const POLICY: OperationPolicy = OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(1),
@@ -83,7 +91,7 @@ struct Read {
     address: Option<usize>,
 }
 impl Operation for Read {
-    type Declaration = Declaration;
+    type Declaration = Request;
     type Resources = Mutex<Vec<&'static str>>;
     type Error = std::io::Error;
     type Context<'a> = Context<'a>;
@@ -124,11 +132,11 @@ impl Operation for Read {
                 assert_eq!(original, address);
             }
             self.address = Some(address);
-            request.value.set(request.value.get() + 1);
-            if request.value.get() == 20 {
+            request.value += 1;
+            if request.value == 20 {
                 return Err(std::io::Error::other("retry"));
             }
-            Ok(request.value.get())
+            Ok(request.value)
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -172,7 +180,7 @@ fn contract_scenario() {
                         .register_operation::<Read>("owner", LifecycleLanes::Owned, events.clone())
                         .unwrap();
                     let request = Request {
-                        value: Cell::new(19),
+                        value: 19,
                         events: events.clone(),
                     };
                     let call = runtime.operations.submit(request).unwrap();
@@ -234,7 +242,7 @@ fn contract_scenario() {
                             harmos::operations::stream::<u32>(settings).unwrap();
                         let instance = runtime
                             .operations
-                            .submit_endpoints::<StreamingDeclaration, _>(mode, (input, output))
+                            .submit_endpoints(StreamingDeclaration { mode }, (input, output))
                             .unwrap();
                         if mode == 2 {
                             for _ in 0..1000 {
@@ -263,8 +271,21 @@ fn contract_scenario() {
     }
 }
 
+#[harmos::message]
+#[harmos::operation(
+    harmos_path = harmos,
+    id = "streaming",
+    version = 1,
+    response = (),
+    policy = Request::POLICY,
+    input = u32,
+    output = u32
+)]
+struct StreamingDeclaration {
+    mode: u32,
+}
 struct Streaming(Arc<std::sync::atomic::AtomicUsize>, bool);
-#[harmos::operation(harmos_path = harmos, policy = Declaration::POLICY, input = u32, output = u32)]
+#[harmos::operation(harmos_path = harmos)]
 impl Streaming {
     async fn initialize(resources: Arc<std::sync::atomic::AtomicUsize>, _: Context<'_>) -> Self {
         Self(resources, false)
@@ -272,14 +293,14 @@ impl Streaming {
     async fn run(
         &mut self,
         _: Context<'_>,
-        mode: &u32,
+        request: &mut StreamingDeclaration,
         _: &mut harmos::operations::StreamInput<u32>,
         output: &mut harmos::operations::StreamOutput<u32>,
     ) -> std::result::Result<(), std::io::Error> {
         self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         // Provider Transfer May Be Known Before Any Local Item Is Delivered.
-        self.1 = *mode == 3;
-        if *mode == 1 {
+        self.1 = request.mode == 3;
+        if request.mode == 1 {
             output
                 .send_with(4, || Ok(7))
                 .await

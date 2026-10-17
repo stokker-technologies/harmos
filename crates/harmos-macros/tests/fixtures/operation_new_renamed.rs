@@ -42,7 +42,7 @@ struct Read;
 /* === Traits === */
 
 /* === Implementations === */
-#[harmos::operation(policy = POLICY)]
+#[harmos::operation]
 impl Read {
     fn new(_: Arc<()>) -> Self { Self }
     async fn run(&mut self, _: Context<'_>, request: &mut String) -> Result<(), harmos::Error> {

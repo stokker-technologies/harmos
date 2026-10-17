@@ -139,7 +139,7 @@ pub trait Attach: Clone + Send + Sync + 'static {
         Ok(None)
     }
 
-    fn observer_control(&self) -> harmos_domain::Result<Option<crate::operations::Contract>> {
+    fn observe_contract(&self) -> harmos_domain::Result<Option<crate::operations::Contract>> {
         Ok(None)
     }
 
@@ -393,8 +393,8 @@ impl Attach for Executable {
         Ok(Some(self.declaration.contracts.lifecycle.clone()))
     }
 
-    fn observer_control(&self) -> harmos_domain::Result<Option<crate::operations::Contract>> {
-        Ok(self.declaration.observer_control())
+    fn observe_contract(&self) -> harmos_domain::Result<Option<crate::operations::Contract>> {
+        Ok(self.declaration.observe_contract())
     }
 
     fn listener_declarations(

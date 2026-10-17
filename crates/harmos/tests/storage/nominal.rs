@@ -16,6 +16,7 @@ use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
 
 // Third Party Imports
+use harmos::storage::operations::{Query, ReadFile};
 use harmos::storage::query::transform::{
     Transform,
     aggregate::{Aggregate, Measure},
@@ -23,7 +24,7 @@ use harmos::storage::query::transform::{
     histogram::Histogram,
     project::{Project, Projection},
 };
-use harmos::storage::query::{Query, QueryArrow, RowSlice, Source, StreamSelection};
+use harmos::storage::query::{QueryArrow, RowSlice, Source, StreamSelection};
 use harmos::storage::*;
 use harmos::{Identifier, Runtime};
 

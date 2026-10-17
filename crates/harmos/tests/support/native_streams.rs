@@ -138,7 +138,6 @@ impl Fixture {
                 lifecycle: source.sdk_lifecycle().unwrap(),
                 streams: source.publications(),
                 observers: source.observers(),
-                observer_control: source.observer_control().unwrap(),
                 listeners: source.listener_declarations().unwrap().unwrap(),
                 ..PluginContributions::default()
             },
@@ -212,7 +211,10 @@ impl Fixture {
             Duration::from_secs(5),
             self.runtime
                 .operations
-                .call_encoded(Progress::ID, rows.encode_to_vec()),
+                .call_encoded(
+                    Progress::ID,
+                    harmos::Message::encode_to_vec(&Progress { expected: rows }),
+                ),
         )
         .await
         .expect("consumer acknowledges rows")

@@ -23,8 +23,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 // Local Imports
 use super::wire::Text;
 use harmos::operations::{
-    Context, Operation, OperationDeclaration, OperationPolicy, PluginRegistration, Visibility,
-    WireDeclaration, WireOperation,
+    Context, Operation, OperationDeclaration, PluginRegistration, Visibility, WireDeclaration,
 };
 use harmos::plugin::{
     PluginArtifact, PluginBackend, PluginCaller, PluginContributions, PluginDefinition,
@@ -43,7 +42,17 @@ use harmos_domain::plugin::Grant;
 type Backends = PluginBackend<Resources, Resources, Resources>;
 
 /* === Structs === */
-struct Control;
+#[harmos::message]
+#[harmos::operation(
+    id = "fixture.host_control",
+    version = 1,
+    response = String,
+    visibility = Visibility::Host,
+    policy = super::wire::Echo::POLICY
+)]
+struct Control {
+    value: String,
+}
 
 struct Principal(&'static str);
 
@@ -107,7 +116,7 @@ impl harmos::operations::Operation for CorePublication {
             assert!(!context.is_host_call());
             assert_eq!(context.caller_scope().unwrap().owner(), "client");
             assert!(matches!(
-                context.submit("child".into()),
+                context.submit(Control::from("child")),
                 Err(Error::OperationUnauthorized { .. })
             ));
             self.0.called.fetch_add(1, Ordering::SeqCst);
@@ -118,16 +127,12 @@ impl harmos::operations::Operation for CorePublication {
     }
 }
 
-impl OperationDeclaration for Control {
-    type Request = Text;
-    type Response = String;
-    const ID: &'static str = "fixture.host_control";
-    const POLICY: OperationPolicy = super::wire::Echo::POLICY;
-    const VISIBILITY: Visibility = Visibility::Host;
-}
-
-impl WireOperation for Control {
-    const VERSION: u32 = 1;
+impl From<&str> for Control {
+    fn from(value: &str) -> Self {
+        Self {
+            value: value.to_owned(),
+        }
+    }
 }
 
 #[harmos::catalog]
@@ -157,7 +162,7 @@ impl Operation for Controlling {
     async fn run<'ctx>(
         &mut self,
         _: Self::Context<'ctx>,
-        request: &mut Text,
+        request: &mut Control,
         _endpoints: &mut Self::Endpoints,
     ) -> std::result::Result<harmos::operations::Response<String>, Self::Error> {
         let result: ::core::result::Result<String, Self::Error> =
@@ -208,7 +213,7 @@ impl PluginLifecycle for Host {
                 )
             })?);
             assert!(matches!(
-                self.operations.submit("staged".into()),
+                self.operations.submit(Control::from("staged")),
                 Err(Error::NotReady { .. })
             ));
             assert!(matches!(
@@ -293,7 +298,7 @@ pub(super) fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    use harmos::operations::streams::{Publication, Publish};
+                    use harmos::operations::streams::Publish;
                     let runtime =
                         super::runtime_with_preparation(NonZeroUsize::new(4096).unwrap()).await;
                     let owner = Arc::new(CoreOwner::default());
@@ -343,7 +348,7 @@ pub(super) fn contract_scenario() {
                         .caller(&host.callers["provider"])
                         .unwrap();
                     assert!(matches!(
-                        provider.submit(Publication::default()),
+                        provider.submit(Publish::default()),
                         Err(Error::OperationUnauthorized { .. })
                     ));
                     let mut context = harmos::operations::CallContext::default();
@@ -353,11 +358,7 @@ pub(super) fn contract_scenario() {
                         .with_context(context)
                         .caller(&host.callers["client"])
                         .unwrap();
-                    caller
-                        .submit(Publication::default())
-                        .unwrap()
-                        .await
-                        .unwrap();
+                    caller.submit(Publish::default()).unwrap().await.unwrap();
                     assert_eq!(owner.prepared.load(Ordering::SeqCst), 1);
                     assert_eq!(owner.called.load(Ordering::SeqCst), 1);
                     assert_eq!(host.owner.prepared.load(Ordering::SeqCst), 0);
@@ -385,7 +386,7 @@ pub(super) fn contract_scenario() {
                         .unwrap();
                     manager.shutdown(&mut host).await.unwrap();
                     assert!(matches!(
-                        caller.submit(Publication::default()),
+                        caller.submit(Publish::default()),
                         Err(Error::OperationCaller { .. })
                     ));
                     runtime.stop().await.unwrap();
@@ -418,7 +419,7 @@ pub(super) fn contract_scenario() {
                     let dependency = runtime.operations.caller(&host.callers["client"]).unwrap();
                     for caller in [&own, &dependency] {
                         assert!(matches!(
-                            caller.submit("plugin".into()),
+                            caller.submit(Control::from("plugin")),
                             Err(Error::OperationUnauthorized { .. })
                         ));
                         assert!(matches!(
@@ -443,7 +444,11 @@ pub(super) fn contract_scenario() {
                     assert!(!encoded.load(Ordering::SeqCst));
                     assert_eq!(host.owner.prepared.load(Ordering::SeqCst), 0);
                     assert_eq!(
-                        *runtime.operations.call("host".into()).await.unwrap(),
+                        *runtime
+                            .operations
+                            .call(Control::from("host"))
+                            .await
+                            .unwrap(),
                         "host"
                     );
 
@@ -465,7 +470,7 @@ pub(super) fn contract_scenario() {
                         host.scope.as_ref().unwrap().generation()
                     );
                     assert!(matches!(
-                        own.submit("stale".into()),
+                        own.submit(Control::from("stale")),
                         Err(Error::OperationCaller { .. })
                     ));
                     assert!(
@@ -478,11 +483,15 @@ pub(super) fn contract_scenario() {
                     );
                     assert!(!encoded.load(Ordering::SeqCst));
                     assert_eq!(
-                        *runtime.operations.call("replacement".into()).await.unwrap(),
+                        *runtime
+                            .operations
+                            .call(Control::from("replacement"))
+                            .await
+                            .unwrap(),
                         "replacement"
                     );
                     manager.shutdown(&mut host).await.unwrap();
-                    assert!(runtime.operations.submit("closed".into()).is_err());
+                    assert!(runtime.operations.submit(Control::from("closed")).is_err());
                     runtime.stop().await.unwrap();
                 });
         });

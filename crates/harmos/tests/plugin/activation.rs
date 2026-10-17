@@ -29,7 +29,19 @@ use super::*;
 
 /* === Structs === */
 struct WireClient;
-struct WireCall;
+#[harmos::message(harmos_path = harmos)]
+#[harmos::operation(
+    harmos_path = harmos,
+    id = "client.run",
+    version = 1,
+    response = String,
+    visibility = Visibility::Shared,
+    policy = Run::<1, 100, false>::POLICY,
+    grpc(package = "fixture.embedded.v1", service = "Client", method = "Run"),
+)]
+struct WireCall {
+    value: String,
+}
 
 /* === Enums === */
 #[harmos::catalog]
@@ -40,28 +52,6 @@ enum WireClients {
 /* === Traits === */
 
 /* === Implementations === */
-impl OperationDeclaration for WireCall {
-    type Request = RunRequest;
-    type Response = String;
-    const ID: &'static str = "client.run";
-    const POLICY: OperationPolicy = Run::<1, 100, false>::POLICY;
-    const VISIBILITY: Visibility = Visibility::Shared;
-}
-
-impl harmos::operations::WireOperation for WireCall {
-    const VERSION: u32 = 1;
-    #[cfg(feature = "grpc")]
-    const GRPC: Option<harmos::operations::Grpc> = Some(harmos::operations::Grpc::new(
-        "fixture.embedded.v1",
-        "Client",
-        "Run",
-    ));
-    #[cfg(feature = "grpc")]
-    fn visit_grpc<V: harmos::operations::GrpcVisitor>(visitor: V) -> Option<V::Entry> {
-        Some(visitor.unary::<Self>())
-    }
-}
-
 impl Operation for WireClient {
     type Declaration = WireCall;
     type Resources = ();
@@ -76,12 +66,12 @@ impl Operation for WireClient {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        request: &mut RunRequest,
+        request: &mut WireCall,
         _: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<String>> {
         let result: ::core::result::Result<String, Self::Error> = async move {
             let response = context
-                .call(RunRequest {
+                .call(Run::<0, 100, false> {
                     value: request.value.clone(),
                 })
                 .await?;
@@ -346,7 +336,7 @@ fn contract_scenario() {
             assert!(matches!(
                 runtime
                     .operations
-                    .call(RunRequest {
+                    .call(Run::<0, 100, false> {
                         value: "before".into()
                     })
                     .await,
@@ -360,7 +350,7 @@ fn contract_scenario() {
             assert_eq!(
                 runtime
                     .operations
-                    .call(RunRequest {
+                    .call(Run::<0, 100, false> {
                         value: "shared runtime owner".into()
                     })
                     .await
@@ -381,7 +371,7 @@ fn contract_scenario() {
             assert_eq!(
                 runtime
                     .operations
-                    .call(RunRequest {
+                    .call(Run::<0, 100, false> {
                         value: "after reload".into()
                     })
                     .await
@@ -423,7 +413,7 @@ fn contract_scenario() {
             assert_eq!(
                 runtime
                     .operations
-                    .call(RunRequest {
+                    .call(Run::<0, 100, false> {
                         value: "after replacement".into()
                     })
                     .await
@@ -436,7 +426,7 @@ fn contract_scenario() {
             assert!(matches!(
                 runtime
                     .operations
-                    .call(RunRequest {
+                    .call(Run::<0, 100, false> {
                         value: "removed".into()
                     })
                     .await,

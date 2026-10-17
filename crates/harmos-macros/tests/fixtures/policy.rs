@@ -7,20 +7,23 @@
  * ***
  */
 
+
 /* === Modules === */
-pub mod recalibrated;
 
 /* === Re-Exports === */
-pub use recalibrated::Recalibrated;
 
 /* === Imports === */
 // Standard Library Imports
-
+use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
+use harmos::operations::{OperationPolicy, RestartPolicy, RetryPolicy};
 
 /* === Constants === */
+pub const POLICY: OperationPolicy = OperationPolicy {
+    timeout: Duration::from_secs(1), attempt_timeout: Duration::from_secs(1), retries: RetryPolicy::Never, restart: RestartPolicy::Never
+};
 
 /* === Macros === */
 
@@ -29,14 +32,11 @@ pub use recalibrated::Recalibrated;
 /* === Structs === */
 
 /* === Enums === */
-#[harmos::catalog]
-pub enum Listeners {
-    Recalibrated(Recalibrated),
-}
 
 /* === Traits === */
 
 /* === Implementations === */
+
 
 /* === Public Functions === */
 

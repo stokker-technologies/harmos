@@ -24,7 +24,6 @@ use tokio::sync::Notify;
 use super::{Lanes, runtime};
 use harmos::operations::{
     CacheKey, Context, Operation, OperationDeclaration, OperationOutcome, OperationPhase,
-    OperationPolicy,
 };
 use harmos::{Error, Refusal};
 
@@ -33,13 +32,25 @@ use harmos::{Error, Refusal};
 /* === Macros === */
 
 /* === Type Aliases === */
+type Request = Finish;
 
 /* === Structs === */
-struct Finish;
+#[harmos::message]
+#[harmos::operation(
+    id = "aa.finish",
+    version = 1,
+    response = u64,
+    policy = super::Compute::POLICY,
+    key = |request: &Finish| request.keyed.then(|| CacheKey::new([1]).unwrap()),
+)]
+struct Finish {
+    keyed: bool,
+    fail_attempt: bool,
+}
 
-struct Parent;
-
-struct Request {
+#[harmos::message]
+#[harmos::operation(id = "zz.parent", version = 1, response = u64, policy = Finish::POLICY)]
+struct Parent {
     keyed: bool,
     fail_attempt: bool,
 }
@@ -70,22 +81,13 @@ struct ParentOwner(Arc<Counters>);
 /* === Traits === */
 
 /* === Implementations === */
-impl OperationDeclaration for Finish {
-    type Request = Request;
-    type Response = usize;
-    const ID: &'static str = "aa.finish";
-    const POLICY: OperationPolicy = super::Compute::POLICY;
-
-    fn key(request: &Request) -> Option<CacheKey> {
-        request.keyed.then(|| CacheKey::new([1]).unwrap())
+impl From<Finish> for Parent {
+    fn from(request: Finish) -> Self {
+        Self {
+            keyed: request.keyed,
+            fail_attempt: request.fail_attempt,
+        }
     }
-}
-
-impl OperationDeclaration for Parent {
-    type Request = Request;
-    type Response = usize;
-    const ID: &'static str = "zz.parent";
-    const POLICY: OperationPolicy = Finish::POLICY;
 }
 
 struct Finishing {
@@ -116,8 +118,8 @@ impl Operation for Finishing {
         _: Self::Context<'ctx>,
         request: &mut Request,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos::operations::Response<usize>, Self::Error> {
-        let result: ::core::result::Result<usize, Self::Error> = async move {
+    ) -> Result<harmos::operations::Response<u64>, Self::Error> {
+        let result: ::core::result::Result<u64, Self::Error> = async move {
             self.resources.0.runs.fetch_add(1, Ordering::SeqCst);
             self.state.ran = true;
             if request.fail_attempt {
@@ -174,10 +176,10 @@ impl Operation for ParentCall {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        request: &mut Request,
+        request: &mut Parent,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos::operations::Response<usize>, Error> {
-        let result: ::core::result::Result<usize, Self::Error> = async move {
+    ) -> Result<harmos::operations::Response<u64>, Error> {
+        let result: ::core::result::Result<u64, Self::Error> = async move {
             let request = Request {
                 keyed: request.keyed,
                 fail_attempt: request.fail_attempt,
@@ -366,7 +368,7 @@ pub(super) fn contract_scenario() {
                         .operations
                         .register_operation::<ParentCall>("parent", Lanes::Open, parent_owner)
                         .unwrap();
-                    let invocation = runtime.operations.submit(request()).unwrap();
+                    let invocation = runtime.operations.submit(Parent::from(request())).unwrap();
                     child.entering.notified().await;
                     assert!(runtime.operations.unregister(Parent::ID).await.is_err());
                     assert_eq!(child.dropped.load(Ordering::SeqCst), 0);
@@ -897,7 +899,7 @@ pub(super) fn contract_scenario() {
                             Arc::new(ParentOwner(parent.clone())),
                         )
                         .unwrap();
-                    let invocation = runtime.operations.submit(request()).unwrap();
+                    let invocation = runtime.operations.submit(Parent::from(request())).unwrap();
                     child.entering.notified().await;
                     assert_eq!(child.dropped.load(Ordering::SeqCst), 0);
                     assert_eq!(parent.dropped.load(Ordering::SeqCst), 0);

@@ -42,10 +42,21 @@ pub struct Payload {
     pub bytes: Vec<u8>,
 }
 
+#[harmos::message]
+#[harmos::operation(
+    id = "schematic-sidecar.exchange",
+    version = 1,
+    policy = POLICY,
+    response = Payload,
+    visibility = Visibility::Shared,
+)]
+#[derive(Clone, PartialEq)]
+pub struct Exchange {
+    pub sequence: u64,
+    pub bytes: Vec<u8>,
+}
+
 /* === Enums === */
-#[harmos::operation(request = Payload, response = Payload, id = "schematic-sidecar.exchange",
-        policy = POLICY, visibility = Visibility::Shared, version = 1)]
-pub struct Exchange;
 
 #[harmos::catalog]
 pub enum Operations {

@@ -43,18 +43,28 @@ struct Value {
     optional: Option<u32>,
 }
 
+#[harmos::message]
 #[harmos::operation(
-    id = "dynamic.unary", request = Value, response = Value, policy = POLICY,
+    id = "dynamic.unary", response = Value, policy = POLICY,
     version = 1, grpc(package = "dynamic.v1", service = "External", method = "Unary"),
 )]
-struct Unary;
+struct Unary {
+    small: u32,
+    wide: u64,
+    optional: Option<u32>,
+}
 
+#[harmos::message]
 #[harmos::operation(
-    id = "dynamic.exchange", request = Value, response = Value, input = Value,
+    id = "dynamic.exchange", response = Value, input = Value,
     output = Value, policy = POLICY, version = 1,
     grpc(package = "dynamic.v1", service = "External", method = "Exchange"),
 )]
-struct Exchange;
+struct Exchange {
+    small: u32,
+    wide: u64,
+    optional: Option<u32>,
+}
 
 /* === Enums === */
 
@@ -108,7 +118,7 @@ fn dynamic_stream_interop() {
     assert!(operation.client_streaming());
     assert!(operation.server_streaming());
     let request = operation.request(json).unwrap();
-    let InputEnvelope::<Value, Value>::Request(value) =
+    let InputEnvelope::<Exchange, Value>::Request(value) =
         InputEnvelope::decode(request.as_bytes()).unwrap()
     else {
         panic!("request tag one");
@@ -116,7 +126,7 @@ fn dynamic_stream_interop() {
     assert_eq!(value.small, 7);
     let input = operation.input(json).unwrap();
     assert!(matches!(
-        InputEnvelope::<Value, Value>::decode(input.as_bytes()).unwrap(),
+        InputEnvelope::<Exchange, Value>::decode(input.as_bytes()).unwrap(),
         InputEnvelope::Item(_)
     ));
     let item = OutputEnvelope::<Value, Value>::Item(Value {

@@ -307,7 +307,7 @@ mod sdk {
                             &outgoing,
                             &mut incoming,
                             3,
-                            Initialize::<TransportPlugin>::ID,
+                            Initialize::ID,
                             initialization.encode_to_vec(),
                         )
                         .await;
@@ -324,7 +324,7 @@ mod sdk {
                             &outgoing,
                             &mut incoming,
                             5,
-                            Shutdown::<TransportPlugin>::ID,
+                            Shutdown::ID,
                             Vec::new(),
                         )
                         .await;

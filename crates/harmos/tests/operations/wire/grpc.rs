@@ -29,8 +29,7 @@ use super::{Lanes, app::App};
 use harmos::Runtime;
 use harmos::grpc::Event;
 use harmos::operations::{
-    Context, Operation, OperationDeclaration, OperationPhase, OperationPolicy, RestartPolicy,
-    RetryPolicy,
+    Context, Operation, OperationPhase, OperationPolicy, RestartPolicy, RetryPolicy,
 };
 
 /* === Constants === */
@@ -38,10 +37,23 @@ use harmos::operations::{
 /* === Macros === */
 
 /* === Type Aliases === */
+type Request = Produce;
 
 /* === Structs === */
-struct Produce;
-struct Request {
+#[harmos::message]
+#[harmos::operation(
+    id = "grpc.produce",
+    version = 1,
+    response = u32,
+    output = u32,
+    policy = OperationPolicy {
+        timeout: Duration::from_secs(5),
+        attempt_timeout: Duration::from_secs(5),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    }
+)]
+struct Produce {
     count: u32,
     fail: bool,
 }
@@ -82,23 +94,6 @@ impl harmos::operations::middleware::Middleware for Observe {
 /* === Traits === */
 
 /* === Implementations === */
-impl OperationDeclaration for Produce {
-    type Request = Request;
-    type Response = u32;
-    fn endpoint_types() -> (Option<std::any::TypeId>, Option<std::any::TypeId>) {
-        (None, Some(std::any::TypeId::of::<u32>()))
-    }
-    const ID: &'static str = "grpc.produce";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(5),
-        attempt_timeout: Duration::from_secs(5),
-        retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
-    };
-}
-impl harmos::operations::OutputDeclaration for Produce {
-    type Item = u32;
-}
 impl Operation for Production {
     type Declaration = Produce;
     type Resources = Trace;

@@ -23,8 +23,8 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 // Local Imports
 use harmos::operations::{
-    Context, Operation, OperationDeclaration, OperationPolicy, PluginRegistration, RestartPolicy,
-    RetryPolicy, Visibility, WireDeclaration, WireOperation,
+    Context, Operation, OperationPolicy, PluginRegistration, RestartPolicy, RetryPolicy,
+    WireDeclaration,
 };
 use harmos::plugin::{
     PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions,
@@ -34,7 +34,7 @@ use harmos::plugin::{
 use harmos::records::PluginListenerRegistration;
 use harmos::schema::{Described, Field};
 use harmos::{Error, Message, MessageError, Result, Runtime, state::Position};
-use harmos_domain::listeners::{Context as DeliveryContext, Delivery, Source};
+use harmos_domain::listeners::{Context as DeliveryContext, Delivery, Listener, Source};
 
 /* === Constants === */
 
@@ -61,6 +61,7 @@ struct WireFact {
 
 struct Model;
 
+// Each Callback Over The Same Row Is Its Own Listener.
 struct Heard<const FIRST: bool>;
 
 struct Owner {
@@ -105,8 +106,8 @@ enum Rows {
 
 #[harmos::catalog]
 enum Callbacks {
-    First(Heard<true>),
-    Second(Heard<false>),
+    First(Delivery<Heard<true>>),
+    Second(Delivery<Heard<false>>),
 }
 
 #[harmos::lanes]
@@ -164,25 +165,19 @@ impl harmos::Application for Model {
     type Resources = ();
 }
 
-impl<const FIRST: bool> OperationDeclaration for Heard<FIRST> {
-    type Request = Delivery<WireFact>;
-    type Response = ();
-    const ID: &'static str = if FIRST {
+impl<const FIRST: bool> Listener for Heard<FIRST> {
+    type Row = WireFact;
+    const CALLBACK: &'static str = if FIRST {
         "listener.heard-z"
     } else {
         "listener.heard-a"
     };
-    const VISIBILITY: Visibility = Visibility::Shared;
     const POLICY: OperationPolicy = OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(1),
         retries: RetryPolicy::Never,
         restart: RestartPolicy::Never,
     };
-}
-
-impl<const FIRST: bool> WireOperation for Heard<FIRST> {
-    const VERSION: u32 = 1;
 }
 
 #[harmos::catalog]
@@ -199,7 +194,7 @@ struct Hearing<const FIRST: bool> {
 impl<const FIRST: bool> Operation for Hearing<FIRST> {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
-    type Declaration = Heard<FIRST>;
+    type Declaration = Delivery<Heard<FIRST>>;
     type Resources = Owner;
     type Error = Failed;
     async fn initialize<'ctx>(
@@ -214,7 +209,7 @@ impl<const FIRST: bool> Operation for Hearing<FIRST> {
     async fn run<'a>(
         &mut self,
         _: Self::Context<'a>,
-        request: &mut Delivery<WireFact>,
+        request: &mut Delivery<Heard<FIRST>>,
         _endpoints: &mut Self::Endpoints,
     ) -> std::result::Result<harmos::operations::Response<()>, Failed> {
         let result: ::core::result::Result<(), Self::Error> = async move {
@@ -370,11 +365,15 @@ fn candidate() -> PluginDefinitions {
     for (id, callback) in [
         (
             "listener.first",
-            WireDeclaration::of::<Heard<true>>().contract().unwrap(),
+            WireDeclaration::of::<Delivery<Heard<true>>>()
+                .contract()
+                .unwrap(),
         ),
         (
             "listener.second",
-            WireDeclaration::of::<Heard<false>>().contract().unwrap(),
+            WireDeclaration::of::<Delivery<Heard<false>>>()
+                .contract()
+                .unwrap(),
         ),
     ] {
         listeners.push(
@@ -559,7 +558,7 @@ fn contract_scenario() {
                         Some(Error::OperationFailed { .. })
                     ));
                     assert!(matches!(
-                        runtime.operations.definition(Heard::<false>::ID),
+                        runtime.operations.definition(Heard::<false>::CALLBACK),
                         Err(Error::Closing { .. })
                     ));
                     manager.shutdown(&mut host).await.unwrap();

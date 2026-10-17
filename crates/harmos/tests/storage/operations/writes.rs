@@ -19,7 +19,7 @@ use arrow_schema::{DataType, Field, Fields, Schema};
 use harmos::operations::StreamSettings;
 use harmos::storage::arrow::ArrowBatch;
 use harmos::storage::operations::{WriteRecords, WriteStreams};
-use harmos::storage::writes::{DataBatch, WriteReceipt, WriteRequest};
+use harmos::storage::writes::{DataBatch, WriteReceipt};
 use harmos::{Identifier, MemorySize, Message};
 
 // Local Imports
@@ -112,7 +112,7 @@ pub(super) fn contract_scenario() {
                 let mut records = f
                     .runtime
                     .operations
-                    .exchange::<WriteRecords>(WriteRequest { scope: None }, settings(), settings())
+                    .exchange::<WriteRecords>(WriteRecords { scope: None }, settings(), settings())
                     .unwrap();
                 let first = batch(1, "bench");
                 records
@@ -143,7 +143,7 @@ pub(super) fn contract_scenario() {
                 let mut stream = f
                     .runtime
                     .operations
-                    .exchange::<WriteStreams>(WriteRequest { scope: None }, settings(), settings())
+                    .exchange::<WriteStreams>(WriteStreams { scope: None }, settings(), settings())
                     .unwrap();
                 let first = batch(1, "voltage");
                 stream.send(first).await.unwrap();

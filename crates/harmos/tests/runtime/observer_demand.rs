@@ -26,9 +26,7 @@ use std::time::Duration;
 use super::sidecar::operations::{Lanes, Managed};
 use harmos::operations::OperationPhase;
 use harmos::operations::resident::{Key, Kind, Snapshot};
-use harmos::operations::{
-    OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireOperation,
-};
+use harmos::operations::{OperationPolicy, RestartPolicy, RetryPolicy};
 use harmos::sidecar::{
     Attach, DemandKey, ObserverAttachment, ObserverContext, PublicationError, PublishError,
     Publisher, Supervisor,
@@ -76,7 +74,6 @@ struct Producer {
     attachment: Arc<ObserverAttachment<Resources, Publisher<Producer>>>,
 }
 
-struct Observe;
 
 struct RecordOnly(Arc<Counts>);
 
@@ -87,11 +84,6 @@ struct Mixed(Arc<Counts>);
 enum Observers {
     RecordOnly(RecordOnly),
     Mixed(Mixed),
-}
-
-#[harmos::catalog]
-enum Operations {
-    Observe(Observe),
 }
 
 /* === Traits === */
@@ -113,18 +105,6 @@ impl Drop for Seed {
     }
 }
 
-impl OperationDeclaration for Observe {
-    type Request = harmos_domain::observers::Control;
-    type Response = ();
-    const ID: &'static str = "demand.observer.observe";
-    const VISIBILITY: Visibility = Visibility::Host;
-    const POLICY: OperationPolicy = harmos_domain::observers::POLICY;
-}
-
-impl WireOperation for Observe {
-    const VERSION: u32 = 1;
-}
-
 const LIFECYCLE: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_millis(500),
@@ -137,7 +117,7 @@ impl harmos::operations::lifecycle::Policy for Producer {
     const SHUTDOWN_POLICY: OperationPolicy = LIFECYCLE;
 }
 
-#[harmos::plugin(id = "demand-authoring", provides = Operations, requires(harmos::operations::streams::Publish),  observers = Observers, observer_control = Observe, streams(Row))]
+#[harmos::plugin(id = "demand-authoring", provides = (), requires(harmos::operations::streams::Publish),  observers = Observers, streams(Row))]
 impl harmos::Plugin for Producer {
     type Config = usize;
     type Resources = Resources;
@@ -174,7 +154,7 @@ impl harmos::Plugin for Producer {
         &self,
         table: &mut harmos::operations::WireTable<Supervisor>,
     ) -> Result<(), harmos::operations::ServingError> {
-        self.attachment.bind::<Observe>(table)
+        self.attachment.bind(table)
     }
     fn attachment(&self) -> Option<Arc<dyn harmos_domain::plugin::Attachment<Supervisor>>> {
         Some(self.attachment.clone())

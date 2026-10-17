@@ -225,9 +225,7 @@ use std::time::Duration;
 
 // Local Imports
 use harmos::operations::WireTable;
-use harmos::operations::{
-    Context, Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy,
-};
+use harmos::operations::{Context, Operation, OperationPolicy, RestartPolicy, RetryPolicy};
 use harmos::sidecar::{Notice, Supervised};
 use harmos::simulation::entropy;
 use harmos::{
@@ -252,12 +250,48 @@ type IdleManaged = harmos::sidecar::Managed<
 >;
 
 /* === Structs === */
-struct Pending;
+#[harmos::message]
+#[harmos::operation(
+    id = "sim.pending",
+    version = 1,
+    response = (),
+    policy = OperationPolicy {
+        timeout: Duration::from_secs(30),
+        attempt_timeout: Duration::from_millis(5),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    }
+)]
+struct Pending {}
 
+#[harmos::message]
+#[harmos::operation(
+    id = "sim.answering",
+    version = 1,
+    response = u64,
+    policy = OperationPolicy {
+        timeout: Duration::from_secs(30),
+        attempt_timeout: Duration::from_millis(50),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    }
+)]
 struct Answering {
-    answer: usize,
+    answer: u64,
 }
 
+// The Draw Log Is Shared With The Scenario, So The Request Stays In Process.
+#[harmos::operation(
+    id = "sim.drawing",
+    version = 1,
+    response = u64,
+    policy = OperationPolicy {
+        timeout: Duration::from_secs(30),
+        attempt_timeout: Duration::from_millis(100),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    }
+)]
 struct Drawing {
     draws: Arc<Mutex<Vec<u64>>>,
 }
@@ -276,6 +310,18 @@ struct Divergent;
 #[derive(Clone)]
 struct DivergentCatalog;
 
+#[harmos::message]
+#[harmos::operation(
+    id = "sim.timingitsownwait",
+    version = 1,
+    response = u64,
+    policy = OperationPolicy {
+        timeout: Duration::from_secs(30),
+        attempt_timeout: Duration::from_millis(10000),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    }
+)]
 struct TimingItsOwnWait {
     wait_ms: u64,
 }
@@ -338,18 +384,6 @@ impl Identified for Noted {
     }
 }
 
-impl OperationDeclaration for Pending {
-    type Request = Self;
-    type Response = ();
-    const ID: &'static str = "sim.pending";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(30),
-        attempt_timeout: Duration::from_millis(5),
-        retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
-    };
-}
-
 impl Operation for Pending {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
@@ -358,7 +392,7 @@ impl Operation for Pending {
     type Error = Infallible;
 
     async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Pending, Infallible> {
-        Ok(Self)
+        Ok(Self {})
     }
 
     async fn run<'ctx>(
@@ -371,18 +405,6 @@ impl Operation for Pending {
             async move { std::future::pending().await }.await;
         result.map(::core::convert::Into::into)
     }
-}
-
-impl OperationDeclaration for Answering {
-    type Request = Self;
-    type Response = usize;
-    const ID: &'static str = "sim.answering";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(30),
-        attempt_timeout: Duration::from_millis(50),
-        retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
-    };
 }
 
 struct Answer;
@@ -403,23 +425,59 @@ impl Operation for Answer {
         _context: Self::Context<'ctx>,
         request: &mut Answering,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos::operations::Response<usize>, Infallible> {
-        let result: ::core::result::Result<usize, Self::Error> =
+    ) -> Result<harmos::operations::Response<u64>, Infallible> {
+        let result: ::core::result::Result<u64, Self::Error> =
             async move { Ok(request.answer) }.await;
         result.map(::core::convert::Into::into)
     }
 }
 
-impl OperationDeclaration for Drawing {
-    type Request = Self;
-    type Response = u64;
-    const ID: &'static str = "sim.drawing";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(30),
-        attempt_timeout: Duration::from_millis(100),
-        retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
-    };
+impl harmos::Message for Drawing {
+    fn encode_to_vec(&self) -> Vec<u8> {
+        unreachable!("the in-process draw request is never encoded")
+    }
+    fn encoded_len(&self) -> usize {
+        unreachable!("the in-process draw request is never encoded")
+    }
+    fn decoding_memory(_: &[u8]) -> Result<usize, harmos::MessageError> {
+        Err(harmos::MessageError::borrowed(
+            "the in-process draw request is never decoded",
+        ))
+    }
+    fn decode(_: &[u8]) -> Result<Self, harmos::MessageError> {
+        Err(harmos::MessageError::borrowed(
+            "the in-process draw request is never decoded",
+        ))
+    }
+}
+
+#[cfg(feature = "grpc")]
+impl harmos::Protobuf for Drawing {
+    fn encode_to_vec(&self) -> Vec<u8> {
+        unreachable!("the in-process draw request is never encoded")
+    }
+    fn encoded_len(&self) -> usize {
+        unreachable!("the in-process draw request is never encoded")
+    }
+    fn decode(_: &[u8]) -> Result<Self, harmos::MessageError> {
+        Err(harmos::MessageError::borrowed(
+            "the in-process draw request is never decoded",
+        ))
+    }
+}
+
+impl harmos::MemorySize for Drawing {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+    }
+}
+
+impl harmos::schema::Described for Drawing {
+    const NAME: &'static str = concat!(module_path!(), "::Drawing");
+    const FIELDS: &'static [harmos::schema::Field] = &[];
+    const MARKER: &'static [u8] = &harmos::schema::declaration::encode::<
+        { harmos::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
 }
 
 struct Draw;
@@ -499,18 +557,6 @@ impl Registration<Divergent> for DivergentCatalog {
     }
 }
 
-impl OperationDeclaration for TimingItsOwnWait {
-    type Request = Self;
-    type Response = Duration;
-    const ID: &'static str = "sim.timingitsownwait";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(30),
-        attempt_timeout: Duration::from_millis(10000),
-        retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
-    };
-}
-
 struct TimeWait;
 
 impl Operation for TimeWait {
@@ -529,11 +575,12 @@ impl Operation for TimeWait {
         context: Self::Context<'ctx>,
         request: &mut TimingItsOwnWait,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos::operations::Response<Duration>, Infallible> {
-        let result: ::core::result::Result<Duration, Self::Error> = async move {
+    ) -> Result<harmos::operations::Response<u64>, Infallible> {
+        let result: ::core::result::Result<u64, Self::Error> = async move {
             let started = context.scope().now();
             tokio::time::sleep(Duration::from_millis(request.wait_ms)).await;
-            Ok(context.scope().now() - started)
+            Ok(u64::try_from((context.scope().now() - started).as_nanos())
+                .expect("the scripted wait fits in u64 nanoseconds"))
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -730,7 +777,6 @@ impl IdleResident {
                 lifecycle: source.sdk_lifecycle().unwrap(),
                 streams: source.publications(),
                 observers: source.observers(),
-                observer_control: source.observer_control().unwrap(),
                 listeners: source.listener_declarations().unwrap().unwrap_or_default(),
                 ..Default::default()
             },
@@ -820,7 +866,7 @@ fn scripted_wait(seed: u64) -> Duration {
     sim.advance_ms(400);
     sim.advance_ms(350);
 
-    *sim.settle(timed).expect("the scripted attempt answers")
+    Duration::from_nanos(*sim.settle(timed).expect("the scripted attempt answers"))
 }
 
 fn entropy_run(seed: u64) -> (SimulatedRuntime<Bank>, Vec<u64>) {
@@ -949,7 +995,7 @@ fn contract_scenario() {
                 sim.service("adapter").exits(),
                 ["environmental:disconnected"]
             );
-            let deadline = sim.submit(Pending).unwrap();
+            let deadline = sim.submit(Pending {}).unwrap();
             sim.advance_ms(5);
             assert!(matches!(
                 sim.settle(deadline),

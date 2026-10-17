@@ -19,6 +19,7 @@ use std::time::Duration;
 
 // Local Imports
 use super::{Failed, Lanes, Owner, runtime};
+use harmos::MemorySize;
 use harmos::operations::{
     Backoff, CacheKey, Context, FailureKind, Jitter, Operation, OperationDeclaration,
     OperationPolicy, RestartPolicy, RetryPolicy, Visibility,
@@ -26,30 +27,202 @@ use harmos::operations::{
 use harmos::{Error, Message, Refusal};
 
 /* === Constants === */
+const ECHO_POLICY: OperationPolicy = OperationPolicy {
+    timeout: Duration::from_secs(2),
+    attempt_timeout: Duration::from_secs(1),
+    retries: RetryPolicy::OnTransient {
+        max_retries: 1,
+        backoff: Backoff::Fixed {
+            delay: Duration::from_millis(1),
+            jitter: Jitter::None,
+        },
+    },
+    restart: RestartPolicy::Never,
+};
+
+const NESTED_POLICY: OperationPolicy = OperationPolicy {
+    retries: RetryPolicy::Never,
+    ..ECHO_POLICY
+};
+
+const CODEC_POLICY: OperationPolicy = OperationPolicy {
+    timeout: Duration::from_secs(2),
+    attempt_timeout: Duration::from_secs(1),
+    retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
+};
+
+const SHORT_CODEC_POLICY: OperationPolicy = OperationPolicy {
+    timeout: Duration::from_millis(5),
+    attempt_timeout: Duration::from_millis(5),
+    retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
+};
 
 /* === Macros === */
 thread_local! {
     static DECODE_HOOK: std::cell::RefCell<Option<Box<dyn FnOnce()>>> = const { std::cell::RefCell::new(None) };
 }
 
+// Each Echo Request Carries One Text Value.
+macro_rules! text {
+    ($($ty:ident),* $(,)?) => {$(
+        impl From<String> for $ty {
+            fn from(value: String) -> Self {
+                Self { value }
+            }
+        }
+
+        impl From<&str> for $ty {
+            fn from(value: &str) -> Self {
+                Self {
+                    value: value.to_owned(),
+                }
+            }
+        }
+    )*};
+}
+
+// A Text Codec With Scripted Panics And A Decode Hook.
+macro_rules! scripted_codec {
+    ($($ty:ident),* $(,)?) => {$(
+        impl Message for $ty {
+            fn encode_to_vec(&self) -> Vec<u8> {
+                assert_ne!(self.0.value, "encode_panic", "scripted codec panic");
+                Message::encode_to_vec(&self.0)
+            }
+
+            fn encoded_len(&self) -> usize {
+                Message::encoded_len(&self.0)
+            }
+
+            fn decoding_memory(bytes: &[u8]) -> Result<usize, harmos::MessageError> {
+                <Text as Message>::decoding_memory(bytes)
+            }
+
+            fn decode(bytes: &[u8]) -> Result<Self, harmos::MessageError> {
+                if let Some(run) = DECODE_HOOK.with(|hook| hook.borrow_mut().take()) {
+                    run();
+                }
+                let value = <Text as Message>::decode(bytes)?;
+                assert_ne!(value.value, "decode_panic", "scripted codec panic");
+                if value.value == "slow" {
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                Ok(Self(value))
+            }
+        }
+
+        #[cfg(feature = "grpc")]
+        impl harmos::Protobuf for $ty {
+            fn encode_to_vec(&self) -> Vec<u8> {
+                harmos::Protobuf::encode_to_vec(&self.0)
+            }
+
+            fn encoded_len(&self) -> usize {
+                harmos::Protobuf::encoded_len(&self.0)
+            }
+
+            fn decode(bytes: &[u8]) -> Result<Self, harmos::MessageError> {
+                <Text as harmos::Protobuf>::decode(bytes).map(Self)
+            }
+        }
+
+        impl harmos::MemorySize for $ty {
+            fn memory_size(&self) -> usize {
+                self.0.memory_size()
+            }
+        }
+
+        impl harmos::schema::Described for $ty {
+            const NAME: &'static str = concat!(module_path!(), "::", stringify!($ty));
+            const FIELDS: &'static [harmos::schema::Field] = <Text as harmos::schema::Described>::FIELDS;
+            const MARKER: &'static [u8] = &harmos::schema::declaration::encode::<
+                { harmos::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+            >(Self::NAME, Self::FIELDS);
+        }
+    )*};
+}
+
 /* === Type Aliases === */
 
 /* === Structs === */
-pub(super) struct Echo;
+#[harmos::message]
+#[harmos::operation(
+    id = "fixture.echo",
+    version = 1,
+    response = String,
+    visibility = Visibility::Shared,
+    policy = ECHO_POLICY,
+    key = |request: &Echo| (request.value == "retry")
+        .then(|| CacheKey::new(request.value.as_bytes().to_vec()).unwrap()),
+)]
+#[derive(Debug)]
+pub(super) struct Echo {
+    pub value: String,
+}
 
-pub(super) struct PrivateEcho;
+#[harmos::message]
+#[harmos::operation(
+    id = "fixture.private_echo",
+    version = 1,
+    response = String,
+    policy = ECHO_POLICY
+)]
+#[derive(Debug)]
+pub(super) struct PrivateEcho {
+    pub value: String,
+}
 
-pub(super) struct Nested;
+#[harmos::message]
+#[harmos::operation(
+    id = "fixture.nested_echo",
+    version = 1,
+    response = String,
+    visibility = Visibility::Shared,
+    policy = NESTED_POLICY
+)]
+#[derive(Debug)]
+pub(super) struct Nested {
+    pub value: String,
+}
 
-pub(super) struct Detached;
+#[harmos::message]
+#[harmos::operation(
+    id = "fixture.detached_echo",
+    version = 1,
+    response = String,
+    policy = NESTED_POLICY
+)]
+#[derive(Debug)]
+pub(super) struct Detached {
+    pub value: String,
+}
 
-struct SameLane;
+#[harmos::message]
+#[harmos::operation(
+    id = "fixture.same_lane_echo",
+    version = 1,
+    response = String,
+    policy = NESTED_POLICY
+)]
+#[derive(Debug)]
+struct SameLane {
+    pub value: String,
+}
 
 struct Joined<'a>(&'a std::sync::atomic::AtomicUsize);
 
-struct Codec;
+#[harmos::operation(id = "fixture.codec", version = 1, response = Payload, policy = CODEC_POLICY)]
+struct Codec(Text);
 
-struct ShortCodec;
+#[harmos::operation(
+    id = "fixture.short_codec",
+    version = 1,
+    response = Payload,
+    policy = SHORT_CODEC_POLICY
+)]
+struct ShortCodec(Text);
 
 pub(super) struct Payload(Text);
 
@@ -142,92 +315,9 @@ impl From<&str> for Text {
     }
 }
 
-impl Message for Payload {
-    fn encode_to_vec(&self) -> Vec<u8> {
-        assert_ne!(self.0.value, "encode_panic", "scripted codec panic");
-        self.0.encode_to_vec()
-    }
+text!(Echo, PrivateEcho, Nested, Detached, SameLane);
 
-    fn encoded_len(&self) -> usize {
-        self.0.encoded_len()
-    }
-
-    fn decoding_memory(bytes: &[u8]) -> Result<usize, harmos::MessageError> {
-        Text::decoding_memory(bytes)
-    }
-
-    fn decode(bytes: &[u8]) -> Result<Self, harmos::MessageError> {
-        if let Some(run) = DECODE_HOOK.with(|hook| hook.borrow_mut().take()) {
-            run();
-        }
-        let value = Text::decode(bytes)?;
-        assert_ne!(value.value, "decode_panic", "scripted codec panic");
-        if value.value == "slow" {
-            std::thread::sleep(Duration::from_millis(20));
-        }
-        Ok(Self(value))
-    }
-}
-
-impl harmos::schema::Described for Payload {
-    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Payload));
-    const FIELDS: &'static [harmos::schema::Field] = <Text as harmos::schema::Described>::FIELDS;
-    const MARKER: &'static [u8] = &harmos::schema::declaration::encode::<
-        { harmos::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
-    >(Self::NAME, Self::FIELDS);
-}
-
-impl harmos::operations::WireOperation for Codec {
-    const VERSION: u32 = 1;
-}
-
-impl harmos::operations::WireOperation for ShortCodec {
-    const VERSION: u32 = 1;
-}
-
-impl harmos::operations::WireOperation for Echo {
-    const VERSION: u32 = 1;
-}
-
-impl harmos::operations::WireOperation for PrivateEcho {
-    const VERSION: u32 = 1;
-}
-
-impl harmos::operations::WireOperation for Nested {
-    const VERSION: u32 = 1;
-}
-
-impl harmos::operations::WireOperation for Detached {
-    const VERSION: u32 = 1;
-}
-
-impl harmos::operations::WireOperation for SameLane {
-    const VERSION: u32 = 1;
-}
-
-impl OperationDeclaration for Codec {
-    type Request = Payload;
-    type Response = Payload;
-    const ID: &'static str = "fixture.codec";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(2),
-        attempt_timeout: Duration::from_secs(1),
-        retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
-    };
-}
-
-impl OperationDeclaration for ShortCodec {
-    type Request = Payload;
-    type Response = Payload;
-    const ID: &'static str = "fixture.short_codec";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_millis(5),
-        attempt_timeout: Duration::from_millis(5),
-        retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
-    };
-}
+scripted_codec!(Payload, Codec, ShortCodec);
 
 struct Coding {
     resources: Arc<Owner>,
@@ -251,7 +341,7 @@ impl Operation for Coding {
     async fn run<'ctx>(
         &mut self,
         _context: Self::Context<'ctx>,
-        request: &mut Payload,
+        request: &mut Codec,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Payload>, Failed> {
         let result: ::core::result::Result<Payload, Self::Error> = async move {
@@ -287,7 +377,7 @@ impl Operation for ShortCoding {
     async fn run<'ctx>(
         &mut self,
         _context: Self::Context<'ctx>,
-        request: &mut Payload,
+        request: &mut ShortCodec,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Payload>, Failed> {
         let result: ::core::result::Result<Payload, Self::Error> = async move {
@@ -299,37 +389,6 @@ impl Operation for ShortCoding {
         .await;
         result.map(::core::convert::Into::into)
     }
-}
-
-impl OperationDeclaration for Echo {
-    type Request = Text;
-    type Response = String;
-    const ID: &'static str = "fixture.echo";
-    const VISIBILITY: Visibility = Visibility::Shared;
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(2),
-        attempt_timeout: Duration::from_secs(1),
-        retries: RetryPolicy::OnTransient {
-            max_retries: 1,
-            backoff: Backoff::Fixed {
-                delay: Duration::from_millis(1),
-                jitter: Jitter::None,
-            },
-        },
-        restart: RestartPolicy::Never,
-    };
-
-    fn key(request: &Text) -> Option<CacheKey> {
-        (request.value == "retry")
-            .then(|| CacheKey::new(request.value.as_bytes().to_vec()).unwrap())
-    }
-}
-
-impl OperationDeclaration for PrivateEcho {
-    type Request = Text;
-    type Response = String;
-    const ID: &'static str = "fixture.private_echo";
-    const POLICY: OperationPolicy = Echo::POLICY;
 }
 
 pub(super) struct Echoing {
@@ -356,7 +415,7 @@ impl Operation for Echoing {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        value: &mut Text,
+        value: &mut Echo,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<String>, Failed> {
         let result: ::core::result::Result<String, Self::Error> = async move {
@@ -407,7 +466,7 @@ impl Operation for PrivateEchoing {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        value: &mut Text,
+        value: &mut PrivateEcho,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<String>, Failed> {
         let result: ::core::result::Result<String, Self::Error> = async move {
@@ -436,31 +495,6 @@ impl Drop for Joined<'_> {
     }
 }
 
-impl OperationDeclaration for Nested {
-    type Request = Text;
-    type Response = String;
-    const ID: &'static str = "fixture.nested_echo";
-    const VISIBILITY: Visibility = Visibility::Shared;
-    const POLICY: OperationPolicy = OperationPolicy {
-        retries: RetryPolicy::Never,
-        ..Echo::POLICY
-    };
-}
-
-impl OperationDeclaration for Detached {
-    type Request = Text;
-    type Response = String;
-    const ID: &'static str = "fixture.detached_echo";
-    const POLICY: OperationPolicy = Nested::POLICY;
-}
-
-impl OperationDeclaration for SameLane {
-    type Request = Text;
-    type Response = String;
-    const ID: &'static str = "fixture.same_lane_echo";
-    const POLICY: OperationPolicy = Nested::POLICY;
-}
-
 pub(super) struct Nesting {
     _resources: Arc<Owner>,
 }
@@ -485,12 +519,12 @@ impl Operation for Nesting {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        request: &mut Text,
+        request: &mut Nested,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<String>, Failed> {
         let result: ::core::result::Result<String, Self::Error> = async move {
             let reply = context
-                .call_encoded(PrivateEcho::ID, request.encode_to_vec())
+                .call_encoded(PrivateEcho::ID, Message::encode_to_vec(request))
                 .await?;
             Ok(String::decode(&reply).unwrap())
         }
@@ -523,12 +557,12 @@ impl Operation for SameLaneCall {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        request: &mut Text,
+        request: &mut SameLane,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<String>, Failed> {
         let result: ::core::result::Result<String, Self::Error> = async move {
             let reply = context
-                .call_encoded(PrivateEcho::ID, request.encode_to_vec())
+                .call_encoded(PrivateEcho::ID, Message::encode_to_vec(request))
                 .await?;
             Ok(String::decode(&reply).unwrap())
         }
@@ -558,7 +592,7 @@ impl Operation for Detaching {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        _request: &mut Text,
+        _request: &mut Detached,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<String>, Failed> {
         let result: ::core::result::Result<String, Self::Error> = async move {

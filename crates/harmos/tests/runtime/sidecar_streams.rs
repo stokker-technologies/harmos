@@ -55,7 +55,7 @@ macro_rules! serving {
             async fn run<'a>(
                 &mut self,
                 _: Self::Context<'a>,
-                $request: &mut u32,
+                $request: &mut $declaration,
                 $ports: &mut Self::Endpoints,
             ) -> Result<harmos::operations::Response<u32>, Self::Error> {
                 let result: ::core::result::Result<u32, Self::Error> = async move {
@@ -82,17 +82,42 @@ macro_rules! serving {
 /* === Structs === */
 
 /* === Enums === */
-#[harmos::operation(request = u32, response = u32, input = u32, policy = Read::POLICY, version = 1,
-        grpc(package = "fixture.v1", service = "Native", method = "Upload"))]
-pub(super) struct Upload;
+#[harmos::message]
+#[harmos::operation(
+    version = 1,
+    policy = Read::POLICY,
+    response = u32,
+    input = u32,
+    grpc(package = "fixture.v1", service = "Native", method = "Upload"),
+)]
+pub(super) struct Upload {
+    pub(super) value: u32,
+}
 
-#[harmos::operation(request = u32, response = u32, output = u32, policy = Read::POLICY, version = 1,
-        grpc(package = "fixture.v1", service = "Native", method = "Download"))]
-pub(super) struct Download;
+#[harmos::message]
+#[harmos::operation(
+    version = 1,
+    policy = Read::POLICY,
+    response = u32,
+    output = u32,
+    grpc(package = "fixture.v1", service = "Native", method = "Download"),
+)]
+pub(super) struct Download {
+    pub(super) value: u32,
+}
 
-#[harmos::operation(request = u32, response = u32, input = u32, output = u32, policy = Read::POLICY, version = 1,
-        grpc(package = "fixture.v1", service = "Native", method = "Exchange"))]
-pub(super) struct Exchange;
+#[harmos::message]
+#[harmos::operation(
+    version = 1,
+    policy = Read::POLICY,
+    response = u32,
+    input = u32,
+    output = u32,
+    grpc(package = "fixture.v1", service = "Native", method = "Exchange"),
+)]
+pub(super) struct Exchange {
+    pub(super) value: u32,
+}
 
 #[harmos::catalog]
 pub(super) enum Operations {
@@ -114,17 +139,17 @@ enum Implemented {
 
 /* === Implementations === */
 serving!(Uploading, Upload, StreamInput<u32>, request, input, {
-    let mut total = *request;
+    let mut total = request.value;
     while let Some(item) = input.recv().await {
         total += *item;
     }
     Ok(total)
 });
 serving!(Downloading, Download, StreamOutput<u32>, request, output, {
-    for value in [0, *request] {
+    for value in [0, request.value] {
         output.send_with(4, || Ok(value)).await?;
     }
-    Ok(*request)
+    Ok(request.value)
 });
 serving!(
     Exchanging,
@@ -133,7 +158,7 @@ serving!(
     request,
     ports,
     {
-        let mut total = *request;
+        let mut total = request.value;
         while let Some(item) = ports.0.recv().await {
             total += *item;
             ports.1.send_with(4, || Ok(total)).await?;

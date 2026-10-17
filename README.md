@@ -276,7 +276,7 @@ so they must declare them as requirements.
 
 Hosts can register `operations::discovery::Discovery` in their existing operation
 manager to serve `host.operations` (unary gRPC path
-`/harmos.host.v1.Host/Operations` when `grpc` is enabled). `OperationsRequest` accepts optional `after`,
+`/harmos.host.v1.Host/Operations` when `grpc` is enabled). `host::Operations` accepts optional `after`,
 `rows` and `bytes`; defaults are 64 rows and 64 KiB, with maxima of 256 rows and
 4 MiB. `OperationsResponse::catalog` is a UTF-8 JSON array of
 `host::DiscoveredOperation`, containing original contracts, provider owners and
@@ -387,11 +387,11 @@ statistics. Snapshot reads run concurrently; closing storage waits for those in
 flight.
 
 `StorageManager::read_file(ReadFile { file, range })` streams a byte range of a
-finished, immutable file in response-sized batches. `Follow`, `FollowStream`,
-`FollowObjects` and `FollowFile` are the live subscriptions: each delivers saved
+finished, immutable file in response-sized batches. `FollowRecords`,
+`FollowStream`, `FollowObjects` and `FollowFile` are the live subscriptions: each delivers saved
 history after its `after` cursor, then newly accepted entries.
 
-Mutation receipts make retried file, save and delete mutations idempotent within
+Mutation receipts make retried file, schema and delete mutations idempotent within
 the retry window. The receipt ledger takes a fixed share of the read budget;
 when it is full, completed receipts are evicted oldest first, and a retry of an
 evicted receipt runs as a new mutation.
@@ -416,11 +416,33 @@ producer and clears the disconnected deadline. Finish, abort and storage shutdow
 still retire production; existing file-count and memory budgets remain enforced.
 A viewer owns its subscription, while the original service owns production.
 
+An operation is its request type. One attribute on the request struct declares
+it; a handler names nothing, because its `run` request type is the operation:
+
+```rust,ignore
+#[harmos::message]
+#[harmos::operation(id = "gauge.read", version = 1, policy = POLICY, response = Reading,
+    visibility = harmos::operations::Visibility::Shared)]
+pub struct Read {
+    pub channel: u32,
+}
+
+#[harmos::operation]
+impl Gauging {
+    async fn initialize(gauge: Arc<Gauge>, _: Context<'_>) -> Self { Self { gauge } }
+    async fn run(&mut self, _: Context<'_>, request: &mut Read) -> Result<Reading, Error> {
+        self.gauge.read(request.channel).await
+    }
+}
+```
+
+Streaming operations add `input = Item` or `output = Item`. Two operations with
+the same payload shape declare two request types.
+
 One `operations::Host` serves operation bodies wherever they run: in
 process over `OperationManager` and `operations::Context`, in a sidecar over
 `Supervisor`, and in a guest over `Context`. `call` and `submit` take the
-declaration itself when it is its own request; `call_as::<O>` and
-`submit_as::<O>` name an operation with a separate request type. A submitted
+request, which names its operation. A submitted
 `OperationInstance` reports `status`, and supports `cancel`, `join` and
 `cancel_and_join`. Dropping an unsettled instance cancels it; `detach` keeps it
 running without a handle until its submitting attempt ends, which cancels and
@@ -431,7 +453,7 @@ use harmos::operations::{Host, Instance};
 
 async fn sample<H: Host>(host: &H) -> Result<u64, H::Error> {
     let reading = host.call(Read { channel: 3 }).await?;
-    let pending = host.submit_as::<Calibrate>(Calibration::default()).await?;
+    let pending = host.submit(Calibrate::default()).await?;
     let status = pending.status().await?;
     let calibrated = pending.join().await?;
     host.publish_on::<Progress>(&Progress { percent: 100 }).await?;
@@ -439,7 +461,7 @@ async fn sample<H: Host>(host: &H) -> Result<u64, H::Error> {
 }
 ```
 
-In process, the inherent `submit` and `submit_as` admit synchronously. Sidecars
+In process, the inherent `submit` admits synchronously. Sidecars
 and guests submit unary children; streaming child sessions (`upload`,
 `download`, `exchange`) remain in-process for now.
 
@@ -453,7 +475,7 @@ prints only its own line, so walking `source()` renders
 "operation `gauge.read` failed: connection reset" once.
 
 ```rust,ignore
-match host.operations.call_as::<Read>(request).await {
+match host.operations.call(request).await {
     Err(error) => {
         if let Some(failure) = error.failure() {
             tracing::warn!(
@@ -525,10 +547,9 @@ poller.ready().await?;
 ```
 
 Request-scoped declarations keep `restart: RestartPolicy::Never`; SDK lifecycle
-operations and listener callbacks refuse any other value. A sidecar serves its
-observers through one Host control declared with `observers::POLICY` and
-selected by `observer_control = Observe`; the host submits it per activation and
-cancels it to stop the observer, which runs on a thread of its own.
+operations and listener callbacks refuse any other value. A sidecar that declares
+observers serves the built-in `harmos.observe` control; the host submits it per
+activation and cancels it to stop the observer, which runs on a thread of its own.
 
 Externally supplied settings and defaults live in each configurable crate's root
 `config.rs`. Composition passes each owner its relevant settings rather than

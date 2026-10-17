@@ -173,8 +173,7 @@ fn retention(version: &str) {
     assert_eq!(observers[0]["id"], "selected.watch");
     assert_eq!(observers[0]["streams"], serde_json::json!(["reading"]));
     assert_eq!(observers[0]["interval"]["nanos"], 17_000_000);
-    let contracts = identity(&embedded, "contracts");
-    assert_eq!(inventory["observer_control"], contracts["provides"][1]);
+    assert!(inventory.get("observe_contract").is_none());
     assert_eq!(
         observers[0]["demand_keys"],
         serde_json::json!(["fixture:record"])

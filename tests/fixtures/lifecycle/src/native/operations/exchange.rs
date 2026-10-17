@@ -31,7 +31,7 @@ use harmos::sidecar::Supervisor;
 /* === Type Aliases === */
 
 /* === Structs === */
-pub(crate) struct Exchange {
+pub(crate) struct Exchanging {
     resources: Arc<Resources>,
 }
 
@@ -40,8 +40,8 @@ pub(crate) struct Exchange {
 /* === Traits === */
 
 /* === Implementations === */
-#[harmos::operation(declaration = worker::Exchange)]
-impl Exchange {
+#[harmos::operation]
+impl Exchanging {
     async fn initialize(resources: Arc<Resources>, _: &Supervisor) -> Result<Self> {
         resources.constructed.fetch_add(1, Ordering::SeqCst);
         Ok(Self { resources })
@@ -49,7 +49,7 @@ impl Exchange {
     async fn run(
         &mut self,
         _: &Supervisor,
-        request: &mut Payload,
+        request: &mut worker::Exchange,
     ) -> std::result::Result<Payload, Error> {
         if request.bytes.len() > PAYLOAD_BYTES {
             return Err(Error::PayloadTooLarge {

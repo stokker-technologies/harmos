@@ -30,11 +30,12 @@ use std::time::Duration;
 use crate::backend::{Data, Recovery, history, storage_settings};
 use crate::support::{Bank, Ledger, catalog};
 use crate::waveforms::{self, Experiment, Objects, Sample};
+use harmos::storage::operations::Query;
 use harmos::storage::query::scalar::{Agg, ExactNumber, ScalarValue};
 use harmos::storage::query::transform::FieldPath;
 use harmos::storage::query::transform::filter::{Clause, Compare, Condition, Filter, Term};
 use harmos::storage::query::{
-    Accumulator, ObjectVersions, Query, RecordSelection, RowSlice, Scratch, Source,
+    Accumulator, ObjectVersions, RecordSelection, RowSlice, Scratch, Source,
 };
 use harmos::storage::{
     ObjectRead, ObjectReceipt, ObjectVersion, RecordRead, StorageBackends, StorageManager,

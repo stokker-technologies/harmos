@@ -28,7 +28,7 @@ use harmos::config::SchemaSettings;
 use harmos::listeners::{Delivery, Source};
 use harmos::operations::{
     Context, Declarations, OperationPolicy, PluginRegistration, RestartPolicy, RetryPolicy,
-    Visibility, WireDeclaration,
+    WireDeclaration,
 };
 use harmos::plugin::StreamDeclaration;
 use harmos::plugin::{
@@ -52,6 +52,8 @@ const STREAM: &str = "shutdown-listener.samples";
 
 /* === Type Aliases === */
 type Backends = PluginBackend<(), (), Backend>;
+// The Callback Operation Is The Delivery Of Its Listener.
+type Received = Delivery<Heard>;
 
 /* === Structs === */
 #[harmos::message]
@@ -65,6 +67,9 @@ struct Trace {
     runs: AtomicUsize,
     finalized: AtomicUsize,
 }
+
+// The Listener Declaration Whose Delivery Is The Callback Request.
+struct Heard;
 
 struct Receive {
     trace: Arc<Trace>,
@@ -93,23 +98,24 @@ pub(super) struct Listener {
 /* === Enums === */
 #[harmos::catalog]
 enum Callbacks {
-    Receive(Receive),
+    Receive(Received),
 }
 
 /* === Traits === */
 
 /* === Implementations === */
-#[harmos::operation(
-    id = "shutdown-listener.receive",
-    visibility = Visibility::Shared,
-    version = 1,
-    policy = OperationPolicy {
+impl harmos::listeners::Listener for Heard {
+    type Row = Sample;
+    const CALLBACK: &'static str = "shutdown-listener.receive";
+    const POLICY: OperationPolicy = OperationPolicy {
         timeout: Duration::from_secs(300),
         attempt_timeout: Duration::from_secs(300),
         retries: RetryPolicy::Never,
         restart: RestartPolicy::Never,
-    }
-)]
+    };
+}
+
+#[harmos::operation]
 impl Receive {
     async fn initialize(trace: Arc<Trace>, _: Context<'_>) -> Self {
         Self { trace }
@@ -117,7 +123,7 @@ impl Receive {
     async fn run(
         &mut self,
         _: Context<'_>,
-        sample: &mut Delivery<Sample>,
+        sample: &mut Received,
     ) -> std::result::Result<(), Error> {
         if sample.row().value != 0 {
             return Err(Error::NotReady {
@@ -197,7 +203,7 @@ impl PluginLifecycle for Host {
 
 impl Listener {
     pub(super) fn new(runtime: &Runtime) -> Result<Self> {
-        let callback = WireDeclaration::of::<ReceiveDeclaration>()
+        let callback = WireDeclaration::of::<Received>()
             .contract()
             .map_err(failed)?;
         let listener = harmos::listeners::Definition::new(

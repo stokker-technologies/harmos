@@ -58,9 +58,10 @@ struct Compute {
 struct Parent;
 
 /* === Enums === */
+#[harmos::message]
 #[derive(Clone, Copy)]
 enum Mode {
-    Value(usize),
+    Value(u64),
     Reject,
     Wait,
     Retry,
@@ -76,10 +77,11 @@ enum Failed {
     Child(#[from] Error),
 }
 
+#[harmos::message]
 #[harmos::operation(
-        request = Mode,
-        response = usize,
+        response = u64,
         id = "outcomes.compute",
+        version = 1,
         policy = OperationPolicy {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
@@ -90,12 +92,15 @@ enum Failed {
             restart: RestartPolicy::Never,
         },
     )]
-struct ComputeContract;
+struct ComputeContract {
+    mode: Mode,
+}
 
+#[harmos::message]
 #[harmos::operation(
-        request = Mode,
-        response = usize,
+        response = u64,
         id = "outcomes.parent",
+        version = 1,
         policy = OperationPolicy {
             timeout: Duration::from_secs(3),
             attempt_timeout: Duration::from_secs(3),
@@ -103,7 +108,9 @@ struct ComputeContract;
             restart: RestartPolicy::Never,
         },
     )]
-struct ParentContract;
+struct ParentContract {
+    mode: Mode,
+}
 
 #[harmos::catalog]
 enum Operations {
@@ -147,18 +154,18 @@ impl Operation for Compute {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        mode: &mut Mode,
+        request: &mut ComputeContract,
         _endpoints: &mut Self::Endpoints,
-    ) -> Exported<harmos::operations::Response<usize>> {
-        let result: ::core::result::Result<usize, Self::Error> = async move {
+    ) -> Exported<harmos::operations::Response<u64>> {
+        let result: ::core::result::Result<u64, Self::Error> = async move {
             assert_eq!(context.attempt(), self.attempts);
             self.attempts += 1;
-            match mode {
-                Mode::Value(value) => Ok(*value),
+            match request.mode {
+                Mode::Value(value) => Ok(value),
                 Mode::Reject => Err(Failed::Instrument),
                 Mode::Wait => std::future::pending().await,
                 Mode::Retry if self.attempts < 3 => Err(Failed::Backlog),
-                Mode::Retry => Ok(self.attempts),
+                Mode::Retry => Ok(u64::try_from(self.attempts).expect("attempts fit in u64")),
             }
         }
         .await;
@@ -192,11 +199,13 @@ impl Operation for Parent {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        mode: &mut Mode,
+        request: &mut ParentContract,
         _endpoints: &mut Self::Endpoints,
-    ) -> Answered<harmos::operations::Response<usize>> {
-        let result: ::core::result::Result<usize, Self::Error> = async move {
-            let answer = context.submit(*mode)?.await?;
+    ) -> Answered<harmos::operations::Response<u64>> {
+        let result: ::core::result::Result<u64, Self::Error> = async move {
+            let answer = context
+                .submit(ComputeContract { mode: request.mode })?
+                .await?;
             Ok(*answer)
         }
         .await;
@@ -239,21 +248,25 @@ pub(super) fn contract_scenario() {
                     let (runtime, _) = runtime().await;
                     let root = runtime
                         .operations
-                        .submit(Mode::Value(4))
+                        .submit(ComputeContract {
+                            mode: Mode::Value(4),
+                        })
                         .unwrap()
                         .await
                         .unwrap();
                     assert_eq!(*root, 4);
                     let child = runtime
                         .operations
-                        .submit(Mode::Value(9))
+                        .submit(ParentContract {
+                            mode: Mode::Value(9),
+                        })
                         .unwrap()
                         .await
                         .unwrap();
                     assert_eq!(*child, 9);
                     let error = runtime
                         .operations
-                        .submit(Mode::Reject)
+                        .submit(ComputeContract { mode: Mode::Reject })
                         .unwrap()
                         .await
                         .unwrap_err();
@@ -279,7 +292,11 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let (runtime, _) = runtime().await;
-                    let elapsed = runtime.operations.submit(Mode::Wait).unwrap().await;
+                    let elapsed = runtime
+                        .operations
+                        .submit(ComputeContract { mode: Mode::Wait })
+                        .unwrap()
+                        .await;
                     assert!(matches!(
                         elapsed,
                         Err(Error::OperationRefused(Refusal::TimedOut))
@@ -287,7 +304,7 @@ pub(super) fn contract_scenario() {
 
                     let error = runtime
                         .operations
-                        .submit(Mode::Reject)
+                        .submit(ParentContract { mode: Mode::Reject })
                         .unwrap()
                         .await
                         .unwrap_err();
@@ -308,7 +325,7 @@ pub(super) fn contract_scenario() {
 
                     let error = runtime
                         .operations
-                        .submit(Mode::Wait)
+                        .submit(ParentContract { mode: Mode::Wait })
                         .unwrap()
                         .await
                         .unwrap_err();
@@ -335,13 +352,13 @@ pub(super) fn contract_scenario() {
                     let (runtime, counts) = runtime().await;
                     let root = runtime
                         .operations
-                        .submit(Mode::Retry)
+                        .submit(ComputeContract { mode: Mode::Retry })
                         .unwrap()
                         .await
                         .unwrap();
                     let child = runtime
                         .operations
-                        .submit(Mode::Retry)
+                        .submit(ParentContract { mode: Mode::Retry })
                         .unwrap()
                         .await
                         .unwrap();
@@ -370,7 +387,7 @@ pub(super) fn contract_scenario() {
                         .unwrap();
                     let error = runtime
                         .operations
-                        .submit(Mode::Reject)
+                        .submit(ComputeContract { mode: Mode::Reject })
                         .unwrap()
                         .await
                         .unwrap_err();

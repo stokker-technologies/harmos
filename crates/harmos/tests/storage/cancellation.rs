@@ -95,7 +95,7 @@ async fn cancellation() {
     );
     assert_eq!(storage.status().pending_bytes, 0);
     // Cancelling A Queued Query Releases Its Admission Slot.
-    let query = || harmos::storage::query::Query {
+    let query = || harmos::storage::operations::Query {
         at: accepted.clone(),
         source: harmos::storage::query::Source::Files(harmos::storage::query::FileSelection {
             scope: None,

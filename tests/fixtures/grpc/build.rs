@@ -124,9 +124,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             harmos::grpc::Method {
                 name: "Follow",
                 contract: storage_contracts.iter().find(|contract| contract.operation().id.as_str()
-                    == <harmos::storage::operations::Follow as harmos::operations::OperationDeclaration>::ID)
+                    == <harmos::storage::operations::FollowRecords as harmos::operations::OperationDeclaration>::ID)
                     .ok_or("missing Follow storage contract")?,
-                declaration: "::harmos::storage::operations::Follow",
+                declaration: "::harmos::storage::operations::FollowRecords",
             },
             harmos::grpc::Method {
                 name: "FollowStream",

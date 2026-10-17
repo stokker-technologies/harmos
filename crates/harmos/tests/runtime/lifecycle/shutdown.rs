@@ -71,18 +71,19 @@ struct Cancellation {
 
 struct PendingCall(Arc<Cancellation>);
 
+#[harmos::message]
 #[harmos::operation(
-        request = (),
-        response = (),
-        id = "shutdown.pending",
-        policy = harmos::operations::OperationPolicy {
-            timeout: Duration::from_secs(3),
-            attempt_timeout: Duration::from_secs(2),
-            retries: harmos::operations::RetryPolicy::Never,
-            restart: harmos::operations::RestartPolicy::Never,
-        },
-    )]
-struct PendingContract;
+    id = "shutdown.pending",
+    version = 1,
+    policy = harmos::operations::OperationPolicy {
+        timeout: Duration::from_secs(3),
+        attempt_timeout: Duration::from_secs(2),
+        retries: harmos::operations::RetryPolicy::Never,
+        restart: harmos::operations::RestartPolicy::Never,
+    },
+    response = (),
+)]
+struct PendingContract {}
 
 #[harmos::catalog]
 enum Operations {
@@ -112,7 +113,7 @@ impl harmos::operations::Operation for PendingCall {
     async fn run<'ctx>(
         &mut self,
         _: Self::Context<'ctx>,
-        _: &mut (),
+        _: &mut PendingContract,
         _: &mut (),
     ) -> Result<harmos::operations::Response<()>, Self::Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
@@ -165,7 +166,7 @@ fn contract_scenario() {
                         .operations
                         .register_operation::<PendingCall>("shutdown", Lanes::Open, trace.clone())
                         .unwrap();
-                    let operation = runtime.operations.submit(()).unwrap();
+                    let operation = runtime.operations.submit(PendingContract {}).unwrap();
                     trace.started.notified().await;
                     runtime
                         .operations

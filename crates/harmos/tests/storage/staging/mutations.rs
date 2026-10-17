@@ -23,7 +23,7 @@ use std::time::Duration;
 // Local Imports
 use super::{Fixture, config, metadata};
 use harmos::Identifier;
-use harmos::storage::operations::{FileMutation, ResumeFile};
+use harmos::storage::operations::ResumeFile;
 use harmos::storage::{MutationId, StorageManager};
 
 /* === Constants === */
@@ -110,7 +110,7 @@ pub(super) fn contract_scenario() {
                     )
                     .unwrap();
                     let file = f.storage.produce_file(metadata("retry")).await.unwrap();
-                    let request = FileMutation {
+                    let request = ResumeFile {
                         mutation: identity(&f.storage, "resume"),
                         session: file.session().unwrap().clone(),
                     };
@@ -269,7 +269,7 @@ pub(super) fn contract_scenario() {
                         .produce_file(metadata("retry-budget"))
                         .await
                         .unwrap();
-                    let request = FileMutation {
+                    let request = ResumeFile {
                         mutation: identity(&f.storage, "resume"),
                         session: file.session().unwrap().clone(),
                     };

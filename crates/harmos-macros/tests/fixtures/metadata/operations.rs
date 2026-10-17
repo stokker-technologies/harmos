@@ -31,15 +31,39 @@ pub const SDK_POLICY: harmos::operations::OperationPolicy = harmos::operations::
 /* === Type Aliases === */
 
 /* === Structs === */
-pub struct Selected;
-
-pub struct Unselected;
-
-#[cfg(feature = "native")]
-pub struct Observe;
+#[harmos::message]
+#[harmos::operation(
+    id = "selected.read",
+    version = 3,
+    response = Response,
+    description = "Selected \"reading\" μ",
+    visibility = harmos::operations::Visibility::Shared,
+    replay = harmos::operations::ReplaySafety::Idempotent,
+    policy = harmos::operations::OperationPolicy {
+        timeout: Duration::from_secs(2),
+        attempt_timeout: Duration::from_nanos(17),
+        retries: harmos::operations::RetryPolicy::OnTransient {
+            max_retries: 3,
+            backoff: harmos::operations::Backoff::Fixed {
+                delay: Duration::from_nanos(7),
+                jitter: harmos::operations::Jitter::Deterministic,
+            },
+        },
+        restart: harmos::operations::RestartPolicy::Never,
+    },
+)]
+pub struct Selected {
+    value: u32,
+}
 
 #[harmos::message]
-pub struct Request {
+#[harmos::operation(
+    id = "unselected.read",
+    version = 1,
+    response = Response,
+    policy = <Selected as harmos::operations::OperationDeclaration>::POLICY,
+)]
+pub struct Unselected {
     value: u32,
 }
 
@@ -54,67 +78,9 @@ pub enum Operations {
     Selected(Selected),
 }
 
-#[cfg(feature = "native")]
-#[harmos::catalog]
-pub enum NativeOperations {
-    #[nested]
-    Plugin(Operations),
-    Observe(Observe),
-}
-
 /* === Traits === */
 
 /* === Implementations === */
-impl harmos::operations::OperationDeclaration for Selected {
-    type Request = Request;
-    type Response = Response;
-    const ID: &'static str = "selected.read";
-    const DESCRIPTION: &'static str = "Selected \"reading\" μ";
-    const VISIBILITY: harmos::operations::Visibility = harmos::operations::Visibility::Shared;
-    const REPLAY: harmos::operations::ReplaySafety = harmos::operations::ReplaySafety::Idempotent;
-    const POLICY: harmos::operations::OperationPolicy = harmos::operations::OperationPolicy {
-        timeout: Duration::from_secs(2),
-        attempt_timeout: Duration::from_nanos(17),
-        retries: harmos::operations::RetryPolicy::OnTransient {
-            max_retries: 3,
-            backoff: harmos::operations::Backoff::Fixed {
-                delay: Duration::from_nanos(7),
-                jitter: harmos::operations::Jitter::Deterministic,
-            },
-        },
-        restart: harmos::operations::RestartPolicy::Never,
-    };
-}
-
-impl harmos::operations::OperationDeclaration for Unselected {
-    type Request = Request;
-    type Response = Response;
-    const ID: &'static str = "unselected.read";
-    const POLICY: harmos::operations::OperationPolicy =
-        <Selected as harmos::operations::OperationDeclaration>::POLICY;
-}
-
-impl harmos::operations::WireOperation for Selected {
-    const VERSION: u32 = 3;
-}
-
-impl harmos::operations::WireOperation for Unselected {
-    const VERSION: u32 = 1;
-}
-
-#[cfg(feature = "native")]
-impl harmos::operations::OperationDeclaration for Observe {
-    type Request = harmos::operations::observers::Control;
-    type Response = ();
-    const ID: &'static str = "fixture.observe";
-    const POLICY: harmos::operations::OperationPolicy = harmos::operations::observers::POLICY;
-    const VISIBILITY: harmos::operations::Visibility = harmos::operations::Visibility::Host;
-}
-
-#[cfg(feature = "native")]
-impl harmos::operations::WireOperation for Observe {
-    const VERSION: u32 = 1;
-}
 
 /* === Public Functions === */
 

@@ -127,11 +127,11 @@ impl Endpoint {
         }
     }
 
-    pub(crate) fn capture_observer_control(&self) -> crate::Result<()> {
+    pub(crate) fn capture_observe_contract(&self) -> crate::Result<()> {
         if !self
             .plugin
             .as_ref()
-            .is_some_and(|scope| scope.observer_control().is_some())
+            .is_some_and(|scope| scope.observe_contract().is_some())
         {
             return Ok(());
         }

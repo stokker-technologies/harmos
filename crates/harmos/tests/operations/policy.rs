@@ -30,29 +30,142 @@ use harmos::operations::{
 use harmos::{Error, Refusal};
 
 /* === Constants === */
+const POLICY_NAME: &str = concat!(module_path!(), "::Policy");
+const POLICY_MARKER: &[u8] = &harmos::schema::declaration::encode::<
+    { harmos::schema::declaration::encoded_len(POLICY_NAME, &[]) },
+>(POLICY_NAME, &[]);
 
 /* === Macros === */
+// A Policy Request Exposes Its Scripted Behavior To The Shared Handler.
+macro_rules! behaves {
+    ($($ty:ident),* $(,)?) => {$(
+        super::in_process!($ty);
+
+        impl harmos::MemorySize for $ty {
+            fn memory_size(&self) -> usize {
+                std::mem::size_of::<Self>()
+            }
+        }
+
+        impl From<Behavior> for $ty {
+            fn from(behavior: Behavior) -> Self {
+                Self { behavior }
+            }
+        }
+
+        impl Behaves for $ty {
+            fn behavior(&mut self) -> &mut Behavior {
+                &mut self.behavior
+            }
+        }
+    )*};
+}
 
 /* === Type Aliases === */
 
 /* === Structs === */
+// Each Request Carries Its Scripted Behavior, Which Can Hold A Shared Gate,
+// So Every Policy Request Stays In Process.
 struct Policy<
     const OVERALL: u64,
     const ATTEMPT: u64,
     const RETRIES: usize,
     const DELAY: u64,
     const REPLAY: bool,
->;
+> {
+    behavior: Behavior,
+}
 
-struct Blocker;
+#[harmos::operation(
+    id = "policy.blocker",
+    version = 1,
+    response = u64,
+    policy = Policy::<30_000, 30_000, 0, 1, false>::POLICY
+)]
+struct Blocker {
+    behavior: Behavior,
+}
 
-struct Exponential;
+#[harmos::operation(
+    id = "policy.exponential",
+    version = 1,
+    response = u64,
+    policy = OperationPolicy {
+        timeout: Duration::from_secs(30),
+        attempt_timeout: Duration::from_secs(1),
+        retries: RetryPolicy::OnTransient {
+            max_retries: 4,
+            backoff: Backoff::Exponential {
+                initial: Duration::from_millis(200),
+                maximum: Duration::from_secs(1),
+                jitter: Jitter::None,
+            },
+        },
+        restart: RestartPolicy::Never,
+    }
+)]
+struct Exponential {
+    behavior: Behavior,
+}
 
-struct Jittered;
+#[harmos::operation(
+    id = "policy.jittered",
+    version = 1,
+    response = u64,
+    policy = OperationPolicy {
+        retries: RetryPolicy::OnTransient {
+            max_retries: 4,
+            backoff: Backoff::Exponential {
+                initial: Duration::from_millis(200),
+                maximum: Duration::from_secs(1),
+                jitter: Jitter::Deterministic,
+            },
+        },
+        ..Exponential::POLICY
+    }
+)]
+struct Jittered {
+    behavior: Behavior,
+}
 
-struct EmptyRetries;
+#[harmos::operation(
+    id = "policy.empty",
+    version = 1,
+    response = u64,
+    policy = OperationPolicy {
+        retries: RetryPolicy::OnTransient {
+            max_retries: 0,
+            backoff: Backoff::Fixed {
+                delay: Duration::from_millis(1),
+                jitter: Jitter::None,
+            },
+        },
+        ..Blocker::POLICY
+    }
+)]
+struct EmptyRetries {
+    behavior: Behavior,
+}
 
-struct InvertedBackoff;
+#[harmos::operation(
+    id = "policy.inverted",
+    version = 1,
+    response = u64,
+    policy = OperationPolicy {
+        retries: RetryPolicy::OnTransient {
+            max_retries: 1,
+            backoff: Backoff::Exponential {
+                initial: Duration::from_millis(100),
+                maximum: Duration::from_millis(50),
+                jitter: Jitter::None,
+            },
+        },
+        ..Blocker::POLICY
+    }
+)]
+struct InvertedBackoff {
+    behavior: Behavior,
+}
 
 #[derive(Default)]
 struct Probe {
@@ -64,10 +177,6 @@ struct Probe {
 }
 
 struct Owner(Arc<Probe>);
-
-struct Request {
-    behavior: Behavior,
-}
 
 struct State {
     attempt: usize,
@@ -85,6 +194,9 @@ enum Behavior {
 }
 
 /* === Traits === */
+trait Behaves: OperationDeclaration<Response = u64> + From<Behavior> {
+    fn behavior(&mut self) -> &mut Behavior;
+}
 
 /* === Implementations === */
 impl<
@@ -95,9 +207,11 @@ impl<
     const REPLAY: bool,
 > OperationDeclaration for Policy<OVERALL, ATTEMPT, RETRIES, DELAY, REPLAY>
 {
-    type Request = Request;
-    type Response = usize;
+    type Response = u64;
+    type Input = harmos::operations::NoStream;
+    type Output = harmos::operations::NoStream;
     const ID: &'static str = "policy.compute";
+    const VERSION: u32 = 1;
     const REPLAY: ReplaySafety = if REPLAY {
         ReplaySafety::Idempotent
     } else {
@@ -121,80 +235,112 @@ impl<
     };
 }
 
-impl OperationDeclaration for Blocker {
-    type Request = Request;
-    type Response = usize;
-    const ID: &'static str = "policy.blocker";
-    const POLICY: OperationPolicy = Policy::<30_000, 30_000, 0, 1, false>::POLICY;
+behaves!(
+    Blocker,
+    Exponential,
+    Jittered,
+    EmptyRetries,
+    InvertedBackoff
+);
+
+impl<
+    const OVERALL: u64,
+    const ATTEMPT: u64,
+    const RETRIES: usize,
+    const DELAY: u64,
+    const REPLAY: bool,
+> harmos::Message for Policy<OVERALL, ATTEMPT, RETRIES, DELAY, REPLAY>
+{
+    fn encode_to_vec(&self) -> Vec<u8> {
+        unreachable!("in-process fixture values are never encoded")
+    }
+    fn encoded_len(&self) -> usize {
+        unreachable!("in-process fixture values are never encoded")
+    }
+    fn decoding_memory(_: &[u8]) -> Result<usize, harmos::MessageError> {
+        Err(harmos::MessageError::borrowed(
+            "in-process fixture values are never decoded",
+        ))
+    }
+    fn decode(_: &[u8]) -> Result<Self, harmos::MessageError> {
+        Err(harmos::MessageError::borrowed(
+            "in-process fixture values are never decoded",
+        ))
+    }
 }
 
-impl OperationDeclaration for Exponential {
-    type Request = Request;
-    type Response = usize;
-    const ID: &'static str = "policy.exponential";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(30),
-        attempt_timeout: Duration::from_secs(1),
-        retries: RetryPolicy::OnTransient {
-            max_retries: 4,
-            backoff: Backoff::Exponential {
-                initial: Duration::from_millis(200),
-                maximum: Duration::from_secs(1),
-                jitter: Jitter::None,
-            },
-        },
-        restart: RestartPolicy::Never,
-    };
+#[cfg(feature = "grpc")]
+impl<
+    const OVERALL: u64,
+    const ATTEMPT: u64,
+    const RETRIES: usize,
+    const DELAY: u64,
+    const REPLAY: bool,
+> harmos::Protobuf for Policy<OVERALL, ATTEMPT, RETRIES, DELAY, REPLAY>
+{
+    fn encode_to_vec(&self) -> Vec<u8> {
+        unreachable!("in-process fixture values are never encoded")
+    }
+    fn encoded_len(&self) -> usize {
+        unreachable!("in-process fixture values are never encoded")
+    }
+    fn decode(_: &[u8]) -> Result<Self, harmos::MessageError> {
+        Err(harmos::MessageError::borrowed(
+            "in-process fixture values are never decoded",
+        ))
+    }
 }
 
-impl OperationDeclaration for Jittered {
-    type Request = Request;
-    type Response = usize;
-    const ID: &'static str = "policy.jittered";
-    const POLICY: OperationPolicy = OperationPolicy {
-        retries: RetryPolicy::OnTransient {
-            max_retries: 4,
-            backoff: Backoff::Exponential {
-                initial: Duration::from_millis(200),
-                maximum: Duration::from_secs(1),
-                jitter: Jitter::Deterministic,
-            },
-        },
-        ..Exponential::POLICY
-    };
+impl<
+    const OVERALL: u64,
+    const ATTEMPT: u64,
+    const RETRIES: usize,
+    const DELAY: u64,
+    const REPLAY: bool,
+> harmos::schema::Described for Policy<OVERALL, ATTEMPT, RETRIES, DELAY, REPLAY>
+{
+    const NAME: &'static str = POLICY_NAME;
+    const FIELDS: &'static [harmos::schema::Field] = &[];
+    const MARKER: &'static [u8] = POLICY_MARKER;
 }
 
-impl OperationDeclaration for EmptyRetries {
-    type Request = Request;
-    type Response = usize;
-    const ID: &'static str = "policy.empty";
-    const POLICY: OperationPolicy = OperationPolicy {
-        retries: RetryPolicy::OnTransient {
-            max_retries: 0,
-            backoff: Backoff::Fixed {
-                delay: Duration::from_millis(1),
-                jitter: Jitter::None,
-            },
-        },
-        ..Blocker::POLICY
-    };
+impl<
+    const OVERALL: u64,
+    const ATTEMPT: u64,
+    const RETRIES: usize,
+    const DELAY: u64,
+    const REPLAY: bool,
+> harmos::MemorySize for Policy<OVERALL, ATTEMPT, RETRIES, DELAY, REPLAY>
+{
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+    }
 }
 
-impl OperationDeclaration for InvertedBackoff {
-    type Request = Request;
-    type Response = usize;
-    const ID: &'static str = "policy.inverted";
-    const POLICY: OperationPolicy = OperationPolicy {
-        retries: RetryPolicy::OnTransient {
-            max_retries: 1,
-            backoff: Backoff::Exponential {
-                initial: Duration::from_millis(100),
-                maximum: Duration::from_millis(50),
-                jitter: Jitter::None,
-            },
-        },
-        ..Blocker::POLICY
-    };
+impl<
+    const OVERALL: u64,
+    const ATTEMPT: u64,
+    const RETRIES: usize,
+    const DELAY: u64,
+    const REPLAY: bool,
+> From<Behavior> for Policy<OVERALL, ATTEMPT, RETRIES, DELAY, REPLAY>
+{
+    fn from(behavior: Behavior) -> Self {
+        Self { behavior }
+    }
+}
+
+impl<
+    const OVERALL: u64,
+    const ATTEMPT: u64,
+    const RETRIES: usize,
+    const DELAY: u64,
+    const REPLAY: bool,
+> Behaves for Policy<OVERALL, ATTEMPT, RETRIES, DELAY, REPLAY>
+{
+    fn behavior(&mut self) -> &mut Behavior {
+        &mut self.behavior
+    }
 }
 
 struct Attempting<O> {
@@ -203,7 +349,7 @@ struct Attempting<O> {
     _declaration: std::marker::PhantomData<fn() -> O>,
 }
 
-impl<O: OperationDeclaration<Request = Request, Response = usize>> Operation for Attempting<O> {
+impl<O: Behaves> Operation for Attempting<O> {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
     type Declaration = O;
@@ -227,10 +373,10 @@ impl<O: OperationDeclaration<Request = Request, Response = usize>> Operation for
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        request: &mut Request,
+        request: &mut O,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos::operations::Response<usize>, Self::Error> {
-        let result: ::core::result::Result<usize, Self::Error> = async move {
+    ) -> Result<harmos::operations::Response<u64>, Self::Error> {
+        let result: ::core::result::Result<u64, Self::Error> = async move {
             self.state.attempt += 1;
             self.resources.0.attempts.fetch_add(1, Ordering::SeqCst);
             self.resources
@@ -240,7 +386,7 @@ impl<O: OperationDeclaration<Request = Request, Response = usize>> Operation for
                 .unwrap()
                 .push(context.scope().now());
             self.resources.0.started.notify_one();
-            match &mut request.behavior {
+            match request.behavior() {
                 Behavior::Fail { remaining, kind } if *remaining > 0 => {
                     *remaining -= 1;
                     return Err(std::io::Error::new(*kind, "retained attempt failure"));
@@ -249,7 +395,7 @@ impl<O: OperationDeclaration<Request = Request, Response = usize>> Operation for
                 Behavior::Gate(gate) => gate.notified().await,
                 _ => {}
             }
-            Ok(self.state.attempt)
+            Ok(u64::try_from(self.state.attempt).expect("attempts fit in u64"))
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -272,13 +418,11 @@ impl Drop for State {
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn failing(remaining: usize) -> Request {
-    Request {
-        behavior: Behavior::Fail {
-            remaining,
-            kind: std::io::ErrorKind::Interrupted,
-        },
-    }
+fn failing<O: Behaves>(remaining: usize) -> O {
+    O::from(Behavior::Fail {
+        remaining,
+        kind: std::io::ErrorKind::Interrupted,
+    })
 }
 
 fn waits(probe: &Probe) -> Vec<u64> {
@@ -291,8 +435,7 @@ fn waits(probe: &Probe) -> Vec<u64> {
         .collect()
 }
 
-async fn bound<O: OperationDeclaration<Request = Request, Response = usize>>()
--> (harmos::Runtime<super::support::Bank>, Arc<Probe>) {
+async fn bound<O: Behaves>() -> (harmos::Runtime<super::support::Bank>, Arc<Probe>) {
     let runtime = runtime().await;
     let probe = Arc::new(Probe::default());
     runtime
@@ -306,7 +449,7 @@ async fn bound<O: OperationDeclaration<Request = Request, Response = usize>>()
     (runtime, probe)
 }
 
-async fn invalid<O: OperationDeclaration<Request = Request, Response = usize>>() {
+async fn invalid<O: Behaves>() {
     let runtime = runtime().await;
     let probe = Arc::new(Probe::default());
     let error = runtime
@@ -348,12 +491,12 @@ pub(super) fn contract_scenario() {
                     let gate = Arc::new(Notify::new());
                     let blocker = runtime
                         .operations
-                        .submit(Request {
+                        .submit(Blocker {
                             behavior: Behavior::Gate(Arc::clone(&gate)),
                         })
                         .unwrap();
                     blocker_probe.started.notified().await;
-                    let queued = runtime.operations.submit(failing(0)).unwrap();
+                    let queued = runtime.operations.submit(failing::<Queued>(0)).unwrap();
                     tokio::time::advance(Duration::from_millis(100)).await;
                     assert!(matches!(
                         queued.await,
@@ -383,7 +526,7 @@ pub(super) fn contract_scenario() {
                     let submitted = tokio::time::Instant::now();
                     let result = runtime
                         .operations
-                        .call(Request {
+                        .call(Attempt {
                             behavior: Behavior::Pending,
                         })
                         .await;
@@ -399,7 +542,7 @@ pub(super) fn contract_scenario() {
                     type Retrying = Policy<100, 1000, 10, 1000, false>;
                     let (runtime, probe) = bound::<Retrying>().await;
                     let submitted = tokio::time::Instant::now();
-                    let result = runtime.operations.call(failing(100)).await;
+                    let result = runtime.operations.call(failing::<Retrying>(100)).await;
                     assert!(matches!(
                         result,
                         Err(Error::OperationRefused(Refusal::TimedOut))
@@ -422,7 +565,14 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     type Retrying = Policy<1000, 100, 2, 20, false>;
                     let (runtime, probe) = bound::<Retrying>().await;
-                    assert_eq!(*runtime.operations.call(failing(2)).await.unwrap(), 3);
+                    assert_eq!(
+                        *runtime
+                            .operations
+                            .call(failing::<Retrying>(2))
+                            .await
+                            .unwrap(),
+                        3
+                    );
                     assert_eq!(probe.prepared.load(Ordering::SeqCst), 1);
                     assert_eq!(probe.attempts.load(Ordering::SeqCst), 3);
                     assert_eq!(probe.dropped.load(Ordering::SeqCst), 1);
@@ -441,7 +591,7 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let (runtime, probe) = bound::<Exponential>().await;
-                    let result = runtime.operations.call(failing(100)).await;
+                    let result = runtime.operations.call(failing::<Exponential>(100)).await;
                     let Err(Error::OperationFailed { source, .. }) = result else {
                         panic!("the last typed attempt failure is retained")
                     };
@@ -468,7 +618,7 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     type Retrying = Policy<10000, 100, 2, 1000, false>;
                     let (runtime, probe) = bound::<Retrying>().await;
-                    let invocation = runtime.operations.submit(failing(100)).unwrap();
+                    let invocation = runtime.operations.submit(failing::<Retrying>(100)).unwrap();
                     probe.started.notified().await;
                     let cancelled = tokio::time::Instant::now();
                     invocation.cancel();
@@ -496,7 +646,7 @@ pub(super) fn contract_scenario() {
                     let (runtime, probe) = bound::<Unknown>().await;
                     let result = runtime
                         .operations
-                        .call(Request {
+                        .call(Unknown {
                             behavior: Behavior::Pending,
                         })
                         .await;
@@ -511,7 +661,7 @@ pub(super) fn contract_scenario() {
                     let (runtime, probe) = bound::<Replayable>().await;
                     let result = runtime
                         .operations
-                        .call(Request {
+                        .call(Replayable {
                             behavior: Behavior::Pending,
                         })
                         .await;
@@ -556,12 +706,12 @@ pub(super) fn contract_scenario() {
                     let gate = Arc::new(Notify::new());
                     let first = runtime
                         .operations
-                        .submit(Request {
+                        .submit(Queued {
                             behavior: Behavior::Gate(gate),
                         })
                         .unwrap();
                     probe.started.notified().await;
-                    let second = runtime.operations.submit(failing(0)).unwrap();
+                    let second = runtime.operations.submit(failing::<Queued>(0)).unwrap();
                     second.cancel();
                     assert!(matches!(
                         second.await,
@@ -591,7 +741,7 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let (runtime, probe) = bound::<Jittered>().await;
-                    let result = runtime.operations.call(failing(100)).await;
+                    let result = runtime.operations.call(failing::<Jittered>(100)).await;
                     assert!(matches!(result, Err(Error::OperationFailed { .. })));
                     let waits = waits(&probe);
                     assert_eq!(waits.len(), 4);

@@ -65,7 +65,7 @@ fn contract_scenario() {
 
             for (fixture, expected) in [
                 ("operation_on_variant.rs", "catalogs only assemble types"),
-                ("operation_with_fields.rs", "non-generic unit struct"),
+                ("operation_request_argument.rs", "the operation is its request type"),
                 (
                     "unsafe_id.rs",
                     "a stream id must be a filesystem-safe dotted name with non-keyword ASCII segments",
@@ -110,7 +110,6 @@ fn contract_scenario() {
                     "operation_owned_request.rs",
                     "request and endpoints must be borrowed",
                 ),
-                ("operation_stream_item.rs", "type mismatch resolving"),
                 // Lifecycle verbs: `initialize` constructs, `cleanup` releases.
                 ("operation_new_renamed.rs", "operation `new` was renamed"),
                 ("observer_new_renamed.rs", "observer `new` was folded"),

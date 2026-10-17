@@ -148,8 +148,8 @@ impl<P: Plugin<Context = Supervisor> + Declared> Attach for PluginNative<P> {
         self.declaration.observers.clone()
     }
 
-    fn observer_control(&self) -> harmos_domain::Result<Option<crate::operations::Contract>> {
-        Ok(self.declaration.observer_control())
+    fn observe_contract(&self) -> harmos_domain::Result<Option<crate::operations::Contract>> {
+        Ok(self.declaration.observe_contract())
     }
 
     fn listener_declarations(

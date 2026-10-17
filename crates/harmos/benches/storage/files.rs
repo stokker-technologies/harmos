@@ -15,7 +15,8 @@ use std::time::{Duration, Instant};
 // Third Party Imports
 use criterion::{BenchmarkId, Criterion, Throughput};
 use harmos::Identifier;
-use harmos::storage::{ByteRange, FileMetadata, ReadFile};
+use harmos::storage::operations::ReadFile;
+use harmos::storage::{ByteRange, FileMetadata};
 
 // Local Imports
 use super::{fixture::Fixture, waveforms};

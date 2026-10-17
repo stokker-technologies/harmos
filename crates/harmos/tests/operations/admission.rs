@@ -39,7 +39,19 @@ use harmos::{Error, Refusal, Runtime};
 /* === Type Aliases === */
 
 /* === Structs === */
-struct Request {
+// The Hold Request Carries A Shared Notification, So It Stays In Process.
+#[harmos::operation(
+    response = (),
+    id = "queue.hold",
+    version = 1,
+    policy = OperationPolicy {
+        timeout: Duration::from_secs(2),
+        attempt_timeout: Duration::from_secs(1),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    },
+)]
+struct HoldContract {
     blocked: bool,
     started: Arc<Notify>,
 }
@@ -56,18 +68,6 @@ struct Counts {
 }
 
 /* === Enums === */
-#[harmos::operation(
-        request = Request,
-        response = (),
-        id = "queue.hold",
-        policy = OperationPolicy {
-            timeout: Duration::from_secs(2),
-            attempt_timeout: Duration::from_secs(1),
-            retries: RetryPolicy::Never,
-            restart: RestartPolicy::Never,
-        },
-    )]
-struct HoldContract;
 
 #[harmos::catalog]
 enum Operations {
@@ -77,6 +77,14 @@ enum Operations {
 /* === Traits === */
 
 /* === Implementations === */
+super::in_process!(HoldContract);
+
+impl harmos::MemorySize for HoldContract {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+    }
+}
+
 impl Operation for Hold {
     type Declaration = HoldContract;
     type Resources = Counts;
@@ -95,7 +103,7 @@ impl Operation for Hold {
     async fn run<'ctx>(
         &mut self,
         _: Self::Context<'ctx>,
-        request: &mut Request,
+        request: &mut HoldContract,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<()>, Self::Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
@@ -140,8 +148,8 @@ async fn runtime() -> Runtime<App> {
         .unwrap()
 }
 
-fn request(blocked: bool) -> Request {
-    Request {
+fn request(blocked: bool) -> HoldContract {
+    HoldContract {
         blocked,
         started: Arc::new(Notify::new()),
     }

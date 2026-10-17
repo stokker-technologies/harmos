@@ -55,7 +55,7 @@ macro_rules! operation {
             async fn run<'a>(
                 &mut self,
                 _: Self::Context<'a>,
-                request: &mut Payload,
+                request: &mut $declaration,
                 endpoints: &mut Self::Endpoints,
             ) -> harmos::Result<harmos::operations::Response<Payload>> {
                 let result: ::core::result::Result<Payload, Self::Error> = async move {
@@ -311,7 +311,7 @@ async fn stock_generated_client() -> Result<(), harmos_grpc_fixture::Error> {
         let missing = client.upload(futures_util::stream::empty::<OperationsUploadInput>()).await.unwrap_err();
         assert_eq!(missing.code(), tonic::Code::InvalidArgument);
         let early = OperationsUploadInput {
-            value: Some(operations_upload_input::Value::Item(messages::upload::Row1 { value: "early".into() })),
+            value: Some(operations_upload_input::Value::Item(messages::upload::Row2 { value: "early".into() })),
         };
         let invalid = client.upload(futures_util::stream::iter([early])).await.unwrap_err();
         assert_eq!(invalid.code(), tonic::Code::InvalidArgument);
@@ -321,7 +321,7 @@ async fn stock_generated_client() -> Result<(), harmos_grpc_fixture::Error> {
         assert_eq!(response.value,"unary:one");
         let frames = [
             OperationsUploadInput { value: Some(operations_upload_input::Value::Request(messages::upload::Row1 { value: "start".into() })) },
-            OperationsUploadInput { value: Some(operations_upload_input::Value::Item(messages::upload::Row1 { value: ":item".into() })) },
+            OperationsUploadInput { value: Some(operations_upload_input::Value::Item(messages::upload::Row2 { value: ":item".into() })) },
         ];
         let response = client.upload(futures_util::stream::iter(frames)).await.unwrap().into_inner();
         assert_eq!(response.value,"start:item");
@@ -331,7 +331,7 @@ async fn stock_generated_client() -> Result<(), harmos_grpc_fixture::Error> {
         assert!(output.message().await.unwrap().is_none());
         let frames = [
             OperationsExchangeInput { value: Some(operations_exchange_input::Value::Request(messages::exchange::Row1 { value: "bidi".into() })) },
-            OperationsExchangeInput { value: Some(operations_exchange_input::Value::Item(messages::exchange::Row1 { value: "item".into() })) },
+            OperationsExchangeInput { value: Some(operations_exchange_input::Value::Item(messages::exchange::Row2 { value: "item".into() })) },
         ];
         let mut output = client.exchange(futures_util::stream::iter(frames)).await.unwrap().into_inner();
         assert!(matches!(output.message().await.unwrap().unwrap().value, Some(operations_exchange_output::Value::Item(item)) if item.value == "bidi:item"));
@@ -507,7 +507,7 @@ async fn bidi_outputs_progress() -> Result<(), harmos_grpc_fixture::Error> {
         });
         let mut output = client.exchange(incoming).await.unwrap().into_inner();
         for value in ["one", "two", "three"] {
-            let item = OperationsExchangeInput { value: Some(operations_exchange_input::Value::Item(messages::exchange::Row1 { value: value.into() })) };
+            let item = OperationsExchangeInput { value: Some(operations_exchange_input::Value::Item(messages::exchange::Row2 { value: value.into() })) };
             input.send(item).await.unwrap();
             let event = tokio::time::timeout(Duration::from_millis(500), output.message()).await.unwrap().unwrap().unwrap();
             assert!(matches!(event.value, Some(operations_exchange_output::Value::Item(item)) if item.value == format!("live:{value}")));
@@ -596,7 +596,7 @@ async fn failure_preserve_stream() -> Result<(), harmos_grpc_fixture::Error> {
             let sending = async move {
                 for value in 0..128 {
                     input.send(OperationsExchangeInput {
-                        value: Some(operations_exchange_input::Value::Item(messages::exchange::Row1 { value: value.to_string() })),
+                        value: Some(operations_exchange_input::Value::Item(messages::exchange::Row2 { value: value.to_string() })),
                     }).await.unwrap();
                 }
                 // Dropping The Complete Request Producer Half-Closes HTTP/2 Input.

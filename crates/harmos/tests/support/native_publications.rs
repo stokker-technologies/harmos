@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 // Local Imports
 use harmos::operations::{
     Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility,
-    WireOperation, WireTable,
+    WireTable,
 };
 use harmos::plugin::{PluginArtifact, PluginContributions, PluginDefinition};
 use harmos::sidecar::{Attach, Notice, Refusal, Supervised, Supervisor};
@@ -61,7 +61,14 @@ pub struct Sample {
 
 // One Producer Run: `rows` Rows In Calls Of `batch` Rows Each.
 #[harmos::message]
-pub struct Burst {
+#[harmos::operation(
+    id = "publication.publish",
+    version = 1,
+    policy = POLICY,
+    response = Timings,
+    visibility = Visibility::Shared,
+)]
+pub struct Publish {
     pub rows: u32,
     pub batch: u32,
 }
@@ -73,8 +80,6 @@ pub struct Timings {
 }
 
 pub struct Producer;
-
-pub struct Publish;
 
 struct Publishing;
 
@@ -135,18 +140,6 @@ impl harmos::Plugin for Producer {
     }
 }
 
-impl OperationDeclaration for Publish {
-    type Request = Burst;
-    type Response = Timings;
-    const ID: &'static str = "publication.publish";
-    const VISIBILITY: Visibility = Visibility::Shared;
-    const POLICY: OperationPolicy = POLICY;
-}
-
-impl WireOperation for Publish {
-    const VERSION: u32 = 1;
-}
-
 impl Operation for Publishing {
     type Declaration = Publish;
     type Resources = ();
@@ -159,7 +152,7 @@ impl Operation for Publishing {
     async fn run<'a>(
         &mut self,
         host: Self::Context<'a>,
-        burst: &mut Burst,
+        burst: &mut Publish,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Timings>, Refusal> {
         let result: ::core::result::Result<Timings, Self::Error> = async move {
@@ -228,7 +221,6 @@ impl Fixture {
                 lifecycle: source.sdk_lifecycle().unwrap(),
                 streams: source.publications(),
                 observers: source.observers(),
-                observer_control: source.observer_control().unwrap(),
                 listeners: source.listener_declarations().unwrap().unwrap(),
                 ..PluginContributions::default()
             },
@@ -309,7 +301,7 @@ impl Fixture {
             Duration::from_secs(60),
             self.runtime
                 .operations
-                .call_encoded(Publish::ID, Burst { rows, batch }.encode_to_vec()),
+                .call_encoded(Publish::ID, harmos::Message::encode_to_vec(&Publish { rows, batch })),
         )
         .await
         .expect("producer publishes within the bench deadline")

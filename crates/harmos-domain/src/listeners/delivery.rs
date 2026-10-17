@@ -238,6 +238,8 @@ impl<L: Listener> crate::operations::OperationDeclaration for Delivery<L> {
     const ID: &'static str = L::CALLBACK;
     const VERSION: u32 = 1;
     const POLICY: crate::operations::OperationPolicy = L::POLICY;
+    // Every Listener Callback Is Shared: The Definition Refuses Any Other
+    const VISIBILITY: crate::operations::Visibility = crate::operations::Visibility::Shared;
 }
 
 impl PostcardValue for Context {

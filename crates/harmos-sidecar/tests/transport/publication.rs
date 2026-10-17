@@ -174,7 +174,7 @@ async fn publish(
         assert_eq!(method, CHILD_METHOD);
         let child = WireChildCall::decode(&params).unwrap();
         assert_eq!(child.generation_context, Some(GENERATION));
-        let publication = Publication::decode(&child.payload).unwrap();
+        let publication = <Publish as Message>::decode(&child.payload).unwrap();
         outgoing
             .send(Frame::Answer {
                 id: call,
@@ -261,7 +261,7 @@ pub(super) fn contract_scenario() {
                         &outgoing,
                         &mut incoming,
                         2,
-                        Initialize::<TransportPlugin>::ID,
+                        Initialize::ID,
                         initialization.encode_to_vec(),
                     )
                     .await;

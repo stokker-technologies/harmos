@@ -629,9 +629,9 @@ async fn sdk(outgoing: &Sender, incoming: &mut Receiver, id: u64, initialize: bo
             config_json: b"null".to_vec(),
             generation_context: vec![2; 32],
         };
-        (Initialize::<TransportPlugin>::ID, request.encode_to_vec())
+        (Initialize::ID, request.encode_to_vec())
     } else {
-        (Shutdown::<TransportPlugin>::ID, Vec::new())
+        (Shutdown::ID, Vec::new())
     };
     phase(
         outgoing,

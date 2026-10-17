@@ -92,8 +92,8 @@ impl harmos::plugin::Contribution for Catalog {
 }
 
 #[harmos::plugin(description = "Quoted \"probe\" line \\ \u{3bc}\u{1}", id = "cargo-native", contributions(Catalog), context = harmos::Supervisor, config = String,
-    provides = self::operations::NativeOperations, requires = (), observers = Observers,
-    observer_control = operations::Observe, streams(self::streams::Reading), restart = "never")]
+    provides = self::operations::Operations, requires = (), observers = Observers,
+    streams(self::streams::Reading), restart = "never")]
 impl ProductPlugin for Native {}
 
 /* === Public Functions === */

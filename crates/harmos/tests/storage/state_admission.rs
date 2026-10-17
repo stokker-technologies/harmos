@@ -112,8 +112,8 @@ impl RecordProjection for Projection {
 
 /* === Private Functions === */
 // A Query Pins A Snapshot Through The Worker, Holding It At The Backend View Gate.
-fn gate(at: StorageCursor) -> harmos::storage::query::Query {
-    harmos::storage::query::Query {
+fn gate(at: StorageCursor) -> harmos::storage::operations::Query {
+    harmos::storage::operations::Query {
         at,
         source: harmos::storage::query::Source::Files(harmos::storage::query::FileSelection {
             scope: None,

@@ -51,6 +51,7 @@ const POLICY: OperationPolicy = OperationPolicy {
 /* === Structs === */
 // The declaration is its own request, so `call` and `submit` infer it.
 #[harmos::message]
+#[harmos::operation(id = "fixture.hold", version = 1, response = u64, policy = POLICY)]
 struct Hold {
     value: u64,
 }
@@ -66,27 +67,20 @@ struct Gate {
 struct Holding(Arc<Gate>);
 
 // A resident service activated through the host by its identity.
-struct Ticker;
+#[harmos::message]
+#[harmos::operation(
+    id = "fixture.ticker",
+    version = 1,
+    response = (),
+    policy = harmos::services::POLICY
+)]
+struct Ticker {}
 
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
-impl OperationDeclaration for Hold {
-    type Request = Self;
-    type Response = u64;
-    const ID: &'static str = "fixture.hold";
-    const POLICY: OperationPolicy = POLICY;
-}
-
-impl OperationDeclaration for Ticker {
-    type Request = ();
-    type Response = ();
-    const ID: &'static str = "fixture.ticker";
-    const POLICY: OperationPolicy = harmos::services::POLICY;
-}
-
 impl Operation for Holding {
     type Declaration = Hold;
     type Resources = Gate;
@@ -311,11 +305,11 @@ pub(super) fn contract_scenario() {
 
                     // Activations Over The Same Resources Share One Instance
                     let first = operations
-                        .submit_with_resources::<Ticker, Gate>((), gate.clone())
+                        .submit_with_resources::<Ticker, Gate>(Ticker {}, gate.clone())
                         .await
                         .unwrap();
                     let second = operations
-                        .submit_with_resources::<Ticker, Gate>((), gate.clone())
+                        .submit_with_resources::<Ticker, Gate>(Ticker {}, gate.clone())
                         .await
                         .unwrap();
                     assert_eq!(first.id(), second.id());

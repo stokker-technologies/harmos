@@ -30,15 +30,24 @@ use facade::__harmos::operations::{OperationDeclaration, OperationPolicy, Restar
 /* === Macros === */
 
 /* === Type Aliases === */
-pub type Request = WireRequest;
 
 /* === Structs === */
-#[facade::message]
-pub struct WireRequest { pub value: String }
 
 pub struct State;
 
-pub struct Echo;
+#[facade::message]
+#[facade::operation(
+    response = relative::Reply,
+    id = "alias.echo",
+    policy = OperationPolicy {
+    timeout: Duration::from_secs(2),
+    attempt_timeout: Duration::from_secs(1),
+    retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
+},
+    version = 1,
+)]
+pub struct Echo { pub value: String }
 
 pub struct Guest;
 
@@ -50,19 +59,7 @@ pub enum Operations { Echo(Echo) }
 trait ProductPlugin {}
 
 /* === Implementations === */
-impl OperationDeclaration for Echo {
-    type Request = Request;
-    type Response = relative::Reply;
-    const ID: &'static str = "alias.echo";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(2),
-        attempt_timeout: Duration::from_secs(1),
-        retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
-    };
-}
 
-impl facade::__harmos::operations::WireOperation for Echo { const VERSION: u32 = 1; }
 
 impl facade::__harmos::operations::lifecycle::Policy for State {
     const INITIALIZATION_POLICY: OperationPolicy = Echo::POLICY;

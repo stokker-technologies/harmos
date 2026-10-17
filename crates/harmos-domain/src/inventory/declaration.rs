@@ -281,7 +281,7 @@ impl Declaration {
 
     // The built-in `harmos.observe` contract, served by a sidecar that
     // declares observers.
-    pub fn observer_control(&self) -> Option<Contract> {
+    pub fn observe_contract(&self) -> Option<Contract> {
         if self.observers.is_empty() {
             return None;
         }

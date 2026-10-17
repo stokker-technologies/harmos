@@ -9,7 +9,7 @@
 
 
 /* === Modules === */
-#[path = "observer_controls.rs"]
+#[path = "policy.rs"]
 mod controls;
 
 /* === Re-Exports === */

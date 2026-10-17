@@ -39,17 +39,57 @@ pub struct Payload {
 }
 
 /* === Enums === */
-#[harmos::operation(request = Payload, response = Payload, id = "unary", version = 1, policy = POLICY, grpc(package = "fixture.v1", service = "Operations", method = "Unary"))]
-pub struct Unary;
+#[harmos::message]
+#[harmos::operation(
+    id = "unary",
+    version = 1,
+    policy = POLICY,
+    response = Payload,
+    grpc(package = "fixture.v1", service = "Operations", method = "Unary"),
+)]
+pub struct Unary {
+    pub value: String,
+}
 
-#[harmos::operation(request = Payload, response = Payload, input = Payload, id = "upload", version = 1, policy = POLICY, grpc(package = "fixture.v1", service = "Operations", method = "Upload"))]
-pub struct Upload;
+#[harmos::message]
+#[harmos::operation(
+    id = "upload",
+    version = 1,
+    policy = POLICY,
+    response = Payload,
+    input = Payload,
+    grpc(package = "fixture.v1", service = "Operations", method = "Upload"),
+)]
+pub struct Upload {
+    pub value: String,
+}
 
-#[harmos::operation(request = Payload, response = Payload, output = Payload, id = "download", version = 1, policy = POLICY, grpc(package = "fixture.v1", service = "Operations", method = "Download"))]
-pub struct Download;
+#[harmos::message]
+#[harmos::operation(
+    id = "download",
+    version = 1,
+    policy = POLICY,
+    response = Payload,
+    output = Payload,
+    grpc(package = "fixture.v1", service = "Operations", method = "Download"),
+)]
+pub struct Download {
+    pub value: String,
+}
 
-#[harmos::operation(request = Payload, response = Payload, input = Payload, output = Payload, id = "exchange", version = 1, policy = POLICY, grpc(package = "fixture.v1", service = "Operations", method = "Exchange"))]
-pub struct Exchange;
+#[harmos::message]
+#[harmos::operation(
+    id = "exchange",
+    version = 1,
+    policy = POLICY,
+    response = Payload,
+    input = Payload,
+    output = Payload,
+    grpc(package = "fixture.v1", service = "Operations", method = "Exchange"),
+)]
+pub struct Exchange {
+    pub value: String,
+}
 
 #[harmos::catalog]
 pub enum Operations {

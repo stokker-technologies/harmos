@@ -65,6 +65,7 @@ struct Free {
 }
 
 /* === Enums === */
+#[harmos::message]
 enum Mode {
     Leaf,
     HandleCycle,
@@ -72,14 +73,23 @@ enum Mode {
     FullLane,
 }
 
-#[harmos::operation(request = Mode, response = usize, id = "scoped.parent", policy = POLICY)]
-struct ParentContract;
+#[harmos::message]
+#[harmos::operation(response = u64, id = "scoped.parent", version = 1, policy = POLICY)]
+struct ParentContract {
+    mode: Mode,
+}
 
-#[harmos::operation(request = bool, response = usize, id = "scoped.bound", policy = POLICY)]
-struct BoundContract;
+#[harmos::message]
+#[harmos::operation(response = u64, id = "scoped.bound", version = 1, policy = POLICY)]
+struct BoundContract {
+    hold: bool,
+}
 
-#[harmos::operation(request = bool, response = usize, id = "scoped.free", policy = POLICY)]
-struct FreeContract;
+#[harmos::message]
+#[harmos::operation(response = u64, id = "scoped.free", version = 1, policy = POLICY)]
+struct FreeContract {
+    wait: bool,
+}
 
 #[harmos::catalog]
 enum Operations {
@@ -106,28 +116,29 @@ impl Operation for Parent {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        mode: &mut Mode,
+        request: &mut ParentContract,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos::operations::Response<usize>, Error> {
-        let result: ::core::result::Result<usize, Self::Error> = async move {
-        match mode {
+    ) -> Result<harmos::operations::Response<u64>, Error> {
+        let result: ::core::result::Result<u64, Self::Error> = async move {
+        match request.mode {
             Mode::Leaf => Ok(7),
             Mode::HandleCycle => {
-                assert!(matches!(context.submit(Mode::Leaf),
+                assert!(matches!(context.submit(ParentContract { mode: Mode::Leaf }),
                     Err(Error::OperationLaneCycle { parent, child }) if parent == self.trace.lane && child == self.trace.lane));
-                let free = context.submit(false)?.await?;
+                let free = context.submit(FreeContract { wait: false })?.await?;
                 assert_eq!(*free, 1);
                 Ok(7)
             }
             Mode::PropagateCycle => {
-                let answer = context.submit(Mode::Leaf)?.await?;
+                let answer = context.submit(ParentContract { mode: Mode::Leaf })?.await?;
                 Ok(*answer)
             }
             Mode::FullLane => {
-                let _queued = context.submit(false)?;
-                let _free = context.submit(true)?;
+                let _queued = context.submit(BoundContract { hold: false })?;
+                let _free = context.submit(FreeContract { wait: true })?;
                 self.trace.free_started.notified().await;
-                Ok(self.trace.queued_runs.load(Ordering::SeqCst))
+                Ok(u64::try_from(self.trace.queued_runs.load(Ordering::SeqCst))
+                    .expect("run counts fit in u64"))
             }
         }
             }.await;
@@ -152,11 +163,11 @@ impl Operation for Bound {
     async fn run<'ctx>(
         &mut self,
         _context: Self::Context<'ctx>,
-        hold: &mut bool,
+        request: &mut BoundContract,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos::operations::Response<usize>, Self::Error> {
-        let result: ::core::result::Result<usize, Self::Error> = async move {
-            if *hold {
+    ) -> Result<harmos::operations::Response<u64>, Self::Error> {
+        let result: ::core::result::Result<u64, Self::Error> = async move {
+            if request.hold {
                 self.trace.bound_started.notify_one();
                 self.trace.release.notified().await;
             } else {
@@ -186,12 +197,12 @@ impl Operation for Free {
     async fn run<'ctx>(
         &mut self,
         _context: Self::Context<'ctx>,
-        wait: &mut bool,
+        request: &mut FreeContract,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos::operations::Response<usize>, Self::Error> {
-        let result: ::core::result::Result<usize, Self::Error> = async move {
+    ) -> Result<harmos::operations::Response<u64>, Self::Error> {
+        let result: ::core::result::Result<u64, Self::Error> = async move {
             self.trace.free_started.notify_one();
-            if *wait {
+            if request.wait {
                 std::future::pending::<()>().await;
             }
             Ok(1)
@@ -255,7 +266,9 @@ pub(super) fn contract_scenario() {
                         let (runtime, trace) = runtime(lane).await;
                         let answer = runtime
                             .operations
-                            .submit(Mode::HandleCycle)
+                            .submit(ParentContract {
+                                mode: Mode::HandleCycle,
+                            })
                             .unwrap()
                             .await
                             .unwrap();
@@ -275,7 +288,7 @@ pub(super) fn contract_scenario() {
     let (runtime, trace) = runtime(Lanes::Serial).await;
     let error = runtime
         .operations
-        .submit(Mode::PropagateCycle)
+        .submit(ParentContract { mode: Mode::PropagateCycle })
         .unwrap()
         .await
         .unwrap_err();
@@ -300,11 +313,16 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let (runtime, trace) = runtime(Lanes::Concurrent).await;
-                    let blocker = runtime.operations.submit(true).unwrap();
+                    let blocker = runtime
+                        .operations
+                        .submit(BoundContract { hold: true })
+                        .unwrap();
                     trace.bound_started.notified().await;
                     let answer = runtime
                         .operations
-                        .submit(Mode::FullLane)
+                        .submit(ParentContract {
+                            mode: Mode::FullLane,
+                        })
                         .unwrap()
                         .await
                         .unwrap();

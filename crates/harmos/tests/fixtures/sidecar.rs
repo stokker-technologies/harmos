@@ -16,18 +16,19 @@ pub mod linked {
         pub value: u32,
     }
 
-    pub struct Echo;
-    impl harmos::operations::OperationDeclaration for Echo {
-        type Request = String;
-        type Response = String;
-        const ID: &'static str = "guest.echo";
-        const POLICY: harmos::operations::OperationPolicy = harmos::operations::OperationPolicy {
-            timeout: std::time::Duration::from_millis(100),
-            attempt_timeout: std::time::Duration::from_millis(100),
-            retries: harmos::operations::RetryPolicy::Never,
-            restart: harmos::operations::RestartPolicy::Never,
-        };
+    const POLICY: harmos::operations::OperationPolicy = harmos::operations::OperationPolicy {
+        timeout: std::time::Duration::from_millis(100),
+        attempt_timeout: std::time::Duration::from_millis(100),
+        retries: harmos::operations::RetryPolicy::Never,
+        restart: harmos::operations::RestartPolicy::Never,
+    };
+
+    #[harmos::message]
+    #[harmos::operation(id = "guest.echo", version = 1, policy = POLICY, response = String)]
+    pub struct Echo {
+        pub text: String,
     }
+
     #[harmos::catalog]
     pub enum Operations {
         Echo(Echo),
@@ -35,9 +36,6 @@ pub mod linked {
 
     pub struct LinkedGuest {
         resources: std::sync::Arc<()>,
-    }
-    impl harmos::operations::WireOperation for Echo {
-        const VERSION: u32 = 1;
     }
     impl harmos::operations::lifecycle::Policy for LinkedGuest {
         const INITIALIZATION_POLICY: harmos::operations::OperationPolicy =
@@ -93,7 +91,7 @@ use std::time::Duration;
 // Local Imports
 use harmos::operations::Host as _;
 use harmos::operations::{
-    Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, WireTable,
+    Operation, OperationPolicy, RestartPolicy, RetryPolicy, WireTable,
 };
 use harmos::sidecar::{Refusal, Supervisor};
 
@@ -108,6 +106,18 @@ use harmos::sidecar::{Refusal, Supervisor};
 struct Config {}
 
 #[harmos::message]
+#[harmos::operation(
+    id = "meter.ask",
+    version = 1,
+    policy = OperationPolicy {
+        timeout: Duration::from_millis(25),
+        attempt_timeout: Duration::from_millis(25),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    },
+    response = GetAskResponse,
+    description = "An operation that never answers, so the host's deadline ends the call.",
+)]
 #[derive(Clone, PartialEq)]
 struct Ask {}
 
@@ -130,7 +140,22 @@ struct Stubborn {
     resources: Arc<Handler>,
 }
 
-struct Echo;
+#[harmos::message]
+#[harmos::operation(
+    id = "meter.echo",
+    version = 1,
+    policy = OperationPolicy {
+        timeout: Duration::from_millis(80),
+        attempt_timeout: Duration::from_millis(80),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    },
+    response = String,
+    description = "Answers with what it was handed, publishing first when asked to.",
+)]
+struct Echo {
+    text: String,
+}
 
 struct Handler;
 
@@ -218,42 +243,6 @@ impl harmos::Plugin for Stubborn {
     }
 }
 
-impl OperationDeclaration for Ask {
-    type Request = Ask;
-    type Response = GetAskResponse;
-    const ID: &'static str = "meter.ask";
-    const DESCRIPTION: &'static str =
-        "An operation that never answers, so the host's deadline ends the call.";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_millis(25),
-        attempt_timeout: Duration::from_millis(25),
-        retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
-    };
-}
-
-impl OperationDeclaration for Echo {
-    type Request = String;
-    type Response = String;
-    const ID: &'static str = "meter.echo";
-    const DESCRIPTION: &'static str =
-        "Answers with what it was handed, publishing first when asked to.";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_millis(80),
-        attempt_timeout: Duration::from_millis(80),
-        retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
-    };
-}
-
-impl harmos::operations::WireOperation for Ask {
-    const VERSION: u32 = 1;
-}
-
-impl harmos::operations::WireOperation for Echo {
-    const VERSION: u32 = 1;
-}
-
 impl Operation for Asking {
     type Declaration = Ask;
     type Resources = Handler;
@@ -297,11 +286,11 @@ impl Operation for Echoing {
     async fn run<'ctx>(
         &mut self,
         host: Self::Context<'ctx>,
-        request: &mut String,
+        request: &mut Echo,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<String>, Refusal> {
         let result: ::core::result::Result<String, Self::Error> = async move {
-            if request == "publish-foreign" {
+            if request.text == "publish-foreign" {
                 // Reach The Host With A Selected Core Leaf And An Ungranted Stream.
                 host.call(harmos::operations::streams::Publish {
                     stream: <linked::Foreign as harmos::StreamSpec>::ID.to_owned(),
@@ -315,7 +304,7 @@ impl Operation for Echoing {
                 .await
                 .map_err(Refusal::from)?;
             }
-            Ok(request.clone())
+            Ok(request.text.clone())
         }
         .await;
         result.map(::core::convert::Into::into)

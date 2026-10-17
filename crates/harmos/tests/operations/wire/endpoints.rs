@@ -19,7 +19,7 @@ use std::{
     future::Future,
     num::NonZeroUsize,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::Duration,
@@ -31,12 +31,24 @@ use tokio::sync::Notify;
 // Local Imports
 use super::{Lanes, app::App};
 use harmos::operations::{
-    Backoff, CacheKey, Context, Jitter, Operation, OperationDeclaration, OperationPolicy,
-    RestartPolicy, RetryPolicy, StreamInput, StreamOutput, StreamSettings, stream,
+    Backoff, CacheKey, Context, Jitter, NoStream, Operation, OperationDeclaration, OperationPolicy,
+    RestartPolicy, RetryPolicy, Stream, StreamInput, StreamOutput, StreamSettings, stream,
 };
 use harmos::{Error, Runtime};
 
 /* === Constants === */
+const DECLARATION_NAME: &str = concat!(module_path!(), "::Declaration");
+const DECLARATION_MARKER: &[u8] = &harmos::schema::declaration::encode::<
+    {
+        harmos::schema::declaration::encoded_len(
+            DECLARATION_NAME,
+            <Consume as harmos::schema::Described>::FIELDS,
+        )
+    },
+>(
+    DECLARATION_NAME,
+    <Consume as harmos::schema::Described>::FIELDS,
+);
 
 /* === Macros === */
 
@@ -44,7 +56,17 @@ use harmos::{Error, Runtime};
 type Endpoints = (StreamInput<u32>, StreamOutput<u32>);
 
 /* === Structs === */
-struct Declaration<const N: u8>;
+// One Forwarding Declaration Per Shape: The Request Says Whether To Consume Input.
+struct Declaration<const N: u8> {
+    consume: bool,
+}
+// The Portable Shape Every Forwarding Request Encodes As.
+#[harmos::message]
+struct Consume {
+    consume: bool,
+}
+// The Stream Directions Each Forwarding Shape Declares.
+struct Kind<const N: u8>;
 #[derive(Default)]
 struct Trace {
     new: AtomicUsize,
@@ -60,18 +82,35 @@ struct Forward<const N: u8> {
     trace: Arc<Trace>,
 }
 
-struct ParentDeclaration;
+// The Parent Request Carries Original Endpoints, So It Stays In Process.
+struct ParentDeclaration {
+    endpoints: Mutex<Option<Endpoints>>,
+}
 struct Parent<const CHARGED: bool>;
 
 /* === Enums === */
 
 /* === Traits === */
+trait Shape {
+    type Input: harmos::operations::Direction;
+    type Output: harmos::operations::Direction;
+}
 
 /* === Implementations === */
+crate::in_process!(ParentDeclaration);
+
+impl harmos::MemorySize for ParentDeclaration {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+    }
+}
+
 impl OperationDeclaration for ParentDeclaration {
-    type Request = Option<Endpoints>;
     type Response = u32;
+    type Input = NoStream;
+    type Output = NoStream;
     const ID: &'static str = "endpoints.parent";
+    const VERSION: u32 = 1;
     const POLICY: OperationPolicy = Declaration::<0>::POLICY;
 }
 impl<const CHARGED: bool> Operation for Parent<CHARGED> {
@@ -88,23 +127,28 @@ impl<const CHARGED: bool> Operation for Parent<CHARGED> {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        endpoints: &mut Option<Endpoints>,
+        request: &mut ParentDeclaration,
         _: &mut Self::Endpoints,
     ) -> harmos::Result<harmos::operations::Response<u32>> {
         let result: ::core::result::Result<u32, Self::Error> = async move {
-            let endpoints = endpoints
+            let endpoints = request
+                .endpoints
+                .get_mut()
+                .unwrap()
                 .take()
                 .expect("one transfer of original endpoints");
             let child = if CHARGED {
-                let (requests, mut decoded) = stream::<bool>(StreamSettings {
+                let (requests, mut decoded) = stream::<Declaration<0>>(StreamSettings {
                     items: NonZeroUsize::new(1).unwrap(),
                     bytes: NonZeroUsize::new(1).unwrap(),
                 })?;
-                requests.send_with(1, || Ok(true)).await?;
+                requests
+                    .send_with(1, || Ok(Declaration { consume: true }))
+                    .await?;
                 context
                     .submit_charged::<Declaration<0>, _>(decoded.recv().await.unwrap(), endpoints)?
             } else {
-                context.submit_endpoints::<Declaration<0>, _>(true, endpoints)?
+                context.submit_endpoints(Declaration::<0> { consume: true }, endpoints)?
             };
             Ok(*child.await?)
         }
@@ -113,24 +157,90 @@ impl<const CHARGED: bool> Operation for Parent<CHARGED> {
     }
 }
 
-impl<const N: u8> OperationDeclaration for Declaration<N> {
-    type Request = bool;
-    type Response = u32;
-    fn endpoint_types() -> (Option<std::any::TypeId>, Option<std::any::TypeId>) {
-        if N == 3 {
-            return (None, None);
-        }
-        if N == 4 {
-            return (
-                Some(std::any::TypeId::of::<u64>()),
-                Some(std::any::TypeId::of::<u32>()),
-            );
-        }
-        (
-            Some(std::any::TypeId::of::<u32>()),
-            Some(std::any::TypeId::of::<u32>()),
-        )
+impl Shape for Kind<0> {
+    type Input = Stream<u32>;
+    type Output = Stream<u32>;
+}
+impl Shape for Kind<1> {
+    type Input = Stream<u32>;
+    type Output = Stream<u32>;
+}
+impl Shape for Kind<2> {
+    type Input = Stream<u32>;
+    type Output = Stream<u32>;
+}
+impl Shape for Kind<3> {
+    type Input = NoStream;
+    type Output = NoStream;
+}
+impl Shape for Kind<4> {
+    type Input = Stream<u64>;
+    type Output = Stream<u32>;
+}
+
+impl<const N: u8> harmos::Message for Declaration<N> {
+    fn encode_to_vec(&self) -> Vec<u8> {
+        harmos::Message::encode_to_vec(&Consume {
+            consume: self.consume,
+        })
     }
+    fn encoded_len(&self) -> usize {
+        harmos::Message::encoded_len(&Consume {
+            consume: self.consume,
+        })
+    }
+    fn decoding_memory(bytes: &[u8]) -> Result<usize, harmos::MessageError> {
+        <Consume as harmos::Message>::decoding_memory(bytes)
+    }
+    fn decode(bytes: &[u8]) -> Result<Self, harmos::MessageError> {
+        <Consume as harmos::Message>::decode(bytes).map(|value| Self {
+            consume: value.consume,
+        })
+    }
+}
+
+#[cfg(feature = "grpc")]
+impl<const N: u8> harmos::Protobuf for Declaration<N> {
+    fn encode_to_vec(&self) -> Vec<u8> {
+        harmos::Protobuf::encode_to_vec(&Consume {
+            consume: self.consume,
+        })
+    }
+    fn encoded_len(&self) -> usize {
+        harmos::Protobuf::encoded_len(&Consume {
+            consume: self.consume,
+        })
+    }
+    fn decoding_memory(bytes: &[u8]) -> Result<usize, harmos::MessageError> {
+        <Consume as harmos::Protobuf>::decoding_memory(bytes)
+    }
+    fn decode(bytes: &[u8]) -> Result<Self, harmos::MessageError> {
+        <Consume as harmos::Protobuf>::decode(bytes).map(|value| Self {
+            consume: value.consume,
+        })
+    }
+}
+
+impl<const N: u8> harmos::MemorySize for Declaration<N> {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+    }
+}
+
+impl<const N: u8> harmos::schema::Described for Declaration<N> {
+    const NAME: &'static str = DECLARATION_NAME;
+    const FIELDS: &'static [harmos::schema::Field] = <Consume as harmos::schema::Described>::FIELDS;
+    const MARKER: &'static [u8] = DECLARATION_MARKER;
+}
+
+impl<const N: u8> OperationDeclaration for Declaration<N>
+where
+    Kind<N>: Shape,
+{
+    type Response = u32;
+    type Input = <Kind<N> as Shape>::Input;
+    type Output = <Kind<N> as Shape>::Output;
+    const VERSION: u32 = 1;
     const ID: &'static str = match N {
         1 => "endpoints.retry",
         2 => "endpoints.cache",
@@ -152,17 +262,14 @@ impl<const N: u8> OperationDeclaration for Declaration<N> {
         },
         restart: RestartPolicy::Never,
     };
-    fn key(_: &bool) -> Option<CacheKey> {
+    fn key(&self) -> Option<CacheKey> {
         (N == 2).then(|| CacheKey::new(vec![1]).unwrap())
     }
 }
-impl<const N: u8> harmos::operations::InputDeclaration for Declaration<N> {
-    type Item = u32;
-}
-impl<const N: u8> harmos::operations::OutputDeclaration for Declaration<N> {
-    type Item = u32;
-}
-impl<const N: u8> Operation for Forward<N> {
+impl<const N: u8> Operation for Forward<N>
+where
+    Kind<N>: Shape,
+{
     type Declaration = Declaration<N>;
     type Resources = Trace;
     type Error = Error;
@@ -190,11 +297,11 @@ impl<const N: u8> Operation for Forward<N> {
     async fn run<'ctx>(
         &mut self,
         _: Self::Context<'ctx>,
-        consume: &mut bool,
+        request: &mut Declaration<N>,
         endpoints: &mut Self::Endpoints,
     ) -> harmos::Result<harmos::operations::Response<u32>> {
         let result: ::core::result::Result<u32, Self::Error> = async move {
-            if !*consume {
+            if !request.consume {
                 return Ok(0);
             }
             let (input, output) = endpoints;
@@ -256,8 +363,8 @@ async fn runtime() -> Runtime<App> {
 
 #[cfg(feature = "grpc")]
 async fn envelope(
-    value: harmos::grpc::InputEnvelope<bool, u32>,
-) -> harmos::operations::StreamItem<harmos::grpc::InputEnvelope<bool, u32>> {
+    value: harmos::grpc::InputEnvelope<Declaration<0>, u32>,
+) -> harmos::operations::StreamItem<harmos::grpc::InputEnvelope<Declaration<0>, u32>> {
     let (output, mut input) = stream(StreamSettings {
         items: NonZeroUsize::new(1).unwrap(),
         bytes: NonZeroUsize::new(64).unwrap(),
@@ -288,7 +395,7 @@ pub(super) fn contract_scenario() {
                     let (sending, mut output) = channel();
                     let instance = runtime
                         .operations
-                        .submit_endpoints::<Declaration<0>, _>(true, (receiving, sending))
+                        .submit_endpoints(Declaration::<0> { consume: true }, (receiving, sending))
                         .unwrap();
                     bounded(input.send_with(4, || Ok(7))).await.unwrap();
                     drop(input);
@@ -324,7 +431,7 @@ pub(super) fn contract_scenario() {
                     let (sending, mut output) = channel();
                     let instance = runtime
                         .operations
-                        .submit_endpoints::<Declaration<0>, _>(true, (receiving, sending))
+                        .submit_endpoints(Declaration::<0> { consume: true }, (receiving, sending))
                         .unwrap();
                     bounded(input.send_with(4, || Ok(1))).await.unwrap();
                     let held = bounded(output.recv()).await.unwrap();
@@ -365,7 +472,7 @@ pub(super) fn contract_scenario() {
                     let (sending, _output) = channel();
                     let instance = runtime
                         .operations
-                        .submit_endpoints::<Declaration<0>, _>(false, (receiving, sending))
+                        .submit_endpoints(Declaration::<0> { consume: false }, (receiving, sending))
                         .unwrap();
                     assert!(matches!(
                         bounded(instance).await,
@@ -404,9 +511,10 @@ pub(super) fn contract_scenario() {
                     let (input, receiving) = channel();
                     let (sending, _output) = channel();
                     assert!(matches!(
-                        runtime
-                            .operations
-                            .submit_endpoints::<Declaration<2>, _>(false, (receiving, sending)),
+                        runtime.operations.submit_endpoints(
+                            Declaration::<2> { consume: false },
+                            (receiving, sending)
+                        ),
                         Err(Error::InvalidInput {
                             field: "operation stream cache",
                             ..
@@ -490,7 +598,7 @@ pub(super) fn contract_scenario() {
                     let (sending, mut output) = channel();
                     let instance = runtime
                         .operations
-                        .submit_endpoints::<Declaration<0>, _>(true, (receiving, sending))
+                        .submit_endpoints(Declaration::<0> { consume: true }, (receiving, sending))
                         .unwrap();
                     let incoming = futures_util::stream::iter([Ok(item)]);
                     let result = bounded(harmos::grpc::input(instance, input, incoming))
@@ -524,7 +632,7 @@ pub(super) fn contract_scenario() {
                     let (sending, _output) = channel();
                     let instance = runtime
                         .operations
-                        .submit_endpoints::<Declaration<0>, _>(false, (receiving, sending))
+                        .submit_endpoints(Declaration::<0> { consume: false }, (receiving, sending))
                         .unwrap();
                     let result = bounded(harmos::grpc::input(
                         instance,
@@ -559,7 +667,7 @@ pub(super) fn contract_scenario() {
                     let (sending, _output) = channel();
                     let instance = runtime
                         .operations
-                        .submit_endpoints::<Declaration<0>, _>(true, (receiving, sending))
+                        .submit_endpoints(Declaration::<0> { consume: true }, (receiving, sending))
                         .unwrap();
                     // Only a constructed instance has cleanup to preserve.
                     let initialized = trace.clone();
@@ -612,7 +720,7 @@ pub(super) fn contract_scenario() {
                     let (sending, _output) = channel();
                     let instance = runtime
                         .operations
-                        .submit_endpoints::<Declaration<0>, _>(true, (receiving, sending))
+                        .submit_endpoints(Declaration::<0> { consume: true }, (receiving, sending))
                         .unwrap();
                     drop(harmos::grpc::input(
                         instance,
@@ -643,7 +751,7 @@ pub(super) fn contract_scenario() {
     let (sending, _output) = channel();
     let instance = runtime
         .operations
-        .submit_endpoints::<Declaration<0>, _>(true, (receiving, sending))
+        .submit_endpoints(Declaration::<0> { consume: true }, (receiving, sending))
         .unwrap();
     let error = bounded(harmos::grpc::input(
         instance,
@@ -693,7 +801,7 @@ pub(super) fn contract_scenario() {
                     let (sending, output) = channel();
                     let instance = runtime
                         .operations
-                        .submit_endpoints::<Declaration<0>, _>(true, (receiving, sending))
+                        .submit_endpoints(Declaration::<0> { consume: true }, (receiving, sending))
                         .unwrap();
                     let mut exchange = harmos::grpc::exchange(
                         instance,
@@ -738,7 +846,7 @@ pub(super) fn contract_scenario() {
     let (sending, output) = channel();
     let instance = runtime
         .operations
-        .submit_endpoints::<Declaration<0>, _>(true, (receiving, sending))
+        .submit_endpoints(Declaration::<0> { consume: true }, (receiving, sending))
         .unwrap();
     // Only a constructed instance has cleanup to retain.
     let initialized = trace.clone();
@@ -786,7 +894,7 @@ pub(super) fn contract_scenario() {
                     let (sending, output) = channel();
                     let instance = runtime
                         .operations
-                        .submit_endpoints::<Declaration<0>, _>(true, (receiving, sending))
+                        .submit_endpoints(Declaration::<0> { consume: true }, (receiving, sending))
                         .unwrap();
                     drop(harmos::grpc::exchange(
                         instance,
@@ -816,12 +924,15 @@ pub(super) fn contract_scenario() {
                         .operations
                         .register_operation::<Forward<0>>("app", Lanes::Open, trace.clone())
                         .unwrap();
-                    let (requests, mut decoded) = stream::<bool>(StreamSettings {
+                    let (requests, mut decoded) = stream::<Declaration<0>>(StreamSettings {
                         items: NonZeroUsize::new(1).unwrap(),
                         bytes: NonZeroUsize::new(1).unwrap(),
                     })
                     .unwrap();
-                    requests.send_with(1, || Ok(false)).await.unwrap();
+                    requests
+                        .send_with(1, || Ok(Declaration { consume: false }))
+                        .await
+                        .unwrap();
                     let request = decoded.recv().await.unwrap();
                     let (_input, receiving) = channel();
                     let (sending, _output) = channel();
@@ -862,12 +973,15 @@ pub(super) fn contract_scenario() {
                         .operations
                         .register_operation::<Forward<0>>("app", Lanes::Open, trace.clone())
                         .unwrap();
-                    let (requests, mut decoded) = stream::<bool>(StreamSettings {
+                    let (requests, mut decoded) = stream::<Declaration<0>>(StreamSettings {
                         items: NonZeroUsize::new(1).unwrap(),
                         bytes: NonZeroUsize::new(1).unwrap(),
                     })
                     .unwrap();
-                    requests.send_with(1, || Ok(false)).await.unwrap();
+                    requests
+                        .send_with(1, || Ok(Declaration { consume: false }))
+                        .await
+                        .unwrap();
                     let request = decoded.recv().await.unwrap();
                     assert!(matches!(
                         runtime
@@ -896,7 +1010,7 @@ pub(super) fn contract_scenario() {
         .register_operation::<Forward<0>>("app", Lanes::Open, trace.clone())
         .unwrap();
     let frames = futures_util::stream::iter([
-        Ok(envelope(InputEnvelope::Request(true)).await),
+        Ok(envelope(InputEnvelope::Request(Declaration { consume: true })).await),
         Ok(envelope(InputEnvelope::Item(7)).await),
     ]);
     let (request, incoming) = bounded(harmos::grpc::open(frames)).await.unwrap();
@@ -936,8 +1050,8 @@ pub(super) fn contract_scenario() {
         matches!(harmos::grpc::open(early).await, Err(error) if error.code() == tonic::Code::InvalidArgument)
     );
     let frames = futures_util::stream::iter([
-        Ok(envelope(InputEnvelope::Request(true)).await),
-        Ok(envelope(InputEnvelope::Request(false)).await),
+        Ok(envelope(InputEnvelope::Request(Declaration { consume: true })).await),
+        Ok(envelope(InputEnvelope::Request(Declaration { consume: false })).await),
         Ok(envelope(InputEnvelope::Item(7)).await),
     ]);
     let (_request, items) = harmos::grpc::open(frames).await.unwrap();
@@ -967,7 +1081,9 @@ async fn parent_cancellation<const CHARGED: bool>() {
     let (sending, mut output) = channel();
     let parent = runtime
         .operations
-        .submit(Some((receiving, sending)))
+        .submit(ParentDeclaration {
+            endpoints: Mutex::new(Some((receiving, sending))),
+        })
         .unwrap();
     bounded(input.send_with(4, || Ok(7))).await.unwrap();
     let held = bounded(output.recv()).await.unwrap();

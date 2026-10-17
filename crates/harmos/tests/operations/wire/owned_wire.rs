@@ -60,8 +60,8 @@ struct Text {
 }
 
 /* === Enums === */
+#[harmos::message]
 #[harmos::operation(
-        request = Text,
         response = Text,
         id = "owned-wire.read",
         version = 1,
@@ -75,7 +75,9 @@ struct Text {
             restart: RestartPolicy::Never,
         },
     )]
-struct ReadContract;
+struct ReadContract {
+    value: String,
+}
 
 #[harmos::catalog]
 enum Operations {
@@ -140,7 +142,7 @@ impl Operation for Read {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        request: &mut Text,
+        request: &mut ReadContract,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Text>, Self::Error> {
         let result: ::core::result::Result<Text, Self::Error> = async move {
@@ -296,7 +298,7 @@ pub(super) fn contract_scenario() {
 
                     let typed = runtime
                         .operations
-                        .submit(Text {
+                        .submit(ReadContract {
                             value: "typed".to_owned(),
                         })
                         .unwrap();
@@ -396,7 +398,7 @@ pub(super) fn contract_scenario() {
                     );
                     let answer = runtime
                         .operations
-                        .call(Text {
+                        .call(ReadContract {
                             value: "local".to_owned(),
                         })
                         .await
@@ -411,8 +413,9 @@ pub(super) fn contract_scenario() {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
 
-    #[harmos::operation(request = (), response = (), input = Text, output = (), id = "owned-wire.stream", version = 1, policy = ReadContract::POLICY)]
-struct StreamContract;
+    #[harmos::message]
+    #[harmos::operation(response = (), input = Text, output = (), id = "owned-wire.stream", version = 1, policy = ReadContract::POLICY)]
+struct StreamContract {}
 
 #[harmos::catalog]
     enum StreamContracts {
@@ -431,7 +434,7 @@ struct StreamContract;
         async fn run<'ctx>(
             &mut self,
             _: Self::Context<'ctx>,
-            _request: &mut (),
+            _request: &mut StreamContract,
             _endpoints: &mut Self::Endpoints,
         ) -> Result<harmos::operations::Response<()>, Self::Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {

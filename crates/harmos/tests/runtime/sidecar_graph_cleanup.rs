@@ -227,8 +227,8 @@ impl Attach for Joined {
     fn observers(&self) -> Vec<harmos_domain::inventory::observers::Declaration> {
         forwarded!(self, observers)
     }
-    fn observer_control(&self) -> harmos_domain::Result<Option<harmos::operations::Contract>> {
-        forwarded!(self, observer_control)
+    fn observe_contract(&self) -> harmos_domain::Result<Option<harmos::operations::Contract>> {
+        forwarded!(self, observe_contract)
     }
     fn listener_declarations(
         &self,

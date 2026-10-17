@@ -30,13 +30,14 @@ use super::fixture::state_settings;
 use super::support::{Bank, Ledger, catalog};
 use super::waveforms;
 use harmos::Runtime;
+use harmos::storage::operations::Query;
 use harmos::storage::query::scalar::ScalarValue;
 use harmos::storage::query::transform::{
     Transform,
     aggregate::{Aggregate, Measure},
     filter::{Clause, Compare, Condition, Filter, Term},
 };
-use harmos::storage::query::{Query, QueryArrow, QueryReader, RowSlice, Source, StreamSelection};
+use harmos::storage::query::{QueryArrow, QueryReader, RowSlice, Source, StreamSelection};
 use harmos::storage::*;
 
 /* === Constants === */

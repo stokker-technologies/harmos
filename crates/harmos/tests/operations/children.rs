@@ -56,6 +56,7 @@ struct Parent {
 struct Child(Arc<Trace>);
 
 /* === Enums === */
+#[harmos::message]
 enum Exit {
     Return,
     Fail,
@@ -73,10 +74,11 @@ enum Failed {
     Child(#[from] Error),
 }
 
+#[harmos::message]
 #[harmos::operation(
-        request = Exit,
         response = (),
         id = "children.parent",
+        version = 1,
         policy = OperationPolicy {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
@@ -87,12 +89,15 @@ enum Failed {
             restart: RestartPolicy::Never,
         },
     )]
-struct ParentContract;
+struct ParentContract {
+    exit: Exit,
+}
 
+#[harmos::message]
 #[harmos::operation(
-        request = (),
         response = (),
         id = "children.child",
+        version = 1,
         policy = OperationPolicy {
             timeout: Duration::from_secs(5),
             attempt_timeout: Duration::from_secs(5),
@@ -100,7 +105,7 @@ struct ParentContract;
             restart: RestartPolicy::Never,
         },
     )]
-struct ChildContract;
+struct ChildContract {}
 
 #[harmos::catalog]
 enum Operations {
@@ -125,16 +130,16 @@ impl Operation for Parent {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        exit: &mut Exit,
+        request: &mut ParentContract,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<()>, Failed> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             self.trace.attempts.fetch_add(1, Ordering::SeqCst);
             self.trace.events.lock().unwrap().push("parent-attempt");
-            let _child = context.submit(())?;
+            let _child = context.submit(ChildContract {})?;
             self.trace.child_started.notified().await;
             self.trace.parent_ready.notify_one();
-            match exit {
+            match request.exit {
                 Exit::Return => Ok(()),
                 Exit::Fail => Err(Failed::Attempt),
                 Exit::Wait => std::future::pending().await,
@@ -170,7 +175,7 @@ impl Operation for Child {
     async fn run<'ctx>(
         &mut self,
         _context: Self::Context<'ctx>,
-        _request: &mut (),
+        _request: &mut ChildContract,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<()>, Self::Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
@@ -229,7 +234,7 @@ async fn runtime(block_cleanup: bool) -> (Runtime<App>, Arc<Trace>) {
 
 async fn torn_down(exit: Exit, cancel: bool) -> Result<harmos::operations::Response<()>, Error> {
     let (runtime, trace) = runtime(false).await;
-    let parent = runtime.operations.submit(exit).unwrap();
+    let parent = runtime.operations.submit(ParentContract { exit }).unwrap();
     if cancel {
         trace.parent_ready.notified().await;
         parent.cancel();
@@ -323,7 +328,10 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let (runtime, trace) = runtime(true).await;
-                    let parent = runtime.operations.submit(Exit::Retry).unwrap();
+                    let parent = runtime
+                        .operations
+                        .submit(ParentContract { exit: Exit::Retry })
+                        .unwrap();
                     trace.finalizing.notified().await;
                     tokio::time::advance(Duration::from_millis(20)).await;
                     assert_eq!(trace.attempts.load(Ordering::SeqCst), 1);
@@ -372,7 +380,8 @@ pub(super) fn contract_scenario() {
                     for exit in [Exit::Return, Exit::Fail] {
                         let succeeds = matches!(exit, Exit::Return);
                         let (runtime, trace) = runtime(true).await;
-                        let mut parent = runtime.operations.submit(exit).unwrap();
+                        let mut parent =
+                            runtime.operations.submit(ParentContract { exit }).unwrap();
                         trace.finalizing.notified().await;
                         assert!((&mut parent).now_or_never().is_none());
                         assert_eq!(

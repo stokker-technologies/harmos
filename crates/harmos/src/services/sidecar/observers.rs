@@ -135,7 +135,7 @@ impl Remote {
         let original = self.control.get().ok_or(crate::Error::NotReady {
             domain: "observer control",
         })?;
-        let Some(contract) = original.scope.observer_control() else {
+        let Some(contract) = original.scope.observe_contract() else {
             return Ok(());
         };
         if original.binding.get().is_some() {
@@ -159,7 +159,7 @@ impl Remote {
         })?;
         original
             .scope
-            .observer_control()
+            .observe_contract()
             .ok_or(crate::Error::NotReady {
                 domain: "observer control",
             })?;

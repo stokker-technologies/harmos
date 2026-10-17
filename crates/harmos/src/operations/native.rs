@@ -894,8 +894,8 @@ impl Binding {
         self.native.endpoint.observer_outcome()
     }
 
-    pub(super) fn capture_observer_control(&self) -> Result<()> {
-        self.native.endpoint.capture_observer_control()
+    pub(super) fn capture_observe_contract(&self) -> Result<()> {
+        self.native.endpoint.capture_observe_contract()
     }
 
     // A slot of its own: resident controls are not charged against the
@@ -1070,7 +1070,7 @@ pub(super) fn bindings(
             let entry_mut = Arc::get_mut(&mut entry).expect("new native entry has one owner");
             entry_mut.native = Some(handler);
             // The observe control runs until cancelled outside any bounded lane.
-            if exact_contract.is_some() && scope.observer_control() == exact_contract.as_ref() {
+            if exact_contract.is_some() && scope.observe_contract() == exact_contract.as_ref() {
                 entry_mut.resident();
             }
             #[cfg(feature = "grpc")]

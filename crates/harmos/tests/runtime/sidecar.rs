@@ -47,22 +47,25 @@ mod visibility {
         pub value: i64,
     }
     #[harmos::message]
+    #[harmos::operation(
+        id = "gauge.scale-privately",
+        version = 1,
+        policy = GAUGE_POLICY,
+        response = Scale,
+    )]
     #[derive(Clone, PartialEq)]
-    pub struct ScalePubliclyRequest {}
-    pub struct ScalePrivately;
-    pub struct ScalePublicly;
-    impl OperationDeclaration for ScalePrivately {
-        type Request = Scale;
-        type Response = Scale;
-        const ID: &'static str = "gauge.scale-privately";
-        const POLICY: OperationPolicy = GAUGE_POLICY;
+    pub struct ScalePrivately {
+        pub value: i64,
     }
-    impl OperationDeclaration for ScalePublicly {
-        type Request = ScalePubliclyRequest;
-        type Response = Scale;
-        const ID: &'static str = "gauge.scale-publicly";
-        const POLICY: OperationPolicy = GAUGE_POLICY;
-    }
+    #[harmos::message]
+    #[harmos::operation(
+        id = "gauge.scale-publicly",
+        version = 1,
+        policy = GAUGE_POLICY,
+        response = Scale,
+    )]
+    #[derive(Clone, PartialEq)]
+    pub struct ScalePublicly {}
     pub(super) struct ScalingPrivately {
         resources: Arc<GaugeResources>,
     }
@@ -82,7 +85,7 @@ mod visibility {
         async fn run<'ctx>(
             &mut self,
             _: Self::Context<'ctx>,
-            request: &mut Scale,
+            request: &mut ScalePrivately,
             _endpoints: &mut Self::Endpoints,
         ) -> Result<harmos::operations::Response<Scale>, Refusal> {
             let result: ::core::result::Result<Scale, Self::Error> = async move {
@@ -113,7 +116,7 @@ mod visibility {
         async fn run<'ctx>(
             &mut self,
             _: Self::Context<'ctx>,
-            _request: &mut ScalePubliclyRequest,
+            _request: &mut ScalePublicly,
             _endpoints: &mut Self::Endpoints,
         ) -> Result<harmos::operations::Response<Scale>, Refusal> {
             let result: ::core::result::Result<Scale, Self::Error> = async move {
@@ -168,6 +171,18 @@ const GAUGE_POLICY: OperationPolicy = OperationPolicy {
 
 /* === Structs === */
 #[harmos::message]
+#[harmos::operation(
+    id = "meter.amplify",
+    version = 1,
+    policy = OperationPolicy {
+        timeout: Duration::from_secs(2),
+        attempt_timeout: Duration::from_secs(2),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    },
+    response = Amplified,
+    visibility = Visibility::Shared,
+)]
 #[derive(Clone, PartialEq)]
 struct Amplify {
     value: i64,
@@ -180,38 +195,122 @@ struct Amplified {
 }
 
 #[harmos::message]
+#[harmos::operation(
+    id = "meter.sample",
+    version = 1,
+    policy = OperationPolicy {
+        timeout: Duration::from_secs(2),
+        attempt_timeout: Duration::from_secs(2),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    },
+    response = (),
+    visibility = Visibility::Host,
+)]
 #[derive(Clone, PartialEq, Eq)]
 struct Sample {
     value: u64,
 }
 
 #[harmos::message]
+#[harmos::operation(
+    id = "meter.emit",
+    version = 1,
+    policy = OperationPolicy {
+        timeout: Duration::from_secs(2),
+        attempt_timeout: Duration::from_secs(2),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    },
+    response = (),
+    visibility = Visibility::Shared,
+)]
 #[derive(Clone, PartialEq)]
 struct Emit {
     value: u64,
 }
 
 #[harmos::message]
+#[harmos::operation(
+    id = "meter.publish-pulse",
+    version = 1,
+    policy = OperationPolicy {
+        timeout: Duration::from_secs(2),
+        attempt_timeout: Duration::from_secs(2),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    },
+    response = (),
+    visibility = Visibility::Shared,
+)]
 #[derive(Clone, PartialEq)]
 struct PublishPulse {
     sample: u64,
 }
 
 #[harmos::message]
+#[harmos::operation(
+    id = "meter.collapse",
+    version = 1,
+    policy = OperationPolicy {
+        timeout: Duration::from_secs(2),
+        attempt_timeout: Duration::from_secs(2),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    },
+    response = (),
+    visibility = Visibility::Shared,
+)]
 #[derive(Clone, PartialEq)]
 struct Collapse {}
 
 #[harmos::message]
+#[harmos::operation(
+    id = "meter.finish",
+    version = 1,
+    policy = OperationPolicy {
+        timeout: Duration::from_secs(2),
+        attempt_timeout: Duration::from_secs(2),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    },
+    response = (),
+    visibility = Visibility::Shared,
+)]
 #[derive(Clone, PartialEq)]
 struct Finish {
     reason: String,
 }
 
 #[harmos::message]
+#[harmos::operation(
+    id = "meter.ask",
+    version = 1,
+    policy = OperationPolicy {
+        timeout: Duration::from_millis(25),
+        attempt_timeout: Duration::from_millis(25),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    },
+    response = (),
+    description = "An operation that never answers, so the host's deadline ends the call.",
+)]
 #[derive(Clone, PartialEq)]
 struct Ask {}
 
 #[harmos::message]
+#[harmos::operation(
+    id = "meter.budgeted",
+    version = 1,
+    policy = OperationPolicy {
+        timeout: Duration::from_secs(2),
+        attempt_timeout: Duration::from_secs(2),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    },
+    response = BudgetedReply,
+    visibility = Visibility::Shared,
+)]
 #[derive(Clone, PartialEq)]
 struct BudgetedRoute {
     payload: Vec<u8>,
@@ -244,8 +343,14 @@ struct Calibration {
 }
 
 #[harmos::message]
+#[harmos::operation(
+    id = "gauge.get-measure",
+    version = 1,
+    policy = GAUGE_POLICY,
+    response = Measured,
+)]
 #[derive(Clone, PartialEq)]
-pub(crate) struct Measure {
+pub(crate) struct GetMeasure {
     value: i64,
 }
 
@@ -265,28 +370,57 @@ struct GaugeResources {
 }
 
 #[harmos::message]
+#[harmos::operation(
+    id = "gauge.stop-sampling",
+    version = 1,
+    policy = GAUGE_POLICY,
+    response = StopSamplingResponse,
+)]
 #[derive(Clone, PartialEq)]
-pub(crate) struct StopSamplingRequest {}
+pub(crate) struct StopSampling {}
 
 #[harmos::message]
 #[derive(Clone, PartialEq)]
 pub(crate) struct StopSamplingResponse {}
 
 #[harmos::message]
+#[harmos::operation(id = "gauge.get-factor", version = 1, policy = GAUGE_POLICY, response = Measured)]
 #[derive(Clone, PartialEq)]
-pub(crate) struct GetFactorRequest {}
+pub(crate) struct GetFactor {}
 
-struct GetMeasure;
+#[harmos::message]
+#[harmos::operation(
+    id = "meter.echo",
+    version = 1,
+    policy = OperationPolicy {
+        timeout: Duration::from_millis(80),
+        attempt_timeout: Duration::from_millis(80),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    },
+    response = String,
+    description = "Answers with what it was handed, publishing first when asked to.",
+)]
+struct MeterEcho {
+    text: String,
+}
 
-struct MeterEcho;
+#[harmos::message]
+#[harmos::operation(id = "gauge.run-echo", version = 1, policy = GAUGE_POLICY, response = String)]
+struct RunEcho {
+    text: String,
+}
 
-struct RunEcho;
-
-struct RunUppercase;
-
-struct StopSampling;
-
-struct GetFactor;
+#[harmos::message]
+#[harmos::operation(
+    id = "gauge.run-uppercase",
+    version = 1,
+    policy = GAUGE_POLICY,
+    response = String,
+)]
+struct RunUppercase {
+    text: String,
+}
 
 struct MeterHandler;
 
@@ -332,126 +466,6 @@ enum MeterOperations {
 /* === Traits === */
 
 /* === Implementations === */
-impl harmos::operations::WireOperation for Amplify {
-    const VERSION: u32 = 1;
-}
-
-impl harmos::operations::WireOperation for PublishPulse {
-    const VERSION: u32 = 1;
-}
-
-impl OperationDeclaration for Amplify {
-    type Request = Self;
-    const ID: &'static str = "meter.amplify";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(2),
-        attempt_timeout: Duration::from_secs(2),
-        retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
-    };
-    const VISIBILITY: Visibility = Visibility::Shared;
-
-    type Response = Amplified;
-}
-
-impl OperationDeclaration for Sample {
-    type Request = Self;
-    const ID: &'static str = "meter.sample";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(2),
-        attempt_timeout: Duration::from_secs(2),
-        retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
-    };
-    const VISIBILITY: Visibility = Visibility::Host;
-
-    type Response = ();
-}
-
-impl OperationDeclaration for Emit {
-    type Request = Self;
-    const ID: &'static str = "meter.emit";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(2),
-        attempt_timeout: Duration::from_secs(2),
-        retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
-    };
-    const VISIBILITY: Visibility = Visibility::Shared;
-
-    type Response = ();
-}
-
-impl OperationDeclaration for PublishPulse {
-    type Request = Self;
-    const ID: &'static str = "meter.publish-pulse";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(2),
-        attempt_timeout: Duration::from_secs(2),
-        retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
-    };
-    const VISIBILITY: Visibility = Visibility::Shared;
-
-    type Response = ();
-}
-
-impl OperationDeclaration for Collapse {
-    type Request = Self;
-    const ID: &'static str = "meter.collapse";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(2),
-        attempt_timeout: Duration::from_secs(2),
-        retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
-    };
-    const VISIBILITY: Visibility = Visibility::Shared;
-
-    type Response = ();
-}
-
-impl OperationDeclaration for Finish {
-    type Request = Self;
-    const ID: &'static str = "meter.finish";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(2),
-        attempt_timeout: Duration::from_secs(2),
-        retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
-    };
-    const VISIBILITY: Visibility = Visibility::Shared;
-
-    type Response = ();
-}
-
-impl OperationDeclaration for Ask {
-    type Request = Self;
-    const ID: &'static str = "meter.ask";
-    const DESCRIPTION: &'static str =
-        "An operation that never answers, so the host's deadline ends the call.";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_millis(25),
-        attempt_timeout: Duration::from_millis(25),
-        retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
-    };
-
-    type Response = ();
-}
-
-impl OperationDeclaration for BudgetedRoute {
-    type Request = Self;
-    const ID: &'static str = "meter.budgeted";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(2),
-        attempt_timeout: Duration::from_secs(2),
-        retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
-    };
-    const VISIBILITY: Visibility = Visibility::Shared;
-
-    type Response = BudgetedReply;
-}
 
 impl harmos::operations::lifecycle::Policy for Joinable {
     const INITIALIZATION_POLICY: OperationPolicy = GAUGE_POLICY;
@@ -537,41 +551,6 @@ impl harmos::Plugin for Gauge {
     }
 }
 
-impl OperationDeclaration for GetMeasure {
-    type Request = Measure;
-    type Response = Measured;
-    const ID: &'static str = "gauge.get-measure";
-    const POLICY: OperationPolicy = GAUGE_POLICY;
-}
-
-impl harmos::operations::WireOperation for GetMeasure {
-    const VERSION: u32 = 1;
-}
-
-impl harmos::operations::WireOperation for RunEcho {
-    const VERSION: u32 = 1;
-}
-
-impl harmos::operations::WireOperation for RunUppercase {
-    const VERSION: u32 = 1;
-}
-
-impl harmos::operations::WireOperation for StopSampling {
-    const VERSION: u32 = 1;
-}
-
-impl harmos::operations::WireOperation for GetFactor {
-    const VERSION: u32 = 1;
-}
-
-impl harmos::operations::WireOperation for visibility::ScalePrivately {
-    const VERSION: u32 = 1;
-}
-
-impl harmos::operations::WireOperation for visibility::ScalePublicly {
-    const VERSION: u32 = 1;
-}
-
 struct Measuring {
     resources: Arc<GaugeResources>,
 }
@@ -605,7 +584,7 @@ impl harmos::operations::Operation for Measuring {
     async fn run<'ctx>(
         &mut self,
         _: Self::Context<'ctx>,
-        request: &mut Measure,
+        request: &mut GetMeasure,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Measured>, MeasureError> {
         let result: ::core::result::Result<Measured, Self::Error> = async move {
@@ -626,27 +605,6 @@ impl harmos::operations::Operation for Measuring {
         .await;
         result.map(::core::convert::Into::into)
     }
-}
-
-impl OperationDeclaration for MeterEcho {
-    type Request = String;
-    type Response = String;
-    const ID: &'static str = "meter.echo";
-    const DESCRIPTION: &'static str =
-        "Answers with what it was handed, publishing first when asked to.";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_millis(80),
-        attempt_timeout: Duration::from_millis(80),
-        retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
-    };
-}
-
-impl OperationDeclaration for RunEcho {
-    type Request = String;
-    type Response = String;
-    const ID: &'static str = "gauge.run-echo";
-    const POLICY: OperationPolicy = GAUGE_POLICY;
 }
 
 struct Echoing {
@@ -670,23 +628,15 @@ impl harmos::operations::Operation for Echoing {
     async fn run<'ctx>(
         &mut self,
         _: Self::Context<'ctx>,
-        request: &mut String,
+        request: &mut RunEcho,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<String>, Refusal> {
         let result: ::core::result::Result<String, Self::Error> = async move {
-            let _ = &request;
-            Ok(request.clone())
+            Ok(request.text.clone())
         }
         .await;
         result.map(::core::convert::Into::into)
     }
-}
-
-impl OperationDeclaration for RunUppercase {
-    type Request = String;
-    type Response = String;
-    const ID: &'static str = "gauge.run-uppercase";
-    const POLICY: OperationPolicy = GAUGE_POLICY;
 }
 
 struct Uppercasing {
@@ -710,23 +660,15 @@ impl harmos::operations::Operation for Uppercasing {
     async fn run<'ctx>(
         &mut self,
         _: Self::Context<'ctx>,
-        request: &mut String,
+        request: &mut RunUppercase,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<String>, Refusal> {
         let result: ::core::result::Result<String, Self::Error> = async move {
-            let _ = &request;
-            Ok(request.to_uppercase())
+            Ok(request.text.to_uppercase())
         }
         .await;
         result.map(::core::convert::Into::into)
     }
-}
-
-impl OperationDeclaration for StopSampling {
-    type Request = StopSamplingRequest;
-    type Response = StopSamplingResponse;
-    const ID: &'static str = "gauge.stop-sampling";
-    const POLICY: OperationPolicy = GAUGE_POLICY;
 }
 
 struct StoppingSampling {
@@ -748,7 +690,7 @@ impl harmos::operations::Operation for StoppingSampling {
     async fn run<'ctx>(
         &mut self,
         _: Self::Context<'ctx>,
-        request: &mut StopSamplingRequest,
+        request: &mut StopSampling,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<StopSamplingResponse>, Refusal> {
         let result: ::core::result::Result<StopSamplingResponse, Self::Error> = async move {
@@ -759,13 +701,6 @@ impl harmos::operations::Operation for StoppingSampling {
         .await;
         result.map(::core::convert::Into::into)
     }
-}
-
-impl OperationDeclaration for GetFactor {
-    type Request = GetFactorRequest;
-    type Response = Measured;
-    const ID: &'static str = "gauge.get-factor";
-    const POLICY: OperationPolicy = GAUGE_POLICY;
 }
 
 struct ReadingFactor {
@@ -787,7 +722,7 @@ impl harmos::operations::Operation for ReadingFactor {
     async fn run<'ctx>(
         &mut self,
         _: Self::Context<'ctx>,
-        request: &mut GetFactorRequest,
+        request: &mut GetFactor,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Measured>, Refusal> {
         let result: ::core::result::Result<Measured, Self::Error> = async move {
@@ -1017,10 +952,6 @@ impl harmos::operations::Operation for BudgetedCall {
     }
 }
 
-impl harmos::operations::WireOperation for Sample {
-    const VERSION: u32 = 1;
-}
-
 struct Sampling {
     resources: Arc<SampleProjection>,
 }
@@ -1100,22 +1031,6 @@ impl harmos::Plugin for Meter {
     }
 }
 
-impl harmos::operations::WireOperation for Emit {
-    const VERSION: u32 = 1;
-}
-
-impl harmos::operations::WireOperation for Collapse {
-    const VERSION: u32 = 1;
-}
-
-impl harmos::operations::WireOperation for Finish {
-    const VERSION: u32 = 1;
-}
-
-impl harmos::operations::WireOperation for BudgetedRoute {
-    const VERSION: u32 = 1;
-}
-
 impl Attach for MeterSource {
     type Error = std::io::Error;
     fn owner(&self) -> &str {
@@ -1147,8 +1062,8 @@ impl Attach for MeterSource {
     fn observers(&self) -> Vec<harmos_sidecar::inventory::observers::Declaration> {
         self.source.observers()
     }
-    fn observer_control(&self) -> harmos_domain::Result<Option<harmos::operations::Contract>> {
-        self.source.observer_control()
+    fn observe_contract(&self) -> harmos_domain::Result<Option<harmos::operations::Contract>> {
+        self.source.observe_contract()
     }
     fn listener_declarations(
         &self,
@@ -2063,7 +1978,7 @@ fn own_contract() {
 
     assert_eq!(
         fixture
-            .call(visibility::Scale { value: 4 })
+            .call(visibility::ScalePrivately { value: 4 })
             .await
             .unwrap(),
         visibility::Scale { value: 20 },
@@ -2071,7 +1986,7 @@ fn own_contract() {
     );
     assert_eq!(
         fixture
-            .call(visibility::ScalePubliclyRequest {})
+            .call(visibility::ScalePublicly {})
             .await
             .unwrap(),
         visibility::Scale { value: 5 },
@@ -2110,11 +2025,11 @@ fn own_contract() {
                     publications::ready(fixture.ready().clone()).await;
 
                     assert_eq!(
-                        fixture.call(Measure { value: 7 }).await.unwrap(),
+                        fixture.call(GetMeasure { value: 7 }).await.unwrap(),
                         Measured { value: 21 },
                         "the route answers under the configuration the entry was activated with"
                     );
-                    let error = fixture.call(Measure { value: -1 }).await.unwrap_err();
+                    let error = fixture.call(GetMeasure { value: -1 }).await.unwrap_err();
                     let failure = error
                         .failure()
                         .expect("handler refusal preserves its structured failure");
@@ -2128,7 +2043,7 @@ fn own_contract() {
                     );
 
                     // A Nested Transport Failure Arrives As One Cause And One Operation Frame
-                    let error = fixture.call(Measure { value: i64::MIN }).await.unwrap_err();
+                    let error = fixture.call(GetMeasure { value: i64::MIN }).await.unwrap_err();
                     let failure = error
                         .failure()
                         .expect("the handler failure crosses as a structured value");
@@ -2156,21 +2071,31 @@ fn own_contract() {
                     );
 
                     assert_eq!(
-                        fixture.call("hello".to_owned()).await.unwrap(),
+                        fixture
+                            .call(RunEcho {
+                                text: "hello".to_owned()
+                            })
+                            .await
+                            .unwrap(),
                         "hello".to_owned()
                     );
                     assert_eq!(
-                        fixture.call("hello".to_owned()).await.unwrap(),
+                        fixture
+                            .call(RunUppercase {
+                                text: "hello".to_owned()
+                            })
+                            .await
+                            .unwrap(),
                         "HELLO".to_owned()
                     );
 
                     assert_eq!(
-                        fixture.call(StopSamplingRequest {}).await.unwrap(),
+                        fixture.call(StopSampling {}).await.unwrap(),
                         StopSamplingResponse {},
                         "a route carrying nothing either way still names one message each way"
                     );
                     assert_eq!(
-                        fixture.call(GetFactorRequest {}).await.unwrap(),
+                        fixture.call(GetFactor {}).await.unwrap(),
                         Measured { value: 3 },
                         "a reply written through the crate's own alias dispatches like any other"
                     );
@@ -2217,7 +2142,12 @@ fn own_contract() {
     .unwrap();
     let refused = runtime
         .operations
-        .call_encoded(MeterEcho::ID, "publish-foreign".to_owned().encode_to_vec())
+        .call_encoded(
+            MeterEcho::ID,
+            Message::encode_to_vec(&MeterEcho {
+                text: "publish-foreign".to_owned(),
+            }),
+        )
         .await
         .unwrap_err();
     let harmos::Error::OperationFailed { source, .. } = refused else {
@@ -2394,8 +2324,8 @@ fn own_contract() {
         fn observers(&self) -> Vec<harmos_sidecar::inventory::observers::Declaration> {
             self.source.observers()
         }
-        fn observer_control(&self) -> harmos_domain::Result<Option<harmos::operations::Contract>> {
-            self.source.observer_control()
+        fn observe_contract(&self) -> harmos_domain::Result<Option<harmos::operations::Contract>> {
+            self.source.observe_contract()
         }
         fn listener_declarations(
             &self,

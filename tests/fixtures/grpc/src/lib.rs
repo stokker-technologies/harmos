@@ -78,7 +78,7 @@ mod tests {
         );
         check!(
             operations_messages::unary::Row0,
-            operations_messages::unary::Row1,
+            operations_messages::unary::Row2,
             response
         );
         check!(
@@ -88,12 +88,12 @@ mod tests {
         );
         check!(
             operations_messages::upload::Row0,
-            operations_messages::upload::Row1,
+            operations_messages::upload::Row2,
             input
         );
         check!(
             operations_messages::upload::Row0,
-            operations_messages::upload::Row1,
+            operations_messages::upload::Row2,
             response
         );
         check!(
@@ -103,12 +103,12 @@ mod tests {
         );
         check!(
             operations_messages::download::Row0,
-            operations_messages::download::Row1,
+            operations_messages::download::Row2,
             output
         );
         check!(
             operations_messages::download::Row0,
-            operations_messages::download::Row1,
+            operations_messages::download::Row2,
             response
         );
         check!(
@@ -118,17 +118,17 @@ mod tests {
         );
         check!(
             operations_messages::exchange::Row0,
-            operations_messages::exchange::Row1,
+            operations_messages::exchange::Row2,
             input
         );
         check!(
             operations_messages::exchange::Row0,
-            operations_messages::exchange::Row1,
+            operations_messages::exchange::Row2,
             output
         );
         check!(
             operations_messages::exchange::Row0,
-            operations_messages::exchange::Row1,
+            operations_messages::exchange::Row2,
             response
         );
     }

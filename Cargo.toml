@@ -7,7 +7,6 @@ members = [
   "tests/fixtures/grpc",
   "tests/fixtures/lifecycle",
   "tests/support/jsonl-adapter",
-  "tests/fixtures/observer",
   "examples/schematic/*",
 ]
 

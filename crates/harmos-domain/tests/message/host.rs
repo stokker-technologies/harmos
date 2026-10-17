@@ -18,7 +18,7 @@ use crate::scenario_runtime;
 // Third Party Imports
 
 // Local Imports
-use harmos_domain::operations::streams::{FollowingRow, Publication};
+use harmos_domain::operations::streams::{FollowingRow, Publish};
 use harmos_domain::{MemorySize, Protobuf};
 
 /* === Constants === */
@@ -96,8 +96,8 @@ fn contract_scenario() {
     {
         scenario_runtime::check("publication_keeps_tags", || {
             for value in [
-                Publication::default(),
-                Publication {
+                Publish::default(),
+                Publish {
                     stream: "records".into(),
                     schema: u32::MAX,
                     sequence: Some(0),
@@ -117,7 +117,7 @@ fn contract_scenario() {
                 };
                 let bytes = prost::Message::encode_to_vec(&previous);
                 assert_eq!(value.encode_to_vec(), bytes);
-                assert_eq!(Publication::decode(&bytes).unwrap(), value);
+                assert_eq!(Publish::decode(&bytes).unwrap(), value);
                 assert_eq!(
                     <PreviousPublication as prost::Message>::decode(bytes.as_slice()).unwrap(),
                     previous
@@ -131,7 +131,7 @@ fn contract_scenario() {
             // A Steady 1 kHz Series: The Head Carries The Base Stamp And Each
             // Following Row A Short Delta; A Backwards Row Stays Encodable.
             let deltas = [Some(1_000), Some(1_000), Some(-1), None];
-            let value = Publication {
+            let value = Publish {
                 stream: "records".into(),
                 sequence: Some(7),
                 published_unix_micros: Some(1_760_000_000_000_000),
@@ -144,7 +144,7 @@ fn contract_scenario() {
                         published_delta_micros,
                     })
                     .collect(),
-                ..Publication::default()
+                ..Publish::default()
             };
             let oracle = BatchedPublication {
                 stream: value.stream.clone(),
@@ -162,7 +162,7 @@ fn contract_scenario() {
             };
             let bytes = prost::Message::encode_to_vec(&oracle);
             assert_eq!(value.encode_to_vec(), bytes);
-            assert_eq!(Publication::decode(&bytes).unwrap(), value);
+            assert_eq!(Publish::decode(&bytes).unwrap(), value);
             // One Byte Of Payload Plus A Millisecond Delta: Six Bytes
             let steady = FollowingRow {
                 payload: vec![0],

@@ -30,6 +30,12 @@ use harmos::operations::{
 use harmos::{Error, Runtime};
 
 /* === Constants === */
+const POLICY: OperationPolicy = OperationPolicy {
+    timeout: Duration::from_secs(2),
+    attempt_timeout: Duration::from_secs(1),
+    retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
+};
 
 /* === Macros === */
 
@@ -42,8 +48,33 @@ struct Stage {
     id: String,
 }
 struct Overlay<const CHILD: bool>;
-struct Declare<const CHILD: bool>;
 struct Read<const CHILD: bool>;
+// Each Side Of A Parent/Child Pair Selects Its Own Declarations.
+struct Side<const CHILD: bool>;
+#[harmos::message]
+#[harmos::operation(id = "overlay.parent", version = 1, response = String, policy = POLICY)]
+struct OverlayParent {}
+#[harmos::message]
+#[harmos::operation(id = "overlay.child", version = 1, response = String, policy = POLICY)]
+struct OverlayChild {}
+#[harmos::message]
+#[harmos::operation(
+    id = "middleware.parent",
+    version = 1,
+    response = String,
+    policy = POLICY,
+    key = keyed
+)]
+struct DeclareParent {}
+#[harmos::message]
+#[harmos::operation(
+    id = "middleware.child",
+    version = 1,
+    response = String,
+    policy = POLICY,
+    key = keyed
+)]
+struct DeclareChild {}
 struct Policy {
     name: &'static str,
     events: Arc<Mutex<Vec<String>>>,
@@ -53,30 +84,31 @@ struct Policy {
 /* === Enums === */
 
 /* === Traits === */
+trait Sided {
+    type Overlay: OperationDeclaration<Response = String>;
+    type Declare: OperationDeclaration<Response = String>;
+}
 
 /* === Implementations === */
 impl harmos::operations::ContextValue for Stage {
     const KEY: &'static str = "test.stage";
 }
 
-impl<const CHILD: bool> OperationDeclaration for Overlay<CHILD> {
-    type Request = ();
-    type Response = String;
-    const ID: &'static str = if CHILD {
-        "overlay.child"
-    } else {
-        "overlay.parent"
-    };
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(2),
-        attempt_timeout: Duration::from_secs(1),
-        retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
-    };
+impl Sided for Side<false> {
+    type Overlay = OverlayParent;
+    type Declare = DeclareParent;
 }
 
-impl<const CHILD: bool> Operation for Overlay<CHILD> {
-    type Declaration = Self;
+impl Sided for Side<true> {
+    type Overlay = OverlayChild;
+    type Declare = DeclareChild;
+}
+
+impl<const CHILD: bool> Operation for Overlay<CHILD>
+where
+    Side<CHILD>: Sided,
+{
+    type Declaration = <Side<CHILD> as Sided>::Overlay;
     type Resources = ();
     type Error = Error;
     type Endpoints = ();
@@ -87,7 +119,7 @@ impl<const CHILD: bool> Operation for Overlay<CHILD> {
     async fn run<'a>(
         &mut self,
         context: Self::Context<'a>,
-        _: &mut (),
+        _: &mut Self::Declaration,
         _: &mut Self::Endpoints,
     ) -> harmos::Result<harmos::operations::Response<String>> {
         let result: ::core::result::Result<String, Self::Error> = async move {
@@ -100,7 +132,7 @@ impl<const CHILD: bool> Operation for Overlay<CHILD> {
             let child = context.with_value(Stage { id: "child".into() })?;
             let stage = child.context().require::<Stage>()?;
             assert_eq!(stage.id, "child");
-            let answer = child.call(()).await?;
+            let answer = child.call(OverlayChild {}).await?;
             Ok(format!("{actor}:{}:{answer}", "parent"))
         }
         .await;
@@ -108,27 +140,11 @@ impl<const CHILD: bool> Operation for Overlay<CHILD> {
     }
 }
 
-impl<const CHILD: bool> OperationDeclaration for Declare<CHILD> {
-    type Request = ();
-    type Response = String;
-    fn key(_: &()) -> Option<harmos::operations::CacheKey> {
-        Some(harmos::operations::CacheKey::new(vec![1]).unwrap())
-    }
-    const ID: &'static str = if CHILD {
-        "middleware.child"
-    } else {
-        "middleware.parent"
-    };
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(2),
-        attempt_timeout: Duration::from_secs(1),
-        retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
-    };
-}
-
-impl<const CHILD: bool> Operation for Read<CHILD> {
-    type Declaration = Declare<CHILD>;
+impl<const CHILD: bool> Operation for Read<CHILD>
+where
+    Side<CHILD>: Sided,
+{
+    type Declaration = <Side<CHILD> as Sided>::Declare;
     type Resources = ();
     type Error = Error;
     type Endpoints = ();
@@ -139,7 +155,7 @@ impl<const CHILD: bool> Operation for Read<CHILD> {
     async fn run<'a>(
         &mut self,
         context: Self::Context<'a>,
-        _request: &mut (),
+        _request: &mut Self::Declaration,
         _: &mut Self::Endpoints,
     ) -> harmos::Result<harmos::operations::Response<String>> {
         let result: ::core::result::Result<String, Self::Error> = async move {
@@ -147,7 +163,7 @@ impl<const CHILD: bool> Operation for Read<CHILD> {
             if CHILD {
                 return Ok(actor.into());
             }
-            let child = context.call(()).await?;
+            let child = context.call(DeclareChild {}).await?;
             Ok(format!("{actor}:{child}"))
         }
         .await;
@@ -186,6 +202,10 @@ impl Middleware for Policy {
 /* === Public Functions === */
 
 /* === Private Functions === */
+fn keyed<O>(_: &O) -> Option<harmos::operations::CacheKey> {
+    Some(harmos::operations::CacheKey::new(vec![1]).unwrap())
+}
+
 async fn runtime() -> Runtime<App> {
     let runtime = Runtime::<App>::builder((), ())
         .register(Lanes::catalog())
@@ -323,11 +343,14 @@ pub(super) fn contract_scenario() {
                     .unwrap();
                 let operations = runtime.operations.with_context(original.clone());
                 assert_eq!(
-                    &*operations.call(()).await.unwrap(),
+                    &*operations.call(OverlayParent {}).await.unwrap(),
                     "alice:parent:alice:child"
                 );
                 assert_eq!(original.require::<Stage>().unwrap().id, "parent");
-                assert_eq!(&*operations.call(()).await.unwrap(), "alice:parent");
+                assert_eq!(
+                    &*operations.call(OverlayChild {}).await.unwrap(),
+                    "alice:parent"
+                );
                 runtime.stop().await.unwrap();
             });
         });
@@ -353,7 +376,7 @@ pub(super) fn contract_scenario() {
                             .unwrap();
                     }
                     let alice = runtime.operations.with_context(context("alice"));
-                    assert_eq!(&*alice.call(()).await.unwrap(), "alice:alice");
+                    assert_eq!(&*alice.call(DeclareParent {}).await.unwrap(), "alice:alice");
                     assert_eq!(
                         *events.lock().unwrap(),
                         [
@@ -378,7 +401,8 @@ pub(super) fn contract_scenario() {
                             .is_err()
                     );
                     let bob = runtime.operations.with_context(context("bob"));
-                    let (a, b) = tokio::join!(alice.call(()), bob.call(()));
+                    let (a, b) =
+                        tokio::join!(alice.call(DeclareParent {}), bob.call(DeclareParent {}));
                     assert_eq!(&*a.unwrap(), "alice:alice");
                     assert_eq!(&*b.unwrap(), "bob:bob");
                     runtime.stop().await.unwrap();
@@ -410,7 +434,7 @@ pub(super) fn contract_scenario() {
                         runtime
                             .operations
                             .with_context(context("alice"))
-                            .call(())
+                            .call(DeclareParent {})
                             .await
                             .is_err()
                     );
@@ -448,7 +472,7 @@ pub(super) fn contract_scenario() {
                     let invocation = runtime
                         .operations
                         .with_context(context("alice"))
-                        .submit(())
+                        .submit(DeclareParent {})
                         .unwrap();
                     tokio::time::timeout(Duration::from_secs(1), entered.acquire())
                         .await
@@ -493,14 +517,14 @@ pub(super) fn contract_scenario() {
                         .unwrap();
                     let operations = runtime.operations.with_context(context("alice"));
                     let result = operations
-                        .submit_at::<Declare<true>>("camera.child", ())
+                        .submit_at("camera.child", DeclareChild {})
                         .unwrap()
                         .await
                         .unwrap();
                     assert_eq!(&*result, "alice");
                     assert!(
                         operations
-                            .submit_at::<Declare<false>>("camera.child", ())
+                            .submit_at("camera.child", DeclareParent {})
                             .is_err()
                     );
                     runtime.stop().await.unwrap();
@@ -518,7 +542,7 @@ pub(super) fn contract_scenario() {
                     let runtime = runtime().await;
                     runtime
                         .operations
-                        .register_operation::<Retry>("app", Lanes::Open, Arc::new(()))
+                        .register_operation::<Retrying>("app", Lanes::Open, Arc::new(()))
                         .unwrap();
                     let events = Arc::new(Mutex::new(Vec::new()));
                     runtime
@@ -532,7 +556,7 @@ pub(super) fn contract_scenario() {
                     let answer = runtime
                         .operations
                         .with_context(context("alice"))
-                        .call(())
+                        .call(Retry {})
                         .await
                         .unwrap();
                     assert_eq!(&*answer, "alice:3");
@@ -565,17 +589,19 @@ impl Middleware for Wait {
     }
 }
 
-struct Retry {
+#[harmos::message]
+#[harmos::operation(
+    id = "middleware.retry",
+    version = 1,
+    response = String,
+    policy = super::Compute::POLICY
+)]
+struct Retry {}
+struct Retrying {
     attempts: usize,
 }
-impl OperationDeclaration for Retry {
-    type Request = ();
-    type Response = String;
-    const ID: &'static str = "middleware.retry";
-    const POLICY: OperationPolicy = super::Compute::POLICY;
-}
-impl Operation for Retry {
-    type Declaration = Self;
+impl Operation for Retrying {
+    type Declaration = Retry;
     type Resources = ();
     type Error = std::io::Error;
     type Endpoints = ();
@@ -589,7 +615,7 @@ impl Operation for Retry {
     async fn run<'a>(
         &mut self,
         context: Self::Context<'a>,
-        _request: &mut (),
+        _request: &mut Retry,
         _: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<String>, Self::Error> {
         let result: ::core::result::Result<String, Self::Error> = async move {

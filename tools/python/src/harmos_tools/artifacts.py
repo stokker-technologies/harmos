@@ -40,24 +40,7 @@ BUILDS = (
     (False, "plugin-fixture"),
     (True, "stripped-fixture"),
 )
-CATALOG_CASES = (
-    "valid",
-    "count",
-    "bytes",
-    "memory",
-    "spin",
-    "namespace",
-    "schema",
-    "duplicate",
-)
-GUESTS = (
-    ("route-component", "componentize,kit", None),
-    ("legacy-component", "componentize,kit", None),
-    ("plugin-component", "componentize,kit", None),
-    ("operation-component", "componentize,kit,streaming", None),
-    ("operation-component", "componentize,kit,grpc,streaming", None),
-    *(("catalog-component", "componentize,kit", case) for case in CATALOG_CASES),
-)
+GUESTS: tuple[tuple[str, str, str | None], ...] = ()
 
 # === Types === #
 

@@ -47,14 +47,23 @@ struct Descend;
 struct Family;
 
 /* === Enums === */
-#[harmos::operation(request = String, response = (), id = "causation.note", policy = POLICY)]
-struct NoteContract;
+#[harmos::message]
+#[harmos::operation(response = (), id = "causation.note", version = 1, policy = POLICY)]
+struct NoteContract {
+    label: String,
+}
 
-#[harmos::operation(request = String, response = (), id = "causation.descend", policy = POLICY)]
-struct DescendContract;
+#[harmos::message]
+#[harmos::operation(response = (), id = "causation.descend", version = 1, policy = POLICY)]
+struct DescendContract {
+    label: String,
+}
 
-#[harmos::operation(request = Position, response = (), id = "causation.family", policy = POLICY)]
-struct FamilyContract;
+#[harmos::message]
+#[harmos::operation(response = (), id = "causation.family", version = 1, policy = POLICY)]
+struct FamilyContract {
+    cause: u64,
+}
 
 #[harmos::catalog]
 enum Operations {
@@ -81,14 +90,14 @@ impl Operation for Note {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        request: &mut String,
+        request: &mut NoteContract,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<()>, Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             context
                 .scope()
                 .records::<Bank>()
-                .publish(Noted(request.clone()))
+                .publish(Noted(request.label.clone()))
                 .await?;
             Ok(())
         }
@@ -111,16 +120,20 @@ impl Operation for Descend {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        request: &mut String,
+        request: &mut DescendContract,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<()>, Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             context
                 .scope()
                 .records::<Bank>()
-                .publish(Noted(request.clone()))
+                .publish(Noted(request.label.clone()))
                 .await?;
-            context.submit(format!("{}-child", *request))?.await?;
+            context
+                .submit(NoteContract {
+                    label: format!("{}-child", request.label),
+                })?
+                .await?;
             Ok(())
         }
         .await;
@@ -142,7 +155,7 @@ impl Operation for Family {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        request: &mut Position,
+        request: &mut FamilyContract,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<()>, Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
@@ -151,9 +164,18 @@ impl Operation for Family {
                 .records::<Bank>()
                 .publish(Noted("parent".to_owned()))
                 .await?;
-            context.submit("inherited".to_owned())?.await?;
             context
-                .submit_caused::<DescendContract>("rerooted".to_owned(), *request)?
+                .submit(DescendContract {
+                    label: "inherited".to_owned(),
+                })?
+                .await?;
+            context
+                .submit_caused(
+                    DescendContract {
+                        label: "rerooted".to_owned(),
+                    },
+                    Position(request.cause),
+                )?
                 .await?;
             Ok(())
         }
@@ -212,7 +234,12 @@ pub(super) fn contract_scenario() {
 
                     runtime
                         .operations
-                        .submit_caused::<FamilyContract>(other.position, causing.position)
+                        .submit_caused(
+                            FamilyContract {
+                                cause: other.position.0,
+                            },
+                            causing.position,
+                        )
                         .unwrap()
                         .await
                         .expect("every generation records its fact");
@@ -272,7 +299,12 @@ pub(super) fn contract_scenario() {
 
                     runtime
                         .operations
-                        .submit_caused::<NoteContract>("answered".to_owned(), receipt.position)
+                        .submit_caused(
+                            NoteContract {
+                                label: "answered".to_owned(),
+                            },
+                            receipt.position,
+                        )
                         .unwrap()
                         .await
                         .expect("the caused job records its fact");

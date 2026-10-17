@@ -30,7 +30,8 @@
 /* === Type Aliases === */
 
 /* === Structs === */
-#[harmos::operation(request = (), response = (), policy = ())]
+#[harmos::message]
+#[harmos::operation(request = (), response = (), policy = (), version = 1)]
 struct Read { resource: String }
 
 

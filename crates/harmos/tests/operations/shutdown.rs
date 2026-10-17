@@ -54,16 +54,18 @@ struct Wait {
 }
 
 /* === Enums === */
+#[harmos::message]
 enum Mode {
     Hold,
     Count,
     Sleep,
 }
 
+#[harmos::message]
 #[harmos::operation(
-        request = Mode,
         response = (),
         id = "shutdown.wait",
+        version = 1,
         policy = OperationPolicy {
             timeout: Duration::from_secs(3),
             attempt_timeout: Duration::from_secs(2),
@@ -71,7 +73,9 @@ enum Mode {
             restart: RestartPolicy::Never,
         },
     )]
-struct WaitContract;
+struct WaitContract {
+    mode: Mode,
+}
 
 #[harmos::catalog]
 enum Operations {
@@ -102,12 +106,12 @@ impl Operation for Wait {
     async fn run<'ctx>(
         &mut self,
         _context: Self::Context<'ctx>,
-        mode: &mut Mode,
+        request: &mut WaitContract,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<()>, Self::Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
-            self.holding = matches!(mode, Mode::Hold);
-            match mode {
+            self.holding = matches!(request.mode, Mode::Hold);
+            match request.mode {
                 Mode::Hold => {
                     self.trace.started.notify_one();
                     self.trace.release.notified().await;
@@ -173,9 +177,15 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let (runtime, trace) = runtime().await;
-                    let first = runtime.operations.submit(Mode::Hold).unwrap();
+                    let first = runtime
+                        .operations
+                        .submit(WaitContract { mode: Mode::Hold })
+                        .unwrap();
                     trace.started.notified().await;
-                    let queued = runtime.operations.submit(Mode::Count).unwrap();
+                    let queued = runtime
+                        .operations
+                        .submit(WaitContract { mode: Mode::Count })
+                        .unwrap();
                     queued.cancel();
                     assert!(matches!(
                         queued.await,
@@ -185,7 +195,10 @@ pub(super) fn contract_scenario() {
                     trace.release.notify_one();
                     first.await.unwrap();
 
-                    let running = runtime.operations.submit(Mode::Sleep).unwrap();
+                    let running = runtime
+                        .operations
+                        .submit(WaitContract { mode: Mode::Sleep })
+                        .unwrap();
                     trace.started.notified().await;
 
                     running.cancel();
@@ -209,7 +222,10 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let (runtime, trace) = runtime().await;
-                    let instance = runtime.operations.submit(Mode::Hold).unwrap();
+                    let instance = runtime
+                        .operations
+                        .submit(WaitContract { mode: Mode::Hold })
+                        .unwrap();
                     trace.started.notified().await;
                     {
                         let stop = runtime.stop();

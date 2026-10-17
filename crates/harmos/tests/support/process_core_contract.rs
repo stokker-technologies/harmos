@@ -17,9 +17,7 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use harmos::operations::{
-    OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireOperation,
-};
+use harmos::operations::{OperationPolicy, RestartPolicy, RetryPolicy, Visibility};
 
 /* === Constants === */
 pub const POLICY: OperationPolicy = OperationPolicy {
@@ -34,7 +32,18 @@ pub const POLICY: OperationPolicy = OperationPolicy {
 /* === Type Aliases === */
 
 /* === Structs === */
-pub struct Inspect;
+#[harmos::message]
+#[harmos::operation(
+    id = "process.core.inspect",
+    version = 1,
+    policy = POLICY,
+    response = String,
+    visibility = Visibility::Host,
+)]
+#[derive(Clone, PartialEq)]
+pub struct Inspect {
+    pub name: String,
+}
 
 /* === Enums === */
 #[harmos::catalog]
@@ -45,18 +54,6 @@ pub enum Queries {
 /* === Traits === */
 
 /* === Implementations === */
-impl OperationDeclaration for Inspect {
-    type Request = String;
-    type Response = String;
-    const ID: &'static str = "process.core.inspect";
-    const POLICY: OperationPolicy = POLICY;
-    const VISIBILITY: Visibility = Visibility::Host;
-}
-
-impl WireOperation for Inspect {
-    const VERSION: u32 = 1;
-}
-
 /* === Public Functions === */
 
 /* === Private Functions === */

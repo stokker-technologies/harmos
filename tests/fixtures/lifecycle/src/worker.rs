@@ -24,7 +24,7 @@ use std::time::Duration;
 use sha2::{Digest, Sha256};
 
 // Local Imports
-use crate::contract::{Exchange, Operations, PAYLOAD_BYTES, Payload};
+use crate::contract::{Exchange, Operations, PAYLOAD_BYTES};
 use harmos::plugin::{PluginArtifact, PluginContributions, PluginDefinition};
 use harmos::services::{Resident, ServiceDefinition};
 use harmos::sidecar::{Executable, Managed, ManagedError, Notice, Supervised};
@@ -99,7 +99,7 @@ impl Resident<SchematicEditor> for Traffic {
         let host = context.host();
         loop {
             let sequence = self.completed.load(Ordering::SeqCst);
-            let request = Payload {
+            let request = Exchange {
                 sequence,
                 bytes: vec![sequence as u8; PAYLOAD_BYTES],
             };
@@ -177,7 +177,6 @@ pub async fn start(runtime: &Runtime, path: &Path) -> Result<Workload> {
             sections: declaration.sections.clone(),
             streams: declaration.streams.clone(),
             observers: declaration.observers.clone(),
-            observer_control: declaration.observer_control().cloned(),
             listeners: declaration.listeners.clone(),
             ..PluginContributions::default()
         },

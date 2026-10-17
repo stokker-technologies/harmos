@@ -27,8 +27,7 @@ use super::{
     ParentOwner, Request, Response, SlowCall, State, request, runtime,
 };
 use harmos::operations::{
-    CacheKey, Context, FailureKind, OperationDeclaration, OperationPolicy, PluginRegistration,
-    Visibility, WireDeclaration, WireOperation,
+    Context, FailureKind, OperationDeclaration, PluginRegistration, Visibility, WireDeclaration,
 };
 use harmos::plugin::{
     PluginArtifact, PluginBackend, PluginCaller, PluginContributions, PluginDefinition,
@@ -45,7 +44,17 @@ use harmos::{Error, Message, Result, operations::OperationManager};
 type Backends = PluginBackend<Resources, Resources, Resources>;
 
 /* === Structs === */
-struct Selected;
+#[harmos::message]
+#[harmos::operation(
+    id = "fixture.selected_provider",
+    version = 1,
+    response = String,
+    visibility = Visibility::Shared,
+    policy = super::wire::Echo::POLICY
+)]
+struct Selected {
+    value: String,
+}
 
 struct SelectedOwner(&'static str);
 
@@ -55,9 +64,27 @@ struct SelectedHost {
     callers: BTreeMap<String, PluginCaller>,
 }
 
-struct Shared;
+// Shares The Compute Request, Which Stays In Process.
+#[harmos::operation(
+    id = "test.shared",
+    version = 1,
+    response = Response,
+    visibility = Visibility::Shared,
+    policy = Compute::POLICY,
+    key = |request: &Shared| request.0.key(),
+)]
+struct Shared(Request);
 
-struct Cleanup;
+#[harmos::message]
+#[harmos::operation(
+    id = "fixture.callback_cleanup",
+    version = 1,
+    response = String,
+    policy = super::wire::Echo::POLICY
+)]
+struct Cleanup {
+    value: String,
+}
 
 #[derive(Default)]
 struct CleanupOwner {
@@ -96,16 +123,20 @@ struct Host {
 /* === Traits === */
 
 /* === Implementations === */
-impl OperationDeclaration for Selected {
-    type Request = Text;
-    type Response = String;
-    const ID: &'static str = "fixture.selected_provider";
-    const POLICY: OperationPolicy = super::wire::Echo::POLICY;
-    const VISIBILITY: Visibility = Visibility::Shared;
+super::in_process!(Shared);
+
+impl harmos::MemorySize for Shared {
+    fn memory_size(&self) -> usize {
+        self.0.memory_size()
+    }
 }
 
-impl WireOperation for Selected {
-    const VERSION: u32 = 1;
+impl From<&str> for Selected {
+    fn from(value: &str) -> Self {
+        Self {
+            value: value.to_owned(),
+        }
+    }
 }
 
 #[harmos::catalog]
@@ -132,7 +163,7 @@ impl harmos::operations::Operation for Selecting {
     async fn run<'ctx>(
         &mut self,
         _: Self::Context<'ctx>,
-        request: &mut Text,
+        request: &mut Selected,
         _endpoints: &mut Self::Endpoints,
     ) -> std::result::Result<harmos::operations::Response<String>, Failed> {
         let result: ::core::result::Result<String, Self::Error> =
@@ -196,17 +227,6 @@ impl PluginLifecycle for SelectedHost {
     }
 }
 
-impl OperationDeclaration for Shared {
-    type Request = Request;
-    type Response = Response;
-    const ID: &'static str = "test.shared";
-    const POLICY: OperationPolicy = Compute::POLICY;
-    const VISIBILITY: Visibility = Visibility::Shared;
-    fn key(request: &Request) -> Option<CacheKey> {
-        Compute::key(request)
-    }
-}
-
 struct SharedCall {
     owner: Arc<Owner>,
     state: State,
@@ -229,24 +249,17 @@ impl harmos::operations::Operation for SharedCall {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        request: &mut Request,
+        request: &mut Shared,
         _endpoints: &mut Self::Endpoints,
     ) -> std::result::Result<harmos::operations::Response<Response>, Failed> {
-        let result: ::core::result::Result<Response, Self::Error> =
-            async move { self.owner.compute(request, &mut self.state, context).await }.await;
+        let result: ::core::result::Result<Response, Self::Error> = async move {
+            self.owner
+                .compute(&request.0, &mut self.state, context)
+                .await
+        }
+        .await;
         result.map(::core::convert::Into::into)
     }
-}
-
-impl OperationDeclaration for Cleanup {
-    type Request = Text;
-    type Response = String;
-    const ID: &'static str = "fixture.callback_cleanup";
-    const POLICY: OperationPolicy = super::wire::Echo::POLICY;
-}
-
-impl WireOperation for Cleanup {
-    const VERSION: u32 = 1;
 }
 
 #[harmos::catalog]
@@ -282,7 +295,7 @@ impl harmos::operations::Operation for Cleaning {
     async fn run<'ctx>(
         &mut self,
         _: Self::Context<'ctx>,
-        request: &mut Text,
+        request: &mut Cleanup,
         _endpoints: &mut Self::Endpoints,
     ) -> std::result::Result<harmos::operations::Response<String>, Failed> {
         let result: ::core::result::Result<String, Self::Error> = async move {
@@ -350,7 +363,7 @@ impl PluginLifecycle for Host {
                 assert_eq!(
                     self.operations
                         .caller(&caller)?
-                        .call(request())
+                        .call(Shared(request()))
                         .await?
                         .value,
                     7
@@ -1020,16 +1033,19 @@ pub(super) fn contract_scenario() {
                     host.call_during_setup = true;
                     manager.initialize(&mut host).await.unwrap();
                     let caller = runtime.operations.caller(&host.callers["client"]).unwrap();
-                    assert_eq!(caller.call(request()).await.unwrap().value, 7);
+                    assert_eq!(caller.call(Shared(request())).await.unwrap().value, 7);
                     // Parent is shared; its resource-owner context can call its private child.
-                    assert_eq!(caller.call(request()).await.unwrap().value, 7);
+                    assert_eq!(caller.call(Parent(request())).await.unwrap().value, 7);
                     let (requests, mut decoded) =
                         harmos::operations::stream(harmos::operations::StreamSettings {
                             items: NonZeroUsize::new(1).unwrap(),
                             bytes: NonZeroUsize::new(4096).unwrap(),
                         })
                         .unwrap();
-                    requests.send_with(4096, || Ok(request())).await.unwrap();
+                    requests
+                        .send_with(4096, || Ok(Shared(request())))
+                        .await
+                        .unwrap();
                     let charged = decoded.recv().await.unwrap();
                     assert_eq!(
                         caller
@@ -1087,6 +1103,13 @@ pub(super) fn contract_scenario() {
                             Err(Error::OperationUnauthorized { .. })
                         ));
                         assert!(output.is_closed());
+                        // Each Operation Charges Its Own Request Type.
+                        let (requests, mut decoded) =
+                            harmos::operations::stream(harmos::operations::StreamSettings {
+                                items: NonZeroUsize::new(1).unwrap(),
+                                bytes: NonZeroUsize::new(4096).unwrap(),
+                            })
+                            .unwrap();
                         requests.send_with(4096, || Ok(request())).await.unwrap();
                         let charged = decoded.recv().await.unwrap();
                         assert!(matches!(
@@ -1098,7 +1121,7 @@ pub(super) fn contract_scenario() {
                     for source in ["transitive", "unrelated"] {
                         let source = runtime.operations.caller(&host.callers[source]).unwrap();
                         assert!(matches!(
-                            source.submit(request()),
+                            source.submit(Shared(request())),
                             Err(Error::OperationUnauthorized { .. })
                         ));
                     }
@@ -1121,7 +1144,7 @@ pub(super) fn contract_scenario() {
                     );
                     manager.shutdown(&mut host).await.unwrap();
                     assert!(matches!(
-                        caller.submit(request()),
+                        caller.submit(Shared(request())),
                         Err(Error::OperationCaller { .. })
                     ));
                     let (output, input) =
@@ -1131,11 +1154,14 @@ pub(super) fn contract_scenario() {
                         })
                         .unwrap();
                     assert!(matches!(
-                        caller.submit_endpoints::<Shared, _>(request(), input),
+                        caller.submit_endpoints::<Shared, _>(Shared(request()), input),
                         Err(Error::OperationCaller { .. })
                     ));
                     assert!(output.is_closed());
-                    requests.send_with(4096, || Ok(request())).await.unwrap();
+                    requests
+                        .send_with(4096, || Ok(Shared(request())))
+                        .await
+                        .unwrap();
                     let charged = decoded.recv().await.unwrap();
                     assert!(matches!(
                         caller.submit_charged::<Shared, _>(charged, ()),
@@ -1167,9 +1193,11 @@ pub(super) fn contract_scenario() {
                     let mut host = host(runtime.operations.clone());
                     manager.initialize(&mut host).await.unwrap();
                     let caller = runtime.operations.caller(&host.callers["client"]).unwrap();
-                    let keyed = || Request {
-                        keyed: true,
-                        ..request()
+                    let keyed = || {
+                        Shared(Request {
+                            keyed: true,
+                            ..request()
+                        })
                     };
                     let host_response = runtime.operations.call(keyed()).await.unwrap();
                     let first = caller.call(keyed()).await.unwrap();
@@ -1222,15 +1250,23 @@ pub(super) fn contract_scenario() {
                         .await
                         .unwrap();
                     assert!(matches!(
-                        old.submit(request()),
+                        old.submit(Shared(request())),
                         Err(Error::OperationCaller { .. })
                     ));
                     let replacement = runtime.operations.caller(&host.callers["client"]).unwrap();
                     assert!(matches!(
-                        replacement.submit(request()),
+                        replacement.submit(Shared(request())),
                         Err(Error::OperationUnauthorized { .. })
                     ));
-                    assert_eq!(runtime.operations.call(request()).await.unwrap().value, 7);
+                    assert_eq!(
+                        runtime
+                            .operations
+                            .call(Shared(request()))
+                            .await
+                            .unwrap()
+                            .value,
+                        7
+                    );
                     manager.shutdown(&mut host).await.unwrap();
                     runtime.stop().await.unwrap();
                 });
@@ -1253,15 +1289,15 @@ pub(super) fn contract_scenario() {
                     let gate = Arc::new(tokio::sync::Notify::new());
                     let held = runtime
                         .operations
-                        .submit(Request {
+                        .submit(Shared(Request {
                             gate: Some((opened.clone(), gate.clone())),
                             ..request()
-                        })
+                        }))
                         .unwrap();
                     tokio::time::timeout(std::time::Duration::from_secs(2), opened.notified())
                         .await
                         .unwrap();
-                    let queued = source.submit(request()).unwrap();
+                    let queued = source.submit(Shared(request())).unwrap();
                     manager
                         .reload(with_clients(false), &mut host)
                         .await
@@ -1334,7 +1370,10 @@ pub(super) fn contract_scenario() {
                         "own:1"
                     );
                     // The client's shared parent invokes its own private child as the bound owner.
-                    assert_eq!(&*client.call("nested".into()).await.unwrap(), "nested:1");
+                    assert_eq!(
+                        &*client.call(Nested::from("nested")).await.unwrap(),
+                        "nested:1"
+                    );
                     let prepared = host
                         .owner
                         .prepared
@@ -1575,11 +1614,15 @@ pub(super) fn contract_scenario() {
                         .unwrap();
                     let old_client = runtime.operations.caller(&host.callers["client"]).unwrap();
                     assert_eq!(
-                        old_client.call("before".into()).await.unwrap().as_str(),
+                        old_client
+                            .call(Selected::from("before"))
+                            .await
+                            .unwrap()
+                            .as_str(),
                         "first:before"
                     );
                     assert!(matches!(
-                        runtime.operations.call("ambiguous".into()).await,
+                        runtime.operations.call(Selected::from("ambiguous")).await,
                         Err(Error::InvalidInput {
                             field: "operation provider",
                             ..
@@ -1593,14 +1636,14 @@ pub(super) fn contract_scenario() {
                         .await
                         .unwrap();
                     assert!(matches!(
-                        old_client.submit("stale".into()),
+                        old_client.submit(Selected::from("stale")),
                         Err(Error::OperationCaller { .. })
                     ));
                     assert_eq!(host.scopes["first"].generation(), first_generation);
                     assert_eq!(host.scopes["second"].generation(), second_generation);
                     let client = runtime.operations.caller(&host.callers["client"]).unwrap();
                     assert_eq!(
-                        client.call("after".into()).await.unwrap().as_str(),
+                        client.call(Selected::from("after")).await.unwrap().as_str(),
                         "second:after"
                     );
                     let first_payload = first
@@ -1633,7 +1676,11 @@ pub(super) fn contract_scenario() {
                     assert_eq!(String::decode(&second_payload).unwrap(), "second:surviving");
                     assert_eq!(host.scopes["second"].generation(), second_generation);
                     assert_eq!(
-                        client.call("unchanged".into()).await.unwrap().as_str(),
+                        client
+                            .call(Selected::from("unchanged"))
+                            .await
+                            .unwrap()
+                            .as_str(),
                         "second:unchanged"
                     );
                     manager.shutdown(&mut host).await.unwrap();
@@ -1656,7 +1703,7 @@ async fn grpc_call<O>(
     authority: harmos::grpc::server::Authority,
 ) -> tonic::codegen::http::Response<tonic::body::Body>
 where
-    O: OperationDeclaration<Request = Text, Response = String>,
+    O: OperationDeclaration<Response = String>,
 {
     use tonic::codec::Codec as _;
     let capacity = NonZeroUsize::new(4096).unwrap();

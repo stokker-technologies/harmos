@@ -26,7 +26,7 @@ use super::Lanes;
 use arrow_array::{StringArray, StructArray};
 use arrow_schema::{DataType, Field, Fields};
 use harmos::storage::operations::WriteObjects;
-use harmos::storage::writes::{DataBatch, WriteReceipt, WriteRequest};
+use harmos::storage::writes::{DataBatch, WriteReceipt};
 use harmos::storage::{
     MutationId, ObjectCatalog, ObjectRetention, ObjectValue, ObjectVersion, StorageBackends,
     StorageManager, StoredObject,
@@ -163,7 +163,7 @@ fn contract_scenario() {
                         &[first.item.as_str(), second.item.as_str()],
                         &[0, 1],
                     );
-                    let request = WriteRequest { scope: None };
+                    let request = WriteObjects { scope: None };
                     let mut writer = runtime
                         .operations
                         .exchange::<WriteObjects>(
@@ -358,8 +358,7 @@ fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     use harmos::storage::{
-                        ObjectEntry, follow::Objects as ObjectSelection, operations::FollowObjects,
-                        query::ObjectVersions,
+                        ObjectEntry, operations::FollowObjects, query::ObjectVersions,
                     };
                     tokio::time::timeout(std::time::Duration::from_secs(5), async {
                         let (runtime, storage, _) = query_fixture().await;
@@ -371,7 +370,7 @@ fn contract_scenario() {
                             .await
                             .unwrap();
                         storage.flush().await.unwrap();
-                        let mut request = ObjectSelection {
+                        let mut request = FollowObjects {
                             after: None,
                             selection: harmos::storage::query::ObjectSelection {
                                 schema: None,
@@ -442,8 +441,7 @@ fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     use harmos::storage::{
-                        ObjectEntry, follow::Objects as ObjectSelection, operations::FollowObjects,
-                        query::ObjectVersions,
+                        ObjectEntry, operations::FollowObjects, query::ObjectVersions,
                     };
                     tokio::time::timeout(std::time::Duration::from_secs(5), async {
                         let (runtime, storage, data) = query_fixture().await;
@@ -460,7 +458,7 @@ fn contract_scenario() {
                         while data.objects.lock().unwrap().len() != 8 {
                             tokio::task::yield_now().await;
                         }
-                        let request = ObjectSelection {
+                        let request = FollowObjects {
                             after: None,
                             selection: harmos::storage::query::ObjectSelection {
                                 schema: None,

@@ -1175,17 +1175,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "harmos-observer-fixture"
-version = "0.2.0"
-dependencies = [
- "harmos",
- "serde",
- "thiserror",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "harmos-sidecar"
 version = "0.2.0"
 dependencies = [
