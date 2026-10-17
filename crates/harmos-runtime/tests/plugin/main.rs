@@ -8,8 +8,11 @@
  */
 
 /* === Modules === */
+#[path = "../plugin/activation.rs"]
 mod activation;
+#[path = "../plugin/reload.rs"]
 mod reload;
+#[path = "../plugin/retirement.rs"]
 mod retirement;
 
 /* === Re-Exports === */

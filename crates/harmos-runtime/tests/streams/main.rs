@@ -12,6 +12,7 @@
 #[path = "../support/mod.rs"]
 mod support;
 
+#[path = "../streams/allocation.rs"]
 pub mod allocation;
 
 #[cfg(feature = "signal")]
@@ -26,6 +27,7 @@ mod retention;
     feature = "plugin-guest",
     feature = "plugin-sidecar"
 ))]
+#[path = "../streams/listeners.rs"]
 mod listeners;
 
 #[path = "series.rs"]

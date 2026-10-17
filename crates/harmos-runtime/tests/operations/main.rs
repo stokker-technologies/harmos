@@ -45,6 +45,7 @@ mod scoped;
 mod shutdown;
 #[path = "../support/runtime_probe.rs"]
 mod probe;
+#[path = "../operations/wire/mod.rs"]
 mod wire;
 
 /* === Re-Exports === */

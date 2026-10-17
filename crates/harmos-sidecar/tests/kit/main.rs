@@ -13,6 +13,7 @@
 mod observer;
 #[path = "../../../harmos-runtime/tests/support/fixtures.rs"]
 mod prepared_fixtures;
+#[path = "../kit/task.rs"]
 mod task;
 
 /* === Re-Exports === */

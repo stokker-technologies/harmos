@@ -11,11 +11,17 @@
 
 #[path = "../support/app/minimal.rs"]
 mod app;
+#[path = "../services/lifecycle.rs"]
 mod lifecycle;
+#[path = "../services/policy.rs"]
 mod policy;
+#[path = "../services/readiness.rs"]
 mod readiness;
+#[path = "../services/recovery.rs"]
 mod recovery;
+#[path = "../services/scopes.rs"]
 mod scopes;
+#[path = "../services/shutdown.rs"]
 mod shutdown;
 
 #[path = "../support/mod.rs"]

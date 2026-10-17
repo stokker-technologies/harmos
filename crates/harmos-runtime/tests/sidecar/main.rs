@@ -13,22 +13,34 @@ mod composition;
 #[path = "../support/mod.rs"]
 mod support;
 
+#[path = "../sidecar/admission.rs"]
 mod admission;
+#[path = "../sidecar/consumption.rs"]
 mod consumption;
 #[cfg(feature = "grpc")]
+#[path = "../sidecar/grants.rs"]
 mod grants;
+#[path = "../sidecar/graph.rs"]
 mod graph;
+#[path = "../sidecar/listeners.rs"]
 mod listeners;
+#[path = "../sidecar/observer_demand.rs"]
 mod observer_demand;
+#[path = "../sidecar/observer_hosts.rs"]
 mod observer_hosts;
 pub(crate) mod operations;
+#[path = "../sidecar/process.rs"]
 mod process;
+#[path = "../sidecar/publications.rs"]
 mod publications;
+#[path = "../sidecar/routing.rs"]
 mod routing;
 #[path = "../support/witness.rs"]
 mod witness;
 
+#[path = "../sidecar/visibility.rs"]
 mod visibility;
+#[path = "../sidecar/status.rs"]
 mod status;
 
 /* === Re-Exports === */

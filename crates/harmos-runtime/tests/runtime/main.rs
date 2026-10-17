@@ -17,12 +17,15 @@ mod mirror;
 #[path = "../support/runtime_probe.rs"]
 mod probe;
 
+#[path = "../runtime/boot.rs"]
 mod boot;
 
+#[path = "../runtime/lifecycle/mod.rs"]
 mod lifecycle;
 
 #[path = "plugin.rs"]
 #[cfg(feature = "plugin")]
+#[path = "../runtime/plugin.rs"]
 mod plugin;
 
 /* === Re-Exports === */

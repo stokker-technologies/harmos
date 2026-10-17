@@ -10,13 +10,18 @@
 /* === Modules === */
 
 #[cfg(feature = "plugin-sidecar")]
+#[path = "../observers/execution.rs"]
 mod execution;
 #[cfg(feature = "plugin-sidecar")]
+#[path = "../observers/host_accessor.rs"]
 mod host_accessor;
 #[cfg(feature = "plugin-sidecar")]
+#[path = "../observers/lifecycle.rs"]
 mod lifecycle;
 #[cfg(feature = "plugin-sidecar")]
+#[path = "../observers/native.rs"]
 mod native;
+#[path = "../observers/registration.rs"]
 mod registration;
 
 #[path = "../support/pending.rs"]

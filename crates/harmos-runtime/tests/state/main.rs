@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+#[path = "../state/managed.rs"]
 mod managed;
 #[path = "../support/mod.rs"]
 mod support;
@@ -18,6 +19,7 @@ mod capture;
 #[path = "consumers.rs"]
 mod consumers;
 
+#[path = "../state/durability.rs"]
 mod durability;
 
 #[path = "idempotency.rs"]
@@ -37,6 +39,7 @@ mod records;
     feature = "plugin-guest",
     feature = "plugin-sidecar"
 ))]
+#[path = "../state/listeners.rs"]
 mod listeners;
 
 #[path = "undo.rs"]

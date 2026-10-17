@@ -10,6 +10,7 @@
 #![cfg(feature = "simulation")]
 /* === Modules === */
 
+#[path = "../simulation/inverses.rs"]
 mod inverses;
 #[path = "../support/simulation.rs"]
 mod oracle;

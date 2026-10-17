@@ -14,10 +14,15 @@ mod support;
 #[path = "../../../harmos-guest/tests/fixtures/sandbox/src/contract.rs"]
 mod sandbox;
 
+#[path = "../guest/dependencies.rs"]
 mod dependencies;
+#[path = "../guest/lifecycle.rs"]
 mod lifecycle;
+#[path = "../guest/limits.rs"]
 mod limits;
+#[path = "../guest/operations.rs"]
 mod operations;
+#[path = "../guest/publications.rs"]
 mod publications;
 use schematic_domain as schematic;
 

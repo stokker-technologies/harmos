@@ -8,11 +8,15 @@
  */
 
 /* === Modules === */
+#[path = "../transport/capacity.rs"]
 pub mod capacity;
+#[path = "../transport/channels.rs"]
 mod channels;
+#[path = "../transport/measurement.rs"]
 mod measurement;
 #[path = "../fixtures/throughput_protocol.rs"]
 pub mod protocol;
+#[path = "../transport/publication.rs"]
 mod publication;
 
 /* === Re-Exports === */
