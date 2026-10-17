@@ -944,9 +944,9 @@ fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let registered: BTreeMap<(String, u32), Kind> =
-                        definitions_of(Change::catalog::<Studio>())
+                        definitions_of::<Studio>(Change::catalog())
                             .into_iter()
-                            .chain(definitions_of(Fact::catalog::<Studio>()))
+                            .chain(definitions_of::<Studio>(Fact::catalog()))
                             .map(|(kind, id, version)| ((id.as_str().to_owned(), version), kind))
                             .collect();
 

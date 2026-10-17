@@ -9,7 +9,7 @@
 
 /* === Modules === */
 pub(crate) mod capture;
-mod entry;
+mod entry { pub use harmos_domain::state::{At, CausationId, CorrelationId, Entry, Link, Metadata, Position, PrincipalId, Receipt, RequestKey, Timestamp}; }
 mod envelope;
 mod history;
 mod managed;
@@ -23,6 +23,7 @@ mod writer;
 
 /* === Re-Exports === */
 pub use crate::error::Error;
+pub use harmos_domain::state::{TransactionDefinitions, RecordDefinitions};
 pub use capture::{CaptureError, CaptureLimits, JournalCapture};
 pub use entry::{
     At, CausationId, CorrelationId, Entry, Link, Metadata, Position, PrincipalId, Receipt,

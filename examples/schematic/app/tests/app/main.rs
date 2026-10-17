@@ -375,9 +375,9 @@ fn contract_scenario() {
             builder.enable_all().build().expect("scenario runtime is valid").block_on(async {
 
     let registered: BTreeMap<(String, u32), Kind> =
-        definitions_of(Transactions::catalog::<SchematicEditor>())
+        definitions_of::<SchematicEditor>(Transactions::catalog())
             .into_iter()
-            .chain(definitions_of(Records::catalog::<SchematicEditor>()))
+            .chain(definitions_of::<SchematicEditor>(Records::catalog()))
             .map(|(kind, id, version)| ((id.as_str().to_owned(), version), kind))
             .collect();
 

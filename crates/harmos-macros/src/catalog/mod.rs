@@ -435,106 +435,42 @@ fn registration(
             }
         }
     });
-    let wrapper = Ident::new(&format!("__Harmos{name}Catalog"), name.span());
-    let derivation = match state {
-        // Registration is the whole assembly surface a catalog has, so the
-        // inverse table travels with it rather than through a second verb.
-        Some(_) => quote!(::core::option::Option::Some(#name::__harmos_inverses)),
-        // A fact changes nothing, so a fact catalog leaves the table alone.
-        None => quote!(::core::option::Option::None),
-    };
-    let (product_bound, decode) = match state {
+    let (output, construct) = match state {
         Some(state) => (
-            quote!(#harmos::Application<State = #state, Transaction = #name>),
+            quote!(#harmos::state::TransactionDefinitions<#state, #name>),
             quote! {
-                fn __harmos_decode_transaction(
+                fn decode(
                     id: &#harmos::DefinitionId,
                     version: u32,
                     bytes: &[u8],
-                ) -> ::core::result::Result<
-                    ::core::option::Option<A::Transaction>,
-                    #harmos::state::DecodeError,
-                > {
+                ) -> ::core::result::Result<::core::option::Option<#name>, #harmos::state::DecodeError> {
+                    let malformed = || #harmos::state::DecodeError::Malformed { id: id.clone(), version };
                     let payload: #harmos::__private::serde_json::Value =
-                        #harmos::__private::serde_json::from_slice(bytes).map_err(|_| {
-                            #harmos::state::DecodeError::Malformed {
-                                id: id.clone(),
-                                version,
-                            }
-                        })?;
-                    let restored = #name::restore(id, version, &payload).map_err(|_| {
-                        #harmos::state::DecodeError::Malformed {
-                            id: id.clone(),
-                            version,
-                        }
-                    })?;
-
-                    ::core::result::Result::Ok(
-                        restored.map(|(transaction, _apply)| transaction),
-                    )
+                        #harmos::__private::serde_json::from_slice(bytes).map_err(|_| malformed())?;
+                    let restored = #name::restore(id, version, &payload).map_err(|_| malformed())?;
+                    Ok(restored.map(|(transaction, _apply)| transaction))
+                }
+                #harmos::state::TransactionDefinitions {
+                    definitions: catalogued,
+                    decode,
+                    inverses: #name::__harmos_inverses,
                 }
             },
         ),
         None => (
-            quote!(#harmos::Application<Record = #name>),
-            quote! {
-                fn __harmos_decode_transaction(
-                    _id: &#harmos::DefinitionId,
-                    _version: u32,
-                    _bytes: &[u8],
-                ) -> ::core::result::Result<
-                    ::core::option::Option<A::Transaction>,
-                    #harmos::state::DecodeError,
-                > {
-                    ::core::result::Result::Ok(::core::option::Option::None)
-                }
-            },
+            quote!(#harmos::state::RecordDefinitions<#name>),
+            quote!(#harmos::state::RecordDefinitions {
+                definitions: catalogued,
+                marker: ::core::marker::PhantomData,
+            }),
         ),
     };
-
     quote! {
-
-        struct #wrapper<A: #product_bound> {
-            definitions: ::std::vec::Vec<(#harmos::state::Kind, #harmos::DefinitionId, u32)>,
-            marker: ::core::marker::PhantomData<fn() -> A>,
-        }
-
-        #[automatically_derived]
-        impl<A: #product_bound> ::core::clone::Clone for #wrapper<A> {
-            fn clone(&self) -> Self {
-                Self {
-                    definitions: self.definitions.clone(),
-                    marker: ::core::marker::PhantomData,
-                }
-            }
-        }
-
-        #[automatically_derived]
-        impl<A: #product_bound> #wrapper<A> {
-            #decode
-        }
-
-        #[automatically_derived]
-        impl<A: #product_bound> #harmos::runtime::Registration<A> for #wrapper<A> {
-            fn register(self) -> #harmos::runtime::Catalog<A> {
-                #harmos::runtime::Catalog::Transactions {
-                    definitions: self.definitions,
-                    decode: Self::__harmos_decode_transaction,
-                    inverses: #derivation,
-                }
-            }
-        }
-
         impl #name {
-
-            #visibility fn catalog<A: #product_bound>() -> impl #harmos::runtime::Registration<A> {
+            #visibility fn catalog() -> #output {
                 let mut catalogued = ::std::vec::Vec::new();
                 #(#declared)*
-
-                #wrapper {
-                    definitions: catalogued,
-                    marker: ::core::marker::PhantomData,
-                }
+                #construct
             }
         }
     }
