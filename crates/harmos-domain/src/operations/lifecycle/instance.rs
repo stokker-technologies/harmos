@@ -7,14 +7,9 @@
  * ***
  */
 
-// Declarations of the operations Harmos implements over its own state. A host
-// serves none of them until it registers them explicitly; kits call them by
-// id through the ordinary host call path.
-
 /* === Modules === */
 
 /* === Re-Exports === */
-pub use crate::operations::host::builtin::{Cancel, InstanceState, Status, Watch};
 
 /* === Imports === */
 
@@ -23,6 +18,7 @@ pub use crate::operations::host::builtin::{Cancel, InstanceState, Status, Watch}
 // Third Party Imports
 
 // Local Imports
+use super::{Cancel, InstanceState, Status, Watch};
 use crate::operations::instance::{self, Id, Outcome, Phase};
 use crate::operations::{
     OperationDeclaration, OperationPolicy, OutputDeclaration, Visibility, WireOperation,

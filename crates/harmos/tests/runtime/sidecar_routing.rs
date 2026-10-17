@@ -332,7 +332,7 @@ impl harmos::operations::Operation for PublishingCall {
     }
 }
 
-#[harmos::plugin(description = "Publishes Before Its Generation Commits.", id = "caller", streams(MeterPulse), provides = PublishingOperations, requires(harmos::operations::host::Publish))]
+#[harmos::plugin(description = "Publishes Before Its Generation Commits.", id = "caller", streams(MeterPulse), provides = PublishingOperations, requires(harmos::operations::streams::Publish))]
 impl harmos::Plugin for Publishing {
     type Context = Supervisor;
     type Config = bool;

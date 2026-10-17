@@ -100,7 +100,7 @@ pub use component::{Component, ComponentBindings, ComponentError, ComponentOpera
 pub use handler::{Context, OperationGeneration, OperationInstance, OperationInstanceId};
 pub use harmos_domain::observers;
 pub use harmos_domain::operations::{
-    EndpointSet, InputEndpoint, OutputEndpoint, WireVisitor, host, lifecycle,
+    EndpointSet, InputEndpoint, OutputEndpoint, WireVisitor, host, lifecycle, streams,
 };
 pub use manager::OperationManager;
 pub use session::{Completion, Download, Exchange, Session, SessionInput, SessionOutput, Upload};

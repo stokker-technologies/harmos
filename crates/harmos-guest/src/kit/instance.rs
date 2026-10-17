@@ -28,8 +28,8 @@ use super::UNKNOWN;
 use super::context::Context;
 use crate::OperationRefusal;
 use harmos_domain::Message;
-use harmos_domain::builtin::InstanceState;
 use harmos_domain::operations::instance::{Id, Status};
+use harmos_domain::operations::lifecycle::InstanceState;
 use harmos_domain::operations::{
     CallContext, Callable, ContextError, ContextValue, Host, Instance, Response, WireChildAction,
     WireChildCall, WireChildControl,

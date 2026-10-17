@@ -140,7 +140,7 @@ impl harmos::operations::lifecycle::Policy for Bridge {
     const SHUTDOWN_POLICY: OperationPolicy = LIFECYCLE;
 }
 
-#[harmos::plugin(id = "custom-host", provides = Operations, requires(harmos::operations::host::Publish),  observers = Observers, observer_control = Observe, streams(Published))]
+#[harmos::plugin(id = "custom-host", provides = Operations, requires(harmos::operations::streams::Publish),  observers = Observers, observer_control = Observe, streams(Published))]
 impl harmos::Plugin for Bridge {
     type Config = usize;
     type Resources = Settings;

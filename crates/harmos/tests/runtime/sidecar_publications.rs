@@ -293,7 +293,7 @@ impl harmos::operations::lifecycle::Policy for Ticking {
     const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos::plugin(description = "Observer Demand During SDK Initialization.", id = "ticking", provides = ObserverOperations, requires(harmos::operations::host::Publish),
+#[harmos::plugin(description = "Observer Demand During SDK Initialization.", id = "ticking", provides = ObserverOperations, requires(harmos::operations::streams::Publish),
     observers = TickingObservers, observer_control = ObserveControl, streams(TickingPulse))]
 impl harmos::Plugin for Ticking {
     type Config = usize;
@@ -378,7 +378,7 @@ impl harmos::operations::lifecycle::Policy for Twins {
     const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos::plugin(description = "Two Streams Share One Row Shape.", id = "twins", provides = (), requires(harmos::operations::host::Publish),  observers = (), streams(Left),
+#[harmos::plugin(description = "Two Streams Share One Row Shape.", id = "twins", provides = (), requires(harmos::operations::streams::Publish),  observers = (), streams(Left),
     stream_entries = &[harmos_sidecar::inventory::publications::Entry::of::<Right>()])]
 impl harmos::Plugin for Twins {
     type Config = ();
@@ -430,7 +430,7 @@ impl harmos::operations::lifecycle::Policy for Batches {
     const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos::plugin(description = "Publishes Ordered Row Batches.", id = "batches", provides = (), requires(harmos::operations::host::Publish), observers = (), streams(BatchedRows, RawRows, TimedRows, ClockedRows, StampedRows))]
+#[harmos::plugin(description = "Publishes Ordered Row Batches.", id = "batches", provides = (), requires(harmos::operations::streams::Publish), observers = (), streams(BatchedRows, RawRows, TimedRows, ClockedRows, StampedRows))]
 impl harmos::Plugin for Batches {
     type Config = ();
     type Context = harmos_sidecar::Supervisor;
@@ -505,7 +505,7 @@ impl harmos::Plugin for Batches {
                    sequence: u64,
                    published_unix_micros: Option<i64>,
                    following: Vec<(Vec<u8>, Option<i64>)>| {
-            harmos::operations::host::Publication {
+            harmos::operations::streams::Publication {
                 stream: stream.to_owned(),
                 schema: 1,
                 sequence: Some(sequence),
@@ -515,7 +515,7 @@ impl harmos::Plugin for Batches {
                 following: following
                     .into_iter()
                     .map(|(payload, published_delta_micros)| {
-                        harmos::operations::host::FollowingRow {
+                        harmos::operations::streams::FollowingRow {
                             payload,
                             published_delta_micros,
                         }
@@ -525,7 +525,9 @@ impl harmos::Plugin for Batches {
         };
         let pulse = |sample: u64| harmos::Message::encode_to_vec(&support::pulse(sample));
         let publish = |request| {
-            harmos::operations::Host::call_as::<harmos::operations::host::Publish>(context, request)
+            harmos::operations::Host::call_as::<harmos::operations::streams::Publish>(
+                context, request,
+            )
         };
         let raw_id = <RawRows as harmos::StreamSpec>::ID;
         let refused = publish(raw(
@@ -648,7 +650,7 @@ impl harmos::operations::lifecycle::Policy for SampledTwins {
     const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos::plugin(description = "Independent Observers Sharing The Original Initialized Resources.", id = "twin-observers", provides = ObserverOperations, requires(harmos::operations::host::Publish),
+#[harmos::plugin(description = "Independent Observers Sharing The Original Initialized Resources.", id = "twin-observers", provides = ObserverOperations, requires(harmos::operations::streams::Publish),
     observers = TwinObservers, observer_control = ObserveControl, streams(Left, Right))]
 impl harmos::Plugin for SampledTwins {
     type Config = usize;
@@ -794,7 +796,7 @@ impl harmos::operations::lifecycle::Policy for MultiStream {
     const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos::plugin(description = "One Observer Publishing Two Rows.", id = "multi-stream", provides = ObserverOperations, requires(harmos::operations::host::Publish),
+#[harmos::plugin(description = "One Observer Publishing Two Rows.", id = "multi-stream", provides = ObserverOperations, requires(harmos::operations::streams::Publish),
     observers = MultiObservers, observer_control = ObserveControl, streams(Left, Right))]
 impl harmos::Plugin for MultiStream {
     type Config = ();
@@ -860,7 +862,7 @@ impl harmos::operations::lifecycle::Policy for Flood {
     const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos::plugin(description = "Publishes Faster Than Its Host Ingests.", id = "flood", provides = ObserverOperations, requires(harmos::operations::host::Publish),
+#[harmos::plugin(description = "Publishes Faster Than Its Host Ingests.", id = "flood", provides = ObserverOperations, requires(harmos::operations::streams::Publish),
     observers = FloodObservers, observer_control = ObserveControl, streams(FloodRows))]
 impl harmos::Plugin for Flood {
     type Config = ();

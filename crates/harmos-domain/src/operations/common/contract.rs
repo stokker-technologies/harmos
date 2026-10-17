@@ -274,11 +274,11 @@ impl Contract {
     }
 
     // Only The Closed SDK Action Can Construct Reserved Metadata
-    pub(super) fn lifecycle(
-        action: super::lifecycle::Action,
+    pub(crate) fn lifecycle(
+        action: crate::operations::lifecycle::Action,
         policy: super::OperationPolicy,
     ) -> Result<Self, ContractError> {
-        use super::lifecycle::{Action, InitializeRequest};
+        use crate::operations::lifecycle::{Action, InitializeRequest};
         let (id, request) = match action {
             Action::Initialize => ("harmos.initialize", InitializeRequest::DEFINITION),
             Action::Shutdown => ("harmos.shutdown", <()>::DEFINITION),

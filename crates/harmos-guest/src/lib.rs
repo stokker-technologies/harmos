@@ -22,7 +22,7 @@ pub use harmos_domain::operations::Host;
 pub use harmos_domain::operations::{
     CacheKey, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy,
 };
-pub use harmos_domain::{builtin, catalog, listeners, operations};
+pub use harmos_domain::{catalog, listeners, operations};
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "componentize"))]
 pub use component::componentize;

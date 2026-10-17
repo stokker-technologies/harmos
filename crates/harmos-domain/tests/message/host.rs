@@ -20,9 +20,9 @@ use crate::scenario_runtime;
 // Local Imports
 use harmos_domain::__private::DecodeInput;
 use harmos_domain::operations::host::{
-    EgressRequest, Fetched, FollowingRow, Header, Measured, Publication, RecallResponse,
-    Remembered, SurveyResponse,
+    EgressRequest, Fetched, Header, Measured, RecallResponse, Remembered, SurveyResponse,
 };
+use harmos_domain::operations::streams::{FollowingRow, Publication};
 use harmos_domain::{MemorySize, Protobuf};
 
 /* === Constants === */

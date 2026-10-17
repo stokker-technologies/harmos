@@ -25,8 +25,8 @@ use std::marker::PhantomData;
 
 // Local Imports
 use super::{CallError, Supervisor};
-use harmos_domain::builtin::InstanceState;
 use harmos_domain::operations::instance::{Id, Status};
+use harmos_domain::operations::lifecycle::InstanceState;
 use harmos_domain::operations::{
     CallContext, Callable, ContextError, ContextValue, Host, Instance, OperationDeclaration,
     Response, WireChildAction,

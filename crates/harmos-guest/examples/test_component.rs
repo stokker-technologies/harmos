@@ -36,7 +36,7 @@ use harmos_guest::Host;
 
 /* === Constants === */
 const REQUIRED: &[Node<Requirement>] = &[
-    Node::Leaf(Requirement::of::<host::Publish>(&[])),
+    Node::Leaf(Requirement::of::<harmos_domain::operations::streams::Publish>(&[])),
     Node::Leaf(Requirement::of::<host::RecordSelf>(&[])),
     Node::Leaf(Requirement::of::<host::RecallSelf>(&[])),
     Node::Leaf(Requirement::of::<host::Invoke>(&[])),

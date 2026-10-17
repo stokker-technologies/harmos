@@ -453,7 +453,7 @@ where
     S: Attach,
     H: Fn(&Service<A>, Notice) + Send + Sync + 'static,
 {
-    type Declaration = crate::operations::host::Publish;
+    type Declaration = crate::operations::streams::Publish;
 }
 
 impl<A, S, H> crate::operations::Operation for Publish<A, S, H>
@@ -462,7 +462,7 @@ where
     S: Attach,
     H: Fn(&Service<A>, Notice) + Send + Sync + 'static,
 {
-    type Declaration = crate::operations::host::Publish;
+    type Declaration = crate::operations::streams::Publish;
     type Resources = Supervised<A, S, H>;
     type Error = crate::Error;
     type Endpoints = ();
@@ -489,7 +489,7 @@ where
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        request: &mut crate::operations::host::Publication,
+        request: &mut crate::operations::streams::Publication,
         _endpoints: &mut Self::Endpoints,
     ) -> crate::Result<crate::operations::Response<()>> {
         let result: ::core::result::Result<(), Self::Error> = async move {

@@ -458,7 +458,6 @@ impl Supervisor {
         S: crate::StreamSpec,
         S::Row: Message,
     {
-        use harmos_domain::operations::host;
         debug_assert_eq!(rows.len(), stamps.len());
         if rows.is_empty() {
             return Ok(());
@@ -476,7 +475,10 @@ impl Supervisor {
                         rest.1,
                         context,
                         |request| {
-                            let params = self.child::<host::Publish>(&request, false)?;
+                            let params = self
+                                .child::<harmos_domain::operations::streams::Publish>(
+                                    &request, false,
+                                )?;
                             let frame = Self::request_frame(id, CHILD_METHOD, params)?;
                             call.send(Outgoing::Frame(frame));
                             Ok(())
@@ -486,7 +488,7 @@ impl Supervisor {
                 })
                 .await?;
             <() as Message>::decode(bytes.as_slice()).map_err(|source| CallError::Malformed {
-                method: host::Publish::ID,
+                method: harmos_domain::operations::streams::Publish::ID,
                 message: source.to_string(),
             })?;
             rest = (&rest.0[sent..], &rest.1[sent..]);
@@ -506,14 +508,16 @@ impl Supervisor {
         rows: &[S::Row],
         stamps: &[Option<i64>],
         context: Option<&str>,
-        send: impl FnOnce(harmos_domain::operations::host::Publication) -> Result<(), E>,
+        send: impl FnOnce(harmos_domain::operations::streams::Publication) -> Result<(), E>,
     ) -> Result<usize, E>
     where
         S::Row: Message,
     {
-        use harmos_domain::operations::host;
         let fits = |body: usize| {
-            Frame::request_payload_encoded_len(host::Publish::ID, body) <= Frame::LIMIT
+            Frame::request_payload_encoded_len(
+                harmos_domain::operations::streams::Publish::ID,
+                body,
+            ) <= Frame::LIMIT
         };
         let mut sequences = self
             .sequences
@@ -569,7 +573,7 @@ impl Supervisor {
             *next += 1;
         }
         let taken = deltas.len() + 1;
-        send(host::Publication {
+        send(harmos_domain::operations::streams::Publication {
             stream: S::ID.to_owned(),
             schema: S::VERSION,
             sequence: Some(first),
@@ -579,9 +583,11 @@ impl Supervisor {
             following: rows[1..taken]
                 .iter()
                 .zip(deltas)
-                .map(|(row, published_delta_micros)| host::FollowingRow {
-                    payload: row.encode_to_vec(),
-                    published_delta_micros,
+                .map(|(row, published_delta_micros)| {
+                    harmos_domain::operations::streams::FollowingRow {
+                        payload: row.encode_to_vec(),
+                        published_delta_micros,
+                    }
                 })
                 .collect(),
         })?;

@@ -19,7 +19,7 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use super::{
+use crate::operations::{
     Contract, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility,
     WireOperation,
 };
@@ -48,7 +48,6 @@ macro_rules! declarations {
 }
 
 declarations! {
-        Publish,
         RecordSelf,
         RecallSelf,
         Invoke,
@@ -79,11 +78,14 @@ pub struct DiscoveredOperation {
 impl WireOperation for Operations {
     const VERSION: u32 = 1;
     #[cfg(feature = "grpc")]
-    const GRPC: Option<super::Grpc> =
-        Some(super::Grpc::new("harmos.host.v1", "Host", "Operations"));
+    const GRPC: Option<crate::operations::Grpc> = Some(crate::operations::Grpc::new(
+        "harmos.host.v1",
+        "Host",
+        "Operations",
+    ));
 
     #[cfg(feature = "grpc")]
-    fn visit_grpc<V: super::GrpcVisitor>(visitor: V) -> Option<V::Entry> {
+    fn visit_grpc<V: crate::operations::GrpcVisitor>(visitor: V) -> Option<V::Entry> {
         Some(visitor.unary::<Self>())
     }
 }
@@ -96,14 +98,6 @@ impl OperationDeclaration for Operations {
     const VISIBILITY: Visibility = Visibility::Shared;
     const DESCRIPTION: &'static str =
         "Discover bounded live contracts; invocation authorization remains conditional";
-}
-
-impl OperationDeclaration for Publish {
-    type Request = Publication;
-    type Response = ();
-    const ID: &'static str = "host.publish";
-    const POLICY: OperationPolicy = POLICY;
-    const VISIBILITY: Visibility = Visibility::Shared;
 }
 
 impl OperationDeclaration for RecordSelf {

@@ -569,7 +569,7 @@ impl<A: Attach> Managed<A> {
     }
     pub(crate) fn publication(&self) -> harmos::Result<()> {
         let selected =
-            harmos::operations::WireDeclaration::of::<harmos::operations::host::Publish>()
+            harmos::operations::WireDeclaration::of::<harmos::operations::streams::Publish>()
                 .contract()
                 .map_err(|source| harmos::Error::OperationFailed {
                     operation: "host.publish".into(),

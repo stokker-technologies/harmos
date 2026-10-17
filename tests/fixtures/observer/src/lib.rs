@@ -68,7 +68,7 @@ impl harmos::operations::lifecycle::Policy for StandaloneBridge {
     id = "standalone-bridge",
     streams(crate::operations::read::Sample, observers::DriftRow),
     provides = operations::Operations,
-    requires(harmos::operations::host::Publish),
+    requires(harmos::operations::streams::Publish),
     observers = observers::Observers,
     listeners = listeners::Listeners,
     observer_control = observers::controls::Observe,

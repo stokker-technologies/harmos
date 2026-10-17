@@ -133,7 +133,7 @@ impl Children {
                 if control.action == WireChildAction::Cancel {
                     invocation.cancel();
                 }
-                let state = harmos_domain::builtin::InstanceState::from(
+                let state = harmos_domain::operations::lifecycle::InstanceState::from(
                     invocation.control.status().portable(),
                 );
                 Ok(state.encode_to_vec())

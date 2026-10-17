@@ -228,7 +228,7 @@ pub enum ServingError {
     #[error("carrier stream direction or attempt is not available")]
     StreamPhase,
     #[error(transparent)]
-    Lifecycle(#[from] super::lifecycle::Error),
+    Lifecycle(#[from] crate::operations::lifecycle::Error),
     #[error(transparent)]
     Contract(#[from] ContractError),
     #[error(transparent)]

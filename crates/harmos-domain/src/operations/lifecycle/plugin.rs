@@ -23,11 +23,11 @@ use std::marker::PhantomData;
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 // Local Imports
-use super::{
+use crate::catalog::{self, Member};
+use crate::operations::{
     Contract, ContractError, OperationDeclaration, OperationPolicy, PolicyError, RestartPolicy,
     RetryPolicy, WireOperation,
 };
-use crate::catalog::{self, Member};
 use crate::schema::declaration::{Field, Kind};
 use crate::schema::{Cardinality, Described};
 
@@ -108,17 +108,17 @@ pub trait SdkOperation: OperationDeclaration + sealed::Leaf {
 crate::message::postcard_product!(InitializeRequest { config_json: Vec<u8>, generation_context: Vec<u8> });
 impl<P: Policy> Catalog<P> {
     pub fn bind<I, S, C>(
-        table: &mut super::WireTable<C>,
+        table: &mut crate::operations::WireTable<C>,
         resources: std::sync::Arc<I::Resources>,
-    ) -> Result<(), super::ServingError>
+    ) -> Result<(), crate::operations::ServingError>
     where
         C: Send + Sync + 'static,
-        I: for<'a> super::Operation<
+        I: for<'a> crate::operations::Operation<
                 Declaration = Initialize<P>,
                 Context<'a> = &'a C,
                 Endpoints = (),
             >,
-        S: for<'a> super::Operation<
+        S: for<'a> crate::operations::Operation<
                 Declaration = Shutdown<P>,
                 Resources = I::Resources,
                 Context<'a> = &'a C,

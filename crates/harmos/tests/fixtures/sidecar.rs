@@ -171,7 +171,7 @@ impl harmos::operations::lifecycle::Policy for Stubborn {
     id = "meter",
     streams(MeterReading),
     provides = Operations,
-    requires(harmos::operations::host::Publish),
+    requires(harmos::operations::streams::Publish),
     restart(
         credit = 3,
         sustained_health_ms = 250,
@@ -303,8 +303,8 @@ impl Operation for Echoing {
         let result: ::core::result::Result<String, Self::Error> = async move {
             if request == "publish-foreign" {
                 // Reach The Host With A Selected Core Leaf And An Ungranted Stream.
-                host.call_as::<harmos::operations::host::Publish>(
-                    harmos::operations::host::Publication {
+                host.call_as::<harmos::operations::streams::Publish>(
+                    harmos::operations::streams::Publication {
                         stream: <linked::Foreign as harmos::StreamSpec>::ID.to_owned(),
                         schema: <linked::Foreign as harmos::StreamSpec>::VERSION,
                         sequence: Some(1),

@@ -1070,7 +1070,7 @@ impl harmos::operations::lifecycle::Policy for Meter {
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos::plugin(id = "meter", provides = MeterOperations, requires(harmos::operations::host::Publish),  streams(MeterPulse))]
+#[harmos::plugin(id = "meter", provides = MeterOperations, requires(harmos::operations::streams::Publish),  streams(MeterPulse))]
 impl harmos::Plugin for Meter {
     type Config = ();
     type Context = Supervisor;
@@ -2573,9 +2573,10 @@ async fn process_runtime<H>(
 where
     H: Fn(&Service<Bank>, Notice) + Send + Sync + 'static,
 {
-    let selected = harmos::operations::WireDeclaration::of::<harmos::operations::host::Publish>()
-        .contract()
-        .unwrap();
+    let selected =
+        harmos::operations::WireDeclaration::of::<harmos::operations::streams::Publish>()
+            .contract()
+            .unwrap();
     assert!(
         definition
             .contributions

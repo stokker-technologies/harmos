@@ -24,9 +24,9 @@ use std::future::Future;
 // Third Party Imports
 
 // Local Imports
-use super::host::{Publication, Publish};
 use super::instance::Instance;
 use super::{CallContext, ContextError, ContextValue, OperationDeclaration, Response};
+use crate::operations::streams::{Publication, Publish};
 use crate::{Message, StreamSpec};
 
 /* === Constants === */

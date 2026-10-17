@@ -460,7 +460,7 @@ async fn throughput_case(
                         .expect("typed child envelope");
                 assert_eq!(call.operation, "host.publish");
                 assert_eq!(call.generation_context, Some([2; 32]));
-                let row = harmos_domain::operations::host::Publication::decode(&call.payload)
+                let row = harmos_domain::operations::streams::Publication::decode(&call.payload)
                     .expect("typed publication");
                 calls += 1;
                 if row.stream == Done::ID {

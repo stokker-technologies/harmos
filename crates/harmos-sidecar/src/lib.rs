@@ -35,7 +35,7 @@ pub use harmos_domain::{
     ConfigError, Failure, Plugin, RESERVED, Refusal, Registrar, Registration, RegistrationError,
     StreamSpec, UNKNOWN, UNREADABLE, encode_config, reserved, validate_config,
 };
-pub use harmos_domain::{builtin, catalog, failure, listeners, operations};
+pub use harmos_domain::{catalog, failure, listeners, operations};
 
 pub use harmos_domain::StreamDeclaration;
 #[cfg(feature = "kit")]

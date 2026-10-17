@@ -51,7 +51,7 @@ const PROVIDED: &[Node<WireDeclaration>] = &[
 const REQUIRED: &[Node<Requirement>] = &[
     Node::Leaf(Requirement::of::<ProviderEcho>(&[])),
     Node::Leaf(Requirement::of::<host::Invoke>(&[])),
-    Node::Leaf(Requirement::of::<host::Publish>(&[])),
+    Node::Leaf(Requirement::of::<harmos_domain::operations::streams::Publish>(&[])),
     Node::Leaf(Requirement::of::<host::Egress>(&[Grant {
         operation: Cow::Borrowed(host::Egress::ID),
         scope: Some(Cow::Borrowed("vendor")),
@@ -391,15 +391,17 @@ impl Operation for Echoing {
             }
             if request.say == "publish-foreign" {
                 let refused = context
-                    .call_as::<host::Publish>(host::Publication {
-                        stream: "foreign".into(),
-                        schema: 1,
-                        sequence: None,
-                        published_unix_micros: None,
-                        context: None,
-                        payload: ().encode_to_vec(),
-                        following: Vec::new(),
-                    })
+                    .call_as::<harmos_domain::operations::streams::Publish>(
+                        harmos_domain::operations::streams::Publication {
+                            stream: "foreign".into(),
+                            schema: 1,
+                            sequence: None,
+                            published_unix_micros: None,
+                            context: None,
+                            payload: ().encode_to_vec(),
+                            following: Vec::new(),
+                        },
+                    )
                     .await
                     .expect_err("co-linked declarations grant nothing");
                 return Ok(Echoed {

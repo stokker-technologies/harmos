@@ -13,7 +13,6 @@ mod answer;
 pub mod artifacts;
 #[cfg(feature = "bindings-python")]
 pub mod bindings;
-pub mod builtin;
 pub mod catalog;
 pub mod config;
 mod error;

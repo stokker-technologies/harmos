@@ -117,7 +117,7 @@ impl harmos::operations::Operation for Surveying {
 }
 
 impl harmos::operations::Operation for CorePublication {
-    type Declaration = harmos::operations::host::Publish;
+    type Declaration = harmos::operations::streams::Publish;
     type Resources = CoreOwner;
     type Error = super::Failed;
     type Endpoints = ();
@@ -132,7 +132,7 @@ impl harmos::operations::Operation for CorePublication {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        _request: &mut harmos::operations::host::Publication,
+        _request: &mut harmos::operations::streams::Publication,
         _endpoints: &mut Self::Endpoints,
     ) -> std::result::Result<harmos::operations::Response<()>, Self::Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
@@ -508,7 +508,7 @@ pub(super) fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    use harmos::operations::host::{Publication, Publish};
+                    use harmos::operations::streams::{Publication, Publish};
                     let runtime =
                         super::runtime_with_preparation(NonZeroUsize::new(4096).unwrap()).await;
                     let owner = Arc::new(CoreOwner::default());

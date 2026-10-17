@@ -137,7 +137,7 @@ impl harmos::operations::lifecycle::Policy for Producer {
     const SHUTDOWN_POLICY: OperationPolicy = LIFECYCLE;
 }
 
-#[harmos::plugin(id = "demand-authoring", provides = Operations, requires(harmos::operations::host::Publish),  observers = Observers, observer_control = Observe, streams(Row))]
+#[harmos::plugin(id = "demand-authoring", provides = Operations, requires(harmos::operations::streams::Publish),  observers = Observers, observer_control = Observe, streams(Row))]
 impl harmos::Plugin for Producer {
     type Config = usize;
     type Resources = Resources;

@@ -20,8 +20,8 @@ use std::time::Duration;
 
 // Local Imports
 use super::protocol::{Done, Sample, Start, TransportPlugin};
-use harmos_domain::operations::host::Publication;
 use harmos_domain::operations::lifecycle::{Initialize, InitializeRequest};
+use harmos_domain::operations::streams::Publication;
 use harmos_domain::operations::{CHILD_METHOD, WireChildCall};
 use harmos_sidecar::operations::{OperationDeclaration, WIRE_METHOD, WireAnswer, WireCommand};
 use harmos_sidecar::transport::{Connection, Receiver, Sender};
