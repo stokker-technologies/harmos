@@ -51,6 +51,7 @@ impl Error {
             Self::Packaging(
                 Packaging::Settings(_)
                 | Packaging::Component(_)
+                | Packaging::ArtifactChanged(_)
                 | Packaging::Collision(_)
                 | Packaging::Declaration(_),
             )

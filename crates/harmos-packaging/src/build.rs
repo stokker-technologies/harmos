@@ -18,15 +18,16 @@
 // Standard Library Imports
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 // Third Party Imports
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 
 // Local Imports
 use super::{BuildCancellation, Error, metadata::Metadata, process::Process};
-use crate::config::{BuildBackend, BuildSettings};
+use crate::config::{BuildBackend, BuildProfile, BuildSettings};
 
 /* === Constants === */
 
@@ -37,24 +38,31 @@ type BuildMessages = (Vec<Artifact>, BTreeSet<(String, PathBuf)>);
 
 /* === Structs === */
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Artifact {
     pub producer: String,
     pub name: String,
     pub path: PathBuf,
+    pub sha256: String,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Schema {
     pub producer: String,
     pub catalog: String,
     pub directory: PathBuf,
+    pub files: BTreeMap<String, String>,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Build {
+    pub backend: BuildBackend,
+    pub profile: BuildProfile,
+    pub target: String,
     pub artifacts: Vec<Artifact>,
     pub schemas: Vec<Schema>,
-    pub packages: Vec<PackageOutput>,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -73,11 +81,18 @@ struct Message {
     target: Option<Target>,
     out_dir: Option<PathBuf>,
     message: Option<Diagnostic>,
+    success: Option<bool>,
+    profile: Option<Profile>,
 }
 
 #[derive(Deserialize)]
 struct Diagnostic {
     rendered: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct Profile {
+    test: bool,
 }
 
 #[derive(Deserialize)]
@@ -91,6 +106,82 @@ struct Target {
 /* === Traits === */
 
 /* === Implementations === */
+impl Artifact {
+    // Stamp An Existing Cargo Output Without Launching A Compiler.
+    pub fn read(producer: String, name: String, path: PathBuf) -> Result<Self, Error> {
+        safe_name(&producer)?;
+        safe_name(&name)?;
+        let sha256 = digest(&read_artifact(&path)?);
+        Ok(Self { producer, name, path, sha256 })
+    }
+}
+
+impl Schema {
+    pub fn read(producer: String, catalog: String, directory: PathBuf) -> Result<Self, Error> {
+        safe_name(&producer)?;
+        safe_name(&catalog)?;
+        let files = schema_files(&directory)?.into_iter().map(|(name, bytes)| (name, digest(&bytes))).collect();
+        Ok(Self { producer, catalog, directory, files })
+    }
+}
+
+impl Build {
+    // The Caller Supplies Package Identities From The Same Captured Cargo Metadata.
+    // Collection Reads One Existing Build Stream; It Never Invokes Cargo Or Metadata.
+    pub fn from_cargo_messages(
+        input: impl BufRead,
+        backend: BuildBackend,
+        profile: BuildProfile,
+        target: String,
+        packages: &BTreeMap<String, String>,
+    ) -> Result<Self, Error> {
+        if packages.is_empty() || target.is_empty() || packages.values().collect::<BTreeSet<_>>().len() != packages.len() {
+            return Err(Error::Settings("collection needs unambiguous selected Cargo packages and a target".into()));
+        }
+        if (backend == BuildBackend::Guest) != target.starts_with("wasm32-") {
+            return Err(Error::Settings("backend and selected target disagree".into()));
+        }
+        let (artifacts, outputs) = read_messages(input, packages)?;
+        let build = finish_build(backend, profile, target, artifacts, outputs, &BuildCancellation::default())?;
+        let provided = build.artifacts.iter().map(|artifact| artifact.producer.as_str()).collect::<BTreeSet<_>>();
+        if packages.values().any(|name| !provided.contains(name.as_str())) {
+            return Err(Error::Settings("captured build is missing a selected package artifact".into()));
+        }
+        let identities = build.artifacts.iter().map(|artifact| (&artifact.producer, &artifact.name)).collect::<BTreeSet<_>>();
+        if identities.len() != build.artifacts.len() {
+            return Err(Error::Settings("captured build contains ambiguous package artifacts".into()));
+        }
+        Ok(build)
+    }
+
+    // Select Opaque Package Ids From Captured Metadata Without Running Cargo.
+    pub fn from_cargo_outputs(
+        messages: impl BufRead,
+        metadata: impl std::io::Read,
+        settings: &BuildSettings,
+    ) -> Result<Self, Error> {
+        validate_backend(settings)?;
+        let metadata: Metadata = serde_json::from_reader(metadata)?;
+        let packages = metadata.select(settings)?;
+        let target = settings.target.clone().ok_or_else(|| Error::Settings(
+            "collection requires the target used by the captured build".into(),
+        ))?;
+        Self::from_cargo_messages(messages, settings.backend, settings.profile, target, &packages)
+    }
+
+    // Relocation Changes Locations Only; It Never Replaces The Original Byte Stamps.
+    pub fn relocate(&mut self, from: &Path, to: &Path) -> Result<(), Error> {
+        let relocate = |path: &Path| path.strip_prefix(from)
+            .map(|relative| to.join(relative))
+            .map_err(|_| Error::Settings("build receipt paths do not share the selected source root".into()));
+        let artifacts = self.artifacts.iter().map(|artifact| relocate(&artifact.path)).collect::<Result<Vec<_>, _>>()?;
+        let schemas = self.schemas.iter().map(|schema| relocate(&schema.directory)).collect::<Result<Vec<_>, _>>()?;
+        for (artifact, path) in self.artifacts.iter_mut().zip(artifacts) { artifact.path = path; }
+        for (schema, directory) in self.schemas.iter_mut().zip(schemas) { schema.directory = directory; }
+        Ok(())
+    }
+}
+
 
 /* === Public Functions === */
 pub fn build(settings: &BuildSettings) -> Result<Build, Error> {
@@ -103,23 +194,13 @@ pub fn build_with_cancellation(
 ) -> Result<Build, Error> {
     validate_backend(settings)?;
     let metadata = Metadata::read(settings, cancellation)?;
-    build_resolved(settings, cancellation, metadata, false)
-}
-
-pub fn package_with_cancellation(
-    settings: &BuildSettings,
-    cancellation: &BuildCancellation,
-) -> Result<Build, Error> {
-    validate_backend(settings)?;
-    let metadata = Metadata::read(settings, cancellation)?;
-    build_resolved(settings, cancellation, metadata, true)
+    build_resolved(settings, cancellation, metadata)
 }
 
 pub(super) fn build_resolved(
     settings: &BuildSettings,
     cancellation: &BuildCancellation,
     metadata: Metadata,
-    packaged: bool,
 ) -> Result<Build, Error> {
     let manifest = settings.manifest.canonicalize()?;
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
@@ -166,9 +247,7 @@ pub(super) fn build_resolved(
     for package in selected.values() {
         command.args(["--package", package]);
     }
-    if settings.release {
-        command.arg("--release");
-    }
+    command.args(["--profile", settings.profile.name()]);
     if settings.timings {
         command.arg("--timings");
     }
@@ -190,17 +269,28 @@ pub(super) fn build_resolved(
     }
     let status = child.wait()?;
     cancellation.check()?;
-    let (mut artifacts, outputs) = parsed?;
+    let (artifacts, outputs) = parsed?;
     if !status.success() {
         return Err(Error::Cargo(status.to_string()));
     }
 
+    finish_build(settings.backend, settings.profile, target, artifacts, outputs, cancellation)
+}
+
+fn finish_build(
+    backend: BuildBackend,
+    profile: BuildProfile,
+    target: String,
+    mut artifacts: Vec<Artifact>,
+    outputs: BTreeSet<(String, PathBuf)>,
+    cancellation: &BuildCancellation,
+) -> Result<Build, Error> {
     artifacts.retain(|artifact| {
         (artifact
             .path
             .extension()
             .is_some_and(|extension| extension == "wasm"))
-            == (settings.backend == BuildBackend::Guest)
+            == (backend == BuildBackend::Guest)
     });
     if artifacts.is_empty() {
         return Err(Error::Settings(
@@ -229,6 +319,7 @@ pub(super) fn build_resolved(
         let component = super::componentize(&module).map_err(Error::Component)?;
         super::Declaration::inspect(&component, super::Facility::Guest)?;
         let output = artifact.path.with_extension("component.wasm");
+        artifact.sha256 = digest(&component);
         components.insert(output.clone(), component);
         artifact.path = output;
     }
@@ -255,6 +346,7 @@ pub(super) fn build_resolved(
                     Schema {
                         producer: producer.clone(),
                         catalog,
+                        files: schema_files(&entry.path())?.into_iter().map(|(name, bytes)| (name, digest(&bytes))).collect(),
                         directory: entry.path(),
                     },
                 )
@@ -265,30 +357,16 @@ pub(super) fn build_resolved(
         }
     }
     let schemas: Vec<_> = schemas.into_values().collect();
-    let output = metadata
-        .output_directory(settings)?
-        .join("harmos")
-        .join(&target);
-    let packages = if packaged {
-        package(
-        &artifacts,
-        &schemas,
-        settings.backend,
-        &target,
-        &output,
-        components,
-        cancellation,
-        )?
-    } else {
-        for (path, bytes) in components {
-            publish(&path, &bytes)?;
-        }
-        Vec::new()
-    };
+    cancellation.check()?;
+    for (path, bytes) in components {
+        publish(&path, &bytes)?;
+    }
     Ok(Build {
+        backend,
+        profile,
+        target,
         artifacts,
         schemas,
-        packages,
     })
 }
 
@@ -306,15 +384,23 @@ pub(super) fn validate_backend(settings: &BuildSettings) -> Result<(), Error> {
     Ok(())
 }
 
-fn package(
-    artifacts: &[Artifact],
-    schemas: &[Schema],
-    backend: BuildBackend,
-    target: &str,
-    output: &std::path::Path,
-    components: BTreeMap<PathBuf, Vec<u8>>,
+// Package Only The Exact Bytes Stamped By An Earlier Build. This Path Never Runs Cargo.
+pub fn package(build: &Build, output: &Path) -> Result<Vec<PackageOutput>, Error> {
+    package_with_cancellation(build, output, &BuildCancellation::default())
+}
+
+pub fn package_with_cancellation(
+    build: &Build,
+    output: &Path,
     cancellation: &BuildCancellation,
 ) -> Result<Vec<PackageOutput>, Error> {
+    if build.artifacts.is_empty() || build.target.is_empty() {
+        return Err(Error::Settings("a stamped build with artifacts and a target is required".into()));
+    }
+    let artifacts = &build.artifacts;
+    let schemas = &build.schemas;
+    let backend = build.backend;
+    let target = &build.target;
     use crate::bundle::{Bundle, Executable, Facility, Identity, Limits, Source};
     let facility = match backend {
         BuildBackend::Sidecar => Facility::Sidecar,
@@ -327,10 +413,12 @@ fn package(
     let mut prepared = BTreeMap::new();
     for artifact in artifacts {
         cancellation.check()?;
-        let content = match components.get(&artifact.path) {
-            Some(bytes) => bytes.clone(),
-            None => std::fs::read(&artifact.path)?,
-        };
+        safe_name(&artifact.producer)?;
+        safe_name(&artifact.name)?;
+        let content = read_artifact(&artifact.path)?;
+        if digest(&content) != artifact.sha256 {
+            return Err(Error::ArtifactChanged(artifact.path.clone()));
+        }
         let declaration = super::Declaration::inspect(&content, inspected)?;
         let executable = artifact
             .path
@@ -343,32 +431,15 @@ fn package(
             .iter()
             .filter(|schema| schema.producer == artifact.producer)
         {
-            let manifest = std::fs::read_to_string(schema.directory.join("manifest.txt"))?;
-            let names: Vec<_> = manifest.lines().collect();
-            if names.first() != Some(&"descriptors.bin")
-                || names.iter().copied().collect::<BTreeSet<_>>().len() != names.len()
-            {
-                return Err(Error::Settings(
-                    "schema manifest is incomplete or duplicated".into(),
-                ));
+            safe_name(&schema.catalog)?;
+            let contents = schema_files(&schema.directory)?;
+            let hashes: BTreeMap<_, _> = contents.iter().map(|(name, bytes)| (name.clone(), digest(bytes))).collect();
+            if hashes != schema.files {
+                return Err(Error::ArtifactChanged(schema.directory.clone()));
             }
-            for name in names.into_iter().chain(["manifest.txt"]) {
-                let relative = std::path::Path::new(name);
-                if relative
-                    .components()
-                    .any(|component| !matches!(component, std::path::Component::Normal(_)))
-                    || name.contains(['\\', ':'])
-                {
-                    return Err(Error::Settings(
-                        "schema manifest contains an unsafe path".into(),
-                    ));
-                }
-                let path = schema.directory.join(relative);
-                if path.is_symlink() || !path.is_file() {
-                    return Err(Error::Settings("schema must be a regular file".into()));
-                }
+            for (name, bytes) in contents {
                 let name = format!("grpc/{}/{name}", schema.catalog);
-                if files.insert(name.clone(), std::fs::read(path)?).is_some() {
+                if files.insert(name.clone(), bytes).is_some() {
                     return Err(Error::Collision(name));
                 }
             }
@@ -404,15 +475,54 @@ fn package(
     }
     cancellation.check()?;
     // Publish Only After Every Artifact And Schema Has Passed Preparation.
-    for (path, bytes) in components {
-        publish(&path, &bytes)?;
-    }
     let mut packages = Vec::new();
     for (path, (producer, bundle)) in prepared {
         publish(&path, bundle.bytes())?;
         packages.push(PackageOutput { producer, path });
     }
     Ok(packages)
+}
+
+fn digest(bytes: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(bytes))
+}
+
+fn safe_name(name: &str) -> Result<(), Error> {
+    if name.is_empty() || name.len() > 255 || !name.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.')) || matches!(name, "." | "..") {
+        return Err(Error::Settings("artifact names must be single path components".into()));
+    }
+    Ok(())
+}
+
+fn read_artifact(path: &Path) -> Result<Vec<u8>, Error> {
+    use std::io::Read as _;
+    let limit = crate::bundle::Limits::default().file_bytes;
+    if path.is_symlink() { return Err(Error::Settings("artifact must be a regular file".into())); }
+    let file = std::fs::File::open(path)?;
+    if !file.metadata()?.is_file() { return Err(Error::Settings("artifact must be a regular file".into())); }
+    let mut bytes = Vec::new();
+    file.take(limit as u64 + 1).read_to_end(&mut bytes)?;
+    if bytes.len() > limit { return Err(Error::Settings("artifact exceeds bundle byte limit".into())); }
+    Ok(bytes)
+}
+
+fn schema_files(directory: &Path) -> Result<BTreeMap<String, Vec<u8>>, Error> {
+    let manifest = read_artifact(&directory.join("manifest.txt"))?;
+    let text = std::str::from_utf8(&manifest).map_err(|_| Error::Settings("schema manifest must be UTF-8".into()))?;
+    let names: Vec<_> = text.lines().collect();
+    if names.first() != Some(&"descriptors.bin") || names.len() > crate::bundle::Limits::default().files || names.iter().copied().collect::<BTreeSet<_>>().len() != names.len() || names.contains(&"manifest.txt") {
+        return Err(Error::Settings("schema manifest is incomplete or duplicated".into()));
+    }
+    let mut files = BTreeMap::new();
+    for name in names {
+        let relative = Path::new(name);
+        if relative.components().any(|part| !matches!(part, std::path::Component::Normal(_))) || name.contains(['\\', ':']) {
+            return Err(Error::Settings("schema manifest contains an unsafe path".into()));
+        }
+        files.insert(name.to_owned(), read_artifact(&directory.join(relative))?);
+    }
+    files.insert("manifest.txt".into(), manifest);
+    Ok(files)
 }
 
 fn publish(path: &std::path::Path, bytes: &[u8]) -> Result<(), Error> {
@@ -435,8 +545,19 @@ fn read_messages(
 ) -> Result<BuildMessages, Error> {
     let mut artifacts = Vec::new();
     let mut outputs = BTreeSet::new();
+    let mut finished = false;
     for line in reader.lines() {
         let message: Message = serde_json::from_str(&line?)?;
+        if finished {
+            return Err(Error::Cargo("messages follow the completed Cargo build".into()));
+        }
+        if message.reason == "build-finished" {
+            if message.success != Some(true) {
+                return Err(Error::Cargo("captured Cargo build did not succeed".into()));
+            }
+            finished = true;
+            continue;
+        }
         if let Some(rendered) = message
             .message
             .as_ref()
@@ -453,7 +574,7 @@ fn read_messages(
             }
             continue;
         }
-        if message.reason != "compiler-artifact" {
+        if message.reason != "compiler-artifact" || message.profile.is_some_and(|profile| profile.test) {
             continue;
         }
         let Some(target) = message.target else {
@@ -472,13 +593,14 @@ fn read_messages(
                     .is_some_and(|extension| extension == "wasm")
             }));
         for path in files {
-            artifacts.push(Artifact {
-                producer: producer.clone(),
-                name: target.name.clone(),
-                path,
-            });
+            artifacts.push(Artifact::read(producer.clone(), target.name.clone(), path)?);
         }
     }
+    if !finished {
+        return Err(Error::Cargo("captured Cargo stream has no successful build-finished event".into()));
+    }
+    artifacts.sort_by(|left, right| (&left.producer, &left.name, &left.path).cmp(&(&right.producer, &right.name, &right.path)));
+    artifacts.dedup_by(|left, right| left.producer == right.producer && left.name == right.name && left.path == right.path);
     Ok((artifacts, outputs))
 }
 

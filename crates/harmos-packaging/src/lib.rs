@@ -26,7 +26,7 @@ mod metadata;
 mod process;
 
 /* === Re-Exports === */
-pub use build::{Artifact, Build, PackageOutput, Schema, build, build_with_cancellation, package_with_cancellation};
+pub use build::{Artifact, Build, PackageOutput, Schema, build, build_with_cancellation, package, package_with_cancellation};
 pub use dev::{DevEvent, dev};
 pub use harmos_domain::inventory::{Declaration, DeclarationError, Facility};
 #[cfg(feature = "guest")]
@@ -82,6 +82,8 @@ pub enum Error {
     Cargo(String),
     #[error("guest componentization failed: {0}")]
     Component(String),
+    #[error("built artifact changed after stamping: {0}")]
+    ArtifactChanged(std::path::PathBuf),
     #[error("generated artifact collision: {0}")]
     Collision(String),
 }
