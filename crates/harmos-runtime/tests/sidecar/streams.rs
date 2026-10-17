@@ -161,9 +161,11 @@ pub(super) fn bind(
 
 /* === Private Functions === */
 #[cfg(feature = "grpc")]
-fn opening() -> impl futures_core::Stream<Item = harmos_runtime::operations::Response<InputEnvelope<u32, u32>>> + Send + 'static {
+fn opening<R: Send + Sync + 'static>(
+    request: R,
+) -> impl futures_core::Stream<Item = harmos_runtime::operations::Response<InputEnvelope<R, u32>>> + Send + 'static {
     futures_util::stream::iter([
-        harmos_runtime::operations::Response::new(InputEnvelope::Request(5)),
+        harmos_runtime::operations::Response::new(InputEnvelope::Request(request)),
         harmos_runtime::operations::Response::new(InputEnvelope::Item(0)),
         harmos_runtime::operations::Response::new(InputEnvelope::Item(7)),
     ])
@@ -202,9 +204,9 @@ async fn grpc_stream_lifecycle() {
     client.ready().await.unwrap();
     let upload: tonic::Response<harmos_runtime::operations::StreamItem<u32>> = client
         .client_streaming(
-            tonic::Request::new(opening()),
+            tonic::Request::new(opening(Upload { value: 5 })),
             tonic::codegen::http::uri::PathAndQuery::from_static("/fixture.v1.Native/Upload"),
-            Codec::<u32, harmos_runtime::operations::Response<InputEnvelope<u32, u32>>>::new(operations.decode, operations.encode).unwrap(),
+            Codec::<u32, harmos_runtime::operations::Response<InputEnvelope<Upload, u32>>>::new(operations.decode, operations.encode).unwrap(),
         )
         .await
         .unwrap();
@@ -213,9 +215,9 @@ async fn grpc_stream_lifecycle() {
     client.ready().await.unwrap();
     let mut download = client
         .server_streaming(
-            tonic::Request::new(harmos_runtime::operations::Response::new(5u32)),
+            tonic::Request::new(harmos_runtime::operations::Response::new(Download { value: 5 })),
             tonic::codegen::http::uri::PathAndQuery::from_static("/fixture.v1.Native/Download"),
-            Codec::<OutputEnvelope<u32, u32>, harmos_runtime::operations::Response<u32>>::new(operations.decode, operations.encode).unwrap(),
+            Codec::<OutputEnvelope<u32, u32>, harmos_runtime::operations::Response<Download>>::new(operations.decode, operations.encode).unwrap(),
         )
         .await
         .unwrap()
@@ -228,9 +230,9 @@ async fn grpc_stream_lifecycle() {
     client.ready().await.unwrap();
     let mut exchange = client
         .streaming(
-            tonic::Request::new(opening()),
+            tonic::Request::new(opening(Exchange { value: 5 })),
             tonic::codegen::http::uri::PathAndQuery::from_static("/fixture.v1.Native/Exchange"),
-            Codec::<OutputEnvelope<u32, u32>, harmos_runtime::operations::Response<InputEnvelope<u32, u32>>>::new(
+            Codec::<OutputEnvelope<u32, u32>, harmos_runtime::operations::Response<InputEnvelope<Exchange, u32>>>::new(
                 operations.decode,
                 operations.encode,
             )

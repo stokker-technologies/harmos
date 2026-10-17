@@ -102,6 +102,9 @@ async fn recovery_share_backpressure() {
         let blocked = f.storage.write_recovery(&[b"state"]);
         tokio::pin!(blocked);
         assert!(crate::storage::pending(blocked.as_mut()).await);
+        // The Held Flush Of The First Batch Is What Keeps The Recovery Write Waiting.
+        f.data.control.flush_entered.notified().await;
+        assert!(crate::storage::pending(blocked.as_mut()).await);
     }
     assert_eq!(f.storage.status().recovery_accepted.sequence, 0);
     assert_eq!(f.storage.status().pending_batches, 1);
