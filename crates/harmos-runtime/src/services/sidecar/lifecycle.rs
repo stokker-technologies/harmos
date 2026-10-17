@@ -19,8 +19,38 @@ where
 {
     type Error = String;
 
-    async fn run(&mut self, mut context: Service<A>) -> Result<(), Fault<String>> {
+    async fn run(&mut self, context: Service<A>) -> Result<(), Fault<String>> {
+        let result = self.attempt(context).await;
+        // An application fault is terminal: a caller awaiting staging learns the attempt was refused.
+        if let Err(Fault::Application(_)) = &result {
+            self.calls.refuse();
+        }
+        result
+    }
+
+    async fn stop(&mut self) -> Result<(), String> {
         self.calls.close();
+        if let Some(cleanup) = self.cleanup.get_mut().as_mut() {
+            cleanup.finish().await?;
+        }
+        Ok(())
+    }
+
+    async fn cleanup(&mut self) -> Result<(), String> {
+        self.cleanup.get_mut().take();
+        Ok(())
+    }
+}
+
+impl<A, S, H> Supervised<A, S, H>
+where
+    A: Application,
+    S: Attach,
+    H: Fn(&Service<A>, Notice) + Send + Sync + 'static,
+{
+    // One physical attempt; its Attach guard closes the call surface when it ends.
+    async fn attempt(&mut self, mut context: Service<A>) -> Result<(), Fault<String>> {
+        self.calls.begin();
         let _attempt = Attempt(&self.calls);
         if context.is_stopping() {
             return Ok(());
@@ -136,19 +166,6 @@ where
         if let Some(failure) = &cleanup.logical_failure {
             return Err(Fault::Environmental(failure.clone()));
         }
-        Ok(())
-    }
-
-    async fn stop(&mut self) -> Result<(), String> {
-        self.calls.close();
-        if let Some(cleanup) = self.cleanup.get_mut().as_mut() {
-            cleanup.finish().await?;
-        }
-        Ok(())
-    }
-
-    async fn cleanup(&mut self) -> Result<(), String> {
-        self.cleanup.get_mut().take();
         Ok(())
     }
 }

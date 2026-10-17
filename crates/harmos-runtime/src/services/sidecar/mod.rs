@@ -99,8 +99,17 @@ struct Attempt<'a>(&'a Calls);
 struct Calls {
     live: Mutex<Option<Arc<Endpoint>>>,
     ready: tokio::sync::watch::Sender<bool>,
-    staged: tokio::sync::watch::Sender<bool>,
+    staged: tokio::sync::watch::Sender<Staging>,
     registrations: tokio::sync::watch::Sender<Option<Vec<Registration>>>,
+}
+
+// Where the current attempt stands for a caller awaiting its staged operations.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Staging {
+    Pending,
+    Staged,
+    // The attempt ended with a terminal application fault before or after staging.
+    Refused,
 }
 
 struct Request {

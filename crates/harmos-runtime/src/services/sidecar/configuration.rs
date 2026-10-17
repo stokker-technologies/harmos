@@ -142,8 +142,10 @@ impl<A: Application, S: Attach, H> Supervised<A, S, H> {
     pub async fn staged_operations(&self) -> Result<crate::operations::Native, SidecarError> {
         let mut staged = self.calls.staged.subscribe();
         loop {
-            if *staged.borrow_and_update() {
-                return self.calls.current().map(crate::operations::Native::new);
+            match *staged.borrow_and_update() {
+                Staging::Staged => return self.calls.current().map(crate::operations::Native::new),
+                Staging::Refused => return Err(SidecarError::Unavailable),
+                Staging::Pending => {}
             }
             staged.changed().await.map_err(|_| SidecarError::Unavailable)?;
         }

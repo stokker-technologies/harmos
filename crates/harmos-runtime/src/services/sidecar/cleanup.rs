@@ -89,7 +89,7 @@ impl Calls {
         Self {
             live: Mutex::new(None),
             ready: tokio::sync::watch::channel(false).0,
-            staged: tokio::sync::watch::channel(false).0,
+            staged: tokio::sync::watch::channel(Staging::Pending).0,
             registrations,
         }
     }
@@ -113,9 +113,19 @@ impl Calls {
         }
         drop(current);
         drop(previous);
-        self.staged.send_replace(true);
+        self.staged.send_replace(Staging::Staged);
         self.ready.send_replace(*endpoint.initialized().borrow());
         endpoint
+    }
+
+    // A new attempt starts from a closed surface that nobody has refused yet.
+    pub(super) fn begin(&self) {
+        self.close();
+        self.staged.send_replace(Staging::Pending);
+    }
+
+    pub(super) fn refuse(&self) {
+        self.staged.send_replace(Staging::Refused);
     }
 
     pub(super) fn close(&self) {
@@ -127,7 +137,13 @@ impl Calls {
         drop(current);
         drop(previous);
         self.ready.send_replace(false);
-        self.staged.send_replace(false);
+        self.staged.send_if_modified(|staging| {
+            let staged = *staging == Staging::Staged;
+            if staged {
+                *staging = Staging::Pending;
+            }
+            staged
+        });
         self.registrations.send_replace(None);
     }
 
