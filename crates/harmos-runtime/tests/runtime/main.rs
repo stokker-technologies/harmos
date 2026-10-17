@@ -23,7 +23,6 @@ mod boot;
 #[path = "../runtime/lifecycle/mod.rs"]
 mod lifecycle;
 
-#[path = "plugin.rs"]
 #[cfg(feature = "plugin")]
 #[path = "../runtime/plugin.rs"]
 mod plugin;
