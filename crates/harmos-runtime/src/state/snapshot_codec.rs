@@ -196,7 +196,7 @@ where
         value.serialize_field("tail", &Window(tail))?;
         SerializeStruct::end(value)
     })();
-    result.map_err(|_| Error::InvalidInput { field: "state snapshot", reason: "cannot encode within payload limit" })?;
+    result.map_err(encoding_failure)?;
     Ok(out.bytes)
 }
 
@@ -278,6 +278,14 @@ fn invalid() -> Incompatible {
     Incompatible::unreadable("invalid or incompatible managed state snapshot")
 }
 
+// Only The Bounded Writer Fails With I/O, So Every Other Error Is The State Refusing To Serialize.
+fn encoding_failure(error: serde_json::Error) -> Error {
+    if error.is_io() {
+        return Error::InvalidInput { field: "state snapshot", reason: "cannot encode within payload limit" };
+    }
+    Error::TaskFailed { domain: "state snapshot encoding", source: Arc::new(error) }
+}
+
 fn trim<A: Application>(tail: &mut VecDeque<Arc<Entry<Recorded<A>>>>, limit: usize) {
     if limit == 0 {
         tail.clear();
@@ -296,3 +304,30 @@ fn trim<A: Application>(tail: &mut VecDeque<Arc<Entry<Recorded<A>>>>, limit: usi
 }
 
 /* === Tests === */
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct Refusing;
+
+    impl Serialize for Refusing {
+        fn serialize<S: Serializer>(&self, _: S) -> std::result::Result<S::Ok, S::Error> {
+            Err(serde::ser::Error::custom("a map key must be a string"))
+        }
+    }
+
+    #[test]
+    fn limit_refusal_names_limit() {
+        let mut out = Bounded { bytes: Vec::new(), limit: 4 };
+        let error = encoding_failure(serde_json::to_writer(&mut out, "longer than four").unwrap_err());
+        assert!(matches!(error, Error::InvalidInput { field: "state snapshot", reason: "cannot encode within payload limit" }));
+    }
+
+    #[test]
+    fn serialization_failure_keeps_cause() {
+        let mut out = Bounded { bytes: Vec::new(), limit: 1 << 20 };
+        let error = encoding_failure(serde_json::to_writer(&mut out, &Refusing).unwrap_err());
+        assert!(matches!(&error, Error::TaskFailed { domain: "state snapshot encoding", .. }), "{error:?}");
+        assert!(std::error::Error::source(&error).unwrap().to_string().contains("a map key must be a string"));
+    }
+}
