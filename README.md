@@ -173,10 +173,11 @@ harmos-domain = { git = "https://github.com/stokker-technologies/harmos", rev = 
 harmos-packaging = { git = "https://github.com/stokker-technologies/harmos", rev = "<tested-commit>", features = ["bindings-proto"] }
 ```
 
-Generators use one entry point per format: `harmos_packaging::proto::generate`,
-`python::generate` and `typescript::generate`, gated by `bindings-proto`,
-`bindings-python` and `bindings-typescript`. Protobuf output goes to the exact
-selected output directory. A producer's build script selects its current
+Generators use one entry point per format: `harmos_packaging::proto::generate`
+and `python::generate`, gated by `bindings-proto` and `bindings-python`.
+TypeScript consumers generate their bindings from the exported Protobuf files
+with the official Buf generator after the Cargo build. Protobuf output goes to
+the exact selected output directory. A producer's build script selects its current
 `OUT_DIR/grpc/<catalog>/`; packaging retains that producer/catalog identity.
 The same crate owns `bundle`, Cargo discovery, inert inspection, development
 launching and Wasm componentization.
