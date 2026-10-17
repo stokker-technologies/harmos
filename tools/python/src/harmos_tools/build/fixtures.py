@@ -58,13 +58,12 @@ def main() -> None:
     before = archive.tree(ROOT)
     receipt = archive.build(ROOT, profile, ["--all-features"])
     workspace = _messages(receipt)
-    # The Archive Holds Test Targets Only; The Authoring Tool Binary Is Its Own Capture.
-    tooling = archive.compile(ROOT, profile, ["-p", "cargo-harmos", "--all-features"])
-    # The Facade Has No Test Dependents, So Its Library Is Its Own Capture For The Authoring Stories.
-    facade = archive.compile(ROOT, profile, ["-p", "harmos", "--all-features", "--lib"])
+    # The Archive Holds Test Targets Only; The Authoring Tool Binary Is Its Own Capture, Beside
+    # The Facade Library The Authoring Stories Link (Nothing Under Test Depends On It).
+    tooling = archive.compile(ROOT, profile, ["-p", "cargo-harmos", "-p", "harmos", "--all-features"])
     native = archive.compile(SCHEMATIC.parent, profile, ["-p", "schematic-cli", "-p", "schematic-sidecar"])
     schematic = _messages(native)
-    producers = [receipt, tooling, facade, native]
+    producers = [receipt, tooling, native]
     tool = _executable(_messages(tooling), "cargo-harmos")
     archive.verify_outputs(tooling, [tool])
     shutil.rmtree(FIXTURES, ignore_errors=True)
@@ -83,7 +82,7 @@ def main() -> None:
         producers.append(product)
         artifacts[package], builds[package] = _stage_build(built, collected, package, [capture, product], files)
     artifacts["schematic-cli"] = _keep(_executable(schematic, "schematic-cli"), "schematic-cli", [native], files)
-    libraries = _libraries([*workspace, *_messages(facade)], [receipt, facade], files)
+    libraries = _libraries([*workspace, *_messages(tooling)], [receipt, tooling], files)
     exported = _offline_inputs(profile)
     producers.append(exported)
     for name in exported["exports"]:
