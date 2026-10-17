@@ -38,7 +38,7 @@ pub struct BuildSettings {
     pub packages: Vec<String>,
     pub target: Option<String>,
     pub target_directory: Option<std::path::PathBuf>,
-    pub release: bool,
+    pub profile: BuildProfile,
     pub timings: bool,
     pub features: Vec<String>,
     pub default_features: bool,
@@ -49,7 +49,8 @@ pub struct DevSettings {
     pub debounce: Duration,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum BuildBackend {
     Sidecar,
     Guest,
@@ -58,10 +59,27 @@ pub enum BuildBackend {
 
 
 /* === Enums === */
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BuildProfile { Dev, Release, Bench }
+
 
 /* === Traits === */
 
 /* === Implementations === */
+impl BuildProfile {
+    pub const fn name(self) -> &'static str {
+        match self { Self::Dev => "dev", Self::Release => "release", Self::Bench => "bench" }
+    }
+}
+
+impl std::str::FromStr for BuildProfile {
+    type Err = &'static str;
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value { "dev" => Ok(Self::Dev), "release" => Ok(Self::Release), "bench" => Ok(Self::Bench), _ => Err("profile must be dev, release or bench") }
+    }
+}
+
 impl Default for BuildSettings {
     fn default() -> Self {
         Self {
@@ -70,7 +88,7 @@ impl Default for BuildSettings {
             packages: Vec::new(),
             target: None,
             target_directory: None,
-            release: false,
+            profile: BuildProfile::Dev,
             timings: false,
             features: Vec::new(),
             default_features: true,

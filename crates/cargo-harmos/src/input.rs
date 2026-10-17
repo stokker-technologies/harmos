@@ -38,8 +38,8 @@ pub struct BuildArguments {
     target: Option<String>,
     #[arg(long)]
     target_dir: Option<std::path::PathBuf>,
-    #[arg(long)]
-    release: bool,
+    #[arg(long, default_value = "dev")]
+    profile: harmos_packaging::config::BuildProfile,
     #[arg(long)]
     timings: bool,
     #[arg(long, value_delimiter = ',')]
@@ -63,7 +63,7 @@ impl BuildArguments {
             packages: self.packages,
             target: self.target,
             target_directory: self.target_dir,
-            release: self.release,
+            profile: self.profile,
             timings: self.timings,
             features: self.features,
             default_features: !self.no_default_features,

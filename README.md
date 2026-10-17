@@ -178,8 +178,8 @@ The same crate owns `bundle`, Cargo discovery, inert inspection, development
 launching and Wasm componentization.
 
 ```sh
-cargo run --locked -p cargo-harmos -- harmos sidecar build -p schematic-sidecar --json
-cargo run --locked -p cargo-harmos -- harmos sidecar package -p schematic-sidecar --json
+cargo run --locked -p cargo-harmos -- harmos sidecar build -p schematic-sidecar --json > sidecar-build.json
+cargo run --locked -p cargo-harmos -- harmos sidecar package --build-json sidecar-build.json --output target/packages --json
 cargo run --locked -p cargo-harmos -- harmos guest build -p schematic-guest --json
 cargo run --locked -p cargo-harmos -- harmos sidecar inspect target/debug/schematic-sidecar --json
 ```
@@ -190,6 +190,12 @@ extracting its `cargo-harmos-<version>-<target>/` directory and placing
 to check installation. Releases contain the tool, README and Apache license;
 examples and test reports are downloadable CI artifacts. Cargo registry
 publication is deferred.
+
+`package` consumes the existing build receipt and verifies every artifact and
+schema byte stamp before bundling. It never runs Cargo. Relocated archives use
+explicit `--relocate-from` and `--relocate-to` path mapping while preserving hashes.
+Library consumers can stamp existing outputs with `Artifact::read` and
+`Schema::read`, then construct a `Build` without another compiler invocation.
 
 `cargo harmos sidecar build` prepares native plugins; `cargo harmos guest build`
 drives the selected Wasm build and converts guest core modules
