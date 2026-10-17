@@ -57,7 +57,8 @@ pub fn encode(definition: &Definition, postcard: &[u8], bytes: &mut Vec<u8>) -> 
 
 /// The Postcard form of one protobuf `definition` message.
 pub fn decode(definition: &Definition, input: DecodeInput<'_>) -> Result<Vec<u8>, MessageError> {
-    let mut bytes = Vec::new();
+    // Postcard Rarely Outgrows Its Protobuf Source, So The Bound Stays Near The Payload.
+    let mut bytes = Vec::with_capacity(input.encoded_len()?);
     decode_message(definition, input, &mut bytes)?;
     Ok(bytes)
 }

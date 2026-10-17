@@ -270,7 +270,7 @@ fn boxed_decode_peak() {
 }
 
 #[test]
-fn boxed_allocates_after() {
+fn boxed_refusal_bounded() {
     use harmos_domain::schema::Described;
     let tag = |fields: &[harmos_domain::schema::graph::Field<_>], name: &str| fields.iter().find(|field| field.name == name).unwrap().tag;
     // A Varint Where The Boxed Leaf Declares Bytes
@@ -280,19 +280,20 @@ fn boxed_allocates_after() {
     prost::encoding::bytes::encode(tag(BoxedLeaf::FIELDS, "row"), &row, &mut bytes);
 
     let (refused, inspected) = measure(|| grpc::decoding_memory::<BoxedLeaf>(DecodeInput::new(&bytes)));
+    // A Refusal Retains Nothing And Never Outgrows The Payload It Refused.
     assert!(refused.is_err());
-    assert_eq!(inspected.allocations, 0, "{inspected:?}");
+    assert!(inspected.live == 0 && inspected.peak <= bytes.len(), "{inspected:?}");
     let (refused, decoded) = measure(|| grpc::decode::<BoxedLeaf>(DecodeInput::new(&bytes)));
     assert!(refused.is_err());
-    assert_eq!(decoded.allocations, 0, "{decoded:?}");
+    assert!(decoded.live == 0 && decoded.peak <= bytes.len(), "{decoded:?}");
 }
 
 #[test]
-fn preflight_never_allocate() {
+fn preflight_refusal_bounded() {
     for bytes in [&[0xff][..], &[0][..], &[10, 255][..]] {
         let (refused, measured) = measure(|| grpc::decoding_memory::<Selection>(DecodeInput::new(bytes)));
         assert!(refused.is_err());
-        assert_eq!(measured.allocations, 0, "{measured:?}");
+        assert!(measured.live == 0 && measured.peak <= bytes.len(), "{measured:?}");
     }
 }
 

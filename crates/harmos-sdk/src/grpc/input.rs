@@ -108,6 +108,16 @@ impl<'a> DecodeInput<'a> {
         Ok(Some((tag, input)))
     }
 
+    // The Protobuf Bytes This Input Spans Across Its Merged Parts.
+    pub fn encoded_len(&self) -> Result<usize, MessageError> {
+        let mut total = 0usize;
+        self.parts(&mut |bytes| {
+            total = add(total, bytes.len())?;
+            Ok(())
+        })?;
+        Ok(total)
+    }
+
     pub fn contiguous(&self) -> Result<&'a [u8], MessageError> {
         let mut part = None;
         self.parts(&mut |bytes| {
