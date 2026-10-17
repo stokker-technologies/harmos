@@ -1,0 +1,198 @@
+/* ***
+ *
+ * Harmos
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * ***
+ */
+
+/* === Modules === */
+mod creation;
+mod producer;
+mod state;
+mod perform;
+pub(super) mod checkpoint;
+mod mutations;
+mod session;
+
+/* === Re-Exports === */
+pub(crate) use perform::perform;
+
+/* === Imports === */
+// Standard Library Imports
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+// Third Party Imports
+use sha2::{Digest, Sha256};
+// Local Imports
+use super::manager::{ENTRY_OVERHEAD, Operation, Pending, State, Target, encoded_size};
+use super::*;
+use crate::{Error, Result};
+use session::Session;
+
+/* === Constants === */
+static NEXT_FILE: AtomicU64 = AtomicU64::new(1);
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+pub struct StorageFile {
+    manager: StorageManager<super::manager::ErasedCatalog>,
+    id: u64,
+    progress: Arc<Mutex<Progress>>,
+    session: Option<FileSession>,
+}
+
+struct CancelProduction {
+    manager: StorageManager<super::manager::ErasedCatalog>,
+    id: u64,
+    armed: bool,
+    generation: Option<u64>,
+}
+
+#[derive(Default)]
+struct Progress {
+    generation: u64,
+    ready: bool,
+    closed: bool,
+    completed: u64,
+    length: u64,
+    reference: Option<FileReference>,
+    failure: Option<Arc<Error>>,
+}
+
+pub(super) struct FileState {
+    metadata: Arc<FileMetadata>,
+    staging: StagedFile,
+    session: Option<Session>,
+    mutation: Option<mutations::Mutation>,
+    extra: Option<StagedFile>,
+    progress: Arc<Mutex<Progress>>,
+    hash: Sha256,
+    length: u64,
+    ticket: u64,
+    command: Option<Command>,
+    abandoned: bool,
+    in_flight: bool,
+    retrying: bool,
+    base_bytes: usize,
+    reference_bytes: usize,
+}
+
+/* === Enums === */
+enum Command {
+    Create,
+    Resume {
+        expected: u64,
+        next: u64,
+    },
+    Write(Arc<[u8]>),
+    Finish {
+        target: Option<Target>,
+        sha256: [u8; 32],
+    },
+    Abort,
+}
+
+enum Await {
+    Ready,
+    Written(u64),
+    Finished,
+    Aborted,
+}
+
+pub(super) enum FileAction {
+    Create {
+        id: u64,
+        metadata: Arc<FileMetadata>,
+        staging: StagedFile,
+        resumable: bool,
+    },
+    Resume {
+        id: u64,
+        staging: StagedFile,
+        expected: u64,
+        next: u64,
+    },
+    Write {
+        id: u64,
+        staging: StagedFile,
+        offset: u64,
+        bytes: Arc<[u8]>,
+    },
+    Finish {
+        id: u64,
+        staging: StagedFile,
+        metadata: Arc<FileMetadata>,
+        target: Target,
+        length: u64,
+        sha256: [u8; 32],
+    },
+    Abandon {
+        id: u64,
+        staging: StagedFile,
+        extra: Option<StagedFile>,
+    },
+    Abort {
+        id: u64,
+        staging: StagedFile,
+        extra: Option<StagedFile>,
+    },
+    Refuse {
+        id: u64,
+    },
+}
+
+pub(super) enum FileCompleted {
+    Created,
+    Resumed(u64),
+    Written,
+    Finished(Box<FileReference>),
+    Aborted,
+}
+
+/* === Traits === */
+
+/* === Implementations === */
+fn file_bytes(metadata: &FileMetadata, history: &StoreHistory) -> Result<(usize, usize)> {
+    let reference = encoded_size(metadata)?
+        .checked_add(encoded_size(history)?)
+        .and_then(|size| size.checked_add(ENTRY_OVERHEAD))
+        .ok_or_else(size_error)?;
+    let base = reference.checked_mul(8).ok_or_else(size_error)?;
+    Ok((reference, base))
+}
+
+fn closed() -> Error {
+    Error::Closing {
+        domain: "storage file",
+    }
+}
+
+fn size_error() -> Error {
+    Error::InvalidInput {
+        field: "file admission",
+        reason: "size or position overflow",
+    }
+}
+
+fn admission(state: &State) -> Result<()> {
+    if state.status.closing {
+        return Err(closed());
+    }
+    if !state.ready || !state.status.running {
+        return Err(Error::NotReady { domain: "storage" });
+    }
+    if let Some(source) = &state.status.failure {
+        return Err(Error::Persistence {
+            source: source.clone(),
+        });
+    }
+    Ok(())
+}
+
+/* === Tests === */
