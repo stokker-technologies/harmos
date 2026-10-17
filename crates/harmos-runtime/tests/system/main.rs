@@ -10,7 +10,7 @@
 // Walk The Host Alone, With The Stamped Guest, And With The Stamped Sidecar
 
 /* === Modules === */
-#[path = "../support/storage.rs"]
+#[path = "../../../harmos-storage/tests/support/storage.rs"]
 mod backend;
 #[path = "../support/storage_fixture.rs"]
 mod fixture;

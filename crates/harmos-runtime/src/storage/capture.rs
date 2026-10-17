@@ -19,7 +19,8 @@
 // Local Imports
 use super::manager::encoded_size;
 use super::state::Permit;
-use super::{ReadLimits, RecordWrite, StorageFuture};
+use super::{ReadLimits, RecordWrite};
+use std::{future::Future, pin::Pin};
 use crate::{Error, Result, state::Envelope};
 
 /* === Constants === */
@@ -48,7 +49,7 @@ pub trait RecordProjection: Send + Sync + 'static {
         &'a self,
         record: &'a Envelope<&serde_json::Value>,
         output: &'a mut ProjectedRecords<'_>,
-    ) -> StorageFuture<'a, ()>;
+    ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>;
 }
 
 /* === Implementations === */
@@ -68,7 +69,7 @@ impl<'a> ProjectedRecords<'a> {
         self.refused = true;
         let result = self.permit.push(record, self.limits).await;
         self.refused = result.is_err();
-        result
+        result.map_err(Into::into)
     }
 
     pub(crate) fn check(&self, maximum: std::num::NonZeroUsize) -> Result<()> {

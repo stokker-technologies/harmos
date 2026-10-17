@@ -48,6 +48,7 @@ use crate::storage::StorageManager;
 use crate::{Result, operations::Lane};
 
 /* === Constants === */
+const IO_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /* === Macros === */
 // Bind Each Declaration To Its Original Storage Handler.

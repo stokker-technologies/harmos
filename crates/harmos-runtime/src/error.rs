@@ -197,20 +197,33 @@ pub enum Error<E = Infallible> {
     Unavailable,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BackendFailure {
-    Transient,
-    Permanent,
-    Corrupt,
-    Conflict,
-    Unsupported,
-}
+pub use harmos_storage::BackendFailure;
 
 pub use harmos_domain::state::PreparationError;
 
 /* === Traits === */
 
 /* === Implementations === */
+impl<E> From<harmos_storage::Error> for Error<E> {
+    fn from(error: harmos_storage::Error) -> Self {
+        use harmos_storage::Error as Storage;
+        match error {
+            Storage::OperationFailed { operation, source } => Self::OperationFailed { operation, source },
+            Storage::NotReady { domain } => Self::NotReady { domain },
+            Storage::Persistence { source } => Self::Persistence { source: std::sync::Arc::new(
+                std::sync::Arc::try_unwrap(source).map(Into::into).unwrap_or_else(|source| Self::backend("storage persistence", source.backend_failure().unwrap_or(BackendFailure::Permanent), source))
+            ) },
+            Storage::Closing { domain } => Self::Closing { domain },
+            Storage::AlreadyRegistered { domain, name } => Self::AlreadyRegistered { domain, name },
+            Storage::Backend { operation, kind, source } => Self::Backend { operation, kind, source },
+            Storage::InvalidInput { field, reason } => Self::InvalidInput { field, reason },
+            Storage::ResourceExhausted { resource } => Self::ResourceExhausted { resource },
+            Storage::Gap { requested, available } => Self::Gap { requested, available },
+            Storage::Domain(source) => source.into(),
+        }
+    }
+}
+
 impl<E> From<harmos_domain::Error> for Error<E> {
     fn from(error: harmos_domain::Error) -> Self {
         match error {

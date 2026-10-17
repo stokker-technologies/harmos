@@ -8,8 +8,7 @@
  */
 
 /* === Modules === */
-mod arrow;
-#[path = "../support/storage.rs"]
+#[path = "../../../harmos-storage/tests/support/storage.rs"]
 mod backend;
 mod batching;
 mod cancellation;
@@ -32,7 +31,7 @@ mod state;
 #[path = "../support/mod.rs"]
 mod support;
 mod typed_reads;
-#[path = "../support/storage/waveforms.rs"]
+#[path = "../../../harmos-storage/tests/support/waveforms.rs"]
 mod waveforms;
 use fixture::*;
 

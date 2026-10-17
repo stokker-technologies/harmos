@@ -26,7 +26,7 @@ harmos-packaging = { path = "crates/harmos-packaging", version = "0.2.0", defaul
 harmos-runtime = { path = "crates/harmos-runtime", version = "0.2.0", default-features = false }
 harmos-sdk = { path = "crates/harmos-sdk", version = "0.2.0", default-features = false }
 harmos-sidecar = { path = "crates/harmos-sidecar", version = "0.2.0", default-features = false }
-harmos-signal = { path = "crates/harmos-signal", version = "0.2.0", default-features = false }
+harmos-storage = { path = "crates/harmos-storage", version = "0.2.0", default-features = false }
 
 # Git
 

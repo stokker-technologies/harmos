@@ -12,7 +12,7 @@
     dead_code,
     reason = "Reuse the controlled backend without its fault scenarios"
 )]
-#[path = "../../tests/support/storage.rs"]
+#[path = "../../../harmos-storage/tests/support/storage.rs"]
 mod backend;
 mod contention;
 mod files;
@@ -21,7 +21,7 @@ mod ingestion;
 mod metrics;
 mod query;
 mod transforms;
-#[path = "../../tests/support/storage/waveforms.rs"]
+#[path = "../../../harmos-storage/tests/support/waveforms.rs"]
 mod waveforms;
 
 /* === Re-Exports === */

@@ -67,7 +67,7 @@ impl<C: 'static> Operation for Handler<C> {
         _: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<StorageInfo>> {
         let result: ::core::result::Result<StorageInfo, Self::Error> =
-            async move { self.storage.info() }.await;
+            async move { self.storage.info().map_err(Into::into) }.await;
         result.map(::core::convert::Into::into)
     }
 
