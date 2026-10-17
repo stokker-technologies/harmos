@@ -1,0 +1,41 @@
+# Rendered by stkr project update from templates/ci/.github/workflows/prepare-release.yml; sha256:ad44385b3fc46f8ea0770c1b9ba991bf34f64d29ed84a6ae62bb4133c4ccab22
+name: Prepare Release
+"on":
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release Version
+        required: true
+        type: string
+permissions:
+  contents: write
+env:
+  MISE_LOCKED: "1"
+  MISE_DATA_DIR: ${{ github.workspace }}/.cache/mise
+  CARGO_TERM_COLOR: always
+jobs:
+  release_prepare:
+    name: Release / Prepare
+    runs-on:
+    - ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      id: tools
+      with:
+        path: .cache/mise/
+        key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      with:
+        install: true
+        cache: false
+        mise_dir: ${{ github.workspace }}/.cache/mise
+    - run: git switch -c "release/v${{ inputs.version }}"
+    - run: mise run release:prepare
+    - run: "git -c user.name=\"${{ github.actor }}\" -c user.email=\"${{ github.actor }}@users.noreply.github.com\" commit -am \"chore: prepare release v${{ inputs.version }}\""
+    - run: git push origin "release/v${{ inputs.version }}"
+    env:
+      MISE_ENABLE_TOOLS: python,rust,uv,git-cliff

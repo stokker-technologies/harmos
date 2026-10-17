@@ -15,6 +15,7 @@ mod bindings;
 mod guest;
 mod inspect;
 mod package;
+mod new;
 #[cfg(feature = "sidecar")]
 mod sidecar;
 
@@ -39,6 +40,8 @@ mod sidecar;
 /* === Enums === */
 #[derive(clap::Subcommand)]
 pub enum Command {
+    #[command(about = "Create A Plugin From An Embedded Current Starter.")]
+    New(new::Arguments),
     #[command(about = "Generate Producer-Owned Transport Bindings.")]
     Bindings(bindings::Arguments),
     #[command(about = "Build Or Watch Native Sidecar Plugins.")]
@@ -60,6 +63,7 @@ impl Command {
         #[cfg(not(any(feature = "sidecar", feature = "guest")))]
         let _ = cancellation;
         match self {
+            Self::New(arguments) => new::run(arguments).map_err(Into::into),
             Self::Bindings(arguments) => bindings::run(arguments),
             #[cfg(feature = "sidecar")]
             Self::Sidecar(arguments) => sidecar::run(arguments, cancellation).map_err(Into::into),

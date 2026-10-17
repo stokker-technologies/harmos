@@ -1,0 +1,17 @@
+# Rendered by stkr project update from templates/tools/rustfmt.toml; sha256:d1a015a0738ce3b3f66875750f37263c92329aa4f1d0ea96d48e6f7dc37d9f5a
+# ***
+#
+# __PRODUCT_NAME__
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
+# === Formatting === #
+
+# Width 140: wide displays are the norm; at the default 100 a three-parameter async signature breaks into one parameter
+# per line, at 140 signatures and most chained expressions stay on one line while two files still sit side by side in a
+# diff on a 4K display. Compressed keeps longer parameter lists on as few lines as possible.
+max_width = 140
+fn_params_layout = "Compressed"
+use_small_heuristics = "Max"

@@ -1,0 +1,53 @@
+# ***
+#
+# Harmos
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
+# === Package === #
+
+[package]
+name = "__PACKAGE_NAME__"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "Apache-2.0"
+
+# === Package Targets === #
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# === Features === #
+
+# === Dependencies === #
+
+[dependencies]
+# Git
+harmos-domain = { git = "https://github.com/stokker-technologies/harmos", rev = "__HARMOS_REVISION__", default-features = false, features = ["derive"] }
+harmos-guest = { git = "https://github.com/stokker-technologies/harmos", rev = "__HARMOS_REVISION__", default-features = false, features = ["derive", "kit"] }
+
+
+# === Build Dependencies === #
+
+# === Dev Dependencies === #
+
+# === Target Dependencies === #
+
+# === Test Targets === #
+
+# === Bench Targets === #
+
+# === Example Targets === #
+
+# === Workspace Lints === #
+
+# === Lints === #
+
+# === Profiles === #
+
+# === Patches === #
+
+# === Other === #
