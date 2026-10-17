@@ -136,6 +136,7 @@ name = "harmos-guest"
 version = "0.2.0"
 dependencies = [
  "harmos-domain",
+ "harmos-sdk",
  "semver",
  "serde",
  "serde_json",
@@ -163,6 +164,17 @@ version = "0.2.0"
 dependencies = [
  "harmos-domain",
  "harmos-guest",
+]
+
+[[package]]
+name = "harmos-sdk"
+version = "0.2.0"
+dependencies = [
+ "harmos-domain",
+ "postcard",
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]
