@@ -63,7 +63,7 @@ pub mod __private {
     pub use harmos_domain::__private::CarrierContext;
     pub use harmos_domain::__private::{
         DecodeInput, DecodeScalar, DecodeValue, MessageError, PostcardReader, PostcardValue,
-        decoding_add, decoding_multiply, decoding_vector,
+        decoding_add, decoding_multiply, decoding_vector, postcard_product,
     };
     #[cfg(feature = "grpc")]
     pub use harmos_domain::__private::{Protobuf, prost};

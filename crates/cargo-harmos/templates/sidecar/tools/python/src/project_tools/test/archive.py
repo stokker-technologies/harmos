@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/archive.py; sha256:7b6c77c1f1d2c01a4639025a59e0f304cb96fdee2cce53750843c2ed68bb7460
+# Rendered by stkr project update from templates/python/test/archive.py; sha256:842467871a7e31a4685426bae5ea26ccd8be26c28b9762e348318a25efd799c0
 # ***
 #
 # __PRODUCT_NAME__
@@ -183,6 +183,23 @@ def require(directory: Path, profile: str, current: str, arguments: Sequence[str
     if record.get("toolchain") != _toolchain(directory):
         raise policy.TestError(f"the {profile} nextest archive uses another Rust toolchain")
     return path
+
+
+def verify_outputs(record: dict, paths: Sequence[Path] | None = None) -> None:
+    """Require unchanged producer output bytes before staging selected regular binaries or generated files.
+
+    Use the record returned by build/compile, or first require the persisted archive's inputs.
+    Omitting paths checks every expected output, including entries deleted after production.
+    """
+    if record.get("schema") != 1 or not record.get("artifacts") or "generated" not in record:
+        raise policy.TestError("no complete producer output map; rebuild the artifacts")
+    expected = {**record["artifacts"], **record["generated"]}
+    selected = list(expected) if paths is None else [str(path) for path in paths]
+    for name in selected:
+        if name not in expected:
+            raise policy.TestError(f"output was not recorded by the compiler producer: {name}")
+        if _source(Path(name)) != expected[name]:
+            raise policy.TestError(f"output changed after compiler production: {name}")
 
 
 def fixtures(directory: Path, current: str) -> None:

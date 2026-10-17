@@ -21,6 +21,7 @@ use std::num::NonZeroUsize;
 use super::{FileMetadata, FileReference};
 #[cfg(feature = "grpc")]
 use crate::__private::DecodeInput;
+#[cfg(feature = "grpc")]
 use crate::__private::decoding_add;
 
 use crate::model::storage::StorageCursor;
@@ -300,130 +301,20 @@ impl crate::__private::Protobuf for FileReference {
     }
 }
 
-impl crate::__private::PostcardValue for FileMetadata {
-    fn write(&self, bytes: &mut Vec<u8>) {
-        self.id.write(bytes);
-        self.scope.write(bytes);
-        self.media_type.write(bytes);
-        self.expected_length.write(bytes);
-        self.expected_sha256.is_some().write(bytes);
-        if let Some(value) = &self.expected_sha256 {
-            write_hash(value, bytes);
-        }
-    }
+crate::postcard_product!(FileMetadata {
+    id: crate::Identifier,
+    scope: Option<crate::Identifier>,
+    media_type: String,
+    expected_length: Option<u64>,
+    expected_sha256: Option<[u8; 32]>,
+});
 
-    fn size(&self) -> usize {
-        self.id
-            .size()
-            .saturating_add(self.scope.size())
-            .saturating_add(self.media_type.size())
-            .saturating_add(self.expected_length.size())
-            .saturating_add(1 + usize::from(self.expected_sha256.is_some()) * 33)
-    }
-
-    fn memory(
-        input: &mut crate::__private::PostcardReader<'_>,
-    ) -> std::result::Result<usize, MessageError> {
-        input.nested(|input| {
-            let id = <crate::Identifier as crate::__private::PostcardValue>::memory(input)?
-                .saturating_sub(std::mem::size_of::<crate::Identifier>());
-            let scope =
-                <Option<crate::Identifier> as crate::__private::PostcardValue>::memory(input)?
-                    .saturating_sub(std::mem::size_of::<Option<crate::Identifier>>());
-            let media = <String as crate::__private::PostcardValue>::memory(input)?
-                .saturating_sub(std::mem::size_of::<String>());
-            <Option<u64> as crate::__private::PostcardValue>::memory(input)?;
-            if input.value::<bool>()? {
-                read_hash(input)?;
-            }
-            decoding_add(
-                decoding_add(decoding_add(std::mem::size_of::<Self>(), id)?, scope)?,
-                media,
-            )
-        })
-    }
-
-    fn read(
-        input: &mut crate::__private::PostcardReader<'_>,
-    ) -> std::result::Result<Self, MessageError> {
-        input.nested(|input| {
-            Ok(Self {
-                id: <crate::Identifier as crate::__private::PostcardValue>::read(input)?,
-                scope: <Option<crate::Identifier> as crate::__private::PostcardValue>::read(input)?,
-                media_type: <String as crate::__private::PostcardValue>::read(input)?,
-                expected_length: <Option<u64> as crate::__private::PostcardValue>::read(input)?,
-                expected_sha256: if input.value::<bool>()? {
-                    Some(read_hash(input)?)
-                } else {
-                    None
-                },
-            })
-        })
-    }
-}
-
-impl crate::__private::PostcardValue for FileReference {
-    fn write(&self, bytes: &mut Vec<u8>) {
-        self.position.write(bytes);
-        self.metadata.write(bytes);
-        self.length.write(bytes);
-        write_hash(&self.sha256, bytes);
-    }
-
-    fn size(&self) -> usize {
-        self.position
-            .size()
-            .saturating_add(self.metadata.size())
-            .saturating_add(self.length.size())
-            .saturating_add(33)
-    }
-
-    fn memory(
-        input: &mut crate::__private::PostcardReader<'_>,
-    ) -> std::result::Result<usize, MessageError> {
-        input.nested(|input| {
-            let position = <StorageCursor as crate::__private::PostcardValue>::memory(input)?
-                .saturating_sub(std::mem::size_of::<StorageCursor>());
-            let metadata = <FileMetadata as crate::__private::PostcardValue>::memory(input)?
-                .saturating_sub(std::mem::size_of::<FileMetadata>());
-            input.value::<u64>()?;
-            read_hash(input)?;
-            decoding_add(
-                decoding_add(std::mem::size_of::<Self>(), position)?,
-                metadata,
-            )
-        })
-    }
-
-    fn read(
-        input: &mut crate::__private::PostcardReader<'_>,
-    ) -> std::result::Result<Self, MessageError> {
-        input.nested(|input| {
-            let value = Self {
-                position: <StorageCursor as crate::__private::PostcardValue>::read(input)?,
-                metadata: <FileMetadata as crate::__private::PostcardValue>::read(input)?,
-                length: input.value()?,
-                sha256: read_hash(input)?,
-            };
-            value.check_native()?;
-            Ok(value)
-        })
-    }
-}
-
-fn write_hash(value: &[u8; 32], bytes: &mut Vec<u8>) {
-    bytes.push(32);
-    bytes.extend_from_slice(value);
-}
-fn read_hash(
-    input: &mut crate::__private::PostcardReader<'_>,
-) -> std::result::Result<[u8; 32], MessageError> {
-    let size: usize = input.value()?;
-    if size != 32 {
-        return Err(MessageError::borrowed("invalid file sha256 length"));
-    }
-    Ok(input.take(32)?.try_into().expect("checked digest size"))
-}
+crate::postcard_product!(FileReference {
+    position: StorageCursor,
+    metadata: FileMetadata,
+    length: u64,
+    sha256: [u8; 32],
+}, validate = FileReference::check_native);
 
 impl Described for FileMetadata {
     const NAME: &'static str = concat!(module_path!(), "::", stringify!(FileMetadata));

@@ -206,6 +206,30 @@ macro_rules! nonzero {
 }
 nonzero!(std::num::NonZeroU32 => u32, std::num::NonZeroU64 => u64);
 
+// Fixed Byte Values Keep The Length-Prefixed Bytes Shape And Reject Wrong Widths.
+impl<const N: usize> Value for [u8; N] {
+    fn write(&self, bytes: &mut Vec<u8>) {
+        (N as u64).write(bytes);
+        bytes.extend_from_slice(self);
+    }
+
+    fn size(&self) -> usize {
+        (N as u64).size().saturating_add(N)
+    }
+
+    fn memory(input: &mut Reader<'_>) -> Result<usize, MessageError> {
+        Self::read(input)?;
+        Ok(std::mem::size_of::<Self>())
+    }
+
+    fn read(input: &mut Reader<'_>) -> Result<Self, MessageError> {
+        if input.value::<usize>()? != N {
+            return Err(MessageError::borrowed("fixed byte value has the wrong length"));
+        }
+        Ok(input.take(N)?.try_into().expect("checked fixed byte size"))
+    }
+}
+
 impl Value for String {
     fn write(&self, bytes: &mut Vec<u8>) {
         ::postcard::to_extend(self, Append(bytes)).expect("string Postcard encoding is infallible");
@@ -295,3 +319,26 @@ impl<T: Value> Value for Option<T> {
 /* === Private Functions === */
 
 /* === Tests === */
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fixed_bytes_preserve_length_prefix_and_reject_wrong_width() {
+        let digest = [7_u8; 32];
+        let mut bytes = Vec::new();
+        digest.write(&mut bytes);
+        assert_eq!(bytes[0], 32);
+        assert_eq!(&bytes[1..], &digest);
+        assert_eq!(digest.size(), 33);
+        let mut input = Reader::new(&bytes);
+        assert_eq!(<[u8; 32]>::read(&mut input).unwrap(), digest);
+        input.finish().unwrap();
+        assert_eq!(<[u8; 32]>::memory(&mut Reader::new(&bytes)).unwrap(), 32);
+        bytes[0] = 31;
+        assert!(<[u8; 32]>::read(&mut Reader::new(&bytes)).is_err());
+        bytes[0] = 32;
+        bytes.pop();
+        assert!(<[u8; 32]>::read(&mut Reader::new(&bytes)).is_err());
+    }
+}
