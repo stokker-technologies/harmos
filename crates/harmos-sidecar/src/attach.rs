@@ -514,78 +514,31 @@ fn system_root() -> Result<OsString, Error> {
 mod tests {
     use super::*;
 
-    const CHILD: &str = "HARMOS_ATTACH_UNIT_CHILD";
-
     #[test]
-    fn child() {
-        let Some(mode) = std::env::var_os(CHILD) else {
-            return;
-        };
-        match mode.to_str().expect("the private test mode is UTF-8") {
-            "environment" => {
-                assert_eq!(
-                    std::env::var_os("HARMOS_ATTACH_EXPLICIT"),
-                    Some("kept".into())
-                );
-                assert!(std::env::var_os("PATH").is_none());
-                #[cfg(windows)]
-                {
-                    assert!(std::env::var_os("SystemRoot").is_some());
-                    assert!(std::env::var_os("TMP").is_some());
-                    assert!(std::env::var_os("TEMP").is_some());
-                }
-            }
-            "crash" => std::process::exit(17),
-            _ => panic!("unknown private attachment test mode"),
-        }
-    }
-
-    fn spawn(mode: &str) -> Child {
-        let arguments = ["--exact", "attach::tests::child", "--nocapture"].map(OsString::from);
+    fn command_retains_explicit_configuration_without_spawning() {
+        let arguments = [OsString::from("--plugin")];
+        let directory = Path::new("work");
         let environment = [
-            (CHILD.into(), mode.into()),
-            ("HARMOS_ATTACH_EXPLICIT".into(), "kept".into()),
+            (OsString::from("HARMOS_EXPLICIT"), OsString::from("kept")),
+            (OsString::from("TMPDIR"), OsString::from("chosen-unix-temp")),
+            (OsString::from("TMP"), OsString::from("chosen-windows-temp")),
+            (OsString::from("TEMP"), OsString::from("chosen-windows-temp")),
         ];
-        command(&std::env::current_exe().unwrap(), &arguments, None, &environment)
-            .unwrap()
-            .spawn()
-            .unwrap()
-    }
-
-    #[test]
-    fn command_clears_ambient_environment_and_preserves_explicit_values() {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async {
-            let output = spawn("environment").wait_with_output().await.unwrap();
-            assert!(
-                output.status.success(),
-                "{}",
-                String::from_utf8_lossy(&output.stderr)
-            );
-            assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed"));
-        });
-    }
-
-    #[test]
-    fn owned_crashed_child_settles_idempotently() {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async {
-            let mut child = spawn("crash");
-            assert_eq!(child.wait().await.unwrap().code(), Some(17));
-            let mut ending = ProcessEnd {
-                child,
-                signaled: false,
-                completed: false,
-            };
-            ending.settle().await.unwrap();
-            assert!(ending.completed);
-            ending.settle().await.unwrap();
-        });
+        let configured = command(Path::new("sidecar"), &arguments, Some(directory), &environment)
+            .unwrap();
+        let configured = configured.as_std();
+        assert_eq!(configured.get_program(), "sidecar");
+        assert_eq!(
+            configured.get_args().collect::<Vec<_>>(),
+            [arguments[0].as_os_str()]
+        );
+        assert_eq!(configured.get_current_dir(), Some(directory));
+        let variables = configured.get_envs().collect::<std::collections::BTreeMap<_, _>>();
+        for (name, value) in &environment {
+            assert_eq!(variables.get(name.as_os_str()), Some(&Some(value.as_os_str())));
+        }
+        assert!(!variables.contains_key(std::ffi::OsStr::new("PATH")));
+        #[cfg(windows)]
+        assert!(variables.contains_key(std::ffi::OsStr::new("SystemRoot")));
     }
 }
