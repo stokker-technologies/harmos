@@ -16,6 +16,7 @@ import os
 import stat
 import json
 import sys
+from pathlib import Path
 
 # Third Party Imports
 
@@ -48,12 +49,14 @@ def main(arguments: list[str] | None = None) -> None:
         *selectors["artifacts"].values(),
         *selectors["libraries"].values(),
         *selectors["builds"].values(),
-        selectors["vendor"],
-        selectors["wheels"],
-        selectors["requirements"],
     ]
     hosts = [(FIXTURES / relative).relative_to(ROOT).as_posix() for relative in selected]
     archive.fixtures(ROOT, archive.tree(ROOT), profile, hosts)
+    # Offline Inputs Are Staged As One Export Tree Whose Digest The Stamp Already Verified.
+    for relative in (selectors["vendor"], selectors["wheels"], selectors["requirements"]):
+        root = (FIXTURES / Path(relative).parts[0]).relative_to(ROOT).as_posix()
+        if root not in stamp["files"] or not (FIXTURES / relative).exists():
+            sys.exit(f"offline input {relative} is not inside a stamped export tree")
     if not set(selectors["executables"]).issubset(selectors["artifacts"].values()):
         sys.exit("executable fixture selectors must name verified artifacts")
     if os.name != "nt":

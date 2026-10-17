@@ -88,9 +88,10 @@ def main() -> None:
     libraries = _libraries(_messages(tooling), [tooling], files)
     exported = _offline_inputs(profile)
     producers.append(exported)
+    # The Export Is One Tree Digest, So Its Whole Directory Is Staged Beside The Other Fixtures.
     for name in exported["exports"]:
         source = Path(name)
-        _copy(source, FIXTURES / source.relative_to(TARGET / "dependencies"), [exported], files)
+        _copy(source, FIXTURES / "inputs" / source.relative_to(TARGET / "dependencies"), [exported], files)
     if archive.tree(ROOT) != before:
         raise RuntimeError("sources changed while fixtures were building; rebuild the complete candidate")
     archive.stamp(
@@ -103,9 +104,9 @@ def main() -> None:
             "builds": builds,
             "build_roots": {name: str(ROOT) for name in builds},
             "dependencies": "libraries",
-            "vendor": "vendor",
-            "wheels": "wheels",
-            "requirements": "requirements.txt",
+            "vendor": "inputs/vendor",
+            "wheels": "inputs/wheels",
+            "requirements": "inputs/requirements.txt",
             "executables": [artifacts[name] for name in ("cargo-harmos", "schematic-cli", "schematic-sidecar")],
         },
     )
@@ -263,7 +264,10 @@ def _copy(source: Path, destination: Path, producers: list[dict], files: dict) -
     if owner is None:
         raise RuntimeError(f"staged input has no original producer: {source}")
     destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, destination)
+    if source.is_dir():
+        shutil.copytree(source, destination, symlinks=True)
+    else:
+        shutil.copy2(source, destination)
     expected = archive.verify_copy(owner, source, destination)
     files[destination.relative_to(ROOT).as_posix()] = expected
     return expected
