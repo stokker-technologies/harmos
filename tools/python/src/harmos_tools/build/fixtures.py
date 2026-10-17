@@ -213,12 +213,11 @@ def _offline_inputs(profile: str) -> dict:
     download = [sys.executable, "-c", launch, str(wheels[0]), "download", "--dest", str(destination / "wheels"), "--require-hashes"]
     commands.extend([*download, "--requirement", str(selected)] for selected in requirements_files)
     # Hatchling Requests `editables` Only For Editable Installs, So No Project Lock Names It.
-    destination.mkdir(parents=True, exist_ok=True)
-    editables = destination / "editables.txt"
+    editables = TARGET / "tmp" / "editables.txt"
     editables.write_text(f"{EDITABLES}\n", encoding="utf-8")
     commands.append([*download, "--no-deps", "--requirement", str(editables)])
     locks = [manifest.parent / "Cargo.lock" for manifest in manifests] + [project / "uv.lock" for project in projects]
-    inputs = [*manifests, *(project / "pyproject.toml" for project in projects), Path(str(wheels[0]))]
+    inputs = [*manifests, *(project / "pyproject.toml" for project in projects), Path(str(wheels[0])), editables]
     if (ROOT / ".cargo").is_dir():
         inputs.append(ROOT / ".cargo")
     return archive.native(ROOT, profile, "dependency-export", commands, [destination], locks=locks, inputs=inputs, stdout=captured)
