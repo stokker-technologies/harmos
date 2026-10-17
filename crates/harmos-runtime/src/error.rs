@@ -208,19 +208,45 @@ impl<E> From<harmos_storage::Error> for Error<E> {
     fn from(error: harmos_storage::Error) -> Self {
         use harmos_storage::Error as Storage;
         match error {
-            Storage::OperationFailed { operation, source } => Self::OperationFailed { operation, source },
+            Storage::OperationFailed { operation, source } => {
+                Self::OperationFailed { operation, source }
+            }
             Storage::NotReady { domain } => Self::NotReady { domain },
             Storage::Persistence { source } => Self::Persistence {
-                source: std::sync::Arc::new(std::sync::Arc::try_unwrap(source).map(Error::from).unwrap_or_else(|source| {
-                    Error::backend("storage persistence", source.backend_failure().unwrap_or(BackendFailure::Permanent), source)
-                })),
+                source: std::sync::Arc::new(
+                    std::sync::Arc::try_unwrap(source)
+                        .map(Error::from)
+                        .unwrap_or_else(|source| {
+                            Error::backend(
+                                "storage persistence",
+                                source
+                                    .backend_failure()
+                                    .unwrap_or(BackendFailure::Permanent),
+                                source,
+                            )
+                        }),
+                ),
             },
             Storage::Closing { domain } => Self::Closing { domain },
             Storage::AlreadyRegistered { domain, name } => Self::AlreadyRegistered { domain, name },
-            Storage::Backend { operation, kind, source } => Self::Backend { operation, kind, source },
+            Storage::Backend {
+                operation,
+                kind,
+                source,
+            } => Self::Backend {
+                operation,
+                kind,
+                source,
+            },
             Storage::InvalidInput { field, reason } => Self::InvalidInput { field, reason },
             Storage::ResourceExhausted { resource } => Self::ResourceExhausted { resource },
-            Storage::Gap { requested, available } => Self::Gap { requested, available },
+            Storage::Gap {
+                requested,
+                available,
+            } => Self::Gap {
+                requested,
+                available,
+            },
             Storage::Domain(source) => source.into(),
         }
     }

@@ -23,12 +23,12 @@ use std::time::Duration;
 
 // Local Imports
 use super::operations::{Lanes, Managed};
+use harmos_domain::plugin::Grant;
 use harmos_runtime::grpc::authentication::{Authenticate, Authentication, Authenticator};
 use harmos_runtime::grpc::middleware::Invocation;
 use harmos_runtime::operations::{
     Operation, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireTable,
 };
-use harmos_domain::plugin::Grant;
 use harmos_sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
@@ -246,7 +246,10 @@ impl Operation for LocalFetching {
     type Error = harmos_runtime::Error;
     type Endpoints = ();
     type Context<'a> = harmos_runtime::operations::Context<'a>;
-    async fn initialize<'ctx>(runs: Arc<Runs>, _: Self::Context<'ctx>) -> harmos_runtime::Result<Self> {
+    async fn initialize<'ctx>(
+        runs: Arc<Runs>,
+        _: Self::Context<'ctx>,
+    ) -> harmos_runtime::Result<Self> {
         Ok(Self { runs })
     }
     async fn run<'a>(
@@ -288,15 +291,17 @@ async fn fetch(
         .ready()
         .await
         .map_err(|_| tonic::Status::unavailable("channel"))?;
-    let mut request = tonic::Request::new(harmos_runtime::operations::Response::new(Fetch { value }));
+    let mut request =
+        tonic::Request::new(harmos_runtime::operations::Response::new(Fetch { value }));
     request
         .metadata_mut()
         .insert("authorization", bearer.parse().unwrap());
     let settings = harmos_runtime::grpc::server::Settings::default();
-    let codec = harmos_runtime::grpc::Codec::<Fetch, harmos_runtime::operations::Response<Fetch>>::new(
-        settings.decode,
-        settings.encode,
-    )?;
+    let codec =
+        harmos_runtime::grpc::Codec::<Fetch, harmos_runtime::operations::Response<Fetch>>::new(
+            settings.decode,
+            settings.encode,
+        )?;
     let response = client
         .unary(
             request,

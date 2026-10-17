@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 // Third Party Imports
 use criterion::{BenchmarkId, Criterion};
 use harmos_runtime::storage::operations::Query;
-use harmos_runtime::storage::query::{ QueryArrow, RowSlice, Source, StreamSelection};
+use harmos_runtime::storage::query::{QueryArrow, RowSlice, Source, StreamSelection};
 use harmos_runtime::storage::*;
 
 // Local Imports

@@ -16,12 +16,13 @@ pub mod linked {
         pub value: u32,
     }
 
-    const POLICY: harmos_runtime::operations::OperationPolicy = harmos_runtime::operations::OperationPolicy {
-        timeout: std::time::Duration::from_millis(100),
-        attempt_timeout: std::time::Duration::from_millis(100),
-        retries: harmos_runtime::operations::RetryPolicy::Never,
-        restart: harmos_runtime::operations::RestartPolicy::Never,
-    };
+    const POLICY: harmos_runtime::operations::OperationPolicy =
+        harmos_runtime::operations::OperationPolicy {
+            timeout: std::time::Duration::from_millis(100),
+            attempt_timeout: std::time::Duration::from_millis(100),
+            retries: harmos_runtime::operations::RetryPolicy::Never,
+            restart: harmos_runtime::operations::RestartPolicy::Never,
+        };
 
     #[harmos_runtime::message]
     #[harmos_runtime::operation(id = "guest.echo", version = 1, policy = POLICY, response = String)]
@@ -45,7 +46,8 @@ pub mod linked {
                 retries: harmos_runtime::operations::RetryPolicy::Never,
                 restart: harmos_runtime::operations::RestartPolicy::Never,
             };
-        const SHUTDOWN_POLICY: harmos_runtime::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
+        const SHUTDOWN_POLICY: harmos_runtime::operations::OperationPolicy =
+            Self::INITIALIZATION_POLICY;
     }
     #[harmos_runtime::plugin(id = "meter", provides = Operations, requires = (), streams(Foreign))]
     impl harmos_runtime::Plugin for LinkedGuest {

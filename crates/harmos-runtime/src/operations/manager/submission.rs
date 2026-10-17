@@ -12,7 +12,6 @@ use super::*;
 
 /* === Implementations === */
 impl OperationManager {
-
     pub fn submit<O: OperationDeclaration>(&self, request: O) -> Result<OperationInstance<O>> {
         self.admit::<O, ()>((request.into(), ()), None, &[], &Source::Host, None)
     }
@@ -31,7 +30,10 @@ impl OperationManager {
         endpoints: P,
     ) -> Result<OperationInstance<O>> {
         self.admit::<O, P>(
-            (crate::operations::binding::Request::charged(request)?, endpoints),
+            (
+                crate::operations::binding::Request::charged(request)?,
+                endpoints,
+            ),
             None,
             &[],
             &Source::Host,
@@ -245,7 +247,10 @@ impl OperationManager {
             preparation,
         )?;
         #[cfg(feature = "grpc")]
-        if let Some(deadline) = self.call_context().get::<crate::operations::context::Deadline>() {
+        if let Some(deadline) = self
+            .call_context()
+            .get::<crate::operations::context::Deadline>()
+        {
             job.policy.timeout = job
                 .policy
                 .timeout
@@ -292,5 +297,4 @@ impl OperationManager {
             released: false,
         })
     }
-
 }

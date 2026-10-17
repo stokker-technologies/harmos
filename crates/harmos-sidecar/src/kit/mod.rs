@@ -28,8 +28,8 @@ pub mod __private {
     };
     pub use super::task::spawn as spawn_observer;
     pub use crate as sidecar;
-    pub use harmos_sdk::__private::*;
     pub use harmos_domain::{qualified, qualified_len, qualify};
+    pub use harmos_sdk::__private::*;
 }
 
 /* === Re-Exports === */

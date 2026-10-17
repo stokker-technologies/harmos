@@ -7,7 +7,6 @@
  * ***
  */
 
-
 // Serve Retained Snapshot Reads.
 
 /* === Modules === */
@@ -23,7 +22,6 @@
 // Local Imports
 use super::*;
 
-
 /* === Constants === */
 
 /* === Macros === */
@@ -38,7 +36,10 @@ use super::*;
 
 /* === Implementations === */
 impl<C: ObjectCatalog> Data<C> {
-    pub(super) fn fixture_open_snapshot<'a>(&'a self, at: &'a StorageCursor) -> StorageFuture<'a, BackendSnapshot> {
+    pub(super) fn fixture_open_snapshot<'a>(
+        &'a self,
+        at: &'a StorageCursor,
+    ) -> StorageFuture<'a, BackendSnapshot> {
         Box::pin(async move {
             if self.control.block_view.load(Ordering::SeqCst) {
                 self.control.view_entered.notify_one();
@@ -78,7 +79,10 @@ impl<C: ObjectCatalog> Data<C> {
         })
     }
 
-    pub(super) fn fixture_release_snapshot<'a>(&'a self, snapshot: &'a BackendSnapshot) -> StorageFuture<'a, ()> {
+    pub(super) fn fixture_release_snapshot<'a>(
+        &'a self,
+        snapshot: &'a BackendSnapshot,
+    ) -> StorageFuture<'a, ()> {
         Box::pin(async move {
             self.control.releases.fetch_add(1, Ordering::SeqCst);
             if self.control.block_release.load(Ordering::SeqCst) {
@@ -290,7 +294,6 @@ impl<C: ObjectCatalog> Data<C> {
         })
     }
 }
-
 
 /* === Public Functions === */
 

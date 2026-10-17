@@ -40,7 +40,8 @@ const CAPACITY: usize = 2;
 
 /* === Type Aliases === */
 type Resident = Supervised<Bank, Executable, fn(&Service<Bank>, Notice)>;
-type PublicationCall = harmos_runtime::sidecar::Publish<Bank, Executable, fn(&Service<Bank>, Notice)>;
+type PublicationCall =
+    harmos_runtime::sidecar::Publish<Bank, Executable, fn(&Service<Bank>, Notice)>;
 
 /* === Structs === */
 struct Callback {
@@ -51,7 +52,9 @@ struct Callback {
 
 struct Fixture {
     runtime: Runtime<Bank>,
-    _lease: harmos_runtime::operations::OperationInstance<harmos_runtime::operations::resident::Activation>,
+    _lease: harmos_runtime::operations::OperationInstance<
+        harmos_runtime::operations::resident::Activation,
+    >,
     mode: Arc<AtomicUsize>,
     calls: Arc<AtomicUsize>,
     root: tempfile::TempDir,
@@ -272,7 +275,11 @@ fn contract_scenario() {
                 .block_on(async {
                     let fixture = Fixture::new().await;
                     fixture.mode.store(1, Ordering::SeqCst);
-                    let pending = fixture.runtime.operations.submit(nested(blob(42, 512))).unwrap();
+                    let pending = fixture
+                        .runtime
+                        .operations
+                        .submit(nested(blob(42, 512)))
+                        .unwrap();
                     marked(fixture.path(), "echo-started-0").await;
                     pending.cancel();
                     assert!(
@@ -311,7 +318,11 @@ fn contract_scenario() {
                 .block_on(async {
                     let fixture = Fixture::new().await;
                     fixture.mode.store(1, Ordering::SeqCst);
-                    let pending = fixture.runtime.operations.submit(nested(blob(48, 512))).unwrap();
+                    let pending = fixture
+                        .runtime
+                        .operations
+                        .submit(nested(blob(48, 512)))
+                        .unwrap();
                     marked(fixture.path(), "echo-started-0").await;
 
                     let result = tokio::time::timeout(
@@ -322,7 +333,9 @@ fn contract_scenario() {
                     .expect("the original operation deadline bounds settlement");
                     assert!(matches!(
                         result,
-                        Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut))
+                        Err(harmos_runtime::Error::OperationRefused(
+                            harmos_runtime::Refusal::TimedOut
+                        ))
                     ));
                     marked(fixture.path(), "echo-finalized-0").await;
                     marked(fixture.path(), "nested-finalized-48").await;

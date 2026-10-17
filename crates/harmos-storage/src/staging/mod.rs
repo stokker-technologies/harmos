@@ -8,13 +8,13 @@
  */
 
 /* === Modules === */
-mod creation;
-mod producer;
-mod state;
-mod perform;
 pub(super) mod checkpoint;
+mod creation;
 mod mutations;
+mod perform;
+mod producer;
 mod session;
+mod state;
 
 /* === Re-Exports === */
 pub(crate) use perform::perform;

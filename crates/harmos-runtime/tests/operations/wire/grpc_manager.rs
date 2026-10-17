@@ -223,8 +223,8 @@ impl harmos_runtime::operations::authorization::Authorizer for ExternalAccess {
         context: &harmos_runtime::operations::CallContext,
         provider: harmos_runtime::operations::authorization::Provider<'_>,
     ) -> harmos_runtime::Result<Option<harmos_runtime::operations::authorization::Required>> {
-        use harmos_runtime::operations::authorization::Required;
         use harmos_domain::plugin::Grant;
+        use harmos_runtime::operations::authorization::Required;
         // Reentrant Read Proves The Callback Does Not Hold The Original Registry Lock.
         assert_eq!(
             self.operations
@@ -244,9 +244,10 @@ impl harmos_runtime::operations::authorization::Authorizer for ExternalAccess {
                 match self.mode.load(std::sync::atomic::Ordering::Acquire) {
                     1 => {
                         return Ok(Some(Required {
-                            contract: harmos_runtime::operations::WireDeclaration::of::<Descendant>()
-                                .contract()
-                                .unwrap(),
+                            contract:
+                                harmos_runtime::operations::WireDeclaration::of::<Descendant>()
+                                    .contract()
+                                    .unwrap(),
                             grants,
                         }));
                     }
@@ -344,30 +345,57 @@ impl Service<http::Request<Body>> for Endpoint {
         Box::pin(async move {
             Ok(match request.uri().path() {
                 "/fixture.Identity/Hold" => {
-                    harmos_runtime::grpc::server::download::<Hold>(authority, wire_settings(), request)
-                        .await
+                    harmos_runtime::grpc::server::download::<Hold>(
+                        authority,
+                        wire_settings(),
+                        request,
+                    )
+                    .await
                 }
                 "/fixture.Identity/Download" => {
-                    harmos_runtime::grpc::server::download::<Download>(authority, wire_settings(), request)
-                        .await
+                    harmos_runtime::grpc::server::download::<Download>(
+                        authority,
+                        wire_settings(),
+                        request,
+                    )
+                    .await
                 }
                 "/fixture.Identity/Upload" => {
-                    harmos_runtime::grpc::server::upload::<Upload>(authority, wire_settings(), request)
-                        .await
+                    harmos_runtime::grpc::server::upload::<Upload>(
+                        authority,
+                        wire_settings(),
+                        request,
+                    )
+                    .await
                 }
                 "/fixture.Identity/Exchange" => {
-                    harmos_runtime::grpc::server::exchange::<Exchange>(authority, wire_settings(), request)
-                        .await
+                    harmos_runtime::grpc::server::exchange::<Exchange>(
+                        authority,
+                        wire_settings(),
+                        request,
+                    )
+                    .await
                 }
                 "/fixture.Identity/Guarded" => {
-                    harmos_runtime::grpc::server::unary::<Guarded>(authority, wire_settings(), request)
-                        .await
+                    harmos_runtime::grpc::server::unary::<Guarded>(
+                        authority,
+                        wire_settings(),
+                        request,
+                    )
+                    .await
                 }
                 "/fixture.Identity/Descendant" => {
-                    harmos_runtime::grpc::server::unary::<Descendant>(authority, wire_settings(), request)
+                    harmos_runtime::grpc::server::unary::<Descendant>(
+                        authority,
+                        wire_settings(),
+                        request,
+                    )
+                    .await
+                }
+                _ => {
+                    harmos_runtime::grpc::server::unary::<Who>(authority, wire_settings(), request)
                         .await
                 }
-                _ => harmos_runtime::grpc::server::unary::<Who>(authority, wire_settings(), request).await,
             })
         })
     }
@@ -835,15 +863,16 @@ async fn external_catalog(
             .insert("authorization", token.parse().unwrap());
     }
     let (decode, encode) = limits();
-    let response: tonic::Response<harmos_runtime::operations::StreamItem<OperationsResponse>> = client
-        .unary(
-            request,
-            http::uri::PathAndQuery::from_static("/harmos.host.v1.Host/Operations"),
-            Codec::<OperationsResponse, harmos_runtime::operations::Response<Operations>>::new(
-                decode, encode,
-            )?,
-        )
-        .await?;
+    let response: tonic::Response<harmos_runtime::operations::StreamItem<OperationsResponse>> =
+        client
+            .unary(
+                request,
+                http::uri::PathAndQuery::from_static("/harmos.host.v1.Host/Operations"),
+                Codec::<OperationsResponse, harmos_runtime::operations::Response<Operations>>::new(
+                    decode, encode,
+                )?,
+            )
+            .await?;
     Ok(serde_json::from_slice(&response.into_inner().catalog).unwrap())
 }
 
@@ -888,7 +917,9 @@ async fn failures(
     runtime
         .grpc()
         .register_service(Endpoint {
-            authority: harmos_runtime::grpc::server::Authority::TrustedHost(runtime.operations.clone()),
+            authority: harmos_runtime::grpc::server::Authority::TrustedHost(
+                runtime.operations.clone(),
+            ),
         })
         .unwrap();
     let attached = runtime.grpc().attach(settings()).await.unwrap();
@@ -1037,8 +1068,12 @@ pub(super) fn contract_scenario() {
                         .operations
                         .register_operation::<Parked>("app", Lanes::Open, release.clone())
                         .unwrap();
-                    harmos_runtime::builtin::Catalog::register(&runtime.operations, "host", Lanes::Open)
-                        .unwrap();
+                    harmos_runtime::builtin::Catalog::register(
+                        &runtime.operations,
+                        "host",
+                        Lanes::Open,
+                    )
+                    .unwrap();
                     let paths = runtime
                         .operations
                         .grpc_methods()
@@ -1103,8 +1138,8 @@ pub(super) fn contract_scenario() {
                 .build()
                 .unwrap()
                 .block_on(async {
-                    use harmos_runtime::operations::discovery::Discovery;
                     use harmos_domain::plugin::Grant;
+                    use harmos_runtime::operations::discovery::Discovery;
                     let runtime = Runtime::<App>::builder((), ())
                         .register(Lanes::catalog())
                         .runtime()
@@ -1616,29 +1651,33 @@ pub(super) fn contract_scenario() {
                     request
                         .metadata_mut()
                         .insert("authorization", "Bearer alice".parse().unwrap());
-                    let mut held =
-                        client
-                            .server_streaming(
-                                request,
-                                http::uri::PathAndQuery::from_static("/fixture.Identity/Hold"),
-                                Codec::<
-                                    OutputEnvelope<Reply, Reply>,
-                                    harmos_runtime::operations::Response<Ask>,
-                                >::new(decode, encode)
-                                .unwrap(),
-                            )
-                            .await
-                            .unwrap()
-                            .into_inner();
+                    let mut held = client
+                        .server_streaming(
+                            request,
+                            http::uri::PathAndQuery::from_static("/fixture.Identity/Hold"),
+                            Codec::<
+                                OutputEnvelope<Reply, Reply>,
+                                harmos_runtime::operations::Response<Ask>,
+                            >::new(decode, encode)
+                            .unwrap(),
+                        )
+                        .await
+                        .unwrap()
+                        .into_inner();
                     assert!(held.message().await.unwrap().is_some());
                     let mut uploader = client.clone();
                     let upload = tokio::spawn(async move {
                         uploader.ready().await.unwrap();
                         // The Upload Stays Open Until The Listener Settles It.
                         let opened = futures_util::StreamExt::chain(
-                            futures_util::stream::iter([harmos_runtime::operations::Response::new(
-                                InputEnvelope::<Ask, Reply>::Request(Ask {}),
-                            )]),
+                            futures_util::stream::iter([
+                                harmos_runtime::operations::Response::new(InputEnvelope::<
+                                    Ask,
+                                    Reply,
+                                >::Request(
+                                    Ask {}
+                                )),
+                            ]),
                             futures_util::stream::pending(),
                         );
                         let mut request = tonic::Request::new(opened);
@@ -1766,7 +1805,10 @@ pub(super) fn contract_scenario() {
                         "https://host#fragment",
                         "1https://host",
                     ] {
-                        assert!(harmos_runtime::grpc::Origin::parse(invalid).is_err(), "{invalid}");
+                        assert!(
+                            harmos_runtime::grpc::Origin::parse(invalid).is_err(),
+                            "{invalid}"
+                        );
                     }
                     let mut disabled = settings();
                     disabled.allowed_origins = vec![ORIGIN.parse().unwrap()];

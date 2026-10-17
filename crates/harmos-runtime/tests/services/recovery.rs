@@ -63,7 +63,10 @@ enum CleanupRequest {
 impl Resident<App> for RetainedCleanup {
     type Error = String;
 
-    async fn run(&mut self, context: harmos_runtime::services::Service<App>) -> Result<(), Fault<String>> {
+    async fn run(
+        &mut self,
+        context: harmos_runtime::services::Service<App>,
+    ) -> Result<(), Fault<String>> {
         let gate = self.gate.take().expect("one original blocking worker");
         let completed = self.completed.clone();
         self.join = Some(tokio::task::spawn_blocking(move || {
@@ -100,7 +103,9 @@ async fn stop_cleanup(
     runtime: &Runtime<App>,
     scope: &Arc<()>,
     request: CleanupRequest,
-    lease: &harmos_runtime::operations::OperationInstance<harmos_runtime::operations::resident::Activation>,
+    lease: &harmos_runtime::operations::OperationInstance<
+        harmos_runtime::operations::resident::Activation,
+    >,
 ) -> harmos_runtime::Result<()> {
     match request {
         CleanupRequest::Instance => {
@@ -189,11 +194,9 @@ pub(super) fn contract_scenario() {
                                 stopping.await.unwrap();
                             }
                             assert!(cleaned.load(Ordering::SeqCst));
-                            assert!(
-                                !runtime.operations.watch_residents().borrow().contains_key(
-                                    &harmos_runtime::operations::resident::Key::root("reload")
-                                )
-                            );
+                            assert!(!runtime.operations.watch_residents().borrow().contains_key(
+                                &harmos_runtime::operations::resident::Key::root("reload")
+                            ));
                             runtime.stop().await.unwrap();
                         } else {
                             let stopping = runtime.stop();
@@ -226,17 +229,18 @@ pub(super) fn contract_scenario() {
                         let release = Arc::new(Notify::new());
                         let cleaned = Arc::new(AtomicBool::new(false));
                         let signals = (entered.clone(), release.clone(), cleaned.clone());
-                        let resident = move |mut context: harmos_runtime::services::Service<App>| {
-                            let (entered, release, cleaned) = signals.clone();
-                            async move {
-                                context.ready();
-                                context.stopping().await;
-                                entered.notify_one();
-                                release.notified().await;
-                                cleaned.store(true, Ordering::SeqCst);
-                                Ok::<(), Fault<String>>(())
-                            }
-                        };
+                        let resident =
+                            move |mut context: harmos_runtime::services::Service<App>| {
+                                let (entered, release, cleaned) = signals.clone();
+                                async move {
+                                    context.ready();
+                                    context.stopping().await;
+                                    entered.notify_one();
+                                    release.notified().await;
+                                    cleaned.store(true, Ordering::SeqCst);
+                                    Ok::<(), Fault<String>>(())
+                                }
+                            };
                         let mut lease = None;
                         let runtime = if tenant {
                             let runtime = Runtime::<App>::builder((), ()).runtime().await.unwrap();

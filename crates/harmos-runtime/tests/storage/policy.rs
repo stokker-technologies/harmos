@@ -62,7 +62,8 @@ fn contract_scenario() {
             assert!(construct(settings.clone()).is_err());
             settings.response.batch_bytes = settings.budget.read_memory_bytes;
             assert!(construct(settings.clone()).is_err());
-            settings.response.batch_bytes = NonZeroUsize::new(settings.budget.read_memory_bytes.get() / 2).unwrap();
+            settings.response.batch_bytes =
+                NonZeroUsize::new(settings.budget.read_memory_bytes.get() / 2).unwrap();
             construct(settings).unwrap();
         });
     }

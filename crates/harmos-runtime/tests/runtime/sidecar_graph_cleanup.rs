@@ -97,7 +97,9 @@ struct Independent {
 
 struct Fixture {
     runtime: Runtime<Bank>,
-    _lease: harmos_runtime::operations::OperationInstance<harmos_runtime::operations::resident::Activation>,
+    _lease: harmos_runtime::operations::OperationInstance<
+        harmos_runtime::operations::resident::Activation,
+    >,
     root: tempfile::TempDir,
     client: Arc<Gate>,
     provider: Arc<Gate>,
@@ -227,7 +229,9 @@ impl Attach for Joined {
     fn observers(&self) -> Vec<harmos_domain::inventory::observers::Declaration> {
         forwarded!(self, observers)
     }
-    fn observe_contract(&self) -> harmos_domain::Result<Option<harmos_runtime::operations::Contract>> {
+    fn observe_contract(
+        &self,
+    ) -> harmos_domain::Result<Option<harmos_runtime::operations::Contract>> {
         forwarded!(self, observe_contract)
     }
     fn listener_declarations(

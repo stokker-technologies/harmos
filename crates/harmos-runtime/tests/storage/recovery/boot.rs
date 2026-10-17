@@ -560,14 +560,20 @@ pub(super) fn contract_scenario() {
                             ..
                         }
                     ));
-                    assert_eq!(cleanup.status(), harmos_runtime::runtime::BootstrapStatus::Failed);
+                    assert_eq!(
+                        cleanup.status(),
+                        harmos_runtime::runtime::BootstrapStatus::Failed
+                    );
                     assert!(cleanup.failure().is_some());
                     assert!(probe.data.control.open.load(Ordering::SeqCst));
                     assert!(probe.storage.status().closing);
                     assert!(!probe.storage.status().closed);
                     probe.data.control.fail_close.store(false, Ordering::SeqCst);
                     cleanup.retry().await.unwrap();
-                    assert_eq!(cleanup.status(), harmos_runtime::runtime::BootstrapStatus::Settled);
+                    assert_eq!(
+                        cleanup.status(),
+                        harmos_runtime::runtime::BootstrapStatus::Settled
+                    );
                     assert!(!probe.data.control.open.load(Ordering::SeqCst));
                     assert!(!probe.recovery.control.open.load(Ordering::SeqCst));
                 });

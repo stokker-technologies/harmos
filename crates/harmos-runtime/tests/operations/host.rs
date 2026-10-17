@@ -271,7 +271,8 @@ pub(super) fn contract_scenario() {
                     let unknown = harmos_runtime::operations::OperationInstanceId::new(u64::MAX);
                     let refused = operations.call(builtin::Cancel::of(unknown)).await;
                     assert!(hidden(refused.err()));
-                    let status = harmos_runtime::operations::instance::Status::try_from(&*cancelled);
+                    let status =
+                        harmos_runtime::operations::instance::Status::try_from(&*cancelled);
                     assert_ne!(status.unwrap().outcome, Some(Outcome::Succeeded));
                     runtime.stop().await.unwrap();
                 });

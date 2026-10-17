@@ -32,7 +32,9 @@ use super::{
 use harmos_runtime::operations::{
     Backoff, Context, FailureKind, Jitter, Operation, OperationPolicy, RestartPolicy, RetryPolicy,
 };
-use harmos_runtime::{Error, Refusal, Runtime, state::FactSource, state::Position, state::SystemFact};
+use harmos_runtime::{
+    Error, Refusal, Runtime, state::FactSource, state::Position, state::SystemFact,
+};
 
 /* === Constants === */
 

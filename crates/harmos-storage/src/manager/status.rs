@@ -87,6 +87,4 @@ impl<C> StorageManager<C> {
         self.inner.notify();
         Ok(())
     }
-
-
 }

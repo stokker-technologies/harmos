@@ -494,14 +494,7 @@ fn contract_scenario() {
                         )
                         .await;
                         assert_eq!(Echo::decode(&result).unwrap(), request);
-                        binary_invoke(
-                            &sender,
-                            &mut receiver,
-                            3,
-                            Shutdown::ID,
-                            Vec::new(),
-                        )
-                        .await;
+                        binary_invoke(&sender, &mut receiver, 3, Shutdown::ID, Vec::new()).await;
                         assert!(matches!(
                             binary_phase(
                                 &sender,
@@ -648,14 +641,8 @@ fn contract_scenario() {
                             )
                             .await;
                             assert_eq!(Echo::decode(&response).unwrap(), request);
-                            binary_invoke(
-                                &sending,
-                                &mut receiver,
-                                3,
-                                Shutdown::ID,
-                                Vec::new(),
-                            )
-                            .await;
+                            binary_invoke(&sending, &mut receiver, 3, Shutdown::ID, Vec::new())
+                                .await;
                         })
                         .await
                         .expect("child lifecycle completes within its budget");

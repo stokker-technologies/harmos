@@ -7,7 +7,6 @@
  * ***
  */
 
-
 // A Stored Schematic That Enforces Its Domain Invariants.
 
 /* === Modules === */
@@ -22,7 +21,6 @@
 
 // Local Imports
 
-
 /* === Constants === */
 
 /* === Macros === */
@@ -36,13 +34,11 @@ pub struct ValidatedSchematic {
     pub schematic: super::Snapshot,
 }
 
-
 /* === Enums === */
 #[harmos_domain::catalog]
 pub enum Objects {
     Schematic(ValidatedSchematic),
 }
-
 
 /* === Traits === */
 
@@ -55,16 +51,21 @@ impl harmos_domain::Identified for ValidatedSchematic {
 
 impl harmos_domain::model::storage::catalog::StoredObject for ValidatedSchematic {
     type Key = str;
-    const RETENTION: harmos_domain::model::storage::ObjectRetention = harmos_domain::model::storage::ObjectRetention::Latest;
-    fn key(&self) -> &str { &self.id }
+    const RETENTION: harmos_domain::model::storage::ObjectRetention =
+        harmos_domain::model::storage::ObjectRetention::Latest;
+    fn key(&self) -> &str {
+        &self.id
+    }
     fn validate(&self) -> harmos_domain::Result<()> {
         if self.id.trim().is_empty() || self.schematic.validate().is_err() {
-            return Err(harmos_domain::Error::InvalidInput { field: "schematic", reason: "a stored schematic needs an identity and valid connections" });
+            return Err(harmos_domain::Error::InvalidInput {
+                field: "schematic",
+                reason: "a stored schematic needs an identity and valid connections",
+            });
         }
         Ok(())
     }
 }
-
 
 /* === Public Functions === */
 

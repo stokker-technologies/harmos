@@ -12,7 +12,6 @@ use super::*;
 
 /* === Implementations === */
 impl OperationManager {
-
     pub fn cache_capacity(&self) -> usize {
         self.registry
             .state
@@ -105,5 +104,4 @@ impl OperationManager {
         state.cache.push_back(cached);
         response
     }
-
 }

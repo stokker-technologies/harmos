@@ -225,7 +225,10 @@ fn own_contract() {
                     assert_eq!(found.version, admitted.version);
                     assert!(
                         storage
-                            .read_object::<Counter>(&43, harmos_runtime::storage::ObjectVersion::Latest,)
+                            .read_object::<Counter>(
+                                &43,
+                                harmos_runtime::storage::ObjectVersion::Latest,
+                            )
                             .await
                             .unwrap()
                             .is_none()

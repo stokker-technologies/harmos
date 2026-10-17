@@ -21,7 +21,9 @@ use std::time::Duration;
 use tokio::sync::{Notify, mpsc};
 // Local Imports
 use super::{Bank, assembly, service_status, support};
-use harmos_runtime::{services::Fault, services::Service, services::ServiceExit, services::ServiceStatus};
+use harmos_runtime::{
+    services::Fault, services::Service, services::ServiceExit, services::ServiceStatus,
+};
 
 /* === Constants === */
 
@@ -71,7 +73,9 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         runtime
                             .operations
-                            .resident(&harmos_runtime::operations::resident::Key::root("initializing"))
+                            .resident(&harmos_runtime::operations::resident::Key::root(
+                                "initializing"
+                            ))
                             .and_then(|item| item.health),
                         Some(ServiceStatus::Starting)
                     );
@@ -79,7 +83,9 @@ pub(super) fn contract_scenario() {
                     runtime.stop().await.unwrap();
                     assert_eq!(
                         services
-                            .resident(&harmos_runtime::operations::resident::Key::root("initializing"))
+                            .resident(&harmos_runtime::operations::resident::Key::root(
+                                "initializing"
+                            ))
                             .and_then(|item| item.health),
                         Some(ServiceStatus::Stopped)
                     );
@@ -274,7 +280,9 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         runtime
                             .operations
-                            .resident(&harmos_runtime::operations::resident::Key::root("replacement"))
+                            .resident(&harmos_runtime::operations::resident::Key::root(
+                                "replacement"
+                            ))
                             .and_then(|item| item.health),
                         Some(ServiceStatus::Starting)
                     );
@@ -285,7 +293,9 @@ pub(super) fn contract_scenario() {
                         statuses.wait_for(|values| {
                             matches!(
                                 values
-                                    .get(&harmos_runtime::operations::resident::Key::root("replacement"))
+                                    .get(&harmos_runtime::operations::resident::Key::root(
+                                        "replacement"
+                                    ))
                                     .and_then(|item| item.health.as_ref()),
                                 Some(ServiceStatus::Running { .. })
                             )
@@ -322,7 +332,9 @@ pub(super) fn contract_scenario() {
                             statuses.wait_for(|values| {
                                 matches!(
                                     values
-                                        .get(&harmos_runtime::operations::resident::Key::root("failed"))
+                                        .get(&harmos_runtime::operations::resident::Key::root(
+                                            "failed"
+                                        ))
                                         .and_then(|item| item.health.as_ref()),
                                     Some(ServiceStatus::Inactive { .. })
                                 )
@@ -420,9 +432,9 @@ pub(super) fn contract_scenario() {
                     })
                     .await;
                     assert!(
-                        statuses
-                            .borrow()
-                            .contains_key(&harmos_runtime::operations::resident::Key::root("tenant"))
+                        statuses.borrow().contains_key(
+                            &harmos_runtime::operations::resident::Key::root("tenant")
+                        )
                     );
                     runtime.stop().await.unwrap();
                 });

@@ -34,7 +34,10 @@ use harmos_domain::{
     },
 };
 
-use harmos_packaging::{python::{self, Settings}, proto::Artifacts};
+use harmos_packaging::{
+    proto::Artifacts,
+    python::{self, Settings},
+};
 
 /* === Constants === */
 // Read A Rust Summary, Check Its Typed Members, Then Rebuild It From Python
@@ -86,32 +89,67 @@ pub fn check() {
         let mut settings = settings("bindings_alpha");
         settings.operations = vec!["missing.operation".into()];
         assert!(matches!(
-            python::generate(python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings: &settings, protoc: &protoc() }, &output),
+            python::generate(
+                python::Catalog {
+                    contracts: &artifacts.operation_contracts().unwrap(),
+                    settings: &settings,
+                    protoc: &protoc()
+                },
+                &output
+            ),
             Err(python::Error::Selection(_))
         ));
         assert!(!output.exists());
         settings.operations = vec![contracts[0].operation().id.to_string(); 2];
         assert!(matches!(
-            python::generate(python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings: &settings, protoc: &protoc() }, &output),
+            python::generate(
+                python::Catalog {
+                    contracts: &artifacts.operation_contracts().unwrap(),
+                    settings: &settings,
+                    protoc: &protoc()
+                },
+                &output
+            ),
             Err(python::Error::Collision(_))
         ));
         settings.operations.clear();
         settings.module = "class".into();
         assert!(matches!(
-            python::generate(python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings: &settings, protoc: &protoc() }, &output),
+            python::generate(
+                python::Catalog {
+                    contracts: &artifacts.operation_contracts().unwrap(),
+                    settings: &settings,
+                    protoc: &protoc()
+                },
+                &output
+            ),
             Err(python::Error::Settings(_))
         ));
         settings.module = "bindings_alpha".into();
         settings.version = "1.0.0-preview.1".parse().unwrap();
         assert!(matches!(
-            python::generate(python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings: &settings, protoc: &protoc() }, &output),
+            python::generate(
+                python::Catalog {
+                    contracts: &artifacts.operation_contracts().unwrap(),
+                    settings: &settings,
+                    protoc: &protoc()
+                },
+                &output
+            ),
             Err(python::Error::Settings(_))
         ));
         settings.version = "1.0.0".parse().unwrap();
         let unsupported = contracts[0].clone().with_grpc(None).unwrap();
         let unsupported = Artifacts::new([&unsupported]).unwrap();
         assert!(matches!(
-            python::generate(python::Catalog { contracts: &unsupported.operation_contracts().unwrap(), settings: &settings, protoc: &protoc() }, &output),
+            python::generate(
+                python::Catalog {
+                    contracts: &unsupported.operation_contracts().unwrap(),
+                    settings: &settings,
+                    protoc: &protoc()
+                },
+                &output
+            ),
             Err(python::Error::Unsupported(_))
         ));
         let mut collision = reserved();
@@ -127,7 +165,14 @@ pub fn check() {
         fs::create_dir(&output).unwrap();
         fs::write(output.join("owned.txt"), "preserved").unwrap();
         assert!(matches!(
-            python::generate(python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings: &settings, protoc: &protoc() }, &output),
+            python::generate(
+                python::Catalog {
+                    contracts: &artifacts.operation_contracts().unwrap(),
+                    settings: &settings,
+                    protoc: &protoc()
+                },
+                &output
+            ),
             Err(python::Error::Exists(_))
         ));
         assert_eq!(
@@ -172,9 +217,33 @@ pub fn check() {
         let alpha = target.path().join("alpha");
         let beta = target.path().join("beta");
         let repeat = target.path().join("repeat");
-        python::generate(python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings: &settings("bindings_alpha"), protoc: &protoc() }, &alpha).unwrap();
-        python::generate(python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings: &settings("bindings_beta"), protoc: &protoc() }, &beta).unwrap();
-        python::generate(python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings: &settings("bindings_alpha"), protoc: &protoc() }, &repeat).unwrap();
+        python::generate(
+            python::Catalog {
+                contracts: &artifacts.operation_contracts().unwrap(),
+                settings: &settings("bindings_alpha"),
+                protoc: &protoc(),
+            },
+            &alpha,
+        )
+        .unwrap();
+        python::generate(
+            python::Catalog {
+                contracts: &artifacts.operation_contracts().unwrap(),
+                settings: &settings("bindings_beta"),
+                protoc: &protoc(),
+            },
+            &beta,
+        )
+        .unwrap();
+        python::generate(
+            python::Catalog {
+                contracts: &artifacts.operation_contracts().unwrap(),
+                settings: &settings("bindings_alpha"),
+                protoc: &protoc(),
+            },
+            &repeat,
+        )
+        .unwrap();
         assert_eq!(files(&alpha), files(&repeat));
         let value = Payload {
             text: "line\n∞".into(),
@@ -205,7 +274,14 @@ pub fn check() {
         let artifacts = Artifacts::new([&summary]).unwrap();
         let target = tempfile::tempdir().unwrap();
         let package = target.path().join("package");
-        python::generate(python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings: &settings("bindings_aggregate"), protoc: &protoc() }, &package)
+        python::generate(
+            python::Catalog {
+                contracts: &artifacts.operation_contracts().unwrap(),
+                settings: &settings("bindings_aggregate"),
+                protoc: &protoc(),
+            },
+            &package,
+        )
         .unwrap();
         let module = package.join("src/bindings_aggregate");
         let messages = module.join("_wire/test/v1/ShapesMessages/Aggregate/messages_pb2.pyi");

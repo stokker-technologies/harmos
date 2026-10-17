@@ -20,7 +20,9 @@ use crate::scenario_runtime;
 // Local Imports
 use super::*;
 use harmos_runtime::operations::Host as _;
-use harmos_runtime::operations::{Declarations, NativeError, PluginRegistration, PluginSdkRegistration};
+use harmos_runtime::operations::{
+    Declarations, NativeError, PluginRegistration, PluginSdkRegistration,
+};
 use harmos_runtime::plugin::{
     PluginBackend, PluginDefinition, PluginDefinitions, PluginLifecycle, PluginManager,
     PluginTransition, Requirement, Router,
@@ -141,7 +143,11 @@ struct Attachment {
 struct Resources {
     services: Option<harmos_runtime::operations::OperationManager>,
     resident: Option<Resident>,
-    lease: Option<harmos_runtime::operations::OperationInstance<harmos_runtime::operations::resident::Activation>>,
+    lease: Option<
+        harmos_runtime::operations::OperationInstance<
+            harmos_runtime::operations::resident::Activation,
+        >,
+    >,
     registration: Option<PluginRegistration>,
     sdk: Option<PluginSdkRegistration>,
     initializing: Option<harmos_runtime::operations::EncodedInvocation>,
@@ -592,14 +598,14 @@ impl<F: Forwarded> harmos_runtime::operations::Operation for Forwarding<F> {
             host.call(Amplify {
                 value: request.value(),
             })
-                .await
-                .map(harmos_runtime::operations::Response::into_owned)
-                .map_err(|error| match error {
-                    harmos_sidecar::CallError::Refused { code, failure } => {
-                        Refusal::failed(code, failure)
-                    }
-                    error => Refusal::of(error),
-                })
+            .await
+            .map(harmos_runtime::operations::Response::into_owned)
+            .map_err(|error| match error {
+                harmos_sidecar::CallError::Refused { code, failure } => {
+                    Refusal::failed(code, failure)
+                }
+                error => Refusal::of(error),
+            })
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -618,7 +624,9 @@ impl Attach for Attachment {
             return Ok(None);
         }
         let contracts = match self.id.as_str() {
-            "provider" => harmos_runtime::operations::Contracts::of::<ProviderOperations>().unwrap(),
+            "provider" => {
+                harmos_runtime::operations::Contracts::of::<ProviderOperations>().unwrap()
+            }
             "caller" if self.publishing => {
                 harmos_runtime::operations::Contracts::of::<PublishingOperations>().unwrap()
             }
@@ -775,7 +783,11 @@ impl PluginLifecycle for Host {
             ..Resources::default()
         }))
     }
-    async fn fence(&mut self, _: PluginTransition, _: &[PluginDefinition]) -> harmos_runtime::Result<()> {
+    async fn fence(
+        &mut self,
+        _: PluginTransition,
+        _: &[PluginDefinition],
+    ) -> harmos_runtime::Result<()> {
         Ok(())
     }
     async fn start(
@@ -1537,7 +1549,9 @@ pub(super) fn contract_scenario() {
                     invocation.cancel();
                     assert!(matches!(
                         invocation.await,
-                        Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))
+                        Err(harmos_runtime::Error::OperationRefused(
+                            harmos_runtime::Refusal::Cancelled
+                        ))
                     ));
                     tokio::time::timeout(Duration::from_secs(1), provider.dropped.notified())
                         .await
@@ -1555,7 +1569,9 @@ pub(super) fn contract_scenario() {
                     let timed = runtime.operations.call(Amplify { value: 0 }).await;
                     assert!(matches!(
                         timed,
-                        Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut))
+                        Err(harmos_runtime::Error::OperationRefused(
+                            harmos_runtime::Refusal::TimedOut
+                        ))
                     ));
                     tokio::time::timeout(Duration::from_secs(1), provider.dropped.notified())
                         .await

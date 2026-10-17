@@ -60,7 +60,11 @@ pub fn run(
 ) -> Result<(), harmos_packaging::Error> {
     match arguments.command {
         Command::Inspect(arguments) => super::inspect::run(arguments),
-        Command::Package(arguments) => super::package::run(arguments, harmos_packaging::config::BuildBackend::Guest, cancellation),
+        Command::Package(arguments) => super::package::run(
+            arguments,
+            harmos_packaging::config::BuildBackend::Guest,
+            cancellation,
+        ),
         Command::Build(arguments) => build::run(arguments, cancellation),
         Command::Dev(arguments) => dev::run(arguments, cancellation),
     }

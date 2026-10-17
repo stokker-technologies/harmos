@@ -12,7 +12,6 @@ use super::*;
 
 /* === Implementations === */
 impl OperationManager {
-
     pub fn definition(&self, id: &str) -> Result<Definition> {
         self.entry(id).map(|entry| entry.definition.clone())
     }
@@ -137,5 +136,4 @@ impl OperationManager {
     pub fn owner(&self, id: &str) -> Result<Identifier> {
         self.entry(id).map(|entry| entry.owner.clone())
     }
-
 }

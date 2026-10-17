@@ -486,7 +486,8 @@ fn selected_candidate(provider: &str, first: bool) -> PluginDefinitions {
 
 fn candidate() -> PluginDefinitions {
     let mut operations = harmos_runtime::operations::Declarations::of::<Operations>().unwrap();
-    operations.extend(harmos_runtime::operations::Declarations::of::<super::wire::Operations>().unwrap());
+    operations
+        .extend(harmos_runtime::operations::Declarations::of::<super::wire::Operations>().unwrap());
     operations.push(harmos_runtime::operations::Definition::of::<Shared>().unwrap());
     operations.push(harmos_runtime::operations::Definition::of::<Parent>().unwrap());
     PluginDefinitions::new(
@@ -1036,12 +1037,13 @@ pub(super) fn contract_scenario() {
                     assert_eq!(caller.call(Shared(request())).await.unwrap().value, 7);
                     // Parent is shared; its resource-owner context can call its private child.
                     assert_eq!(caller.call(Parent(request())).await.unwrap().value, 7);
-                    let (requests, mut decoded) =
-                        harmos_runtime::operations::stream(harmos_runtime::operations::StreamSettings {
+                    let (requests, mut decoded) = harmos_runtime::operations::stream(
+                        harmos_runtime::operations::StreamSettings {
                             items: NonZeroUsize::new(1).unwrap(),
                             bytes: NonZeroUsize::new(4096).unwrap(),
-                        })
-                        .unwrap();
+                        },
+                    )
+                    .unwrap();
                     requests
                         .send_with(4096, || Ok(Shared(request())))
                         .await
@@ -1092,24 +1094,26 @@ pub(super) fn contract_scenario() {
                             source.submit(request()),
                             Err(Error::OperationUnauthorized { .. })
                         ));
-                        let (output, input) =
-                            harmos_runtime::operations::stream::<u32>(harmos_runtime::operations::StreamSettings {
+                        let (output, input) = harmos_runtime::operations::stream::<u32>(
+                            harmos_runtime::operations::StreamSettings {
                                 items: NonZeroUsize::new(1).unwrap(),
                                 bytes: NonZeroUsize::new(4).unwrap(),
-                            })
-                            .unwrap();
+                            },
+                        )
+                        .unwrap();
                         assert!(matches!(
                             source.submit_endpoints::<Compute, _>(request(), input),
                             Err(Error::OperationUnauthorized { .. })
                         ));
                         assert!(output.is_closed());
                         // Each Operation Charges Its Own Request Type.
-                        let (requests, mut decoded) =
-                            harmos_runtime::operations::stream(harmos_runtime::operations::StreamSettings {
+                        let (requests, mut decoded) = harmos_runtime::operations::stream(
+                            harmos_runtime::operations::StreamSettings {
                                 items: NonZeroUsize::new(1).unwrap(),
                                 bytes: NonZeroUsize::new(4096).unwrap(),
-                            })
-                            .unwrap();
+                            },
+                        )
+                        .unwrap();
                         requests.send_with(4096, || Ok(request())).await.unwrap();
                         let charged = decoded.recv().await.unwrap();
                         assert!(matches!(
@@ -1147,12 +1151,13 @@ pub(super) fn contract_scenario() {
                         caller.submit(Shared(request())),
                         Err(Error::OperationCaller { .. })
                     ));
-                    let (output, input) =
-                        harmos_runtime::operations::stream::<u32>(harmos_runtime::operations::StreamSettings {
+                    let (output, input) = harmos_runtime::operations::stream::<u32>(
+                        harmos_runtime::operations::StreamSettings {
                             items: NonZeroUsize::new(1).unwrap(),
                             bytes: NonZeroUsize::new(4).unwrap(),
-                        })
-                        .unwrap();
+                        },
+                    )
+                    .unwrap();
                     assert!(matches!(
                         caller.submit_endpoints::<Shared, _>(Shared(request()), input),
                         Err(Error::OperationCaller { .. })
@@ -1728,10 +1733,13 @@ where
         opening_timeout: std::time::Duration::from_secs(1),
     };
     let mut codec =
-        harmos_runtime::grpc::Codec::<Text, harmos_runtime::operations::Response<Text>>::new(decode, encode)
-            .unwrap();
-    let message =
-        futures_util::stream::iter([Ok(harmos_runtime::operations::Response::new(Text::from("grpc")))]);
+        harmos_runtime::grpc::Codec::<Text, harmos_runtime::operations::Response<Text>>::new(
+            decode, encode,
+        )
+        .unwrap();
+    let message = futures_util::stream::iter([Ok(harmos_runtime::operations::Response::new(
+        Text::from("grpc"),
+    ))]);
     let body = tonic::codec::EncodeBody::new_client(codec.encoder(), message, None, Some(4096));
     let request = tonic::codegen::http::Request::builder()
         .header("content-type", "application/grpc")

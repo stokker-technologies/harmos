@@ -7,7 +7,6 @@
  * ***
  */
 
-
 // Generate Typed Protobuf JSON Messages And Operation Metadata.
 
 /* === Modules === */
@@ -27,7 +26,6 @@ use prost_reflect::{DescriptorPool, Kind, MessageDescriptor};
 // Local Imports
 use crate::proto::{Artifacts, ExportError};
 use harmos_domain::operations::Contract;
-
 
 /* === Constants === */
 
@@ -62,7 +60,9 @@ pub fn generate(catalog: &[Contract], output: &Path) -> Result<PathBuf, ExportEr
         message_source(&message, &names, &mut source)?;
     }
     source.push_str("export const operations = ");
-    source.push_str(std::str::from_utf8(artifacts.contracts()).map_err(|_| ExportError::Unsupported)?);
+    source.push_str(
+        std::str::from_utf8(artifacts.contracts()).map_err(|_| ExportError::Unsupported)?,
+    );
     source.push_str(" as const;\n");
     if source.len() > 64 * 1024 * 1024 {
         return Err(ExportError::Limit);
@@ -75,7 +75,6 @@ pub fn generate(catalog: &[Contract], output: &Path) -> Result<PathBuf, ExportEr
     Ok(path)
 }
 
-
 /* === Private Functions === */
 fn message_source(
     message: &MessageDescriptor,
@@ -85,15 +84,23 @@ fn message_source(
     let name = &names[message.full_name()];
     writeln!(source, "export type {name} = {{").expect("String Writer");
     for field in message.fields() {
-        if field.containing_oneof().is_some_and(|oneof| !oneof.is_synthetic()) {
+        if field
+            .containing_oneof()
+            .is_some_and(|oneof| !oneof.is_synthetic())
+        {
             continue;
         }
         let kind = field_type(field.kind(), names)?;
         // ProtoJSON May Omit Defaults, Including Empty Lists And Scalars.
         let optional = true;
         let field_name = serde_json::to_string(field.json_name())?;
-        writeln!(source, "  {field_name}{}: {kind}{};", if optional { "?" } else { "" }, if field.is_list() { "[]" } else { "" })
-            .expect("String Writer");
+        writeln!(
+            source,
+            "  {field_name}{}: {kind}{};",
+            if optional { "?" } else { "" },
+            if field.is_list() { "[]" } else { "" }
+        )
+        .expect("String Writer");
     }
     source.push('}');
     for oneof in message.oneofs().filter(|oneof| !oneof.is_synthetic()) {
@@ -120,15 +127,29 @@ fn message_source(
 fn field_type(kind: Kind, names: &BTreeMap<String, String>) -> Result<String, ExportError> {
     let value = match kind {
         Kind::Bool => "boolean",
-        Kind::Int32 | Kind::Sint32 | Kind::Sfixed32 | Kind::Uint32 | Kind::Fixed32
-        | Kind::Float | Kind::Double => "number",
-        Kind::Int64 | Kind::Sint64 | Kind::Sfixed64 | Kind::Uint64 | Kind::Fixed64
-        | Kind::String | Kind::Bytes => "string",
-        Kind::Message(message) => return names.get(message.full_name()).cloned().ok_or(ExportError::Unsupported),
+        Kind::Int32
+        | Kind::Sint32
+        | Kind::Sfixed32
+        | Kind::Uint32
+        | Kind::Fixed32
+        | Kind::Float
+        | Kind::Double => "number",
+        Kind::Int64
+        | Kind::Sint64
+        | Kind::Sfixed64
+        | Kind::Uint64
+        | Kind::Fixed64
+        | Kind::String
+        | Kind::Bytes => "string",
+        Kind::Message(message) => {
+            return names
+                .get(message.full_name())
+                .cloned()
+                .ok_or(ExportError::Unsupported);
+        }
         Kind::Enum(_) => return Err(ExportError::Unsupported),
     };
     Ok(value.to_owned())
 }
-
 
 /* === Tests === */

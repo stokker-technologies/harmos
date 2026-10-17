@@ -21,11 +21,11 @@ use std::time::Duration;
 
 // Local Imports
 use super::operations::{Calling, Lanes, Managed};
+use harmos_domain::listeners::{Context as DeliveryContext, Delivery, Listener};
 use harmos_runtime::Message;
 use harmos_runtime::operations::{
     Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, WireTable,
 };
-use harmos_domain::listeners::{Context as DeliveryContext, Delivery, Listener};
 use harmos_sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
@@ -274,7 +274,9 @@ pub(super) fn contract_scenario() {
                     assert_eq!(probe.total.load(Ordering::SeqCst), 7);
                     assert!(matches!(
                         fixture.call(delivered(0)).await,
-                        Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut))
+                        Err(harmos_runtime::Error::OperationRefused(
+                            harmos_runtime::Refusal::TimedOut
+                        ))
                     ));
                     fixture.call(delivered(3)).await.unwrap();
                     assert_eq!(probe.active.load(Ordering::SeqCst), 0);

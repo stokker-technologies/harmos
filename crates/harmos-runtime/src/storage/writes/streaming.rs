@@ -18,7 +18,9 @@ use std::collections::VecDeque;
 // Local Imports
 use crate::operations::{Context, StreamInput, StreamOutput};
 use crate::storage::StorageManager;
-use crate::storage::writes::{BatchReceipt, DataBatch, DecodedBatch, WriteCompletion, WriteReceipt};
+use crate::storage::writes::{
+    BatchReceipt, DataBatch, DecodedBatch, WriteCompletion, WriteReceipt,
+};
 use crate::{Error, MemorySize, Result};
 
 /* === Constants === */

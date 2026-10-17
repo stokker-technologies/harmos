@@ -229,7 +229,8 @@ impl<const N: u8> harmos_runtime::MemorySize for Declaration<N> {
 
 impl<const N: u8> harmos_runtime::schema::Described for Declaration<N> {
     const NAME: &'static str = DECLARATION_NAME;
-    const FIELDS: &'static [harmos_runtime::schema::Field] = <Consume as harmos_runtime::schema::Described>::FIELDS;
+    const FIELDS: &'static [harmos_runtime::schema::Field] =
+        <Consume as harmos_runtime::schema::Described>::FIELDS;
     const MARKER: &'static [u8] = DECLARATION_MARKER;
 }
 
@@ -364,7 +365,8 @@ async fn runtime() -> Runtime<App> {
 #[cfg(feature = "grpc")]
 async fn envelope(
     value: harmos_runtime::grpc::InputEnvelope<Declaration<0>, u32>,
-) -> harmos_runtime::operations::StreamItem<harmos_runtime::grpc::InputEnvelope<Declaration<0>, u32>> {
+) -> harmos_runtime::operations::StreamItem<harmos_runtime::grpc::InputEnvelope<Declaration<0>, u32>>
+{
     let (output, mut input) = stream(StreamSettings {
         items: NonZeroUsize::new(1).unwrap(),
         bytes: NonZeroUsize::new(64).unwrap(),
@@ -680,7 +682,8 @@ pub(super) fn contract_scenario() {
                     let error = bounded(harmos_runtime::grpc::input(instance, input, incoming))
                         .await
                         .unwrap_err();
-                    let harmos_runtime::grpc::InputError::Forward { source, settlement } = error else {
+                    let harmos_runtime::grpc::InputError::Forward { source, settlement } = error
+                    else {
                         panic!("input failure missing")
                     };
                     assert!(matches!(

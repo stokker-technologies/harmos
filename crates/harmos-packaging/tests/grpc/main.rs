@@ -23,8 +23,8 @@ mod scenario_runtime;
 use prost_reflect::DescriptorPool;
 
 // Local Imports
-use harmos_packaging::proto::{self, Artifacts};
 use harmos_domain::operations::{Contracts, OperationPolicy, RestartPolicy, RetryPolicy};
+use harmos_packaging::proto::{self, Artifacts};
 
 /* === Constants === */
 
@@ -169,7 +169,11 @@ fn contract_scenario() {
             let contracts = Contracts::of::<Portable>().unwrap();
             let artifacts = Artifacts::new(&contracts).unwrap();
             let target = tempfile::tempdir().unwrap();
-            let root = proto::generate(&artifacts.operation_contracts().unwrap(), &target.path().join("grpc/portable")).unwrap();
+            let root = proto::generate(
+                &artifacts.operation_contracts().unwrap(),
+                &target.path().join("grpc/portable"),
+            )
+            .unwrap();
             let output =
                 std::process::Command::new(protoc_bin_vendored::protoc_bin_path().unwrap())
                     .current_dir(&root)
@@ -203,7 +207,11 @@ fn contract_scenario() {
             let contracts = Contracts::of::<Boxed>().unwrap();
             let artifacts = Artifacts::new(&contracts).unwrap();
             let target = tempfile::tempdir().unwrap();
-            let root = proto::generate(&artifacts.operation_contracts().unwrap(), &target.path().join("grpc/boxed")).unwrap();
+            let root = proto::generate(
+                &artifacts.operation_contracts().unwrap(),
+                &target.path().join("grpc/boxed"),
+            )
+            .unwrap();
             let compiled = target.path().join("compiled.bin");
             let output =
                 std::process::Command::new(protoc_bin_vendored::protoc_bin_path().unwrap())
@@ -251,7 +259,11 @@ fn contract_scenario() {
             let target = tempfile::tempdir().unwrap();
             let contracts = Contracts::of::<Routes>().unwrap();
             let artifacts = Artifacts::new(&contracts).unwrap();
-            let root = proto::generate(&artifacts.operation_contracts().unwrap(), &target.path().join("grpc/application")).unwrap();
+            let root = proto::generate(
+                &artifacts.operation_contracts().unwrap(),
+                &target.path().join("grpc/application"),
+            )
+            .unwrap();
             assert_eq!(root, target.path().join("grpc/application"));
             let paths: Vec<_> = artifacts
                 .files()
@@ -261,7 +273,11 @@ fn contract_scenario() {
             assert!(paths.iter().all(|path| path.is_file()));
             std::fs::write(root.join("consumer.txt"), "retained").unwrap();
             let empty = Artifacts::new(std::iter::empty()).unwrap();
-            proto::generate(&empty.operation_contracts().unwrap(), &target.path().join("grpc/application")).unwrap();
+            proto::generate(
+                &empty.operation_contracts().unwrap(),
+                &target.path().join("grpc/application"),
+            )
+            .unwrap();
             assert!(paths.iter().all(|path| !path.exists()));
             assert!(root.join("consumer.txt").is_file());
             assert!(
@@ -284,9 +300,21 @@ fn contract_scenario() {
             let second = target.path().join("producer-b");
             let routes = Artifacts::new(&Contracts::of::<Routes>().unwrap()).unwrap();
             let portable = Artifacts::new(&Contracts::of::<Portable>().unwrap()).unwrap();
-            let native = proto::generate(&routes.operation_contracts().unwrap(), &first.join("grpc/native")).unwrap();
-            let guest = proto::generate(&portable.operation_contracts().unwrap(), &first.join("grpc/portable")).unwrap();
-            let peer = proto::generate(&portable.operation_contracts().unwrap(), &second.join("grpc/portable")).unwrap();
+            let native = proto::generate(
+                &routes.operation_contracts().unwrap(),
+                &first.join("grpc/native"),
+            )
+            .unwrap();
+            let guest = proto::generate(
+                &portable.operation_contracts().unwrap(),
+                &first.join("grpc/portable"),
+            )
+            .unwrap();
+            let peer = proto::generate(
+                &portable.operation_contracts().unwrap(),
+                &second.join("grpc/portable"),
+            )
+            .unwrap();
             let snapshot = std::fs::read(guest.join("descriptors.bin")).unwrap();
             assert_eq!(
                 snapshot,
@@ -299,13 +327,16 @@ fn contract_scenario() {
                 );
             }
             // Repeated And Reduced Exports Affect Only Their Selected Producer And Catalog.
-            let repeated = proto::generate(&portable.operation_contracts().unwrap(), &first.join("grpc/portable")).unwrap();
+            let repeated = proto::generate(
+                &portable.operation_contracts().unwrap(),
+                &first.join("grpc/portable"),
+            )
+            .unwrap();
             assert_eq!(
                 std::fs::read(repeated.join("descriptors.bin")).unwrap(),
                 snapshot
             );
-            proto::generate(std::iter::empty(), &first.join("grpc/native"))
-                .unwrap();
+            proto::generate(std::iter::empty(), &first.join("grpc/native")).unwrap();
             assert_eq!(
                 std::fs::read(guest.join("descriptors.bin")).unwrap(),
                 snapshot
@@ -340,7 +371,11 @@ fn contract_scenario() {
             let target = tempfile::tempdir().unwrap();
             let contracts = Contracts::of::<Routes>().unwrap();
             let artifacts = Artifacts::new(&contracts).unwrap();
-            let root = proto::generate(&artifacts.operation_contracts().unwrap(), &target.path().join("grpc/application")).unwrap();
+            let root = proto::generate(
+                &artifacts.operation_contracts().unwrap(),
+                &target.path().join("grpc/application"),
+            )
+            .unwrap();
             let compiled = target.path().join("compiled.bin");
             let output =
                 std::process::Command::new(protoc_bin_vendored::protoc_bin_path().unwrap())

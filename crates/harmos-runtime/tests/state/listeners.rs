@@ -22,6 +22,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 // Local Imports
+use harmos_domain::listeners::{Context as DeliveryContext, Delivery, Listener, Source};
 use harmos_runtime::operations::{
     Context, Operation, OperationPolicy, PluginRegistration, RestartPolicy, RetryPolicy,
     WireDeclaration,
@@ -34,7 +35,6 @@ use harmos_runtime::plugin::{
 use harmos_runtime::records::PluginListenerRegistration;
 use harmos_runtime::schema::{Described, Field};
 use harmos_runtime::{Error, Message, MessageError, Result, Runtime, state::Position};
-use harmos_domain::listeners::{Context as DeliveryContext, Delivery, Listener, Source};
 
 /* === Constants === */
 

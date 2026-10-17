@@ -7,7 +7,6 @@
  * ***
  */
 
-
 // Serve Staged File And Mutation Persistence.
 
 /* === Modules === */
@@ -23,7 +22,6 @@ use sha2::{Digest, Sha256};
 
 // Local Imports
 use super::*;
-
 
 /* === Constants === */
 
@@ -47,7 +45,10 @@ impl<C: ObjectCatalog> Data<C> {
         true
     }
 
-    pub(super) fn fixture_save_mutations<'a>(&'a self, receipts: &'a [MutationReceipt]) -> StorageFuture<'a, ()> {
+    pub(super) fn fixture_save_mutations<'a>(
+        &'a self,
+        receipts: &'a [MutationReceipt],
+    ) -> StorageFuture<'a, ()> {
         Box::pin(async move {
             let mut saved = self.mutation_receipts.lock().unwrap();
             let now = std::time::SystemTime::now();
@@ -78,7 +79,10 @@ impl<C: ObjectCatalog> Data<C> {
         })
     }
 
-    pub(super) fn fixture_recover_mutations(&self, limits: ReadLimits) -> StorageFuture<'_, Vec<MutationReceipt>> {
+    pub(super) fn fixture_recover_mutations(
+        &self,
+        limits: ReadLimits,
+    ) -> StorageFuture<'_, Vec<MutationReceipt>> {
         Box::pin(async move {
             let mut saved = self.mutation_receipts.lock().unwrap();
             saved.retain(|_, receipt| receipt.expires_at > std::time::SystemTime::now());
@@ -176,7 +180,10 @@ impl<C: ObjectCatalog> Data<C> {
         })
     }
 
-    pub(super) fn fixture_save_production<'a>(&'a self, checkpoint: &'a FileCheckpoint) -> StorageFuture<'a, ()> {
+    pub(super) fn fixture_save_production<'a>(
+        &'a self,
+        checkpoint: &'a FileCheckpoint,
+    ) -> StorageFuture<'a, ()> {
         Box::pin(async move {
             if self.control.block_checkpoint.load(Ordering::SeqCst) {
                 self.control.checkpoint_entered.notify_one();
@@ -243,7 +250,10 @@ impl<C: ObjectCatalog> Data<C> {
         })
     }
 
-    pub(super) fn fixture_recover_productions(&self, limits: ReadLimits) -> StorageFuture<'_, Vec<FileCheckpoint>> {
+    pub(super) fn fixture_recover_productions(
+        &self,
+        limits: ReadLimits,
+    ) -> StorageFuture<'_, Vec<FileCheckpoint>> {
         Box::pin(async move {
             let _io = self.file_io.lock().unwrap();
             let saved = self.saved_productions.lock().unwrap();
@@ -286,7 +296,10 @@ impl<C: ObjectCatalog> Data<C> {
         })
     }
 
-    pub(super) fn fixture_file_progress<'a>(&'a self, file: &'a StagedFile) -> StorageFuture<'a, FileProgress> {
+    pub(super) fn fixture_file_progress<'a>(
+        &'a self,
+        file: &'a StagedFile,
+    ) -> StorageFuture<'a, FileProgress> {
         Box::pin(async move {
             let _io = self.file_io.lock().unwrap();
             self.history.check(&file.history)?;
@@ -423,7 +436,10 @@ impl<C: ObjectCatalog> Data<C> {
         })
     }
 
-    pub(super) fn fixture_abandon_file<'a>(&'a self, staging: &'a StagedFile) -> StorageFuture<'a, ()> {
+    pub(super) fn fixture_abandon_file<'a>(
+        &'a self,
+        staging: &'a StagedFile,
+    ) -> StorageFuture<'a, ()> {
         Box::pin(async move {
             let _io = self.file_io.lock().unwrap();
             self.history.check(&staging.history)?;
@@ -462,7 +478,10 @@ impl<C: ObjectCatalog> Data<C> {
         })
     }
 
-    pub(super) fn fixture_create_file<'a>(&'a self, metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile> {
+    pub(super) fn fixture_create_file<'a>(
+        &'a self,
+        metadata: &'a FileMetadata,
+    ) -> StorageFuture<'a, StagedFile> {
         Box::pin(async move {
             if self
                 .abandoned_files
@@ -645,7 +664,10 @@ impl<C: ObjectCatalog> Data<C> {
         })
     }
 
-    pub(super) fn fixture_abort_file<'a>(&'a self, staging: &'a StagedFile) -> StorageFuture<'a, ()> {
+    pub(super) fn fixture_abort_file<'a>(
+        &'a self,
+        staging: &'a StagedFile,
+    ) -> StorageFuture<'a, ()> {
         Box::pin(async move {
             self.control.aborts.fetch_add(1, Ordering::SeqCst);
             if self.control.block_abort.load(Ordering::SeqCst) {
@@ -697,7 +719,6 @@ impl<C: ObjectCatalog> Data<C> {
         })
     }
 }
-
 
 /* === Public Functions === */
 

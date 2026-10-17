@@ -22,6 +22,8 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 // Local Imports
 use super::wire::Text;
+use harmos_domain::inventory::contracts::Required;
+use harmos_domain::plugin::Grant;
 use harmos_runtime::operations::{
     Context, Operation, OperationDeclaration, PluginRegistration, Visibility, WireDeclaration,
 };
@@ -31,8 +33,6 @@ use harmos_runtime::plugin::{
     PluginScope, PluginTransition, Requirement, Router,
 };
 use harmos_runtime::{Error, Message, Result, operations::OperationManager};
-use harmos_domain::inventory::contracts::Required;
-use harmos_domain::plugin::Grant;
 
 /* === Constants === */
 
@@ -181,8 +181,12 @@ impl PluginLifecycle for Host {
     fn prepare(&mut self, definition: &PluginDefinition) -> Result<Backends> {
         Ok(match definition.kind() {
             harmos_runtime::plugin::PluginKind::Guest => PluginBackend::Guest(Resources::default()),
-            harmos_runtime::plugin::PluginKind::Sidecar => PluginBackend::Sidecar(Resources::default()),
-            harmos_runtime::plugin::PluginKind::Embedded => PluginBackend::Embedded(Resources::default()),
+            harmos_runtime::plugin::PluginKind::Sidecar => {
+                PluginBackend::Sidecar(Resources::default())
+            }
+            harmos_runtime::plugin::PluginKind::Embedded => {
+                PluginBackend::Embedded(Resources::default())
+            }
         })
     }
     async fn fence(&mut self, _: PluginTransition, _: &[PluginDefinition]) -> Result<()> {

@@ -12,8 +12,8 @@ pub mod operations;
 pub mod plugin;
 
 pub mod __private {
-    pub use harmos_domain::__private::*;
     pub use crate::operations::response::ErasedResponse;
+    pub use harmos_domain::__private::*;
 }
 
 /* === Re-Exports === */

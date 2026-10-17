@@ -210,14 +210,17 @@ async fn run_admissions<A: Application>(
                         let _ = reply.send(Err(Admission::Preparation(PreparationError::Limit)));
                         continue;
                     }
-                    let prepared =
-                        match super::record::prepare::<A>(&transaction, &state.value, &tracked.catalog) {
-                            Ok(prepared) => prepared,
-                            Err(refusal) => {
-                                let _ = reply.send(Err(Admission::Preparation(refusal)));
-                                continue;
-                            }
-                        };
+                    let prepared = match super::record::prepare::<A>(
+                        &transaction,
+                        &state.value,
+                        &tracked.catalog,
+                    ) {
+                        Ok(prepared) => prepared,
+                        Err(refusal) => {
+                            let _ = reply.send(Err(Admission::Preparation(refusal)));
+                            continue;
+                        }
+                    };
                     let Some(frontier) = state
                         .position
                         .0
@@ -337,14 +340,17 @@ async fn run_admissions<A: Application>(
                         let _ = reply.send(Err(Refusal::Preparation(PreparationError::Limit)));
                         continue;
                     }
-                    let prepared =
-                        match super::record::prepare::<A>(&answer, &state.value, &tracked.catalog) {
-                            Ok(prepared) => prepared,
-                            Err(refusal) => {
-                                let _ = reply.send(Err(Refusal::Preparation(refusal)));
-                                continue;
-                            }
-                        };
+                    let prepared = match super::record::prepare::<A>(
+                        &answer,
+                        &state.value,
+                        &tracked.catalog,
+                    ) {
+                        Ok(prepared) => prepared,
+                        Err(refusal) => {
+                            let _ = reply.send(Err(Refusal::Preparation(refusal)));
+                            continue;
+                        }
+                    };
                     let Some(frontier) = state
                         .position
                         .0

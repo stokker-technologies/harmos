@@ -417,9 +417,10 @@ fn contract_scenario() {
                         let old = manager.status("client").unwrap().generation;
                         let changes: [fn(&mut PluginDefinition); 3] = [
                             |definition| {
-                                definition.artifact = harmos_runtime::plugin::PluginArtifact::Embedded {
-                                    revision: "compiled-v2".into(),
-                                }
+                                definition.artifact =
+                                    harmos_runtime::plugin::PluginArtifact::Embedded {
+                                        revision: "compiled-v2".into(),
+                                    }
                             },
                             |definition| {
                                 definition.configuration = br#"{ "setting": -0.0 }"#.to_vec()

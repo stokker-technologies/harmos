@@ -14,8 +14,8 @@ mod bindings;
 #[cfg(feature = "guest")]
 mod guest;
 mod inspect;
-mod package;
 mod new;
+mod package;
 #[cfg(feature = "sidecar")]
 mod sidecar;
 

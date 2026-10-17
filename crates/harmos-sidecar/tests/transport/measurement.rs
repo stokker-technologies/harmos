@@ -320,14 +320,7 @@ mod sdk {
                         )
                         .await;
                         assert_eq!(Echo::decode(result.as_slice()).unwrap(), request);
-                        invoke(
-                            &outgoing,
-                            &mut incoming,
-                            5,
-                            Shutdown::ID,
-                            Vec::new(),
-                        )
-                        .await;
+                        invoke(&outgoing, &mut incoming, 5, Shutdown::ID, Vec::new()).await;
                         assert!(matches!(
                             phase(
                                 &outgoing,

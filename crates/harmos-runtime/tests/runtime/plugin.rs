@@ -18,9 +18,9 @@ use crate::scenario_runtime;
 // Third Party Imports
 use serde_json::json;
 // Local Imports
-use harmos_packaging::bundle::{Bundle, Executable, Facility, Identity, Limits, Source};
 use harmos_domain::Registrar;
 use harmos_domain::inventory::{Declaration, Facility as Inspected};
+use harmos_packaging::bundle::{Bundle, Executable, Facility, Identity, Limits, Source};
 
 /* === Constants === */
 

@@ -104,7 +104,10 @@ impl<C> StorageManager<C> {
                         history: self.inner.primary.history().clone(),
                         id: metadata.id.clone(),
                     },
-                    session: Some(Session::token(crate::storage::config::FILE_SESSION_TIMEOUT, self.inner.execution)),
+                    session: Some(Session::token(
+                        crate::storage::config::FILE_SESSION_TIMEOUT,
+                        self.inner.execution,
+                    )),
                     mutation: Some(Mutation {
                         id: mutation.clone(),
                         kind: Kind::Create,

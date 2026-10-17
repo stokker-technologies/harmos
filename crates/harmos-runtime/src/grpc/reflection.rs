@@ -75,8 +75,9 @@ impl Reflection {
 
     fn snapshot(&self) -> Result<DescriptorPool, Status> {
         let methods = self.operations.grpc_methods();
-        let artifacts = harmos_packaging::proto::Artifacts::new(methods.iter().map(|method| &method.contract))
-            .map_err(|_| Status::internal("operation descriptor snapshot failed"))?;
+        let artifacts =
+            harmos_packaging::proto::Artifacts::new(methods.iter().map(|method| &method.contract))
+                .map_err(|_| Status::internal("operation descriptor snapshot failed"))?;
         let mut pool = DescriptorPool::decode(artifacts.descriptors())
             .map_err(|_| Status::internal("operation descriptors are invalid"))?;
         pool.decode_file_descriptor_set(pb::FILE_DESCRIPTOR_SET)

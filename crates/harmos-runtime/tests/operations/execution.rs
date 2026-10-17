@@ -439,7 +439,8 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let runtime = runtime().await;
                     let owner = Arc::new(Owner::default());
-                    let definitions = harmos_runtime::operations::Declarations::of::<Operations>().unwrap();
+                    let definitions =
+                        harmos_runtime::operations::Declarations::of::<Operations>().unwrap();
                     assert_eq!(definitions[0].id.as_str(), Compute::ID);
                     assert_eq!(definitions[1].id.as_str(), Slow::ID);
                     runtime

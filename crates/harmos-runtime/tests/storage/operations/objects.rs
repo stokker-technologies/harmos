@@ -466,13 +466,14 @@ fn contract_scenario() {
                                 versions: ObjectVersions::Revisions,
                             },
                         };
-                        let (sender, mut receiver) = harmos_runtime::operations::stream::<ObjectEntry>(
-                            harmos_runtime::operations::StreamSettings {
-                                items: NonZeroUsize::MIN,
-                                bytes: NonZeroUsize::new(4096).unwrap(),
-                            },
-                        )
-                        .unwrap();
+                        let (sender, mut receiver) =
+                            harmos_runtime::operations::stream::<ObjectEntry>(
+                                harmos_runtime::operations::StreamSettings {
+                                    items: NonZeroUsize::MIN,
+                                    bytes: NonZeroUsize::new(4096).unwrap(),
+                                },
+                            )
+                            .unwrap();
                         let call = runtime
                             .operations
                             .submit_endpoints::<FollowObjects, _>(request, sender)

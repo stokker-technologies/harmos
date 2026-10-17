@@ -210,11 +210,7 @@ fn own_contract() {
             [("two".into(), second.clone()), ("three".into(), third)]
         );
         let key = "a".to_owned();
-        let keyed = labels(
-            &storage,
-            read(Some(&key), ObjectVersions::Revisions),
-        )
-        .await;
+        let keyed = labels(&storage, read(Some(&key), ObjectVersions::Revisions)).await;
         assert_eq!(
             keyed,
             [
@@ -270,10 +266,7 @@ fn own_contract() {
             after,
         };
 
-        let mut reader = storage
-            .read_records::<Sample>(read(0))
-            .await
-            .unwrap();
+        let mut reader = storage.read_records::<Sample>(read(0)).await.unwrap();
         let mut pages = Vec::new();
         let mut stored = Vec::new();
         while let Some(page) = reader.next().await.unwrap() {
@@ -371,7 +364,8 @@ fn own_contract() {
     story("typed_read_budget_refusal", || async {
         let mut settings = paged();
         settings.budget.read_memory_bytes = NonZeroUsize::new(128).unwrap();
-        settings.response.batch_bytes = NonZeroUsize::new(settings.budget.read_memory_bytes.get() / 2).unwrap();
+        settings.response.batch_bytes =
+            NonZeroUsize::new(settings.budget.read_memory_bytes.get() / 2).unwrap();
         let (runtime, storage, _) = manager(settings).await;
         write(&storage, "a", "one").await;
         let objects = async {
@@ -410,7 +404,8 @@ fn own_contract() {
         // An Admitted Reader Refuses A Page No Budget Split Can Hold.
         let mut settings = paged();
         settings.budget.read_memory_bytes = NonZeroUsize::new(8 * 1024).unwrap();
-        settings.response.batch_bytes = NonZeroUsize::new(settings.budget.read_memory_bytes.get() / 2).unwrap();
+        settings.response.batch_bytes =
+            NonZeroUsize::new(settings.budget.read_memory_bytes.get() / 2).unwrap();
         let (runtime, storage, _) = manager(settings).await;
         write(&storage, "large", &"x".repeat(16 * 1024)).await;
         let mut reader = storage

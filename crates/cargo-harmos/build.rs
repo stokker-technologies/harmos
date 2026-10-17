@@ -7,7 +7,6 @@
  * ***
  */
 
-
 // Embed The Authored And Hub-Rendered Starter Assets.
 
 /* === Modules === */
@@ -23,7 +22,6 @@ use std::path::{Path, PathBuf};
 // Third Party Imports
 
 // Local Imports
-
 
 /* === Constants === */
 
@@ -52,11 +50,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut paths = Vec::new();
         collect(&directory, &directory, &mut paths)?;
         paths.sort();
-        writeln!(source, "pub const {}: &[(&str, &[u8])] = &[", kind.to_uppercase())?;
+        writeln!(
+            source,
+            "pub const {}: &[(&str, &[u8])] = &[",
+            kind.to_uppercase()
+        )?;
         for relative in paths {
-            let name = relative.to_str().ok_or("template name is not UTF-8")?.replace('\\', "/");
+            let name = relative
+                .to_str()
+                .ok_or("template name is not UTF-8")?
+                .replace('\\', "/");
             let path = directory.join(&relative);
-            writeln!(source, "({name:?}, include_bytes!({:?})),", path.to_str().ok_or("template path is not UTF-8")?)?;
+            writeln!(
+                source,
+                "({name:?}, include_bytes!({:?})),",
+                path.to_str().ok_or("template path is not UTF-8")?
+            )?;
         }
         source.push_str("];\n");
     }
@@ -68,12 +77,25 @@ fn collect(root: &Path, directory: &Path, output: &mut Vec<PathBuf>) -> std::io:
     for entry in std::fs::read_dir(directory)? {
         let entry = entry?;
         let kind = entry.file_type()?;
-        if kind.is_symlink() { return Err(std::io::Error::other("template sources cannot be symbolic links")); }
-        if kind.is_dir() { collect(root, &entry.path(), output)?; }
-        if kind.is_file() { output.push(entry.path().strip_prefix(root).map_err(std::io::Error::other)?.to_owned()); }
+        if kind.is_symlink() {
+            return Err(std::io::Error::other(
+                "template sources cannot be symbolic links",
+            ));
+        }
+        if kind.is_dir() {
+            collect(root, &entry.path(), output)?;
+        }
+        if kind.is_file() {
+            output.push(
+                entry
+                    .path()
+                    .strip_prefix(root)
+                    .map_err(std::io::Error::other)?
+                    .to_owned(),
+            );
+        }
     }
     Ok(())
 }
-
 
 /* === Tests === */

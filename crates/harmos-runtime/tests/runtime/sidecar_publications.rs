@@ -21,8 +21,8 @@ use tokio::sync::Notify;
 // Local Imports
 use super::operations::{Lanes, Managed};
 use super::*;
-use harmos_runtime::{storage::Batch, storage::Cursor, storage::StreamConsumer};
 use harmos_domain::plugin::Declared;
+use harmos_runtime::{storage::Batch, storage::Cursor, storage::StreamConsumer};
 use harmos_sidecar::{Attach, ObserverContext};
 
 /* === Constants === */
@@ -150,7 +150,6 @@ struct ObserverSeed {
     _counts: Arc<ObserverCounts>,
 }
 
-
 struct ObserverResources {
     counts: ObserverCounts,
 }
@@ -230,7 +229,9 @@ impl<S: harmos_sidecar::Attach> harmos_sidecar::Attach for Advertised<S> {
     ) -> harmos_domain::Result<Option<[harmos_runtime::operations::lifecycle::Descriptor; 2]>> {
         self.inner.sdk_lifecycle()
     }
-    fn observe_contract(&self) -> harmos_domain::Result<Option<harmos_runtime::operations::Contract>> {
+    fn observe_contract(
+        &self,
+    ) -> harmos_domain::Result<Option<harmos_runtime::operations::Contract>> {
         self.inner.observe_contract()
     }
     fn listener_declarations(
@@ -284,7 +285,8 @@ impl Drop for GateSeed {
 
 impl harmos_runtime::operations::lifecycle::Policy for Ticking {
     const INITIALIZATION_POLICY: harmos_runtime::operations::OperationPolicy = LIFECYCLE;
-    const SHUTDOWN_POLICY: harmos_runtime::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
+    const SHUTDOWN_POLICY: harmos_runtime::operations::OperationPolicy =
+        Self::INITIALIZATION_POLICY;
 }
 
 #[harmos_runtime::plugin(description = "Observer Demand During SDK Initialization.", id = "ticking", provides = (), requires(harmos_runtime::operations::streams::Publish),
@@ -369,7 +371,8 @@ impl harmos_runtime::operations::lifecycle::Policy for Twins {
             retries: harmos_runtime::operations::RetryPolicy::Never,
             restart: harmos_runtime::operations::RestartPolicy::Never,
         };
-    const SHUTDOWN_POLICY: harmos_runtime::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
+    const SHUTDOWN_POLICY: harmos_runtime::operations::OperationPolicy =
+        Self::INITIALIZATION_POLICY;
 }
 
 #[harmos_runtime::plugin(description = "Two Streams Share One Row Shape.", id = "twins", provides = (), requires(harmos_runtime::operations::streams::Publish),  observers = (), streams(Left),
@@ -420,8 +423,10 @@ impl harmos_runtime::Plugin for Twins {
 }
 
 impl harmos_runtime::operations::lifecycle::Policy for Batches {
-    const INITIALIZATION_POLICY: harmos_runtime::operations::OperationPolicy = Twins::INITIALIZATION_POLICY;
-    const SHUTDOWN_POLICY: harmos_runtime::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
+    const INITIALIZATION_POLICY: harmos_runtime::operations::OperationPolicy =
+        Twins::INITIALIZATION_POLICY;
+    const SHUTDOWN_POLICY: harmos_runtime::operations::OperationPolicy =
+        Self::INITIALIZATION_POLICY;
 }
 
 #[harmos_runtime::plugin(description = "Publishes Ordered Row Batches.", id = "batches", provides = (), requires(harmos_runtime::operations::streams::Publish), observers = (), streams(BatchedRows, RawRows, TimedRows, ClockedRows, StampedRows))]
@@ -616,16 +621,18 @@ impl Drop for ObserverSeed {
     }
 }
 
-const LIFECYCLE: harmos_runtime::operations::OperationPolicy = harmos_runtime::operations::OperationPolicy {
-    timeout: Duration::from_secs(2),
-    attempt_timeout: Duration::from_millis(500),
-    retries: harmos_runtime::operations::RetryPolicy::Never,
-    restart: harmos_runtime::operations::RestartPolicy::Never,
-};
+const LIFECYCLE: harmos_runtime::operations::OperationPolicy =
+    harmos_runtime::operations::OperationPolicy {
+        timeout: Duration::from_secs(2),
+        attempt_timeout: Duration::from_millis(500),
+        retries: harmos_runtime::operations::RetryPolicy::Never,
+        restart: harmos_runtime::operations::RestartPolicy::Never,
+    };
 
 impl harmos_runtime::operations::lifecycle::Policy for SampledTwins {
     const INITIALIZATION_POLICY: harmos_runtime::operations::OperationPolicy = LIFECYCLE;
-    const SHUTDOWN_POLICY: harmos_runtime::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
+    const SHUTDOWN_POLICY: harmos_runtime::operations::OperationPolicy =
+        Self::INITIALIZATION_POLICY;
 }
 
 #[harmos_runtime::plugin(description = "Independent Observers Sharing The Original Initialized Resources.", id = "twin-observers", provides = (), requires(harmos_runtime::operations::streams::Publish),
@@ -771,7 +778,8 @@ impl MultiStreamObserver {
 
 impl harmos_runtime::operations::lifecycle::Policy for MultiStream {
     const INITIALIZATION_POLICY: harmos_runtime::operations::OperationPolicy = LIFECYCLE;
-    const SHUTDOWN_POLICY: harmos_runtime::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
+    const SHUTDOWN_POLICY: harmos_runtime::operations::OperationPolicy =
+        Self::INITIALIZATION_POLICY;
 }
 
 #[harmos_runtime::plugin(description = "One Observer Publishing Two Rows.", id = "multi-stream", provides = (), requires(harmos_runtime::operations::streams::Publish),
@@ -837,7 +845,8 @@ impl Flooding {
 
 impl harmos_runtime::operations::lifecycle::Policy for Flood {
     const INITIALIZATION_POLICY: harmos_runtime::operations::OperationPolicy = LIFECYCLE;
-    const SHUTDOWN_POLICY: harmos_runtime::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
+    const SHUTDOWN_POLICY: harmos_runtime::operations::OperationPolicy =
+        Self::INITIALIZATION_POLICY;
 }
 
 #[harmos_runtime::plugin(description = "Publishes Faster Than Its Host Ingests.", id = "flood", provides = (), requires(harmos_runtime::operations::streams::Publish),
@@ -911,14 +920,17 @@ fn observer_definitions(
         .operations
         .resident_definitions()
         .into_iter()
-        .filter(|definition| definition.kind() == harmos_runtime::operations::resident::Kind::Observer)
+        .filter(|definition| {
+            definition.kind() == harmos_runtime::operations::resident::Kind::Observer
+        })
         .collect()
 }
 
 async fn row(
     stream: &mut (
-             impl futures_core::Stream<Item = harmos_runtime::streams::Item<harmos_runtime::streams::PublicationRow>>
-             + Unpin
+             impl futures_core::Stream<
+        Item = harmos_runtime::streams::Item<harmos_runtime::streams::PublicationRow>,
+    > + Unpin
          ),
 ) {
     tokio::time::timeout(Duration::from_secs(2), async {
@@ -1757,7 +1769,8 @@ pub(super) fn contract_scenario() {
                             let observers: Vec<_> = statuses
                                 .values()
                                 .filter(|status| {
-                                    status.kind == harmos_runtime::operations::resident::Kind::Observer
+                                    status.kind
+                                        == harmos_runtime::operations::resident::Kind::Observer
                                 })
                                 .collect();
                             observers.len() == 2
@@ -1844,8 +1857,9 @@ pub(super) fn contract_scenario() {
                             cause.downcast_ref::<harmos_runtime::Error>()
                         {
                             cause = source.as_ref();
-                        } else if let Some(harmos_runtime::plugin::PluginFailure::Cleanup(failures)) =
-                            cause.downcast_ref::<harmos_runtime::plugin::PluginFailure>()
+                        } else if let Some(harmos_runtime::plugin::PluginFailure::Cleanup(
+                            failures,
+                        )) = cause.downcast_ref::<harmos_runtime::plugin::PluginFailure>()
                         {
                             assert_eq!(failures.len(), 1);
                             cause = &failures[0].error;

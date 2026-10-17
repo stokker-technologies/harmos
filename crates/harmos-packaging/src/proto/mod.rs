@@ -47,7 +47,6 @@ pub fn generate<'a>(
     artifacts.write(output)
 }
 
-
 /* === Private Functions === */
 
 /* === Tests === */

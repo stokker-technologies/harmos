@@ -64,7 +64,9 @@ mod probe {
     pub type StreamReader = harmos_runtime::streams::RowReader<u64>;
     pub type SharedPublication = harmos_runtime::streams::ManagedPublication;
     pub type PendingPublication = harmos_runtime::streams::StagedPublication;
-    pub fn borrowed_record<R, C: harmos_runtime::state::RecordProjection<R>>(catalog: &C) -> Option<&R> {
+    pub fn borrowed_record<R, C: harmos_runtime::state::RecordProjection<R>>(
+        catalog: &C,
+    ) -> Option<&R> {
         catalog.project()
     }
     pub fn row_source<S: harmos_runtime::streams::RowSource>(source: S) -> S {
@@ -284,7 +286,9 @@ mod probe {
 #[allow(dead_code)]
 mod guest_probe {
     use harmos_runtime::guest::inventory::{Declaration, DeclarationError};
-    use harmos_runtime::guest::{Error, Host, Loaded, OperationRefusal, Registered, Registration, Serving};
+    use harmos_runtime::guest::{
+        Error, Host, Loaded, OperationRefusal, Registered, Registration, Serving,
+    };
 
     use crate::support::Bank;
 
@@ -308,7 +312,8 @@ mod guest_probe {
 
     // The route surface the guest facility gained, named through the traits it
     // carries and the table a guest serves it from.
-    pub type ServedOperations = harmos_runtime::guest::operations::WireTable<harmos_runtime::guest::Context>;
+    pub type ServedOperations =
+        harmos_runtime::guest::operations::WireTable<harmos_runtime::guest::Context>;
     pub type RouteEnvelope = OperationRefusal;
 
     pub fn implements<G: harmos_runtime::Plugin>(config: G::Config) -> G::Config {

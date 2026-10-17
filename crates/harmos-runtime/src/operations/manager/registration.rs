@@ -12,7 +12,6 @@ use super::*;
 
 /* === Implementations === */
 impl OperationManager {
-
     pub fn register_operation<T>(
         &self,
         owner: impl Into<String>,
@@ -187,5 +186,4 @@ impl OperationManager {
             sdk: None,
         }))
     }
-
 }

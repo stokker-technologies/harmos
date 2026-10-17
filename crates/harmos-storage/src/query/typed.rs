@@ -25,7 +25,6 @@ use tokio::sync::OwnedSemaphorePermit;
 // Local Imports
 use super::reader::{query_slot, retry};
 use super::{ObjectSelection, ObjectVersions, RecordSelection};
-use harmos_domain::catalog::Contains;
 use crate::storage::backend::ScanPage;
 use crate::storage::capacity::{Held, Pool, Refusal, Reservation};
 use crate::storage::manager::{ENTRY_OVERHEAD, Inner};
@@ -37,6 +36,7 @@ use crate::storage::{
     StoredObject, StoredRecord,
 };
 use crate::{BackendFailure, Error, MemorySize, Message, Result};
+use harmos_domain::catalog::Contains;
 use harmos_domain::model::storage::catalog::{decode_admitted, object_schema};
 use harmos_domain::model::storage::object_key;
 
@@ -212,9 +212,7 @@ where
         let inner = &manager.inner;
         let active = query_slot(inner).await?;
         let held = Held::default();
-        let description = selection
-            .memory_size()
-            .saturating_add(ENTRY_OVERHEAD);
+        let description = selection.memory_size().saturating_add(ENTRY_OVERHEAD);
         let description = Reservation::wait(inner, Pool::Read, &held, description, None)
             .await
             .map_err(Refusal::into_error)?;
@@ -231,7 +229,6 @@ where
             failed: false,
             inflight: false,
         })
-
     }
 }
 

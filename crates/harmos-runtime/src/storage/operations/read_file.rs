@@ -17,9 +17,9 @@ use harmos_domain::operations::storage::ReadFile;
 use std::sync::Arc;
 // Third Party Imports
 // Local Imports
+use super::IO_TIMEOUT;
 use crate::operations::{Context, Operation, OperationDeclaration, StreamOutput};
 use crate::storage::StorageManager;
-use super::IO_TIMEOUT;
 use crate::{Error, MemorySize, Result};
 use harmos_domain::model::storage::files::{FileBatch, FileCompletion};
 

@@ -168,9 +168,10 @@ pub(super) fn contract_scenario() {
                     .await;
                     assert_eq!(status, ServiceStatus::Starting);
                     assert!(matches!(
-                        runtime
-                            .operations
-                            .submit_encoded(Probe::ID, harmos_runtime::Message::encode_to_vec(&Probe { phase: 3 })),
+                        runtime.operations.submit_encoded(
+                            Probe::ID,
+                            harmos_runtime::Message::encode_to_vec(&Probe { phase: 3 })
+                        ),
                         Err(harmos_runtime::Error::NotReady {
                             domain: "operation plugin"
                         }),
@@ -185,7 +186,10 @@ pub(super) fn contract_scenario() {
                     .await;
                     let response = runtime
                         .operations
-                        .call_encoded(Probe::ID, harmos_runtime::Message::encode_to_vec(&Probe { phase: 3 }))
+                        .call_encoded(
+                            Probe::ID,
+                            harmos_runtime::Message::encode_to_vec(&Probe { phase: 3 }),
+                        )
                         .await
                         .unwrap();
                     assert_eq!(Step::decode(&response).unwrap().phase, 3);

@@ -290,4 +290,3 @@ impl Drop for CancelProduction {
         }
     }
 }
-

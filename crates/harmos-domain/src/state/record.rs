@@ -11,7 +11,6 @@
 
 /* === Re-Exports === */
 
-
 /* === Imports === */
 // Standard Library Imports
 
@@ -59,8 +58,6 @@ pub enum PreparationError {
     #[error("a record has an invalid or reserved source identity")]
     Identity,
 }
-
-
 
 /* === Traits === */
 pub trait Record: Identified + Serialize {}
@@ -291,10 +288,11 @@ impl Records {
         let mut out = Self::default();
         out.reserve(prepared.bytes()?)?;
         transaction.records(state, &mut out);
-        if let Some(refusal) = out.refusal { return Err(refusal); }
+        if let Some(refusal) = out.refusal {
+            return Err(refusal);
+        }
         Ok((prepared, out.members))
     }
-
 }
 
 /* === Public Functions === */

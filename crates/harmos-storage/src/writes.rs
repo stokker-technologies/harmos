@@ -8,8 +8,8 @@
  */
 
 /* === Modules === */
-mod decoded;
 pub mod convert;
+mod decoded;
 
 /* === Re-Exports === */
 pub use decoded::DecodedBatch;

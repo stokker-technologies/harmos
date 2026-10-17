@@ -74,7 +74,6 @@ struct Producer {
     attachment: Arc<ObserverAttachment<Resources, Publisher<Producer>>>,
 }
 
-
 struct RecordOnly(Arc<Counts>);
 
 struct Mixed(Arc<Counts>);

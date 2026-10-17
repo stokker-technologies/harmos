@@ -148,7 +148,11 @@ struct Backend<A: Attach> {
     services: Option<harmos_runtime::operations::OperationManager>,
     retirement_gate: RetirementGate,
     resident: Option<Resident<A>>,
-    lease: Option<harmos_runtime::operations::OperationInstance<harmos_runtime::operations::resident::Activation>>,
+    lease: Option<
+        harmos_runtime::operations::OperationInstance<
+            harmos_runtime::operations::resident::Activation,
+        >,
+    >,
     registration: Option<harmos_runtime::operations::PluginRegistration>,
     sdk: Option<harmos_runtime::operations::PluginSdkRegistration>,
     initializing: Option<harmos_runtime::operations::EncodedInvocation>,
@@ -243,7 +247,10 @@ impl Operation for ReadOperation {
                 return Err(std::io::Error::other("partial initialization failed"));
             }
             if operation.counts.initialization_child.load(Ordering::SeqCst) {
-                context.call(Refresh {}).await.map_err(std::io::Error::other)?;
+                context
+                    .call(Refresh {})
+                    .await
+                    .map_err(std::io::Error::other)?;
                 *operation.counts.initialization_saved.lock().unwrap() = Some(context.clone());
             }
             Ok(())
@@ -294,7 +301,10 @@ impl Operation for ReadOperation {
                     self.counts.stale_refused.fetch_add(1, Ordering::SeqCst);
                 }
                 *self.counts.saved.lock().unwrap() = Some(context.clone());
-                context.call(Refresh {}).await.map_err(std::io::Error::other)?;
+                context
+                    .call(Refresh {})
+                    .await
+                    .map_err(std::io::Error::other)?;
             }
             if self.attempts == 1 {
                 return Err(std::io::Error::other("one transient failure"));
@@ -458,7 +468,12 @@ impl Managed<Source> {
 }
 
 impl<A: Attach> Managed<A> {
-    pub(crate) fn drop_manager(self) -> (harmos_runtime::Runtime<Bank>, harmos_runtime::plugin::PluginCleanup) {
+    pub(crate) fn drop_manager(
+        self,
+    ) -> (
+        harmos_runtime::Runtime<Bank>,
+        harmos_runtime::plugin::PluginCleanup,
+    ) {
         let Self {
             runtime,
             manager,
@@ -540,13 +555,14 @@ impl<A: Attach> Managed<A> {
         self.manager.status(id)
     }
     pub(crate) fn publication(&self) -> harmos_runtime::Result<()> {
-        let selected =
-            harmos_runtime::operations::WireDeclaration::of::<harmos_runtime::operations::streams::Publish>()
-                .contract()
-                .map_err(|source| harmos_runtime::Error::OperationFailed {
-                    operation: "host.publish".into(),
-                    source: Arc::new(source),
-                })?;
+        let selected = harmos_runtime::operations::WireDeclaration::of::<
+            harmos_runtime::operations::streams::Publish,
+        >()
+        .contract()
+        .map_err(|source| harmos_runtime::Error::OperationFailed {
+            operation: "host.publish".into(),
+            source: Arc::new(source),
+        })?;
         let required = self.manager.definitions().any(|definition| {
             definition
                 .contributions
@@ -610,9 +626,11 @@ impl<A: Attach> Managed<A> {
             .with_context(context)
             .submit_encoded(O::ID, payload)?;
         let reply = Calling(invocation).await?;
-        harmos_runtime::Message::decode(&reply).map_err(|source| harmos_runtime::Error::OperationPayload {
-            operation: O::ID.into(),
-            source,
+        harmos_runtime::Message::decode(&reply).map_err(|source| {
+            harmos_runtime::Error::OperationPayload {
+                operation: O::ID.into(),
+                source,
+            }
         })
     }
     pub(crate) async fn initialize(&mut self) -> harmos_runtime::Result<()> {
@@ -678,7 +696,11 @@ impl<A: Attach> PluginLifecycle for Host<A> {
             ..Backend::default()
         }))
     }
-    async fn fence(&mut self, _: PluginTransition, _: &[PluginDefinition]) -> harmos_runtime::Result<()> {
+    async fn fence(
+        &mut self,
+        _: PluginTransition,
+        _: &[PluginDefinition],
+    ) -> harmos_runtime::Result<()> {
         Ok(())
     }
     async fn start(
@@ -832,7 +854,9 @@ impl<S: Attach> Attach for Advertised<S> {
     fn observers(&self) -> Vec<harmos_domain::inventory::observers::Declaration> {
         self.source.observers()
     }
-    fn observe_contract(&self) -> harmos_domain::Result<Option<harmos_runtime::operations::Contract>> {
+    fn observe_contract(
+        &self,
+    ) -> harmos_domain::Result<Option<harmos_runtime::operations::Contract>> {
         self.source.observe_contract()
     }
     fn listener_declarations(
@@ -980,7 +1004,8 @@ fn contract_scenario() {
                             1 => operations[0].policy.timeout += Duration::from_secs(1),
                             2 => operations[0].visibility = Visibility::Shared,
                             3 => {
-                                operations[0].replay = harmos_runtime::operations::ReplaySafety::Idempotent
+                                operations[0].replay =
+                                    harmos_runtime::operations::ReplaySafety::Idempotent
                             }
                             4 => operations[0].description.push('!'),
                             5 => operations.push(Definition {
@@ -1190,7 +1215,8 @@ fn contract_scenario() {
                     let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
                     fixture.initialize().await.unwrap();
                     counts.fail_prepare.store(true, Ordering::SeqCst);
-                    let Err(harmos_runtime::Error::OperationFailed { source, .. }) = fixture.call(Read {}).await
+                    let Err(harmos_runtime::Error::OperationFailed { source, .. }) =
+                        fixture.call(Read {}).await
                     else {
                         panic!("preparation is refused before any attempt")
                     };
@@ -1226,7 +1252,10 @@ fn contract_scenario() {
                         fixture.initialize().await.unwrap();
                         let result = fixture.call(Read {}).await;
                         if serial {
-                            assert!(matches!(result, Err(harmos_runtime::Error::OperationFailed { .. })));
+                            assert!(matches!(
+                                result,
+                                Err(harmos_runtime::Error::OperationFailed { .. })
+                            ));
                             assert_eq!(counts.children.load(Ordering::SeqCst), 0);
                         } else {
                             result.unwrap();
@@ -1327,7 +1356,9 @@ fn contract_scenario() {
                         .unwrap();
                     assert!(matches!(
                         result,
-                        Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))
+                        Err(harmos_runtime::Error::OperationRefused(
+                            harmos_runtime::Refusal::Cancelled
+                        ))
                     ));
                     assert_eq!(
                         invocation.status().phase(),
@@ -1382,10 +1413,10 @@ fn contract_scenario() {
                     client.ready().await.unwrap();
                     let settings = harmos_runtime::grpc::server::Settings::default();
                     // Unknown Protobuf Fields Are Legal For Unit; Postcard Unit Rejects These Bytes.
-                    let codec = harmos_runtime::grpc::Codec::<(), harmos_runtime::operations::Response<u32>>::new(
-                        settings.decode,
-                        settings.encode,
-                    )
+                    let codec = harmos_runtime::grpc::Codec::<
+                        (),
+                        harmos_runtime::operations::Response<u32>,
+                    >::new(settings.decode, settings.encode)
                     .unwrap();
                     client
                         .unary(

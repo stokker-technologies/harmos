@@ -244,24 +244,23 @@ impl Wire for Model {
         payload: D,
     ) -> Result<Option<harmos_runtime::storage::Payload<Self>>, D::Error> {
         Ok(match kind {
-            harmos_runtime::state::Kind::Transaction => {
-                Changes::restore(id, version, payload)?.map(|(value, apply)| {
+            harmos_runtime::state::Kind::Transaction => Changes::restore(id, version, payload)?
+                .map(|(value, apply)| harmos_runtime::storage::Payload {
+                    prepared: None,
+                    id: id.clone(),
+                    version,
+                    value: Recorded::Transaction(Arc::new(value)),
+                    apply,
+                }),
+            harmos_runtime::state::Kind::Record => {
+                Facts::restore(id, version, payload)?.map(|value| {
                     harmos_runtime::storage::Payload {
                         prepared: None,
                         id: id.clone(),
                         version,
-                        value: Recorded::Transaction(Arc::new(value)),
-                        apply,
+                        value: Recorded::Record(value),
+                        apply: None,
                     }
-                })
-            }
-            harmos_runtime::state::Kind::Record => {
-                Facts::restore(id, version, payload)?.map(|value| harmos_runtime::storage::Payload {
-                    prepared: None,
-                    id: id.clone(),
-                    version,
-                    value: Recorded::Record(value),
-                    apply: None,
                 })
             }
         })
@@ -357,7 +356,9 @@ pub(super) fn contract_scenario() {
                             .state
                             .commit(add(1, Records::MAX_RECORDS + 1, 0))
                             .await,
-                        Err(Error::Preparation(harmos_runtime::state::PreparationError::Limit))
+                        Err(Error::Preparation(
+                            harmos_runtime::state::PreparationError::Limit
+                        ))
                     ));
                     runtime.stop().await.unwrap();
                     assert_eq!(std::fs::read_to_string(path).unwrap().lines().count(), 1);
@@ -688,7 +689,9 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         facts[0].value,
                         harmos_runtime::state::SystemFact {
-                            source: harmos_runtime::state::FactSource::Sidecar("my.sidecar-2".to_owned()),
+                            source: harmos_runtime::state::FactSource::Sidecar(
+                                "my.sidecar-2".to_owned()
+                            ),
                             name: "result/sample".to_owned(),
                             version: 37,
                             payload: vec![0, 255, 17],
@@ -814,7 +817,8 @@ pub(super) fn contract_scenario() {
                             &mut self,
                             _: Vec<Arc<harmos_runtime::state::Entry<Recorded<Model>>>>,
                             _: Position,
-                        ) -> Result<(), harmos_runtime::state::CaptureError> {
+                        ) -> Result<(), harmos_runtime::state::CaptureError>
+                        {
                             self.0.fetch_add(1, Ordering::SeqCst);
                             Ok(())
                         }

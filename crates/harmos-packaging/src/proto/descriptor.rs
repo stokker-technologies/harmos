@@ -28,9 +28,9 @@ use prost_reflect::{
 };
 
 // Local Imports
+use super::reflection;
 use harmos_domain::config::SchemaSettings;
 use harmos_domain::operations::Contract;
-use super::reflection;
 
 /* === Constants === */
 

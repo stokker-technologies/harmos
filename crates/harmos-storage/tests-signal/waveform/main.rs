@@ -42,7 +42,8 @@ mod probe {
     #[cfg(feature = "fft")]
     const TRANSFORM: fn(&[f64], f64, Taper) -> Spectrum = harmos_storage::signal::transform;
     #[cfg(feature = "fft")]
-    const RECONSTRUCT: fn(&Spectrum, Option<Band>) -> Vec<f64> = harmos_storage::signal::reconstruct;
+    const RECONSTRUCT: fn(&Spectrum, Option<Band>) -> Vec<f64> =
+        harmos_storage::signal::reconstruct;
     const MAGNITUDE: fn(&[f64], &[f64]) -> Vec<f64> = harmos_storage::signal::magnitude;
     const PHASE: fn(&[f64], &[f64]) -> Vec<f64> = harmos_storage::signal::phase;
     const BINS: fn(f64, usize) -> Vec<f64> = harmos_storage::signal::bins;
@@ -65,7 +66,8 @@ mod probe {
     const ABOVE_FLOOR: fn(&[f64], f64) -> Vec<usize> = harmos_storage::signal::above_floor;
     const VALUE_AT: fn(&[f64], &[f64], f64) -> f64 = harmos_storage::signal::value_at;
     const RESAMPLE: Resampling = harmos_storage::signal::resample;
-    const RESAMPLE_UNIFORM: fn(&[f64], &[f64], f64) -> Vec<f64> = harmos_storage::signal::resample_uniform;
+    const RESAMPLE_UNIFORM: fn(&[f64], &[f64], f64) -> Vec<f64> =
+        harmos_storage::signal::resample_uniform;
     const RESAMPLE_COUNT: fn(&[f64], usize) -> Vec<f64> = harmos_storage::signal::resample_count;
     const NEAREST: fn(&[f64], f64) -> Option<usize> = harmos_storage::signal::nearest;
     const DERIVATIVE: fn(&[f64], &[f64]) -> Vec<f64> = harmos_storage::signal::derivative;

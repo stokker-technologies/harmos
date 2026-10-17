@@ -96,8 +96,8 @@ fn contract_scenario() {
             .build()
             .unwrap()
             .block_on(async {
-                use harmos_runtime::operations::{AuthoredContracts, Contract};
                 use harmos_domain::inventory::contracts::Required;
+                use harmos_runtime::operations::{AuthoredContracts, Contract};
                 let runtime = harmos_runtime::Runtime::<Fixture>::builder((), ())
                     .operation_settings(harmos_runtime::operations::Settings {
                         preparation_bytes: Some(std::num::NonZeroUsize::new(4096).unwrap()),
@@ -198,18 +198,21 @@ fn contract_scenario() {
                         harmos_runtime::operations::Response<RunRequest>,
                     >::new(settings.decode, settings.encode)
                     .unwrap();
-                    let response: tonic::Response<harmos_runtime::operations::StreamItem<String>> = client
-                        .unary(
-                            tonic::Request::new(harmos_runtime::operations::Response::new(RunRequest {
-                                value: "grpc embedded provider".into(),
-                            })),
-                            tonic::codegen::http::uri::PathAndQuery::from_static(
-                                "/fixture.embedded.v1.Client/Run",
-                            ),
-                            codec,
-                        )
-                        .await
-                        .unwrap();
+                    let response: tonic::Response<harmos_runtime::operations::StreamItem<String>> =
+                        client
+                            .unary(
+                                tonic::Request::new(harmos_runtime::operations::Response::new(
+                                    RunRequest {
+                                        value: "grpc embedded provider".into(),
+                                    },
+                                )),
+                                tonic::codegen::http::uri::PathAndQuery::from_static(
+                                    "/fixture.embedded.v1.Client/Run",
+                                ),
+                                codec,
+                            )
+                            .await
+                            .unwrap();
                     assert_eq!(response.into_inner().as_str(), "grpc embedded provider");
                 }
 
@@ -281,7 +284,10 @@ fn contract_scenario() {
                     .call_encoded("client.run", request_payload())
                     .await
                     .unwrap();
-                assert_eq!(<String as harmos_runtime::Message>::decode(&response).unwrap(), "");
+                assert_eq!(
+                    <String as harmos_runtime::Message>::decode(&response).unwrap(),
+                    ""
+                );
                 runtime.stop().await.unwrap();
                 #[cfg(feature = "grpc")]
                 assert!(runtime.grpc().methods().is_empty());

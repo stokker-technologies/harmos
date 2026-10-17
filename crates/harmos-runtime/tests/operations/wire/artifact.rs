@@ -67,7 +67,12 @@ inert_plugin!(
 );
 
 #[cfg(feature = "plugin-sidecar")]
-inert_plugin!(EmptyNative, "empty-native", harmos_runtime::sidecar::Supervisor, ());
+inert_plugin!(
+    EmptyNative,
+    "empty-native",
+    harmos_runtime::sidecar::Supervisor,
+    ()
+);
 
 #[cfg(feature = "plugin-sidecar")]
 inert_plugin!(
@@ -78,10 +83,20 @@ inert_plugin!(
 );
 
 #[cfg(feature = "plugin-guest")]
-inert_plugin!(Guest, "selected-guest", harmos_runtime::guest::Context, Operations);
+inert_plugin!(
+    Guest,
+    "selected-guest",
+    harmos_runtime::guest::Context,
+    Operations
+);
 
 #[cfg(feature = "plugin-guest")]
-inert_plugin!(EmptyGuest, "empty-guest", harmos_runtime::guest::Context, ());
+inert_plugin!(
+    EmptyGuest,
+    "empty-guest",
+    harmos_runtime::guest::Context,
+    ()
+);
 
 #[cfg(feature = "plugin-guest")]
 inert_plugin!(

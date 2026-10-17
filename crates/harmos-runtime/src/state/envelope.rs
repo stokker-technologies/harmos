@@ -13,9 +13,9 @@
 pub use harmos_domain::state::{DefinitionId, Envelope, FactSource, Kind, SystemFact};
 
 /* === Imports === */
+use crate::Application;
 use std::any::Any;
 use std::sync::Arc;
-use crate::Application;
 
 /* === Enums === */
 pub enum Recorded<A: Application> {
@@ -23,7 +23,6 @@ pub enum Recorded<A: Application> {
     Record(A::Record),
     System(SystemFact),
 }
-
 
 /* === Implementations === */
 impl<A: Application> Clone for Recorded<A>
@@ -59,4 +58,3 @@ impl<A: Application> Recorded<A> {
         }
     }
 }
-

@@ -97,10 +97,12 @@ async fn cancellation() {
     // Cancelling A Queued Query Releases Its Admission Slot.
     let query = || harmos_runtime::storage::operations::Query {
         at: accepted.clone(),
-        source: harmos_runtime::storage::query::Source::Files(harmos_runtime::storage::query::FileSelection {
-            scope: None,
-            item: None,
-        }),
+        source: harmos_runtime::storage::query::Source::Files(
+            harmos_runtime::storage::query::FileSelection {
+                scope: None,
+                item: None,
+            },
+        ),
         transforms: vec![],
         slice: harmos_runtime::storage::query::RowSlice {
             offset: 0,

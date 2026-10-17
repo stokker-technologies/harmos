@@ -235,7 +235,9 @@ pub(super) fn contract_scenario() {
     {
         scenario_runtime::check("portable_overlays_preserve_local_values", || {
             use harmos_runtime::Message;
-            use harmos_runtime::operations::{CallValue, ContextError, PORTABLE_BYTES, PORTABLE_VALUES};
+            use harmos_runtime::operations::{
+                CallValue, ContextError, PORTABLE_BYTES, PORTABLE_VALUES,
+            };
             let mut original = context("alice");
             original
                 .insert_portable(Stage {

@@ -65,7 +65,10 @@ fn contract_scenario() {
 
             for (fixture, expected) in [
                 ("operation_on_variant.rs", "catalogs only assemble types"),
-                ("operation_request_argument.rs", "the operation is its request type"),
+                (
+                    "operation_request_argument.rs",
+                    "the operation is its request type",
+                ),
                 (
                     "unsafe_id.rs",
                     "a stream id must be a filesystem-safe dotted name with non-keyword ASCII segments",

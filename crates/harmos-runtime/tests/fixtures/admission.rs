@@ -46,7 +46,8 @@ impl harmos_runtime::operations::lifecycle::Policy for Program {
             retries: harmos_runtime::operations::RetryPolicy::Never,
             restart: harmos_runtime::operations::RestartPolicy::Never,
         };
-    const SHUTDOWN_POLICY: harmos_runtime::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
+    const SHUTDOWN_POLICY: harmos_runtime::operations::OperationPolicy =
+        Self::INITIALIZATION_POLICY;
 }
 
 #[harmos_runtime::plugin(description = "Witnesses Registration And Initialization Separately.",

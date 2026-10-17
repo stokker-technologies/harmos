@@ -20,7 +20,9 @@ use harmos_runtime::storage::query::transform::{
     Transform,
     project::{Project, Projection},
 };
-use harmos_runtime::storage::query::{ObjectSelection, ObjectVersions, QueryArrow, RowSlice, Source};
+use harmos_runtime::storage::query::{
+    ObjectSelection, ObjectVersions, QueryArrow, RowSlice, Source,
+};
 use harmos_runtime::storage::*;
 use harmos_runtime::{Identifier, Runtime};
 use std::num::NonZeroUsize;

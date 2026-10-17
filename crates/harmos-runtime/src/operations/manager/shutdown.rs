@@ -12,7 +12,6 @@ use super::*;
 
 /* === Implementations === */
 impl OperationManager {
-
     pub(crate) fn close_admission(&self) {
         self.close_entries(true);
     }
@@ -118,5 +117,4 @@ impl OperationManager {
         drop(retired);
         Ok(())
     }
-
 }

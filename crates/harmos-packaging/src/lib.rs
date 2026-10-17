@@ -12,25 +12,28 @@
 /* === Modules === */
 mod build;
 pub mod bundle;
-pub mod config;
 #[cfg(feature = "guest")]
 mod component;
+pub mod config;
+mod dev;
+mod metadata;
+mod process;
 #[cfg(feature = "bindings-proto")]
 pub mod proto;
 #[cfg(feature = "bindings-python")]
 pub mod python;
 #[cfg(feature = "bindings-typescript")]
 pub mod typescript;
-mod dev;
-mod metadata;
-mod process;
 
 /* === Re-Exports === */
-pub use build::{Artifact, Build, PackageOutput, Schema, build, build_with_cancellation, package, package_with_cancellation};
-pub use dev::{DevEvent, dev};
-pub use harmos_domain::inventory::{Declaration, DeclarationError, Facility};
+pub use build::{
+    Artifact, Build, PackageOutput, Schema, build, build_with_cancellation, package,
+    package_with_cancellation,
+};
 #[cfg(feature = "guest")]
 pub use component::componentize;
+pub use dev::{DevEvent, dev};
+pub use harmos_domain::inventory::{Declaration, DeclarationError, Facility};
 pub use process::BuildCancellation;
 
 /* === Imports === */

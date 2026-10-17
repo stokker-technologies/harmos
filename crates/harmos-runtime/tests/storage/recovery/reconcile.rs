@@ -475,9 +475,11 @@ pub(super) fn contract_scenario() {
                             let task = tokio::task::spawn_local(async move {
                                 builder()
                                     .reconcile(|journal, _| async move {
-                                        harmos_runtime::records::RecordManager::new(journal.clone())
-                                            .publish(Noted("before panic".into()))
-                                            .await?;
+                                        harmos_runtime::records::RecordManager::new(
+                                            journal.clone(),
+                                        )
+                                        .publish(Noted("before panic".into()))
+                                        .await?;
                                         panic!("controlled reconciliation panic");
                                     })
                                     .runtime_with_storage(&owned)

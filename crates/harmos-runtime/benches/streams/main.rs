@@ -109,10 +109,8 @@ fn benchmarks(c: &mut criterion::Criterion) {
                 &envelope,
                 |b, envelope| {
                     b.iter(|| {
-                        harmos_sdk::operations::WireCommand::decode(std::hint::black_box(
-                            envelope,
-                        ))
-                        .unwrap()
+                        harmos_sdk::operations::WireCommand::decode(std::hint::black_box(envelope))
+                            .unwrap()
                     });
                 },
             );

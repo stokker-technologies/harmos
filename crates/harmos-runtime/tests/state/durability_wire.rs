@@ -13,7 +13,9 @@ use crate::scenario_runtime;
 mod other {
     use std::sync::Arc;
 
-    use harmos_runtime::{Application, DefinitionId, state::Kind, state::Recorded, storage::Payload};
+    use harmos_runtime::{
+        Application, DefinitionId, state::Kind, state::Recorded, storage::Payload,
+    };
     use schematic_storage::Wire;
     use serde::{Deserializer, Serializer};
 

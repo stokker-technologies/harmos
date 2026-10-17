@@ -224,7 +224,9 @@ impl<const N: usize> Value for [u8; N] {
 
     fn read(input: &mut Reader<'_>) -> Result<Self, MessageError> {
         if input.value::<usize>()? != N {
-            return Err(MessageError::borrowed("fixed byte value has the wrong length"));
+            return Err(MessageError::borrowed(
+                "fixed byte value has the wrong length",
+            ));
         }
         Ok(input.take(N)?.try_into().expect("checked fixed byte size"))
     }

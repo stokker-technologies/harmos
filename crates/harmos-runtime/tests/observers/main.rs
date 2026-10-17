@@ -36,7 +36,9 @@ use tokio::sync::Semaphore;
 // Local Imports
 use harmos_runtime::observers::{ObserverActivation, ObserverBackend, ObserverDefinition};
 use harmos_runtime::operations::resident::{Activation, Definition, Key, Kind};
-use harmos_runtime::operations::{OperationInstance, OperationManager, OperationOutcome, OperationPhase};
+use harmos_runtime::operations::{
+    OperationInstance, OperationManager, OperationOutcome, OperationPhase,
+};
 #[cfg(feature = "plugin-sidecar")]
 use harmos_runtime::sidecar::{ActivationId, Activity, ObserverError};
 use harmos_runtime::{Error, Runtime};

@@ -15,11 +15,11 @@ pub use harmos_domain::plugin::*;
 pub use owner::{Error, Owner, Table};
 
 /* === Imports === */
+use crate::operations::{ServingError, WireTable, lifecycle};
+use serde::de::DeserializeOwned;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use serde::de::DeserializeOwned;
-use crate::operations::{ServingError, WireTable, lifecycle};
 
 /* === Traits === */
 pub trait Context: Clone + Send + Sync + 'static {
@@ -65,9 +65,7 @@ pub trait Attachment<C>: Send + Sync + 'static {
     fn quiesce(&self) -> Pin<Box<dyn Future<Output = Result<(), ServingError>> + Send + '_>>;
 }
 
-
 /* === Implementations === */
 impl Context for () {
     fn with_generation(&self, _: [u8; 32]) -> Self {}
 }
-

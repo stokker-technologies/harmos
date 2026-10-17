@@ -934,7 +934,9 @@ mod listed {
             _: Context<'_>,
             _: &mut InferredOwnedDeclaration,
         ) -> Result<harmos_runtime::operations::Response<u32>, harmos_runtime::Error> {
-            Ok(harmos_runtime::operations::Response::from_owner(self.0.clone()))
+            Ok(harmos_runtime::operations::Response::from_owner(
+                self.0.clone(),
+            ))
         }
     }
 
@@ -950,7 +952,9 @@ mod listed {
             _: Context<'_>,
             _: &mut DoublingDeclaration,
         ) -> Result<harmos_runtime::operations::Response<u32>, harmos_runtime::Error> {
-            Ok(harmos_runtime::operations::Response::from_owner(self.0.clone()))
+            Ok(harmos_runtime::operations::Response::from_owner(
+                self.0.clone(),
+            ))
         }
     }
 
@@ -977,7 +981,10 @@ mod listed {
     struct CachedOwner(Arc<BorrowOwner>);
 
     fn owner_key(request: &CachedOwnerDeclaration) -> Option<harmos_runtime::operations::CacheKey> {
-        Some(harmos_runtime::operations::CacheKey::new(request.value.to_le_bytes().to_vec()).unwrap())
+        Some(
+            harmos_runtime::operations::CacheKey::new(request.value.to_le_bytes().to_vec())
+                .unwrap(),
+        )
     }
 
     #[harmos_runtime::operation]
@@ -991,7 +998,9 @@ mod listed {
             _: &mut CachedOwnerDeclaration,
         ) -> Result<harmos_runtime::operations::Response<u32>, harmos_runtime::Error> {
             self.0.ran.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            Ok(harmos_runtime::operations::Response::from_owner(self.0.clone()))
+            Ok(harmos_runtime::operations::Response::from_owner(
+                self.0.clone(),
+            ))
         }
     }
 

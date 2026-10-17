@@ -8,17 +8,16 @@
  */
 
 /* === Modules === */
+mod accounting;
+mod admission;
+mod arrow;
+mod encoding;
 mod lifecycle;
-mod writes;
 mod recovery;
 mod shutdown;
-mod accounting;
-mod arrow;
-mod status;
-mod admission;
 mod state;
-mod encoding;
-
+mod status;
+mod writes;
 
 /* === Re-Exports === */
 pub use encoding::encoded_size;
@@ -47,8 +46,8 @@ use super::{
     ReadLimits, RecoveryPosition, SchemaKey, StorageBackend, StorageBackends, StorageCursor,
     StorageFuture, StorageSchema, StorageSettings, StoredRecord, StoredRow,
 };
-use crate::{Error, Identifier, Result};
 use crate::execution::Execution;
+use crate::{Error, Identifier, Result};
 
 /* === Constants === */
 const WORKER_NAME: &str = "harmos-storage";
@@ -242,7 +241,11 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
         Self::with_execution(backends, settings, Execution::default())
     }
 
-    pub fn with_execution(backends: StorageBackends, settings: StorageSettings, execution: Execution) -> Result<Self> {
+    pub fn with_execution(
+        backends: StorageBackends,
+        settings: StorageSettings,
+        execution: Execution,
+    ) -> Result<Self> {
         C::validate()?;
         settings.validate()?;
         let StorageBackends {
@@ -259,8 +262,11 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
             history,
             sequence: 0,
         };
-        let receipts =
-            super::receipts::Receipts::new(MUTATION_RETENTION, settings.mutation_bytes(), execution)?;
+        let receipts = super::receipts::Receipts::new(
+            MUTATION_RETENTION,
+            settings.mutation_bytes(),
+            execution,
+        )?;
         Ok(Self {
             catalog: PhantomData,
             inner: Arc::new(Inner {
@@ -336,4 +342,3 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
         })
     }
 }
-

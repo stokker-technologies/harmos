@@ -65,7 +65,9 @@ pub trait StoredObject:
 
     fn key(&self) -> &Self::Key;
 
-    fn validate(&self) -> Result<()> { Ok(()) }
+    fn validate(&self) -> Result<()> {
+        Ok(())
+    }
 }
 
 pub trait ObjectCatalog: Catalog<ObjectDefinitions> + Send + Sync + 'static {

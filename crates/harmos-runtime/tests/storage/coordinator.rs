@@ -294,7 +294,9 @@ fn contract_scenario() {
                     assert!(
                         runtime
                             .operations
-                            .resident(&harmos_runtime::operations::resident::Key::root("harmos-storage"))
+                            .resident(&harmos_runtime::operations::resident::Key::root(
+                                "harmos-storage"
+                            ))
                             .and_then(|item| item.health)
                             .is_none()
                     );

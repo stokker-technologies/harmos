@@ -481,7 +481,8 @@ struct StreamContract {}
                     for owner in ["camera", "simulator"] {
                         let resources = Arc::new(Resources::default());
                         let mut definition = declaration.operation().clone();
-                        definition.id = harmos_runtime::Identifier::new(format!("{owner}.read")).unwrap();
+                        definition.id =
+                            harmos_runtime::Identifier::new(format!("{owner}.read")).unwrap();
                         let contract = Contract::new(
                             definition,
                             declaration.version(),

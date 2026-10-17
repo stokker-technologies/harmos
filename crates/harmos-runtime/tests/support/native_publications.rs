@@ -49,7 +49,9 @@ pub struct Model;
 
 pub struct Fixture {
     pub runtime: Runtime<Model>,
-    _lease: harmos_runtime::operations::OperationInstance<harmos_runtime::operations::resident::Activation>,
+    _lease: harmos_runtime::operations::OperationInstance<
+        harmos_runtime::operations::resident::Activation,
+    >,
 }
 
 #[harmos_runtime::stream(id = "publication.sample", window = 1024)]
@@ -299,9 +301,10 @@ impl Fixture {
     pub async fn publish(&self, rows: u32, batch: u32) -> Vec<Duration> {
         let bytes = tokio::time::timeout(
             Duration::from_secs(60),
-            self.runtime
-                .operations
-                .call_encoded(Publish::ID, harmos_runtime::Message::encode_to_vec(&Publish { rows, batch })),
+            self.runtime.operations.call_encoded(
+                Publish::ID,
+                harmos_runtime::Message::encode_to_vec(&Publish { rows, batch }),
+            ),
         )
         .await
         .expect("producer publishes within the bench deadline")

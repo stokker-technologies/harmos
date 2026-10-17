@@ -50,7 +50,9 @@ pub struct Model;
 
 pub struct Fixture {
     pub runtime: Runtime<Model>,
-    _lease: harmos_runtime::operations::OperationInstance<harmos_runtime::operations::resident::Activation>,
+    _lease: harmos_runtime::operations::OperationInstance<
+        harmos_runtime::operations::resident::Activation,
+    >,
 }
 
 /* === Enums === */
@@ -209,12 +211,10 @@ impl Fixture {
     pub async fn acknowledged(&self, rows: u64) -> Acknowledged {
         let bytes = tokio::time::timeout(
             Duration::from_secs(5),
-            self.runtime
-                .operations
-                .call_encoded(
-                    Progress::ID,
-                    harmos_runtime::Message::encode_to_vec(&Progress { expected: rows }),
-                ),
+            self.runtime.operations.call_encoded(
+                Progress::ID,
+                harmos_runtime::Message::encode_to_vec(&Progress { expected: rows }),
+            ),
         )
         .await
         .expect("consumer acknowledges rows")

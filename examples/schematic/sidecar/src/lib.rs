@@ -61,7 +61,9 @@ impl harmos_sidecar::Plugin for Plugin {
 
     fn prepare(_: ()) -> Result<Self, Error> {
         Ok(Self {
-            resources: Arc::new(Resources { analysis: tokio::sync::Semaphore::new(1) }),
+            resources: Arc::new(Resources {
+                analysis: tokio::sync::Semaphore::new(1),
+            }),
         })
     }
 
@@ -78,7 +80,10 @@ impl harmos_sidecar::Plugin for Plugin {
             input: direction,
             output: direction,
         };
-        table.bind_streaming_operations::<operations::Operations, Resources>(self.resources(), limits)
+        table.bind_streaming_operations::<operations::Operations, Resources>(
+            self.resources(),
+            limits,
+        )
     }
 
     async fn initialize(&mut self, _: &Supervisor) -> Result<(), Error> {

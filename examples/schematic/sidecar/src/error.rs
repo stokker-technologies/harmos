@@ -58,7 +58,6 @@ impl Error {
     }
 }
 
-
 /* === Public Functions === */
 
 /* === Private Functions === */

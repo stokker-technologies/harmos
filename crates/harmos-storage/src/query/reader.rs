@@ -558,11 +558,7 @@ pub(crate) async fn query_slot(inner: &Arc<Inner>) -> Result<OwnedSemaphorePermi
 }
 
 /// Admit an attempt bank; an impossible credit is a precise capacity error.
-pub(crate) async fn admit(
-    inner: &Arc<Inner>,
-    held: &Held,
-    credit: usize,
-) -> Result<MemoryBank> {
+pub(crate) async fn admit(inner: &Arc<Inner>, held: &Held, credit: usize) -> Result<MemoryBank> {
     MemoryBank::admit(inner, held, credit, None)
         .await
         .map_err(Refusal::into_error)

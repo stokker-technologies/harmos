@@ -74,8 +74,9 @@ pub fn create_dir_all(path: &Path) -> crate::filesystem::Result<()> {
 }
 
 pub fn move_directory(source: &Path, destination: &Path) -> crate::filesystem::Result<()> {
-    let metadata = fs::symlink_metadata(source)
-        .map_err(|error| crate::filesystem::Error::publication("inspect directory", source, error))?;
+    let metadata = fs::symlink_metadata(source).map_err(|error| {
+        crate::filesystem::Error::publication("inspect directory", source, error)
+    })?;
     if !metadata.is_dir() || metadata.file_type().is_symlink() {
         return Err(crate::filesystem::Error::publication(
             "move directory",
@@ -83,20 +84,23 @@ pub fn move_directory(source: &Path, destination: &Path) -> crate::filesystem::R
             io::Error::other("source must be a regular directory"),
         ));
     }
-    platform::move_directory(source, destination)
-        .map_err(|error| crate::filesystem::Error::publication("move directory", destination, error))
+    platform::move_directory(source, destination).map_err(|error| {
+        crate::filesystem::Error::publication("move directory", destination, error)
+    })
 }
 
 pub fn install(source: &Path, destination: &Path) -> crate::filesystem::Result<()> {
-    sync_file(source)
-        .map_err(|error| crate::filesystem::Error::publication("flush staged file", source, error))?;
+    sync_file(source).map_err(|error| {
+        crate::filesystem::Error::publication("flush staged file", source, error)
+    })?;
     platform::install(source, destination)
         .map_err(|error| crate::filesystem::Error::publication("install file", destination, error))
 }
 
 pub fn replace(source: &Path, destination: &Path) -> crate::filesystem::Result<()> {
-    sync_file(source)
-        .map_err(|error| crate::filesystem::Error::publication("flush staged file", source, error))?;
+    sync_file(source).map_err(|error| {
+        crate::filesystem::Error::publication("flush staged file", source, error)
+    })?;
     platform::replace(source, destination)
         .map_err(|error| crate::filesystem::Error::publication("replace file", destination, error))
 }
@@ -115,7 +119,13 @@ pub fn remove(path: &Path) -> crate::filesystem::Result<()> {
         }
         Ok(_) => (),
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(crate::filesystem::Error::publication("inspect parent", path, error)),
+        Err(error) => {
+            return Err(crate::filesystem::Error::publication(
+                "inspect parent",
+                path,
+                error,
+            ));
+        }
     }
     match fs::symlink_metadata(path) {
         Ok(metadata) if !metadata.is_file() || metadata.file_type().is_symlink() => {
@@ -127,9 +137,16 @@ pub fn remove(path: &Path) -> crate::filesystem::Result<()> {
         }
         Ok(_) => (),
         Err(error) if error.kind() == io::ErrorKind::NotFound => (),
-        Err(error) => return Err(crate::filesystem::Error::publication("inspect file", path, error)),
+        Err(error) => {
+            return Err(crate::filesystem::Error::publication(
+                "inspect file",
+                path,
+                error,
+            ));
+        }
     }
-    platform::remove(path).map_err(|error| crate::filesystem::Error::publication("remove file", path, error))
+    platform::remove(path)
+        .map_err(|error| crate::filesystem::Error::publication("remove file", path, error))
 }
 
 pub fn confirm(path: &Path) -> crate::filesystem::Result<()> {

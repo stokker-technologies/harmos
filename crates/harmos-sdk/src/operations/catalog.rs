@@ -8,9 +8,9 @@
  */
 
 /* === Imports === */
-use harmos_domain::catalog::{Catalog, Member, Visitor};
 use super::{Contract, ContractError, Contracts, Declarations, Definition, Entry, WireDeclaration};
 use harmos_domain::Result;
+use harmos_domain::catalog::{Catalog, Member, Visitor};
 
 /* === Structs === */
 pub struct AuthoredDeclarations;
@@ -44,4 +44,3 @@ impl AuthoredContracts {
         Contracts::from_projection(&C::ENTRIES)
     }
 }
-

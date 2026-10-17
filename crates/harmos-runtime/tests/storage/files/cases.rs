@@ -52,7 +52,9 @@ fn metadata(id: &str, bytes: &[u8]) -> FileMetadata {
     }
 }
 
-fn whole(file: &harmos_runtime::storage::FileReference) -> harmos_runtime::storage::operations::ReadFile {
+fn whole(
+    file: &harmos_runtime::storage::FileReference,
+) -> harmos_runtime::storage::operations::ReadFile {
     harmos_runtime::storage::operations::ReadFile {
         file: file.clone(),
         range: harmos_runtime::storage::ByteRange {

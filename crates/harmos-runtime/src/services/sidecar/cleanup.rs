@@ -93,7 +93,9 @@ impl Drop for Attempt<'_> {
 }
 
 impl Calls {
-    pub(super) fn new(registrations: tokio::sync::watch::Sender<Option<Vec<Registration>>>) -> Self {
+    pub(super) fn new(
+        registrations: tokio::sync::watch::Sender<Option<Vec<Registration>>>,
+    ) -> Self {
         Self {
             live: Mutex::new(None),
             ready: tokio::sync::watch::channel(false).0,
@@ -162,4 +164,3 @@ impl Drop for Reader {
         self.0.abort();
     }
 }
-

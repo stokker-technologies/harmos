@@ -196,7 +196,10 @@ mod atomic_records {
                     let receipt = sim.commit(alice(), Add(7)).unwrap();
                     assert_eq!(
                         (receipt.position, receipt.frontier),
-                        (harmos_runtime::state::Position(1), harmos_runtime::state::Position(2))
+                        (
+                            harmos_runtime::state::Position(1),
+                            harmos_runtime::state::Position(2)
+                        )
                     );
                     sim.assert_replay_equivalent();
                     sim.reboot().unwrap();
@@ -832,7 +835,9 @@ fn bank(seed: u64) -> Builder<Bank> {
         .entropy_seed(seed)
 }
 
-async fn resident(mut context: harmos_runtime::services::Service<Bank>) -> Result<(), Fault<&'static str>> {
+async fn resident(
+    mut context: harmos_runtime::services::Service<Bank>,
+) -> Result<(), Fault<&'static str>> {
     context.ready();
     context.stopping().await;
     Ok(())
@@ -999,7 +1004,9 @@ fn contract_scenario() {
             sim.advance_ms(5);
             assert!(matches!(
                 sim.settle(deadline),
-                Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut))
+                Err(harmos_runtime::Error::OperationRefused(
+                    harmos_runtime::Refusal::TimedOut
+                ))
             ));
         });
     }
@@ -1031,8 +1038,11 @@ fn contract_scenario() {
                 .entropy_seed(9)
                 .simulate()
                 .expect("the deliberately divergent simulation boots");
-            sim.commit(harmos_runtime::state::PrincipalId::new("tester"), DivergentChange)
-                .expect("the first application succeeds");
+            sim.commit(
+                harmos_runtime::state::PrincipalId::new("tester"),
+                DivergentChange,
+            )
+            .expect("the first application succeeds");
 
             let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 sim.assert_replay_equivalent();

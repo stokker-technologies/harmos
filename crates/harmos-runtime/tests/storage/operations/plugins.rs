@@ -36,11 +36,11 @@ use harmos_runtime::storage::query::transform::{
 };
 use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
 
+use harmos_domain::inventory::contracts::Required;
+use harmos_domain::plugin::Grant;
 use harmos_runtime::storage::SchemaKey;
 use harmos_runtime::storage::writes::WriteReceipt;
 use harmos_runtime::{Error, Identifier, Result};
-use harmos_domain::inventory::contracts::Required;
-use harmos_domain::plugin::Grant;
 
 /* === Constants === */
 
@@ -366,15 +366,16 @@ pub(super) fn contract_scenario() {
                     assert_eq!(count, Some(2));
                     assert_eq!(collected.join().await.unwrap().rows, 1);
                     let mut cross_kind = query(&fixture, schema.clone());
-                    cross_kind.source = Source::Stream(harmos_runtime::storage::query::StreamSelection {
-                        schema: schema.clone(),
-                        scope: None,
-                        item: None,
-                        stream: None,
-                        source_start: None,
-                        source_end: None,
-                        after: 0,
-                    });
+                    cross_kind.source =
+                        Source::Stream(harmos_runtime::storage::query::StreamSelection {
+                            schema: schema.clone(),
+                            scope: None,
+                            item: None,
+                            stream: None,
+                            source_start: None,
+                            source_end: None,
+                            after: 0,
+                        });
                     assert!(matches!(
                         reducer.download::<Query>(cross_kind, super::writes::settings()),
                         Err(Error::OperationUnauthorized { .. })

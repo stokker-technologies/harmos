@@ -527,7 +527,9 @@ pub(super) fn contract_scenario() {
                             {
                                 let entered = entered.clone();
                                 let cleaned = cleaned.clone();
-                                move |mut context: harmos_runtime::services::Service<super::Bank>| {
+                                move |mut context: harmos_runtime::services::Service<
+                                    super::Bank,
+                                >| {
                                     let entered = entered.clone();
                                     let cleaned = cleaned.clone();
                                     async move {
@@ -590,7 +592,9 @@ pub(super) fn contract_scenario() {
                                     let entered = entered.clone();
                                     let stopping = stopping.clone();
                                     let dropped = dropped.clone();
-                                    move |mut context: harmos_runtime::services::Service<super::Bank>| {
+                                    move |mut context: harmos_runtime::services::Service<
+                                        super::Bank,
+                                    >| {
                                         let entered = entered.clone();
                                         let stopping = stopping.clone();
                                         let dropped = dropped.clone();
@@ -632,11 +636,9 @@ pub(super) fn contract_scenario() {
 
                     assert!(dropped.load(Ordering::SeqCst));
                     assert!(
-                        !runtime
-                            .operations
-                            .watch_residents()
-                            .borrow()
-                            .contains_key(&harmos_runtime::operations::resident::Key::root("tenant"))
+                        !runtime.operations.watch_residents().borrow().contains_key(
+                            &harmos_runtime::operations::resident::Key::root("tenant")
+                        )
                     );
                     runtime.stop().await.unwrap();
                 });

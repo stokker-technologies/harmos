@@ -237,7 +237,8 @@ fn contract_scenario() {
                     };
                     for mode in [0, 1, 2, 3] {
                         runs.store(0, Ordering::SeqCst);
-                        let (send, input) = harmos_runtime::operations::stream::<u32>(settings).unwrap();
+                        let (send, input) =
+                            harmos_runtime::operations::stream::<u32>(settings).unwrap();
                         let (output, mut receive) =
                             harmos_runtime::operations::stream::<u32>(settings).unwrap();
                         let instance = runtime

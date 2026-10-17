@@ -72,7 +72,6 @@ struct Bridge {
     attachment: Arc<ObserverAttachment<Settings, Host>>,
 }
 
-
 struct Host(Publisher<Bridge>);
 
 #[harmos_runtime::stream(id = "custom-host.pulse", window = 8, row = Pulse)]

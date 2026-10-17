@@ -14,12 +14,12 @@ use std::time::{Duration, Instant, UNIX_EPOCH};
 
 // Third Party Imports
 use criterion::{BenchmarkId, Criterion, Throughput};
+use harmos_runtime::storage::operations::Query;
 use harmos_runtime::storage::query::transform::{
     Transform,
     project::{Project, Projection},
 };
-use harmos_runtime::storage::operations::Query;
-use harmos_runtime::storage::query::{ QueryArrow, RowSlice, Source, StreamSelection};
+use harmos_runtime::storage::query::{QueryArrow, RowSlice, Source, StreamSelection};
 use harmos_runtime::storage::*;
 
 // Local Imports

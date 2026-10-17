@@ -363,7 +363,11 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let trace = trace(Mode::Complete, false, false);
                     let runtime = Runtime::<App>::builder((), ())
-                        .service_with("owned", harmos_runtime::services::POLICY, Worker(trace.clone()))
+                        .service_with(
+                            "owned",
+                            harmos_runtime::services::POLICY,
+                            Worker(trace.clone()),
+                        )
                         .runtime()
                         .await
                         .unwrap();

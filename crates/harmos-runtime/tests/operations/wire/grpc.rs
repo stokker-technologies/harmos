@@ -175,7 +175,10 @@ async fn runtime() -> (Runtime<App>, Arc<Trace>) {
 }
 fn item(
     event: harmos_runtime::Result<
-        Event<harmos_runtime::operations::StreamItem<u32>, harmos_runtime::operations::Response<u32>>,
+        Event<
+            harmos_runtime::operations::StreamItem<u32>,
+            harmos_runtime::operations::Response<u32>,
+        >,
     >,
 ) -> u32 {
     match event.unwrap() {
@@ -577,12 +580,13 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let (runtime, trace) = runtime().await;
-                    let (sender, receiver) =
-                        harmos_runtime::operations::stream(harmos_runtime::operations::StreamSettings {
+                    let (sender, receiver) = harmos_runtime::operations::stream(
+                        harmos_runtime::operations::StreamSettings {
                             items: std::num::NonZeroUsize::new(2).unwrap(),
                             bytes: std::num::NonZeroUsize::new(4).unwrap(),
-                        })
-                        .unwrap();
+                        },
+                    )
+                    .unwrap();
                     let instance = runtime
                         .operations
                         .submit_endpoints::<Produce, _>(

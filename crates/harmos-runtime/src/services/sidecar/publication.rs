@@ -67,4 +67,3 @@ where
         result.map(::core::convert::Into::into)
     }
 }
-

@@ -373,9 +373,7 @@ fn contract_scenario() {
 
             #[cfg(feature = "plugin")]
             const ENTRIES: &[harmos_runtime::plugin::inventory::publications::Entry] =
-                &[harmos_runtime::plugin::inventory::publications::Entry::of::<
-                    PresentedSample,
-                >()];
+                &[harmos_runtime::plugin::inventory::publications::Entry::of::<PresentedSample>()];
             #[cfg(feature = "plugin")]
             assert_eq!(
                 ENTRIES[0].metadata(),

@@ -107,7 +107,10 @@ impl Operation for Ping {
 /* === Private Functions === */
 async fn service_status(
     mut services: tokio::sync::watch::Receiver<
-        BTreeMap<harmos_runtime::operations::resident::Key, harmos_runtime::operations::resident::Snapshot>,
+        BTreeMap<
+            harmos_runtime::operations::resident::Key,
+            harmos_runtime::operations::resident::Snapshot,
+        >,
     >,
     name: &str,
     wanted: impl Fn(&ServiceStatus) -> bool,

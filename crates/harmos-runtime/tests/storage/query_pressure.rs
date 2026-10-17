@@ -414,9 +414,10 @@ async fn contending_captures_never_deadlock() {
         "{outcomes:?}"
     );
     assert!(
-        outcomes
-            .iter()
-            .any(|outcome| matches!(outcome, Err(harmos_runtime::Error::ResourceExhausted { .. }))),
+        outcomes.iter().any(|outcome| matches!(
+            outcome,
+            Err(harmos_runtime::Error::ResourceExhausted { .. })
+        )),
         "{outcomes:?}"
     );
     assert_eq!(f.storage.status().read_bytes, baseline);

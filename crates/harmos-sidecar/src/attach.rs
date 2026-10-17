@@ -522,10 +522,18 @@ mod tests {
             (OsString::from("HARMOS_EXPLICIT"), OsString::from("kept")),
             (OsString::from("TMPDIR"), OsString::from("chosen-unix-temp")),
             (OsString::from("TMP"), OsString::from("chosen-windows-temp")),
-            (OsString::from("TEMP"), OsString::from("chosen-windows-temp")),
+            (
+                OsString::from("TEMP"),
+                OsString::from("chosen-windows-temp"),
+            ),
         ];
-        let configured = command(Path::new("sidecar"), &arguments, Some(directory), &environment)
-            .unwrap();
+        let configured = command(
+            Path::new("sidecar"),
+            &arguments,
+            Some(directory),
+            &environment,
+        )
+        .unwrap();
         let configured = configured.as_std();
         assert_eq!(configured.get_program(), "sidecar");
         assert_eq!(
@@ -533,9 +541,14 @@ mod tests {
             [arguments[0].as_os_str()]
         );
         assert_eq!(configured.get_current_dir(), Some(directory));
-        let variables = configured.get_envs().collect::<std::collections::BTreeMap<_, _>>();
+        let variables = configured
+            .get_envs()
+            .collect::<std::collections::BTreeMap<_, _>>();
         for (name, value) in &environment {
-            assert_eq!(variables.get(name.as_os_str()), Some(&Some(value.as_os_str())));
+            assert_eq!(
+                variables.get(name.as_os_str()),
+                Some(&Some(value.as_os_str()))
+            );
         }
         assert!(!variables.contains_key(std::ffi::OsStr::new("PATH")));
         #[cfg(windows)]

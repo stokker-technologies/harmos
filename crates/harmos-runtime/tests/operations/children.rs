@@ -232,7 +232,10 @@ async fn runtime(block_cleanup: bool) -> (Runtime<App>, Arc<Trace>) {
     (runtime, trace)
 }
 
-async fn torn_down(exit: Exit, cancel: bool) -> Result<harmos_runtime::operations::Response<()>, Error> {
+async fn torn_down(
+    exit: Exit,
+    cancel: bool,
+) -> Result<harmos_runtime::operations::Response<()>, Error> {
     let (runtime, trace) = runtime(false).await;
     let parent = runtime.operations.submit(ParentContract { exit }).unwrap();
     if cancel {

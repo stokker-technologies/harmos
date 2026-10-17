@@ -624,7 +624,10 @@ pub(super) fn contract_scenario() {
                             ..
                         }
                     ));
-                    assert_eq!(cleanup.status(), harmos_runtime::runtime::BootstrapStatus::Failed);
+                    assert_eq!(
+                        cleanup.status(),
+                        harmos_runtime::runtime::BootstrapStatus::Failed
+                    );
                     assert!(cleanup.failure().is_some());
                     assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
 
@@ -648,7 +651,10 @@ pub(super) fn contract_scenario() {
         .await
         .unwrap();
                     }
-                    assert_eq!(cleanup.status(), harmos_runtime::runtime::BootstrapStatus::Cleaning);
+                    assert_eq!(
+                        cleanup.status(),
+                        harmos_runtime::runtime::BootstrapStatus::Cleaning
+                    );
                     assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
                     counters.block.store(false, Ordering::SeqCst);
                     counters.release.notify_one();
@@ -656,7 +662,10 @@ pub(super) fn contract_scenario() {
                         .await
                         .unwrap()
                         .unwrap();
-                    assert_eq!(cleanup.status(), harmos_runtime::runtime::BootstrapStatus::Settled);
+                    assert_eq!(
+                        cleanup.status(),
+                        harmos_runtime::runtime::BootstrapStatus::Settled
+                    );
                     assert!(cleanup.failure().is_none());
                     assert_eq!(counters.runs.load(Ordering::SeqCst), 1);
                     assert_eq!(counters.dropped.load(Ordering::SeqCst), 1);
@@ -678,10 +687,16 @@ pub(super) fn contract_scenario() {
                     .register(super::support::catalog())
                     .runtime();
                     let cleanup = opening.cleanup();
-                    assert_eq!(cleanup.status(), harmos_runtime::runtime::BootstrapStatus::Starting);
+                    assert_eq!(
+                        cleanup.status(),
+                        harmos_runtime::runtime::BootstrapStatus::Starting
+                    );
                     drop(opening);
                     cleanup.wait().await.unwrap();
-                    assert_eq!(cleanup.status(), harmos_runtime::runtime::BootstrapStatus::Settled);
+                    assert_eq!(
+                        cleanup.status(),
+                        harmos_runtime::runtime::BootstrapStatus::Settled
+                    );
                 });
         });
     }

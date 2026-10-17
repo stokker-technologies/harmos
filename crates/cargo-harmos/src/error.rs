@@ -40,8 +40,8 @@ pub enum Error {
 /* === Implementations === */
 impl Error {
     pub fn exit_code(&self) -> u8 {
-        use harmos_packaging::python::Error as Bindings;
         use harmos_packaging::Error as Packaging;
+        use harmos_packaging::python::Error as Bindings;
         match self {
             Self::Packaging(
                 Packaging::Declaration(harmos_packaging::DeclarationError::OversizedFragment)

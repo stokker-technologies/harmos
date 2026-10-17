@@ -28,8 +28,8 @@ use prost_reflect::{
     },
 };
 // Local Imports
-use harmos_domain::schema::{Cardinality, graph};
 use harmos_domain::config::SchemaSettings;
+use harmos_domain::schema::{Cardinality, graph};
 
 /* === Constants === */
 const RESERVED_FIELDS: &[&str] = &[
@@ -95,7 +95,10 @@ pub fn descriptor_root(
     settings: &SchemaSettings,
 ) -> Result<MessageDescriptor, Error> {
     if root >= schema.definitions.len() {
-        return Err(harmos_domain::schema::Error::Graph(graph::Error::Reference { definition: root }).into());
+        return Err(
+            harmos_domain::schema::Error::Graph(graph::Error::Reference { definition: root })
+                .into(),
+        );
     }
     if package.len() > settings.preparation_work.get() {
         return Err(harmos_domain::schema::Error::Graph(graph::Error::Budget).into());
@@ -109,8 +112,11 @@ pub fn descriptor_root(
     }) {
         return Err(Error::Package);
     }
-    let preparation = schema.prepare(settings).map_err(harmos_domain::schema::Error::Graph)?;
-    let retained = descriptor_memory_bytes(schema, package).map_err(harmos_domain::schema::Error::Graph)?;
+    let preparation = schema
+        .prepare(settings)
+        .map_err(harmos_domain::schema::Error::Graph)?;
+    let retained =
+        descriptor_memory_bytes(schema, package).map_err(harmos_domain::schema::Error::Graph)?;
     if preparation
         .bytes
         .checked_add(retained)

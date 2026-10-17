@@ -8,19 +8,19 @@
  */
 
 /* === Modules === */
-mod construction;
-mod registration;
 mod admission;
-mod inspection;
-mod submission;
-mod lookup;
-mod retirement;
 mod cache;
-mod staging;
-mod shutdown;
+mod construction;
 mod entry;
-mod registry;
 mod grants;
+mod inspection;
+mod lookup;
+mod registration;
+mod registry;
+mod retirement;
+mod shutdown;
+mod staging;
+mod submission;
 
 mod discovery;
 mod residents;

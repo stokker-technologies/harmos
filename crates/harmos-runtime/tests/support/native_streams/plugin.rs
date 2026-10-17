@@ -22,9 +22,11 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 
 // Local Imports
-use harmos_runtime::operations::{Operation, OperationPolicy, RestartPolicy, RetryPolicy, WireTable};
-use harmos_runtime::sidecar::{Refusal, Supervisor};
 use harmos_domain::listeners::{Context as DeliveryContext, Delivery};
+use harmos_runtime::operations::{
+    Operation, OperationPolicy, RestartPolicy, RetryPolicy, WireTable,
+};
+use harmos_runtime::sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
 const POLICY: OperationPolicy = OperationPolicy {

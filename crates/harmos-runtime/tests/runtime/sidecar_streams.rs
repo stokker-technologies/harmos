@@ -240,20 +240,23 @@ fn contract_scenario() {
                             .unwrap();
                     let mut client = tonic::client::Grpc::new(channel);
                     client.ready().await.unwrap();
-                    let upload: tonic::Response<harmos_runtime::operations::StreamItem<u32>> = client
-                        .client_streaming(
-                            tonic::Request::new(opening()),
-                            tonic::codegen::http::uri::PathAndQuery::from_static(
-                                "/fixture.v1.Native/Upload",
-                            ),
-                            Codec::<u32, harmos_runtime::operations::Response<InputEnvelope<u32, u32>>>::new(
-                                operations.decode,
-                                operations.encode,
+                    let upload: tonic::Response<harmos_runtime::operations::StreamItem<u32>> =
+                        client
+                            .client_streaming(
+                                tonic::Request::new(opening()),
+                                tonic::codegen::http::uri::PathAndQuery::from_static(
+                                    "/fixture.v1.Native/Upload",
+                                ),
+                                Codec::<
+                                    u32,
+                                    harmos_runtime::operations::Response<InputEnvelope<u32, u32>>,
+                                >::new(
+                                    operations.decode, operations.encode
+                                )
+                                .unwrap(),
                             )
-                            .unwrap(),
-                        )
-                        .await
-                        .unwrap();
+                            .await
+                            .unwrap();
                     assert_eq!(*upload.into_inner(), 12);
 
                     client.ready().await.unwrap();
@@ -263,10 +266,10 @@ fn contract_scenario() {
                             tonic::codegen::http::uri::PathAndQuery::from_static(
                                 "/fixture.v1.Native/Download",
                             ),
-                            Codec::<OutputEnvelope<u32, u32>, harmos_runtime::operations::Response<u32>>::new(
-                                operations.decode,
-                                operations.encode,
-                            )
+                            Codec::<
+                                OutputEnvelope<u32, u32>,
+                                harmos_runtime::operations::Response<u32>,
+                            >::new(operations.decode, operations.encode)
                             .unwrap(),
                         )
                         .await
@@ -288,10 +291,10 @@ fn contract_scenario() {
                             tonic::codegen::http::uri::PathAndQuery::from_static(
                                 "/fixture.v1.Native/Exchange",
                             ),
-                            Codec::<OutputEnvelope<u32, u32>, harmos_runtime::operations::Response<InputEnvelope<u32, u32>>>::new(
-                                operations.decode,
-                                operations.encode,
-                            )
+                            Codec::<
+                                OutputEnvelope<u32, u32>,
+                                harmos_runtime::operations::Response<InputEnvelope<u32, u32>>,
+                            >::new(operations.decode, operations.encode)
                             .unwrap(),
                         )
                         .await
@@ -355,24 +358,21 @@ fn contract_scenario() {
                     client.ready().await.unwrap();
 
                     // Field 1 Carries A String Where The Declaration Expects A u32.
-                    let refused =
-                        client
-                            .server_streaming(
-                                tonic::Request::new(harmos_runtime::operations::Response::new(
-                                    "not a number".to_owned(),
-                                )),
-                                tonic::codegen::http::uri::PathAndQuery::from_static(
-                                    "/fixture.v1.Native/Download",
-                                ),
-                                Codec::<
-                                    OutputEnvelope<u32, u32>,
-                                    harmos_runtime::operations::Response<String>,
-                                >::new(
-                                    operations.decode, operations.encode
-                                )
-                                .unwrap(),
-                            )
-                            .await;
+                    let refused = client
+                        .server_streaming(
+                            tonic::Request::new(harmos_runtime::operations::Response::new(
+                                "not a number".to_owned(),
+                            )),
+                            tonic::codegen::http::uri::PathAndQuery::from_static(
+                                "/fixture.v1.Native/Download",
+                            ),
+                            Codec::<
+                                OutputEnvelope<u32, u32>,
+                                harmos_runtime::operations::Response<String>,
+                            >::new(operations.decode, operations.encode)
+                            .unwrap(),
+                        )
+                        .await;
                     let status = match refused {
                         Ok(response) => match response.into_inner().message().await {
                             Err(status) => status,

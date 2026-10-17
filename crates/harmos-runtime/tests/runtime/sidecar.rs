@@ -631,10 +631,8 @@ impl harmos_runtime::operations::Operation for Echoing {
         request: &mut RunEcho,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<String>, Refusal> {
-        let result: ::core::result::Result<String, Self::Error> = async move {
-            Ok(request.text.clone())
-        }
-        .await;
+        let result: ::core::result::Result<String, Self::Error> =
+            async move { Ok(request.text.clone()) }.await;
         result.map(::core::convert::Into::into)
     }
 }
@@ -663,10 +661,8 @@ impl harmos_runtime::operations::Operation for Uppercasing {
         request: &mut RunUppercase,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<String>, Refusal> {
-        let result: ::core::result::Result<String, Self::Error> = async move {
-            Ok(request.text.to_uppercase())
-        }
-        .await;
+        let result: ::core::result::Result<String, Self::Error> =
+            async move { Ok(request.text.to_uppercase()) }.await;
         result.map(::core::convert::Into::into)
     }
 }
@@ -1062,7 +1058,9 @@ impl Attach for MeterSource {
     fn observers(&self) -> Vec<harmos_sidecar::inventory::observers::Declaration> {
         self.source.observers()
     }
-    fn observe_contract(&self) -> harmos_domain::Result<Option<harmos_runtime::operations::Contract>> {
+    fn observe_contract(
+        &self,
+    ) -> harmos_domain::Result<Option<harmos_runtime::operations::Contract>> {
         self.source.observe_contract()
     }
     fn listener_declarations(
@@ -1108,7 +1106,10 @@ fn assert_transport_refusal(error: harmos_runtime::Error, code: i64, detail: &st
 
 async fn service_status(
     mut services: tokio::sync::watch::Receiver<
-        BTreeMap<harmos_runtime::operations::resident::Key, harmos_runtime::operations::resident::Snapshot>,
+        BTreeMap<
+            harmos_runtime::operations::resident::Key,
+            harmos_runtime::operations::resident::Snapshot,
+        >,
     >,
     name: &str,
     wanted: impl Fn(&ServiceStatus) -> bool,
@@ -1897,7 +1898,9 @@ fn own_contract() {
                     assert!(
                         matches!(
                             refused,
-                            Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut))
+                            Err(harmos_runtime::Error::OperationRefused(
+                                harmos_runtime::Refusal::TimedOut
+                            ))
                         ),
                         "the original OperationManager deadline bounds the live stalled child"
                     );
@@ -2033,7 +2036,10 @@ fn own_contract() {
                     let failure = error
                         .failure()
                         .expect("handler refusal preserves its structured failure");
-                    assert_eq!(failure.code(), harmos_runtime::operations::FailureKind::Permanent);
+                    assert_eq!(
+                        failure.code(),
+                        harmos_runtime::operations::FailureKind::Permanent
+                    );
                     assert_eq!(failure.cause(), "this gauge measures no negative value");
                     assert_eq!(failure.context().operation(), Some(GetMeasure::ID));
                     assert_eq!(
@@ -2043,7 +2049,10 @@ fn own_contract() {
                     );
 
                     // A Nested Transport Failure Arrives As One Cause And One Operation Frame
-                    let error = fixture.call(GetMeasure { value: i64::MIN }).await.unwrap_err();
+                    let error = fixture
+                        .call(GetMeasure { value: i64::MIN })
+                        .await
+                        .unwrap_err();
                     let failure = error
                         .failure()
                         .expect("the handler failure crosses as a structured value");
@@ -2051,7 +2060,10 @@ fn own_contract() {
                     assert_eq!(failure.context().operation(), Some(GetMeasure::ID));
                     assert_eq!(failure.context().step(), None);
                     let diagnostics = failure.diagnostics().expect("origin diagnostics");
-                    assert_eq!(diagnostics.origin(), harmos_runtime::failure::Origin::Plugin);
+                    assert_eq!(
+                        diagnostics.origin(),
+                        harmos_runtime::failure::Origin::Plugin
+                    );
                     assert_eq!(
                         diagnostics.chain().len(),
                         3,
@@ -2473,10 +2485,11 @@ async fn process_runtime<H>(
 where
     H: Fn(&Service<Bank>, Notice) + Send + Sync + 'static,
 {
-    let selected =
-        harmos_runtime::operations::WireDeclaration::of::<harmos_runtime::operations::streams::Publish>()
-            .contract()
-            .unwrap();
+    let selected = harmos_runtime::operations::WireDeclaration::of::<
+        harmos_runtime::operations::streams::Publish,
+    >()
+    .contract()
+    .unwrap();
     assert!(
         definition
             .contributions

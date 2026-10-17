@@ -428,9 +428,10 @@ mod unified_plugins {
                 assert_eq!(inert.interval, physical.interval);
                 assert_eq!(inert.streams.len(), physical.streams.len());
                 // The Observe Control Is Built In, Never An Authored Provision.
-                let control = WireDeclaration::of::<harmos_runtime::operations::observers::Control>()
-                    .contract()
-                    .unwrap();
+                let control =
+                    WireDeclaration::of::<harmos_runtime::operations::observers::Control>()
+                        .contract()
+                        .unwrap();
                 assert_eq!(control.operation().id.as_str(), "harmos.observe");
                 assert!(!provides.contains(&control));
             });
@@ -990,7 +991,10 @@ fn contract_scenario() {
                     Transaction::apply(&change, &mut state);
                     assert_eq!(state.title, "named");
                     assert_eq!(
-                        harmos_runtime::state::Invert::invert(&sheet::rename("named"), &Sheet::default()),
+                        harmos_runtime::state::Invert::invert(
+                            &sheet::rename("named"),
+                            &Sheet::default()
+                        ),
                         Rename { to: String::new() },
                         "the declared body answers against the state before the change"
                     );
@@ -1116,7 +1120,8 @@ fn contract_scenario() {
             }
 
             let first = Facts::First(First("first".to_owned()));
-            let projected = harmos_runtime::state::RecordProjection::<First>::project(&first).unwrap();
+            let projected =
+                harmos_runtime::state::RecordProjection::<First>::project(&first).unwrap();
             let Facts::First(original) = &first else {
                 unreachable!("the selected record variant")
             };
@@ -1148,7 +1153,8 @@ fn definitions_of<A: harmos_runtime::Application>(
 ) -> Vec<(Kind, harmos_runtime::DefinitionId, u32)> {
     match catalog.register() {
         harmos_runtime::runtime::Catalog::Transactions { definitions, .. } => definitions,
-        harmos_runtime::runtime::Catalog::Streams(_) | harmos_runtime::runtime::Catalog::Lanes(_) => {
+        harmos_runtime::runtime::Catalog::Streams(_)
+        | harmos_runtime::runtime::Catalog::Lanes(_) => {
             unreachable!("a transaction or fact catalog always registers as `Transactions`")
         }
     }
