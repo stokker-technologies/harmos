@@ -21,8 +21,9 @@ where
 
     async fn run(&mut self, context: Service<A>) -> Result<(), Fault<String>> {
         let result = self.attempt(context).await;
-        // An application fault is terminal: a caller awaiting staging learns the attempt was refused.
-        if let Err(Fault::Application(_)) = &result {
+        // A failed attempt never stages: a caller awaiting staging learns it was refused instead of
+        // waiting on a process that already exited. A later attempt begins a fresh staging round.
+        if result.is_err() {
             self.calls.refuse();
         }
         result
