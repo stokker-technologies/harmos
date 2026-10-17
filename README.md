@@ -99,7 +99,7 @@ git clone https://github.com/stokker-technologies/harmos.git
 cd harmos
 mise trust
 mise install --locked
-mise run sync
+mise run prepare:tools
 mise run build
 target/debug/schematic-cli
 ```
@@ -132,9 +132,10 @@ target/debug/schematic-cli --guest target/fixtures/schematic-guest/schematic_gue
 
 `mise run build` builds the workspace and the example's CLI, sidecar and guest
 component once. Without a flag the CLI loads the sidecar beside it. Both plugins implement `ValidateSchematic`, `ProposeRoute`, and the streaming
-`AnalyzeSchematic`. The native sidecar additionally implements `ListDirectories`,
-which lists immediate subdirectories of its explicitly configured working
-directory. The guest has no filesystem access and omits that operation.
+`AnalyzeSchematic`. The native sidecar additionally provides client-streaming
+`AnalyzeUpload` and bidirectional `AnalyzeExchange`, with typed progress
+publications. Its `ListDirectories` operation lists immediate subdirectories of
+an explicitly configured working directory. The guest omits native filesystem access.
 
 The [advanced follow-on](examples/schematic/cli/src/advanced.rs) demonstrates
 bounded streaming, cancellation with settlement, and native directory access.
@@ -179,9 +180,9 @@ The same crate owns `bundle`, Cargo discovery, inert inspection, development
 launching and Wasm componentization.
 
 ```sh
-cargo run --locked -p cargo-harmos -- harmos sidecar build -p schematic-sidecar --json > sidecar-build.json
+cargo run --locked -p cargo-harmos -- harmos sidecar build --manifest-path examples/schematic/Cargo.toml -p schematic-sidecar --json > sidecar-build.json
 cargo run --locked -p cargo-harmos -- harmos sidecar package --build-json sidecar-build.json --output target/packages --json
-cargo run --locked -p cargo-harmos -- harmos guest build -p schematic-guest --json
+cargo run --locked -p cargo-harmos -- harmos guest build --manifest-path examples/schematic/Cargo.toml -p schematic-guest --json
 cargo run --locked -p cargo-harmos -- harmos sidecar inspect target/debug/schematic-sidecar --json
 ```
 
@@ -197,6 +198,17 @@ schema byte stamp before bundling. It never runs Cargo. Relocated archives use
 explicit `--relocate-from` and `--relocate-to` path mapping while preserving hashes.
 Library consumers can stamp existing outputs with `Artifact::read` and
 `Schema::read`, then construct a `Build` without another compiler invocation.
+
+Create a plugin from the maintained starter with an explicit source selection:
+
+```sh
+target/debug/cargo-harmos harmos new sidecar target/my-plugin --harmos-path .
+# For a separately maintained project, select a published revision:
+cargo harmos new guest my-plugin --harmos-rev <full-published-sha>
+```
+
+The starters include their managed Python runner and repository task graph.
+Keep generated guidance and tooling current through the owning authoring tool.
 
 `cargo harmos sidecar build` prepares native plugins; `cargo harmos guest build`
 drives the selected Wasm build and converts guest core modules
@@ -630,7 +642,7 @@ independently.
 
 | Suite | What It Measures |
 | --- | --- |
-| [Streams](crates/harmos/benches/streams/main.rs) | Concurrent waveform work, batch summaries, codec costs, and native consumers using 64 KiB and 1 MiB payloads. |
+| [Streams](crates/harmos-runtime/benches/streams/main.rs) | Concurrent waveform work, batch summaries, codec costs, and native consumers using 64 KiB and 1 MiB payloads. |
 | [Plugin Transport](crates/harmos-sidecar/benches/transport/main.rs) | Native transport throughput and latency, including 64-byte, 1 KiB, and 64 KiB bursts and a paced 10 MiB/s workload. |
 
 The paced rate is a benchmark input, not a claimed throughput result. Run
@@ -673,36 +685,20 @@ mise run test                   # Run the test suite
 mise run bench                  # Record benchmark results
 ```
 
-Every proposed integration SHA runs fresh checks, release builds and full tests,
-including squash, merge and history-reset commits with identical trees. `dev`
-requires Linux validation and its separate `development.json` artifact proof.
-Windows runs independently with visible outcomes and remains advisory for `dev`
-until its requirement is explicitly restored. `main` and releases always require
-both Linux and Windows. Coverage is an optional diagnostic through
-`STKR_COVERAGE=1 mise run test`; ordinary validation keeps the full selection.
-Dev pushes may use the restricted local Linux runner. PR full validation requires
-approval; integration into `dev` and `main`
-starts automatic validation of the resulting SHA. Caches accelerate those builds.
-Installed tools, dependency downloads and profile-specific compiler outputs use
-separate caches. Preparation jobs save them; test consumers restore them.
-Cargo verifies restored compilation inputs, and package hashes and provenance
-remain independently verified.
-`mise run packages:reuse` retrieves successful artifacts only for the current SHA,
-with matching inputs and intact hashes; it never rebuilds or changes provenance.
-Use `HARMOS_VALIDATION_RUN_ID` to select an explicit same-SHA Actions run.
-The native validation pipeline runs source checks first, then compiled checks and
-release builds on the same runner. Local `mise run check` retains both check groups.
-Native Rust integration tests use the release profile without instrumentation.
-Coverage is an optional diagnostic through `STKR_COVERAGE=1 mise run test`; it
-preserves the ordinary test selection. Feature pushes run source checks through
-`mise run ci:feature`. Compiled checks and full correctness tests run in the
-approved native validation workflow. The full-validation gate requires both native
-platforms; the temporary dev gate verifies Linux independently. Dev pushes may
-use the restricted local Linux runner; other refs use hosted runners.
+Local and development validation use the development profile. `mise run build`
+produces the workspace archive and stamped schematic/sandbox artifacts once;
+test layers consume that build and refuse missing or changed inputs. Separate
+`test:unit`, `test:integration`, `test:acceptance` and `test:system` tasks select
+behavioral layers. `mise run coverage` instruments the full selection separately.
+`mise run ci` runs the repository flow; nightly coverage and benchmarks remain
+outside the required development gate.
 
-Package restoration verifies transferred bytes in a temporary directory before
-replacing the staged package. Failed verification preserves existing payloads;
-symlink destinations are refused.
+`dev` requires Linux checks, build, tests and exact-revision development artifact
+proof. Windows runs independently as advisory validation for `dev`, with visible
+failures and artifacts; `main` and releases require both platforms. Optimized
+distribution builds and publication belong to release-tag pipelines. Rust crates
+and product assets are the published distributions; generated Python bindings
+belong to their consuming producer package.
 
 Task PRs squash into `dev`. Stable `release/<version>` branches start from `dev`
 and merge into `main` preserving ancestry, then incorporate their history into

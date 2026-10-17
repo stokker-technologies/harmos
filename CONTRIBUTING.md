@@ -1,4 +1,4 @@
-# Contributing to Harmos
+# Contributing To Harmos
 
 Harmos is open to bug reports, documentation improvements, focused runtime
 changes, and examples that clarify how the journal model works in a real
@@ -22,7 +22,7 @@ The repository supports Windows and Linux. Install
 ```sh
 mise trust
 mise install --locked
-mise run sync
+mise run prepare:tools
 ```
 
 Run the complete example with `mise run build`, then `target/debug/schematic-cli`. Read the relevant source-level contracts and compiled examples before changing
@@ -42,57 +42,36 @@ a public contract.
   such as `fix(journal): retain position across recovery` or `docs: explain
   stream loss accounting`.
 
-Use Hub's repository-wide authored-test caps: unit 0, integration 128,
-acceptance 16, and system 8. Do not add project limit overrides. Keep related
-public contracts in cohesive integration scenarios with independent fixture
-lifecycles. Private unit assertions must not be relocated to integration tests.
-Parameterized variants retain their assertions without adding authored functions.
+Tests follow their behavior: pure unit assertions, in-process integration,
+command-line acceptance and three full schematic system walkthroughs. Keep each
+story cohesive and independent; preserve coverage when removing superseded
+fixtures. Project-wide authored-story limits and lane deadlines live in `stkr.toml`.
+Use notifications and controlled clocks rather than sleeps or nested timeout guards.
 
-Run the matching task while iterating, then the repository gates:
+Finish the combined source cutover before validation, then use the repository flow:
 
 ```sh
-mise run check
-mise run test
+mise run ci
 ```
 
-`mise run build` builds the workspace and the schematic example once and stamps
-the example's artifacts in `target/fixtures/stamp.json`. Test lanes never compile:
-their preflight refuses an absent or stale stamp before any story runs.
-
-Acceptance consumes the exact release binaries and Wasm component staged by
-`mise run build:release`. Local `mise run test` prepares them first; native CI transfers
-them from the matching platform build job and fails on missing or mismatched assets.
-Scenarios run those artifacts directly. Keep scenario timing outside preparation.
-Cargo metadata determines custom target directories and platform executable suffixes.
+`mise run build` creates the workspace archive and stamps native/Wasm inputs in
+`target/fixtures/stamp.json`. Ordinary test lanes consume those exact development
+artifacts and never rebuild fixtures. Their preflight refuses missing, stale or
+changed inputs. Narrow authoring acceptance executes the compiler only when
+compilation or dev/rebuild is the product behavior being tested, using the
+build-staged offline dependency closure. Keep preparation outside scenario timing.
 
 If a platform, Wasm target, or throughput test cannot run locally, say so in
 the pull request instead of weakening the gate.
 
 ## Benchmarks
 
-Run `mise run bench` for the Rust and Python benchmark suites. `bench:rust` and
-`bench:python` select one language. Rust includes managed state, operations,
-streams, storage, native sidecar transport, host-to-Wasm-guest round trips,
-and the managed native-to-guest-to-native dependency chain.
-Native stream consumption covers both in-process and executable sidecars.
-The guest is built and activated before its timed calls. Sidecar transport
-reports distinguish binary in-memory and process communication. The combined
-chain uses in-process `PluginNative` carriers and a Wasmtime component; it does
-not claim executable-process latency. Its explicitly selected ignored benchmark
-scenario warms up ten calls, then records twenty samples of fifty calls for each
-payload size, excluding activation and shutdown. Request construction, encoding,
-managed nested calls, response validation and finalization are timed. It keeps
-no per-call request history. Throughput counts useful request/response bytes,
-not every internal carrier crossing.
-The capacity sweep runs its configured warmup and repetitions once; each trial
-is saved with payload size, target rate, achieved throughput and elapsed seconds.
-The Python suite measures the simulation-oracle workflow, including process
-startup after compilation is prepared; it is not a transport latency measurement.
+Run `mise run bench` for the Rust benchmark suites, or choose `bench:unit`,
+`bench:integration` or `bench:system`. Pure codec work, managed runtime/storage
+behavior and executable transport have separate owners. Fixture activation and
+shutdown stay outside timed calls; report the payload, batching, carrier, profile,
+revision and hardware with any result.
 
-Benchmark evidence is Git-ignored under `.stkr/benchmarks/`, including `latest.json`,
-`bench.csv`, and `bench.md`. Native measurements remain in the build tree and the
-runner log in `.stkr/state/bench.log`. Benchmark paths in `tools/python/pyproject.toml` and native Cargo bench targets
-must produce fresh measurements for the selected suite.
-Failed commands retain diagnostics and return failure. Share the relevant evidence,
-logs, and native measurements; compare matching profiles, features, workloads, and
-hardware.
+The managed runner owns ignored evidence under `.stkr/benchmarks/`. Preserve its
+original inputs and measurements when comparing runs. A failed suite remains a
+failure; do not weaken a gate to publish a result.
