@@ -60,9 +60,11 @@ def main() -> None:
     workspace = _messages(receipt)
     # The Archive Holds Test Targets Only; The Authoring Tool Binary Is Its Own Capture.
     tooling = archive.compile(ROOT, profile, ["-p", "cargo-harmos", "--all-features"])
+    # The Facade Has No Test Dependents, So Its Library Is Its Own Capture For The Authoring Stories.
+    facade = archive.compile(ROOT, profile, ["-p", "harmos", "--all-features", "--lib"])
     native = archive.compile(SCHEMATIC.parent, profile, ["-p", "schematic-cli", "-p", "schematic-sidecar"])
     schematic = _messages(native)
-    producers = [receipt, tooling, native]
+    producers = [receipt, tooling, facade, native]
     tool = _executable(_messages(tooling), "cargo-harmos")
     archive.verify_outputs(tooling, [tool])
     shutil.rmtree(FIXTURES, ignore_errors=True)
@@ -81,7 +83,7 @@ def main() -> None:
         producers.append(product)
         artifacts[package], builds[package] = _stage_build(built, collected, package, [capture, product], files)
     artifacts["schematic-cli"] = _keep(_executable(schematic, "schematic-cli"), "schematic-cli", [native], files)
-    libraries = _libraries(workspace, receipt, files)
+    libraries = _libraries([*workspace, *_messages(facade)], [receipt, facade], files)
     exported = _offline_inputs(profile)
     producers.append(exported)
     for name in exported["exports"]:
@@ -276,9 +278,13 @@ def _executable(messages: list[dict], name: str) -> Path:
     return Path(found.pop())
 
 
-def _libraries(messages: list[dict], producer: dict, files: dict) -> dict[str, str]:
-    """Transfer exact compiler-emitted libraries needed by the authoring refusal stories."""
-    found: dict[str, set[str]] = {name: set() for name in LIBRARIES}
+def _libraries(messages: list[dict], producers: list[dict], files: dict) -> dict[str, str]:
+    """Transfer exact compiler-emitted libraries needed by the authoring refusal stories.
+
+    A library built twice (a build-dependency feature set beside the normal one) resolves to
+    the build whose features include every other's.
+    """
+    found: dict[str, dict[str, set[str]]] = {name: {} for name in LIBRARIES}
     destination = FIXTURES / "libraries"
     destination.mkdir()
     for message in messages:
@@ -289,18 +295,25 @@ def _libraries(messages: list[dict], producer: dict, files: dict) -> dict[str, s
             path = Path(filename)
             if path.suffix not in {".rlib", ".rmeta", ".so", ".dylib", ".dll"}:
                 continue
-            _copy(path, destination / path.name, [producer], files)
+            if not (destination / path.name).exists():
+                _copy(path, destination / path.name, producers, files)
             if name not in found:
                 continue
             suffix = (
                 (".dll" if os.name == "nt" else ".dylib" if sys.platform == "darwin" else ".so") if name == "harmos_macros" else ".rlib"
             )
             if path.suffix == suffix:
-                found[name].add((destination / path.name).relative_to(FIXTURES).as_posix())
-    ambiguous = {name: sorted(paths) for name, paths in found.items() if len(paths) != 1}
+                found[name][(destination / path.name).relative_to(FIXTURES).as_posix()] = set(message["features"])
+    selected = {name: _widest(builds) for name, builds in found.items()}
+    ambiguous = {name: sorted(found[name]) for name, path in selected.items() if path is None}
     if ambiguous:
         raise RuntimeError(f"compiler libraries are missing or ambiguous: {ambiguous}")
-    return {name: paths.pop() for name, paths in found.items()}
+    return {name: path for name, path in selected.items() if path is not None}
+
+
+def _widest(builds: dict[str, set[str]]) -> str | None:
+    widest = [path for path, features in builds.items() if all(other <= features for other in builds.values())]
+    return widest[0] if len(widest) == 1 else None
 
 
 def _keep(source: Path, name: str, producers: list[dict], files: dict) -> str:
