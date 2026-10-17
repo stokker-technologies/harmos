@@ -11,7 +11,6 @@
 
 #[path = "../support/native_streams.rs"]
 #[allow(dead_code, reason = "the stream bench drives the executable carrier")]
-#[allow(dead_code, reason = "shared with the benchmark of the same domain")]
 mod native_streams;
 
 /* === Re-Exports === */

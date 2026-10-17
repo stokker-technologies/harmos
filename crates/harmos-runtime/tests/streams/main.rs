@@ -13,8 +13,7 @@
 mod support;
 
 #[path = "../streams/allocation.rs"]
-#[allow(dead_code, reason = "shared with the benchmark of the same domain")]
-pub mod allocation;
+mod allocation;
 
 #[cfg(feature = "signal")]
 #[path = "aggregates.rs"]

@@ -443,13 +443,9 @@ pub(super) fn admitting(state: &State, pool: Pool) -> Result<()> {
 /* === Tests === */
 
 #[cfg(test)]
-#[path = "../tests/support/storage.rs"]
-mod capacity_backend;
-
-#[cfg(test)]
 mod tests {
-    use super::capacity_backend::{Data, Recovery, history, storage_settings};
     use super::*;
+    use crate::policy_tests::backend::{Data, Recovery, history, storage_settings};
     use std::num::NonZeroUsize;
 
     #[test]

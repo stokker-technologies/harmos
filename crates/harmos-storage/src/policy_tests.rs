@@ -10,7 +10,7 @@
 /* === Modules === */
 #[allow(dead_code)]
 #[path = "../tests/support/storage.rs"]
-mod backend;
+pub(crate) mod backend;
 
 /* === Re-Exports === */
 

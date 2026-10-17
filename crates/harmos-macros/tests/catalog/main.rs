@@ -9,9 +9,6 @@
 
 /* === Modules === */
 
-#[path = "../../../harmos-runtime/tests/support/fixtures.rs"]
-mod fixtures;
-
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -22,6 +19,7 @@ use std::process::Command;
 // Third Party Imports
 
 // Local Imports
+use crate::fixtures;
 
 /* === Constants === */
 

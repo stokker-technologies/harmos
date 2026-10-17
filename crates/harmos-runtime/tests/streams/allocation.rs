@@ -11,7 +11,7 @@
 
 #[path = "../support/allocation.rs"]
 #[allow(dead_code, reason = "shared with the benchmark of the same domain")]
-pub mod allocation;
+mod scenarios;
 
 /* === Re-Exports === */
 
@@ -42,7 +42,7 @@ pub mod allocation;
 
 #[tokio::test]
 async fn publish_allocation_independent() {
-    allocation::streams_r004_publish_cost_is_independent_of_the_window_size().await;
+    scenarios::streams_r004_publish_cost_is_independent_of_the_window_size().await;
 }
 
 /* === Tests === */

@@ -281,10 +281,7 @@ fn export_refuses_invalid() {
     let target = tempfile::tempdir().unwrap();
     let output = target.path().join("package");
     let refused = |settings: &Settings| {
-        python::generate(
-            python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings: settings, protoc: &protoc() },
-            &output,
-        )
+        python::generate(python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings, protoc: &protoc() }, &output)
     };
 
     // Selections, Module Names And Versions Python Cannot Carry
