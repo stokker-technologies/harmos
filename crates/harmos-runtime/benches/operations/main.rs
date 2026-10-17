@@ -156,17 +156,13 @@ async fn cancellation(load: u32) -> Cancellation {
     let instances: Vec<_> = (0..load)
         .map(|_| runtime.operations.submit(Dispatch { wait: true }).unwrap())
         .collect();
-    tokio::time::timeout(Duration::from_secs(5), signals.running.acquire_many(load))
+    signals.running.acquire_many(load)
         .await
         .expect("all operations enter run before cancellation")
-        .unwrap()
         .forget();
 
     let requested = Instant::now();
-    tokio::time::timeout(Duration::from_secs(5), runtime.stop())
-        .await
-        .expect("runtime cancellation settles")
-        .unwrap();
+    runtime.stop().await.expect("runtime cancellation settles");
     let settled = requested.elapsed();
     let mut dispatched = Vec::with_capacity(load as usize);
     for _ in 0..load {

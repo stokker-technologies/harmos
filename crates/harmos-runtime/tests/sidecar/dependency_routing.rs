@@ -101,16 +101,16 @@ fn host(runtime: &Runtime<Bank>, provider: Arc<Provider>, lifecycle: bool) -> Ho
         publication_resident: None,
         publication_start: None,
         project_publications: true,
-        notices: Arc::new(Mutex::new(Vec::new())),
+        notices: Arc::new(NoticeLog::default()),
     }
 }
 
-async fn published_notices(notices: &Mutex<Vec<Notice>>, count: usize) {
-    (async {
-        while notices.lock().unwrap().len() < count {
-            tokio::task::yield_now().await;
-        }
-    }).await;
+async fn published_notices(notices: &NoticeLog, count: usize) {
+    loop {
+        let changed = notices.changed.notified();
+        if notices.values.lock().unwrap().len() >= count { return; }
+        changed.await;
+    }
 }
 
 #[tokio::test]
@@ -178,7 +178,7 @@ async fn notice_wire_order() {
         .await
         .unwrap();
     published_notices(&notices, 3).await;
-    let retained = notices.lock().unwrap().clone();
+    let retained = notices.values.lock().unwrap().clone();
     assert_eq!(retained.len(), 3);
     let expected_generation = lifecycle
         .previous_native
@@ -258,7 +258,7 @@ async fn notice_wire_order() {
 
 #[tokio::test]
 async fn shutdown_delivery() {
-    let notices = Arc::new(Mutex::new(Vec::new()));
+    let notices = Arc::new(NoticeLog::default());
     let runtime = assembly()
         .operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
@@ -286,7 +286,7 @@ async fn shutdown_delivery() {
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
     runtime.stop().await.unwrap();
-    let retained = notices.lock().unwrap();
+    let retained = notices.values.lock().unwrap();
     assert_eq!(retained.len(), 3);
     for (index, (notice, sample)) in retained.iter().zip([41, 42, 44]).enumerate() {
         let Notice::Published { publication } = notice else {

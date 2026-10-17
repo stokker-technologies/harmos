@@ -152,6 +152,12 @@ struct Resources {
     registered: bool,
 }
 
+#[derive(Default)]
+struct NoticeLog {
+    values: Mutex<Vec<Notice>>,
+    changed: tokio::sync::Notify,
+}
+
 struct Host {
     operations: harmos_runtime::operations::OperationManager,
     streams: harmos_runtime::streams::StreamManager<Bank>,
@@ -166,7 +172,7 @@ struct Host {
     publication_resident: Option<Resident>,
     publication_start: Option<PublicationStart>,
     project_publications: bool,
-    notices: Arc<Mutex<Vec<Notice>>>,
+    notices: Arc<NoticeLog>,
 }
 
 /* === Enums === */
@@ -745,7 +751,8 @@ impl PluginLifecycle for Host {
             let notices = self.notices.clone();
             let handler: NoticeHandler = Box::new(move |_, notice| {
                 if matches!(notice, Notice::Published { .. }) {
-                    notices.lock().unwrap().push(notice);
+                    notices.values.lock().unwrap().push(notice);
+                    notices.changed.notify_one();
                 }
             });
             let mut resident: Resident = Supervised::new(
@@ -799,7 +806,8 @@ impl PluginLifecycle for Host {
             let notices = self.notices.clone();
             let handler: NoticeHandler = Box::new(move |_, notice| {
                 if matches!(notice, Notice::Published { .. }) {
-                    notices.lock().unwrap().push(notice);
+                    notices.values.lock().unwrap().push(notice);
+                    notices.changed.notify_one();
                 }
             });
             Supervised::new(
@@ -912,7 +920,7 @@ impl PluginLifecycle for Host {
         if definition.id == "caller"
             && let Some(start) = &self.publication_start
         {
-            assert!(self.notices.lock().unwrap().is_empty());
+            assert!(self.notices.values.lock().unwrap().is_empty());
             assert!(self.streams.publication("meter.pulse", 1).is_none());
             assert!(
                 self.streams

@@ -43,6 +43,7 @@ type Observe = Delivery<Observed>;
 struct Probe {
     total: AtomicUsize,
     active: AtomicUsize,
+    entered: tokio::sync::Notify,
     cleaned: AtomicBool,
 }
 
@@ -185,6 +186,7 @@ impl Operation for Observing {
                 }
             );
             self.resources.active.fetch_add(1, Ordering::SeqCst);
+            self.resources.entered.notify_one();
             let _active = InFlight(&self.resources);
             if request.row().value == 0 {
                 std::future::pending::<()>().await;
@@ -281,11 +283,9 @@ async fn callback_outcomes_cleanup() {
             Calling(invocation).await
         }
     });
-    (async {
-        while probe.active.load(Ordering::SeqCst) == 0 {
-            tokio::task::yield_now().await;
-        }
-    }).await;
+    while probe.active.load(Ordering::SeqCst) == 0 {
+        probe.entered.notified().await;
+    }
     stalled.abort();
     let _ = stalled.await;
     fixture.call(delivered(2)).await.unwrap();
