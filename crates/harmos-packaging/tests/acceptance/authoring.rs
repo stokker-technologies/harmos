@@ -67,6 +67,8 @@ impl Project {
         std::fs::create_dir(&home).unwrap();
         let vendor = serde_json::to_string(&fixtures::input("vendor")).unwrap();
         std::fs::write(home.join("config.toml"), format!("[net]\noffline = true\n[source.crates-io]\nreplace-with = \"vendored\"\n[source.vendored]\ndirectory = {vendor}\n")).unwrap();
+        let wheels = serde_json::to_string(&fixtures::input("wheels")).unwrap();
+        std::fs::write(project.directory.path().join("uv.toml"), format!("no-index = true\nfind-links = [{wheels}]\n")).unwrap();
         project.run("git", &["init", "--initial-branch=feat/starter"]);
         project.run("mise", &["trust", "mise.toml"]);
         project.run("cargo", &["generate-lockfile", "--offline"]);
@@ -82,8 +84,8 @@ impl Project {
             .env("CARGO_NET_OFFLINE", "true")
             .env("UV_PROJECT_ENVIRONMENT", self.root.join(".venv"))
             .env("UV_CACHE_DIR", self.directory.path().join("uv-cache"))
-            .env("UV_OFFLINE", "1").env("UV_NO_INDEX", "1")
-            .env("UV_FIND_LINKS", fixtures::input("wheels"));
+            .env("UV_OFFLINE", "1")
+            .env("UV_CONFIG_FILE", self.directory.path().join("uv.toml"));
         command
     }
 

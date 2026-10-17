@@ -151,20 +151,30 @@ def _offline_inputs(profile: str) -> dict:
             vendor += ["--sync", str(manifest)]
     vendor.append(str(destination / "vendor"))
     requirements = destination / "requirements.txt"
-    export = ["uv", "export", "--locked", "--all-groups", "--no-emit-project", "--project", "tools/python"]
+    projects = [ROOT / "tools/python", *(ROOT / f"crates/cargo-harmos/templates/{kind}/tools/python" for kind in ("sidecar", "guest"))]
+    commands = [vendor]
+    captured = {}
+    requirements_files = []
+    for index, project in enumerate(projects):
+        selected = requirements if index == 0 else destination / f"starter-{project.parents[1].name}.txt"
+        captured[len(commands)] = selected
+        requirements_files.append(selected)
+        commands.append(["uv", "export", "--locked", "--all-groups", "--no-emit-project", "--project", str(project)])
     bundled = importlib.resources.files("ensurepip").joinpath("_bundled")
     wheels = [path for path in bundled.iterdir() if path.name.startswith("pip-") and path.name.endswith(".whl")]
     if len(wheels) != 1:
         raise RuntimeError("the pinned Python must provide its bundled pip wheel to stage offline inputs")
     launch = "import runpy,sys; sys.path.insert(0,sys.argv.pop(1)); runpy.run_module('pip',run_name='__main__')"
-    download = [sys.executable, "-c", launch, str(wheels[0]), "download", "--dest", str(destination / "wheels"),
-                "--require-hashes", "--requirement", str(requirements)]
-    locks = [manifest.parent / "Cargo.lock" for manifest in manifests] + [ROOT / "tools/python/uv.lock"]
-    inputs = [*manifests, ROOT / "tools/python/pyproject.toml", Path(str(wheels[0]))]
+    download = [sys.executable, "-c", launch, str(wheels[0]), "download", "--dest", str(destination / "wheels"), "--require-hashes"]
+    for selected in requirements_files:
+        download += ["--requirement", str(selected)]
+    commands.append(download)
+    locks = [manifest.parent / "Cargo.lock" for manifest in manifests] + [project / "uv.lock" for project in projects]
+    inputs = [*manifests, *(project / "pyproject.toml" for project in projects), Path(str(wheels[0]))]
     if (ROOT / ".cargo").is_dir():
         inputs.append(ROOT / ".cargo")
-    return archive.native(ROOT, profile, "dependency-export", [vendor, export, download],
-                          [destination], locks=locks, inputs=inputs, stdout={1: requirements})
+    return archive.native(ROOT, profile, "dependency-export", commands,
+                          [destination], locks=locks, inputs=inputs, stdout=captured)
 
 
 def _stage_build(build: dict, collected: Path, package: str, producers: list[dict], files: dict) -> tuple[str, str]:

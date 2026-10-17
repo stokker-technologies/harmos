@@ -19,7 +19,8 @@ mod oracle;
 /* === Re-Exports === */
 
 /* === Imports === */
-use criterion::{Criterion, black_box};
+use std::hint::black_box;
+use criterion::Criterion;
 use harmos_runtime::Runtime;
 use support::{Bank, Ledger, catalog, streams};
 
