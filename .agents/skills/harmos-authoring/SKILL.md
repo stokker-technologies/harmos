@@ -164,7 +164,7 @@ Use the original runtime and resource owners. Consult the relevant section only;
   bind under the operation's declared error type, so sidecar operations use
   `harmos::operations::StreamOutput` directly. Typed native/guest catalog
   projections forward the same original invocation. Handwritten declarations
-  need shape-aware `visit_wire`/`visit_grpc` projections or explicit bindings.
+  implement `OperationDeclaration` (the `declare!` macro) like derived ones.
 
 
 A shared contract crate compiled into WebAssembly guests depends on
@@ -214,12 +214,15 @@ declare operation metadata.
   All resolve only active instances the caller submitted or holds a resident
   lease on; unknown, foreign and settled ids are refused alike. Plugins must declare them as requirements; a live handle reports its
   own child through child controls instead.
-- Explicitly register `operations::discovery::Discovery` with the original
-  manager to expose `host.operations`; it is not an automatic second catalog.
-  With `grpc`, the declared unary route is `/harmos.host.v1.Host/Operations`.
-  Requests accept optional `after`, `rows` and `bytes` (defaults 64 and 64 KiB;
-  maxima 256 and 4 MiB). Responses contain a UTF-8 JSON `catalog` array of
-  canonical `host::DiscoveredOperation` values and an optional `next` cursor.
+- Explicitly call `operations::listing::register(&operations, owner, lane, storage)`
+  with the original manager to expose `host.catalog`; it is not an automatic
+  second catalog. With `grpc`, the declared unary route is
+  `/harmos.host.v1.Host/Catalog`. `host::Catalog` selects a `kind` (`Operations`,
+  `Schemas`, `Streams`, `Objects`) with optional `schema`, `after`, `rows` and
+  `bytes` (defaults 64 and 64 KiB; maxima 256 and 4 MiB). `CatalogPage::entries`
+  is a UTF-8 JSON array of the kind's canonical entries (`host::DiscoveredOperation`
+  for operations) beside an optional `next` cursor. Stored kinds need the storage
+  manager and a `host.catalog` grant scoped `schemas:*`, `streams:*` or `objects:*`.
   Preserve contracts, selected grants, owner/generation and gRPC availability.
   Metadata is conditional: invocation keeps original request grants/admission
   and middleware. Re-discover after reload/restart; paging is live.
@@ -271,8 +274,8 @@ declare operation metadata.
   describes currently ready methods.
 - Generate consumer-owned Python bindings with
   `harmos_packaging::python::generate(python::Catalog { contracts, settings, protoc }, output)`
-  (`bindings-python`), or `cargo harmos bindings python`. TypeScript uses
-  `harmos_packaging::typescript::generate(contracts, output)` (`bindings-typescript`).
+  (`bindings-python`), or `cargo harmos bindings python`. TypeScript bindings come
+  from the official Buf generator run over the exported `.proto` files.
   Select exact exported contracts and explicit distribution metadata. No generic
   Harmos Python client or internal tooling distribution is published. Ordinary
   Rust builds export schemas without packaging Python or invoking protoc.
@@ -309,9 +312,9 @@ declare operation metadata.
   preparation memory/work independently of payload byte/nesting/work limits.
 - Artifact metadata revision 6 requires rebuilt hosts and SDK consumers. Storage
   metadata uses the generic `graph_v1` representation; Inline is unsupported.
-  Only `storage.write_schema` and `storage.query_schemas` advance to semantic
-  version 2 for finite schema-description RPC bytes. Product row codecs and
-  unrelated operation versions are unchanged. Preserve original data and use
+  Schema writes go through `storage.write_schema`; finite schema reads use
+  `storage.query` with `Source::Schemas`. Product row codecs and unrelated
+  operation versions are unchanged. Preserve original data and use
   a fresh storage root for unsupported metadata; never reset or silently migrate.
 - Storage backends reserve JSON graph decode allocation through the original
   `storage::StorageSchema::decoding_memory_bytes(encoded_bytes) -> Option<usize>`
@@ -336,7 +339,7 @@ declare operation metadata.
   full storage cursor. Filter, Project, Aggregate, Histogram, Downsample and
   Sort form the single transform catalog; row `offset`/`limit` apply last.
   Do not add per-kind readers, record-filter pushdown or a second executor.
-- Live subscriptions are the `Follow`, `FollowStream`, `FollowObjects` and
+- Live subscriptions are the `FollowRecords`, `FollowStream`, `FollowObjects` and
   `FollowFile` operations. A subscription delivers saved history after its
   `after` cursor, then accepted entries; there is no separate replay API.
 - Read admission waits for capacity held by others and fails explicitly when
@@ -495,8 +498,7 @@ layouts for guests and sidecars.
   existing collection validation, fuel, epoch and memory bounds. Registration
   is not a parallel lifecycle or application dispatcher; direct component
   execution alone does not prove Root activation or resource authority.
-- Native unified plugins use `run_plugin::<Type>(capacity)` or
-  `serve_plugin_with::<Type, _, _>(capacity, read, write)`. `PluginNative::<Type>`
+- Native unified plugins use `run_plugin::<Type>(capacity)`. `PluginNative::<Type>`
   supplies an inspected in-process attachment over independent binary data/control
   channels. `serve_plugin_channels::<Type>(capacity, data, control)` embeds that
   carrier directly; Unix executable stdio uses binary data plus an inherited control socket.

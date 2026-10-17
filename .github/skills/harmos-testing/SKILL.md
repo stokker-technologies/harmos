@@ -2,7 +2,7 @@
 name: harmos-testing
 description: Author Harmos engine, runtime, carrier and packaging stories using the canonical fixture and boundary owners.
 ---
-<!-- Rendered by stkr project update from .agents/skills/harmos-testing/SKILL.md; sha256:bd789a5dc0ffdca8aa1e7ffd33e48de5fd87f05000533f80f24bd92702ff2fb1 -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-testing/SKILL.md; sha256:0f18ec13a2263927a3a0dc546fa30373ee5c99d3d003706f595d773711edc165 -->
 
 # Harmos Testing
 
@@ -21,7 +21,9 @@ product boundaries determine where Harmos behavior belongs.
 | `harmos-packaging` | Artifact collection, receipt verification, bundles, bindings and generated-project authoring. |
 | `harmos-macros` | Inert declaration fragments and compiler-facing authoring diagnostics. |
 
-Each crate has one integration binary; its modules retain their domain fixtures.
+Each crate has at most one integration binary (storage names it `integration-engine`);
+its modules retain their domain fixtures. Layers are capped per crate in `stkr.toml`
+(`[conventions.testing.limits]`: unit 512, integration 256, acceptance 128, system 64).
 Runtime domains enter through `tests/integration/main.rs`. Storage engine stories
 live in `tests/engine/`, sharing the controllable backend in `tests/support/`.
 Their real `WorkerOwner` runs the canonical worker and joins it on close; a host
@@ -54,7 +56,7 @@ messages and receipts, stages verified outputs under `target/fixtures/`, and
 uses the Hub's canonical producer stamp. Product selectors live in its
 `metadata`; original producers and expected hashes retain their identity.
 
-Use `tests/support/fixtures.rs` for artifacts, libraries and offline inputs.
+Use `harmos-runtime/tests/support/fixtures.rs` for artifacts, libraries and offline inputs.
 Use nextest's binary environment for package-owned fixture executables. Do not
 scan a host's target directory or choose an arbitrary cached artifact. Preserve
 original build receipt bytes; the typed packaging API relocates paths while

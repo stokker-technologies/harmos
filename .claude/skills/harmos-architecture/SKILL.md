@@ -2,7 +2,7 @@
 name: harmos-architecture
 description: Design Harmos application boundaries, operation ownership, resources, and runtime composition.
 ---
-<!-- Rendered by stkr project update from .agents/skills/harmos-architecture/SKILL.md; sha256:fd5eedd4197a547bd9f8baf0d132132f015c08f42bde25049072a59906a351cf -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-architecture/SKILL.md; sha256:fb2e4e2e1e18ab858caa238e5c8e844a6e5323cbf3e5ad4c13ab9384b930cae3 -->
 
 # Harmos Architecture
 
@@ -13,8 +13,9 @@ Project contracts take precedence over generic architecture defaults. Read curre
 - `contract/` owns shared message types, operation declarations and portable
   catalogs used by the application and plugins. Because guests compile it to
   WebAssembly, it depends on `harmos-domain` rather than the host facade;
-  declarations need no Tokio, async execution or host engine. Explicit `grpc`
-  enables protobuf codecs; `harmos-packaging` owns schema and binding generation.
+  declarations need no Tokio, async execution or host engine. Domain messages are
+  codec-free: the SDK, sidecar, guest and runtime `grpc` features own protobuf
+  transcoding, and `harmos-packaging` owns schema and binding generation.
 - `app/` owns application state, resource-bound implementations and `app.rs`
   composition. CLI and GUI crates are shells. Plugins depend on the contract,
   never on the application runtime crate.
@@ -81,7 +82,7 @@ execution and plugin lifecycle traits. Native plugins use `harmos-sidecar`,
 guests use `harmos-guest`; both reexport the same SDK contracts without a host
 runtime. `harmos-storage` owns Arrow, queries, persistence and signal kernels;
 `harmos-runtime` owns its application lifecycle and operation bridge. `harmos-packaging` owns build receipts, bundles, descriptor/reflection
-projection and Python/TypeScript generators. Build scripts use it directly;
+projection and proto and Python generators. Build scripts use it directly;
 its binding features never belong on `harmos-domain` or the host facade.
 
 Each configurable subsystem owns its settings and validation in its own

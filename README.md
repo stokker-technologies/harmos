@@ -291,14 +291,18 @@ foreign and settled ids are refused alike. A watch streams every status change
 from the moment it starts until the instance stops or settles. Plugins reach them like any other operation,
 so they must declare them as requirements.
 
-Hosts can register `operations::discovery::Discovery` in their existing operation
-manager to serve `host.operations` (unary gRPC path
-`/harmos.host.v1.Host/Operations` when `grpc` is enabled). `host::Operations` accepts optional `after`,
-`rows` and `bytes`; defaults are 64 rows and 64 KiB, with maxima of 256 rows and
-4 MiB. `OperationsResponse::catalog` is a UTF-8 JSON array of
-`host::DiscoveredOperation`, containing original contracts, provider owners and
-generations, selected grants and current gRPC availability. The `next` cursor
-continues a bounded page. Discovery applies original readiness and caller
+Hosts can call `operations::listing::register(&operations, owner, lane, storage)`
+on their existing operation manager to serve `host.catalog` (unary gRPC path
+`/harmos.host.v1.Host/Catalog` when `grpc` is enabled). `host::Catalog` selects a
+`kind` (`Operations`, `Schemas`, `Streams` or `Objects`) and accepts optional
+`schema`, `after`, `rows` and `bytes`; defaults are 64 rows and 64 KiB, with
+maxima of 256 rows and 4 MiB. `CatalogPage::entries` is a UTF-8 JSON array of the
+kind's entries: `host::DiscoveredOperation` values (original contracts, provider
+owners and generations, selected grants and current gRPC availability), stored
+schemas or stored identities. The `next` cursor continues a bounded page. Stored
+kinds need the storage manager and a `host.catalog` grant scoped `schemas:*`,
+`streams:*` or `objects:*` (`<kind>:schema:<id>` with `schema`); listing
+operations needs no grant. The operation listing applies original readiness and caller
 visibility/dependency rules; `conditional_access` means invocation still checks
 request-specific grants and middleware. Re-discover after provider reload or
 runtime restart; pages do not promise a frozen registry snapshot.
