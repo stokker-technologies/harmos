@@ -31,13 +31,7 @@ pub const POLICY: OperationPolicy = OperationPolicy {
 macro_rules! operation {
     ($name:ident, $id:literal, $visibility:ident) => {
         #[harmos_runtime::message]
-        #[harmos_runtime::operation(
-                            id = $id,
-                            version = 1,
-                            policy = POLICY,
-                            response = Blob,
-                            visibility = Visibility::$visibility,
-                        )]
+        #[harmos_runtime::operation(id = $id, version = 1, policy = POLICY, response = Blob, visibility = Visibility::$visibility)]
         #[derive(Clone, PartialEq)]
         pub struct $name {
             pub blob: Blob,
