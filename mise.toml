@@ -1,4 +1,4 @@
-# === === Mise Tools === === #
+# === Mise Tools === #
 
 [tools]
 taplo = "0.10.0"
@@ -18,13 +18,13 @@ sccache = "0.18.0"
 # Versioning Tools
 git-cliff = "2.14.2"
 
-# === === Mise Settings === === #
+# === Mise Settings === #
 
 [settings]
 lockfile = true
 github_attestations = false
 
-# === === Environment Variables === === #
+# === Environment Variables === #
 
 [env]
 UV_PROJECT_ENVIRONMENT = "{{config_root}}/.venv"
@@ -42,7 +42,7 @@ cargo_guard = "{% if env.CI | default(value='false') == 'true' %}{% else %}stkr 
 description = "Install Locked Repository Tooling Dependencies"
 run = "uv sync --locked --project tools/python"
 
-# === === Tasks | Linting === === #
+# === Tasks | Linting === #
 
 [tasks."lint:rust"]
 description = "Lint / Rust"
@@ -55,7 +55,7 @@ run = [
 ]
 
 
-# === === Tasks | Formatting === === #
+# === Tasks | Formatting === #
 
 [tasks."format:rust"]
 description = "Format / Rust"
@@ -66,13 +66,13 @@ description = "Format / Rust / Check"
 run = "{{vars.cargo_guard}}cargo fmt --all --check"
 
 
-# === === Tasks | Versioning === === #
+# === Tasks | Versioning === #
 
 [tasks."changelog:preview"]
 description = "Preview The Unreleased Conventional Commit Changelog."
 run = "git-cliff --unreleased --strip all"
 
-# === === Tasks | Development === === #
+# === Tasks | Development === #
 
 [tasks."check:wasm"]
 description = "Check / Wasm"
@@ -102,23 +102,23 @@ run = "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harm
 description = "Run / Schematic / Sidecar"
 run = "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harmos_tools.examples sidecar"
 
-# === === Tasks | Build === === #
+# === Tasks | Build === #
 
 [tasks."build:workspace:release"]
 env.STKR_TEST_PROFILE = "release"
 description = "Build / Release"
 run = "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harmos_tools.packages build"
 
-# === === Tasks | Docs === === #
+# === Tasks | Docs === #
 
-# === === Tasks | Tests === === #
+# === Tasks | Tests === #
 
 [tasks."check:examples"]
 description = "Check / Example Crate Boundaries"
 run = "{{vars.cargo_guard}}cargo check --locked -p schematic-contract -p schematic-app -p schematic-cli -p schematic-guest -p schematic-sidecar -p jsonl-adapter -p harmos-observer-fixture -p harmos-lifecycle-fixture --all-targets"
 
 
-# === === Tasks | Stats === === #
+# === Tasks | Stats === #
 
 [tasks.stats]
 description = "Project Statistics"

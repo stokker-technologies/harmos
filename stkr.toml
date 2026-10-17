@@ -2,32 +2,32 @@
 # Native manifests own package metadata; mise owns executable recipes.
 # Defaults stay implicit. Commented sections do not declare configuration.
 
-# === Project ===
+# === Project === #
 
 [project]
 name = "Harmos"
 visibility = "public"
 
 
-# === Repository ===
+# === Repository === #
 
 [housekeeping.branches]
 exclude = ["main", "master", "dev", "develop", "release/**"]
 
 
-# === CI ===
+# === CI === #
 
 
-# === Agents ===
+# === Agents === #
 
 
-# === Hooks ===
+# === Hooks === #
 
 [hooks]
 step_timeout_seconds = 600
 
 
-# === Conventions ===
+# === Conventions === #
 
 # Declaration-Only Contracts Have No Runtime Work To Trace.
 [conventions.rust]
@@ -41,32 +41,19 @@ exclude = ["schematic-contract"]
 [barrels]
 exclude = ["crates/harmos/src/prelude.rs"]
 
-# === Templates ===
+# === Templates === #
 
 
-# === Release ===
+# === Release === #
 
 
-# === Documentation ===
+# === Documentation === #
 
 
-# === Screenshots ===
+# === Screenshots === #
 
 
-# === Catalogs ===
+# === Catalogs === #
 
 
-# === PyO3 ===
-
-[[catalogs]]
-language = "rust"
-path = "crates/harmos/src/storage/query/transform/mod.rs"
-name = "Transform"
-implementations = [
-  "filter.rs",
-  "project.rs",
-  "aggregate.rs",
-  "histogram.rs",
-  "downsample.rs",
-  "sort.rs",
-]
+# === PyO3 === #
