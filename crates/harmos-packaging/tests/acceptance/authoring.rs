@@ -67,7 +67,8 @@ impl Project {
             .unwrap();
         succeeded(&result);
         let project = Self { directory, root };
-        let home = project.directory.path().join("cargo-home");
+        // An Ancestor Cargo Configuration Pins The Vendored Closure; The Toolchain Manager Keeps Its Own Cargo Home
+        let home = project.directory.path().join(".cargo");
         std::fs::create_dir(&home).unwrap();
         let vendor = serde_json::to_string(&fixtures::input("vendor")).unwrap();
         std::fs::write(
@@ -98,13 +99,14 @@ impl Project {
         let mut command = Command::new(program);
         command
             .current_dir(&self.root)
-            .env("CARGO_HOME", self.directory.path().join("cargo-home"))
             .env("CARGO_TARGET_DIR", self.root.join("target"))
             .env("CARGO_NET_OFFLINE", "true")
             .env("UV_PROJECT_ENVIRONMENT", self.root.join(".venv"))
             .env("UV_CACHE_DIR", self.directory.path().join("uv-cache"))
             .env("UV_OFFLINE", "1")
-            .env("UV_CONFIG_FILE", self.directory.path().join("uv.toml"));
+            .env("UV_CONFIG_FILE", self.directory.path().join("uv.toml"))
+            // The Rendered Starter Ignore List Omits Python Bytecode, Which Would Otherwise Change The Tree Its Stamp Binds
+            .env("PYTHONDONTWRITEBYTECODE", "1");
         command
     }
 

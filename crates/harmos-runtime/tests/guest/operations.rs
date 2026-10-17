@@ -152,8 +152,15 @@ async fn shutdown_retains_cleanup() {
     assert!(failed.cleanup_pending);
     assert!(runtime.operations.call(Read { value: "fenced".into() }).await.is_err());
 
-    // Stopping Again Awaits The Retained Cleanup Without Another Attempt
-    runtime.plugin.stop("sandbox-guest").await.unwrap();
+    // Each Later Stop Resumes The Retained Cleanup Until The Guest's Own Shutdown Deadline Settles It, Without Another Attempt
+    let mut settled = false;
+    while let Err(pending) = runtime.plugin.stop("sandbox-guest").await {
+        let pending = format!("{pending:?}");
+        assert!(!settled, "the stop after the guest deadline completes cleanup: {pending}");
+        settled = pending.contains("OperationRefused(TimedOut)");
+        assert!(settled || pending.contains("guest plugin shutdown timeout"), "{pending}");
+    }
+    assert!(settled, "the guest's own shutdown deadline settled the retained invocation");
     assert_eq!(runtime.plugin.status("sandbox-guest").unwrap().attempts, 1);
     runtime.stop().await.unwrap();
 }

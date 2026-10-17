@@ -66,7 +66,7 @@ fn schema(bytes: &[u8], name: &Value) -> Value {
         .unwrap_or_else(|| panic!("referenced definition {name} has retained inert metadata"))
 }
 
-fn inventory(bytes: &[u8], facility: &str, expected: &BTreeSet<&str>) {
+fn inventory(bytes: &[u8], facility: &str, expected: &BTreeSet<&str>, required: &BTreeSet<&str>, published: &BTreeSet<&str>) {
     // Owned Fragments
     for kind in OWNED {
         let fragment = identity(bytes, kind);
@@ -79,8 +79,11 @@ fn inventory(bytes: &[u8], facility: &str, expected: &BTreeSet<&str>) {
     let provides = contracts["provides"].as_array().expect("provided wire contracts");
     let ids = provides.iter().map(|contract| contract["operation"]["id"].as_str().expect("operation id")).collect::<BTreeSet<_>>();
     assert_eq!(&ids, expected, "{facility} provided operations");
-    assert_eq!(contracts["requires"], json!([]));
-    for contract in provides {
+    let requires = contracts["requires"].as_array().expect("required wire contracts");
+    let needed =
+        requires.iter().map(|required| required["contract"]["operation"]["id"].as_str().expect("operation id")).collect::<BTreeSet<_>>();
+    assert_eq!(&needed, required, "{facility} required operations");
+    for contract in provides.iter().chain(requires.iter().map(|required| &required["contract"])) {
         schema(bytes, &contract["request"]);
         schema(bytes, &contract["response"]);
     }
@@ -104,7 +107,9 @@ fn inventory(bytes: &[u8], facility: &str, expected: &BTreeSet<&str>) {
 
     // Undeclared Sections
     assert_eq!(identity(bytes, "contributions")["sections"], json!([]));
-    assert_eq!(identity(bytes, "publications")["streams"], json!([]));
+    let streams = identity(bytes, "publications")["streams"].as_array().expect("published streams").clone();
+    let streams = streams.iter().map(|stream| stream["id"].as_str().expect("stream id").to_owned()).collect::<BTreeSet<_>>();
+    assert_eq!(streams, published.iter().map(|id| (*id).to_owned()).collect(), "{facility} published streams");
     assert_eq!(identity(bytes, "observers")["observers"], json!([]));
 }
 
@@ -112,8 +117,15 @@ fn inventory(bytes: &[u8], facility: &str, expected: &BTreeSet<&str>) {
 
 #[test]
 fn artifacts_embed_metadata() {
-    let native = SHARED.into_iter().chain(["schematic.analyze_exchange", "schematic.analyze_upload", "schematic.list_directories"]).collect::<BTreeSet<_>>();
+    let native = SHARED
+        .into_iter()
+        .chain(["schematic.analyze_exchange", "schematic.analyze_upload", "schematic.list_directories"])
+        .collect::<BTreeSet<_>>();
     let portable = SHARED.into_iter().collect::<BTreeSet<_>>();
+    // Only The Native Sidecar Publishes Analysis Progress, Through The Host
+    let publishing = BTreeSet::from(["host.publish"]);
+    let progress = BTreeSet::from(["schematic.analysis_progress"]);
+    let none = BTreeSet::new();
 
     // Read The Built Artifacts
     let sidecar = fixtures::component("schematic-sidecar");
@@ -121,12 +133,14 @@ fn artifacts_embed_metadata() {
 
     // Compare Both Declarations
     let mut declarations = Vec::new();
-    for (bytes, facility, expected) in [(&sidecar, "sidecar", &native), (&guest, "guest", &portable)] {
+    for (bytes, facility, expected, required, published) in
+        [(&sidecar, "sidecar", &native, &publishing, &progress), (&guest, "guest", &portable, &none, &none)]
+    {
         let declaration = identity(bytes, "plugin");
         assert_eq!(declaration["facility"], facility);
         assert_eq!(declaration["id"], "schematic-tools");
         assert!(declaration["version"].as_str().is_some_and(|version| !version.is_empty()), "{facility} declares the package version");
-        inventory(bytes, facility, expected);
+        inventory(bytes, facility, expected, required, published);
         declarations.push([declaration["id"].clone(), declaration["version"].clone(), declaration["description"].clone()]);
     }
     assert_eq!(declarations[0], declarations[1], "one plugin built for both facilities declares one id, version and description");
