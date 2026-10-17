@@ -65,6 +65,26 @@ pub fn binary(name: &str) -> PathBuf {
     std::env::var_os(&variable).map(PathBuf::from).unwrap_or_else(|| panic!("{variable} is unset; run the story under nextest"))
 }
 
+// The Vendored Protobuf Compiler Travels With The Stamped Offline Inputs, Not The Build Runner's Registry
+pub fn protoc() -> PathBuf {
+    let platform = match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("linux", "x86_64") => "linux-x86_64",
+        ("linux", "aarch64") => "linux-aarch_64",
+        ("macos", "x86_64") => "macos-x86_64",
+        ("macos", "aarch64") => "macos-aarch_64",
+        ("windows", _) => "win32",
+        other => panic!("no vendored protoc for {other:?}"),
+    };
+    let prefix = format!("protoc-bin-vendored-{platform}-");
+    let vendor = input("vendor");
+    let package = std::fs::read_dir(&vendor)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| path.file_name().and_then(|name| name.to_str()).is_some_and(|name| name.starts_with(&prefix)))
+        .unwrap_or_else(|| panic!("the stamped vendor directory has no {prefix}* package"));
+    package.join("bin").join(if cfg!(windows) { "protoc.exe" } else { "protoc" })
+}
+
 /* === Private Functions === */
 fn directory() -> PathBuf {
     let manifest = std::env::var_os("CARGO_MANIFEST_DIR").map(PathBuf::from).expect("nextest sets the manifest directory");

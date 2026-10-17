@@ -160,7 +160,7 @@ fn portable_messages_cross() {
     let artifacts = Artifacts::new(&contracts).unwrap();
     let target = tempfile::tempdir().unwrap();
     let root = proto::generate(&artifacts.operation_contracts().unwrap(), &target.path().join("grpc/portable")).unwrap();
-    let output = std::process::Command::new(protoc_bin_vendored::protoc_bin_path().unwrap())
+    let output = std::process::Command::new(crate::fixtures::protoc())
         .current_dir(&root)
         .arg("--proto_path=.")
         .arg(format!("--descriptor_set_out={}", target.path().join("compiled.bin").display()))
@@ -188,7 +188,7 @@ fn boxed_messages_cross() {
     let target = tempfile::tempdir().unwrap();
     let root = proto::generate(&artifacts.operation_contracts().unwrap(), &target.path().join("grpc/boxed")).unwrap();
     let compiled = target.path().join("compiled.bin");
-    let output = std::process::Command::new(protoc_bin_vendored::protoc_bin_path().unwrap())
+    let output = std::process::Command::new(crate::fixtures::protoc())
         .current_dir(&root)
         .arg("--proto_path=.")
         .arg("--include_imports")
@@ -278,7 +278,7 @@ fn exported_sources_compile() {
     let artifacts = Artifacts::new(&contracts).unwrap();
     let root = proto::generate(&artifacts.operation_contracts().unwrap(), &target.path().join("grpc/application")).unwrap();
     let compiled = target.path().join("compiled.bin");
-    let output = std::process::Command::new(protoc_bin_vendored::protoc_bin_path().unwrap())
+    let output = std::process::Command::new(crate::fixtures::protoc())
         .current_dir(&root)
         .arg("--proto_path=.")
         .arg("--include_imports")

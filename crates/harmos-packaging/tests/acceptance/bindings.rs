@@ -215,7 +215,7 @@ fn contract(template: &Contract, id: &str, method: &'static str, mut schema: Sch
 }
 
 fn protoc() -> PathBuf {
-    protoc_bin_vendored::protoc_bin_path().unwrap()
+    super::fixtures::protoc()
 }
 
 fn files(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
