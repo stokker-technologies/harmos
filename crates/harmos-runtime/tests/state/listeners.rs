@@ -246,19 +246,28 @@ impl PluginLifecycle for Host {
         resources.operations = Some(self.operations.stage_plugin(scope, |bindings| {
             bindings.register_wire_operations::<ImplementedCallbacks, _>(Lanes::Open, self.owner.clone())
         })?);
-        let original = Arc::new(tokio::sync::Mutex::new(self.owner.records.stage_listeners(
-            scope,
-            &self.operations,
-            Position::ORIGIN,
-            |bindings| bindings.record::<Fact>(),
-        )?));
-        self.view = Some(original.clone());
-        resources.listeners = Some(original);
+        if !self.skip_sources {
+            let original = Arc::new(tokio::sync::Mutex::new(self.owner.records.stage_listeners(
+                scope,
+                &self.operations,
+                Position::ORIGIN,
+                |bindings| bindings.record::<Fact>(),
+            )?));
+            self.view = Some(original.clone());
+            resources.listeners = Some(original);
+        }
 
         // The Same Scope Still Blocks Delivery Until PluginManager Commits.
-        self.owner.records.publish(fact(0)).await?;
+        self.owner.records.publish(Fact { value: 0, dropped: self.original_drop.clone() }).await?;
         tokio::task::yield_now().await;
         assert!(self.owner.seen.lock().unwrap().is_empty());
+        if self.drop_before_commit {
+            resources.listeners.take();
+            self.view.take();
+        }
+        if self.fail_start {
+            return Err(Error::InvalidInput { field: "listener fixture", reason: "failed original setup" });
+        }
         Ok(())
     }
     async fn stop(_: &PluginDefinition, _: &PluginLifecycleAuthority<'_>, backend: &mut Backends) -> Result<()> {
@@ -533,6 +542,7 @@ async fn pages_deliver_native() {
         runtime.records.publish(fact(value)).await.unwrap();
     }
     host.owner.resume.notify_one();
+    host.owner.release.notify_one();
     observed(&host.owner, 522).await;
 
     // The frontier advances only after a record's last callback settles, so
@@ -559,6 +569,7 @@ async fn gap_fences_generation() {
     runtime.records.publish(fact(1)).await.unwrap();
     runtime.records.publish(fact(2)).await.unwrap();
     host.owner.resume.notify_one();
+    host.owner.release.notify_one();
     fenced(&host).await;
     assert!(matches!(host.view.as_ref().unwrap().lock().await.failure().as_deref(), Some(Error::BeyondTail)));
     assert_eq!(manager.status("listener").unwrap().state, harmos_runtime::plugin::PluginState::Failed);
