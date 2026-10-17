@@ -12,8 +12,10 @@
 /* === Modules === */
 
 /* === Re-Exports === */
+pub use harmos_domain::model::storage::query::transform::histogram::Histogram;
 
 /* === Imports === */
+use crate::storage::query::transform::FieldPathExecution;
 // Standard Library Imports
 use std::sync::Arc;
 // Third Party Imports
@@ -21,10 +23,9 @@ use arrow_array::{Float64Array, RecordBatch, UInt64Array};
 use arrow_schema::{DataType, Field, Schema};
 // Local Imports
 use super::downsample::number;
-use super::{FieldPath, invalid, numeric_type};
-use crate::storage::codec::{Float, Many, Nested, product};
-use crate::storage::query::scalar::ScalarValue;
-use crate::{MemorySize, Result};
+use super::{invalid, numeric_type};
+use crate::Result;
+use harmos_domain::model::storage::query::scalar::ScalarValue;
 
 /* === Constants === */
 
@@ -33,11 +34,6 @@ use crate::{MemorySize, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
-#[derive(Clone, Debug)]
-pub struct Histogram {
-    pub field: FieldPath,
-    pub edges: Vec<f64>,
-}
 
 /// Incremental histogram state.
 pub struct Bins {
@@ -49,10 +45,22 @@ pub struct Bins {
 /* === Enums === */
 
 /* === Traits === */
+pub trait HistogramExecution {
+    fn output_schema(&self, input: &Schema) -> Result<Schema>;
+
+    /// Start incremental binning over batches of `input`.
+    fn start(&self, input: &Schema) -> Result<Bins>;
+
+    fn apply(
+        &self,
+        input: &RecordBatch,
+        check: &mut impl FnMut() -> Result<()>,
+    ) -> Result<RecordBatch>;
+}
 
 /* === Implementations === */
-impl Histogram {
-    pub fn output_schema(&self, input: &Schema) -> Result<Schema> {
+impl HistogramExecution for Histogram {
+    fn output_schema(&self, input: &Schema) -> Result<Schema> {
         if self.edges.len() < 2
             || self.edges.len() > 65536
             || self.edges.iter().any(|edge| !edge.is_finite())
@@ -73,7 +81,7 @@ impl Histogram {
     }
 
     /// Start incremental binning over batches of `input`.
-    pub fn start(&self, input: &Schema) -> Result<Bins> {
+    fn start(&self, input: &Schema) -> Result<Bins> {
         Ok(Bins {
             schema: Arc::new(self.output_schema(input)?),
             plan: self.clone(),
@@ -81,7 +89,7 @@ impl Histogram {
         })
     }
 
-    pub fn apply(
+    fn apply(
         &self,
         input: &RecordBatch,
         check: &mut impl FnMut() -> Result<()>,
@@ -160,17 +168,6 @@ impl Bins {
             ],
         )
         .map_err(|_| invalid("histogram output batch is invalid"))
-    }
-}
-product!(Histogram { field: Nested<FieldPath> => 1, edges: Many<Float> => 2 });
-impl MemorySize for Histogram {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            + self
-                .field
-                .memory_size()
-                .saturating_sub(std::mem::size_of_val(&self.field))
-            + self.edges.capacity().saturating_mul(8)
     }
 }
 

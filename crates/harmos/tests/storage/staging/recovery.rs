@@ -334,9 +334,9 @@ pub(super) fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    use harmos::storage::operations::{Operations, Save};
+                    use harmos::storage::operations::Save;
                     let f = Fixture::new(config()).await;
-                    Operations::register(
+                    harmos::storage::operations::register(
                         &f.runtime.operations,
                         "storage",
                         operations::Lanes::Open,

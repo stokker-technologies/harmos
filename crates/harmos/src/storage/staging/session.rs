@@ -103,7 +103,7 @@ impl<C> StorageManager<C> {
     pub async fn resume_file(&self, token: &FileSession) -> Result<StorageFile> {
         if let Err(error) = self.inner.primary.history().check(&token.history) {
             tracing::error!(file = %token.id, generation = token.generation, reason = "history mismatch", %error, "file resume rejected");
-            return Err(error);
+            return Err(error.into());
         }
         let next = token.generation.checked_add(1).ok_or_else(size_error)?;
         let mut claimed = false;

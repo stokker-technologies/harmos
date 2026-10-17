@@ -13,7 +13,7 @@ use super::backend::{Data, history, storage_settings};
 use super::fixture::state_settings;
 use super::support::{Bank, Ledger, catalog};
 use arrow_array::{Array, Float64Array, ListArray, StructArray, UInt32Array};
-use harmos::storage::query::{Query, QueryOutput, RecordSelection, RowSlice, Source};
+use harmos::storage::query::{Query, QueryArrow, RecordSelection, RowSlice, Source};
 use harmos::storage::*;
 use harmos::{Identifier, Message, Runtime};
 use std::num::NonZeroU32;
@@ -115,10 +115,10 @@ async fn mapping() {
         },
     };
     let mut reader = storage.query(request(None)).await.unwrap();
-    let Some(QueryOutput::Schema(announced)) = reader.next().await.unwrap() else {
+    let Some(QueryArrow::Schema(announced)) = reader.next().await.unwrap() else {
         panic!("schema first");
     };
-    let Some(QueryOutput::Batch(batch)) = reader.next().await.unwrap() else {
+    let Some(QueryArrow::Batch(batch)) = reader.next().await.unwrap() else {
         panic!("data batch");
     };
     let payload = batch
@@ -174,7 +174,7 @@ async fn mapping() {
         .query(request(Some(Identifier::new("absent").unwrap())))
         .await
         .unwrap();
-    let Some(QueryOutput::Schema(empty_schema)) = empty.next().await.unwrap() else {
+    let Some(QueryArrow::Schema(empty_schema)) = empty.next().await.unwrap() else {
         panic!("empty schema");
     };
     assert_eq!(announced.as_schema(), empty_schema.as_schema());
@@ -192,7 +192,7 @@ async fn mapping() {
         futures_util::future::join_all(readers.iter_mut().map(|reader| async move {
             let mut rows = 0;
             while let Some(output) = reader.next().await.unwrap() {
-                if let QueryOutput::Batch(batch) = output {
+                if let QueryArrow::Batch(batch) = output {
                     rows += batch.as_record_batch().num_rows();
                 }
             }
@@ -287,7 +287,7 @@ async fn mapping_exhaustion() {
     let mut reader = storage.query(request(Some(item))).await.unwrap();
     assert!(matches!(
         reader.next().await.unwrap(),
-        Some(QueryOutput::Schema(_))
+        Some(QueryArrow::Schema(_))
     ));
     let failure = reader.next().await.unwrap_err();
     assert!(
@@ -305,7 +305,7 @@ async fn mapping_exhaustion() {
         .unwrap();
     assert!(matches!(
         empty.next().await.unwrap(),
-        Some(QueryOutput::Schema(_))
+        Some(QueryArrow::Schema(_))
     ));
     assert!(empty.next().await.unwrap().is_none());
     assert_eq!(empty.completion().unwrap().rows, 0);
@@ -386,9 +386,9 @@ async fn mapping_growth() {
     let mut reader = storage.query(request(Some(item))).await.unwrap();
     assert!(matches!(
         reader.next().await.unwrap(),
-        Some(QueryOutput::Schema(_))
+        Some(QueryArrow::Schema(_))
     ));
-    let Some(QueryOutput::Batch(batch)) = reader.next().await.unwrap() else {
+    let Some(QueryArrow::Batch(batch)) = reader.next().await.unwrap() else {
         panic!("expanded data batch");
     };
     assert_eq!(batch.as_record_batch().num_rows(), 1);

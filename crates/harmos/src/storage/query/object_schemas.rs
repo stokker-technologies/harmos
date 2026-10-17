@@ -14,6 +14,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+use crate::storage::query::transform::ProjectExecution;
 // Standard Library Imports
 use std::sync::Arc;
 // Third Party Imports

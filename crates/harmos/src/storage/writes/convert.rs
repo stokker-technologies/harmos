@@ -21,7 +21,7 @@ use arrow_array::{
     ListArray, StringArray, StructArray, TimestampNanosecondArray, UInt32Array, UInt64Array,
 };
 // Local Imports
-use super::DataBatch;
+use super::DecodedBatch;
 use crate::schema::{
     Cardinality,
     graph::{Field, Kind, Schema},
@@ -85,7 +85,7 @@ pub fn encode_payloads(
 
 pub(crate) fn records(
     scope: Option<&Identifier>,
-    batch: &DataBatch,
+    batch: &DecodedBatch,
     schema: &Schema,
 ) -> Result<Vec<RecordInput>> {
     let data = batch.data.as_record_batch();
@@ -145,7 +145,7 @@ pub(crate) fn records(
 
 pub(crate) fn streams(
     scope: Option<&Identifier>,
-    batch: &DataBatch,
+    batch: &DecodedBatch,
     schema: &Schema,
 ) -> Result<Vec<StreamInput>> {
     let records = records(scope, batch, schema)?;
@@ -185,7 +185,7 @@ pub(crate) fn streams(
 }
 
 pub(crate) fn objects(
-    batch: &DataBatch,
+    batch: &DecodedBatch,
     schema: &Schema,
     max_key_bytes: NonZeroUsize,
 ) -> Result<Vec<ObjectValue>> {

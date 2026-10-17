@@ -113,7 +113,7 @@ async fn cancellation() {
     let mut following = storage.query(query()).await.unwrap();
     assert!(matches!(
         following.next().await.unwrap(),
-        Some(harmos::storage::query::QueryOutput::Schema(_))
+        Some(harmos::storage::query::QueryArrow::Schema(_))
     ));
     assert!(following.next().await.unwrap().is_none());
     assert_eq!(following.completion().unwrap().rows, 0);

@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+use harmos_domain::operations::storage::AbandonFile;
 
 // Standard Library Imports
 
@@ -23,7 +24,6 @@ use std::sync::Arc;
 use super::FileMutation;
 
 use crate::operations::{Context, Operation};
-use crate::operations::{OperationDeclaration, ReplaySafety, Visibility, WireOperation};
 use crate::storage::FileProgress;
 
 use crate::storage::StorageManager;
@@ -37,7 +37,6 @@ use crate::{Error, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
-pub struct AbandonFile;
 
 pub(super) struct Handler<C> {
     storage: Arc<StorageManager<C>>,
@@ -48,17 +47,6 @@ pub(super) struct Handler<C> {
 /* === Traits === */
 
 /* === Implementations === */
-impl OperationDeclaration for AbandonFile {
-    type Request = FileMutation;
-    type Response = FileProgress;
-    const ID: &'static str = "storage.abandon_file";
-    const POLICY: crate::operations::OperationPolicy = super::POLICY;
-    const VISIBILITY: Visibility = Visibility::Host;
-    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-}
-impl WireOperation for AbandonFile {
-    const VERSION: u32 = 1;
-}
 
 impl<C: 'static> Operation for Handler<C> {
     type Declaration = AbandonFile;

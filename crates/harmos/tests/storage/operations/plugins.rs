@@ -20,7 +20,7 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use super::{Fixture, Lanes, Operations, config};
+use super::{Fixture, Lanes, config};
 use harmos::Aggregate;
 use harmos::Message;
 use harmos::operations::{OperationDeclaration, OperationManager, WireDeclaration, WireOperation};
@@ -35,7 +35,7 @@ use harmos::storage::query::transform::{
     aggregate::{Aggregate as AggregateTransform, Measure},
 };
 use harmos::storage::query::{
-    Query as QueryRequest, QueryOutput, RecordSelection, RowSlice, Source,
+    Query as QueryRequest, QueryArrow, RecordSelection, RowSlice, Source,
 };
 
 use harmos::storage::SchemaKey;
@@ -206,7 +206,7 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let fixture = Fixture::new(config()).await;
-                    Operations::register(
+                    harmos::storage::operations::register(
                         &fixture.runtime.operations,
                         "storage",
                         Lanes::Open,
@@ -304,7 +304,7 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let fixture = Fixture::new(config()).await;
                     seed(&fixture, &[9_007_199_254_740_993, 9_007_199_254_740_995]).await;
-                    Operations::register(
+                    harmos::storage::operations::register(
                         &fixture.runtime.operations,
                         "storage",
                         Lanes::Open,
@@ -356,7 +356,7 @@ pub(super) fn contract_scenario() {
                         .unwrap();
                     let mut count = None;
                     while let Some(output) = collected.next().await.unwrap() {
-                        if let QueryOutput::Batch(batch) = &*output {
+                        if let QueryArrow::Batch(batch) = &QueryArrow::try_from(&*output).unwrap() {
                             let values = batch
                                 .as_record_batch()
                                 .column_by_name("count")

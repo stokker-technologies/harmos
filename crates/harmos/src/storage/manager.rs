@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+use harmos_domain::model::storage::{RecordWrite, StreamWrite};
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::io::{self, Write};
@@ -36,7 +37,7 @@ use super::{
 use crate::operations::{OperationManager, resident::Lease};
 use crate::services::{Once, ServiceDefinition};
 use crate::supervision::executor;
-use crate::{Application, Error, Identifier, Result, state::Timestamp};
+use crate::{Application, Error, Identifier, Result};
 
 /* === Constants === */
 const WORKER_NAME: &str = "harmos-storage";
@@ -49,23 +50,6 @@ pub(super) const ENTRY_OVERHEAD: usize = 1024;
 /* === Type Aliases === */
 
 /* === Structs === */
-#[derive(Clone, Copy, Debug, Serialize)]
-pub struct RecordWrite<'a> {
-    pub schema: &'a SchemaKey,
-    pub scope: Option<&'a Identifier>,
-    pub item: &'a Identifier,
-    pub source: Option<&'a Identifier>,
-    pub source_time: Option<Timestamp>,
-    pub payload: &'a [u8],
-}
-
-#[derive(Clone, Copy, Debug, Serialize)]
-pub struct StreamWrite<'a> {
-    pub stream: &'a Identifier,
-    pub sequence: u64,
-    pub record: RecordWrite<'a>,
-}
-
 #[derive(Clone, Debug)]
 pub struct StorageStatus {
     pub accepted: StorageCursor,
@@ -216,6 +200,9 @@ pub(super) enum Operation {
 }
 
 /* === Traits === */
+pub(crate) trait RecordWriteBytes {
+    fn resident_bytes(&self, history: &super::StoreHistory) -> Result<usize>;
+}
 trait WorkerOwner: Send + Sync {
     fn stop(&self) -> StorageFuture<'_, ()>;
 }
@@ -955,7 +942,7 @@ impl<C> StorageManager<C> {
     pub(crate) async fn admit_arrow_records(
         &self,
         scope: Option<&Identifier>,
-        batch: &super::writes::DataBatch,
+        batch: &super::writes::DecodedBatch,
     ) -> Result<StorageCursor> {
         let scratch = self.reserve_arrow_write(batch).await?;
         let (schema, _schema_memory) = self.lookup_schema(&batch.schema).await?;
@@ -983,7 +970,7 @@ impl<C> StorageManager<C> {
     pub(crate) async fn admit_arrow_streams(
         &self,
         scope: Option<&Identifier>,
-        batch: &super::writes::DataBatch,
+        batch: &super::writes::DecodedBatch,
     ) -> Result<StorageCursor> {
         let scratch = self.reserve_arrow_write(batch).await?;
         let (schema, _schema_memory) = self.lookup_schema(&batch.schema).await?;
@@ -998,7 +985,7 @@ impl<C> StorageManager<C> {
     pub(crate) async fn admit_arrow_objects(
         &self,
         _scope: Option<&Identifier>,
-        batch: &super::writes::DataBatch,
+        batch: &super::writes::DecodedBatch,
     ) -> Result<StorageCursor> {
         use crate::MemorySize;
         if batch.destination != batch.schema.id {
@@ -1065,7 +1052,7 @@ impl<C> StorageManager<C> {
 
     async fn check_object_preconditions(
         &self,
-        batch: &super::writes::DataBatch,
+        batch: &super::writes::DecodedBatch,
         values: &[super::ObjectValue],
     ) -> Result<()> {
         use arrow_array::Array;
@@ -1141,7 +1128,7 @@ impl<C> StorageManager<C> {
                 .await?;
             let revision = latest
                 .first()
-                .map_or(0, |entry| entry.version.revision.get());
+                .map_or(0, |entry| entry.version.revision().get());
             if revision != expected.value(row) {
                 return Err(Error::InvalidInput {
                     field: "object revision",
@@ -1152,7 +1139,10 @@ impl<C> StorageManager<C> {
         Ok(())
     }
 
-    async fn reserve_arrow_write(&self, batch: &super::writes::DataBatch) -> Result<Reservation> {
+    async fn reserve_arrow_write(
+        &self,
+        batch: &super::writes::DecodedBatch,
+    ) -> Result<Reservation> {
         use crate::MemorySize;
         if batch.data.as_record_batch().num_rows() == 0 {
             return Err(Error::InvalidInput {
@@ -1623,8 +1613,8 @@ impl WorkerOwner for Owner {
     }
 }
 
-impl RecordWrite<'_> {
-    pub(super) fn resident_bytes(&self, history: &super::StoreHistory) -> Result<usize> {
+impl RecordWriteBytes for RecordWrite<'_> {
+    fn resident_bytes(&self, history: &super::StoreHistory) -> Result<usize> {
         [
             self.payload.len(),
             self.schema.id.as_str().len(),
@@ -1642,18 +1632,6 @@ impl RecordWrite<'_> {
             field: "storage admission",
             reason: "size overflow",
         })
-    }
-
-    pub(super) fn stored(&self, position: StorageCursor) -> StoredRecord {
-        StoredRecord {
-            position,
-            schema: self.schema.clone(),
-            scope: self.scope.cloned(),
-            item: self.item.clone(),
-            source: self.source.cloned(),
-            source_time: self.source_time,
-            payload: self.payload.to_vec(),
-        }
     }
 }
 

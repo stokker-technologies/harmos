@@ -145,7 +145,7 @@ pub(super) fn objects(
         Field::new("revision", DataType::UInt64, false),
         Arc::new(UInt64Array::from(
             rows.iter()
-                .map(|row| row.version.revision.get())
+                .map(|row| row.version.revision().get())
                 .collect::<Vec<_>>(),
         )),
     ));

@@ -14,9 +14,9 @@ use super::{Fixture, Lanes, config};
 use harmos::Identifier;
 use harmos::schema::Cardinality;
 use harmos::schema::graph::{Field, Kind, Schema};
-use harmos::storage::operations::{Operations, Query, WriteSchema, WriteSchemaRequest};
+use harmos::storage::operations::{Query, WriteSchema, WriteSchemaRequest};
 use harmos::storage::query::{
-    Query as QueryRequest, QueryOutput, RowSlice, SchemaSelection, Source,
+    Query as QueryRequest, QueryArrow, RowSlice, SchemaSelection, Source,
 };
 use harmos::storage::{MutationId, SchemaInput, SchemaKey};
 use std::borrow::Cow;
@@ -77,7 +77,7 @@ fn request(f: &Fixture, name: &str) -> WriteSchemaRequest {
 }
 async fn setup() -> Fixture {
     let f = Fixture::new(config()).await;
-    Operations::register(
+    harmos::storage::operations::register(
         &f.runtime.operations,
         "storage",
         Lanes::Open,
@@ -146,12 +146,12 @@ pub(super) fn contract_scenario() {
                 let mut announced = false;
                 let mut rows = 0;
                 while let Some(output) = response.next().await.unwrap() {
-                    match &*output {
-                        QueryOutput::Schema(_) => {
+                    match &QueryArrow::try_from(&*output).unwrap() {
+                        QueryArrow::Schema(_) => {
                             assert!(!announced);
                             announced = true;
                         }
-                        QueryOutput::Batch(batch) => {
+                        QueryArrow::Batch(batch) => {
                             assert!(announced);
                             rows += batch.as_record_batch().num_rows();
                         }

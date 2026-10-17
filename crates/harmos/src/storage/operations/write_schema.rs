@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+use harmos_domain::operations::storage::{WriteSchema, WriteSchemaRequest};
 
 // Standard Library Imports
 
@@ -22,30 +23,19 @@ use std::sync::Arc;
 // Local Imports
 
 use crate::operations::{Context, Operation};
-use crate::operations::{OperationDeclaration, ReplaySafety, Visibility, WireOperation};
 
+use crate::storage::StorageCursor;
 use crate::storage::StorageManager;
-use crate::storage::{MutationId, SchemaInput, StorageCursor};
 
 use crate::{Error, Result};
 
 /* === Constants === */
 
 /* === Macros === */
-crate::storage::codec::product!(WriteSchemaRequest {
-    mutation: crate::storage::codec::Nested<MutationId> => 1,
-    schema: crate::storage::codec::Nested<SchemaInput> => 2,
-});
 
 /* === Type Aliases === */
 
 /* === Structs === */
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WriteSchemaRequest {
-    pub mutation: MutationId,
-    pub schema: SchemaInput,
-}
-pub struct WriteSchema;
 
 pub(super) struct Handler<C> {
     storage: Arc<StorageManager<C>>,
@@ -56,25 +46,6 @@ pub(super) struct Handler<C> {
 /* === Traits === */
 
 /* === Implementations === */
-impl OperationDeclaration for WriteSchema {
-    type Request = WriteSchemaRequest;
-    type Response = StorageCursor;
-    const ID: &'static str = "storage.write_schema";
-    const POLICY: crate::operations::OperationPolicy = super::POLICY;
-    const VISIBILITY: Visibility = Visibility::Host;
-    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-}
-impl WireOperation for WriteSchema {
-    const VERSION: u32 = 2;
-}
-impl crate::MemorySize for WriteSchemaRequest {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>() + self.mutation.memory_size()
-            - std::mem::size_of::<MutationId>()
-            + self.schema.memory_size()
-            - std::mem::size_of::<SchemaInput>()
-    }
-}
 
 impl<C: 'static> Operation for Handler<C> {
     type Declaration = WriteSchema;

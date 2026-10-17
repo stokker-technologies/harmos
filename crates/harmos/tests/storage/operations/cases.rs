@@ -111,7 +111,7 @@ fn own_contract() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let fixture = Fixture::new(config()).await;
-                    Operations::register(
+                    harmos::storage::operations::register(
                         &fixture.runtime.operations,
                         "storage",
                         Lanes::Open,
@@ -150,7 +150,7 @@ fn own_contract() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let fixture = Fixture::new(config()).await;
-                    Operations::register(
+                    harmos::storage::operations::register(
                         &fixture.runtime.operations,
                         "storage",
                         Lanes::Open,
@@ -250,7 +250,7 @@ fn own_contract() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let fixture = Fixture::new(config()).await;
-                    Operations::register(
+                    harmos::storage::operations::register(
                         &fixture.runtime.operations,
                         "storage",
                         Lanes::Open,
@@ -293,7 +293,7 @@ fn own_contract() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let fixture = Fixture::new(config()).await;
-                    Operations::register(
+                    harmos::storage::operations::register(
                         &fixture.runtime.operations,
                         "storage",
                         Lanes::Open,
@@ -349,7 +349,7 @@ fn own_contract() {
                     use harmos::storage::operations::{Follow, Followed};
                     tokio::time::timeout(std::time::Duration::from_secs(5), async {
                         let fixture = Fixture::new(config()).await;
-                        Operations::register(
+                        harmos::storage::operations::register(
                             &fixture.runtime.operations,
                             "storage",
                             Lanes::Open,
@@ -425,7 +425,7 @@ fn own_contract() {
                     use harmos::storage::{StoredRow, StreamWrite};
                     tokio::time::timeout(std::time::Duration::from_secs(5), async {
                         let fixture = Fixture::new(config()).await;
-                        Operations::register(
+                        harmos::storage::operations::register(
                             &fixture.runtime.operations,
                             "storage",
                             Lanes::Open,
@@ -505,7 +505,7 @@ fn own_contract() {
                     use harmos::storage::operations::{Follow, Followed};
                     use std::time::Duration;
                     let fixture = Fixture::new(config()).await;
-                    Operations::register(
+                    harmos::storage::operations::register(
                         &fixture.runtime.operations,
                         "storage",
                         Lanes::Open,

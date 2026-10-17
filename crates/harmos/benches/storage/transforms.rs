@@ -13,6 +13,7 @@ use super::waveforms;
 use arrow_array::{ArrayRef, Float64Array, RecordBatch, UInt32Array};
 use arrow_schema::{DataType, Field, Schema};
 use criterion::{BenchmarkId, Criterion, Throughput};
+use harmos::storage::query::transform::TransformExecution;
 use harmos::storage::query::transform::{
     Transform,
     aggregate::{Aggregate, Measure},

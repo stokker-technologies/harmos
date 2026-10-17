@@ -14,6 +14,9 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+use crate::storage::query::transform::AggregateExecution;
+use crate::storage::query::transform::HistogramExecution;
+use crate::storage::query::transform::TransformExecution;
 // Standard Library Imports
 use std::sync::Arc;
 

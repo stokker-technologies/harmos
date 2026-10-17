@@ -223,6 +223,21 @@ pub enum PreparationError {
 /* === Traits === */
 
 /* === Implementations === */
+impl<E> From<harmos_domain::Error> for Error<E> {
+    fn from(error: harmos_domain::Error) -> Self {
+        match error {
+            harmos_domain::Error::InvalidInput { field, reason } => {
+                Self::InvalidInput { field, reason }
+            }
+            harmos_domain::Error::ResourceExhausted { resource } => {
+                Self::ResourceExhausted { resource }
+            }
+            harmos_domain::Error::DifferentHistory => Self::DifferentHistory,
+            source => Self::OperationDeclaration { source },
+        }
+    }
+}
+
 impl<E> From<harmos_domain::operations::ContextError> for Error<E> {
     fn from(error: harmos_domain::operations::ContextError) -> Self {
         use harmos_domain::operations::ContextError;

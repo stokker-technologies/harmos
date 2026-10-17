@@ -11,7 +11,7 @@
 /* === Imports === */
 use super::{fixture::Fixture, waveforms};
 use criterion::{BenchmarkId, Criterion};
-use harmos::storage::query::{Query, QueryOutput, RowSlice, Source, StreamSelection};
+use harmos::storage::query::{Query, QueryArrow, RowSlice, Source, StreamSelection};
 use harmos::storage::*;
 use std::time::{Duration, Instant};
 /* === Constants === */
@@ -71,7 +71,7 @@ pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
                                 let mut rows = 0;
                                 let mut peak = 0;
                                 while let Some(output) = reader.next().await.unwrap() {
-                                    let QueryOutput::Batch(page) = output else {
+                                    let QueryArrow::Batch(page) = output else {
                                         continue;
                                     };
                                     rows += page.as_record_batch().num_rows();

@@ -48,6 +48,15 @@ pub enum Error {
     Scan(#[from] crate::ScanError),
     #[error(transparent)]
     Value(#[from] crate::ValueError),
+    #[error("invalid {field}: {reason}")]
+    InvalidInput {
+        field: &'static str,
+        reason: &'static str,
+    },
+    #[error("{resource} capacity is exhausted")]
+    ResourceExhausted { resource: &'static str },
+    #[error("positions belong to different store histories")]
+    DifferentHistory,
 }
 
 /* === Traits === */

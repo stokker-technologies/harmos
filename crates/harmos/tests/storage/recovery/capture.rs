@@ -935,7 +935,7 @@ fn contract_scenario() {
                         .unwrap();
                     let mut stored = Vec::new();
                     while let Some(output) = reader.next().await.unwrap() {
-                        if let harmos::storage::query::QueryOutput::Batch(batch) = output {
+                        if let harmos::storage::query::QueryArrow::Batch(batch) = output {
                             let batch = batch.as_record_batch();
                             let definitions = batch
                                 .column_by_name("definition")

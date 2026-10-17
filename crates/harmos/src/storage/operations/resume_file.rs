@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+use harmos_domain::operations::storage::ResumeFile;
 
 // Standard Library Imports
 
@@ -23,7 +24,6 @@ use std::sync::Arc;
 use super::FileMutation;
 
 use crate::operations::{Context, Operation};
-use crate::operations::{OperationDeclaration, ReplaySafety, Visibility, WireOperation};
 use crate::storage::FileProducer;
 
 use crate::storage::StorageManager;
@@ -36,7 +36,6 @@ use crate::{Error, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
-pub struct ResumeFile;
 
 pub(super) struct Handler<C> {
     storage: Arc<StorageManager<C>>,
@@ -47,17 +46,6 @@ pub(super) struct Handler<C> {
 /* === Traits === */
 
 /* === Implementations === */
-impl OperationDeclaration for ResumeFile {
-    type Request = FileMutation;
-    type Response = FileProducer;
-    const ID: &'static str = "storage.resume_file";
-    const POLICY: crate::operations::OperationPolicy = super::POLICY;
-    const VISIBILITY: Visibility = Visibility::Host;
-    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-}
-impl WireOperation for ResumeFile {
-    const VERSION: u32 = 1;
-}
 
 impl<C: 'static> Operation for Handler<C> {
     type Declaration = ResumeFile;

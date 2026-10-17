@@ -127,7 +127,7 @@ pub(crate) async fn saved_records<C>(
     storage: &StorageManager<C>,
     schema: &SchemaKey,
 ) -> Vec<(u64, Identifier)> {
-    use harmos::storage::query::{Query, QueryOutput, RecordSelection, RowSlice, Source};
+    use harmos::storage::query::{Query, QueryArrow, RecordSelection, RowSlice, Source};
     let mut reader = storage
         .query(Query {
             at: storage.cursor_saved(),
@@ -145,7 +145,7 @@ pub(crate) async fn saved_records<C>(
         .unwrap();
     let mut records = Vec::new();
     while let Some(output) = reader.next().await.unwrap() {
-        let QueryOutput::Batch(batch) = output else {
+        let QueryArrow::Batch(batch) = output else {
             continue;
         };
         let batch = batch.as_record_batch();

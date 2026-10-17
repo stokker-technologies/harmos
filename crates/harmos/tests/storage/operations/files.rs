@@ -22,7 +22,7 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use super::{Fixture, Lanes, Operations, config};
+use super::{Fixture, Lanes, config};
 use harmos::Identifier;
 use harmos::storage::files::FileBatch as FileBytes;
 use harmos::storage::follow::File as FileSelection;
@@ -48,7 +48,7 @@ use harmos::storage::{FileMetadata, FilePhase, StagedFile};
 /* === Private Functions === */
 async fn setup() -> (Fixture, harmos::storage::StorageFile, FileSelection) {
     let fixture = Fixture::new(config()).await;
-    Operations::register(
+    harmos::storage::operations::register(
         &fixture.runtime.operations,
         "storage",
         Lanes::Open,

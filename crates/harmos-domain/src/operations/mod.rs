@@ -14,6 +14,7 @@
 mod common;
 pub mod host;
 pub mod lifecycle;
+pub mod storage;
 pub mod streams;
 
 /* === Re-Exports === */

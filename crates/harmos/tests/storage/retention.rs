@@ -20,7 +20,7 @@ use harmos::storage::query::transform::{
     project::{Project, Projection},
 };
 use harmos::storage::query::{
-    ObjectSelection, ObjectVersions, Query, QueryOutput, RowSlice, Source,
+    ObjectSelection, ObjectVersions, Query, QueryArrow, RowSlice, Source,
 };
 use harmos::storage::*;
 use harmos::{Identifier, Runtime};
@@ -75,7 +75,7 @@ async fn labels<C>(
         .await?;
     let mut labels = Vec::new();
     while let Some(output) = reader.next().await? {
-        let QueryOutput::Batch(batch) = output else {
+        let QueryArrow::Batch(batch) = output else {
             continue;
         };
         let values = batch

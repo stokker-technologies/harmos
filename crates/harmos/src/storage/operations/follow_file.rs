@@ -12,9 +12,9 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+use harmos_domain::operations::storage::FollowFile;
 
 // Standard Library Imports
-use std::any::TypeId;
 
 use std::sync::Arc;
 
@@ -23,8 +23,6 @@ use std::sync::Arc;
 // Local Imports
 
 use crate::operations::{Context, Operation, StreamOutput};
-use crate::operations::{OperationDeclaration, OutputDeclaration, Visibility, WireOperation};
-use crate::schema::Described;
 use crate::storage::follow::File;
 use crate::storage::{FileBatch, FileProgress};
 
@@ -39,7 +37,6 @@ use crate::{Error, MemorySize, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
-pub struct FollowFile;
 
 pub(super) struct Handler<C> {
     storage: Arc<StorageManager<C>>,
@@ -50,23 +47,6 @@ pub(super) struct Handler<C> {
 /* === Traits === */
 
 /* === Implementations === */
-impl OperationDeclaration for FollowFile {
-    type Request = File;
-    type Response = FileProgress;
-    const ID: &'static str = "storage.follow_file";
-    const POLICY: crate::operations::OperationPolicy = super::STREAM_POLICY;
-    const VISIBILITY: Visibility = Visibility::Host;
-    fn endpoint_types() -> (Option<TypeId>, Option<TypeId>) {
-        (None, Some(TypeId::of::<FileBatch>()))
-    }
-}
-impl OutputDeclaration for FollowFile {
-    type Item = FileBatch;
-}
-impl WireOperation for FollowFile {
-    const VERSION: u32 = 1;
-    const OUTPUT: Option<crate::schema::declaration::Definition> = Some(FileBatch::DEFINITION);
-}
 
 impl<C: 'static> Operation for Handler<C> {
     type Declaration = FollowFile;

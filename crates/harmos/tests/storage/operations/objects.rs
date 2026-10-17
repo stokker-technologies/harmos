@@ -25,7 +25,7 @@ use super::super::{Bank, Data, Ledger, Recovery, catalog, config, history};
 use super::Lanes;
 use arrow_array::{StringArray, StructArray};
 use arrow_schema::{DataType, Field, Fields};
-use harmos::storage::operations::{Operations, WriteObjects};
+use harmos::storage::operations::WriteObjects;
 use harmos::storage::writes::{DataBatch, WriteReceipt, WriteRequest};
 use harmos::storage::{
     MutationId, ObjectCatalog, ObjectRetention, ObjectValue, ObjectVersion, StorageBackends,
@@ -129,7 +129,7 @@ fn contract_scenario() {
                         .runtime_with_storage(&storage)
                         .await
                         .unwrap();
-                    Operations::register(
+                    harmos::storage::operations::register(
                         &runtime.operations,
                         "storage",
                         Lanes::Open,
@@ -177,7 +177,7 @@ fn contract_scenario() {
                             sequence: 1,
                             destination: first.schema.id.clone(),
                             schema: first.schema,
-                            data,
+                            data: data.into(),
                         })
                         .await
                         .unwrap();
@@ -521,7 +521,7 @@ async fn query_fixture() -> (Runtime<Bank>, StorageManager<Objects>, Arc<Data<Ob
         .runtime_with_storage(&storage)
         .await
         .unwrap();
-    Operations::register(
+    harmos::storage::operations::register(
         &runtime.operations,
         "storage",
         Lanes::Open,

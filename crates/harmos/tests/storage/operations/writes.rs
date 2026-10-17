@@ -9,7 +9,7 @@
 /* === Modules === */
 /* === Re-Exports === */
 /* === Imports === */
-use super::{Fixture, Lanes, Operations, config};
+use super::{Fixture, Lanes, config};
 use arrow_array::{Array, ArrayRef, RecordBatch, StringArray, StructArray, UInt64Array};
 use arrow_schema::{DataType, Field, Fields, Schema};
 use harmos::operations::StreamSettings;
@@ -43,7 +43,7 @@ pub(super) fn batch(sequence: u64, destination: &str) -> DataBatch {
         sequence,
         destination: Identifier::new(destination).unwrap(),
         schema: super::super::schema(),
-        data,
+        data: data.into(),
     }
 }
 
@@ -95,7 +95,7 @@ pub(super) fn contract_scenario() {
             .unwrap()
             .block_on(async {
                 let f = Fixture::new(config()).await;
-                Operations::register(
+                harmos::storage::operations::register(
                     &f.runtime.operations,
                     "storage",
                     Lanes::Open,
@@ -159,10 +159,7 @@ pub(super) fn contract_scenario() {
                 let decoded = DataBatch::decode(&encoded).unwrap();
                 assert_eq!(decoded.sequence, 42);
                 assert_eq!(decoded.destination, original.destination);
-                assert_eq!(
-                    decoded.data.as_record_batch(),
-                    original.data.as_record_batch()
-                );
+                assert_eq!(decoded.data, original.data);
                 f.finish().await;
             })
     });

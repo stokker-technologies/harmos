@@ -164,13 +164,6 @@ path = "examples/test_component.rs"
 crate-type = ["cdylib"]
 required-features = ["test-component"]
 
-# Retired metadata must be rejected before either current-world export runs.
-[[example]]
-name = "legacy-component"
-path = "examples/legacy_component.rs"
-crate-type = ["cdylib"]
-required-features = ["componentize", "kit"]
-
 # The routed guest the host harness drives. A second binary rather than a mode
 # of the routeless one, so that "a guest serving routes presents the same world
 # as one serving none" is a claim about two components.

@@ -33,7 +33,7 @@ use harmos::storage::query::{
 use prost::Message as _;
 
 // Local Imports
-use harmos::storage::operations::{Followed, Operations, Save, SaveRequest};
+use harmos::storage::operations::{Followed, Save, SaveRequest};
 use harmos::storage::{
     FileMetadata, FileReference, StorageBackends, StorageCursor, StorageManager,
 };
@@ -112,12 +112,14 @@ async fn query_batches(
             .unwrap()
         {
             storage_query_output::Value::Item(item) => {
-                match <QueryOutput as harmos::Protobuf>::decode(&item.encode_to_vec()).unwrap() {
-                    QueryOutput::Schema(header) => {
+                let output =
+                    <QueryOutput as harmos::Protobuf>::decode(&item.encode_to_vec()).unwrap();
+                match harmos::storage::query::QueryArrow::try_from(&output).unwrap() {
+                    harmos::storage::query::QueryArrow::Schema(header) => {
                         assert!(schema.is_none() && batches.is_empty());
                         schema = Some(header);
                     }
-                    QueryOutput::Batch(batch) => {
+                    harmos::storage::query::QueryArrow::Batch(batch) => {
                         assert_eq!(
                             batch.as_record_batch().schema().as_ref(),
                             schema
@@ -168,7 +170,8 @@ fn write_batch(
         data: ArrowBatch::try_new(
             RecordBatch::try_new(Arc::new(Schema::new(fields)), columns).unwrap(),
         )
-        .unwrap(),
+        .unwrap()
+        .into(),
     }
 }
 
@@ -236,7 +239,7 @@ async fn storage_uses_data() {
             .unwrap(),
         );
         storage.start(&runtime).await.unwrap();
-        Operations::register(
+        harmos::storage::operations::register(
             &runtime.operations,
             "storage",
             super::Lanes::Open,

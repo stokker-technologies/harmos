@@ -244,8 +244,8 @@ impl<C: ObjectCatalog> StorageManager<C> {
         };
         let saved = self.cursor_saved();
         if let ObjectVersion::Exact(version) = &point.version {
-            version.history.check(&saved.history)?;
-            if version.revision.get() > saved.sequence {
+            version.history().check(&saved.history)?;
+            if version.revision().get() > saved.sequence {
                 return Ok(None);
             }
         }

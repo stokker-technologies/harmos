@@ -46,6 +46,7 @@ inline_memory!((), bool, u8, u32, u64, i32, i64, f32, f64);
 #[macro_export]
 macro_rules! postcard_product {
     ($ty:ty { $($field:ident: $field_ty:ty),* $(,)? } $(, validate = $validate:expr)?) => {
+        #[allow(unused_variables)]
         impl $crate::__private::PostcardValue for $ty {
             fn write(&self, bytes: &mut Vec<u8>) {
                 $(<$field_ty as $crate::__private::PostcardValue>::write(&self.$field, bytes);)*

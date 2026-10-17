@@ -23,7 +23,7 @@ use std::time::Duration;
 // Local Imports
 use super::{Fixture, config, metadata};
 use harmos::Identifier;
-use harmos::storage::operations::{FileMutation, Operations, ResumeFile};
+use harmos::storage::operations::{FileMutation, ResumeFile};
 use harmos::storage::{MutationId, StorageManager};
 
 /* === Constants === */
@@ -102,7 +102,7 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let f = Fixture::new(config()).await;
-                    Operations::register(
+                    harmos::storage::operations::register(
                         &f.runtime.operations,
                         "storage",
                         crate::operations::Lanes::Open,
@@ -269,7 +269,7 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let f = Fixture::new(config()).await;
-                    Operations::register(
+                    harmos::storage::operations::register(
                         &f.runtime.operations,
                         "storage",
                         crate::operations::Lanes::Open,

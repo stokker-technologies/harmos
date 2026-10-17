@@ -19,6 +19,7 @@ use std::sync::Arc;
 // Third Party Imports
 use arrow_array::{Array, Int64Array, RecordBatch};
 use arrow_schema::{DataType, Field, Schema};
+use harmos::storage::query::transform::TransformExecution;
 // Local Imports
 use super::backend::{Data, Recovery, history, storage_settings};
 use super::support::{Bank, Ledger, catalog};

@@ -25,6 +25,7 @@ pub mod journal;
 pub mod listeners;
 pub mod message;
 mod metadata;
+pub mod model;
 pub mod observers;
 pub mod operations;
 pub mod plugin;
