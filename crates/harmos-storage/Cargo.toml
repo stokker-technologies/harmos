@@ -64,6 +64,9 @@ tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
 # === Dev Dependencies ===
 
 [dev-dependencies]
+# Local
+harmos-domain = { workspace = true, features = ["derive"] }
+
 # Async
 futures-util = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "test-util"] }

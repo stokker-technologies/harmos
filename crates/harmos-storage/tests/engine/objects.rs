@@ -332,13 +332,11 @@ fn ambiguous_catalog_refused() {
         },
         storage_settings(),
     );
-    assert!(matches!(
-        result,
-        Err(harmos_storage::Error::InvalidInput {
-            field: "object catalog",
-            ..
-        })
-    ));
+    assert!(
+        matches!(&result, Err(harmos_storage::Error::Domain(harmos_domain::Error::InvalidInput { field: "object catalog", .. }))),
+        "{:?}",
+        result.err()
+    );
     assert!(!primary.control.open.load(Ordering::SeqCst));
     assert!(!recovery.control.open.load(Ordering::SeqCst));
 }

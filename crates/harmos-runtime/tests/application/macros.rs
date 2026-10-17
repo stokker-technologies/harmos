@@ -402,9 +402,9 @@ mod unified_plugins {
         assert_eq!(inert.interval, physical.interval);
         assert_eq!(inert.streams.len(), physical.streams.len());
         // The Observe Control Is Built In, Never An Authored Provision.
-        let control = WireDeclaration::of::<harmos_runtime::operations::observers::Control>().contract().unwrap();
-        assert_eq!(control.operation().id.as_str(), "harmos.observe");
-        assert!(!provides.contains(&control));
+        let control = <harmos_runtime::operations::observers::Control as harmos_runtime::operations::OperationDeclaration>::ID;
+        assert_eq!(control, "harmos.observe");
+        assert!(provides.iter().all(|contract| contract.operation().id.as_str() != control));
     }
 
     #[test]

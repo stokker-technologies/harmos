@@ -232,5 +232,6 @@ fn collection_checks_schema() {
         .collect::<BTreeMap<_, _>>();
     capture.receipt["generated"] = json!(generated);
     std::fs::write(&descriptor, b"replaced after compile").unwrap();
-    assert!(matches!(capture.collect(), Err(Error::ArtifactChanged(changed)) if changed == descriptor));
+    // A Generated File Replaced After Compilation No Longer Matches The Producer Snapshot.
+    assert!(matches!(capture.collect(), Err(Error::Settings(reason)) if reason.contains("generated schema set differs")));
 }

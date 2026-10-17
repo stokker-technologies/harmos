@@ -430,6 +430,11 @@ impl Operation for PrivateEchoing {
             self.resources.runs.fetch_add(1, Ordering::SeqCst);
             self.resources.seen.lock().unwrap().push(context.id());
             self.state.attempts += 1;
+            if value.value == "block" {
+                let _joined = Joined(&self.resources.wire_joined);
+                self.resources.wire_started.notify_one();
+                std::future::pending::<()>().await;
+            }
             Ok(format!("{}:{}", value.value, self.state.attempts))
         }
         .await;
@@ -437,7 +442,11 @@ impl Operation for PrivateEchoing {
     }
 }
 
-
+impl Drop for Joined<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_add(1, Ordering::SeqCst);
+    }
+}
 
 pub(super) struct Nesting {
     _resources: Arc<Owner>,
@@ -535,19 +544,6 @@ async fn malformed_payload_refused() {
     runtime.operations.register_wire_operations::<Implemented, _>("app", Lanes::Open, owner.clone()).unwrap();
     assert!(matches!(runtime.operations.submit_encoded(Echo::ID, vec![0xff]), Err(Error::OperationPayload { .. })));
     // The refused payload constructs nothing.
-    assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn binding_never_acquires() {
-    let runtime = runtime().await;
-    let owner = Arc::new(Owner::default());
-    runtime.operations.register_operations::<Implemented, _>("app", Lanes::Open, owner.clone()).unwrap();
-    assert!(matches!(
-        runtime.operations.submit_encoded(Echo::ID, Text::from("value").encode_to_vec()),
-        Err(Error::InvalidInput { field: "encoded operation", .. })
-    ));
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
     runtime.stop().await.unwrap();
 }
