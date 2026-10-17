@@ -58,15 +58,17 @@ def main() -> None:
     before = archive.tree(ROOT)
     receipt = archive.build(ROOT, profile, ["--all-features"])
     workspace = _messages(receipt)
+    # The Archive Holds Test Targets Only; The Authoring Tool Binary Is Its Own Capture.
+    tooling = archive.compile(ROOT, profile, ["-p", "cargo-harmos", "--all-features"])
     native = archive.compile(SCHEMATIC.parent, profile, ["-p", "schematic-cli", "-p", "schematic-sidecar"])
     schematic = _messages(native)
-    producers = [receipt, native]
-    tool = _executable(workspace, "cargo-harmos")
-    archive.verify_outputs(receipt, [tool])
+    producers = [receipt, tooling, native]
+    tool = _executable(_messages(tooling), "cargo-harmos")
+    archive.verify_outputs(tooling, [tool])
     shutil.rmtree(FIXTURES, ignore_errors=True)
     FIXTURES.mkdir(parents=True)
     files = {}
-    artifacts = {"cargo-harmos": _keep(tool, "cargo-harmos", [receipt], files)}
+    artifacts = {"cargo-harmos": _keep(tool, "cargo-harmos", [tooling], files)}
     builds = {}
     for package, manifest, backend, capture in [
         ("schematic-sidecar", SCHEMATIC, "sidecar", native),
@@ -75,7 +77,7 @@ def main() -> None:
         if capture is None:
             capture = archive.compile(manifest.parent, profile, ["-p", package, "--target", "wasm32-unknown-unknown"])
             producers.append(capture)
-        built, collected, product = _collect(tool, manifest, package, backend, profile, receipt, capture)
+        built, collected, product = _collect(tool, manifest, package, backend, profile, tooling, capture)
         producers.append(product)
         artifacts[package], builds[package] = _stage_build(built, collected, package, [capture, product], files)
     artifacts["schematic-cli"] = _keep(_executable(schematic, "schematic-cli"), "schematic-cli", [native], files)
