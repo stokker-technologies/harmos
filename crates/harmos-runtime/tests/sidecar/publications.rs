@@ -485,11 +485,10 @@ impl harmos_runtime::Plugin for Batches {
             .publish_batch_on::<TimedRows>(&timed)
             .await
             .map_err(harmos_sidecar::Refusal::from)?;
-        // Kit Stamps: Each Row Carries The Time It Was Pushed, Not Sent
+        // Source Stamps Survive The Native Wire And Retained Window
         let mut clocked = publisher.batch::<ClockedRows>();
         for sample in 0..100 {
-            clocked.push(support::pulse(sample));
-            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+            clocked.push_at(support::pulse(sample), TIMED_BASE + 1_000 * sample as i64);
         }
         publisher
             .publish_batch_on::<ClockedRows>(&clocked)
@@ -1215,22 +1214,9 @@ async fn batches_keep_order() {
             .map(|sample| (sample, TIMED_BASE + 1_000 * sample as i64))
             .collect::<Vec<_>>()
     );
-    // Pushed At Least A Millisecond Apart: Strictly Rising Stamps
-    let clocked = stamps("batches.clocked").await;
-    assert_eq!(
-        clocked
-            .iter()
-            .map(|(sample, _)| *sample)
-            .collect::<Vec<_>>(),
-        (0..100).collect::<Vec<_>>()
-    );
-    let gaps: Vec<_> = clocked
-        .windows(2)
-        .map(|pair| pair[1].1 - pair[0].1)
-        .collect();
-    assert!(gaps.iter().all(|gap| *gap >= 1_000), "{gaps:?}");
-    let span = clocked[99].1 - clocked[0].1;
-    assert!((99_000..10_000_000).contains(&span), "{span}");
+    // Kit Clock Monotonicity Is Exercised In The Publisher's Controlled-Clock Unit Story.
+    assert_eq!(stamps("batches.clocked").await, (0..100)
+        .map(|sample| (sample, TIMED_BASE + 1_000 * sample as i64)).collect::<Vec<_>>());
     // The Backwards Row And Everything After It Stay Unpublished
     assert_eq!(
         stamps("batches.stamped").await,

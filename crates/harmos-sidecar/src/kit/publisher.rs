@@ -242,3 +242,56 @@ where
 /* === Private Functions === */
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::Batch;
+    use harmos_domain::StreamSpec;
+
+    struct Samples;
+
+    impl StreamSpec for Samples {
+        type Row = u8;
+        const ID: &'static str = "batch.clock";
+        const VERSION: u32 = 1;
+        const WINDOW: usize = 8;
+    }
+
+    #[test]
+    fn push_clock_never_regresses() {
+        let mut batch = Batch::<Samples> {
+            rows: Vec::new(), stamps: Vec::new(), latest: None, clock: || None,
+        };
+        batch.push(0);
+        batch.clock = || Some(100);
+        batch.push(1);
+        batch.clock = || Some(90);
+        batch.push(2);
+        batch.clock = || None;
+        batch.push(3);
+        batch.clock = || Some(120);
+        batch.push(4);
+        assert_eq!(batch.rows(), &[0, 1, 2, 3, 4]);
+        assert_eq!(batch.stamps, [None, Some(100), Some(100), Some(100), Some(120)]);
+        batch.clear();
+        assert!(batch.is_empty());
+        batch.clock = || Some(110);
+        batch.push(5);
+        assert_eq!(batch.stamps, [Some(120)], "reuse retains the previous high watermark");
+    }
+
+    #[test]
+    fn explicit_stamps_preserve_source_time() {
+        let mut batch = Batch::<Samples> {
+            rows: Vec::new(), stamps: Vec::new(), latest: None,
+            clock: || panic!("explicit stamps do not consult the kit clock"),
+        };
+        batch.push_at(1, 100);
+        batch.push_at(2, 90);
+        assert_eq!(batch.rows(), &[1, 2]);
+        assert_eq!(batch.stamps, [Some(100), Some(90)]);
+        batch.clock = || Some(80);
+        batch.push(3);
+        assert_eq!(batch.stamps, [Some(100), Some(90), Some(100)]);
+    }
+}
