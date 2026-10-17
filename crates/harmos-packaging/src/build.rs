@@ -364,6 +364,9 @@ fn finish_build(
         artifact.path = output;
     }
 
+    let expected_schemas = generated.map(|generated| generated.iter().filter(|(path, _)| {
+        outputs.iter().any(|(_, directory)| path.starts_with(directory.join("grpc")))
+    }).map(|(path, sha256)| (path.clone(), sha256.clone())).collect::<BTreeMap<_, _>>());
     let mut schemas = BTreeMap::new();
     for (producer, directory) in outputs {
         let root = directory.join("grpc");
@@ -397,12 +400,12 @@ fn finish_build(
         }
     }
     let schemas: Vec<_> = schemas.into_values().collect();
-    if let Some(generated) = generated {
-        for schema in &schemas {
-            for (name, sha256) in &schema.files {
-                let path = schema.directory.join(name);
-                if generated.get(&path) != Some(sha256) { return Err(Error::ArtifactChanged(path)); }
-            }
+    if let Some(expected) = expected_schemas {
+        let actual = schemas.iter().flat_map(|schema| schema.files.iter().map(|(name, sha256)|
+            (schema.directory.join(name), sha256.clone())
+        )).collect::<BTreeMap<_, _>>();
+        if actual != expected {
+            return Err(Error::Settings("generated schema set differs from the archive producer snapshot".into()));
         }
     }
     cancellation.check()?;
