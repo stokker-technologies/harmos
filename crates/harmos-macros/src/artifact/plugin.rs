@@ -308,11 +308,7 @@ fn requirements(input: ParseStream) -> Result<Vec<Listed>, Error> {
             if keyword != "scope" {
                 return Err(Error::new(
                     keyword.span(),
-                    if matches!(keyword.to_string().as_str(), "survey" | "egress" | "source") {
-                        "grant kinds are retired; a requirement grants its own operation, scoped with `scope(\"name\", ...)`"
-                    } else {
-                        "a requirement scopes its operation's grant with `scope(\"name\", ...)`"
-                    },
+                    "a requirement scopes its operation's grant with `scope(\"name\", ...)`",
                 ));
             }
             let content;

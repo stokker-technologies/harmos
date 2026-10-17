@@ -24,13 +24,11 @@ use crate::operations::{Contract, Definition};
 use crate::{FRAGMENT_LIMIT, ScanError, StreamDeclaration, artifact_subset};
 
 /* === Constants === */
-const OWNED: [&str; 17] = [
+const OWNED: [&str; 14] = [
     "capabilities",
     "contracts",
     "contributions",
-    "egress",
     "guest",
-    "invoke",
     "listeners",
     "observers",
     "operations",
@@ -41,7 +39,6 @@ const OWNED: [&str; 17] = [
     "schema",
     "sidecar",
     "subscribe",
-    "survey",
 ];
 
 /* === Macros === */

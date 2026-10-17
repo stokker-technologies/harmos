@@ -18,10 +18,6 @@ use crate::scenario_runtime;
 // Third Party Imports
 
 // Local Imports
-use harmos_domain::__private::DecodeInput;
-use harmos_domain::operations::host::{
-    EgressRequest, Fetched, Header, Measured, RecallResponse, Remembered, SurveyResponse,
-};
 use harmos_domain::operations::streams::{FollowingRow, Publication};
 use harmos_domain::{MemorySize, Protobuf};
 
@@ -70,28 +66,6 @@ struct BatchedRow {
     payload: Vec<u8>,
     #[prost(int64, optional, tag = "2")]
     published_delta_micros: Option<i64>,
-}
-
-#[derive(Clone, PartialEq, prost::Message)]
-struct PreviousHeader {
-    #[prost(string, tag = "1")]
-    name: String,
-    #[prost(string, tag = "2")]
-    value: String,
-}
-
-#[derive(Clone, PartialEq, prost::Message)]
-struct PreviousEgress {
-    #[prost(string, tag = "1")]
-    name: String,
-    #[prost(string, tag = "2")]
-    method: String,
-    #[prost(string, tag = "3")]
-    path: String,
-    #[prost(message, repeated, tag = "4")]
-    headers: Vec<PreviousHeader>,
-    #[prost(bytes = "vec", tag = "5")]
-    body: Vec<u8>,
 }
 
 /* === Enums === */
@@ -204,116 +178,6 @@ fn contract_scenario() {
             );
             assert_eq!(steady.encode_to_vec().len(), 6);
             roundtrip(value);
-        });
-    }
-    {
-        scenario_runtime::check("headers_keep_elements", || {
-            let value = EgressRequest {
-                name: "endpoint".into(),
-                method: "GET".into(),
-                path: "/".into(),
-                headers: vec![
-                    Header::default(),
-                    Header {
-                        name: "Accept".into(),
-                        value: "text/plain".into(),
-                    },
-                ],
-                body: vec![7],
-            };
-            let previous = PreviousEgress {
-                name: value.name.clone(),
-                method: value.method.clone(),
-                path: value.path.clone(),
-                headers: value
-                    .headers
-                    .iter()
-                    .map(|header| PreviousHeader {
-                        name: header.name.clone(),
-                        value: header.value.clone(),
-                    })
-                    .collect(),
-                body: value.body.clone(),
-            };
-            assert_eq!(
-                value.encode_to_vec(),
-                prost::Message::encode_to_vec(&previous)
-            );
-            roundtrip(value);
-        });
-    }
-    {
-        scenario_runtime::check("messages_charge_container", || {
-            let bytes = [0x22, 0].repeat(4096);
-            let bound = EgressRequest::decoding_memory(&bytes).unwrap();
-            let value = EgressRequest::decode(&bytes).unwrap();
-            assert_eq!(value.headers.len(), 4096);
-            assert_eq!(value.headers.capacity(), 4096);
-            assert!(
-                bound
-                    >= std::mem::size_of::<EgressRequest>() + 4096 * std::mem::size_of::<Header>()
-            );
-            assert!(bound >= value.memory_size());
-            assert!(value.memory_size() > bytes.len());
-        });
-    }
-    {
-        scenario_runtime::check("preflight_checks_replacements", || {
-            // Last Scalar Wins, But Both Allocations Remain In The Bound
-            let bytes = [0x0a, 3, b'o', b'l', b'd', 0x0a, 1, b'n'];
-            let value = Publication::decode(&bytes).unwrap();
-            assert_eq!(value.stream, "n");
-            assert!(
-                Publication::decoding_memory(&bytes).unwrap()
-                    >= std::mem::size_of::<Publication>() + 4
-            );
-            // A Borrowed Parent Merge Supplies Two Fragments Without Concatenation
-            let parent = [0x0a, 5, 0x0a, 3, b'o', b'l', b'd', 0x0a, 3, 0x0a, 1, b'n'];
-            let source = DecodeInput::new(&parent);
-            let input = source.field(1).unwrap();
-            assert_eq!(Publication::decode_input(input).unwrap(), value);
-            assert_eq!(
-                Publication::decoding_memory_input(input).unwrap(),
-                Publication::decoding_memory(&bytes).unwrap()
-            );
-            for malformed in [vec![0x22, 3, 0x0a, 1, 255], vec![0x22, 1, 0], vec![0x08, 0]] {
-                assert!(EgressRequest::decoding_memory(&malformed).is_err());
-                assert!(EgressRequest::decode(&malformed).is_err());
-            }
-            // Unknown Fields Remain Accepted By The Original Protobuf Contract
-            assert_eq!(
-                Publication::decode(&[0x78, 1]).unwrap(),
-                Publication::default()
-            );
-        });
-    }
-    {
-        scenario_runtime::check("responses_bound_rows", || {
-            roundtrip(Fetched {
-                status: 200,
-                headers: vec![Header::default()],
-                body: vec![8; 64],
-            });
-            roundtrip(RecallResponse {
-                rows: vec![
-                    Remembered {
-                        position: u64::MAX,
-                        name: "record".into(),
-                        version: 2,
-                        payload: vec![1; 32],
-                    },
-                    Remembered::default(),
-                ],
-            });
-            roundtrip(SurveyResponse {
-                rows: vec![
-                    Measured {
-                        field: "temperature".into(),
-                        value: f64::NEG_INFINITY,
-                    },
-                    Measured::default(),
-                ],
-            });
         });
     }
 }

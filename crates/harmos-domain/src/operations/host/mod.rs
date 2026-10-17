@@ -34,26 +34,6 @@ pub const POLICY: OperationPolicy = OperationPolicy {
 };
 
 /* === Macros === */
-macro_rules! declarations {
-    ($( $(#[$meta:meta])* $name:ident ),* $(,)?) => {
-        $(
-            $(#[$meta])*
-            pub struct $name;
-
-            impl WireOperation for $name {
-                const VERSION: u32 = 1;
-            }
-        )*
-    };
-}
-
-declarations! {
-        RecordSelf,
-        RecallSelf,
-        Invoke,
-        Egress,
-        Survey,
-}
 
 /* === Type Aliases === */
 
@@ -98,54 +78,6 @@ impl OperationDeclaration for Operations {
     const VISIBILITY: Visibility = Visibility::Shared;
     const DESCRIPTION: &'static str =
         "Discover bounded live contracts; invocation authorization remains conditional";
-}
-
-impl OperationDeclaration for RecordSelf {
-    type Request = RecordRequest;
-    type Response = Receipt;
-    const ID: &'static str = "host.record_self";
-    const POLICY: OperationPolicy = POLICY;
-    const VISIBILITY: Visibility = Visibility::Shared;
-}
-
-impl OperationDeclaration for RecallSelf {
-    type Request = RecallRequest;
-    type Response = RecallResponse;
-    const ID: &'static str = "host.recall_self";
-    const POLICY: OperationPolicy = POLICY;
-    const VISIBILITY: Visibility = Visibility::Shared;
-}
-
-impl OperationDeclaration for Invoke {
-    type Request = InvokeRequest;
-    type Response = Receipt;
-    const ID: &'static str = "host.invoke";
-    const POLICY: OperationPolicy = POLICY;
-    const VISIBILITY: Visibility = Visibility::Shared;
-}
-
-impl OperationDeclaration for Egress {
-    type Request = EgressRequest;
-    type Response = Fetched;
-    const ID: &'static str = "host.egress";
-    const POLICY: OperationPolicy = POLICY;
-    const VISIBILITY: Visibility = Visibility::Shared;
-
-    fn grant(request: &EgressRequest) -> Option<Grant> {
-        Some(Grant::of(Self::ID, request.name.clone()))
-    }
-}
-
-impl OperationDeclaration for Survey {
-    type Request = SurveyRequest;
-    type Response = SurveyResponse;
-    const ID: &'static str = "host.survey";
-    const POLICY: OperationPolicy = POLICY;
-    const VISIBILITY: Visibility = Visibility::Shared;
-
-    fn grant(request: &SurveyRequest) -> Option<Grant> {
-        Some(Grant::of(Self::ID, request.stream.clone()))
-    }
 }
 
 /* === Public Functions === */

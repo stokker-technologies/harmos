@@ -363,8 +363,8 @@ mod unified_plugins {
         description = "Inert Product SDK Declaration",
         provides = ObserverOperations,
         requires(
-            harmos::operations::host::Invoke,
-            harmos::operations::host::Survey: scope("reading", "power")
+            harmos::operations::streams::Publish,
+            harmos::operations::lifecycle::Status: scope("reading", "power")
         ),
         observers = ObserverCatalog,
         observer_control = ObserverObserve,
@@ -402,21 +402,21 @@ mod unified_plugins {
         assert_eq!(required.len(), 2);
         assert_eq!(
             required[0].contract.operation().id.as_str(),
-            <harmos::operations::host::Invoke as harmos::operations::OperationDeclaration>::ID
+            <harmos::operations::streams::Publish as harmos::operations::OperationDeclaration>::ID
         );
         assert!(required[0].grants.is_empty());
         assert_eq!(
             required[1].grants,
             [
-                harmos_domain::plugin::Grant::of("host.survey", "reading"),
-                harmos_domain::plugin::Grant::of("host.survey", "power"),
+                harmos_domain::plugin::Grant::of("host.operations.status", "reading"),
+                harmos_domain::plugin::Grant::of("host.operations.status", "power"),
             ]
         );
         // A grant names the operation it permits and, for a scoped
         // operation, the stream; the retired kinded shape is refused.
         assert_eq!(
             serde_json::to_string(&required[1].grants[0]).unwrap(),
-            r#"{"operation":"host.survey","scope":"reading"}"#
+            r#"{"operation":"host.operations.status","scope":"reading"}"#
         );
         assert!(
             serde_json::from_str::<harmos_domain::plugin::Grant>(r#"{"survey":"reading"}"#)

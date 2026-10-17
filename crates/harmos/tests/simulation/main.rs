@@ -1142,3 +1142,13 @@ fn scripted_draft_lifecycle() {
 // WORK-AC026, on the harness the criterion exists for: an attempt inside a
 // seeded simulation measures the time the script advanced, not the time the
 // process spent, and the two advances that made it up add.
+
+// The Feature Only Adds: A Spawned Start Stays Send Under Simulation.
+#[tokio::test]
+async fn simulation_spawns_start() {
+    let runtime = tokio::spawn(bank(7).runtime())
+        .await
+        .expect("the spawned start completes")
+        .expect("the bank runtime starts");
+    runtime.stop().await.unwrap();
+}

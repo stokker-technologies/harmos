@@ -8,16 +8,9 @@
  */
 
 /* === Modules === */
-#[path = "../support/core_egress.rs"]
-#[cfg(all(feature = "plugin-sidecar", feature = "plugin-guest"))]
-mod core_egress;
 #[path = "../support/process_core_contract.rs"]
 #[cfg(all(feature = "plugin-sidecar", feature = "plugin-guest"))]
 mod process_core_contract;
-
-#[path = "../support/core_journal.rs"]
-#[cfg(all(feature = "plugin-sidecar", feature = "plugin-guest"))]
-mod core_journal;
 
 #[path = "../support/mod.rs"]
 mod support;
