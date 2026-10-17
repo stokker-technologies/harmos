@@ -2,7 +2,7 @@
 name: harmos-authoring
 description: Author Harmos operations, plugins, streaming endpoints, and generated transport contracts.
 ---
-<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/SKILL.md; sha256:b251b4369a5d65f336abeb840b289ea42b874a49f5d76f61d8dc7e78f9832364 -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/SKILL.md; sha256:c8616e7837117acc367c77fd1627240ac1ca425bd5dd1e3686f633138b0220c8 -->
 
 # Harmos Authoring
 
@@ -417,8 +417,9 @@ layouts for guests and sidecars.
   physical cleanup resumes. The SDK lifecycle leaves keep their wire ids
   (`harmos.initialize`, `harmos.shutdown`).
 - Native plugins depend on `harmos-sidecar`; guests depend on `harmos-guest`.
-  Both use shared declarations from `harmos-domain` without importing the host
-  runtime. Hosts compose plugin execution through `harmos::plugin` and select
+  Pure shared declarations use `harmos-domain`. Async handlers and lifecycle
+  implementations use `harmos-sdk` through the carrier reexports, sharing the
+  original traits and values without importing the host runtime. Hosts compose plugin execution through `harmos::plugin` and select
   `plugin-sidecar` or `plugin-guest`.
 - `harmos-packaging` owns inspection, build receipts, bundling and binding
   generators; `cargo-harmos` is its CLI. `cargo harmos sidecar|guest build`

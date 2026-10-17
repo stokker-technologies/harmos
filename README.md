@@ -160,10 +160,12 @@ are always available. Optional facilities are disabled by default.
 | `simulation` | Deterministic runtime simulation. |
 
 The `harmos` facade composes `harmos-domain` and `harmos-runtime`.
-Applications compose the runtime through `harmos`. Shared domain declarations,
-plugins and portable clients use `harmos-domain`; native plugins add
+Applications compose the runtime through `harmos`. Shared portable declarations use `harmos-domain`. Async plugin and client execution
+uses `harmos-sdk`; native plugins add
 `harmos-sidecar` and guests add `harmos-guest`. Build scripts and development tools
 use `harmos-packaging`, which depends on the domain without hosting engines.
+`harmos-storage` owns the Arrow query and persistence engine plus signal kernels;
+`harmos-runtime` composes that engine with host lifecycle and managed state.
 
 ```toml
 [build-dependencies]
@@ -359,9 +361,9 @@ Every read shares the one read budget. Work that cannot fit while other queries
 hold memory waits for released capacity; work that can never fit the budget, even
 after splitting source pages down to one row, fails with `ResourceExhausted`
 instead of waiting on itself. A reader that already holds memory, including
-batches its consumer retains, waits to grow only while no other such reader is
-waiting; otherwise it fails with `ResourceExhausted` so two readers never wait on
-each other's retained batches. Dropping a reader or an in-progress `next` cancels
+batches its consumer retains, may wait while another owner can release capacity.
+Growth fails with `ResourceExhausted` only when the waiting holders form a certain
+cycle: none could grow even if every owner outside that set released its bytes. Dropping a reader or an in-progress `next` cancels
 it and releases its query slot; batches already returned stay charged until
 they are dropped.
 
@@ -370,8 +372,8 @@ does: only rows stored after it are read, in position order.
 
 Typed historical reads decode saved objects and records from their exact stored
 bytes in pages bounded by the response settings, so payloads never expand to
-Arrow and object size is not limited by the Arrow field bound. Optional filters
-use the query source columns (`_storage.*`, `payload.*`). A schema that was never
+Arrow and object size is not limited by the Arrow field bound. Filter decoded
+values in the consumer, or use a `Query` transform for column predicates. A schema that was never
 written reads as no rows, whereas a `Query` over it is refused because it has no
 schema to emit.
 
@@ -381,14 +383,13 @@ let mut reader = storage
         at: at.clone(),
         key: None,
         versions: ObjectVersions::Latest,
-        filters,
     })
     .await?;
 while let Some(page) = reader.next().await? {
     // Vec<ObjectRevision<Experiment>>
 }
 let records = storage
-    .read_records::<Reading>(RecordRead { at, selection, after: 0, filters: Vec::new() })
+    .read_records::<Reading>(RecordRead { at, selection, after: 0 })
     .await?
     .collect()
     .await?; // Vec<StoredRecord<Reading>>

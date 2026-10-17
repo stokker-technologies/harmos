@@ -2,7 +2,7 @@
 name: harmos-architecture
 description: Design Harmos application boundaries, operation ownership, resources, and runtime composition.
 ---
-<!-- Rendered by stkr project update from .agents/skills/harmos-architecture/SKILL.md; sha256:47ee9d9785c21c1f8555686751bb724eb33531161cde515d70e1da3bd4ed86ae -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-architecture/SKILL.md; sha256:fd5eedd4197a547bd9f8baf0d132132f015c08f42bde25049072a59906a351cf -->
 
 # Harmos Architecture
 
@@ -59,22 +59,28 @@ Project contracts take precedence over generic architecture defaults. Read curre
   neither requires a separate SDK host or changes original caller authority.
   Keep custom `PluginLifecycle` drivers behind the lower-level `PluginManager`
   extension rather than requiring them in ordinary applications.
-- Plugin-specific public types carry the `Plugin` prefix. Manager operations use
-  `harmos::Result` and `harmos::Error`, not separate per-manager error facades.
+- Plugin-specific public types carry the `Plugin` prefix. Runtime managers use
+  `harmos::Result` and `harmos::Error`. The storage engine owns
+  `harmos_storage::Result` and `harmos_storage::Error`; its runtime bridge maps
+  failures when composing host lifecycle work.
 
 
 ## Features And Imports
 
 The `harmos` application facade composes domain declarations and host runtime
-execution. The runtime includes managed state, streams, storage and authoring;
+execution. The runtime composes managed state, streams, the storage engine and authoring;
 optional facilities are `plugin`, `plugin-sidecar`, `plugin-guest`, `grpc`,
 `bindings-proto`, `signal`, `signal-fft` and `simulation`. Sidecar and guest
 hosting imply `plugin`; gRPC implies `bindings-proto`. TLS and Web policy belong
 to the runtime gRPC settings.
 
-Shared product domain crates depend on `harmos-domain`. Native plugin crates use
-`harmos-sidecar`, guest crates use `harmos-guest`; neither pulls in the host
-runtime. `harmos-packaging` owns build receipts, bundles, descriptor/reflection
+Shared declarations depend on pure `harmos-domain`: schemas, messages, operation
+metadata, transactions and portable catalogs. Async implementations use
+`harmos-sdk`, which owns `Operation`, execution contexts, typed responses, wire
+execution and plugin lifecycle traits. Native plugins use `harmos-sidecar`,
+guests use `harmos-guest`; both reexport the same SDK contracts without a host
+runtime. `harmos-storage` owns Arrow, queries, persistence and signal kernels;
+`harmos-runtime` owns its application lifecycle and operation bridge. `harmos-packaging` owns build receipts, bundles, descriptor/reflection
 projection and Python/TypeScript generators. Build scripts use it directly;
 its binding features never belong on `harmos-domain` or the host facade.
 
@@ -105,8 +111,8 @@ serde snake case, `name()`/`parse()` as `count`, `mean`, `p95`) is
 the population deviation; `Percentile` takes a whole percentage 0..=100 and
 interpolates linearly between ranks.
 
-The math lives in `harmos-signal`, which names nothing of Harmos so it can lift
-out unchanged. `Series` answers every member exactly over a finished run;
+The math lives in `harmos_storage::signal`; optional FFT uses the storage
+crate's `fft` feature (forwarded by the host facade's `signal-fft`). `Series` answers every member exactly over a finished run;
 `Summary` is the streaming, mergeable form and answers only the members where
 `Aggregate::mergeable()` holds, refusing median and percentiles with `None`.
 Both skip non-finite values; empty input answers `Count` and `Sum` with zero and
@@ -126,7 +132,7 @@ let mean = merged.aggregate(Aggregate::Mean);
 Every reduction path evaluates through `Series` or `Summary`: plot buckets
 (`streams::Bucket::aggregate`), stream batch measurements
 (`streams::Measurement::aggregate`) and storage group-bys
-(`storage::reduce::Agg::Of(Aggregate)`). Storage additionally keeps `Agg::Len`
+(`storage::query::scalar::Agg::Of(Aggregate)`). Storage additionally keeps `Agg::Len`
 and `Agg::Last`, which select rows rather than compute statistics, and answers
 `Sum`, `Mean` and `Median` of integer and exact columns in exact rational
 arithmetic. Do not add a private statistic implementation beside them.
@@ -141,8 +147,9 @@ For concrete plugin and transport authoring, use `harmos-authoring`.
 
 ## Storage Ownership And Queries
 
-StorageManager owns read/write admission, accounting, persistence and generic
-retention. Consumer applications supply explicit StorageSettings from
+`harmos_storage::StorageManager` owns read/write admission, accounting,
+persistence and generic retention. The runtime wrapper adds host clock injection
+and resident-worker ownership; it does not duplicate engine state. Consumer applications supply explicit StorageSettings from
 storage/config.rs; root config.rs composes those settings. Do not reintroduce
 library-selected operational defaults or report-specific read allowances.
 StorageRequestSettings controls queue/dispatch capacity; StorageResponseSettings

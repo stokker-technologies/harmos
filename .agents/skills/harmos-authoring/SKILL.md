@@ -416,8 +416,9 @@ layouts for guests and sidecars.
   physical cleanup resumes. The SDK lifecycle leaves keep their wire ids
   (`harmos.initialize`, `harmos.shutdown`).
 - Native plugins depend on `harmos-sidecar`; guests depend on `harmos-guest`.
-  Both use shared declarations from `harmos-domain` without importing the host
-  runtime. Hosts compose plugin execution through `harmos::plugin` and select
+  Pure shared declarations use `harmos-domain`. Async handlers and lifecycle
+  implementations use `harmos-sdk` through the carrier reexports, sharing the
+  original traits and values without importing the host runtime. Hosts compose plugin execution through `harmos::plugin` and select
   `plugin-sidecar` or `plugin-guest`.
 - `harmos-packaging` owns inspection, build receipts, bundling and binding
   generators; `cargo-harmos` is its CLI. `cargo harmos sidecar|guest build`
