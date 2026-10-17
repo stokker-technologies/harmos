@@ -607,11 +607,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(String::decode(&response).unwrap(), "retry retained:2");
                     assert_eq!(*owner.seen.lock().unwrap(), [id, id]);
                     assert_eq!(
-                        &*runtime
-                            .operations
-                            .call_as::<Echo>("retry".into())
-                            .await
-                            .unwrap(),
+                        &*runtime.operations.call("retry".into()).await.unwrap(),
                         "retry retained:2"
                     );
                     // The cached second call constructs nothing.
@@ -810,11 +806,7 @@ pub(super) fn contract_scenario() {
                             owner.clone(),
                         )
                         .unwrap();
-                    let error = runtime
-                        .operations
-                        .call_as::<SameLane>("child".into())
-                        .await
-                        .unwrap_err();
+                    let error = runtime.operations.call("child".into()).await.unwrap_err();
                     let Error::OperationFailed { source, .. } = error else {
                         panic!("nested refusal retained");
                     };
@@ -847,11 +839,7 @@ pub(super) fn contract_scenario() {
                         )
                         .unwrap();
                     assert_eq!(
-                        &*runtime
-                            .operations
-                            .call_as::<Detached>("ignored".into())
-                            .await
-                            .unwrap(),
+                        &*runtime.operations.call("ignored".into()).await.unwrap(),
                         "parent"
                     );
                     assert_eq!(owner.wire_joined.load(Ordering::SeqCst), 1);
@@ -883,10 +871,7 @@ pub(super) fn contract_scenario() {
                         )
                         .unwrap();
                     let started = owner.wire_started.notified();
-                    let parent = runtime
-                        .operations
-                        .submit_as::<Nested>("block".into())
-                        .unwrap();
+                    let parent = runtime.operations.submit("block".into()).unwrap();
                     started.await;
                     parent.cancel();
                     assert!(matches!(

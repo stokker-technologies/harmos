@@ -17,7 +17,7 @@ use std::mem::size_of;
 // Third Party Imports
 
 // Local Imports
-use super::{Context, ContextError, Delivery};
+use super::{Context, ContextError};
 use crate::Message;
 use crate::message::PostcardValue;
 
@@ -56,49 +56,51 @@ pub enum EncodingError {
 /* === Traits === */
 
 /* === Implementations === */
-impl<R: Message> Delivery<R> {
-    pub fn encoding_memory_bytes(context: Context, row: &R) -> Result<usize, EncodingError> {
-        context.validate()?;
-        let row_len = row.encoded_len();
-        let encoded_len = envelope_len(context, row_len).ok_or(EncodingError::Overflow)?;
-        memory_bytes(row_len, encoded_len)
-    }
-
-    pub fn encode_borrowed(
-        context: Context,
-        row: &R,
-        total_budget: usize,
-    ) -> Result<Vec<u8>, EncodingError> {
-        context.validate()?;
-        let row_len = row.encoded_len();
-        let encoded_len = envelope_len(context, row_len).ok_or(EncodingError::Overflow)?;
-        let required = memory_bytes(row_len, encoded_len)?;
-        if required > total_budget {
-            return Err(EncodingError::Budget {
-                required,
-                budget: total_budget,
-            });
-        }
-
-        let payload = row.encode_to_vec();
-        validate_buffer("row", payload.len(), payload.capacity(), row_len)?;
-        let payload_capacity = payload.capacity();
-        let mut encoded = Vec::with_capacity(encoded_len);
-        context.write(&mut encoded);
-        encoded.extend_from_slice(&payload);
-        validate_buffer("envelope", encoded.len(), encoded.capacity(), encoded_len)?;
-        let actual = memory_bytes(payload_capacity, encoded.capacity())?;
-        if actual > total_budget {
-            return Err(EncodingError::Budget {
-                required: actual,
-                budget: total_budget,
-            });
-        }
-        Ok(encoded)
-    }
+/* === Public Functions === */
+// The Envelope Of One Delivered Row, Encoded Within A Memory Budget.
+pub fn encoding_memory_bytes<R: Message>(
+    context: Context,
+    row: &R,
+) -> Result<usize, EncodingError> {
+    context.validate()?;
+    let row_len = row.encoded_len();
+    let encoded_len = envelope_len(context, row_len).ok_or(EncodingError::Overflow)?;
+    memory_bytes(row_len, encoded_len)
 }
 
-/* === Public Functions === */
+pub fn encode_borrowed<R: Message>(
+    context: Context,
+    row: &R,
+    total_budget: usize,
+) -> Result<Vec<u8>, EncodingError> {
+    context.validate()?;
+    let row_len = row.encoded_len();
+    let encoded_len = envelope_len(context, row_len).ok_or(EncodingError::Overflow)?;
+    let required = memory_bytes(row_len, encoded_len)?;
+    if required > total_budget {
+        return Err(EncodingError::Budget {
+            required,
+            budget: total_budget,
+        });
+    }
+
+    let payload = row.encode_to_vec();
+    validate_buffer("row", payload.len(), payload.capacity(), row_len)?;
+    let payload_capacity = payload.capacity();
+    let mut encoded = Vec::with_capacity(encoded_len);
+    context.write(&mut encoded);
+    encoded.extend_from_slice(&payload);
+    validate_buffer("envelope", encoded.len(), encoded.capacity(), encoded_len)?;
+    let actual = memory_bytes(payload_capacity, encoded.capacity())?;
+    if actual > total_budget {
+        return Err(EncodingError::Budget {
+            required: actual,
+            budget: total_budget,
+        });
+    }
+    Ok(encoded)
+}
+
 // Same Envelope Arithmetic For Owned Length Queries And Borrowed Preflight
 pub(super) fn envelope_len(context: Context, row_len: usize) -> Option<usize> {
     context.size().checked_add(row_len)

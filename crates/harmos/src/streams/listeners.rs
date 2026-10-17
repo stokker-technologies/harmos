@@ -30,7 +30,7 @@ use crate::plugin::PluginScope;
 use crate::schema::{Described, graph::Schema};
 use crate::supervision::{Listener, ListenerDelivery};
 use crate::{Application, Error, Message, MessageError, Result};
-use harmos_domain::listeners::{Context, Delivery, Source};
+use harmos_domain::listeners::{Context, Source};
 
 /* === Constants === */
 const PAGE_ROWS: usize = 64;
@@ -534,12 +534,13 @@ fn submit<R: Message>(
         operation: callback.contract().operation().id.to_string(),
         source: Arc::new(source),
     };
-    let bytes = Delivery::encoding_memory_bytes(context, row).map_err(encoding_error)?;
+    let bytes =
+        harmos_domain::listeners::encoding_memory_bytes(context, row).map_err(encoding_error)?;
     let bytes = NonZeroUsize::new(bytes).ok_or(Error::ResourceExhausted {
         resource: "stream callback encoding",
     })?;
     callback.submit_with(bytes, |budget| {
-        Delivery::encode_borrowed(context, row, budget).map_err(encoding_error)
+        harmos_domain::listeners::encode_borrowed(context, row, budget).map_err(encoding_error)
     })
 }
 

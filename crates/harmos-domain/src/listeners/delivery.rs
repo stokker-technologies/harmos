@@ -12,7 +12,7 @@
 mod encoding;
 
 /* === Re-Exports === */
-pub use encoding::EncodingError;
+pub use encoding::{EncodingError, encode_borrowed, encoding_memory_bytes};
 
 /* === Imports === */
 // Standard Library Imports
@@ -90,10 +90,11 @@ context_shape!(DeliveryContext, CONTEXT_FIELDS);
 /* === Type Aliases === */
 
 /* === Structs === */
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Delivery<R> {
+// One Delivered Row Of Listener `L`. Each Listener Is A Distinct Type, So Its
+// Delivery Is Its Callback Operation's Request.
+pub struct Delivery<L: Listener> {
     context: Context,
-    row: R,
+    row: L::Row,
 }
 
 /* === Enums === */
@@ -112,6 +113,12 @@ pub enum ContextError {
 }
 
 /* === Traits === */
+// A Listener Declaration: The Row It Receives And Its Callback Operation.
+pub trait Listener: Send + Sync + 'static {
+    type Row: crate::Portable;
+    const CALLBACK: &'static str;
+    const POLICY: crate::operations::OperationPolicy;
+}
 
 /* === Implementations === */
 impl Context {
@@ -128,8 +135,8 @@ impl Context {
     }
 }
 
-impl<R> Delivery<R> {
-    pub fn new(context: Context, row: R) -> Result<Self, ContextError> {
+impl<L: Listener> Delivery<L> {
+    pub fn new(context: Context, row: L::Row) -> Result<Self, ContextError> {
         context.validate()?;
         Ok(Self { context, row })
     }
@@ -138,18 +145,52 @@ impl<R> Delivery<R> {
         self.context
     }
 
-    pub fn row(&self) -> &R {
+    pub fn row(&self) -> &L::Row {
         &self.row
     }
 
-    pub fn into_row(self) -> R {
+    pub fn into_row(self) -> L::Row {
         self.row
     }
 }
 
-impl<R: Message> Message for Delivery<R> {
+impl<L: Listener> Clone for Delivery<L>
+where
+    L::Row: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            context: self.context,
+            row: self.row.clone(),
+        }
+    }
+}
+
+impl<L: Listener> std::fmt::Debug for Delivery<L>
+where
+    L::Row: std::fmt::Debug,
+{
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Delivery")
+            .field("context", &self.context)
+            .field("row", &self.row)
+            .finish()
+    }
+}
+
+impl<L: Listener> PartialEq for Delivery<L>
+where
+    L::Row: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.context == other.context && self.row == other.row
+    }
+}
+
+impl<L: Listener> Message for Delivery<L> {
     fn encode_to_vec(&self) -> Vec<u8> {
-        Self::encode_borrowed(self.context, &self.row, usize::MAX)
+        encoding::encode_borrowed(self.context, &self.row, usize::MAX)
             .expect("validated delivery and cooperative message encoder")
     }
     fn encoded_len(&self) -> usize {
@@ -158,19 +199,45 @@ impl<R: Message> Message for Delivery<R> {
     fn decoding_memory(bytes: &[u8]) -> Result<usize, MessageError> {
         let mut input = PostcardReader::new(bytes);
         let _ = <Context as PostcardValue>::read(&mut input)?;
-        let row = R::decoding_memory(input.remaining())?;
+        let row = <L::Row as Message>::decoding_memory(input.remaining())?;
         decoding_add(
             std::mem::size_of::<Self>(),
-            row.saturating_sub(std::mem::size_of::<R>()),
+            row.saturating_sub(std::mem::size_of::<L::Row>()),
         )
     }
     fn decode(bytes: &[u8]) -> Result<Self, MessageError> {
-        Self::decoding_memory(bytes)?;
+        <Self as Message>::decoding_memory(bytes)?;
         let mut input = PostcardReader::new(bytes);
         let context = <Context as PostcardValue>::read(&mut input)?;
-        let row = R::decode(input.remaining())?;
+        let row = <L::Row as Message>::decode(input.remaining())?;
         Ok(Self { context, row })
     }
+}
+
+// Callbacks Never Bind gRPC; Their Protobuf Codec Is The Listener Envelope.
+#[cfg(feature = "grpc")]
+impl<L: Listener> crate::Protobuf for Delivery<L> {
+    fn encode_to_vec(&self) -> Vec<u8> {
+        Message::encode_to_vec(self)
+    }
+    fn encoded_len(&self) -> usize {
+        Message::encoded_len(self)
+    }
+    fn decoding_memory(bytes: &[u8]) -> Result<usize, MessageError> {
+        <Self as Message>::decoding_memory(bytes)
+    }
+    fn decode(bytes: &[u8]) -> Result<Self, MessageError> {
+        <Self as Message>::decode(bytes)
+    }
+}
+
+impl<L: Listener> crate::operations::OperationDeclaration for Delivery<L> {
+    type Response = ();
+    type Input = crate::operations::NoStream;
+    type Output = crate::operations::NoStream;
+    const ID: &'static str = L::CALLBACK;
+    const VERSION: u32 = 1;
+    const POLICY: crate::operations::OperationPolicy = L::POLICY;
 }
 
 impl PostcardValue for Context {
@@ -219,18 +286,20 @@ impl PostcardValue for Context {
     }
 }
 
-impl<R: MemorySize> MemorySize for Delivery<R> {
+impl<L: Listener> MemorySize for Delivery<L> {
     fn memory_size(&self) -> usize {
         let row = self.row.memory_size();
         if row == usize::MAX {
             return usize::MAX;
         }
-        std::mem::size_of::<Self>().saturating_add(row.saturating_sub(std::mem::size_of::<R>()))
+        std::mem::size_of::<Self>()
+            .saturating_add(row.saturating_sub(std::mem::size_of::<L::Row>()))
     }
 }
 
-impl<R: Described> Described for Delivery<R> {
-    const NAME: &'static str = declaration::Name::new("harmos::Delivery", &[R::NAME]).as_str();
+impl<L: Listener> Described for Delivery<L> {
+    const NAME: &'static str =
+        declaration::Name::new("harmos::Delivery", &[<L::Row as Described>::NAME]).as_str();
     const FIELDS: &'static [Field] = &[
         Field {
             name: Cow::Borrowed("context"),
@@ -244,7 +313,7 @@ impl<R: Described> Described for Delivery<R> {
             name: Cow::Borrowed("row"),
             tag: 2,
             kind: Kind::Message {
-                definition: R::DEFINITION,
+                definition: <L::Row as Described>::DEFINITION,
             },
             cardinality: Cardinality::Required,
         },

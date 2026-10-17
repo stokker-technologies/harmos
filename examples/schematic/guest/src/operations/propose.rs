@@ -19,7 +19,8 @@ use std::sync::Arc;
 
 // Local Imports
 use crate::Error;
-use schematic_domain::operations::schematic::propose::{Request, Response};
+use schematic_domain::operations::ProposeRoute;
+use schematic_domain::operations::schematic::propose::Route;
 
 /* === Constants === */
 
@@ -28,15 +29,15 @@ use schematic_domain::operations::schematic::propose::{Request, Response};
 /* === Type Aliases === */
 
 /* === Structs === */
-pub(crate) struct ProposeRoute;
+pub(crate) struct Routing;
 
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
-#[harmos_guest::operation(declaration = schematic_domain::operations::ProposeRoute)]
-impl ProposeRoute {
+#[harmos_guest::operation]
+impl Routing {
     async fn initialize(_: Arc<()>, _: &harmos_guest::Context) -> Self {
         Self
     }
@@ -45,15 +46,15 @@ impl ProposeRoute {
     async fn run(
         &mut self,
         _context: &harmos_guest::Context,
-        request: &mut Request,
-    ) -> Result<Response, Error> {
+        request: &mut ProposeRoute,
+    ) -> Result<Route, Error> {
         let corner = schematic_domain::model::Point {
             x: request.to.x,
             y: request.from.y,
         };
         let mut points = vec![request.from.clone(), corner, request.to.clone()];
         points.dedup();
-        Ok(Response { points })
+        Ok(Route { points })
     }
 }
 

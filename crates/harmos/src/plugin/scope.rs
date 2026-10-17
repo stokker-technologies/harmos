@@ -205,10 +205,12 @@ impl PluginScope {
     pub(super) fn with_observers(
         mut self,
         observers: &[harmos_domain::inventory::observers::Declaration],
-        control: Option<&crate::operations::Contract>,
     ) -> Self {
         self.observers = Arc::from(observers.to_vec());
-        self.observer_control = Arc::new(control.cloned());
+        // A Sidecar That Declares Observers Serves The Built-In Observe Control.
+        self.observer_control = Arc::new((!observers.is_empty()).then(|| {
+            harmos_domain::observers::contract().expect("the built-in observe control is valid")
+        }));
         self
     }
 

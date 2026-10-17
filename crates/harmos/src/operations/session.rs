@@ -26,7 +26,7 @@ use super::{
     OperationGeneration, OperationInstance, OperationInstanceId, OperationManager, OperationStatus,
     StreamInput, StreamItem, StreamOutput, StreamSettings, stream,
 };
-use crate::operations::{InputDeclaration, OperationDeclaration, OutputDeclaration};
+use crate::operations::OperationDeclaration;
 use crate::supervision::instance::{Instance, Phase};
 use crate::{Error, Refusal, Result};
 use harmos_domain::MemorySize;
@@ -36,12 +36,20 @@ use harmos_domain::MemorySize;
 /* === Macros === */
 
 /* === Type Aliases === */
-pub type Upload<O> = Session<O, SessionInput<<O as InputDeclaration>::Item>, ()>;
-pub type Download<O> = Session<O, (), SessionOutput<<O as OutputDeclaration>::Item>>;
+pub type Upload<O> = Session<
+    O,
+    SessionInput<<<O as OperationDeclaration>::Input as crate::operations::Direction>::Item>,
+    (),
+>;
+pub type Download<O> = Session<
+    O,
+    (),
+    SessionOutput<<<O as OperationDeclaration>::Output as crate::operations::Direction>::Item>,
+>;
 pub type Exchange<O> = Session<
     O,
-    SessionInput<<O as InputDeclaration>::Item>,
-    SessionOutput<<O as OutputDeclaration>::Item>,
+    SessionInput<<<O as OperationDeclaration>::Input as crate::operations::Direction>::Item>,
+    SessionOutput<<<O as OperationDeclaration>::Output as crate::operations::Direction>::Item>,
 >;
 
 /* === Structs === */
@@ -259,9 +267,9 @@ impl<O: OperationDeclaration> Drop for Completion<O> {
 }
 
 impl OperationManager {
-    pub fn upload<O: InputDeclaration>(
+    pub fn upload<O: crate::operations::OperationDeclaration>(
         &self,
-        request: O::Request,
+        request: O,
         settings: StreamSettings,
     ) -> Result<Upload<O>> {
         upload(request, settings, |request, input| {
@@ -269,9 +277,9 @@ impl OperationManager {
         })
     }
 
-    pub fn download<O: OutputDeclaration>(
+    pub fn download<O: crate::operations::OperationDeclaration>(
         &self,
-        request: O::Request,
+        request: O,
         settings: StreamSettings,
     ) -> Result<Download<O>> {
         download(request, settings, |request, output| {
@@ -279,9 +287,9 @@ impl OperationManager {
         })
     }
 
-    pub fn exchange<O: InputDeclaration + OutputDeclaration>(
+    pub fn exchange<O: crate::operations::OperationDeclaration>(
         &self,
-        request: O::Request,
+        request: O,
         input: StreamSettings,
         output: StreamSettings,
     ) -> Result<Exchange<O>> {
@@ -292,9 +300,9 @@ impl OperationManager {
 }
 
 impl super::Context<'_> {
-    pub fn upload<O: InputDeclaration>(
+    pub fn upload<O: crate::operations::OperationDeclaration>(
         &self,
-        request: O::Request,
+        request: O,
         settings: StreamSettings,
     ) -> Result<Upload<O>> {
         upload(request, settings, |request, input| {
@@ -302,9 +310,9 @@ impl super::Context<'_> {
         })
     }
 
-    pub fn download<O: OutputDeclaration>(
+    pub fn download<O: crate::operations::OperationDeclaration>(
         &self,
-        request: O::Request,
+        request: O,
         settings: StreamSettings,
     ) -> Result<Download<O>> {
         download(request, settings, |request, output| {
@@ -312,9 +320,9 @@ impl super::Context<'_> {
         })
     }
 
-    pub fn exchange<O: InputDeclaration + OutputDeclaration>(
+    pub fn exchange<O: crate::operations::OperationDeclaration>(
         &self,
-        request: O::Request,
+        request: O,
         input: StreamSettings,
         output: StreamSettings,
     ) -> Result<Exchange<O>> {
@@ -330,9 +338,9 @@ impl super::Context<'_> {
     feature = "plugin-sidecar"
 ))]
 impl super::Caller {
-    pub fn upload<O: InputDeclaration>(
+    pub fn upload<O: crate::operations::OperationDeclaration>(
         &self,
-        request: O::Request,
+        request: O,
         settings: StreamSettings,
     ) -> Result<Upload<O>> {
         upload(request, settings, |request, input| {
@@ -340,9 +348,9 @@ impl super::Caller {
         })
     }
 
-    pub fn download<O: OutputDeclaration>(
+    pub fn download<O: crate::operations::OperationDeclaration>(
         &self,
-        request: O::Request,
+        request: O,
         settings: StreamSettings,
     ) -> Result<Download<O>> {
         download(request, settings, |request, output| {
@@ -350,9 +358,9 @@ impl super::Caller {
         })
     }
 
-    pub fn exchange<O: InputDeclaration + OutputDeclaration>(
+    pub fn exchange<O: crate::operations::OperationDeclaration>(
         &self,
-        request: O::Request,
+        request: O,
         input: StreamSettings,
         output: StreamSettings,
     ) -> Result<Exchange<O>> {
@@ -365,10 +373,13 @@ impl super::Caller {
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn upload<O: InputDeclaration>(
-    request: O::Request,
+fn upload<O: crate::operations::OperationDeclaration>(
+    request: O,
     settings: StreamSettings,
-    submit: impl FnOnce(O::Request, StreamInput<O::Item>) -> Result<OperationInstance<O>>,
+    submit: impl FnOnce(
+        O,
+        StreamInput<<<O as OperationDeclaration>::Input as crate::operations::Direction>::Item>,
+    ) -> Result<OperationInstance<O>>,
 ) -> Result<Upload<O>> {
     let (sender, input) = stream(settings)?;
     let instance = submit(request, input)?;
@@ -390,10 +401,13 @@ fn upload<O: InputDeclaration>(
         },
     })
 }
-fn download<O: OutputDeclaration>(
-    request: O::Request,
+fn download<O: crate::operations::OperationDeclaration>(
+    request: O,
     settings: StreamSettings,
-    submit: impl FnOnce(O::Request, StreamOutput<O::Item>) -> Result<OperationInstance<O>>,
+    submit: impl FnOnce(
+        O,
+        StreamOutput<<<O as OperationDeclaration>::Output as crate::operations::Direction>::Item>,
+    ) -> Result<OperationInstance<O>>,
 ) -> Result<Download<O>> {
     let (output, receiver) = stream(settings)?;
     let instance = submit(request, output)?;
@@ -415,15 +429,17 @@ fn download<O: OutputDeclaration>(
         },
     })
 }
-fn exchange<O: InputDeclaration + OutputDeclaration>(
-    request: O::Request,
+fn exchange<O: crate::operations::OperationDeclaration>(
+    request: O,
     input: StreamSettings,
     output: StreamSettings,
     submit: impl FnOnce(
-        O::Request,
+        O,
         (
-            StreamInput<<O as InputDeclaration>::Item>,
-            StreamOutput<<O as OutputDeclaration>::Item>,
+            StreamInput<<<O as OperationDeclaration>::Input as crate::operations::Direction>::Item>,
+            StreamOutput<
+                <<O as OperationDeclaration>::Output as crate::operations::Direction>::Item,
+            >,
         ),
     ) -> Result<OperationInstance<O>>,
 ) -> Result<Exchange<O>> {

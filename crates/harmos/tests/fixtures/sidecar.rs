@@ -303,17 +303,15 @@ impl Operation for Echoing {
         let result: ::core::result::Result<String, Self::Error> = async move {
             if request == "publish-foreign" {
                 // Reach The Host With A Selected Core Leaf And An Ungranted Stream.
-                host.call_as::<harmos::operations::streams::Publish>(
-                    harmos::operations::streams::Publication {
-                        stream: <linked::Foreign as harmos::StreamSpec>::ID.to_owned(),
-                        schema: <linked::Foreign as harmos::StreamSpec>::VERSION,
-                        sequence: Some(1),
-                        published_unix_micros: None,
-                        context: None,
-                        payload: harmos::Message::encode_to_vec(&linked::Foreign { value: 1 }),
-                        following: Vec::new(),
-                    },
-                )
+                host.call(harmos::operations::streams::Publish {
+                    stream: <linked::Foreign as harmos::StreamSpec>::ID.to_owned(),
+                    schema: <linked::Foreign as harmos::StreamSpec>::VERSION,
+                    sequence: Some(1),
+                    published_unix_micros: None,
+                    context: None,
+                    payload: harmos::Message::encode_to_vec(&linked::Foreign { value: 1 }),
+                    following: Vec::new(),
+                })
                 .await
                 .map_err(Refusal::from)?;
             }

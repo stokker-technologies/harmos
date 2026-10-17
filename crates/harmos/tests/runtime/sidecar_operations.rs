@@ -258,10 +258,7 @@ impl Operation for ReadOperation {
                 return Err(std::io::Error::other("partial initialization failed"));
             }
             if operation.counts.initialization_child.load(Ordering::SeqCst) {
-                context
-                    .call_as::<Refresh>(())
-                    .await
-                    .map_err(std::io::Error::other)?;
+                context.call(()).await.map_err(std::io::Error::other)?;
                 *operation.counts.initialization_saved.lock().unwrap() = Some(context.clone());
             }
             Ok(())
@@ -284,7 +281,7 @@ impl Operation for ReadOperation {
             }
             let initialized = self.counts.initialization_saved.lock().unwrap().take();
             if let Some(initialized) = initialized {
-                if initialized.call_as::<Refresh>(()).await.is_ok() {
+                if initialized.call(()).await.is_ok() {
                     return Err(std::io::Error::other(
                         "initialization context remained active",
                     ));
@@ -306,16 +303,13 @@ impl Operation for ReadOperation {
             if self.counts.call_child.load(Ordering::SeqCst) {
                 let previous = self.counts.saved.lock().unwrap().take();
                 if let Some(previous) = previous {
-                    if previous.call_as::<Refresh>(()).await.is_ok() {
+                    if previous.call(()).await.is_ok() {
                         return Err(std::io::Error::other("expired attempt admitted a child"));
                     }
                     self.counts.stale_refused.fetch_add(1, Ordering::SeqCst);
                 }
                 *self.counts.saved.lock().unwrap() = Some(context.clone());
-                context
-                    .call_as::<Refresh>(())
-                    .await
-                    .map_err(std::io::Error::other)?;
+                context.call(()).await.map_err(std::io::Error::other)?;
             }
             if self.attempts == 1 {
                 return Err(std::io::Error::other("one transient failure"));
@@ -598,11 +592,9 @@ impl<A: Attach> Managed<A> {
             )
     }
 
-    pub(crate) async fn call_as<O>(&self, request: O::Request) -> harmos::Result<O::Response>
+    pub(crate) async fn call<O>(&self, request: O) -> harmos::Result<O::Response>
     where
         O: harmos::operations::WireOperation,
-        O::Request: harmos::Message + harmos::schema::Described,
-        O::Response: harmos::Message + harmos::schema::Described,
     {
         self.call_in::<O>(harmos::operations::CallContext::default(), request)
             .await
@@ -611,12 +603,10 @@ impl<A: Attach> Managed<A> {
     pub(crate) async fn call_in<O>(
         &self,
         context: harmos::operations::CallContext,
-        request: O::Request,
+        request: O,
     ) -> harmos::Result<O::Response>
     where
         O: harmos::operations::WireOperation,
-        O::Request: harmos::Message + harmos::schema::Described,
-        O::Response: harmos::Message + harmos::schema::Described,
     {
         let contract = harmos::operations::WireDeclaration::of::<O>()
             .contract()
@@ -762,7 +752,7 @@ impl<A: Attach> PluginLifecycle for Host<A> {
                 &definition.configuration,
                 std::num::NonZeroUsize::new(
                     2 * definition.configuration.len()
-                        + std::mem::size_of::<harmos::operations::lifecycle::InitializeRequest>()
+                        + std::mem::size_of::<harmos::operations::lifecycle::Initialize>()
                         + 64
                         + 20,
                 )
@@ -919,7 +909,7 @@ async fn submitted(
     use harmos::operations::{Host, Instance};
 
     // Status, Then Join
-    let joined = host.submit_as::<Refresh>(()).await?;
+    let joined = host.submit(()).await?;
     counts.refresh_started.notified().await;
     let status = joined.status().await?;
     assert_eq!(status.phase, Phase::Running);
@@ -927,12 +917,12 @@ async fn submitted(
     joined.join().await?;
 
     // Cancel, Then Join
-    let cancelled = host.submit_as::<Refresh>(()).await?;
+    let cancelled = host.submit(()).await?;
     counts.refresh_started.notified().await;
     assert!(Instance::cancel_and_join(cancelled).await.is_err());
 
     // Dropping The Handle Releases The Child
-    let dropped = host.submit_as::<Refresh>(()).await?;
+    let dropped = host.submit(()).await?;
     counts.refresh_started.notified().await;
     let cleaned = counts.refresh_cleaned.load(Ordering::SeqCst);
     drop(dropped);
@@ -945,7 +935,7 @@ async fn submitted(
     .expect("a dropped instance is cancelled");
 
     // Detaching Keeps The Child Running Within This Attempt
-    let detached = host.submit_as::<Refresh>(()).await?;
+    let detached = host.submit(()).await?;
     counts.refresh_started.notified().await;
     let id = Instance::detach(detached);
     // Built-ins are ordinary requirements: an undeclared caller is refused.
@@ -1108,7 +1098,7 @@ fn contract_scenario() {
                     let counts = Arc::new(Counts::default());
                     let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
                     fixture.initialize().await.unwrap();
-                    fixture.call_as::<Read>(()).await.unwrap();
+                    fixture.call(()).await.unwrap();
                     assert_eq!(counts.prepared.load(Ordering::SeqCst), 1);
                     assert_eq!(counts.runs.load(Ordering::SeqCst), 2);
                     assert_eq!(counts.operation_initialized.load(Ordering::SeqCst), 1);
@@ -1131,7 +1121,7 @@ fn contract_scenario() {
                     let counts = Arc::new(Counts::default());
                     let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
                     fixture.initialize().await.unwrap();
-                    fixture.call_as::<Read>(()).await.unwrap();
+                    fixture.call(()).await.unwrap();
                     let mut context = harmos::operations::CallContext::default();
                     context.insert(Principal).unwrap();
                     context
@@ -1167,7 +1157,7 @@ fn contract_scenario() {
                     )
                     .unwrap();
                     fixture.initialize().await.unwrap();
-                    fixture.call_as::<Read>(()).await.unwrap();
+                    fixture.call(()).await.unwrap();
                     assert_eq!(counts.children.load(Ordering::SeqCst), 4);
                     assert_eq!(counts.refresh_completed.load(Ordering::SeqCst), 2);
                     assert_eq!(counts.refresh_cleaned.load(Ordering::SeqCst), 4);
@@ -1193,7 +1183,7 @@ fn contract_scenario() {
                     let runtime = &fixture.runtime;
                     counts.fail_cleanup.store(true, Ordering::SeqCst);
                     assert!(matches!(
-                        fixture.call_as::<Read>(()).await,
+                        fixture.call(()).await,
                         Err(harmos::Error::OperationFinalization { .. })
                     ));
                     assert!(runtime.operations.unregister(Read::ID).await.is_err());
@@ -1223,8 +1213,7 @@ fn contract_scenario() {
                     let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
                     fixture.initialize().await.unwrap();
                     counts.fail_prepare.store(true, Ordering::SeqCst);
-                    let Err(harmos::Error::OperationFailed { source, .. }) =
-                        fixture.call_as::<Read>(()).await
+                    let Err(harmos::Error::OperationFailed { source, .. }) = fixture.call(()).await
                     else {
                         panic!("preparation is refused before any attempt")
                     };
@@ -1258,7 +1247,7 @@ fn contract_scenario() {
                         };
                         let mut fixture = Managed::new(source(counts.clone()), lane).await;
                         fixture.initialize().await.unwrap();
-                        let result = fixture.call_as::<Read>(()).await;
+                        let result = fixture.call(()).await;
                         if serial {
                             assert!(matches!(result, Err(harmos::Error::OperationFailed { .. })));
                             assert_eq!(counts.children.load(Ordering::SeqCst), 0);
@@ -1270,7 +1259,7 @@ fn contract_scenario() {
                             assert_eq!(counts.finalized.load(Ordering::SeqCst), 1);
                         }
                         let saved = counts.saved.lock().unwrap().take().unwrap();
-                        assert!(saved.call_as::<Refresh>(()).await.is_err());
+                        assert!(saved.call(()).await.is_err());
                         fixture.shutdown().await.unwrap();
                         fixture.runtime.stop().await.unwrap();
                     }
@@ -1286,7 +1275,7 @@ fn contract_scenario() {
     let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
     fixture.initialize().await.unwrap();
     counts.fail_initialize.store(true, Ordering::SeqCst);
-    let Err(harmos::Error::OperationFailed { source, .. }) = fixture.call_as::<Read>(()).await else {
+    let Err(harmos::Error::OperationFailed { source, .. }) = fixture.call(()).await else {
         panic!("initialization returns the original failure")
     };
     assert!(
@@ -1317,7 +1306,7 @@ fn contract_scenario() {
                     let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
                     fixture.initialize().await.unwrap();
                     counts.initialization_child.store(true, Ordering::SeqCst);
-                    fixture.call_as::<Read>(()).await.unwrap();
+                    fixture.call(()).await.unwrap();
                     assert_eq!(counts.operation_initialized.load(Ordering::SeqCst), 1);
                     assert_eq!(counts.children.load(Ordering::SeqCst), 1);
                     assert_eq!(counts.stale_refused.load(Ordering::SeqCst), 1);

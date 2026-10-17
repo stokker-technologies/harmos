@@ -32,13 +32,8 @@ use std::task::{Poll, Waker};
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 // Local Imports
-use super::{
-    AuthoredDeclarations, Contract, ContractError, Definition, FailureKind, Operation,
-    OperationDeclaration, WireOperation,
-};
-use crate::Message;
+use super::{AuthoredDeclarations, Contract, ContractError, Definition, FailureKind, Operation};
 use crate::catalog::{Catalog, Member, Projection, Visitor};
-use crate::schema::Described;
 
 /* === Constants === */
 pub const WIRE_METHOD: &str = "harmos.operation.v2";
@@ -115,6 +110,9 @@ struct Loan<C> {
 
 struct Handler<C> {
     lifecycle: bool,
+    // Lifecycle actions and the observe control are built in: they serve the
+    // plugin's machinery and never appear in its declared catalog.
+    builtin: bool,
     // A resident control runs until cancelled and is not charged against the
     // ordinary invocation capacity.
     resident: bool,
@@ -358,7 +356,7 @@ impl<C: Send + Sync + 'static> WireTable<C> {
     pub fn definitions(&self) -> Vec<Definition> {
         self.handlers
             .values()
-            .filter(|handler| !handler.lifecycle)
+            .filter(|handler| !handler.builtin)
             .map(|handler| handler.definition.clone())
             .collect()
     }
@@ -368,7 +366,7 @@ impl<C: Send + Sync + 'static> WireTable<C> {
             != self
                 .handlers
                 .values()
-                .filter(|handler| !handler.lifecycle)
+                .filter(|handler| !handler.builtin)
                 .count()
         {
             return Err(ServingError::Catalog);
@@ -377,7 +375,7 @@ impl<C: Send + Sync + 'static> WireTable<C> {
             if self
                 .handlers
                 .get(definition.id.as_str())
-                .is_none_or(|bound| bound.lifecycle || bound.definition != *definition)
+                .is_none_or(|bound| bound.builtin || bound.definition != *definition)
             {
                 return Err(ServingError::Catalog);
             }
@@ -397,7 +395,7 @@ impl<C: Send + Sync + 'static> WireTable<C> {
             != self
                 .handlers
                 .values()
-                .filter(|handler| !handler.lifecycle)
+                .filter(|handler| !handler.builtin)
                 .count()
         {
             return Err(ServingError::Catalog);
@@ -406,9 +404,10 @@ impl<C: Send + Sync + 'static> WireTable<C> {
         for contract in contracts {
             let id = &contract.operation().id;
             if !unique.insert(id)
-                || self.handlers.get(id.as_str()).is_none_or(|bound| {
-                    bound.lifecycle || bound.contract.as_ref() != Some(contract)
-                })
+                || self
+                    .handlers
+                    .get(id.as_str())
+                    .is_none_or(|bound| bound.builtin || bound.contract.as_ref() != Some(contract))
             {
                 return Err(ServingError::Catalog);
             }
@@ -974,9 +973,6 @@ where
     C: Send + Sync + 'static,
     R: Send + Sync + 'static,
     T: for<'a> Operation<Resources = R, Context<'a> = &'a C, Endpoints = ()>,
-    T::Declaration: WireOperation,
-    <T::Declaration as OperationDeclaration>::Request: Message + Described,
-    <T::Declaration as OperationDeclaration>::Response: Message + Described,
 {
     const ENTRY: WireBinding<R, C> = WireBinding {
         install: WireTable::<C>::bind_operation::<T>,
@@ -990,9 +986,6 @@ where
     R: Send + Sync + 'static,
     T: for<'a> Operation<Resources = R, Context<'a> = &'a C>,
     T::Endpoints: WireEndpoints,
-    T::Declaration: WireOperation,
-    <T::Declaration as OperationDeclaration>::Request: Message + Described,
-    <T::Declaration as OperationDeclaration>::Response: Message + Described,
 {
     const ENTRY: WireBinding<R, C> = WireBinding {
         install: WireTable::<C>::bind_catalog_operation::<T>,

@@ -682,15 +682,9 @@ pub(super) fn contract_scenario() {
                     })
                     .await;
 
-                    let running = runtime
-                        .operations
-                        .submit_as::<OrderedContract>(true)
-                        .unwrap();
+                    let running = runtime.operations.submit(true).unwrap();
                     started.notified().await;
-                    let queued = runtime
-                        .operations
-                        .submit_as::<OrderedContract>(false)
-                        .unwrap();
+                    let queued = runtime.operations.submit(false).unwrap();
 
                     let mut participant = runtime.stop_participant();
                     let participant_events = Arc::clone(&events);

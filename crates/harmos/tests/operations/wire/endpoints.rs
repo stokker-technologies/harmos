@@ -967,7 +967,7 @@ async fn parent_cancellation<const CHARGED: bool>() {
     let (sending, mut output) = channel();
     let parent = runtime
         .operations
-        .submit_as::<ParentDeclaration>(Some((receiving, sending)))
+        .submit(Some((receiving, sending)))
         .unwrap();
     bounded(input.send_with(4, || Ok(7))).await.unwrap();
     let held = bounded(output.recv()).await.unwrap();

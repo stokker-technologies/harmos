@@ -430,8 +430,6 @@ pub(super) fn dispatch<O>(
 ) -> Result<EncodedInvocation>
 where
     O: OperationDeclaration,
-    O::Request: Message,
-    O::Response: Message,
 {
     let submitted = submission.submitted;
     let timeout = submission.entry.declared().policy.timeout;
@@ -448,12 +446,10 @@ where
             .map(|bytes| operations.claim_preparation(bytes))
             .transpose()?,
     };
-    let decoding_bytes =
-        codec::<O, _>(|| O::Request::decoding_memory(&input.payload))?.map_err(|source| {
-            Error::OperationPayload {
-                operation: O::ID.to_owned(),
-                source,
-            }
+    let decoding_bytes = codec::<O, _>(|| <O as crate::Message>::decoding_memory(&input.payload))?
+        .map_err(|source| Error::OperationPayload {
+            operation: O::ID.to_owned(),
+            source,
         })?;
     if let Some(bytes) = std::num::NonZeroUsize::new(decoding_bytes) {
         let decoded = operations.claim_preparation(bytes)?;
@@ -464,12 +460,13 @@ where
         }
     }
     budget(timeout, submitted)?;
-    let request = codec::<O, _>(|| O::Request::decode(&input.payload))?.map_err(|source| {
-        Error::OperationPayload {
-            operation: O::ID.to_owned(),
-            source,
-        }
-    })?;
+    let request =
+        codec::<O, _>(|| <O as crate::Message>::decode(&input.payload))?.map_err(|source| {
+            Error::OperationPayload {
+                operation: O::ID.to_owned(),
+                source,
+            }
+        })?;
     let target = Arc::downgrade(&submission.entry);
     budget(timeout, submitted)?;
     let (scope, ancestors) = parent.map_or((None, &[][..]), |parent| {

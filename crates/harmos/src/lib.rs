@@ -60,7 +60,8 @@ pub mod __private {
     pub use harmos_domain::plugin::schema_markers as PluginSchemaMarkers;
     pub extern crate serde;
     pub extern crate serde_json;
-    pub use crate::with_protobuf;
+    // Generated Codecs Follow The Domain's Codec Feature, Which The Portable
+    // Bound Names, So Feature Unification Never Splits The Two.
     pub use harmos_domain::__private::CarrierContext;
     pub use harmos_domain::__private::{
         DecodeInput, DecodeScalar, DecodeValue, MessageError, PostcardReader, PostcardValue,
@@ -76,6 +77,7 @@ pub mod __private {
     pub use harmos_domain::{
         Registrar as PluginRegistrar, RegistrationError as PluginRegistrationError,
     };
+    pub use harmos_domain::{declare, with_protobuf};
     #[cfg(feature = "plugin-sidecar")]
     pub use harmos_sidecar as sidecar;
 
@@ -139,17 +141,6 @@ extern crate self as harmos;
 /* === Constants === */
 
 /* === Macros === */
-// Generated And Native Message Implementations Follow The Same Facade Feature.
-// Another Consumer May Independently Enable The Portable Contract's Codec.
-#[cfg(feature = "grpc")]
-#[macro_export]
-macro_rules! with_protobuf { ($($tokens:tt)*) => { $($tokens)* }; }
-
-#[cfg(not(feature = "grpc"))]
-#[macro_export]
-macro_rules! with_protobuf {
-    ($($tokens:tt)*) => {};
-}
 
 /* === Type Aliases === */
 pub type Result<T, E = std::convert::Infallible> = std::result::Result<T, Error<E>>;

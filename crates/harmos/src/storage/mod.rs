@@ -60,7 +60,7 @@ pub use harmos_domain::model::storage::{
     ByteRange, FileBatch, FileCompletion, FileMetadata, FilePhase, FileProducer, FileProgress,
     FileReference, FileSession, MutationId, MutationWindow, ObjectEntry, ObjectKey, ObjectPoint,
     ObjectReceipt, ObjectRetention, ObjectRevision, ObjectValue, ObjectVersion, ObjectVersionToken,
-    PayloadEncoding, ReadFile, RecordInput, RecordWrite, RecoveryPosition, SchemaInfo, SchemaInput,
+    PayloadEncoding, RecordInput, RecordWrite, RecoveryPosition, SchemaInfo, SchemaInput,
     SchemaKey, StagedFile, StorageCursor, StorageInfo, StoreHistory, StoredRecord, StoredRow,
     StreamInput, StreamWrite,
 };

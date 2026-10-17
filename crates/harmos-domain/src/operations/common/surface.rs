@@ -26,7 +26,7 @@ use std::future::Future;
 // Local Imports
 use super::instance::Instance;
 use super::{CallContext, ContextError, ContextValue, OperationDeclaration, Response};
-use crate::operations::streams::{Publication, Publish};
+use crate::operations::streams::Publish;
 use crate::{Message, StreamSpec};
 
 /* === Constants === */
@@ -40,54 +40,36 @@ use crate::{Message, StreamSpec};
 /* === Enums === */
 
 /* === Traits === */
-// An operation whose request and response cross every binding's codec.
-pub trait Callable: OperationDeclaration<Request: Message, Response: Message> {}
-
-// `call` and `submit` take the declaration itself as the request when the
-// declaration is its own request (`Request = Self`); `call_as::<O>` and
-// `submit_as::<O>` name the operation for a separate request type.
+// The host one authored body calls through wherever it runs. The request is
+// the operation, so `call` and `submit` infer the declaration from it.
 pub trait Host: Send + Sync + Sized {
     type Error: std::error::Error + Send + Sync + 'static;
 
-    type Instance<O: Callable>: Instance<O, Error = Self::Error>;
+    type Instance<O: OperationDeclaration>: Instance<O, Error = Self::Error>;
 
     fn context(&self) -> &CallContext;
 
     fn with_value<T: ContextValue>(&self, value: T) -> Result<Self, ContextError>;
 
-    fn submit_as<O: Callable>(
+    fn submit<O: OperationDeclaration>(
         &self,
-        request: O::Request,
+        request: O,
     ) -> impl Future<Output = Result<Self::Instance<O>, Self::Error>> + Send;
 
-    fn call_as<O: Callable>(
+    fn call<O: OperationDeclaration>(
         &self,
-        request: O::Request,
+        request: O,
     ) -> impl Future<Output = Result<Response<O::Response>, Self::Error>> + Send;
 
     // Activate a resident declaration (an observer or a service) over
     // caller-owned resources. Activations sharing the same resources share one
     // instance and each handle holds its own lease; releasing the last lease
     // stops it. Bindings that cannot carry process-local resources refuse.
-    fn submit_with_resources<O: Callable<Response = ()>, R: Send + Sync + 'static>(
+    fn submit_with_resources<O: OperationDeclaration<Response = ()>, R: Send + Sync + 'static>(
         &self,
-        request: O::Request,
+        request: O,
         resources: std::sync::Arc<R>,
     ) -> impl Future<Output = Result<Self::Instance<O>, Self::Error>> + Send;
-
-    fn submit<O: Callable<Request = O>>(
-        &self,
-        request: O,
-    ) -> impl Future<Output = Result<Self::Instance<O>, Self::Error>> + Send {
-        self.submit_as::<O>(request)
-    }
-
-    fn call<O: Callable<Request = O>>(
-        &self,
-        request: O,
-    ) -> impl Future<Output = Result<Response<O::Response>, Self::Error>> + Send {
-        self.call_as::<O>(request)
-    }
 
     // Publish one row on a declared stream through the host's `host.publish`.
     fn publish_on<S: StreamSpec>(
@@ -97,7 +79,7 @@ pub trait Host: Send + Sync + Sized {
     where
         S::Row: Message,
     {
-        let publication = Publication {
+        let published = self.call(Publish {
             stream: S::ID.to_owned(),
             schema: S::VERSION,
             sequence: None,
@@ -105,8 +87,7 @@ pub trait Host: Send + Sync + Sized {
             context: None,
             payload: row.encode_to_vec(),
             following: Vec::new(),
-        };
-        let published = self.call_as::<Publish>(publication);
+        });
         async move {
             published.await?;
             Ok(())
@@ -122,13 +103,6 @@ pub trait Host: Send + Sync + Sized {
 }
 
 /* === Implementations === */
-impl<O> Callable for O
-where
-    O: OperationDeclaration,
-    O::Request: Message,
-    O::Response: Message,
-{
-}
 
 /* === Public Functions === */
 

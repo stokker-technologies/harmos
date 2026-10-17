@@ -394,7 +394,7 @@ impl Attach for Executable {
     }
 
     fn observer_control(&self) -> harmos_domain::Result<Option<crate::operations::Contract>> {
-        Ok(self.declaration.observer_control().cloned())
+        Ok(self.declaration.observer_control())
     }
 
     fn listener_declarations(

@@ -145,9 +145,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             harmos::grpc::Method {
                 name: "QueryStorage",
                 contract: storage_contracts.iter().find(|contract| contract.operation().id.as_str()
-                    == <harmos::storage::operations::QueryStorage as harmos::operations::OperationDeclaration>::ID)
+                    == <harmos::storage::operations::StorageStatus as harmos::operations::OperationDeclaration>::ID)
                     .ok_or("missing QueryStorage storage contract")?,
-                declaration: "::harmos::storage::operations::QueryStorage",
+                declaration: "::harmos::storage::operations::StorageStatus",
             },
             harmos::grpc::Method {
                 name: "ResumeFile",

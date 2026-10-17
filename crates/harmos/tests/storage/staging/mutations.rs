@@ -115,22 +115,10 @@ pub(super) fn contract_scenario() {
                         session: file.session().unwrap().clone(),
                     };
                     f.data.control.fence_failures.store(3, Ordering::SeqCst);
-                    let first = f
-                        .runtime
-                        .operations
-                        .call_as::<ResumeFile>(request.clone())
-                        .await
-                        .unwrap();
+                    let first = f.runtime.operations.call(request.clone()).await.unwrap();
                     assert_eq!(first.session.generation, 2);
                     assert_eq!(f.data.control.fence_failures.load(Ordering::SeqCst), 0);
-                    assert_eq!(
-                        *f.runtime
-                            .operations
-                            .call_as::<ResumeFile>(request)
-                            .await
-                            .unwrap(),
-                        *first
-                    );
+                    assert_eq!(*f.runtime.operations.call(request).await.unwrap(), *first);
                     f.finish().await;
                 });
         });
@@ -286,19 +274,13 @@ pub(super) fn contract_scenario() {
                         session: file.session().unwrap().clone(),
                     };
                     f.data.control.fence_failures.store(5, Ordering::SeqCst);
-                    assert!(
-                        f.runtime
-                            .operations
-                            .call_as::<ResumeFile>(request.clone())
-                            .await
-                            .is_err()
-                    );
+                    assert!(f.runtime.operations.call(request.clone()).await.is_err());
                     assert_eq!(f.data.control.fence_failures.load(Ordering::SeqCst), 1);
                     f.data.control.fence_failures.store(0, Ordering::SeqCst);
                     assert_eq!(
                         f.runtime
                             .operations
-                            .call_as::<ResumeFile>(request)
+                            .call(request)
                             .await
                             .unwrap()
                             .session

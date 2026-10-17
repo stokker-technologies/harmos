@@ -12,7 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
-use harmos_domain::operations::storage::{QueryStorage, QueryStorageRequest};
+use harmos_domain::operations::storage::StorageStatus;
 
 // Standard Library Imports
 
@@ -48,7 +48,7 @@ pub(super) struct Handler<C> {
 /* === Implementations === */
 
 impl<C: 'static> Operation for Handler<C> {
-    type Declaration = QueryStorage;
+    type Declaration = StorageStatus;
     type Resources = StorageManager<C>;
     type Error = Error;
     type Context<'a> = Context<'a>;
@@ -63,7 +63,7 @@ impl<C: 'static> Operation for Handler<C> {
     async fn run<'a>(
         &mut self,
         _: Self::Context<'a>,
-        _request: &mut QueryStorageRequest,
+        _request: &mut StorageStatus,
         _: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<StorageInfo>> {
         let result: ::core::result::Result<StorageInfo, Self::Error> =

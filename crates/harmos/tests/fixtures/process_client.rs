@@ -66,7 +66,7 @@ impl harmos::Plugin for Client {
         std::fs::create_dir_all(&self.resources.root).map_err(Refusal::of)?;
         self.resources.mark("initializing")?;
         let response = context
-            .call_as::<Read>(Step { phase: 1 })
+            .call(Step { phase: 1 })
             .await
             .map_err(Refusal::from)?;
         if response.phase != 1 {
@@ -94,7 +94,7 @@ impl harmos::Plugin for Client {
 
     async fn stop(&mut self, context: &Supervisor) -> Result<(), Refusal> {
         let response = context
-            .call_as::<Read>(Step { phase: 2 })
+            .call(Step { phase: 2 })
             .await
             .map_err(Refusal::from)?;
         if response.phase != 2 {

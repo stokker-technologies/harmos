@@ -182,7 +182,7 @@ impl Operation for ParentCall {
                 keyed: request.keyed,
                 fail_attempt: request.fail_attempt,
             };
-            let response = context.call_as::<Finish>(request).await?;
+            let response = context.call(request).await?;
             Ok(*response)
         }
         .await;
@@ -228,7 +228,7 @@ pub(super) fn contract_scenario() {
                             keyed: true,
                             fail_attempt: false,
                         };
-                        let invocation = runtime.operations.submit_as::<Finish>(request).unwrap();
+                        let invocation = runtime.operations.submit(request).unwrap();
                         assert_eq!(*invocation.await.unwrap(), 42);
                     }
                     assert_eq!(counters.runs.load(Ordering::SeqCst), 1);
@@ -261,10 +261,7 @@ pub(super) fn contract_scenario() {
                         fail_attempt: true,
                         ..request()
                     };
-                    let first = runtime
-                        .operations
-                        .submit_as::<Finish>(failed_request)
-                        .unwrap();
+                    let first = runtime.operations.submit(failed_request).unwrap();
                     let error = first.await.unwrap_err();
                     let Error::OperationFinalization {
                         outcome: Some(outcome),
@@ -292,7 +289,7 @@ pub(super) fn contract_scenario() {
                     assert!(source.contains("cleanup cause"), "{source}");
                     assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
 
-                    let second = runtime.operations.submit_as::<Finish>(request()).unwrap();
+                    let second = runtime.operations.submit(request()).unwrap();
                     tokio::task::yield_now().await;
                     assert_eq!(counters.runs.load(Ordering::SeqCst), 1);
                     second.cancel();
@@ -324,7 +321,7 @@ pub(super) fn contract_scenario() {
         .operations
         .register_operation::<Finishing>("app", Lanes::Serial, owner)
         .unwrap();
-    let invocation = runtime.operations.submit_as::<Finish>(request()).unwrap();
+    let invocation = runtime.operations.submit(request()).unwrap();
     counters.entering.notified().await;
     {
         let waiting = runtime.operations.unregister(Finish::ID);
@@ -369,7 +366,7 @@ pub(super) fn contract_scenario() {
                         .operations
                         .register_operation::<ParentCall>("parent", Lanes::Open, parent_owner)
                         .unwrap();
-                    let invocation = runtime.operations.submit_as::<Parent>(request()).unwrap();
+                    let invocation = runtime.operations.submit(request()).unwrap();
                     child.entering.notified().await;
                     assert!(runtime.operations.unregister(Parent::ID).await.is_err());
                     assert_eq!(child.dropped.load(Ordering::SeqCst), 0);
@@ -401,7 +398,7 @@ pub(super) fn contract_scenario() {
                         .operations
                         .register_operation::<Finishing>("app", Lanes::Serial, owner)
                         .unwrap();
-                    let invocation = runtime.operations.submit_as::<Finish>(request()).unwrap();
+                    let invocation = runtime.operations.submit(request()).unwrap();
                     assert!(invocation.await.is_err());
                     counters.fail.store(false, Ordering::SeqCst);
                     counters.block.store(true, Ordering::SeqCst);
@@ -446,7 +443,7 @@ pub(super) fn contract_scenario() {
                         .operations
                         .register_operation::<Finishing>("app", Lanes::Open, owner)
                         .unwrap();
-                    let invocation = runtime.operations.submit_as::<Finish>(request()).unwrap();
+                    let invocation = runtime.operations.submit(request()).unwrap();
                     let error = invocation.await.unwrap_err();
                     assert!(matches!(error, Error::OperationFinalization { source, .. }
         if matches!(source.as_ref(), Error::OperationPanicked { .. })));
@@ -482,10 +479,7 @@ pub(super) fn contract_scenario() {
                         keyed: true,
                         ..request()
                     };
-                    let first = runtime
-                        .operations
-                        .submit_as::<Finish>(first_request)
-                        .unwrap();
+                    let first = runtime.operations.submit(first_request).unwrap();
                     counters.entering.notified().await;
                     tokio::time::advance(Finish::POLICY.timeout).await;
                     counters.release.notify_one();
@@ -500,10 +494,7 @@ pub(super) fn contract_scenario() {
                         keyed: true,
                         ..request()
                     };
-                    let second = runtime
-                        .operations
-                        .submit_as::<Finish>(second_request)
-                        .unwrap();
+                    let second = runtime.operations.submit(second_request).unwrap();
                     assert_eq!(*second.await.unwrap(), 42);
                     assert_eq!(counters.runs.load(Ordering::SeqCst), 2);
                     runtime.stop().await.unwrap();
@@ -529,7 +520,7 @@ pub(super) fn contract_scenario() {
                         .operations
                         .register_operation::<Finishing>("app", Lanes::Serial, owner)
                         .unwrap();
-                    let result = handle.operations.call_as::<Finish>(request()).await;
+                    let result = handle.operations.call(request()).await;
                     assert!(matches!(result, Err(Error::OperationFinalization { .. })));
                     Err::<(), _>(std::io::Error::other("startup failed after invocation"))
                 }
@@ -600,7 +591,7 @@ pub(super) fn contract_scenario() {
                                     .register_operation::<Finishing>("app", Lanes::Serial, owner)
                                     .unwrap();
                                 assert!(matches!(
-                                    handle.operations.call_as::<Finish>(request()).await,
+                                    handle.operations.call(request()).await,
                                     Err(Error::OperationFinalization { .. })
                                 ));
                                 ready.send_replace(true);
@@ -714,7 +705,7 @@ pub(super) fn contract_scenario() {
                         .unwrap();
                     let mut instance = runtime
                         .operations
-                        .submit_as::<Finish>(Request {
+                        .submit(Request {
                             fail_attempt: true,
                             ..request()
                         })
@@ -775,9 +766,9 @@ pub(super) fn contract_scenario() {
                             Arc::new(Owner(Arc::clone(&counters))),
                         )
                         .unwrap();
-                    let first = runtime.operations.submit_as::<Finish>(request()).unwrap();
+                    let first = runtime.operations.submit(request()).unwrap();
                     counters.entering.notified().await;
-                    let mut second = runtime.operations.submit_as::<Finish>(request()).unwrap();
+                    let mut second = runtime.operations.submit(request()).unwrap();
                     assert_ne!(first.id(), second.id());
                     assert_eq!(first.generation(), second.generation());
                     assert_eq!(second.status().phase(), OperationPhase::Queued);
@@ -808,7 +799,7 @@ pub(super) fn contract_scenario() {
                             Arc::new(Owner(Arc::clone(&counters))),
                         )
                         .unwrap();
-                    let replacement = runtime.operations.submit_as::<Finish>(request()).unwrap();
+                    let replacement = runtime.operations.submit(request()).unwrap();
                     assert_ne!(replacement.generation(), second.generation());
                     assert_ne!(replacement.id(), second.id());
                     assert_eq!(*replacement.join().await.unwrap(), 42);
@@ -836,7 +827,7 @@ pub(super) fn contract_scenario() {
                             Arc::new(Owner(Arc::clone(&counters))),
                         )
                         .unwrap();
-                    let mut instance = runtime.operations.submit_as::<Finish>(request()).unwrap();
+                    let mut instance = runtime.operations.submit(request()).unwrap();
                     assert!(matches!(
                         (&mut instance).await,
                         Err(Error::OperationFinalization { .. })
@@ -906,7 +897,7 @@ pub(super) fn contract_scenario() {
                             Arc::new(ParentOwner(parent.clone())),
                         )
                         .unwrap();
-                    let invocation = runtime.operations.submit_as::<Parent>(request()).unwrap();
+                    let invocation = runtime.operations.submit(request()).unwrap();
                     child.entering.notified().await;
                     assert_eq!(child.dropped.load(Ordering::SeqCst), 0);
                     assert_eq!(parent.dropped.load(Ordering::SeqCst), 0);

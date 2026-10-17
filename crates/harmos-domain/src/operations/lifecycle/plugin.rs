@@ -10,8 +10,8 @@
 /* === Modules === */
 mod sealed {
     pub trait Leaf {}
-    impl<P> Leaf for super::Initialize<P> {}
-    impl<P> Leaf for super::Shutdown<P> {}
+    impl Leaf for super::Initialize {}
+    impl Leaf for super::Shutdown {}
 }
 
 /* === Re-Exports === */
@@ -19,21 +19,40 @@ mod sealed {
 /* === Imports === */
 // Standard Library Imports
 use std::borrow::Cow;
-use std::marker::PhantomData;
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 // Local Imports
-use crate::catalog::{self, Member};
+use crate::MemorySize;
 use crate::operations::{
     Contract, ContractError, OperationDeclaration, OperationPolicy, PolicyError, RestartPolicy,
-    RetryPolicy, WireOperation,
+    RetryPolicy,
 };
 use crate::schema::declaration::{Field, Kind};
 use crate::schema::{Cardinality, Described};
 
 /* === Constants === */
+// The Declared Bound Of Both Actions; Each Plugin Binds Its Own `Policy`.
+pub const POLICY: OperationPolicy = OperationPolicy {
+    timeout: std::time::Duration::from_secs(30),
+    attempt_timeout: std::time::Duration::from_secs(30),
+    retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
+};
 
 /* === Macros === */
+crate::declare!(Initialize {
+    id: "harmos.initialize",
+    version: 1,
+    policy: POLICY,
+    response: (),
+});
+
+crate::declare!(Shutdown {
+    id: "harmos.shutdown",
+    version: 1,
+    policy: POLICY,
+    response: (),
+});
 
 /* === Type Aliases === */
 
@@ -41,16 +60,17 @@ use crate::schema::{Cardinality, Described};
 #[derive(Clone, PartialEq)]
 #[cfg_attr(feature = "grpc", derive(prost::Message))]
 #[cfg_attr(not(feature = "grpc"), derive(Debug, Default))]
-pub struct InitializeRequest {
+pub struct Initialize {
     #[cfg_attr(feature = "grpc", prost(bytes = "vec", tag = "1"))]
     pub config_json: Vec<u8>,
     #[cfg_attr(feature = "grpc", prost(bytes = "vec", tag = "2"))]
     pub generation_context: Vec<u8>,
 }
 
-pub struct Initialize<P>(PhantomData<fn() -> P>);
-
-pub struct Shutdown<P>(PhantomData<fn() -> P>);
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "grpc", derive(prost::Message))]
+#[cfg_attr(not(feature = "grpc"), derive(Debug, Default))]
+pub struct Shutdown {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(into = "EncodedDescriptor", try_from = "EncodedDescriptor")]
@@ -73,11 +93,6 @@ struct EncodedDescriptor {
 pub enum Action {
     Initialize,
     Shutdown,
-}
-
-pub enum Catalog<P> {
-    Initialize(Initialize<P>),
-    Shutdown(Shutdown<P>),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -105,43 +120,18 @@ pub trait SdkOperation: OperationDeclaration + sealed::Leaf {
 }
 
 /* === Implementations === */
-crate::message::postcard_product!(InitializeRequest { config_json: Vec<u8>, generation_context: Vec<u8> });
-impl<P: Policy> Catalog<P> {
-    pub fn bind<I, S, C>(
-        table: &mut crate::operations::WireTable<C>,
-        resources: std::sync::Arc<I::Resources>,
-    ) -> Result<(), crate::operations::ServingError>
-    where
-        C: Send + Sync + 'static,
-        I: for<'a> crate::operations::Operation<
-                Declaration = Initialize<P>,
-                Context<'a> = &'a C,
-                Endpoints = (),
-            >,
-        S: for<'a> crate::operations::Operation<
-                Declaration = Shutdown<P>,
-                Resources = I::Resources,
-                Context<'a> = &'a C,
-                Endpoints = (),
-            >,
-    {
-        Descriptor::of_initialize::<P>()?;
-        Descriptor::of_shutdown::<P>()?;
-        table.bind_owned_lifecycle::<I>(std::sync::Arc::clone(&resources))?;
-        table.bind_owned_lifecycle::<S>(resources)
-    }
-}
-
-impl<P: Policy> SdkOperation for Initialize<P> {
+crate::message::postcard_product!(Initialize { config_json: Vec<u8>, generation_context: Vec<u8> });
+crate::message::postcard_product!(Shutdown {});
+impl SdkOperation for Initialize {
     const ACTION: Action = Action::Initialize;
 }
 
-impl<P: Policy> SdkOperation for Shutdown<P> {
+impl SdkOperation for Shutdown {
     const ACTION: Action = Action::Shutdown;
 }
 
-impl Described for InitializeRequest {
-    const NAME: &'static str = concat!(module_path!(), "::", stringify!(InitializeRequest));
+impl Described for Initialize {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Initialize));
     const FIELDS: &'static [Field] = &[
         Field {
             name: Cow::Borrowed("config_json"),
@@ -161,26 +151,26 @@ impl Described for InitializeRequest {
     >(Self::NAME, Self::FIELDS);
 }
 
-impl<P: Policy> OperationDeclaration for Initialize<P> {
-    type Request = InitializeRequest;
-    type Response = ();
-    const ID: &'static str = "harmos.initialize";
-    const POLICY: OperationPolicy = P::INITIALIZATION_POLICY;
+impl Described for Shutdown {
+    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Shutdown));
+    const FIELDS: &'static [Field] = &[];
+    const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
+        { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
 }
 
-impl<P: Policy> OperationDeclaration for Shutdown<P> {
-    type Request = ();
-    type Response = ();
-    const ID: &'static str = "harmos.shutdown";
-    const POLICY: OperationPolicy = P::SHUTDOWN_POLICY;
+impl MemorySize for Initialize {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+            .saturating_add(self.config_json.capacity())
+            .saturating_add(self.generation_context.capacity())
+    }
 }
 
-impl<P: Policy> WireOperation for Initialize<P> {
-    const VERSION: u32 = 1;
-}
-
-impl<P: Policy> WireOperation for Shutdown<P> {
-    const VERSION: u32 = 1;
+impl MemorySize for Shutdown {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+    }
 }
 
 impl Descriptor {
@@ -234,22 +224,32 @@ impl TryFrom<EncodedDescriptor> for Descriptor {
     }
 }
 
-impl<P, V> catalog::Catalog<V> for Catalog<P>
-where
-    V: Member<Initialize<P>> + Member<Shutdown<P>>,
-{
-    type Entries = [V::Entry; 2];
-    const ENTRIES: Self::Entries = [
-        <V as Member<Initialize<P>>>::ENTRY,
-        <V as Member<Shutdown<P>>>::ENTRY,
-    ];
-}
-
-impl<P> catalog::Contains<Initialize<P>> for Catalog<P> {}
-
-impl<P> catalog::Contains<Shutdown<P>> for Catalog<P> {}
-
 /* === Public Functions === */
+// Bind A Plugin's Two Lifecycle Handlers Under Its Own Lifecycle Policy.
+pub fn bind<P, I, S, C>(
+    table: &mut crate::operations::WireTable<C>,
+    resources: std::sync::Arc<I::Resources>,
+) -> Result<(), crate::operations::ServingError>
+where
+    P: Policy,
+    C: Send + Sync + 'static,
+    I: for<'a> crate::operations::Operation<
+            Declaration = Initialize,
+            Context<'a> = &'a C,
+            Endpoints = (),
+        >,
+    S: for<'a> crate::operations::Operation<
+            Declaration = Shutdown,
+            Resources = I::Resources,
+            Context<'a> = &'a C,
+            Endpoints = (),
+        >,
+{
+    let initialize = Descriptor::of_initialize::<P>()?;
+    let shutdown = Descriptor::of_shutdown::<P>()?;
+    table.bind_owned_lifecycle::<I>(std::sync::Arc::clone(&resources), initialize)?;
+    table.bind_owned_lifecycle::<S>(resources, shutdown)
+}
 
 /* === Private Functions === */
 

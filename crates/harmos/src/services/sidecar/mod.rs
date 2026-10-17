@@ -489,7 +489,7 @@ where
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        request: &mut crate::operations::streams::Publication,
+        request: &mut crate::operations::streams::Publish,
         _endpoints: &mut Self::Endpoints,
     ) -> crate::Result<crate::operations::Response<()>> {
         let result: ::core::result::Result<(), Self::Error> = async move {

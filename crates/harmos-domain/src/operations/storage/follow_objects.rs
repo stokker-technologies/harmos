@@ -13,46 +13,62 @@
 
 /* === Imports === */
 // Standard Library Imports
-use std::any::TypeId;
+
 // Third Party Imports
+
 // Local Imports
-use crate::model::storage::follow::Objects;
-use crate::model::storage::{ObjectEntry, StorageCursor};
-use crate::operations::{OperationDeclaration, OutputDeclaration, Visibility, WireOperation};
-use crate::schema::Described;
+use super::STREAM_POLICY;
+use crate::MemorySize;
+use crate::model::storage::codec::{Nested, Optional, product};
+use crate::model::storage::{ObjectEntry, ObjectSelection, StorageCursor};
+use crate::operations::Visibility;
 
 /* === Constants === */
 
 /* === Macros === */
+product!(FollowObjects {
+    after: Optional<Nested<StorageCursor>> => 1,
+    selection: Nested<ObjectSelection> => 2,
+});
+
+crate::declare!(FollowObjects {
+    id: "storage.follow_objects",
+    version: 1,
+    policy: STREAM_POLICY,
+    response: StorageCursor,
+    output: ObjectEntry,
+    visibility: Visibility::Host,
+});
 
 /* === Type Aliases === */
 
 /* === Structs === */
-pub struct FollowObjects;
+/// Follow every object revision accepted after `after` (from the start when absent).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FollowObjects {
+    pub after: Option<StorageCursor>,
+    pub selection: ObjectSelection,
+}
 
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
-impl OperationDeclaration for FollowObjects {
-    type Request = Objects;
-    type Response = StorageCursor;
-    const ID: &'static str = "storage.follow_objects";
-    const POLICY: crate::operations::OperationPolicy = super::STREAM_POLICY;
-    const VISIBILITY: Visibility = Visibility::Host;
-    fn endpoint_types() -> (Option<TypeId>, Option<TypeId>) {
-        (None, Some(TypeId::of::<ObjectEntry>()))
+impl MemorySize for FollowObjects {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+            .saturating_add(
+                self.after
+                    .memory_size()
+                    .saturating_sub(std::mem::size_of_val(&self.after)),
+            )
+            .saturating_add(
+                self.selection
+                    .memory_size()
+                    .saturating_sub(std::mem::size_of_val(&self.selection)),
+            )
     }
-}
-
-impl OutputDeclaration for FollowObjects {
-    type Item = ObjectEntry;
-}
-
-impl WireOperation for FollowObjects {
-    const VERSION: u32 = 1;
-    const OUTPUT: Option<crate::schema::declaration::Definition> = Some(ObjectEntry::DEFINITION);
 }
 
 /* === Public Functions === */

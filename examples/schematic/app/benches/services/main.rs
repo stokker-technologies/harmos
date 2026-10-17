@@ -20,10 +20,7 @@ use criterion::{BenchmarkId, Criterion, Throughput};
 
 // Local Imports
 use schematic_app::{app, services::guest, state::Schematic};
-use schematic_domain::{
-    model::Snapshot,
-    operations::{ValidateSchematic, schematic::validate::Request},
-};
+use schematic_domain::{model::Snapshot, operations::ValidateSchematic};
 
 /* === Constants === */
 
@@ -67,7 +64,7 @@ fn benchmarks(criterion: &mut Criterion) {
     group.warm_up_time(Duration::from_millis(200));
     group.measurement_time(Duration::from_secs(1));
     for symbols in [8, 128, 8192] {
-        let request = Request {
+        let request = ValidateSchematic {
             schematic: Snapshot {
                 symbols: (0..symbols).collect(),
                 connections: Vec::new(),
@@ -80,11 +77,7 @@ fn benchmarks(criterion: &mut Criterion) {
             |b, request| {
                 b.iter(|| {
                     executor.block_on(async {
-                        let response = runtime
-                            .operations
-                            .call_as::<ValidateSchematic>(request.clone())
-                            .await
-                            .unwrap();
+                        let response = runtime.operations.call(request.clone()).await.unwrap();
                         assert!(response.diagnostics.is_empty());
                         std::hint::black_box(response);
                     })

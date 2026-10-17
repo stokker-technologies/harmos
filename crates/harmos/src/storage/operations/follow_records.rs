@@ -12,7 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
-use harmos_domain::operations::storage::{Follow, FollowBoundaries, Followed};
+use harmos_domain::operations::storage::{FollowBoundaries, FollowRecords, Followed};
 
 // Standard Library Imports
 
@@ -25,7 +25,6 @@ use std::sync::Arc;
 use crate::operations::{Context, Operation, StreamOutput};
 
 use crate::storage::StorageManager;
-use crate::storage::follow::Records;
 use crate::storage::{StorageCursor, StoredRecord};
 
 use crate::MemorySize;
@@ -50,7 +49,7 @@ pub(super) struct Handler<C> {
 /* === Implementations === */
 
 impl<C: 'static> Operation for Handler<C> {
-    type Declaration = Follow;
+    type Declaration = FollowRecords;
     type Resources = StorageManager<C>;
     type Error = Error;
     type Context<'a> = Context<'a>;
@@ -66,7 +65,7 @@ impl<C: 'static> Operation for Handler<C> {
     async fn run<'a>(
         &mut self,
         _: Self::Context<'a>,
-        request: &mut Records,
+        request: &mut FollowRecords,
         output: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<StorageCursor>> {
         crate::storage::query::Source::Records(request.selection.clone()).validate()?;

@@ -113,19 +113,19 @@ impl Operation for Parent {
         match mode {
             Mode::Leaf => Ok(7),
             Mode::HandleCycle => {
-                assert!(matches!(context.submit_as::<ParentContract>(Mode::Leaf),
+                assert!(matches!(context.submit(Mode::Leaf),
                     Err(Error::OperationLaneCycle { parent, child }) if parent == self.trace.lane && child == self.trace.lane));
-                let free = context.submit_as::<FreeContract>(false)?.await?;
+                let free = context.submit(false)?.await?;
                 assert_eq!(*free, 1);
                 Ok(7)
             }
             Mode::PropagateCycle => {
-                let answer = context.submit_as::<ParentContract>(Mode::Leaf)?.await?;
+                let answer = context.submit(Mode::Leaf)?.await?;
                 Ok(*answer)
             }
             Mode::FullLane => {
-                let _queued = context.submit_as::<BoundContract>(false)?;
-                let _free = context.submit_as::<FreeContract>(true)?;
+                let _queued = context.submit(false)?;
+                let _free = context.submit(true)?;
                 self.trace.free_started.notified().await;
                 Ok(self.trace.queued_runs.load(Ordering::SeqCst))
             }
@@ -255,7 +255,7 @@ pub(super) fn contract_scenario() {
                         let (runtime, trace) = runtime(lane).await;
                         let answer = runtime
                             .operations
-                            .submit_as::<ParentContract>(Mode::HandleCycle)
+                            .submit(Mode::HandleCycle)
                             .unwrap()
                             .await
                             .unwrap();
@@ -275,7 +275,7 @@ pub(super) fn contract_scenario() {
     let (runtime, trace) = runtime(Lanes::Serial).await;
     let error = runtime
         .operations
-        .submit_as::<ParentContract>(Mode::PropagateCycle)
+        .submit(Mode::PropagateCycle)
         .unwrap()
         .await
         .unwrap_err();
@@ -300,11 +300,11 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let (runtime, trace) = runtime(Lanes::Concurrent).await;
-                    let blocker = runtime.operations.submit_as::<BoundContract>(true).unwrap();
+                    let blocker = runtime.operations.submit(true).unwrap();
                     trace.bound_started.notified().await;
                     let answer = runtime
                         .operations
-                        .submit_as::<ParentContract>(Mode::FullLane)
+                        .submit(Mode::FullLane)
                         .unwrap()
                         .await
                         .unwrap();

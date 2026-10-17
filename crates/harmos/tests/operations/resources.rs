@@ -109,7 +109,7 @@ impl Operation for Read {
         let result: ::core::result::Result<(String, usize), Self::Error> = async move {
             let seen = self.resources.reads.fetch_add(1, Ordering::SeqCst);
             if *nested {
-                let child = context.submit_as::<ReadContract>(false)?.await?;
+                let child = context.submit(false)?.await?;
                 assert_eq!(child.0, self.resources.device);
                 assert_eq!(child.1, seen + 1);
             }
@@ -169,20 +169,10 @@ pub(super) fn contract_scenario() {
                         .register_operation::<Read>("app", Lanes::Open, resources.clone())
                         .unwrap();
 
-                    let parent = runtime
-                        .operations
-                        .submit_as::<ReadContract>(true)
-                        .unwrap()
-                        .await
-                        .unwrap();
+                    let parent = runtime.operations.submit(true).unwrap().await.unwrap();
                     assert_eq!(parent.0, "sim://rig-a");
                     assert_eq!(parent.1, 0);
-                    let following = runtime
-                        .operations
-                        .submit_as::<ReadContract>(false)
-                        .unwrap()
-                        .await
-                        .unwrap();
+                    let following = runtime.operations.submit(false).unwrap().await.unwrap();
                     assert_eq!(
                         following.1, 2,
                         "parent, child and following attempt share one value"

@@ -85,7 +85,7 @@ impl Operation for CallbackPublication {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        request: &mut harmos::operations::streams::Publication,
+        request: &mut harmos::operations::streams::Publish,
         _endpoints: &mut Self::Endpoints,
     ) -> harmos::Result<harmos::operations::Response<()>> {
         let result: ::core::result::Result<harmos::operations::Response<()>, Self::Error> =
@@ -97,7 +97,7 @@ impl Operation for CallbackPublication {
                     _ => request.sequence.unwrap(),
                 };
                 let echoed = context
-                    .call_as::<Echo>(Blob {
+                    .call(Blob {
                         id,
                         data: request.payload.clone(),
                     })
@@ -235,10 +235,7 @@ fn contract_scenario() {
                     let request = blob(41, 256 * 1024);
                     let result = tokio::time::timeout(
                         Duration::from_secs(5),
-                        fixture
-                            .runtime
-                            .operations
-                            .call_as::<Nested>(request.clone()),
+                        fixture.runtime.operations.call(request.clone()),
                     )
                     .await
                     .unwrap()
@@ -269,11 +266,7 @@ fn contract_scenario() {
                 .block_on(async {
                     let fixture = Fixture::new().await;
                     fixture.mode.store(1, Ordering::SeqCst);
-                    let pending = fixture
-                        .runtime
-                        .operations
-                        .submit_as::<Nested>(blob(42, 512))
-                        .unwrap();
+                    let pending = fixture.runtime.operations.submit(blob(42, 512)).unwrap();
                     marked(fixture.path(), "echo-started-0").await;
                     pending.cancel();
                     assert!(
@@ -292,7 +285,7 @@ fn contract_scenario() {
                         *fixture
                             .runtime
                             .operations
-                            .call_as::<Nested>(blob(43, 512))
+                            .call(blob(43, 512))
                             .await
                             .unwrap(),
                         blob(43, 512)
@@ -312,11 +305,7 @@ fn contract_scenario() {
                 .block_on(async {
                     let fixture = Fixture::new().await;
                     fixture.mode.store(1, Ordering::SeqCst);
-                    let pending = fixture
-                        .runtime
-                        .operations
-                        .submit_as::<Nested>(blob(48, 512))
-                        .unwrap();
+                    let pending = fixture.runtime.operations.submit(blob(48, 512)).unwrap();
                     marked(fixture.path(), "echo-started-0").await;
 
                     let result = tokio::time::timeout(
@@ -344,7 +333,7 @@ fn contract_scenario() {
                         *fixture
                             .runtime
                             .operations
-                            .call_as::<Nested>(blob(49, 512))
+                            .call(blob(49, 512))
                             .await
                             .unwrap(),
                         blob(49, 512)
@@ -367,14 +356,14 @@ fn contract_scenario() {
                         fixture
                             .runtime
                             .operations
-                            .call_as::<Probe>(blob(44, harmos_sidecar::Frame::LIMIT + 1))
+                            .call(blob(44, harmos_sidecar::Frame::LIMIT + 1))
                             .await
                             .is_err()
                     );
                     let prepared = fixture
                         .runtime
                         .operations
-                        .call_as::<Probe>(blob(u64::MAX, 0))
+                        .call(blob(u64::MAX, 0))
                         .await
                         .unwrap();
                     assert_eq!(
@@ -386,7 +375,7 @@ fn contract_scenario() {
                         *fixture
                             .runtime
                             .operations
-                            .call_as::<Probe>(request.clone())
+                            .call(request.clone())
                             .await
                             .unwrap(),
                         request
@@ -408,7 +397,7 @@ fn contract_scenario() {
                     assert!(
                         tokio::time::timeout(
                             Duration::from_secs(5),
-                            fixture.runtime.operations.call_as::<Nested>(blob(46, 512))
+                            fixture.runtime.operations.call(blob(46, 512))
                         )
                         .await
                         .unwrap()

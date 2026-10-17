@@ -505,7 +505,7 @@ impl harmos::Plugin for Batches {
                    sequence: u64,
                    published_unix_micros: Option<i64>,
                    following: Vec<(Vec<u8>, Option<i64>)>| {
-            harmos::operations::streams::Publication {
+            harmos::operations::streams::Publish {
                 stream: stream.to_owned(),
                 schema: 1,
                 sequence: Some(sequence),
@@ -524,11 +524,7 @@ impl harmos::Plugin for Batches {
             }
         };
         let pulse = |sample: u64| harmos::Message::encode_to_vec(&support::pulse(sample));
-        let publish = |request| {
-            harmos::operations::Host::call_as::<harmos::operations::streams::Publish>(
-                context, request,
-            )
-        };
+        let publish = |request| harmos::operations::Host::call(context, request);
         let raw_id = <RawRows as harmos::StreamSpec>::ID;
         let refused = publish(raw(
             raw_id,
@@ -1010,10 +1006,7 @@ pub(super) fn contract_scenario() {
                         .unwrap();
                     fixture.initialize().await.unwrap();
                     ready(fixture.ready().clone()).await;
-                    fixture
-                        .call_as::<PublishPulse>(PublishPulse { sample: 41 })
-                        .await
-                        .unwrap();
+                    fixture.call(PublishPulse { sample: 41 }).await.unwrap();
                     let stream = fixture
                         .runtime
                         .streams
@@ -1035,10 +1028,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(stream.query(..).await.unwrap().count(), 1);
                     fixture.initialize().await.unwrap();
                     ready(fixture.ready().clone()).await;
-                    fixture
-                        .call_as::<PublishPulse>(PublishPulse { sample: 42 })
-                        .await
-                        .unwrap();
+                    fixture.call(PublishPulse { sample: 42 }).await.unwrap();
                     let samples: Vec<_> = stream
                         .query(..)
                         .await

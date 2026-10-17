@@ -131,7 +131,7 @@ impl Operation for Parent {
         let result: ::core::result::Result<(), Self::Error> = async move {
             self.trace.attempts.fetch_add(1, Ordering::SeqCst);
             self.trace.events.lock().unwrap().push("parent-attempt");
-            let _child = context.submit_as::<ChildContract>(())?;
+            let _child = context.submit(())?;
             self.trace.child_started.notified().await;
             self.trace.parent_ready.notify_one();
             match exit {
@@ -229,10 +229,7 @@ async fn runtime(block_cleanup: bool) -> (Runtime<App>, Arc<Trace>) {
 
 async fn torn_down(exit: Exit, cancel: bool) -> Result<harmos::operations::Response<()>, Error> {
     let (runtime, trace) = runtime(false).await;
-    let parent = runtime
-        .operations
-        .submit_as::<ParentContract>(exit)
-        .unwrap();
+    let parent = runtime.operations.submit(exit).unwrap();
     if cancel {
         trace.parent_ready.notified().await;
         parent.cancel();
@@ -326,10 +323,7 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let (runtime, trace) = runtime(true).await;
-                    let parent = runtime
-                        .operations
-                        .submit_as::<ParentContract>(Exit::Retry)
-                        .unwrap();
+                    let parent = runtime.operations.submit(Exit::Retry).unwrap();
                     trace.finalizing.notified().await;
                     tokio::time::advance(Duration::from_millis(20)).await;
                     assert_eq!(trace.attempts.load(Ordering::SeqCst), 1);
@@ -378,10 +372,7 @@ pub(super) fn contract_scenario() {
                     for exit in [Exit::Return, Exit::Fail] {
                         let succeeds = matches!(exit, Exit::Return);
                         let (runtime, trace) = runtime(true).await;
-                        let mut parent = runtime
-                            .operations
-                            .submit_as::<ParentContract>(exit)
-                            .unwrap();
+                        let mut parent = runtime.operations.submit(exit).unwrap();
                         trace.finalizing.notified().await;
                         assert!((&mut parent).now_or_never().is_none());
                         assert_eq!(

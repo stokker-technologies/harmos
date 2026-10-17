@@ -13,58 +13,67 @@
 
 /* === Imports === */
 // Standard Library Imports
-use std::any::TypeId;
+
 // Third Party Imports
+
 // Local Imports
-use crate::model::storage::files::{FileBatch, FileCompletion, ReadFile as ReadRequest};
-use crate::operations::{
-    Grpc, OperationDeclaration, OutputDeclaration, ReplaySafety, Visibility, WireOperation,
-};
-use crate::schema::Described;
+use super::IO_POLICY;
+use crate::MemorySize;
+use crate::model::storage::codec::{Nested, product};
+use crate::model::storage::{ByteRange, FileBatch, FileCompletion, FileReference};
+use crate::operations::{ReplaySafety, Visibility};
 
 /* === Constants === */
 
 /* === Macros === */
+product!(ReadFile {
+    file: Nested<FileReference> => 1,
+    range: Nested<ByteRange> => 2,
+});
+
+crate::declare!(ReadFile {
+    id: "storage.read_file",
+    version: 1,
+    policy: IO_POLICY,
+    response: FileCompletion,
+    output: FileBatch,
+    visibility: Visibility::Shared,
+    replay: ReplaySafety::Idempotent,
+    grpc: ("harmos.storage.v1", "Storage", "ReadFile"),
+    grant: |request: &ReadFile| Some(crate::plugin::Grant::of(
+        "storage.read_file",
+        request.file.metadata.id.as_str().to_owned(),
+    )),
+});
 
 /* === Type Aliases === */
 
 /* === Structs === */
-pub struct ReadFile;
+// Read A Byte Range Of A Finished, Immutable File.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReadFile {
+    pub file: FileReference,
+    pub range: ByteRange,
+}
 
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
-impl OperationDeclaration for ReadFile {
-    type Request = ReadRequest;
-    type Response = FileCompletion;
-    const ID: &'static str = "storage.read_file";
-    const POLICY: crate::operations::OperationPolicy = super::IO_POLICY;
-    const VISIBILITY: Visibility = Visibility::Shared;
-    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-
-    fn grant(request: &ReadRequest) -> Option<crate::plugin::Grant> {
-        Some(crate::plugin::Grant::of(
-            Self::ID,
-            request.file.metadata.id.as_str().to_owned(),
-        ))
-    }
-    fn endpoint_types() -> (Option<TypeId>, Option<TypeId>) {
-        (None, Some(TypeId::of::<FileBatch>()))
-    }
-}
-
-impl OutputDeclaration for ReadFile {
-    type Item = FileBatch;
-}
-
-impl WireOperation for ReadFile {
-    const VERSION: u32 = 1;
-    const OUTPUT: Option<crate::schema::declaration::Definition> = Some(FileBatch::DEFINITION);
-    const GRPC: Option<Grpc> = Some(super::grpc("ReadFile"));
-    crate::with_protobuf! {
-        fn visit_grpc<V: crate::operations::GrpcVisitor>(visitor: V) -> Option<V::Entry> { Some(visitor.download::<Self>()) }
+impl MemorySize for ReadFile {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+            .saturating_add(
+                self.file
+                    .memory_size()
+                    .saturating_sub(std::mem::size_of_val(&self.file)),
+            )
+            .saturating_add(
+                self.range
+                    .memory_size()
+                    .saturating_sub(std::mem::size_of_val(&self.range)),
+            )
     }
 }
 

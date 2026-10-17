@@ -141,12 +141,7 @@ async fn cancellation(load: u32) -> Cancellation {
         stopped,
     });
     let instances: Vec<_> = (0..load)
-        .map(|_| {
-            runtime
-                .operations
-                .submit_as::<Dispatch>(Some(signals.clone()))
-                .unwrap()
-        })
+        .map(|_| runtime.operations.submit(Some(signals.clone())).unwrap())
         .collect();
     tokio::time::timeout(Duration::from_secs(5), signals.running.acquire_many(load))
         .await
@@ -193,7 +188,7 @@ fn benchmarks(c: &mut Criterion) {
             executor.block_on(async {
                 let started = Instant::now();
                 for _ in 0..iterations {
-                    let instance = runtime.operations.submit_as::<Dispatch>(None).unwrap();
+                    let instance = runtime.operations.submit(None).unwrap();
                     let result = instance.join().await.unwrap();
                     assert_eq!(*std::hint::black_box(result), 42);
                 }

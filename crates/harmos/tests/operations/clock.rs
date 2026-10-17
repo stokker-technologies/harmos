@@ -161,7 +161,7 @@ pub(super) fn contract_scenario() {
 
                     let answer = runtime
                         .operations
-                        .submit_as::<MeasureContract>(scripted)
+                        .submit(scripted)
                         .unwrap()
                         .await
                         .expect("the attempt measures its own wait");
@@ -176,7 +176,7 @@ pub(super) fn contract_scenario() {
                     // duration every time it is run.
                     let again = runtime
                         .operations
-                        .submit_as::<MeasureContract>(scripted)
+                        .submit(scripted)
                         .unwrap()
                         .await
                         .expect("the second attempt measures its own wait");

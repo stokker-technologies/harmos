@@ -31,7 +31,7 @@ use crate::{Error, Result};
 
 /* === Type Aliases === */
 type Prepare<O, P> = dyn Fn(
-        (Request<<O as OperationDeclaration>::Request>, P),
+        (Request<O>, P),
         OperationInstanceId,
         Arc<crate::supervision::instance::Instance>,
         Arc<Entry>,

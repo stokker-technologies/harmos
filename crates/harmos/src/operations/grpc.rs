@@ -63,9 +63,9 @@ impl GrpcBinding {
         self.entry.grpc
     }
 
-    pub(crate) fn submit_as<O: OperationDeclaration, P: Send + 'static>(
+    pub(crate) fn submit<O: OperationDeclaration, P: Send + 'static>(
         &self,
-        request: StreamItem<O::Request>,
+        request: StreamItem<O>,
         endpoints: P,
     ) -> Result<OperationInstance<O>> {
         self.operations.admit_entry::<O, P>(

@@ -13,15 +13,11 @@
 
 /* === Imports === */
 // Standard Library Imports
-use std::any::TypeId;
 use std::borrow::Cow;
 // Third Party Imports
 // Local Imports
-use crate::model::storage::codec::{Nested, product};
-use crate::model::storage::follow::Records;
-use crate::model::storage::{StorageCursor, StoredRecord};
-use crate::operations::{Grpc, OperationDeclaration, OutputDeclaration, Visibility, WireOperation};
-use crate::plugin::Grant;
+use crate::model::storage::codec::{Nested, Optional, product};
+use crate::model::storage::{RecordSelection, StorageCursor, StoredRecord};
 use crate::schema::declaration::{Field, Kind};
 use crate::schema::{Cardinality, Described};
 use crate::{MemorySize, MessageError};
@@ -95,7 +91,12 @@ crate::with_protobuf! {
 /* === Type Aliases === */
 
 /* === Structs === */
-pub struct Follow;
+/// Follow record entries accepted after `after` (from the start when absent).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FollowRecords {
+    pub after: Option<StorageCursor>,
+    pub selection: RecordSelection,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FollowBoundaries {
@@ -113,6 +114,41 @@ pub enum Followed {
 /* === Traits === */
 
 /* === Implementations === */
+product!(FollowRecords {
+    after: Optional<Nested<StorageCursor>> => 1,
+    selection: Nested<RecordSelection> => 2,
+});
+
+crate::declare!(FollowRecords {
+    id: "storage.follow_records",
+    version: 1,
+    policy: super::STREAM_POLICY,
+    response: StorageCursor,
+    output: Followed,
+    visibility: crate::operations::Visibility::Shared,
+    grpc: ("harmos.storage.v1", "Storage", "FollowRecords"),
+    grant: |request: &FollowRecords| Some(crate::plugin::Grant::of(
+        "storage.follow_records",
+        request.selection.schema.id.as_str().to_owned(),
+    )),
+});
+
+impl MemorySize for FollowRecords {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+            .saturating_add(
+                self.after
+                    .memory_size()
+                    .saturating_sub(std::mem::size_of_val(&self.after)),
+            )
+            .saturating_add(
+                self.selection
+                    .memory_size()
+                    .saturating_sub(std::mem::size_of_val(&self.selection)),
+            )
+    }
+}
+
 impl MemorySize for FollowBoundaries {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
@@ -214,39 +250,6 @@ impl crate::__private::PostcardValue for Followed {
             1 => <StoredRecord as crate::__private::PostcardValue>::read(input).map(Self::Record),
             _ => Err(MessageError::borrowed("unknown follow output variant")),
         })
-    }
-}
-
-impl OperationDeclaration for Follow {
-    type Request = Records;
-    type Response = StorageCursor;
-    const ID: &'static str = "storage.follow";
-    const POLICY: crate::operations::OperationPolicy = super::STREAM_POLICY;
-    const VISIBILITY: Visibility = Visibility::Shared;
-    fn endpoint_types() -> (Option<TypeId>, Option<TypeId>) {
-        (None, Some(TypeId::of::<Followed>()))
-    }
-
-    fn grant(request: &Records) -> Option<Grant> {
-        Some(Grant::of(
-            Self::ID,
-            request.selection.schema.id.as_str().to_owned(),
-        ))
-    }
-}
-
-impl OutputDeclaration for Follow {
-    type Item = Followed;
-}
-
-impl WireOperation for Follow {
-    const VERSION: u32 = 1;
-    const OUTPUT: Option<crate::schema::declaration::Definition> = Some(Followed::DEFINITION);
-    const GRPC: Option<Grpc> = Some(super::grpc("Follow"));
-    crate::with_protobuf! {
-        fn visit_grpc<V: crate::operations::GrpcVisitor>(visitor: V) -> Option<V::Entry> {
-            Some(visitor.download::<Self>())
-        }
     }
 }
 

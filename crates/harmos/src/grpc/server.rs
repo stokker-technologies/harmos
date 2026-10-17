@@ -26,10 +26,8 @@ use tonic::{Request, Response, Status, Streaming, body::Body, codegen::http};
 
 // Local Imports
 use super::{Codec, Event, InputEnvelope, InputError};
-use crate::operations::{
-    InputDeclaration, OperationDeclaration, OperationInstance, OutputDeclaration, StreamItem,
-};
-use crate::{Error, MemorySize, Protobuf, Refusal, operations::OperationManager};
+use crate::operations::{OperationDeclaration, OperationInstance, StreamItem};
+use crate::{Error, Protobuf, Refusal, operations::OperationManager};
 
 /* === Constants === */
 
@@ -90,11 +88,11 @@ impl Authority {
 
     fn submit_charged<O: OperationDeclaration, P: Send + 'static>(
         &self,
-        request: StreamItem<O::Request>,
+        request: StreamItem<O>,
         endpoints: P,
     ) -> crate::Result<OperationInstance<O>> {
         match self {
-            Self::Binding(binding) => binding.submit_as::<O, P>(request, endpoints),
+            Self::Binding(binding) => binding.submit(request, endpoints),
             Self::TrustedHost(operations) => {
                 operations.submit_external_charged::<O, P>(request, endpoints)
             }
@@ -128,15 +126,13 @@ impl Settings {
     }
 }
 
-impl<O> tonic::server::UnaryService<StreamItem<O::Request>> for Endpoint<O>
+impl<O> tonic::server::UnaryService<StreamItem<O>> for Endpoint<O>
 where
     O: OperationDeclaration,
-    O::Request: Protobuf + MemorySize,
-    O::Response: Protobuf,
 {
     type Response = crate::operations::Response<O::Response>;
     type Future = tonic::codegen::BoxFuture<Response<Self::Response>, Status>;
-    fn call(&mut self, request: Request<StreamItem<O::Request>>) -> Self::Future {
+    fn call(&mut self, request: Request<StreamItem<O>>) -> Self::Future {
         let authority = self.authority.contextual(&request);
         Box::pin(async move {
             let instance = authority
@@ -149,17 +145,17 @@ where
         })
     }
 }
-impl<O> tonic::server::ServerStreamingService<StreamItem<O::Request>> for Endpoint<O>
+impl<O> tonic::server::ServerStreamingService<StreamItem<O>> for Endpoint<O>
 where
-    O: OutputDeclaration,
-    O::Request: Protobuf + MemorySize,
-    O::Response: Protobuf,
-    O::Item: Protobuf + MemorySize,
+    O: crate::operations::OperationDeclaration,
 {
-    type Response = Event<StreamItem<O::Item>, crate::operations::Response<O::Response>>;
-    type ResponseStream = Items<O::Item, O::Response>;
+    type Response = Event<
+        StreamItem<<O::Output as crate::operations::Direction>::Item>,
+        crate::operations::Response<O::Response>,
+    >;
+    type ResponseStream = Items<<O::Output as crate::operations::Direction>::Item, O::Response>;
     type Future = tonic::codegen::BoxFuture<Response<Self::ResponseStream>, Status>;
-    fn call(&mut self, request: Request<StreamItem<O::Request>>) -> Self::Future {
+    fn call(&mut self, request: Request<StreamItem<O>>) -> Self::Future {
         let authority = self.authority.contextual(&request);
         let settings = self.settings;
         Box::pin(async move {
@@ -172,19 +168,22 @@ where
         })
     }
 }
-impl<O> tonic::server::ClientStreamingService<StreamItem<InputEnvelope<O::Request, O::Item>>>
-    for Endpoint<O>
+impl<O>
+    tonic::server::ClientStreamingService<
+        StreamItem<InputEnvelope<O, <O::Input as crate::operations::Direction>::Item>>,
+    > for Endpoint<O>
 where
-    O: InputDeclaration,
-    O::Request: Protobuf + MemorySize,
-    O::Response: Protobuf,
-    O::Item: Protobuf + MemorySize,
+    O: crate::operations::OperationDeclaration,
 {
     type Response = crate::operations::Response<O::Response>;
     type Future = tonic::codegen::BoxFuture<Response<Self::Response>, Status>;
     fn call(
         &mut self,
-        request: Request<Streaming<StreamItem<InputEnvelope<O::Request, O::Item>>>>,
+        request: Request<
+            Streaming<
+                StreamItem<InputEnvelope<O, <O::Input as crate::operations::Direction>::Item>>,
+            >,
+        >,
     ) -> Self::Future {
         let authority = self.authority.contextual(&request);
         let settings = self.settings;
@@ -206,23 +205,23 @@ where
 }
 impl<O>
     tonic::server::StreamingService<
-        StreamItem<InputEnvelope<O::Request, <O as InputDeclaration>::Item>>,
+        StreamItem<InputEnvelope<O, <O::Input as crate::operations::Direction>::Item>>,
     > for Endpoint<O>
 where
-    O: InputDeclaration + OutputDeclaration,
-    O::Request: Protobuf + MemorySize,
-    O::Response: Protobuf,
-    <O as InputDeclaration>::Item: Protobuf + MemorySize,
-    <O as OutputDeclaration>::Item: Protobuf + MemorySize,
+    O: crate::operations::OperationDeclaration,
 {
-    type Response =
-        Event<StreamItem<<O as OutputDeclaration>::Item>, crate::operations::Response<O::Response>>;
-    type ResponseStream = Items<<O as OutputDeclaration>::Item, O::Response>;
+    type Response = Event<
+        StreamItem<<O::Output as crate::operations::Direction>::Item>,
+        crate::operations::Response<O::Response>,
+    >;
+    type ResponseStream = Items<<O::Output as crate::operations::Direction>::Item, O::Response>;
     type Future = tonic::codegen::BoxFuture<Response<Self::ResponseStream>, Status>;
     fn call(
         &mut self,
         request: Request<
-            Streaming<StreamItem<InputEnvelope<O::Request, <O as InputDeclaration>::Item>>>,
+            Streaming<
+                StreamItem<InputEnvelope<O, <O::Input as crate::operations::Direction>::Item>>,
+            >,
         >,
     ) -> Self::Future {
         let authority = self.authority.contextual(&request);
@@ -252,14 +251,12 @@ pub fn unary<O>(
 ) -> HttpFuture
 where
     O: OperationDeclaration,
-    O::Request: Protobuf + MemorySize,
-    O::Response: Protobuf,
 {
     Box::pin(async move {
         if let Err(error) = settings.validate() {
             return error.into_http();
         }
-        let codec = match Codec::<O::Request, crate::operations::Response<O::Response>>::new(
+        let codec = match Codec::<O, crate::operations::Response<O::Response>>::new(
             settings.decode,
             settings.encode,
         ) {
@@ -280,18 +277,18 @@ pub fn download<O>(
     request: http::Request<Body>,
 ) -> HttpFuture
 where
-    O: OutputDeclaration,
-    O::Request: Protobuf + MemorySize,
-    O::Response: Protobuf,
-    O::Item: Protobuf + MemorySize,
+    O: crate::operations::OperationDeclaration,
 {
     Box::pin(async move {
         if let Err(error) = settings.validate() {
             return error.into_http();
         }
         let codec = match Codec::<
-            O::Request,
-            Event<StreamItem<O::Item>, crate::operations::Response<O::Response>>,
+            O,
+            Event<
+                StreamItem<<O::Output as crate::operations::Direction>::Item>,
+                crate::operations::Response<O::Response>,
+            >,
         >::new(settings.decode, settings.encode)
         {
             Ok(codec) => codec,
@@ -311,17 +308,14 @@ pub fn upload<O>(
     request: http::Request<Body>,
 ) -> HttpFuture
 where
-    O: InputDeclaration,
-    O::Request: Protobuf + MemorySize,
-    O::Response: Protobuf,
-    O::Item: Protobuf + MemorySize,
+    O: crate::operations::OperationDeclaration,
 {
     Box::pin(async move {
         if let Err(error) = settings.validate() {
             return error.into_http();
         }
         let codec = match Codec::<
-            InputEnvelope<O::Request, O::Item>,
+            InputEnvelope<O, <O::Input as crate::operations::Direction>::Item>,
             crate::operations::Response<O::Response>,
         >::new(settings.decode, settings.encode)
         {
@@ -342,20 +336,16 @@ pub fn exchange<O>(
     request: http::Request<Body>,
 ) -> HttpFuture
 where
-    O: InputDeclaration + OutputDeclaration,
-    O::Request: Protobuf + MemorySize,
-    O::Response: Protobuf,
-    <O as InputDeclaration>::Item: Protobuf + MemorySize,
-    <O as OutputDeclaration>::Item: Protobuf + MemorySize,
+    O: crate::operations::OperationDeclaration,
 {
     Box::pin(async move {
         if let Err(error) = settings.validate() {
             return error.into_http();
         }
         let codec = match Codec::<
-            InputEnvelope<O::Request, <O as InputDeclaration>::Item>,
+            InputEnvelope<O, <O::Input as crate::operations::Direction>::Item>,
             Event<
-                StreamItem<<O as OutputDeclaration>::Item>,
+                StreamItem<<O::Output as crate::operations::Direction>::Item>,
                 crate::operations::Response<O::Response>,
             >,
         >::new(settings.decode, settings.encode)

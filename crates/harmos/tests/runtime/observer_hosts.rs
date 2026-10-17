@@ -275,7 +275,7 @@ impl<const N: u64> Observer<Host> for Watch<N> {
         &mut self,
         ctx: &ObserverContext<'_, Settings, Host>,
     ) -> Result<(), PublishError> {
-        let value = ctx.call_as::<ReadValue>(N).await?;
+        let value = ctx.call(N).await?;
         ctx.publish(Pulse { sample: value }).await
     }
 

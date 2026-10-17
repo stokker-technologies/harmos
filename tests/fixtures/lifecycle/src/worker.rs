@@ -103,10 +103,7 @@ impl Resident<SchematicEditor> for Traffic {
                 sequence,
                 bytes: vec![sequence as u8; PAYLOAD_BYTES],
             };
-            let Some(response) = context
-                .until_stopping(host.call_as::<Exchange>(request))
-                .await
-            else {
+            let Some(response) = context.until_stopping(host.call(request)).await else {
                 return Ok(());
             };
             let response = match response {

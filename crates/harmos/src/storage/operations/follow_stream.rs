@@ -26,7 +26,6 @@ use crate::operations::{Context, Operation, StreamOutput};
 use crate::storage::{StorageCursor, StoredRow};
 
 use crate::storage::StorageManager;
-use crate::storage::follow::Stream;
 
 use crate::{Error, MemorySize, Result};
 
@@ -65,7 +64,7 @@ impl<C: 'static> Operation for Handler<C> {
     async fn run<'a>(
         &mut self,
         _: Self::Context<'a>,
-        request: &mut Stream,
+        request: &mut FollowStream,
         output: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<StorageCursor>> {
         crate::storage::query::Source::Stream(request.selection.clone()).validate()?;

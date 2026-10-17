@@ -93,7 +93,7 @@ fn contract_scenario() {
                             "start:client"
                         ]
                     );
-                    // Its Original Generation Remains Occupied And Callable
+                    // Its Original Generation Remains Occupied And OperationDeclaration
                     assert!(matches!(
                         session.router().enter("other"),
                         Err(DispatchError::Occupied(_))

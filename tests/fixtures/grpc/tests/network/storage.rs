@@ -794,13 +794,13 @@ async fn storage_uses_data() {
         assert_eq!(progress.length, 6);
         assert_eq!(progress.phase, FilePhase::Finished);
         assert!(following_file.message().await.unwrap().is_none());
-        use harmos::storage::operations::{AppendFileRequest, CreateFileRequest};
+        use harmos::storage::operations::{AppendFile, CreateFile};
         let mutation = |key: &str| MutationId {
             window: info.mutations.as_ref().unwrap().id.clone(),
             key: Identifier::new(key).unwrap(),
         };
         for (name, finish) in [("remote-finished", true), ("remote-abandoned", false)] {
-            let create = CreateFileRequest {
+            let create = CreateFile {
                 mutation: mutation(name),
                 metadata: FileMetadata {
                     id: Identifier::new(name).unwrap(),
@@ -815,7 +815,7 @@ async fn storage_uses_data() {
             let created = client.create_file(wire).await.unwrap().into_inner();
             let created =
                 <FileProducer as harmos::Protobuf>::decode(&created.encode_to_vec()).unwrap();
-            let append = AppendFileRequest {
+            let append = AppendFile {
                 mutation: mutation(&format!("{name}-append")),
                 session: created.session.clone(),
                 offset: 0,
@@ -870,7 +870,7 @@ async fn storage_uses_data() {
                 bytes.extend_from_slice(&batch.bytes);
             }
             assert_eq!(bytes, b"payload");
-            let deletion = harmos::storage::operations::DeleteFileRequest {
+            let deletion = harmos::storage::operations::DeleteFile {
                 mutation: MutationId {
                     window: info.mutations.as_ref().unwrap().id.clone(),
                     key: Identifier::new(format!("delete-{name}")).unwrap(),
@@ -957,7 +957,7 @@ async fn storage_uses_data() {
         assert_eq!(stream_position.sequence, accepted.sequence + 1);
         assert_eq!(storage.cursor_saved(), stream_position);
         use harmos::storage::SchemaInput;
-        use harmos::storage::operations::WriteSchemaRequest;
+        use harmos::storage::operations::WriteSchema;
         let logical = SchemaInput::new(
             harmos::storage::SchemaKey {
                 payload_encoding: harmos::storage::PayloadEncoding::PostcardV1,
@@ -983,7 +983,7 @@ async fn storage_uses_data() {
             },
         )
         .unwrap();
-        let request = WriteSchemaRequest {
+        let request = WriteSchema {
             mutation: mutation("write-schema"),
             schema: logical.clone(),
         };

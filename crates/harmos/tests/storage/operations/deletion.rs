@@ -25,7 +25,7 @@ use std::time::Duration;
 // Local Imports
 use super::{Fixture, Lanes, config};
 use harmos::Identifier;
-use harmos::storage::operations::{DeleteFile, DeleteFileRequest};
+use harmos::storage::operations::DeleteFile;
 use harmos::storage::{FileMetadata, MutationId, StagedFile, StorageBackend};
 
 /* === Constants === */
@@ -54,8 +54,8 @@ fn metadata(id: &str) -> FileMetadata {
         expected_sha256: None,
     }
 }
-fn request(f: &Fixture, id: &str) -> DeleteFileRequest {
-    DeleteFileRequest {
+fn request(f: &Fixture, id: &str) -> DeleteFile {
+    DeleteFile {
         mutation: MutationId {
             window: f.storage.mutation_window().unwrap().id,
             key: Identifier::new("delete").unwrap(),
@@ -247,12 +247,7 @@ pub(super) fn contract_scenario() {
                         .unwrap();
                     f.data.control.delete_failures.store(3, Ordering::SeqCst);
                     let request = request(&f, "retry");
-                    let result = f
-                        .runtime
-                        .operations
-                        .call_as::<DeleteFile>(request.clone())
-                        .await
-                        .unwrap();
+                    let result = f.runtime.operations.call(request.clone()).await.unwrap();
                     assert_eq!(*result, request.file);
                     assert_eq!(f.data.control.delete_failures.load(Ordering::SeqCst), 0);
                     assert!(
@@ -288,13 +283,7 @@ pub(super) fn contract_scenario() {
                         .unwrap();
                     f.data.control.delete_failures.store(5, Ordering::SeqCst);
                     let request = request(&f, "budget");
-                    assert!(
-                        f.runtime
-                            .operations
-                            .call_as::<DeleteFile>(request.clone())
-                            .await
-                            .is_err()
-                    );
+                    assert!(f.runtime.operations.call(request.clone()).await.is_err());
                     assert_eq!(f.data.control.delete_failures.load(Ordering::SeqCst), 1);
                     f.data.control.delete_failures.store(0, Ordering::SeqCst);
                     f.storage

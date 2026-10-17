@@ -18,8 +18,7 @@ use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 // Local Imports
 use crate::catalog::{Member, Visitor};
-use crate::operations::{Declares, OperationDeclaration, WireDeclaration, WireOperation};
-use crate::schema::Described;
+use crate::operations::{Declares, OperationDeclaration, WireDeclaration};
 
 /* === Constants === */
 
@@ -52,12 +51,7 @@ pub struct Requirements;
 
 /* === Implementations === */
 impl Requirement {
-    pub const fn of<O>(grants: &'static [Grant]) -> Self
-    where
-        O: WireOperation,
-        O::Request: Described,
-        O::Response: Described,
-    {
+    pub const fn of<O: OperationDeclaration>(grants: &'static [Grant]) -> Self {
         Self {
             declaration: WireDeclaration::of::<O>(),
             grants,
@@ -105,9 +99,6 @@ impl Visitor for Requirements {
 impl<M> Member<M> for Requirements
 where
     M: Declares,
-    M::Declaration: WireOperation,
-    <M::Declaration as OperationDeclaration>::Request: Described,
-    <M::Declaration as OperationDeclaration>::Response: Described,
 {
     const ENTRY: Requirement = Requirement::of::<M::Declaration>(&[]);
 }

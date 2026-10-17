@@ -18,7 +18,7 @@ use std::sync::Arc;
 // Third Party Imports
 // Local Imports
 use crate::operations::{Context, Operation, OperationDeclaration, StreamInput};
-use crate::storage::{FileMetadata, FileReference, StorageManager};
+use crate::storage::{FileReference, StorageManager};
 use crate::{Error, Result};
 use harmos_domain::model::storage::files::FileBatch;
 
@@ -57,14 +57,16 @@ impl<C: 'static> Operation for Handler<C> {
     async fn run<'a>(
         &mut self,
         ctx: Self::Context<'a>,
-        metadata: &mut FileMetadata,
+        request: &mut WriteFile,
         input: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<FileReference>> {
-        let grant =
-            harmos_domain::plugin::Grant::of(WriteFile::ID, metadata.id.as_str().to_owned());
+        let grant = harmos_domain::plugin::Grant::of(
+            WriteFile::ID,
+            request.metadata.id.as_str().to_owned(),
+        );
         ctx.admit_stream_grant(&grant)?;
         self.storage.retry_transient_persistence();
-        let mut file = self.storage.create_file(metadata.clone()).await?;
+        let mut file = self.storage.create_file(request.metadata.clone()).await?;
         let mut offset = 0u64;
         while let Some(batch) = input.recv().await {
             ctx.admit_stream_grant(&grant)?;

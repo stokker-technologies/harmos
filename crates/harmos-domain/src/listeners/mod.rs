@@ -11,7 +11,10 @@
 mod delivery;
 
 /* === Re-Exports === */
-pub use delivery::{Context, ContextError, Delivery, EncodingError};
+pub use delivery::{
+    Context, ContextError, Delivery, EncodingError, Listener, encode_borrowed,
+    encoding_memory_bytes,
+};
 
 /* === Imports === */
 // Standard Library Imports

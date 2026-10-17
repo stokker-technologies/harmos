@@ -100,7 +100,7 @@ impl<const CHILD: bool> Operation for Overlay<CHILD> {
             let child = context.with_value(Stage { id: "child".into() })?;
             let stage = child.context().require::<Stage>()?;
             assert_eq!(stage.id, "child");
-            let answer = child.call_as::<Overlay<true>>(()).await?;
+            let answer = child.call(()).await?;
             Ok(format!("{actor}:{}:{answer}", "parent"))
         }
         .await;
@@ -147,7 +147,7 @@ impl<const CHILD: bool> Operation for Read<CHILD> {
             if CHILD {
                 return Ok(actor.into());
             }
-            let child = context.call_as::<Declare<true>>(()).await?;
+            let child = context.call(()).await?;
             Ok(format!("{actor}:{child}"))
         }
         .await;
@@ -323,14 +323,11 @@ pub(super) fn contract_scenario() {
                     .unwrap();
                 let operations = runtime.operations.with_context(original.clone());
                 assert_eq!(
-                    &*operations.call_as::<Overlay<false>>(()).await.unwrap(),
+                    &*operations.call(()).await.unwrap(),
                     "alice:parent:alice:child"
                 );
                 assert_eq!(original.require::<Stage>().unwrap().id, "parent");
-                assert_eq!(
-                    &*operations.call_as::<Overlay<true>>(()).await.unwrap(),
-                    "alice:parent"
-                );
+                assert_eq!(&*operations.call(()).await.unwrap(), "alice:parent");
                 runtime.stop().await.unwrap();
             });
         });
@@ -356,10 +353,7 @@ pub(super) fn contract_scenario() {
                             .unwrap();
                     }
                     let alice = runtime.operations.with_context(context("alice"));
-                    assert_eq!(
-                        &*alice.call_as::<Declare<false>>(()).await.unwrap(),
-                        "alice:alice"
-                    );
+                    assert_eq!(&*alice.call(()).await.unwrap(), "alice:alice");
                     assert_eq!(
                         *events.lock().unwrap(),
                         [
@@ -384,10 +378,7 @@ pub(super) fn contract_scenario() {
                             .is_err()
                     );
                     let bob = runtime.operations.with_context(context("bob"));
-                    let (a, b) = tokio::join!(
-                        alice.call_as::<Declare<false>>(()),
-                        bob.call_as::<Declare<false>>(())
-                    );
+                    let (a, b) = tokio::join!(alice.call(()), bob.call(()));
                     assert_eq!(&*a.unwrap(), "alice:alice");
                     assert_eq!(&*b.unwrap(), "bob:bob");
                     runtime.stop().await.unwrap();
@@ -419,7 +410,7 @@ pub(super) fn contract_scenario() {
                         runtime
                             .operations
                             .with_context(context("alice"))
-                            .call_as::<Declare<false>>(())
+                            .call(())
                             .await
                             .is_err()
                     );
@@ -457,7 +448,7 @@ pub(super) fn contract_scenario() {
                     let invocation = runtime
                         .operations
                         .with_context(context("alice"))
-                        .submit_as::<Declare<false>>(())
+                        .submit(())
                         .unwrap();
                     tokio::time::timeout(Duration::from_secs(1), entered.acquire())
                         .await
@@ -541,7 +532,7 @@ pub(super) fn contract_scenario() {
                     let answer = runtime
                         .operations
                         .with_context(context("alice"))
-                        .call_as::<Retry>(())
+                        .call(())
                         .await
                         .unwrap();
                     assert_eq!(&*answer, "alice:3");

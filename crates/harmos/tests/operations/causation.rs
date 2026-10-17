@@ -120,9 +120,7 @@ impl Operation for Descend {
                 .records::<Bank>()
                 .publish(Noted(request.clone()))
                 .await?;
-            context
-                .submit_as::<NoteContract>(format!("{}-child", *request))?
-                .await?;
+            context.submit(format!("{}-child", *request))?.await?;
             Ok(())
         }
         .await;
@@ -153,9 +151,7 @@ impl Operation for Family {
                 .records::<Bank>()
                 .publish(Noted("parent".to_owned()))
                 .await?;
-            context
-                .submit_as::<DescendContract>("inherited".to_owned())?
-                .await?;
+            context.submit("inherited".to_owned())?.await?;
             context
                 .submit_caused::<DescendContract>("rerooted".to_owned(), *request)?
                 .await?;

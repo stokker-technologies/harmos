@@ -154,7 +154,7 @@ async fn joined<H: Host>(host: &H, gate: &Gate) -> Result<u64, H::Error> {
 }
 
 async fn cancelled<H: Host>(host: &H, gate: &Gate) -> Result<(), H::Error> {
-    let instance = host.submit_as::<Hold>(Hold { value: 1 }).await?;
+    let instance = host.submit(Hold { value: 1 }).await?;
     gate.started.notified().await;
     assert!(instance.cancel_and_join().await.is_err());
     Ok(())

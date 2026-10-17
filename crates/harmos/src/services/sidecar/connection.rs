@@ -196,7 +196,7 @@ impl Endpoint {
     pub(super) async fn publish(
         &self,
         scope: &crate::plugin::PluginScope,
-        request: &mut crate::operations::streams::Publication,
+        request: &mut crate::operations::streams::Publish,
         context: &crate::operations::Context<'_>,
     ) -> crate::Result<()> {
         // Calls On One Stream Stage In Arrival Order

@@ -227,14 +227,7 @@ fn own_contract() {
                         .operations
                         .register_operation::<Ping>("service", Lanes::Open, Arc::new(()))
                         .unwrap();
-                    assert_eq!(
-                        *runtime
-                            .operations
-                            .call_as::<PingContract>(())
-                            .await
-                            .unwrap(),
-                        42
-                    );
+                    assert_eq!(*runtime.operations.call(()).await.unwrap(), 42);
                     runtime.stop().await.unwrap();
                 });
         });

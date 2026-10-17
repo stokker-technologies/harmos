@@ -25,7 +25,6 @@ use std::sync::Arc;
 use crate::operations::{Context, Operation, StreamOutput};
 
 use crate::storage::StorageManager;
-use crate::storage::follow::Objects;
 use crate::storage::{ObjectEntry, StorageCursor};
 
 use crate::{Error, MemorySize, Result};
@@ -65,7 +64,7 @@ impl<C: 'static> Operation for Handler<C> {
     async fn run<'a>(
         &mut self,
         _: Self::Context<'a>,
-        request: &mut Objects,
+        request: &mut FollowObjects,
         output: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<StorageCursor>> {
         if !request.selection.follows_revisions() {

@@ -148,7 +148,7 @@ async fn assert_admission(lane: Lanes, count: usize, admitted: usize) {
         .register_operation::<Measure>("app", lane, gauge.clone())
         .unwrap();
     let instances: Vec<_> = (0..count)
-        .map(|_| runtime.operations.submit_as::<MeasureContract>(()).unwrap())
+        .map(|_| runtime.operations.submit(()).unwrap())
         .collect();
 
     for _ in 0..admitted {

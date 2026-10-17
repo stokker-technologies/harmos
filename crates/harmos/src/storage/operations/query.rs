@@ -17,7 +17,7 @@
 use crate::operations::{Context, Operation, OperationDeclaration, StreamOutput};
 use crate::storage::StorageManager;
 use crate::storage::config::IO_TIMEOUT;
-use crate::storage::query::{Query as Request, QueryCompletion, QueryOutput};
+use crate::storage::query::{QueryCompletion, QueryOutput};
 use crate::{Error, MemorySize, Result};
 use harmos_domain::operations::storage::Query;
 use harmos_domain::plugin::Grant;
@@ -60,7 +60,7 @@ impl<C: 'static> Operation for Handler<C> {
     async fn run<'a>(
         &mut self,
         ctx: Self::Context<'a>,
-        request: &mut Request,
+        request: &mut Query,
         output: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<QueryCompletion>> {
         let grant = Grant::of(Query::ID, request.source.grant_scope());

@@ -43,7 +43,7 @@ type Payload<T> = <<T as Operation>::Declaration as OperationDeclaration>::Respo
 struct Physical<T: Operation> {
     resources: Arc<T::Resources>,
     operation: Option<T>,
-    request: <T::Declaration as OperationDeclaration>::Request,
+    request: T::Declaration,
     endpoints: T::Endpoints,
     _request: Option<super::streaming::RequestClaims>,
     stopped: bool,

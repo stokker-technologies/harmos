@@ -159,7 +159,7 @@ impl Operation for ReadOperation {
                 .swap(false, Ordering::SeqCst)
             {
                 let child = context
-                    .call_as::<Read>(Value {
+                    .call(Value {
                         value: "leaf".into(),
                     })
                     .await
@@ -189,7 +189,7 @@ impl Operation for ReadOperation {
                     .as_ref()
                     .expect("original initialization context");
                 if saved
-                    .call_as::<Read>(Value {
+                    .call(Value {
                         value: "leaf".into(),
                     })
                     .await
@@ -219,7 +219,7 @@ impl Operation for ReadOperation {
                     .with_value(contract::Stage { id: "child".into() })
                     .map_err(std::io::Error::other)?;
                 let child = caller
-                    .call_as::<Read>(Value {
+                    .call(Value {
                         value: "context-leaf".into(),
                     })
                     .await
@@ -242,7 +242,7 @@ impl Operation for ReadOperation {
             if self.value == "parent" {
                 if let Some(saved) = &self.saved
                     && saved
-                        .call_as::<Read>(Value {
+                        .call(Value {
                             value: "leaf".into(),
                         })
                         .await
@@ -251,7 +251,7 @@ impl Operation for ReadOperation {
                     return Err(std::io::Error::other("stale context was accepted"));
                 }
                 let child = context
-                    .call_as::<Read>(Value {
+                    .call(Value {
                         value: "leaf".into(),
                     })
                     .await

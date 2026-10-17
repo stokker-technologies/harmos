@@ -28,13 +28,16 @@ use super::{Context, Operation, OperationManager};
 use crate::catalog::{Catalog, Member, Visitor};
 use crate::operations::{
     Definition, FailureKind, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy,
-    WireAnswer, WireCommand, WireOperation,
+    WireAnswer, WireCommand,
 };
-use crate::schema::Described;
 use crate::services::{NativeEndpoint, SidecarError};
 use crate::{Error, Identifier, Message, Result, operations::Lane};
 
 /* === Constants === */
+const ENCODED: &str = "harmos::encoded";
+const ENCODED_MARKER: &[u8] = &crate::schema::declaration::encode::<
+    { crate::schema::declaration::encoded_len(ENCODED, &[]) },
+>(ENCODED, &[]);
 const MAX_NATIVE_OPERATIONS: usize = 1024;
 
 /* === Macros === */
@@ -75,28 +78,22 @@ struct EncodedOperation<E = ()> {
     endpoints: PhantomData<fn() -> E>,
 }
 
-pub(crate) struct Encoded<E = ()>(PhantomData<fn() -> E>);
-
 #[derive(Clone)]
 pub(crate) struct Opaque(Vec<u8>);
 
-// Bytes And A Pre-Owned Permit Stay Together Through Original Preparation.
-pub(crate) struct EncodedRequest {
+// The Erased Request Forwarded To A Native Provider: Bytes And A Pre-Owned
+// Permit Stay Together Through Original Preparation. `E` Is The Endpoint Set.
+pub(crate) struct Encoded<E = ()> {
     grpc: bool,
     payload: Vec<u8>,
     capacity: Option<OwnedSemaphorePermit>,
+    endpoints: PhantomData<fn() -> E>,
 }
 
 pub(super) struct Binding {
     native: Arc<Native>,
     selection: Selection,
     capacity: Arc<Semaphore>,
-}
-
-struct Project<'a, 'b> {
-    bindings: &'a mut super::Bindings<'b>,
-    lane: &'static str,
-    resources: Arc<Native>,
 }
 
 /* === Enums === */
@@ -142,6 +139,11 @@ pub enum NativeError {
 }
 
 /* === Traits === */
+// The Stream Directions Of One Endpoint Set.
+pub(crate) trait Shape {
+    type Input: crate::operations::Direction;
+    type Output: crate::operations::Direction;
+}
 
 /* === Implementations === */
 impl NativeError {
@@ -168,66 +170,6 @@ impl NativeError {
     }
 }
 
-impl super::WireVisitor for Project<'_, '_> {
-    type Entry = crate::Result<()>;
-    fn wire<O>(self) -> Self::Entry
-    where
-        O: WireOperation,
-        O::Request: Message + Described,
-        O::Response: Message + Described,
-    {
-        self.bindings
-            .register_owned_wire_at::<NativeOperation<O, ()>>(self.lane, self.resources)
-    }
-
-    fn upload<O>(self) -> Self::Entry
-    where
-        O: WireOperation + crate::operations::InputDeclaration,
-        O::Request: Message + Described,
-        O::Response: Message + Described,
-        O::Item: Message + crate::MemorySize,
-    {
-        self.bindings
-            .register_owned_wire_at::<NativeOperation<O, super::StreamInput<O::Item>>>(
-                self.lane,
-                self.resources,
-            )
-    }
-
-    fn download<O>(self) -> Self::Entry
-    where
-        O: WireOperation + crate::operations::OutputDeclaration,
-        O::Request: Message + Described,
-        O::Response: Message + Described,
-        O::Item: Message + crate::MemorySize,
-    {
-        self.bindings
-            .register_owned_wire_at::<NativeOperation<O, super::StreamOutput<O::Item>>>(
-                self.lane,
-                self.resources,
-            )
-    }
-
-    fn exchange<O>(self) -> Self::Entry
-    where
-        O: WireOperation
-            + crate::operations::InputDeclaration
-            + crate::operations::OutputDeclaration,
-        O::Request: Message + Described,
-        O::Response: Message + Described,
-        <O as crate::operations::InputDeclaration>::Item: Message + crate::MemorySize,
-        <O as crate::operations::OutputDeclaration>::Item: Message + crate::MemorySize,
-    {
-        self.bindings.register_owned_wire_at::<NativeOperation<
-            O,
-            (
-                super::StreamInput<<O as crate::operations::InputDeclaration>::Item>,
-                super::StreamOutput<<O as crate::operations::OutputDeclaration>::Item>,
-            ),
-        >>(self.lane, self.resources)
-    }
-}
-
 impl super::StreamPeer for Native {
     type Error = NativeError;
     async fn stream_phase(
@@ -241,8 +183,8 @@ impl super::StreamPeer for Native {
     }
 }
 
-#[cfg(feature = "grpc")]
-impl crate::Protobuf for EncodedRequest {
+harmos_domain::with_protobuf! {
+impl<E> harmos_domain::Protobuf for Encoded<E> {
     fn encode_to_vec(&self) -> Vec<u8> {
         self.payload.clone()
     }
@@ -262,11 +204,52 @@ impl crate::Protobuf for EncodedRequest {
             payload: bytes.to_vec(),
             grpc: true,
             capacity: None,
+            endpoints: PhantomData,
         })
     }
 }
-#[cfg(feature = "grpc")]
-impl crate::MemorySize for EncodedRequest {
+}
+
+impl<E> Message for Encoded<E> {
+    fn encode_to_vec(&self) -> Vec<u8> {
+        self.payload.clone()
+    }
+
+    fn encoded_len(&self) -> usize {
+        self.payload.len()
+    }
+
+    fn decoding_memory(bytes: &[u8]) -> std::result::Result<usize, crate::MessageError> {
+        std::mem::size_of::<Self>()
+            .checked_add(bytes.len())
+            .ok_or_else(|| crate::MessageError::borrowed("forwarded request size overflows"))
+    }
+
+    fn decode(bytes: &[u8]) -> std::result::Result<Self, crate::MessageError> {
+        Ok(Self {
+            payload: bytes.to_vec(),
+            grpc: false,
+            capacity: None,
+            endpoints: PhantomData,
+        })
+    }
+}
+
+impl<E: 'static> crate::schema::Described for Encoded<E> {
+    const NAME: &'static str = ENCODED;
+    const FIELDS: &'static [crate::schema::declaration::Field] = &[];
+    const MARKER: &'static [u8] = ENCODED_MARKER;
+}
+
+impl crate::schema::Described for Opaque {
+    const NAME: &'static str = "harmos::opaque";
+    const FIELDS: &'static [crate::schema::declaration::Field] = &[];
+    const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
+        { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
+}
+
+impl<E> crate::MemorySize for Encoded<E> {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>().saturating_add(self.payload.capacity())
     }
@@ -300,8 +283,8 @@ impl crate::MemorySize for Opaque {
         std::mem::size_of::<Self>().saturating_add(self.0.capacity())
     }
 }
-#[cfg(feature = "grpc")]
-impl crate::Protobuf for Opaque {
+harmos_domain::with_protobuf! {
+impl harmos_domain::Protobuf for Opaque {
     fn encode_to_vec(&self) -> Vec<u8> {
         Message::encode_to_vec(self)
     }
@@ -321,6 +304,7 @@ impl crate::Protobuf for Opaque {
     fn decode(bytes: &[u8]) -> std::result::Result<Self, crate::MessageError> {
         <Self as Message>::decode(bytes)
     }
+}
 }
 
 impl Native {
@@ -402,8 +386,6 @@ impl<O, E> Operation for NativeOperation<O, E>
 where
     O: OperationDeclaration,
     E: super::StreamEndpoints,
-    O::Request: Message,
-    O::Response: Message,
 {
     type Declaration = O;
     type Resources = Native;
@@ -427,7 +409,7 @@ where
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        request: &mut O::Request,
+        request: &mut O,
         endpoints: &mut Self::Endpoints,
     ) -> std::result::Result<crate::operations::Response<O::Response>, NativeError> {
         let result: ::core::result::Result<O::Response, Self::Error> = async move {
@@ -440,7 +422,7 @@ where
                     .endpoint
                     .reserve_capacity()
                     .ok_or(NativeError::Capacity)?;
-                let payload = request.encode_to_vec();
+                let payload = crate::Message::encode_to_vec(request);
                 let state = native.prepare_encoded(&definition, payload, Some(capacity))?;
 
                 self.state = Some(state);
@@ -510,9 +492,7 @@ impl Visitor for NativeBindings {
 
 impl<O> Member<O> for NativeBindings
 where
-    O: WireOperation,
-    O::Request: Message + Described,
-    O::Response: Message + Described,
+    O: crate::operations::OperationDeclaration,
 {
     const ENTRY: super::Binding<Native> = super::Binding {
         register: register::<O>,
@@ -712,14 +692,13 @@ impl Native {
     }
 }
 
-impl<E: super::StreamEndpoints> OperationDeclaration for Encoded<E> {
-    type Request = EncodedRequest;
+// This Adapter Is Never Declared Or Registered By Its Static Identity.
+impl<E: super::StreamEndpoints + Shape> OperationDeclaration for Encoded<E> {
     type Response = Opaque;
-    fn endpoint_types() -> (Option<std::any::TypeId>, Option<std::any::TypeId>) {
-        E::item_types()
-    }
-    // This Adapter Is Never Declared Or Registered By Its Static Identity.
+    type Input = E::Input;
+    type Output = E::Output;
     const ID: &'static str = "";
+    const VERSION: u32 = 1;
     const POLICY: OperationPolicy = OperationPolicy {
         timeout: Duration::ZERO,
         attempt_timeout: Duration::ZERO,
@@ -728,24 +707,27 @@ impl<E: super::StreamEndpoints> OperationDeclaration for Encoded<E> {
     };
 }
 
-impl crate::operations::InputDeclaration for Encoded<super::StreamInput<Opaque>> {
-    type Item = Opaque;
-}
-impl crate::operations::OutputDeclaration for Encoded<super::StreamOutput<Opaque>> {
-    type Item = Opaque;
-}
-impl crate::operations::InputDeclaration
-    for Encoded<(super::StreamInput<Opaque>, super::StreamOutput<Opaque>)>
-{
-    type Item = Opaque;
-}
-impl crate::operations::OutputDeclaration
-    for Encoded<(super::StreamInput<Opaque>, super::StreamOutput<Opaque>)>
-{
-    type Item = Opaque;
+impl Shape for () {
+    type Input = crate::operations::NoStream;
+    type Output = crate::operations::NoStream;
 }
 
-impl<E: super::StreamEndpoints> Operation for EncodedOperation<E> {
+impl Shape for super::StreamInput<Opaque> {
+    type Input = crate::operations::Stream<Opaque>;
+    type Output = crate::operations::NoStream;
+}
+
+impl Shape for super::StreamOutput<Opaque> {
+    type Input = crate::operations::NoStream;
+    type Output = crate::operations::Stream<Opaque>;
+}
+
+impl Shape for (super::StreamInput<Opaque>, super::StreamOutput<Opaque>) {
+    type Input = crate::operations::Stream<Opaque>;
+    type Output = crate::operations::Stream<Opaque>;
+}
+
+impl<E: super::StreamEndpoints + Shape> Operation for EncodedOperation<E> {
     type Declaration = Encoded<E>;
     type Resources = Binding;
     type Error = NativeError;
@@ -768,7 +750,7 @@ impl<E: super::StreamEndpoints> Operation for EncodedOperation<E> {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        request: &mut EncodedRequest,
+        request: &mut Encoded<E>,
         endpoints: &mut Self::Endpoints,
     ) -> std::result::Result<crate::operations::Response<Opaque>, NativeError> {
         let result: ::core::result::Result<Opaque, Self::Error> = async {
@@ -1147,10 +1129,11 @@ pub(super) fn dispatch(
             "operation request exceeds the native frame limit",
         ))));
     }
-    let request = EncodedRequest {
+    let request = Encoded {
         grpc: false,
         payload: input.payload,
         capacity: Some(capacity),
+        endpoints: PhantomData,
     };
     // Bytes Are Already Encoded; The Selected Remote WireTable Owns Decoding.
     let submitted = submission.submitted;
@@ -1193,7 +1176,7 @@ pub(super) fn dispatch(
 }
 
 /* === Private Functions === */
-fn encoded_binding<E: super::StreamEndpoints>(
+fn encoded_binding<E: super::StreamEndpoints + Shape>(
     operations: &OperationManager,
     lane: &'static str,
     handler: &Arc<Binding>,
@@ -1216,18 +1199,27 @@ fn register<O>(
     native: Arc<Native>,
 ) -> Result<()>
 where
-    O: WireOperation,
-    O::Request: Message + Described,
-    O::Response: Message + Described,
+    O: crate::operations::OperationDeclaration,
 {
-    if let Some(projected) = O::visit_wire(Project {
-        bindings,
-        lane,
-        resources: Arc::clone(&native),
-    }) {
-        projected
-    } else {
-        bindings.register_owned_wire_at::<NativeOperation<O>>(lane, native)
+    use crate::operations::Direction;
+    type In<O> = super::StreamInput<
+        <<O as crate::operations::OperationDeclaration>::Input as Direction>::Item,
+    >;
+    type Out<O> = super::StreamOutput<
+        <<O as crate::operations::OperationDeclaration>::Output as Direction>::Item,
+    >;
+    match (
+        <O::Input as Direction>::STREAMED,
+        <O::Output as Direction>::STREAMED,
+    ) {
+        (false, false) => bindings.register_owned_wire_at::<NativeOperation<O, ()>>(lane, native),
+        (true, false) => bindings.register_owned_wire_at::<NativeOperation<O, In<O>>>(lane, native),
+        (false, true) => {
+            bindings.register_owned_wire_at::<NativeOperation<O, Out<O>>>(lane, native)
+        }
+        (true, true) => {
+            bindings.register_owned_wire_at::<NativeOperation<O, (In<O>, Out<O>)>>(lane, native)
+        }
     }
 }
 

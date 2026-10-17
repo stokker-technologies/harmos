@@ -57,6 +57,7 @@ macro_rules! product {
                 crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS)
             }>(Self::NAME, Self::FIELDS);
 }
+        #[allow(unused_variables)]
         impl crate::__private::PostcardValue for $ty {
             fn write(&self, bytes: &mut Vec<u8>) {
                 $(<$codec as crate::model::storage::codec::Value>::postcard_write(&self.$field, bytes);)*
@@ -79,6 +80,7 @@ macro_rules! product {
             }
         }
         #[cfg(feature = "grpc")]
+        #[allow(unused_variables)]
         impl crate::__private::Protobuf for $ty {
             fn encode_to_vec(&self) -> Vec<u8> {
                 let mut bytes = Vec::with_capacity(<Self as crate::__private::Protobuf>::encoded_len(self));

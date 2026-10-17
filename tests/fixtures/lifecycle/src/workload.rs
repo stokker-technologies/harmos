@@ -163,9 +163,9 @@ impl Workload {
             Lanes::Analysis,
             trace.clone(),
         )?;
-        let running = runtime.operations.submit_as::<HoldDeclaration>(false)?;
+        let running = runtime.operations.submit(false)?;
         trace.started.notified().await;
-        let queued = runtime.operations.submit_as::<HoldDeclaration>(true)?;
+        let queued = runtime.operations.submit(true)?;
         runtime.operations.register_observer(Watch)?;
         let observer = runtime
             .operations

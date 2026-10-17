@@ -296,7 +296,7 @@ pub(super) fn contract_scenario() {
 
                     let typed = runtime
                         .operations
-                        .submit_as::<ReadContract>(Text {
+                        .submit(Text {
                             value: "typed".to_owned(),
                         })
                         .unwrap();
@@ -396,7 +396,7 @@ pub(super) fn contract_scenario() {
                     );
                     let answer = runtime
                         .operations
-                        .call_as::<ReadContract>(Text {
+                        .call(Text {
                             value: "local".to_owned(),
                         })
                         .await

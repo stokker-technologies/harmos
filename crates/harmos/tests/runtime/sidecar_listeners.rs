@@ -253,7 +253,7 @@ pub(super) fn contract_scenario() {
                     fixture.initialize().await.unwrap();
                     super::publications::ready(fixture.ready().clone()).await;
                     let operations = fixture.runtime.operations.clone();
-                    fixture.call_as::<Observe>(delivered(7)).await.unwrap();
+                    fixture.call(delivered(7)).await.unwrap();
                     assert_eq!(probe.total.load(Ordering::SeqCst), 7);
 
                     for name in ["unknown", "harmos.record"] {
@@ -277,10 +277,10 @@ pub(super) fn contract_scenario() {
                     }
                     assert_eq!(probe.total.load(Ordering::SeqCst), 7);
                     assert!(matches!(
-                        fixture.call_as::<Observe>(delivered(0)).await,
+                        fixture.call(delivered(0)).await,
                         Err(harmos::Error::OperationRefused(harmos::Refusal::TimedOut))
                     ));
-                    fixture.call_as::<Observe>(delivered(3)).await.unwrap();
+                    fixture.call(delivered(3)).await.unwrap();
                     assert_eq!(probe.active.load(Ordering::SeqCst), 0);
                     assert_eq!(probe.total.load(Ordering::SeqCst), 10);
 
@@ -302,7 +302,7 @@ pub(super) fn contract_scenario() {
                     .unwrap();
                     stalled.abort();
                     let _ = stalled.await;
-                    fixture.call_as::<Observe>(delivered(2)).await.unwrap();
+                    fixture.call(delivered(2)).await.unwrap();
                     assert_eq!(probe.total.load(Ordering::SeqCst), 12);
                     fixture.shutdown().await.unwrap();
                     fixture.runtime.stop().await.unwrap();

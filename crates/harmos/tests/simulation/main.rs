@@ -816,9 +816,7 @@ fn scripted(seed: u64) -> SimulatedRuntime<Bank> {
 
 fn scripted_wait(seed: u64) -> Duration {
     let mut sim = bank(seed).simulate().expect("the simulation boots");
-    let timed = sim
-        .submit_as::<TimingItsOwnWait>(TimingItsOwnWait { wait_ms: 750 })
-        .unwrap();
+    let timed = sim.submit(TimingItsOwnWait { wait_ms: 750 }).unwrap();
     sim.advance_ms(400);
     sim.advance_ms(350);
 
@@ -844,7 +842,7 @@ fn entropy_run(seed: u64) -> (SimulatedRuntime<Bank>, Vec<u64>) {
         .simulate()
         .expect("the simulation boots");
     let handle = sim
-        .submit_as::<Drawing>(Drawing {
+        .submit(Drawing {
             draws: Arc::clone(&draws),
         })
         .unwrap();
@@ -951,7 +949,7 @@ fn contract_scenario() {
                 sim.service("adapter").exits(),
                 ["environmental:disconnected"]
             );
-            let deadline = sim.submit_as::<Pending>(Pending).unwrap();
+            let deadline = sim.submit(Pending).unwrap();
             sim.advance_ms(5);
             assert!(matches!(
                 sim.settle(deadline),
@@ -1055,9 +1053,7 @@ fn contract_scenario() {
             sim.record(alice(), Noted("full script".to_owned()))
                 .expect("record lands");
             sim.publish(pulse(8)).expect("publish lands");
-            let job = sim
-                .submit_as::<Answering>(Answering { answer: 13 })
-                .unwrap();
+            let job = sim.submit(Answering { answer: 13 }).unwrap();
             assert_eq!(*sim.settle(job).expect("operation settles"), 13);
             sim.advance_ms(1);
             sim.fault("adapter", Fault::Environmental("reset"))

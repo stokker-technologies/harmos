@@ -125,6 +125,21 @@ pub trait MemorySize: Sized {
     fn memory_size(&self) -> usize;
 }
 
+// A Value That Crosses A Process Boundary: Every Operation Request, Response
+// And Stream Item. The Protobuf Codec Joins It Exactly When This Crate Carries
+// One, So Every Expansion Gated By `with_protobuf!` Agrees With The Bound.
+#[cfg(feature = "grpc")]
+pub trait Portable:
+    Message + Protobuf + MemorySize + crate::schema::Described + Send + Sync + 'static
+{
+}
+
+#[cfg(not(feature = "grpc"))]
+pub trait Portable:
+    Message + MemorySize + crate::schema::Described + Send + Sync + 'static
+{
+}
+
 pub trait Storable: Message + MemorySize {
     fn encoded_size(&self) -> usize {
         self.encoded_len()
@@ -132,6 +147,18 @@ pub trait Storable: Message + MemorySize {
 }
 
 /* === Implementations === */
+#[cfg(feature = "grpc")]
+impl<T> Portable for T where
+    T: Message + Protobuf + MemorySize + crate::schema::Described + Send + Sync + 'static
+{
+}
+
+#[cfg(not(feature = "grpc"))]
+impl<T> Portable for T where
+    T: Message + MemorySize + crate::schema::Described + Send + Sync + 'static
+{
+}
+
 impl<T: PostcardValue> Message for T {
     fn encode_to_vec(&self) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(self.size());

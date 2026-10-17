@@ -296,7 +296,7 @@ impl Operation for ParentCall {
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Response>, Failed> {
         let result: ::core::result::Result<Response, Self::Error> = async move {
-            let response = context.call_as::<Compute>(request.take()).await?;
+            let response = context.call(request.take()).await?;
             Ok(Response {
                 value: response.value,
                 attempts: response.attempts,

@@ -15,42 +15,40 @@ mod abandon_file;
 mod append_file;
 mod create_file;
 mod delete_file;
-mod file_mutation;
 mod finish_file;
-mod follow;
 mod follow_file;
 mod follow_objects;
+mod follow_records;
 mod follow_stream;
 mod query;
-mod query_storage;
 mod read_file;
 mod resume_file;
+mod storage_status;
 mod write_file;
 mod write_objects;
 mod write_records;
 mod write_schema;
-mod write_stream;
+mod write_streams;
 
 /* === Re-Exports === */
 pub use abandon_file::AbandonFile;
-pub use append_file::{AppendFile, AppendFileRequest};
-pub use create_file::{CreateFile, CreateFileRequest};
-pub use delete_file::{DeleteFile, DeleteFileRequest};
-pub use file_mutation::FileMutation;
+pub use append_file::AppendFile;
+pub use create_file::CreateFile;
+pub use delete_file::DeleteFile;
 pub use finish_file::FinishFile;
-pub use follow::{Follow, FollowBoundaries, Followed};
 pub use follow_file::FollowFile;
 pub use follow_objects::FollowObjects;
+pub use follow_records::{FollowBoundaries, FollowRecords, Followed};
 pub use follow_stream::FollowStream;
 pub use query::Query;
-pub use query_storage::{QueryStorage, QueryStorageRequest};
 pub use read_file::ReadFile;
 pub use resume_file::ResumeFile;
+pub use storage_status::StorageStatus;
 pub use write_file::WriteFile;
 pub use write_objects::WriteObjects;
 pub use write_records::WriteRecords;
-pub use write_schema::{WriteSchema, WriteSchemaRequest};
-pub use write_stream::WriteStreams;
+pub use write_schema::WriteSchema;
+pub use write_streams::WriteStreams;
 
 /* === Imports === */
 // Standard Library Imports
@@ -106,10 +104,10 @@ macro_rules! catalog {
 catalog! {
     Query,
     ReadFile,
-    Follow,
+    FollowRecords,
     FollowStream,
     FollowFile,
-    QueryStorage,
+    StorageStatus,
     ResumeFile,
     CreateFile,
     AppendFile,
@@ -137,8 +135,5 @@ catalog! {
 /* === Public Functions === */
 
 /* === Private Functions === */
-const fn grpc(method: &'static str) -> crate::operations::Grpc {
-    crate::operations::Grpc::new("harmos.storage.v1", "Storage", method)
-}
 
 /* === Tests === */

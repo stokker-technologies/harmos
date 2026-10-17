@@ -21,7 +21,6 @@
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::future::Future;
-use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -31,7 +30,7 @@ use tokio::sync::oneshot;
 use super::{Activity, Instance, ObserverError, ObserverHost};
 use crate::{Refusal, Supervisor};
 use harmos_domain::observers::Control;
-use harmos_domain::operations::{Operation, ServingError, Visibility, WireOperation, WireTable};
+use harmos_domain::operations::{Operation, ServingError, WireTable};
 use harmos_domain::plugin::Attachment;
 
 /* === Constants === */
@@ -48,11 +47,10 @@ pub struct ObserverAttachment<R, H = Supervisor> {
     closing: AtomicBool,
 }
 
-struct Observe<R, H, O> {
+struct Observe<R, H> {
     attachment: Arc<ObserverAttachment<R, H>>,
     running: Option<Running>,
     activity: Option<Activity>,
-    _operation: PhantomData<fn() -> O>,
 }
 
 struct Interrupt<'a>(&'a mut Option<oneshot::Sender<()>>);
@@ -113,16 +111,9 @@ impl<R: Send + Sync + 'static, H: ObserverHost<R>> ObserverAttachment<R, H> {
         Self::new(instances, resources, grants)
     }
 
-    // Bind the plugin's observe control, the one Host operation the host
-    // submits to run an observer.
-    pub fn bind<O>(self: &Arc<Self>, table: &mut WireTable<Supervisor>) -> Result<(), ServingError>
-    where
-        O: WireOperation<Request = Control, Response = ()>,
-    {
-        if O::VISIBILITY != Visibility::Host || O::POLICY != harmos_domain::observers::POLICY {
-            return Err(ServingError::Catalog);
-        }
-        table.bind_resident_operation::<Observe<R, H, O>>(Arc::clone(self))
+    // Bind the built-in observe control the host submits to run an observer.
+    pub fn bind(self: &Arc<Self>, table: &mut WireTable<Supervisor>) -> Result<(), ServingError> {
+        table.bind_observe_control::<Observe<R, H>>(Arc::clone(self))
     }
 }
 
@@ -145,13 +136,12 @@ impl<R: Send + Sync + 'static, H: ObserverHost<R>> Attachment<Supervisor>
     }
 }
 
-impl<R, H, O> Operation for Observe<R, H, O>
+impl<R, H> Operation for Observe<R, H>
 where
     R: Send + Sync + 'static,
     H: ObserverHost<R>,
-    O: WireOperation<Request = Control, Response = ()>,
 {
-    type Declaration = O;
+    type Declaration = Control;
     type Resources = ObserverAttachment<R, H>;
     type Error = Refusal;
     type Endpoints = ();
@@ -165,7 +155,6 @@ where
             attachment,
             running: None,
             activity: None,
-            _operation: PhantomData,
         })
     }
 

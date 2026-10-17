@@ -113,8 +113,6 @@ impl PluginLifecycle for Host {
 fn required<O>(grants: Vec<Grant>) -> Required
 where
     O: WireOperation,
-    O::Request: harmos::schema::Described,
-    O::Response: harmos::schema::Described,
 {
     Required {
         contract: WireDeclaration::of::<O>().contract().unwrap(),

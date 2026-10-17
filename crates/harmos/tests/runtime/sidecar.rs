@@ -1268,7 +1268,7 @@ fn own_contract() {
                     publications::ready(fixture.ready().clone()).await;
                     let runtime = &fixture.runtime;
                     fixture
-                        .call_as::<PublishPulse>(PublishPulse { sample: 42 })
+                        .call(PublishPulse { sample: 42 })
                         .await
                         .expect("the sidecar publishes the requested sample");
 
@@ -1482,7 +1482,7 @@ fn own_contract() {
                         refusal_bytes: 0,
                     };
                     assert!(!Frame::request_fits::<BudgetedRoute>(&request));
-                    let oversized = fixture.call_as::<BudgetedRoute>(request).await.unwrap_err();
+                    let oversized = fixture.call(request).await.unwrap_err();
                     assert_transport_refusal(oversized, Frame::OVERSIZED, "request");
 
                     for request in [
@@ -1497,15 +1497,12 @@ fn own_contract() {
                             refusal_bytes: Frame::LIMIT as u32,
                         },
                     ] {
-                        let refused = fixture.call_as::<BudgetedRoute>(request).await.unwrap_err();
+                        let refused = fixture.call(request).await.unwrap_err();
                         assert_transport_refusal(refused, Frame::OVERSIZED, "reply");
                     }
 
                     assert_eq!(
-                        fixture
-                            .call_as::<Amplify>(Amplify { value: 5 })
-                            .await
-                            .unwrap(),
+                        fixture.call(Amplify { value: 5 }).await.unwrap(),
                         Amplified { value: 10 },
                         "every oversize refusal leaves the same exchange available to a later call"
                     );
@@ -2066,7 +2063,7 @@ fn own_contract() {
 
     assert_eq!(
         fixture
-            .call_as::<visibility::ScalePrivately>(visibility::Scale { value: 4 })
+            .call(visibility::Scale { value: 4 })
             .await
             .unwrap(),
         visibility::Scale { value: 20 },
@@ -2074,7 +2071,7 @@ fn own_contract() {
     );
     assert_eq!(
         fixture
-            .call_as::<visibility::ScalePublicly>(visibility::ScalePubliclyRequest {})
+            .call(visibility::ScalePubliclyRequest {})
             .await
             .unwrap(),
         visibility::Scale { value: 5 },
@@ -2113,17 +2110,11 @@ fn own_contract() {
                     publications::ready(fixture.ready().clone()).await;
 
                     assert_eq!(
-                        fixture
-                            .call_as::<GetMeasure>(Measure { value: 7 })
-                            .await
-                            .unwrap(),
+                        fixture.call(Measure { value: 7 }).await.unwrap(),
                         Measured { value: 21 },
                         "the route answers under the configuration the entry was activated with"
                     );
-                    let error = fixture
-                        .call_as::<GetMeasure>(Measure { value: -1 })
-                        .await
-                        .unwrap_err();
+                    let error = fixture.call(Measure { value: -1 }).await.unwrap_err();
                     let failure = error
                         .failure()
                         .expect("handler refusal preserves its structured failure");
@@ -2137,10 +2128,7 @@ fn own_contract() {
                     );
 
                     // A Nested Transport Failure Arrives As One Cause And One Operation Frame
-                    let error = fixture
-                        .call_as::<GetMeasure>(Measure { value: i64::MIN })
-                        .await
-                        .unwrap_err();
+                    let error = fixture.call(Measure { value: i64::MIN }).await.unwrap_err();
                     let failure = error
                         .failure()
                         .expect("the handler failure crosses as a structured value");
@@ -2168,33 +2156,21 @@ fn own_contract() {
                     );
 
                     assert_eq!(
-                        fixture
-                            .call_as::<RunEcho>("hello".to_owned())
-                            .await
-                            .unwrap(),
+                        fixture.call("hello".to_owned()).await.unwrap(),
                         "hello".to_owned()
                     );
                     assert_eq!(
-                        fixture
-                            .call_as::<RunUppercase>("hello".to_owned())
-                            .await
-                            .unwrap(),
+                        fixture.call("hello".to_owned()).await.unwrap(),
                         "HELLO".to_owned()
                     );
 
                     assert_eq!(
-                        fixture
-                            .call_as::<StopSampling>(StopSamplingRequest {})
-                            .await
-                            .unwrap(),
+                        fixture.call(StopSamplingRequest {}).await.unwrap(),
                         StopSamplingResponse {},
                         "a route carrying nothing either way still names one message each way"
                     );
                     assert_eq!(
-                        fixture
-                            .call_as::<GetFactor>(GetFactorRequest {})
-                            .await
-                            .unwrap(),
+                        fixture.call(GetFactorRequest {}).await.unwrap(),
                         Measured { value: 3 },
                         "a reply written through the crate's own alias dispatches like any other"
                     );
@@ -2318,7 +2294,7 @@ fn own_contract() {
         fixture.initialize().await.unwrap();
         publications::ready(fixture.ready().clone()).await;
         let refused = fixture
-            .call_as::<PublishPulse>(PublishPulse { sample: 42 })
+            .call(PublishPulse { sample: 42 })
             .await
             .unwrap_err();
         assert!(

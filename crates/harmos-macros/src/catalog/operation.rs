@@ -20,7 +20,7 @@ use std::collections::BTreeSet;
 use heck::ToSnakeCase;
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Attribute, Error, Expr, Fields, ItemStruct, Type};
+use syn::{Attribute, Error, Expr, ItemStruct, Type};
 
 // Local Imports
 use crate::path::HarmosPath;
@@ -40,28 +40,32 @@ use crate::path::HarmosPath;
 /* === Implementations === */
 
 /* === Public Functions === */
+// The request type declares its operation: the attribute parses the metadata
+// and expands to the SDK's `declare!`, the one writer of the declaration impl.
 pub(crate) fn structure(
     attribute: TokenStream,
     item: ItemStruct,
     sdk: &HarmosPath,
 ) -> Result<TokenStream, Error> {
-    if !matches!(item.fields, Fields::Unit) || !item.generics.params.is_empty() {
+    if !item.generics.params.is_empty() {
         return Err(Error::new_spanned(
-            &item,
-            "an operation declaration requires a non-generic unit struct",
+            &item.generics,
+            "an operation request type cannot be generic",
         ));
     }
     let attribute: Attribute = syn::parse_quote!(#[operation(#attribute)]);
     let mut seen = BTreeSet::new();
-    let mut request = None::<Type>;
     let mut response = None::<Type>;
     let mut input = None::<Type>;
     let mut output = None::<Type>;
     let mut id = None::<Expr>;
     let mut policy = None::<Expr>;
-    let mut constants = Vec::new();
-    let mut key = None::<Expr>;
     let mut version = None::<Expr>;
+    let mut description = None::<Expr>;
+    let mut visibility = None::<Expr>;
+    let mut replay = None::<Expr>;
+    let mut grant = None::<Expr>;
+    let mut key = None::<Expr>;
     let mut grpc = None;
     attribute.parse_nested_meta(|meta| {
         let Some(name) = meta.path.get_ident() else {
@@ -72,149 +76,63 @@ pub(crate) fn structure(
             return Err(meta.error("operation metadata fields cannot repeat"));
         }
         match name.as_str() {
-            "request" => request = Some(meta.value()?.parse()?),
+            "request" => {
+                return Err(meta.error(
+                    "the operation is its request type: put the attribute on the request struct",
+                ));
+            }
             "response" => response = Some(meta.value()?.parse()?),
             "input" => input = Some(meta.value()?.parse()?),
             "output" => output = Some(meta.value()?.parse()?),
             "id" => id = Some(meta.value()?.parse()?),
             "policy" => policy = Some(meta.value()?.parse()?),
-            "key" => key = Some(meta.value()?.parse()?),
             "version" => version = Some(meta.value()?.parse()?),
-            "grpc" => grpc = Some(grpc_binding(meta, sdk)?),
-            "description" => {
-                let value: Expr = meta.value()?.parse()?;
-                constants.push(quote!(const DESCRIPTION: &'static str = #value;));
-            }
-            "visibility" => {
-                let value: Expr = meta.value()?.parse()?;
-                constants.push(quote!(const VISIBILITY: #sdk::operations::Visibility = #value;));
-            }
-            "replay" => {
-                let value: Expr = meta.value()?.parse()?;
-                constants.push(quote!(const REPLAY: #sdk::operations::ReplaySafety = #value;));
-            }
+            "description" => description = Some(meta.value()?.parse()?),
+            "visibility" => visibility = Some(meta.value()?.parse()?),
+            "replay" => replay = Some(meta.value()?.parse()?),
+            "grant" => grant = Some(meta.value()?.parse()?),
+            "key" => key = Some(meta.value()?.parse()?),
+            "grpc" => grpc = Some(grpc_binding(meta)?),
             _ => return Err(meta.error("unknown operation metadata field")),
         }
         Ok(())
     })?;
-    let missing = || {
+    let missing = |field| {
         Error::new_spanned(
             &attribute,
-            "operation requires request, response and policy",
+            format!("operation requires `{field}` (response, version and policy are required)"),
         )
     };
-    let request = request.ok_or_else(missing)?;
-    let response = response.ok_or_else(missing)?;
-    let derived_id = item
-        .ident
-        .to_string()
-        .trim_start_matches("r#")
-        .to_snake_case();
-    let id = id.unwrap_or_else(|| syn::parse_quote!(#derived_id));
-    let policy = policy.ok_or_else(missing)?;
+    let response = response.ok_or_else(|| missing("response"))?;
+    let version = version.ok_or_else(|| missing("version"))?;
+    let policy = policy.ok_or_else(|| missing("policy"))?;
     let name = &item.ident;
-    let key = key.map(|key| {
-        quote! {
-            fn key(request: &Self::Request) -> Option<#sdk::operations::CacheKey> {
-                (#key)(request)
-            }
-        }
-    });
-    let input_declaration = input.as_ref().map(|item| {
-        quote! {
-            impl #sdk::operations::InputDeclaration for #name { type Item = #item; }
-        }
-    });
-    let output_declaration = output.as_ref().map(|item| {
-        quote! {
-            impl #sdk::operations::OutputDeclaration for #name { type Item = #item; }
-        }
-    });
-    let input_type = input.as_ref().map_or_else(
-        || quote!(None),
-        |_| quote!(Some(::core::any::TypeId::of::<<Self as #sdk::operations::InputDeclaration>::Item>())),
-    );
-    let output_type = output.as_ref().map_or_else(
-        || quote!(None),
-        |_| quote!(Some(::core::any::TypeId::of::<<Self as #sdk::operations::OutputDeclaration>::Item>())),
-    );
-    if grpc.is_some() && version.is_none() {
-        return Err(Error::new_spanned(
-            &attribute,
-            "grpc requires an explicit wire version",
-        ));
-    }
-    let shape = match (input.is_some(), output.is_some()) {
-        (false, false) => syn::Ident::new("unary", proc_macro2::Span::call_site()),
-        (true, false) => syn::Ident::new("upload", proc_macro2::Span::call_site()),
-        (false, true) => syn::Ident::new("download", proc_macro2::Span::call_site()),
-        (true, true) => syn::Ident::new("exchange", proc_macro2::Span::call_site()),
-    };
-    // The binding and its protobuf projection share the SDK's codec gate: a
-    // build whose messages carry no protobuf codec declares no gRPC method.
-    let grpc = grpc.map(|binding| {
-        quote! {
-            #sdk::__private::with_protobuf! {
-                const GRPC: Option<#sdk::operations::Grpc> = Some(#binding);
-                fn visit_grpc<V: #sdk::operations::GrpcVisitor>(visitor: V) -> Option<V::Entry> {
-                    Some(visitor.#shape::<Self>())
-                }
-            }
-        }
-    });
-    let projection = version.as_ref().map(|_| {
-        quote! {
-            fn visit_wire<V: #sdk::operations::WireVisitor>(visitor: V) -> Option<V::Entry> {
-                Some(visitor.#shape::<Self>())
-            }
-        }
-    });
-    let wire = version.map(|version| {
-        let input_schema = input.as_ref().map(|_| quote! {
-            const INPUT: Option<#sdk::schema::declaration::Definition> = Some(
-                <<Self as #sdk::operations::InputDeclaration>::Item as #sdk::schema::Described>::DEFINITION
-            );
-        });
-        let output_schema = output.as_ref().map(|_| quote! {
-            const OUTPUT: Option<#sdk::schema::declaration::Definition> = Some(
-                <<Self as #sdk::operations::OutputDeclaration>::Item as #sdk::schema::Described>::DEFINITION
-            );
-        });
-        quote! {
-            impl #sdk::operations::WireOperation for #name {
-                const VERSION: u32 = #version;
-                #grpc
-                #input_schema
-                #output_schema
-            }
-        }
-    });
-    let projected = quote! {
+    let derived = name.to_string().trim_start_matches("r#").to_snake_case();
+    let id = id.unwrap_or_else(|| syn::parse_quote!(#derived));
+    let input = input.map(|item| quote!(, input: #item));
+    let output = output.map(|item| quote!(, output: #item));
+    let description = description.map(|value| quote!(, description: #value));
+    let visibility = visibility.map(|value| quote!(, visibility: #value));
+    let replay = replay.map(|value| quote!(, replay: #value));
+    let grpc = grpc.map(|(package, service, method)| quote!(, grpc: (#package, #service, #method)));
+    let grant = grant.map(|value| quote!(, grant: #value));
+    let key = key.map(|value| quote!(, key: #value));
+    Ok(quote! {
         #item
-        impl #sdk::operations::OperationDeclaration for #name {
-            type Request = #request;
-            type Response = #response;
-            const ID: &'static str = #id;
-            const POLICY: #sdk::operations::OperationPolicy = #policy;
-            fn endpoint_types() -> (Option<::core::any::TypeId>, Option<::core::any::TypeId>) {
-                (#input_type, #output_type)
-            }
-            #(#constants)*
-            #projection
-            #key
-        }
-        #input_declaration
-        #output_declaration
-        #wire
-    };
-    Ok(projected)
+        #sdk::__private::declare!(#name {
+            id: #id,
+            version: #version,
+            policy: #policy,
+            response: #response
+            #input #output #description #visibility #replay #grpc #grant #key
+        });
+    })
 }
 
 /* === Private Functions === */
 fn grpc_binding(
     meta: syn::meta::ParseNestedMeta<'_>,
-    sdk: &HarmosPath,
-) -> Result<TokenStream, Error> {
+) -> Result<(syn::LitStr, syn::LitStr, syn::LitStr), Error> {
     let mut values = std::collections::BTreeMap::new();
     meta.parse_nested_meta(|field| {
         let name = field
@@ -266,7 +184,7 @@ fn grpc_binding(
             ));
         }
     }
-    Ok(quote!(#sdk::operations::Grpc::new(#package, #service, #method)))
+    Ok((package, service, method))
 }
 
 /* === Tests === */

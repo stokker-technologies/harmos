@@ -13,19 +13,19 @@ mod append_file;
 mod create_file;
 mod delete_file;
 mod finish_file;
-mod follow;
 mod follow_file;
 mod follow_objects;
+mod follow_records;
 mod follow_stream;
 mod query;
-mod query_storage;
 mod read_file;
 mod resume_file;
+mod storage_status;
 mod write_file;
 mod write_objects;
 mod write_records;
 mod write_schema;
-mod write_stream;
+mod write_streams;
 
 /* === Re-Exports === */
 pub use harmos_domain::operations::storage::*;
@@ -64,17 +64,17 @@ macro_rules! provider {
 provider! {
     query,
     read_file,
-    follow,
+    follow_records,
     follow_stream,
     follow_file,
-    query_storage,
+    storage_status,
     resume_file,
     create_file,
     append_file,
     finish_file,
     abandon_file,
     write_records,
-    write_stream,
+    write_streams,
     write_file,
     delete_file,
     write_schema,

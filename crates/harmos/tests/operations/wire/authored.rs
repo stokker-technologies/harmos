@@ -253,10 +253,7 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let (runtime, trace) = runtime().await;
-                    let mut instance = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::Complete)
-                        .unwrap();
+                    let mut instance = runtime.operations.submit(Mode::Complete).unwrap();
                     // Construction waits for the first attempt's initialization.
                     assert_eq!(count(&trace.constructed), 0);
                     assert_eq!(count(&trace.initialized), 0);
@@ -289,10 +286,7 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let (runtime, trace) = runtime().await;
                     trace.fail_initialize.store(true, Ordering::SeqCst);
-                    let instance = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::Complete)
-                        .unwrap();
+                    let instance = runtime.operations.submit(Mode::Complete).unwrap();
                     assert!(matches!(
                         instance.join().await,
                         Err(Error::OperationFailed { .. })
@@ -318,10 +312,7 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let (runtime, trace) = runtime().await;
                     trace.wait_initialize.store(true, Ordering::SeqCst);
-                    let instance = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::Complete)
-                        .unwrap();
+                    let instance = runtime.operations.submit(Mode::Complete).unwrap();
                     trace.initializing.notified().await;
                     assert_eq!(instance.status().phase(), OperationPhase::Initializing);
                     assert!(instance.status().started_at().is_some());
@@ -350,10 +341,7 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let (runtime, trace) = runtime().await;
                     trace.wait_initialize.store(true, Ordering::SeqCst);
-                    let instance = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::Complete)
-                        .unwrap();
+                    let instance = runtime.operations.submit(Mode::Complete).unwrap();
                     trace.initializing.notified().await;
                     tokio::time::advance(Duration::from_secs(2)).await;
                     assert!(matches!(
@@ -378,10 +366,7 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let (runtime, trace) = runtime().await;
-                    let instance = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::Retry)
-                        .unwrap();
+                    let instance = runtime.operations.submit(Mode::Retry).unwrap();
                     let id = instance.id();
                     assert_eq!(instance.join().await.unwrap().0, 42);
                     assert_eq!(count(&trace.constructed), 1);
@@ -411,10 +396,7 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let (runtime, trace) = runtime().await;
                     trace.fail_stop.store(true, Ordering::SeqCst);
-                    let mut instance = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::Complete)
-                        .unwrap();
+                    let mut instance = runtime.operations.submit(Mode::Complete).unwrap();
                     assert!((&mut instance).await.is_err());
                     assert_eq!(instance.status().phase(), OperationPhase::Stopping);
                     assert!(instance.status().cleanup_pending());
@@ -452,10 +434,7 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let (runtime, trace) = runtime().await;
                     trace.fail_finalize.store(true, Ordering::SeqCst);
-                    let mut instance = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::Complete)
-                        .unwrap();
+                    let mut instance = runtime.operations.submit(Mode::Complete).unwrap();
                     assert!((&mut instance).await.is_err());
                     assert_eq!(instance.status().phase(), OperationPhase::Finalizing);
                     assert_eq!(count(&trace.stopped), 1);
@@ -479,15 +458,9 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let (runtime, trace) = runtime().await;
-                    let first = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::WaitRun)
-                        .unwrap();
+                    let first = runtime.operations.submit(Mode::WaitRun).unwrap();
                     trace.running.notified().await;
-                    let queued = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::Complete)
-                        .unwrap();
+                    let queued = runtime.operations.submit(Mode::Complete).unwrap();
                     queued.cancel();
                     assert!(matches!(
                         queued.join().await,
@@ -515,24 +488,8 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let (runtime, trace) = runtime().await;
-                    assert_eq!(
-                        runtime
-                            .operations
-                            .call_as::<ReadContract>(Mode::Cache)
-                            .await
-                            .unwrap()
-                            .0,
-                        42
-                    );
-                    assert_eq!(
-                        runtime
-                            .operations
-                            .call_as::<ReadContract>(Mode::Cache)
-                            .await
-                            .unwrap()
-                            .0,
-                        42
-                    );
+                    assert_eq!(runtime.operations.call(Mode::Cache).await.unwrap().0, 42);
+                    assert_eq!(runtime.operations.call(Mode::Cache).await.unwrap().0, 42);
                     // The cache hit constructs nothing.
                     assert_eq!(count(&trace.constructed), 1);
                     assert_eq!(count(&trace.initialized), 1);
@@ -556,10 +513,7 @@ pub(super) fn contract_scenario() {
                     let (runtime, trace) = runtime().await;
                     trace.fail_new.store(true, Ordering::SeqCst);
                     // A refused construction fails the instance before any work.
-                    let instance = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::Complete)
-                        .unwrap();
+                    let instance = runtime.operations.submit(Mode::Complete).unwrap();
                     assert!(matches!(
                         instance.join().await,
                         Err(Error::OperationFailed { .. })
@@ -581,10 +535,7 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let (runtime, trace) = runtime().await;
-                    let instance = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::PanicRun)
-                        .unwrap();
+                    let instance = runtime.operations.submit(Mode::PanicRun).unwrap();
                     assert!(matches!(
                         instance.join().await,
                         Err(Error::OperationPanicked { .. })
@@ -609,10 +560,7 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let (runtime, trace) = runtime().await;
                     trace.fail_stop.store(true, Ordering::SeqCst);
-                    let mut instance = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::Complete)
-                        .unwrap();
+                    let mut instance = runtime.operations.submit(Mode::Complete).unwrap();
                     assert!((&mut instance).await.is_err());
                     trace.fail_stop.store(false, Ordering::SeqCst);
                     trace.block_stop.store(true, Ordering::SeqCst);
@@ -646,10 +594,7 @@ pub(super) fn contract_scenario() {
                     let (runtime, trace) = runtime().await;
                     trace.fail_initialize.store(true, Ordering::SeqCst);
                     trace.fail_stop.store(true, Ordering::SeqCst);
-                    let mut instance = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::Complete)
-                        .unwrap();
+                    let mut instance = runtime.operations.submit(Mode::Complete).unwrap();
                     // A failed initialization owns no instance, so a failing
                     // stop cannot retain one.
                     let error = (&mut instance).await.err().unwrap();
@@ -679,10 +624,7 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let (runtime, trace) = runtime().await;
                     trace.block_finalize.store(true, Ordering::SeqCst);
-                    let instance = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::WaitRun)
-                        .unwrap();
+                    let instance = runtime.operations.submit(Mode::WaitRun).unwrap();
                     let id = instance.id();
                     // Only a constructed instance has cleanup to retain.
                     trace.running.notified().await;
@@ -716,10 +658,7 @@ pub(super) fn contract_scenario() {
                     use std::task::{Context as TaskContext, Waker};
                     let (runtime, trace) = runtime().await;
                     trace.block_finalize.store(true, Ordering::SeqCst);
-                    let instance = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::Complete)
-                        .unwrap();
+                    let instance = runtime.operations.submit(Mode::Complete).unwrap();
                     let id = instance.id();
                     let mut response = Box::pin(harmos::grpc::response(instance));
                     trace.finalizing.notified().await;
@@ -749,10 +688,7 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     let (runtime, trace) = runtime().await;
                     trace.fail_finalize.store(true, Ordering::SeqCst);
-                    let instance = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::Complete)
-                        .unwrap();
+                    let instance = runtime.operations.submit(Mode::Complete).unwrap();
                     let id = instance.id();
                     assert!(harmos::grpc::response(instance).await.is_err());
                     let status = runtime
@@ -787,10 +723,7 @@ pub(super) fn contract_scenario() {
                     use std::task::{Context as TaskContext, Waker};
                     let (runtime, trace) = runtime().await;
                     trace.block_finalize.store(true, Ordering::SeqCst);
-                    let instance = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::WaitRun)
-                        .unwrap();
+                    let instance = runtime.operations.submit(Mode::WaitRun).unwrap();
                     let id = instance.id();
                     let mut response = Box::pin(harmos::grpc::response(instance));
                     trace.running.notified().await;
@@ -957,16 +890,8 @@ mod listed {
                             owner.clone(),
                         )
                         .unwrap();
-                    let first = runtime
-                        .operations
-                        .call_as::<CachedOwnerDeclaration>(0)
-                        .await
-                        .unwrap();
-                    let cached = runtime
-                        .operations
-                        .call_as::<CachedOwnerDeclaration>(0)
-                        .await
-                        .unwrap();
+                    let first = runtime.operations.call(0).await.unwrap();
+                    let cached = runtime.operations.call(0).await.unwrap();
                     assert!(first.ptr_eq(&cached));
                     assert_eq!(owner.ran.load(std::sync::atomic::Ordering::SeqCst), 1);
                     assert_eq!(owner.borrowed.load(std::sync::atomic::Ordering::SeqCst), 0);
@@ -1004,16 +929,8 @@ mod listed {
                             original.clone(),
                         )
                         .unwrap();
-                    let inferred = runtime
-                        .operations
-                        .call_as::<InferredOwnedDeclaration>(0)
-                        .await
-                        .unwrap();
-                    let declared = runtime
-                        .operations
-                        .call_as::<DoublingDeclaration>(0)
-                        .await
-                        .unwrap();
+                    let inferred = runtime.operations.call(0).await.unwrap();
+                    let declared = runtime.operations.call(0).await.unwrap();
                     assert_eq!(*inferred, 7_u32);
                     assert_eq!(*declared, 7_u32);
                     assert!(std::ptr::eq(inferred.as_ref(), original.as_ref()));

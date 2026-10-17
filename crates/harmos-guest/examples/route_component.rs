@@ -221,7 +221,7 @@ impl Plugin for RouteComponent {
         }
         if self.config == "dependencies" {
             context
-                .call_as::<ProviderEcho>(Echo {
+                .call(Echo {
                     say: "initialize".into(),
                 })
                 .await
@@ -248,7 +248,7 @@ impl Plugin for RouteComponent {
         }
         if self.check_dependency_revocation {
             let result = context
-                .call_as::<ProviderEcho>(Echo {
+                .call(Echo {
                     say: "cleanup".into(),
                 })
                 .await;
@@ -317,14 +317,14 @@ impl Operation for Echoing {
                     .clone()
                     .ok_or_else(|| OperationRefusal::of("SDK initialization context is absent"))?;
                 return saved
-                    .call_as::<ProviderEcho>(Echo { say: value.into() })
+                    .call(Echo { say: value.into() })
                     .await
                     .map(harmos_guest::operations::Response::into_owned);
             }
 
             if let Some(say) = request.say.strip_prefix("dependency:") {
                 return context
-                    .call_as::<ProviderEcho>(Echo {
+                    .call(Echo {
                         say: say.to_owned(),
                     })
                     .await
@@ -345,17 +345,15 @@ impl Operation for Echoing {
             }
             if request.say == "publish-foreign" {
                 let refused = context
-                    .call_as::<harmos_domain::operations::streams::Publish>(
-                        harmos_domain::operations::streams::Publication {
-                            stream: "foreign".into(),
-                            schema: 1,
-                            sequence: None,
-                            published_unix_micros: None,
-                            context: None,
-                            payload: ().encode_to_vec(),
-                            following: Vec::new(),
-                        },
-                    )
+                    .call(harmos_domain::operations::streams::Publish {
+                        stream: "foreign".into(),
+                        schema: 1,
+                        sequence: None,
+                        published_unix_micros: None,
+                        context: None,
+                        payload: ().encode_to_vec(),
+                        following: Vec::new(),
+                    })
                     .await
                     .expect_err("co-linked declarations grant nothing");
                 return Ok(Echoed {
@@ -467,9 +465,7 @@ impl Operation for Waiting {
         let result: ::core::result::Result<Echoed, Self::Error> = async move {
             // The host may answer this slowly. Nothing here burns fuel while
             // it waits, so a bound this call blows is wall-clock alone.
-            let _ = context
-                .call_as::<ProviderEcho>(Echo { say: "wait".into() })
-                .await;
+            let _ = context.call(Echo { say: "wait".into() }).await;
             // Resuming is where the epoch check the guest ran past is
             // reached: a suspended guest executes no instrumented code.
             for step in 0..4096u32 {

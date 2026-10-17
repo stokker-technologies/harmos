@@ -141,7 +141,7 @@ impl Operation for Publish {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        row: &mut harmos::operations::streams::Publication,
+        row: &mut harmos::operations::streams::Publish,
         _endpoints: &mut Self::Endpoints,
     ) -> harmos::Result<harmos::operations::Response<()>> {
         let result: ::core::result::Result<(), Self::Error> = async move {
@@ -279,7 +279,7 @@ impl Resources {
                 &definition.configuration,
                 NonZeroUsize::new(
                     2 * definition.configuration.len()
-                        + std::mem::size_of::<harmos::operations::lifecycle::InitializeRequest>()
+                        + std::mem::size_of::<harmos::operations::lifecycle::Initialize>()
                         + 64
                         + 20,
                 )
@@ -502,7 +502,7 @@ pub(super) fn contract_scenario() {
                     );
                     runtime
                         .operations
-                        .call_as::<wire::Echo>(wire::Echo {
+                        .call(wire::Echo {
                             say: "publish:route".into(),
                         })
                         .await
@@ -518,7 +518,7 @@ pub(super) fn contract_scenario() {
                     replacement.initialize(&mut lifecycle).await.unwrap();
                     runtime
                         .operations
-                        .call_as::<wire::Echo>(wire::Echo {
+                        .call(wire::Echo {
                             say: "publish:replacement".into(),
                         })
                         .await
@@ -550,7 +550,7 @@ pub(super) fn contract_scenario() {
                     let plan = manager.plan_reload(candidate).unwrap();
                     runtime
                         .operations
-                        .call_as::<wire::Echo>(wire::Echo {
+                        .call(wire::Echo {
                             say: "publish:original".into(),
                         })
                         .await
@@ -559,7 +559,7 @@ pub(super) fn contract_scenario() {
                     manager.apply_reload(plan, &mut lifecycle).await.unwrap();
                     runtime
                         .operations
-                        .call_as::<wire::Echo>(wire::Echo {
+                        .call(wire::Echo {
                             say: "publish:replacement".into(),
                         })
                         .await
@@ -598,7 +598,7 @@ pub(super) fn contract_scenario() {
                     let stream = runtime.streams.publication("progress", 1).unwrap();
                     runtime
                         .operations
-                        .call_as::<wire::Echo>(wire::Echo {
+                        .call(wire::Echo {
                             say: "publish:replacement".into(),
                         })
                         .await
@@ -626,7 +626,7 @@ pub(super) fn contract_scenario() {
                     let mut rows = stream.watch();
                     runtime
                         .operations
-                        .call_as::<wire::Echo>(wire::Echo {
+                        .call(wire::Echo {
                             say: "publish-many".into(),
                         })
                         .await
@@ -677,7 +677,7 @@ pub(super) fn contract_scenario() {
                     let stream = runtime.streams.publication("progress", 1).unwrap();
                     let published = runtime
                         .operations
-                        .call_as::<wire::Echo>(wire::Echo {
+                        .call(wire::Echo {
                             say: "saved-publish:original".into(),
                         })
                         .await
@@ -686,7 +686,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(values(&stream).await, ["original"]);
                     let dependency = runtime
                         .operations
-                        .call_as::<wire::Echo>(wire::Echo {
+                        .call(wire::Echo {
                             say: "saved-dependency:original".into(),
                         })
                         .await

@@ -73,19 +73,17 @@ pub use context::ContextMut;
 pub use grpc::GrpcBinding;
 #[cfg(feature = "grpc")]
 pub use grpc::GrpcMethod;
-#[cfg(feature = "grpc")]
-pub use harmos_domain::operations::GrpcVisitor;
 pub use harmos_domain::operations::{
     AuthoredContracts, AuthoredDeclarations, Backoff, CHILD_METHOD, CacheKey, CacheKeyError,
     CallValue, Codec, ContextError, ContextValue, Contract, ContractError, Contracts, Declarations,
-    Declares, Definition, Entry, FailureKind, Grpc, InputDeclaration, Jitter, MAX_CACHE_KEY_BYTES,
-    Operation, OperationDeclaration, OperationPolicy, OutputDeclaration, PORTABLE_BYTES,
-    PORTABLE_VALUES, PolicyError, ReplaySafety, RestartPolicy, RetryPolicy, Serves, ServingError,
+    Declares, Definition, Direction, Entry, FailureKind, Grpc, Jitter, MAX_CACHE_KEY_BYTES,
+    NoStream, Operation, OperationDeclaration, OperationPolicy, PORTABLE_BYTES, PORTABLE_VALUES,
+    PolicyError, ReplaySafety, RestartPolicy, RetryPolicy, Serves, ServingError, Stream,
     Visibility, WIRE_METHOD, WireAnswer, WireBinding, WireChild, WireChildAction, WireChildCall,
-    WireChildControl, WireCodecError, WireCommand, WireDeclaration, WireEndpoints, WireOperation,
-    WireStreamLimits, WireStreams, WireTable,
+    WireChildControl, WireCodecError, WireCommand, WireDeclaration, WireEndpoints,
+    WireStreamLimits, WireStreams, WireTable, item_types,
 };
-pub use harmos_domain::operations::{CallContext, Callable, Host, Instance, Response, instance};
+pub use harmos_domain::operations::{CallContext, Host, Instance, Response, instance};
 pub use lane::{Capacity, Lane, LaneSet};
 #[cfg(any(
     feature = "plugin-sidecar",
@@ -100,7 +98,7 @@ pub use component::{Component, ComponentBindings, ComponentError, ComponentOpera
 pub use handler::{Context, OperationGeneration, OperationInstance, OperationInstanceId};
 pub use harmos_domain::observers;
 pub use harmos_domain::operations::{
-    EndpointSet, InputEndpoint, OutputEndpoint, WireVisitor, host, lifecycle, streams,
+    EndpointSet, InputEndpoint, OutputEndpoint, host, lifecycle, streams,
 };
 pub use manager::OperationManager;
 pub use session::{Completion, Download, Exchange, Session, SessionInput, SessionOutput, Upload};

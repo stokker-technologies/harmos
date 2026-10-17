@@ -22,7 +22,7 @@ use crate::operations::common::payload::payload;
 /* === Constants === */
 
 /* === Macros === */
-payload! { OperationsRequest,
+payload! { Operations,
     after: Option<String> => (1, Kind::String, Optional),
     rows: Option<u32> => (2, Kind::U32, Optional),
     bytes: Option<u32> => (3, Kind::U32, Optional),

@@ -28,8 +28,8 @@ use super::{CallError, Supervisor};
 use harmos_domain::operations::instance::{Id, Status};
 use harmos_domain::operations::lifecycle::InstanceState;
 use harmos_domain::operations::{
-    CallContext, Callable, ContextError, ContextValue, Host, Instance, OperationDeclaration,
-    Response, WireChildAction,
+    CallContext, ContextError, ContextValue, Host, Instance, OperationDeclaration, Response,
+    WireChildAction,
 };
 use harmos_domain::{Message, StreamSpec};
 
@@ -53,7 +53,7 @@ pub struct OperationInstance<O> {
 /* === Traits === */
 
 /* === Implementations === */
-impl<O: Callable> OperationInstance<O> {
+impl<O: OperationDeclaration> OperationInstance<O> {
     pub fn id(&self) -> Id {
         self.id
     }
@@ -107,7 +107,7 @@ impl<O> Drop for OperationInstance<O> {
     }
 }
 
-impl<O: Callable> Instance<O> for OperationInstance<O> {
+impl<O: OperationDeclaration> Instance<O> for OperationInstance<O> {
     type Error = CallError;
 
     fn id(&self) -> Id {
@@ -133,7 +133,7 @@ impl<O: Callable> Instance<O> for OperationInstance<O> {
 
 impl Host for Supervisor {
     type Error = CallError;
-    type Instance<O: Callable> = OperationInstance<O>;
+    type Instance<O: OperationDeclaration> = OperationInstance<O>;
 
     fn context(&self) -> &CallContext {
         Supervisor::context(self)
@@ -143,9 +143,9 @@ impl Host for Supervisor {
         Supervisor::with_value(self, value)
     }
 
-    async fn submit_as<O: Callable>(
+    async fn submit<O: OperationDeclaration>(
         &self,
-        request: O::Request,
+        request: O,
     ) -> Result<OperationInstance<O>, CallError> {
         let bytes = self.child_call::<O>(&request, true).await?;
         let id = u64::decode(bytes.as_slice()).map_err(|error| CallError::Malformed {
@@ -161,17 +161,20 @@ impl Host for Supervisor {
     }
 
     // Resident resources live in the host process; a sidecar cannot lend them.
-    async fn submit_with_resources<O: Callable<Response = ()>, R: Send + Sync + 'static>(
+    async fn submit_with_resources<
+        O: OperationDeclaration<Response = ()>,
+        R: Send + Sync + 'static,
+    >(
         &self,
-        _: O::Request,
+        _: O,
         _: std::sync::Arc<R>,
     ) -> Result<OperationInstance<O>, CallError> {
         Err(CallError::LocalResources { method: O::ID })
     }
 
-    async fn call_as<O: Callable>(
+    async fn call<O: OperationDeclaration>(
         &self,
-        request: O::Request,
+        request: O,
     ) -> Result<Response<O::Response>, CallError> {
         let bytes = self.child_call::<O>(&request, false).await?;
         decode_response::<O>(&bytes)
@@ -196,10 +199,7 @@ impl Host for Supervisor {
 /* === Private Functions === */
 fn decode_response<O: OperationDeclaration>(
     bytes: &[u8],
-) -> Result<Response<O::Response>, CallError>
-where
-    O::Response: Message,
-{
+) -> Result<Response<O::Response>, CallError> {
     let response = O::Response::decode(bytes).map_err(|error| CallError::Malformed {
         method: O::ID,
         message: error.to_string(),

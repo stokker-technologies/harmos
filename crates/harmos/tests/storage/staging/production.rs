@@ -24,10 +24,7 @@ use std::time::Duration;
 // Local Imports
 use super::{Fixture, config, metadata};
 use harmos::Identifier;
-use harmos::storage::operations::{
-    AbandonFile, AppendFile, AppendFileRequest, CreateFile, CreateFileRequest, FileMutation,
-    FinishFile,
-};
+use harmos::storage::operations::{AbandonFile, AppendFile, CreateFile, FileMutation, FinishFile};
 use harmos::storage::{FilePhase, MutationId, StagedFile};
 
 /* === Constants === */
@@ -77,109 +74,55 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let f = fixture().await;
-                    let create = CreateFileRequest {
+                    let create = CreateFile {
                         mutation: key(&f, "create"),
                         metadata: metadata("shared"),
                     };
-                    let producer = f
-                        .runtime
-                        .operations
-                        .call_as::<CreateFile>(create.clone())
-                        .await
-                        .unwrap();
+                    let producer = f.runtime.operations.call(create.clone()).await.unwrap();
                     assert_eq!(
-                        *f.runtime
-                            .operations
-                            .call_as::<CreateFile>(create.clone())
-                            .await
-                            .unwrap(),
+                        *f.runtime.operations.call(create.clone()).await.unwrap(),
                         *producer
                     );
-                    let first = AppendFileRequest {
+                    let first = AppendFile {
                         mutation: key(&f, "first"),
                         session: producer.session.clone(),
                         offset: 0,
                         bytes: b"one".to_vec(),
                     };
-                    let appended = f
-                        .runtime
-                        .operations
-                        .call_as::<AppendFile>(first.clone())
-                        .await
-                        .unwrap();
+                    let appended = f.runtime.operations.call(first.clone()).await.unwrap();
                     assert_eq!(appended.length, 3);
-                    let second = AppendFileRequest {
+                    let second = AppendFile {
                         mutation: key(&f, "second"),
                         offset: 3,
                         bytes: b"two".to_vec(),
                         ..first.clone()
                     };
+                    assert_eq!(f.runtime.operations.call(second).await.unwrap().length, 6);
                     assert_eq!(
-                        f.runtime
-                            .operations
-                            .call_as::<AppendFile>(second)
-                            .await
-                            .unwrap()
-                            .length,
-                        6
-                    );
-                    assert_eq!(
-                        *f.runtime
-                            .operations
-                            .call_as::<AppendFile>(first.clone())
-                            .await
-                            .unwrap(),
+                        *f.runtime.operations.call(first.clone()).await.unwrap(),
                         *appended
                     );
-                    let conflict = AppendFileRequest {
+                    let conflict = AppendFile {
                         bytes: b"bad".to_vec(),
                         ..first.clone()
                     };
-                    assert!(
-                        f.runtime
-                            .operations
-                            .call_as::<AppendFile>(conflict)
-                            .await
-                            .is_err()
-                    );
-                    let wrong_offset = AppendFileRequest {
+                    assert!(f.runtime.operations.call(conflict).await.is_err());
+                    let wrong_offset = AppendFile {
                         mutation: key(&f, "wrong-offset"),
                         ..first
                     };
-                    assert!(
-                        f.runtime
-                            .operations
-                            .call_as::<AppendFile>(wrong_offset)
-                            .await
-                            .is_err()
-                    );
+                    assert!(f.runtime.operations.call(wrong_offset).await.is_err());
                     let finish = FileMutation {
                         mutation: key(&f, "finish"),
                         session: producer.session.clone(),
                     };
-                    let reference = f
-                        .runtime
-                        .operations
-                        .call_as::<FinishFile>(finish.clone())
-                        .await
-                        .unwrap();
+                    let reference = f.runtime.operations.call(finish.clone()).await.unwrap();
                     assert_eq!(reference.length, 6);
                     assert_eq!(
-                        *f.runtime
-                            .operations
-                            .call_as::<FinishFile>(finish.clone())
-                            .await
-                            .unwrap(),
+                        *f.runtime.operations.call(finish.clone()).await.unwrap(),
                         *reference
                     );
-                    assert_eq!(
-                        *f.runtime
-                            .operations
-                            .call_as::<CreateFile>(create)
-                            .await
-                            .unwrap(),
-                        *producer
-                    );
+                    assert_eq!(*f.runtime.operations.call(create).await.unwrap(), *producer);
                     f.storage.flush().await.unwrap();
                     let restored = super::recovery::restart(&f).await;
                     assert_eq!(
@@ -231,7 +174,7 @@ pub(super) fn contract_scenario() {
                     let producer = f
                         .runtime
                         .operations
-                        .call_as::<CreateFile>(CreateFileRequest {
+                        .call(CreateFile {
                             mutation: key(&f, "create"),
                             metadata: metadata("lost"),
                         })
@@ -240,7 +183,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(producer.session.generation, 1);
                     assert_eq!(f.data.control.create_failures.load(Ordering::SeqCst), 0);
                     f.data.control.chunk_failures.store(3, Ordering::SeqCst);
-                    let append = AppendFileRequest {
+                    let append = AppendFile {
                         mutation: key(&f, "append"),
                         session: producer.session.clone(),
                         offset: 0,
@@ -249,7 +192,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         f.runtime
                             .operations
-                            .call_as::<AppendFile>(append.clone())
+                            .call(append.clone())
                             .await
                             .unwrap()
                             .length,
@@ -264,31 +207,14 @@ pub(super) fn contract_scenario() {
                         mutation: key(&f, "abandon"),
                         session: producer.session.clone(),
                     };
-                    let abandoned = f
-                        .runtime
-                        .operations
-                        .call_as::<AbandonFile>(abandon.clone())
-                        .await
-                        .unwrap();
+                    let abandoned = f.runtime.operations.call(abandon.clone()).await.unwrap();
                     assert_eq!(abandoned.phase, FilePhase::Abandoned);
                     assert_eq!(abandoned.length, 7);
                     assert_eq!(
-                        *f.runtime
-                            .operations
-                            .call_as::<AbandonFile>(abandon)
-                            .await
-                            .unwrap(),
+                        *f.runtime.operations.call(abandon).await.unwrap(),
                         *abandoned
                     );
-                    assert_eq!(
-                        f.runtime
-                            .operations
-                            .call_as::<AppendFile>(append)
-                            .await
-                            .unwrap()
-                            .length,
-                        7
-                    );
+                    assert_eq!(f.runtime.operations.call(append).await.unwrap().length, 7);
                     assert_eq!(f.data.staged.lock().unwrap()["lost"].1, b"partial");
                     f.finish().await;
                 });
@@ -497,18 +423,8 @@ pub(super) fn contract_scenario() {
                         mutation: key(&f, "finish"),
                         session: producer.session,
                     };
-                    let result = f
-                        .runtime
-                        .operations
-                        .call_as::<FinishFile>(request.clone())
-                        .await
-                        .unwrap();
-                    let replay = f
-                        .runtime
-                        .operations
-                        .call_as::<FinishFile>(request)
-                        .await
-                        .unwrap();
+                    let result = f.runtime.operations.call(request.clone()).await.unwrap();
+                    let replay = f.runtime.operations.call(request).await.unwrap();
                     assert_eq!(result, replay);
                     assert_eq!(
                         f.data.control.finish_positions.lock().unwrap().as_slice(),
@@ -534,26 +450,15 @@ pub(super) fn contract_scenario() {
                         Arc::new(f.storage.clone()),
                     )
                     .unwrap();
-                    let request = CreateFileRequest {
+                    let request = CreateFile {
                         mutation: key(&f, "create"),
                         metadata: metadata("retry-budget"),
                     };
                     f.data.control.create_failures.store(5, Ordering::SeqCst);
-                    assert!(
-                        f.runtime
-                            .operations
-                            .call_as::<CreateFile>(request.clone())
-                            .await
-                            .is_err()
-                    );
+                    assert!(f.runtime.operations.call(request.clone()).await.is_err());
                     assert_eq!(f.data.control.create_failures.load(Ordering::SeqCst), 1);
                     f.data.control.create_failures.store(0, Ordering::SeqCst);
-                    let producer = f
-                        .runtime
-                        .operations
-                        .call_as::<CreateFile>(request)
-                        .await
-                        .unwrap();
+                    let producer = f.runtime.operations.call(request).await.unwrap();
                     f.storage
                         .abandon_file_once(&key(&f, "abandon"), &producer.session)
                         .await

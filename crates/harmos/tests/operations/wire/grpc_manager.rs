@@ -317,7 +317,7 @@ impl Operation for Descend {
         _: &mut (),
     ) -> harmos::Result<harmos::operations::Response<Reply>> {
         let result: ::core::result::Result<Reply, Self::Error> = async move {
-            let response = context.call_as::<Guarded>(Ask {}).await?;
+            let response = context.call(Ask {}).await?;
             Ok(Reply {
                 actor: response.actor.clone(),
             })
@@ -1108,7 +1108,7 @@ pub(super) fn contract_scenario() {
                     .connect()
                     .await
                     .unwrap();
-                    let parked = runtime.operations.submit_as::<ParkedContract>(()).unwrap();
+                    let parked = runtime.operations.submit(()).unwrap();
                     let id = parked.id();
 
                     // An External Caller Neither Sees Nor Cancels A Host Instance
@@ -1175,12 +1175,7 @@ pub(super) fn contract_scenario() {
                         .unwrap();
                     // Internal Boot Work Does Not Freeze The Later Listener Policy.
                     assert_eq!(
-                        runtime
-                            .operations
-                            .call_as::<Guarded>(Ask {})
-                            .await
-                            .unwrap()
-                            .actor,
+                        runtime.operations.call(Ask {}).await.unwrap().actor,
                         "host:anonymous"
                     );
                     let mode = Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -1322,7 +1317,7 @@ pub(super) fn contract_scenario() {
                         runtime
                             .operations
                             .with_context(context)
-                            .call_as::<Descendant>(Ask {})
+                            .call(Ask {})
                             .await
                             .unwrap()
                             .actor,

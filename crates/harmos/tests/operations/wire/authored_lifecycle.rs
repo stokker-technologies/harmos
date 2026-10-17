@@ -175,10 +175,7 @@ fn contract_scenario() {
                         value: Cell::new(19),
                         events: events.clone(),
                     };
-                    let call = runtime
-                        .operations
-                        .submit_as::<Declaration>(request)
-                        .unwrap();
+                    let call = runtime.operations.submit(request).unwrap();
                     assert_eq!(*call.join().await.unwrap(), 21);
                     runtime.stop().await.unwrap();
                     assert_eq!(

@@ -12,7 +12,7 @@ pub mod codec;
 pub mod read;
 
 /* === Re-Exports === */
-pub use read::{ByteRange, FileBatch, FileCompletion, ReadFile};
+pub use read::{ByteRange, FileBatch, FileCompletion};
 
 /* === Imports === */
 // Standard Library Imports

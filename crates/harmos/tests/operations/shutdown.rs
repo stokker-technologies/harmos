@@ -173,15 +173,9 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let (runtime, trace) = runtime().await;
-                    let first = runtime
-                        .operations
-                        .submit_as::<WaitContract>(Mode::Hold)
-                        .unwrap();
+                    let first = runtime.operations.submit(Mode::Hold).unwrap();
                     trace.started.notified().await;
-                    let queued = runtime
-                        .operations
-                        .submit_as::<WaitContract>(Mode::Count)
-                        .unwrap();
+                    let queued = runtime.operations.submit(Mode::Count).unwrap();
                     queued.cancel();
                     assert!(matches!(
                         queued.await,
@@ -191,10 +185,7 @@ pub(super) fn contract_scenario() {
                     trace.release.notify_one();
                     first.await.unwrap();
 
-                    let running = runtime
-                        .operations
-                        .submit_as::<WaitContract>(Mode::Sleep)
-                        .unwrap();
+                    let running = runtime.operations.submit(Mode::Sleep).unwrap();
                     trace.started.notified().await;
 
                     running.cancel();
@@ -218,10 +209,7 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let (runtime, trace) = runtime().await;
-                    let instance = runtime
-                        .operations
-                        .submit_as::<WaitContract>(Mode::Hold)
-                        .unwrap();
+                    let instance = runtime.operations.submit(Mode::Hold).unwrap();
                     trace.started.notified().await;
                     {
                         let stop = runtime.stop();

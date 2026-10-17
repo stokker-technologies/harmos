@@ -17,8 +17,12 @@ use std::any::Any;
 // Third Party Imports
 
 // Local Imports
-use crate::operations::{GrpcVisitor, InputDeclaration, OutputDeclaration, WireOperation};
-use crate::{MemorySize, MessageError, Protobuf};
+#[cfg(feature = "streaming")]
+use crate::MemorySize;
+#[cfg(feature = "streaming")]
+use crate::operations::Direction;
+use crate::operations::OperationDeclaration;
+use crate::{MessageError, Protobuf};
 
 /* === Constants === */
 
@@ -48,83 +52,23 @@ pub(super) struct ItemCodec {
     pub(super) length: fn(&dyn Any) -> Result<usize, MessageError>,
     pub(super) encode: Encode,
 }
-pub(super) struct Project;
 
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
-impl GrpcVisitor for Project {
-    type Entry = Option<Codec>;
-    fn unary<O: WireOperation>(self) -> Self::Entry
-    where
-        O::Request: Protobuf + MemorySize,
-        O::Response: Protobuf,
-    {
-        Some(Codec {
-            decode: decode::<O::Request>,
+impl Codec {
+    // The One Protobuf Projection Of A Declaration: Request, Response And The
+    // Item Codec Of Each Direction It Streams.
+    pub(crate) fn of<O: OperationDeclaration>() -> Self {
+        Self {
+            decode: decode::<O>,
             encode: encode::<O::Response>,
             #[cfg(feature = "streaming")]
-            input: None,
+            input: direction::<O::Input>(),
             #[cfg(feature = "streaming")]
-            output: None,
-        })
-    }
-    fn upload<O: WireOperation + InputDeclaration>(self) -> Self::Entry
-    where
-        O::Request: Protobuf + MemorySize,
-        O::Response: Protobuf,
-        O::Item: Protobuf + MemorySize,
-    {
-        #[cfg(feature = "streaming")]
-        {
-            Some(Codec {
-                input: Some(item::<O::Item>()),
-                ..self.unary::<O>()?
-            })
-        }
-        #[cfg(not(feature = "streaming"))]
-        {
-            None
-        }
-    }
-    fn download<O: WireOperation + OutputDeclaration>(self) -> Self::Entry
-    where
-        O::Request: Protobuf + MemorySize,
-        O::Response: Protobuf,
-        O::Item: Protobuf + MemorySize,
-    {
-        #[cfg(feature = "streaming")]
-        {
-            Some(Codec {
-                output: Some(item::<O::Item>()),
-                ..self.unary::<O>()?
-            })
-        }
-        #[cfg(not(feature = "streaming"))]
-        {
-            None
-        }
-    }
-    fn exchange<O: WireOperation + InputDeclaration + OutputDeclaration>(self) -> Self::Entry
-    where
-        O::Request: Protobuf + MemorySize,
-        O::Response: Protobuf,
-        <O as InputDeclaration>::Item: Protobuf + MemorySize,
-        <O as OutputDeclaration>::Item: Protobuf + MemorySize,
-    {
-        #[cfg(feature = "streaming")]
-        {
-            Some(Codec {
-                input: Some(item::<<O as InputDeclaration>::Item>()),
-                output: Some(item::<<O as OutputDeclaration>::Item>()),
-                ..self.unary::<O>()?
-            })
-        }
-        #[cfg(not(feature = "streaming"))]
-        {
-            None
+            output: direction::<O::Output>(),
         }
     }
 }
@@ -132,6 +76,11 @@ impl GrpcVisitor for Project {
 /* === Public Functions === */
 
 /* === Private Functions === */
+#[cfg(feature = "streaming")]
+fn direction<D: Direction>() -> Option<ItemCodec> {
+    D::STREAMED.then(item::<D::Item>)
+}
+
 #[cfg(feature = "streaming")]
 fn item<T: Protobuf + MemorySize + 'static>() -> ItemCodec {
     ItemCodec {

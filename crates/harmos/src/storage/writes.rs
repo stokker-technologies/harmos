@@ -12,9 +12,7 @@ pub(crate) mod convert;
 mod streaming;
 
 /* === Re-Exports === */
-pub use harmos_domain::model::storage::{
-    BatchReceipt, DataBatch, WriteCompletion, WriteReceipt, WriteRequest,
-};
+pub use harmos_domain::model::storage::{BatchReceipt, DataBatch, WriteCompletion, WriteReceipt};
 pub(crate) use streaming::{DecodedBatch, WriteKind, exchange};
 
 /* === Imports === */

@@ -402,12 +402,12 @@ impl harmos::Plugin for Dependent {
     }
     async fn initialize(&mut self, context: &Self::Context) -> Result<(), Refusal> {
         context
-            .call_as::<Amplify>(Amplify { value: 11 })
+            .call(Amplify { value: 11 })
             .await
             .map_err(Refusal::from)?;
         if self.notify {
             context
-                .call_as::<Sample>(Sample { value: 99 })
+                .call(Sample { value: 99 })
                 .await
                 .map_err(Refusal::from)?;
         }
@@ -424,7 +424,7 @@ impl harmos::Plugin for Dependent {
     }
     async fn stop(&mut self, context: &Self::Context) -> Result<(), Refusal> {
         context
-            .call_as::<Amplify>(Amplify { value: 22 })
+            .call(Amplify { value: 22 })
             .await
             .expect("provider remains available through cleanup");
         Ok(())
@@ -1428,7 +1428,7 @@ pub(super) fn contract_scenario() {
     assert_eq!(
         runtime
             .operations
-            .call_as::<Forward<true>>(Amplify { value: 7 })
+            .call(Amplify { value: 7 })
             .await
             .unwrap()
             .value,
@@ -1436,7 +1436,7 @@ pub(super) fn contract_scenario() {
     );
     let denied = runtime
         .operations
-        .call_as::<Forward<false>>(Amplify { value: 7 })
+        .call(Amplify { value: 7 })
         .await
         .unwrap_err();
     let harmos::Error::OperationFailed { source, .. } = denied else {
@@ -1448,7 +1448,7 @@ pub(super) fn contract_scenario() {
     assert_eq!(
         runtime
             .operations
-            .call_as::<Forward<true>>(Amplify { value: 8 })
+            .call(Amplify { value: 8 })
             .await
             .unwrap()
             .value,
@@ -1519,10 +1519,7 @@ pub(super) fn contract_scenario() {
                         PluginManager::new(candidate(&lifecycle, false, false, false, false))
                             .unwrap();
                     manager.initialize(&mut lifecycle).await.unwrap();
-                    let invocation = runtime
-                        .operations
-                        .submit_as::<Forward<true>>(Amplify { value: 0 })
-                        .unwrap();
+                    let invocation = runtime.operations.submit(Amplify { value: 0 }).unwrap();
                     tokio::time::timeout(Duration::from_secs(1), provider.started.notified())
                         .await
                         .unwrap();
@@ -1537,17 +1534,14 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         runtime
                             .operations
-                            .call_as::<Forward<true>>(Amplify { value: 9 })
+                            .call(Amplify { value: 9 })
                             .await
                             .unwrap()
                             .value,
                         9
                     );
 
-                    let timed = runtime
-                        .operations
-                        .call_as::<Amplify>(Amplify { value: 0 })
-                        .await;
+                    let timed = runtime.operations.call(Amplify { value: 0 }).await;
                     assert!(matches!(
                         timed,
                         Err(harmos::Error::OperationRefused(harmos::Refusal::TimedOut))
@@ -1558,7 +1552,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         runtime
                             .operations
-                            .call_as::<Amplify>(Amplify { value: 10 })
+                            .call(Amplify { value: 10 })
                             .await
                             .unwrap()
                             .value,
@@ -1869,7 +1863,7 @@ pub(super) fn contract_scenario() {
         if !dynamic {
             let busy = runtime
                 .operations
-                .submit_as::<Forward<true>>(Amplify { value: 1 })
+                .submit(Amplify { value: 1 })
                 .unwrap()
                 .await;
             assert!(
@@ -1893,7 +1887,7 @@ pub(super) fn contract_scenario() {
         if !dynamic {
             let response = runtime
                 .operations
-                .call_as::<Forward<true>>(Amplify { value: 11 })
+                .call(Amplify { value: 11 })
                 .await
                 .unwrap();
             assert_eq!(response.value, 11);

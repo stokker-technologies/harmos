@@ -350,7 +350,7 @@ impl PluginLifecycle for Host {
                 assert_eq!(
                     self.operations
                         .caller(&caller)?
-                        .call_as::<Shared>(request())
+                        .call(request())
                         .await?
                         .value,
                     7
@@ -385,7 +385,7 @@ impl PluginLifecycle for Host {
             Err(Error::NotReady { .. })
         ));
         assert!(matches!(
-            self.operations.submit_as::<Compute>(request()),
+            self.operations.submit(request()),
             Err(Error::NotReady { .. })
         ));
         if self.unregister_before_commit {
@@ -829,15 +829,7 @@ pub(super) fn contract_scenario() {
                             .stage_plugin(host.scope.as_ref().unwrap(), |_| Ok(())),
                         Err(Error::InvalidInput { .. })
                     ));
-                    assert_eq!(
-                        runtime
-                            .operations
-                            .call_as::<Compute>(request())
-                            .await
-                            .unwrap()
-                            .value,
-                        7
-                    );
+                    assert_eq!(runtime.operations.call(request()).await.unwrap().value, 7);
 
                     manager.shutdown(&mut host).await.unwrap();
                     assert!(runtime.operations.definitions().is_empty());
@@ -918,7 +910,7 @@ pub(super) fn contract_scenario() {
                     let gate = Arc::new(tokio::sync::Notify::new());
                     let invocation = runtime
                         .operations
-                        .submit_as::<Compute>(super::Request {
+                        .submit(super::Request {
                             gate: Some((opened.clone(), gate.clone())),
                             ..request()
                         })
@@ -973,7 +965,7 @@ pub(super) fn contract_scenario() {
                     let gate = Arc::new(tokio::sync::Notify::new());
                     let invocation = runtime
                         .operations
-                        .submit_as::<Compute>(super::Request {
+                        .submit(super::Request {
                             gate: Some((opened.clone(), gate.clone())),
                             ..request()
                         })
@@ -1028,9 +1020,9 @@ pub(super) fn contract_scenario() {
                     host.call_during_setup = true;
                     manager.initialize(&mut host).await.unwrap();
                     let caller = runtime.operations.caller(&host.callers["client"]).unwrap();
-                    assert_eq!(caller.call_as::<Shared>(request()).await.unwrap().value, 7);
+                    assert_eq!(caller.call(request()).await.unwrap().value, 7);
                     // Parent is shared; its resource-owner context can call its private child.
-                    assert_eq!(caller.call_as::<Parent>(request()).await.unwrap().value, 7);
+                    assert_eq!(caller.call(request()).await.unwrap().value, 7);
                     let (requests, mut decoded) =
                         harmos::operations::stream(harmos::operations::StreamSettings {
                             items: NonZeroUsize::new(1).unwrap(),
@@ -1081,7 +1073,7 @@ pub(super) fn contract_scenario() {
                     for source in ["client", "transitive", "unrelated"] {
                         let source = runtime.operations.caller(&host.callers[source]).unwrap();
                         assert!(matches!(
-                            source.submit_as::<Compute>(request()),
+                            source.submit(request()),
                             Err(Error::OperationUnauthorized { .. })
                         ));
                         let (output, input) =
@@ -1106,7 +1098,7 @@ pub(super) fn contract_scenario() {
                     for source in ["transitive", "unrelated"] {
                         let source = runtime.operations.caller(&host.callers[source]).unwrap();
                         assert!(matches!(
-                            source.submit_as::<Shared>(request()),
+                            source.submit(request()),
                             Err(Error::OperationUnauthorized { .. })
                         ));
                     }
@@ -1121,7 +1113,7 @@ pub(super) fn contract_scenario() {
                             .operations
                             .caller(&host.callers["fixture"])
                             .unwrap()
-                            .call_as::<Compute>(request())
+                            .call(request())
                             .await
                             .unwrap()
                             .value,
@@ -1129,7 +1121,7 @@ pub(super) fn contract_scenario() {
                     );
                     manager.shutdown(&mut host).await.unwrap();
                     assert!(matches!(
-                        caller.submit_as::<Shared>(request()),
+                        caller.submit(request()),
                         Err(Error::OperationCaller { .. })
                     ));
                     let (output, input) =
@@ -1179,10 +1171,9 @@ pub(super) fn contract_scenario() {
                         keyed: true,
                         ..request()
                     };
-                    let host_response =
-                        runtime.operations.call_as::<Shared>(keyed()).await.unwrap();
-                    let first = caller.call_as::<Shared>(keyed()).await.unwrap();
-                    let again = caller.call_as::<Shared>(keyed()).await.unwrap();
+                    let host_response = runtime.operations.call(keyed()).await.unwrap();
+                    let first = caller.call(keyed()).await.unwrap();
+                    let again = caller.call(keyed()).await.unwrap();
                     assert!(!host_response.ptr_eq(&first));
                     assert!(first.ptr_eq(&again));
                     assert_eq!(host.owner.runs.load(std::sync::atomic::Ordering::SeqCst), 2);
@@ -1201,16 +1192,13 @@ pub(super) fn contract_scenario() {
                         .await
                         .unwrap();
                     assert!(matches!(
-                        caller.submit_as::<Shared>(keyed()),
+                        caller.submit(keyed()),
                         Err(Error::OperationCaller { .. })
                     ));
                     let replacement = runtime.operations.caller(&host.callers["client"]).unwrap();
-                    let next = replacement.call_as::<Shared>(keyed()).await.unwrap();
+                    let next = replacement.call(keyed()).await.unwrap();
                     assert!(!first.ptr_eq(&next));
-                    assert!(
-                        host_response
-                            .ptr_eq(&runtime.operations.call_as::<Shared>(keyed()).await.unwrap())
-                    );
+                    assert!(host_response.ptr_eq(&runtime.operations.call(keyed()).await.unwrap()));
                     manager.shutdown(&mut host).await.unwrap();
                     runtime.stop().await.unwrap();
                 });
@@ -1234,23 +1222,15 @@ pub(super) fn contract_scenario() {
                         .await
                         .unwrap();
                     assert!(matches!(
-                        old.submit_as::<Shared>(request()),
+                        old.submit(request()),
                         Err(Error::OperationCaller { .. })
                     ));
                     let replacement = runtime.operations.caller(&host.callers["client"]).unwrap();
                     assert!(matches!(
-                        replacement.submit_as::<Shared>(request()),
+                        replacement.submit(request()),
                         Err(Error::OperationUnauthorized { .. })
                     ));
-                    assert_eq!(
-                        runtime
-                            .operations
-                            .call_as::<Shared>(request())
-                            .await
-                            .unwrap()
-                            .value,
-                        7
-                    );
+                    assert_eq!(runtime.operations.call(request()).await.unwrap().value, 7);
                     manager.shutdown(&mut host).await.unwrap();
                     runtime.stop().await.unwrap();
                 });
@@ -1273,7 +1253,7 @@ pub(super) fn contract_scenario() {
                     let gate = Arc::new(tokio::sync::Notify::new());
                     let held = runtime
                         .operations
-                        .submit_as::<Shared>(Request {
+                        .submit(Request {
                             gate: Some((opened.clone(), gate.clone())),
                             ..request()
                         })
@@ -1281,7 +1261,7 @@ pub(super) fn contract_scenario() {
                     tokio::time::timeout(std::time::Duration::from_secs(2), opened.notified())
                         .await
                         .unwrap();
-                    let queued = source.submit_as::<Shared>(request()).unwrap();
+                    let queued = source.submit(request()).unwrap();
                     manager
                         .reload(with_clients(false), &mut host)
                         .await
@@ -1354,10 +1334,7 @@ pub(super) fn contract_scenario() {
                         "own:1"
                     );
                     // The client's shared parent invokes its own private child as the bound owner.
-                    assert_eq!(
-                        &*client.call_as::<Nested>("nested".into()).await.unwrap(),
-                        "nested:1"
-                    );
+                    assert_eq!(&*client.call("nested".into()).await.unwrap(), "nested:1");
                     let prepared = host
                         .owner
                         .prepared
@@ -1598,18 +1575,11 @@ pub(super) fn contract_scenario() {
                         .unwrap();
                     let old_client = runtime.operations.caller(&host.callers["client"]).unwrap();
                     assert_eq!(
-                        old_client
-                            .call_as::<Selected>("before".into())
-                            .await
-                            .unwrap()
-                            .as_str(),
+                        old_client.call("before".into()).await.unwrap().as_str(),
                         "first:before"
                     );
                     assert!(matches!(
-                        runtime
-                            .operations
-                            .call_as::<Selected>("ambiguous".into())
-                            .await,
+                        runtime.operations.call("ambiguous".into()).await,
                         Err(Error::InvalidInput {
                             field: "operation provider",
                             ..
@@ -1623,18 +1593,14 @@ pub(super) fn contract_scenario() {
                         .await
                         .unwrap();
                     assert!(matches!(
-                        old_client.submit_as::<Selected>("stale".into()),
+                        old_client.submit("stale".into()),
                         Err(Error::OperationCaller { .. })
                     ));
                     assert_eq!(host.scopes["first"].generation(), first_generation);
                     assert_eq!(host.scopes["second"].generation(), second_generation);
                     let client = runtime.operations.caller(&host.callers["client"]).unwrap();
                     assert_eq!(
-                        client
-                            .call_as::<Selected>("after".into())
-                            .await
-                            .unwrap()
-                            .as_str(),
+                        client.call("after".into()).await.unwrap().as_str(),
                         "second:after"
                     );
                     let first_payload = first
@@ -1667,11 +1633,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(String::decode(&second_payload).unwrap(), "second:surviving");
                     assert_eq!(host.scopes["second"].generation(), second_generation);
                     assert_eq!(
-                        client
-                            .call_as::<Selected>("unchanged".into())
-                            .await
-                            .unwrap()
-                            .as_str(),
+                        client.call("unchanged".into()).await.unwrap().as_str(),
                         "second:unchanged"
                     );
                     manager.shutdown(&mut host).await.unwrap();

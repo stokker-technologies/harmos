@@ -82,11 +82,8 @@ impl Frame {
     pub const LIMIT: usize = 16 * 1024 * 1024;
     pub const OVERSIZED: i64 = -32_603;
 
-    pub fn request_encoded_len<O: OperationDeclaration>(request: &O::Request) -> usize
-    where
-        O::Request: Message,
-    {
-        Self::request_payload_encoded_len(O::ID, request.encoded_len())
+    pub fn request_encoded_len<O: OperationDeclaration>(request: &O) -> usize {
+        Self::request_payload_encoded_len(O::ID, harmos_domain::Message::encoded_len(request))
     }
 
     // The largest frame carrying an encoded request of `payload` bytes for
@@ -127,17 +124,11 @@ impl Frame {
         ))
     }
 
-    pub fn request_fits<O: OperationDeclaration>(request: &O::Request) -> bool
-    where
-        O::Request: Message,
-    {
+    pub fn request_fits<O: OperationDeclaration>(request: &O) -> bool {
         Self::request_encoded_len::<O>(request) <= Self::LIMIT
     }
 
-    pub fn reply_encoded_len<O: OperationDeclaration>(reply: &O::Response) -> usize
-    where
-        O::Response: Message,
-    {
+    pub fn reply_encoded_len<O: OperationDeclaration>(reply: &O::Response) -> usize {
         let empty = WireAnswer::Ready {
             payload: Vec::new(),
         };
@@ -148,10 +139,7 @@ impl Frame {
         answer_encoded_len(u64::MAX, payload)
     }
 
-    pub fn reply_fits<O: OperationDeclaration>(reply: &O::Response) -> bool
-    where
-        O::Response: Message,
-    {
+    pub fn reply_fits<O: OperationDeclaration>(reply: &O::Response) -> bool {
         Self::reply_encoded_len::<O>(reply) <= Self::LIMIT
     }
 

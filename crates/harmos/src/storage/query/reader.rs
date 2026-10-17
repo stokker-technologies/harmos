@@ -25,7 +25,7 @@ use tokio::sync::OwnedSemaphorePermit;
 // Local Imports
 use super::execute::Plan;
 use super::object_schemas::NormalizedObjects;
-use super::{Query, QueryCompletion, QueryOutput, Source};
+use super::{QueryCompletion, QueryOutput, Source};
 use crate::storage::arrow::{
     ArrowBatch, ArrowSchema, RetainedMemory, resident_bytes, retain_native,
 };
@@ -41,6 +41,7 @@ use crate::storage::{
 };
 use crate::{Error, MemorySize, Result};
 use harmos_domain::model::storage::ArrowIpc;
+use harmos_domain::operations::storage::Query;
 
 /* === Constants === */
 

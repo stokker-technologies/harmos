@@ -81,9 +81,8 @@ impl Stub {
         };
         match call.operation.as_str() {
             "host.publish" => {
-                let request =
-                    harmos_domain::operations::streams::Publication::decode(&call.payload)
-                        .map_err(Refusal::of)?;
+                let request = harmos_domain::operations::streams::Publish::decode(&call.payload)
+                    .map_err(Refusal::of)?;
                 self.calls.push(Call::Publish {
                     stream: request.stream,
                     payload: request.payload,

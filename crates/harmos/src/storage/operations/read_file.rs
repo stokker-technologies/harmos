@@ -21,7 +21,7 @@ use crate::operations::{Context, Operation, OperationDeclaration, StreamOutput};
 use crate::storage::StorageManager;
 use crate::storage::config::IO_TIMEOUT;
 use crate::{Error, MemorySize, Result};
-use harmos_domain::model::storage::files::{FileBatch, FileCompletion, ReadFile as ReadRequest};
+use harmos_domain::model::storage::files::{FileBatch, FileCompletion};
 
 /* === Constants === */
 
@@ -57,7 +57,7 @@ impl<C: 'static> Operation for Handler<C> {
     async fn run<'a>(
         &mut self,
         ctx: Self::Context<'a>,
-        request: &mut ReadRequest,
+        request: &mut ReadFile,
         output: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<FileCompletion>> {
         let grant = harmos_domain::plugin::Grant::of(

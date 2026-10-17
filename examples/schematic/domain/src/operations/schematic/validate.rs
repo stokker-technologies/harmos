@@ -26,29 +26,25 @@
 
 /* === Structs === */
 #[harmos_domain::message]
-#[derive(Clone, Debug, PartialEq)]
-pub struct Request {
-    pub schematic: crate::model::Snapshot,
-}
-
-#[harmos_domain::message]
-#[derive(Clone, Debug, PartialEq)]
-pub struct Response {
-    pub diagnostics: Vec<String>,
-}
-
 #[harmos_domain::operation(
     id = "schematic.validate",
-    request = Request,
-    response = Response,
-
+    response = Validation,
     policy = crate::operations::POLICY,
     visibility = harmos_domain::operations::Visibility::Shared,
     replay = harmos_domain::operations::ReplaySafety::Idempotent,
     version = 1,
     grpc(package = "schematic.v1", service = "Schematic", method = "Validate"),
 )]
-pub struct ValidateSchematic;
+#[derive(Clone, Debug, PartialEq)]
+pub struct ValidateSchematic {
+    pub schematic: crate::model::Snapshot,
+}
+
+#[harmos_domain::message]
+#[derive(Clone, Debug, PartialEq)]
+pub struct Validation {
+    pub diagnostics: Vec<String>,
+}
 
 /* === Enums === */
 

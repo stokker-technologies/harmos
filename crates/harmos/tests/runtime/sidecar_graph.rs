@@ -109,7 +109,7 @@ pub(super) fn contract_scenario() {
                         .map(|definition| definition.configuration.len() * 2)
                         .max()
                         .unwrap()
-                        + std::mem::size_of::<harmos::operations::lifecycle::InitializeRequest>()
+                        + std::mem::size_of::<harmos::operations::lifecycle::Initialize>()
                         + 84;
                     assert!(
                         encoding_bytes <= 512,

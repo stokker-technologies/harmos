@@ -19,7 +19,7 @@ use std::sync::Arc;
 use harmos::Identifier;
 use harmos::schema::Cardinality;
 use harmos::schema::graph::{Field, Kind, Schema};
-use harmos::storage::operations::{Query, WriteSchema, WriteSchemaRequest};
+use harmos::storage::operations::{Query, WriteSchema};
 use harmos::storage::query::{
     Query as QueryRequest, QueryArrow, RowSlice, SchemaSelection, Source,
 };
@@ -72,8 +72,8 @@ fn schema(name: &str) -> SchemaInput {
     )
     .unwrap()
 }
-fn request(f: &Fixture, name: &str) -> WriteSchemaRequest {
-    WriteSchemaRequest {
+fn request(f: &Fixture, name: &str) -> WriteSchema {
+    WriteSchema {
         mutation: MutationId {
             window: f.storage.mutation_window().unwrap().id,
             key: Identifier::new(name).unwrap(),
@@ -103,29 +103,13 @@ pub(super) fn contract_scenario() {
             .block_on(async {
                 let f = setup().await;
                 let request = request(&f, "nested");
-                let accepted = f
-                    .runtime
-                    .operations
-                    .call_as::<WriteSchema>(request.clone())
-                    .await
-                    .unwrap();
-                let repeated = f
-                    .runtime
-                    .operations
-                    .call_as::<WriteSchema>(request.clone())
-                    .await
-                    .unwrap();
+                let accepted = f.runtime.operations.call(request.clone()).await.unwrap();
+                let repeated = f.runtime.operations.call(request.clone()).await.unwrap();
                 assert_eq!(*accepted, *repeated);
                 assert_eq!(f.storage.cursor_accepted(), *accepted);
                 let mut conflict = request.clone();
                 conflict.schema.key.version = NonZeroU32::new(2).unwrap();
-                assert!(
-                    f.runtime
-                        .operations
-                        .call_as::<WriteSchema>(conflict)
-                        .await
-                        .is_err()
-                );
+                assert!(f.runtime.operations.call(conflict).await.is_err());
                 let at = f.storage.flush().await.unwrap();
                 let query = QueryRequest {
                     at: at.clone(),

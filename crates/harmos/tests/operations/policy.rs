@@ -348,12 +348,12 @@ pub(super) fn contract_scenario() {
                     let gate = Arc::new(Notify::new());
                     let blocker = runtime
                         .operations
-                        .submit_as::<Blocker>(Request {
+                        .submit(Request {
                             behavior: Behavior::Gate(Arc::clone(&gate)),
                         })
                         .unwrap();
                     blocker_probe.started.notified().await;
-                    let queued = runtime.operations.submit_as::<Queued>(failing(0)).unwrap();
+                    let queued = runtime.operations.submit(failing(0)).unwrap();
                     tokio::time::advance(Duration::from_millis(100)).await;
                     assert!(matches!(
                         queued.await,
@@ -383,7 +383,7 @@ pub(super) fn contract_scenario() {
                     let submitted = tokio::time::Instant::now();
                     let result = runtime
                         .operations
-                        .call_as::<Attempt>(Request {
+                        .call(Request {
                             behavior: Behavior::Pending,
                         })
                         .await;
@@ -399,7 +399,7 @@ pub(super) fn contract_scenario() {
                     type Retrying = Policy<100, 1000, 10, 1000, false>;
                     let (runtime, probe) = bound::<Retrying>().await;
                     let submitted = tokio::time::Instant::now();
-                    let result = runtime.operations.call_as::<Retrying>(failing(100)).await;
+                    let result = runtime.operations.call(failing(100)).await;
                     assert!(matches!(
                         result,
                         Err(Error::OperationRefused(Refusal::TimedOut))
@@ -422,14 +422,7 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     type Retrying = Policy<1000, 100, 2, 20, false>;
                     let (runtime, probe) = bound::<Retrying>().await;
-                    assert_eq!(
-                        *runtime
-                            .operations
-                            .call_as::<Retrying>(failing(2))
-                            .await
-                            .unwrap(),
-                        3
-                    );
+                    assert_eq!(*runtime.operations.call(failing(2)).await.unwrap(), 3);
                     assert_eq!(probe.prepared.load(Ordering::SeqCst), 1);
                     assert_eq!(probe.attempts.load(Ordering::SeqCst), 3);
                     assert_eq!(probe.dropped.load(Ordering::SeqCst), 1);
@@ -448,10 +441,7 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let (runtime, probe) = bound::<Exponential>().await;
-                    let result = runtime
-                        .operations
-                        .call_as::<Exponential>(failing(100))
-                        .await;
+                    let result = runtime.operations.call(failing(100)).await;
                     let Err(Error::OperationFailed { source, .. }) = result else {
                         panic!("the last typed attempt failure is retained")
                     };
@@ -478,10 +468,7 @@ pub(super) fn contract_scenario() {
                 .block_on(async {
                     type Retrying = Policy<10000, 100, 2, 1000, false>;
                     let (runtime, probe) = bound::<Retrying>().await;
-                    let invocation = runtime
-                        .operations
-                        .submit_as::<Retrying>(failing(100))
-                        .unwrap();
+                    let invocation = runtime.operations.submit(failing(100)).unwrap();
                     probe.started.notified().await;
                     let cancelled = tokio::time::Instant::now();
                     invocation.cancel();
@@ -509,7 +496,7 @@ pub(super) fn contract_scenario() {
                     let (runtime, probe) = bound::<Unknown>().await;
                     let result = runtime
                         .operations
-                        .call_as::<Unknown>(Request {
+                        .call(Request {
                             behavior: Behavior::Pending,
                         })
                         .await;
@@ -524,7 +511,7 @@ pub(super) fn contract_scenario() {
                     let (runtime, probe) = bound::<Replayable>().await;
                     let result = runtime
                         .operations
-                        .call_as::<Replayable>(Request {
+                        .call(Request {
                             behavior: Behavior::Pending,
                         })
                         .await;
@@ -569,12 +556,12 @@ pub(super) fn contract_scenario() {
                     let gate = Arc::new(Notify::new());
                     let first = runtime
                         .operations
-                        .submit_as::<Queued>(Request {
+                        .submit(Request {
                             behavior: Behavior::Gate(gate),
                         })
                         .unwrap();
                     probe.started.notified().await;
-                    let second = runtime.operations.submit_as::<Queued>(failing(0)).unwrap();
+                    let second = runtime.operations.submit(failing(0)).unwrap();
                     second.cancel();
                     assert!(matches!(
                         second.await,
@@ -604,7 +591,7 @@ pub(super) fn contract_scenario() {
                 .expect("scenario runtime is valid")
                 .block_on(async {
                     let (runtime, probe) = bound::<Jittered>().await;
-                    let result = runtime.operations.call_as::<Jittered>(failing(100)).await;
+                    let result = runtime.operations.call(failing(100)).await;
                     assert!(matches!(result, Err(Error::OperationFailed { .. })));
                     let waits = waits(&probe);
                     assert_eq!(waits.len(), 4);

@@ -23,9 +23,7 @@ use harmos::operations::StreamSettings;
 use schematic_app::app::Runtime;
 use schematic_app::domain::{
     model::Snapshot,
-    operations::{
-        AnalyzeSchematic, ListDirectories, directories::list_directories, schematic::analyze,
-    },
+    operations::{AnalyzeSchematic, ListDirectories},
 };
 
 /* === Constants === */
@@ -49,7 +47,7 @@ pub async fn run(runtime: &Runtime, schematic: Snapshot, native: bool) -> Result
         items: NonZeroUsize::MIN,
         bytes: NonZeroUsize::new(4096).unwrap(),
     };
-    let request = analyze::Request { schematic };
+    let request = AnalyzeSchematic { schematic };
     let mut analysis = runtime
         .operations
         .download::<AnalyzeSchematic>(request.clone(), settings)?;
@@ -68,11 +66,8 @@ pub async fn run(runtime: &Runtime, schematic: Snapshot, native: bool) -> Result
 
     // Only The Native Sidecar Has Filesystem Access
     if native {
-        let request = list_directories::Request {};
-        let response = runtime
-            .operations
-            .call_as::<ListDirectories>(request)
-            .await?;
+        let request = ListDirectories {};
+        let response = runtime.operations.call(request).await?;
         println!("Native directories: {:?}", response.directories);
     }
     Ok(())

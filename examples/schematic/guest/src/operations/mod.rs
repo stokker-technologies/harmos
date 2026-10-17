@@ -32,9 +32,9 @@ mod validate;
 /* === Enums === */
 #[harmos_guest::catalog]
 pub(crate) enum Operations {
-    Validate(validate::ValidateSchematic),
-    Route(propose::ProposeRoute),
-    Analyze(analyze::AnalyzeSchematic),
+    Validate(validate::Validating),
+    Route(propose::Routing),
+    Analyze(analyze::Analyzing),
 }
 
 /* === Traits === */

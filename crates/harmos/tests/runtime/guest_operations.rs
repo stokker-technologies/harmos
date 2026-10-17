@@ -132,7 +132,7 @@ pub(super) fn contract_scenario() {
                     assert!(
                         runtime
                             .operations
-                            .call_as::<Read>(Value {
+                            .call(Value {
                                 value: "fenced".into()
                             })
                             .await
@@ -177,7 +177,7 @@ pub(super) fn contract_scenario() {
                     .unwrap();
                 let caller = runtime.operations.with_context(context.clone());
                 let answer = caller
-                    .call_as::<Read>(Value {
+                    .call(Value {
                         value: "context-parent".into(),
                     })
                     .await
@@ -212,7 +212,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         runtime
                             .operations
-                            .call_as::<Read>(Value {
+                            .call(Value {
                                 value: "value".into()
                             })
                             .await
@@ -225,14 +225,14 @@ pub(super) fn contract_scenario() {
                     // Retain Both Original Receipts While Their Physical Cleanup Owns The Table
                     let mut first = runtime
                         .operations
-                        .submit_as::<Read>(Value {
+                        .submit(Value {
                             value: "cleanup".into(),
                         })
                         .unwrap();
                     let first_error = (&mut first).await.unwrap_err();
                     let mut second = runtime
                         .operations
-                        .submit_as::<Read>(Value {
+                        .submit(Value {
                             value: "cleanup".into(),
                         })
                         .unwrap();
@@ -262,7 +262,7 @@ pub(super) fn contract_scenario() {
                     }
                     let error = runtime
                         .operations
-                        .call_as::<Read>(Value {
+                        .call(Value {
                             value: "later".into(),
                         })
                         .await
@@ -312,7 +312,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         runtime
                             .operations
-                            .call_as::<Read>(Value {
+                            .call(Value {
                                 value: "later".into()
                             })
                             .await
@@ -400,7 +400,7 @@ pub(super) fn contract_scenario() {
                         manager.initialize(&mut lifecycle).await.unwrap();
                         let result = runtime
                             .operations
-                            .call_as::<Read>(Value {
+                            .call(Value {
                                 value: "parent".into(),
                             })
                             .await;
@@ -447,7 +447,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         runtime
                             .operations
-                            .call_as::<Read>(Value {
+                            .call(Value {
                                 value: "value".into()
                             })
                             .await
@@ -488,7 +488,7 @@ pub(super) fn contract_scenario() {
                     assert!(
                         runtime
                             .operations
-                            .call_as::<Read>(Value {
+                            .call(Value {
                                 value: "later".into()
                             })
                             .await
@@ -511,7 +511,7 @@ pub(super) fn contract_scenario() {
     manager.initialize(&mut lifecycle).await.unwrap();
     let mut invocation = runtime
         .operations
-        .submit_as::<Read>(Value {
+        .submit(Value {
             value: "initialize-fail".into(),
         })
         .unwrap();
@@ -528,7 +528,7 @@ pub(super) fn contract_scenario() {
     );
     let counts = runtime
         .operations
-        .call_as::<Counts>(Value {
+        .call(Value {
             value: "counts".into(),
         })
         .await
@@ -561,7 +561,7 @@ pub(super) fn contract_scenario() {
                     manager.initialize(&mut lifecycle).await.unwrap();
                     let result = runtime
                         .operations
-                        .call_as::<Read>(Value {
+                        .call(Value {
                             value: "initialize-child".into(),
                         })
                         .await
@@ -569,7 +569,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(result.value, "initialize-child:2");
                     let counts = runtime
                         .operations
-                        .call_as::<Counts>(Value {
+                        .call(Value {
                             value: "counts".into(),
                         })
                         .await
@@ -708,7 +708,7 @@ pub(super) fn contract_scenario() {
                     assert_eq!(
                         runtime
                             .operations
-                            .call_as::<Counts>(Value {
+                            .call(Value {
                                 value: String::new()
                             })
                             .await

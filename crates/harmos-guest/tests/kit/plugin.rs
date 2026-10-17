@@ -21,7 +21,7 @@ use wasmtime::{Config, Engine, Store};
 // Local Imports
 use super::{Stub, support};
 use harmos_guest::Message;
-use harmos_guest::operations::{WireAnswer, WireCommand, lifecycle::InitializeRequest};
+use harmos_guest::operations::{WireAnswer, WireCommand, lifecycle::Initialize};
 
 /* === Constants === */
 
@@ -166,7 +166,7 @@ fn contract_scenario() {
                                 .phase(WireCommand::Prepare {
                                     invocation: 7,
                                     operation: "harmos.initialize".to_owned(),
-                                    payload: InitializeRequest {
+                                    payload: Initialize {
                                         config_json: b"null".to_vec(),
                                         generation_context: Vec::new()
                                     }
@@ -230,7 +230,7 @@ fn contract_scenario() {
                         ),
                         "metadata collection does not initialize resources or ordinary handlers"
                     );
-                    let request = InitializeRequest {
+                    let request = Initialize {
                         config_json: br#""same-owner""#.to_vec(),
                         generation_context: Vec::new(),
                     };

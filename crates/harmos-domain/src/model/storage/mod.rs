@@ -15,7 +15,6 @@ pub mod arrow;
 pub mod codec;
 pub mod data;
 pub mod files;
-pub mod follow;
 pub mod keys;
 pub mod mutations;
 pub mod objects;
@@ -30,9 +29,8 @@ pub use arrow::ArrowIpc;
 pub use data::{RecordInput, RecordWrite, StoredRecord, StoredRow, StreamInput, StreamWrite};
 pub use files::{
     ByteRange, FileBatch, FileCompletion, FileMetadata, FilePhase, FileProgress, FileReference,
-    FileSession, ReadFile, StagedFile,
+    FileSession, StagedFile,
 };
-pub use follow::{File, Objects, Records, Stream};
 pub use keys::{
     ObjectKey, ObjectRetention, ObjectValue, PayloadEncoding, SchemaKey, check_length, invalid,
     object_key,
@@ -43,11 +41,11 @@ pub use objects::{
 };
 pub use position::{RecoveryPosition, StorageCursor, StoreHistory};
 pub use query::{
-    FileSelection, ObjectSelection, ObjectVersions, Query, QueryCompletion, QueryOutput,
-    RecordSelection, RowSlice, SchemaSelection, Source, StreamSelection,
+    FileSelection, ObjectSelection, ObjectVersions, QueryCompletion, QueryOutput, RecordSelection,
+    RowSlice, SchemaSelection, Source, StreamSelection,
 };
 pub use schema_input::{SchemaInfo, SchemaInput};
-pub use writes::{BatchReceipt, DataBatch, WriteCompletion, WriteReceipt, WriteRequest};
+pub use writes::{BatchReceipt, DataBatch, WriteCompletion, WriteReceipt};
 
 /* === Imports === */
 // Standard Library Imports

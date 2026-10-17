@@ -78,10 +78,7 @@ pub enum Facility {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CarrierSection {
-    Sidecar {
-        restart: Option<RestartPolicy>,
-        observer_control: Option<Box<Contract>>,
-    },
+    Sidecar { restart: Option<RestartPolicy> },
     Guest,
 }
 
@@ -134,7 +131,7 @@ enum Fragment {
     Contracts(Box<contracts::NamedManifest>),
     Contributions(Box<contributions::Manifest>),
     Listeners(Box<listeners::NamedManifest>),
-    Observers(Box<observers::NamedManifest>),
+    Observers(Box<observers::Manifest>),
     Restart {
         facility: String,
         owner: String,
@@ -217,10 +214,6 @@ impl Declaration {
             .into_iter()
             .map(|manifest| manifest.resolve(&schemas, &mut settings))
             .collect::<Result<_, listeners::Error>>()?;
-        let observer_manifests = observer_manifests
-            .into_iter()
-            .map(|manifest| manifest.resolve(&schemas, &mut settings))
-            .collect::<Result<_, observers::Error>>()?;
         let publications = publications
             .into_iter()
             .map(|manifest| manifest.resolve(&schemas, &mut settings))
@@ -241,15 +234,7 @@ impl Declaration {
             Facility::Sidecar => {
                 let restart = restart(restart_policies, &id)?;
                 let selected = observers::select_manifest(observer_manifests, name, &id, &streams)?;
-                observers::validate_control(
-                    &selected.observers,
-                    selected.observer_control.as_ref(),
-                    &contracts.provides,
-                )?;
-                let carrier = CarrierSection::Sidecar {
-                    restart,
-                    observer_control: selected.observer_control.map(Box::new),
-                };
+                let carrier = CarrierSection::Sidecar { restart };
                 (selected.observers, carrier)
             }
             Facility::Guest => {
@@ -259,7 +244,7 @@ impl Declaration {
                 {
                     let selected =
                         observers::select_manifest(observer_manifests, name, &id, &streams)?;
-                    if !selected.observers.is_empty() || selected.observer_control.is_some() {
+                    if !selected.observers.is_empty() {
                         return Err(DeclarationError::UnsupportedObservers);
                     }
                 }
@@ -294,13 +279,13 @@ impl Declaration {
         }
     }
 
-    pub fn observer_control(&self) -> Option<&Contract> {
-        match &self.carrier {
-            CarrierSection::Sidecar {
-                observer_control, ..
-            } => observer_control.as_deref(),
-            CarrierSection::Guest => None,
+    // The built-in `harmos.observe` contract, served by a sidecar that
+    // declares observers.
+    pub fn observer_control(&self) -> Option<Contract> {
+        if self.observers.is_empty() {
+            return None;
         }
+        Some(crate::observers::contract().expect("the built-in observe control is valid"))
     }
 }
 

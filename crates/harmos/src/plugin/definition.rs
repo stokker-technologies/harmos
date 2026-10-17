@@ -48,7 +48,6 @@ pub struct PluginContributions {
     pub wire_contracts: Vec<harmos_domain::operations::Contract>,
     pub required_contracts: Option<Vec<harmos_domain::inventory::contracts::Required>>,
     pub observers: Vec<harmos_domain::inventory::observers::Declaration>,
-    pub observer_control: Option<harmos_domain::operations::Contract>,
     pub streams: Vec<StreamDeclaration>,
     pub listeners: Vec<harmos_domain::listeners::Definition>,
     pub registrations: Vec<Registration>,
@@ -149,7 +148,6 @@ impl fmt::Debug for PluginContributions {
             .field("required_contracts", &self.required_contracts)
             .field("sections", &self.sections)
             .field("observers", &self.observers)
-            .field("observer_control", &self.observer_control)
             .field("streams", &self.streams)
             .field("listeners", &self.listeners)
             .field("registrations", &registrations)
@@ -303,7 +301,6 @@ impl PluginDefinition {
                 wire_contracts: declaration.contracts.provides.clone(),
                 required_contracts: Some(declaration.contracts.requires.clone()),
                 observers: declaration.observers.clone(),
-                observer_control: declaration.observer_control().cloned(),
                 streams: declaration.streams.clone(),
                 listeners: declaration.listeners.clone(),
                 sections: declaration.sections.clone(),
@@ -399,17 +396,6 @@ impl PluginDefinition {
             invalid(
                 "observers",
                 "invalid observer inventory or publication grant",
-            )
-        })?;
-        harmos_domain::inventory::observers::validate_control(
-            &self.contributions.observers,
-            self.contributions.observer_control.as_ref(),
-            &self.contributions.wire_contracts,
-        )
-        .map_err(|_| {
-            invalid(
-                "observer controls",
-                "observer roles differ from the exact authored Host wire contracts",
             )
         })?;
 

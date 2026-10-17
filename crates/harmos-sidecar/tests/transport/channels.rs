@@ -451,7 +451,7 @@ fn contract_scenario() {
                     use harmos_sidecar::Message;
                     use harmos_sidecar::operations::{
                         OperationDeclaration, WireAnswer, WireCommand,
-                        lifecycle::{Initialize, InitializeRequest, Shutdown},
+                        lifecycle::{Initialize, Shutdown},
                     };
                     use std::num::NonZeroUsize;
                     tokio::time::timeout(Duration::from_secs(3), async {
@@ -469,7 +469,7 @@ fn contract_scenario() {
                             mut driver,
                         } = Connection::new(io(host_data), io(host_control));
                         let driving = tokio::spawn(async move { driver.run().await });
-                        let initialization = InitializeRequest {
+                        let initialization = Initialize {
                             config_json: b"null".to_vec(),
                             generation_context: Vec::new(),
                         };
@@ -601,7 +601,7 @@ fn contract_scenario() {
                     use super::protocol::{Echo, TransportPlugin};
                     use harmos_sidecar::operations::{
                         OperationDeclaration,
-                        lifecycle::{Initialize, InitializeRequest, Shutdown},
+                        lifecycle::{Initialize, Shutdown},
                     };
                     use harmos_sidecar::{Attach, Executable, Message};
                     let executable = Executable::at(prepared_fixtures::artifact(
@@ -623,7 +623,7 @@ fn contract_scenario() {
                     let sending = sender.clone();
                     let outcome = tokio::spawn(async move {
                         tokio::time::timeout(Duration::from_secs(10), async {
-                            let request = InitializeRequest {
+                            let request = Initialize {
                                 config_json: b"null".to_vec(),
                                 generation_context: Vec::new(),
                             };

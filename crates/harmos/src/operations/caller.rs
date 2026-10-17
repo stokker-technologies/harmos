@@ -200,7 +200,7 @@ impl Caller {
     pub fn submit_at<O: OperationDeclaration>(
         &self,
         id: &str,
-        request: O::Request,
+        request: O,
     ) -> Result<super::OperationInstance<O>> {
         self.operations.admit_at::<O, ()>(
             id,
@@ -215,7 +215,7 @@ impl Caller {
     #[cfg(feature = "grpc")]
     pub(crate) fn submit_external_charged<O: OperationDeclaration, P: Send + 'static>(
         &self,
-        request: super::StreamItem<O::Request>,
+        request: super::StreamItem<O>,
         endpoints: P,
     ) -> Result<super::OperationInstance<O>> {
         self.operations.submit_by::<O, P>(
@@ -253,31 +253,14 @@ impl Caller {
         self.submit_encoded(operation, payload)?.await
     }
 
-    // The declaration is its own request; `submit_as::<O>` names a separate one.
-    pub fn submit<O: OperationDeclaration<Request = O>>(
-        &self,
-        request: O,
-    ) -> Result<OperationInstance<O>> {
-        self.submit_as::<O>(request)
-    }
-
-    pub async fn call<O: OperationDeclaration<Request = O>>(
-        &self,
-        request: O,
-    ) -> Result<crate::operations::Response<O::Response>> {
-        self.call_as::<O>(request).await
-    }
-    pub fn submit_as<O: OperationDeclaration>(
-        &self,
-        request: O::Request,
-    ) -> Result<OperationInstance<O>> {
+    pub fn submit<O: OperationDeclaration>(&self, request: O) -> Result<OperationInstance<O>> {
         self.operations
             .submit_by::<O, ()>((request.into(), ()), &Source::Plugin(self.source.clone()))
     }
 
     pub fn submit_endpoints<O: OperationDeclaration, P: Send + 'static>(
         &self,
-        request: O::Request,
+        request: O,
         endpoints: P,
     ) -> Result<OperationInstance<O>> {
         self.operations.submit_by::<O, P>(
@@ -288,7 +271,7 @@ impl Caller {
 
     pub fn submit_charged<O: OperationDeclaration, P: Send + 'static>(
         &self,
-        request: super::StreamItem<O::Request>,
+        request: super::StreamItem<O>,
         endpoints: P,
     ) -> Result<OperationInstance<O>> {
         self.operations.submit_by::<O, P>(
@@ -297,11 +280,11 @@ impl Caller {
         )
     }
 
-    pub async fn call_as<O: OperationDeclaration>(
+    pub async fn call<O: OperationDeclaration>(
         &self,
-        request: O::Request,
+        request: O,
     ) -> Result<crate::operations::Response<O::Response>> {
-        self.submit_as::<O>(request)?.await
+        self.submit(request)?.await
     }
 }
 

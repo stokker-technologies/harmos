@@ -20,10 +20,9 @@ use std::time::SystemTime;
 // Third Party Imports
 
 // Local Imports
-use super::transform::Transform;
 use crate::model::storage::ArrowIpc;
 use crate::model::storage::codec::{
-    Code, Id, Nested, Optional, Repeated, Time, Unsigned, coded, product, variants,
+    Code, Id, Nested, Optional, Time, Unsigned, coded, product, variants,
 };
 use crate::model::storage::objects::Key;
 use crate::model::storage::{ObjectKey, SchemaKey, StorageCursor};
@@ -36,14 +35,6 @@ use crate::{Identifier, MemorySize, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
-#[derive(Clone, Debug)]
-pub struct Query {
-    pub at: StorageCursor,
-    pub source: Source,
-    pub transforms: Vec<Transform>,
-    pub slice: RowSlice,
-}
-
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct RowSlice {
     pub offset: u64,
@@ -120,18 +111,6 @@ pub enum QueryOutput {
 /* === Traits === */
 
 /* === Implementations === */
-impl Query {
-    pub fn validate(&self) -> Result<()> {
-        self.source.validate()?;
-        if self.transforms.len() > 64 {
-            return Err(crate::model::storage::query::transform::invalid(
-                "too many query transforms",
-            ));
-        }
-        Ok(())
-    }
-}
-
 impl ObjectSelection {
     pub fn follows_revisions(&self) -> bool {
         self.versions == ObjectVersions::Revisions
@@ -174,12 +153,6 @@ impl Source {
     }
 }
 
-product!(Query {
-    at: Nested<StorageCursor> => 1,
-    source: Nested<Source> => 2,
-    transforms: Repeated<Transform> => 3,
-    slice: Nested<RowSlice> => 4,
-});
 product!(RowSlice { offset: Unsigned => 1, limit: Optional<Unsigned> => 2 });
 product!(ObjectSelection {
     schema: Optional<Nested<SchemaKey>> => 1,
@@ -228,7 +201,6 @@ macro_rules! memory {
         }
     };
 }
-memory!(Query, at, source, transforms, slice);
 memory!(RowSlice, offset, limit);
 memory!(ObjectSelection, schema, key);
 memory!(RecordSelection, schema, scope, item);

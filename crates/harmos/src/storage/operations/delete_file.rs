@@ -12,7 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
-use harmos_domain::operations::storage::{DeleteFile, DeleteFileRequest};
+use harmos_domain::operations::storage::DeleteFile;
 
 // Standard Library Imports
 
@@ -64,7 +64,7 @@ impl<C: 'static> Operation for Handler<C> {
     async fn run<'a>(
         &mut self,
         _: Self::Context<'a>,
-        request: &mut DeleteFileRequest,
+        request: &mut DeleteFile,
         _: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<StagedFile>> {
         let result: ::core::result::Result<StagedFile, Self::Error> = async move {

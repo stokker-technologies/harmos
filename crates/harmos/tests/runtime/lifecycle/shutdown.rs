@@ -165,7 +165,7 @@ fn contract_scenario() {
                         .operations
                         .register_operation::<PendingCall>("shutdown", Lanes::Open, trace.clone())
                         .unwrap();
-                    let operation = runtime.operations.submit_as::<PendingContract>(()).unwrap();
+                    let operation = runtime.operations.submit(()).unwrap();
                     trace.started.notified().await;
                     runtime
                         .operations
