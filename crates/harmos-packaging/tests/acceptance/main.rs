@@ -12,7 +12,10 @@
 
 /* === Modules === */
 
+mod authoring;
 mod bindings;
+#[path = "../../../harmos-runtime/tests/support/fixtures.rs"]
+mod fixtures;
 
 /* === Re-Exports === */
 

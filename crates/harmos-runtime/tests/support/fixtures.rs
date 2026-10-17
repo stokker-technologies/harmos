@@ -51,6 +51,10 @@ pub fn component(name: &str) -> Vec<u8> {
         .unwrap_or_else(|error| panic!("stamped component {name} is unreadable: {error}"))
 }
 
+pub fn input(name: &str) -> PathBuf {
+    directory().join(stamp()[name].as_str().unwrap_or_else(|| panic!("fixture stamp has no {name} input")))
+}
+
 pub fn library(name: &str) -> PathBuf {
     directory().join(
         stamp()["libraries"][name]
