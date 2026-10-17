@@ -19,7 +19,6 @@ import os
 import shutil
 import subprocess
 import sys
-import tomllib
 from pathlib import Path
 
 from ..test import archive
@@ -138,10 +137,9 @@ def _offline_inputs() -> None:
         command += ["--sync", str(manifest)]
     subprocess.run([*command, str(FIXTURES / "vendor")], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
     requirements = FIXTURES / "requirements.txt"
-    command = ["uv", "export", "--locked", "--all-groups", "--no-hashes", "--no-emit-project", "--project", "tools/python"]
+    command = ["uv", "export", "--locked", "--all-groups", "--no-emit-project", "--project", "tools/python"]
     result = subprocess.run(command, cwd=ROOT, check=True, capture_output=True, text=True)
-    project = tomllib.loads((ROOT / "tools/python/pyproject.toml").read_text(encoding="utf-8"))
-    requirements.write_text(result.stdout + "\n".join(project["build-system"]["requires"]) + "\n", encoding="utf-8")
+    requirements.write_text(result.stdout, encoding="utf-8")
     # Run The Pip Wheel Bundled With This Pinned Python, Without Installing A Manager.
     bundled = importlib.resources.files("ensurepip").joinpath("_bundled")
     wheels = [path for path in bundled.iterdir() if path.name.startswith("pip-") and path.name.endswith(".whl")]
@@ -149,7 +147,7 @@ def _offline_inputs() -> None:
         raise RuntimeError("the pinned Python must provide its bundled pip wheel to stage offline inputs")
     launch = "import runpy,sys; sys.path.insert(0,sys.argv.pop(1)); runpy.run_module('pip',run_name='__main__')"
     subprocess.run([sys.executable, "-c", launch, str(wheels[0]), "download", "--dest", str(FIXTURES / "wheels"),
-                    "--requirement", str(requirements)], cwd=ROOT, check=True)
+                    "--require-hashes", "--requirement", str(requirements)], cwd=ROOT, check=True)
 
 
 def _stage_build(build: dict, package: str) -> tuple[str, str]:
