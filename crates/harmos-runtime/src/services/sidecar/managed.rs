@@ -618,7 +618,7 @@ where
     }
     let mut future = std::pin::pin!(future);
     std::future::poll_fn(|context| {
-        if physical.is_running()
+        if (physical.is_running() || physical.has_outcome())
             && let Poll::Ready(outcome) = physical.poll(context)
         {
             exit.get_or_insert(outcome);

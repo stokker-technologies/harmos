@@ -273,6 +273,11 @@ where
         original.running.is_some() || original.running_busy
     }
 
+    // A sibling poller (dependency or progress) may have observed the attempt end first.
+    pub(super) fn has_outcome(&self) -> bool {
+        self.original.lock().unwrap_or_else(|error| error.into_inner()).outcome.is_some()
+    }
+
     // Stop the connection's instance; its cleanup settles through `poll_ending`.
     pub(super) fn cancel(&mut self) {
         let signals = {
