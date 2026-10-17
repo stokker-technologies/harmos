@@ -31,14 +31,15 @@ pub const POLICY: OperationPolicy = OperationPolicy {
 };
 
 /* === Macros === */
-crate::declare!(Operations {
-    id: "host.operations",
+crate::declare!(Catalog {
+    id: "host.catalog",
     version: 1,
     policy: POLICY,
-    response: OperationsResponse,
-    description: "Discover bounded live contracts; invocation authorization remains conditional",
+    response: CatalogPage,
+    description: "Page live operation contracts or the schemas, streams and objects storage holds durably",
     visibility: Visibility::Shared,
-    grpc: ("harmos.host.v1", "Host", "Operations"),
+    grpc: ("harmos.host.v1", "Host", "Catalog"),
+    grant: Catalog::required_grant,
 });
 
 /* === Type Aliases === */

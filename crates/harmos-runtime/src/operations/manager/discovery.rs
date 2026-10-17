@@ -23,14 +23,14 @@ use serde::Serialize;
 use super::{Entry, OperationManager};
 use crate::operations::Contract;
 use crate::operations::caller::Source;
-use crate::operations::host::{Operations, OperationsResponse};
+use crate::operations::host::{Catalog, CatalogPage};
 use crate::{Error, Identifier, Result};
 use harmos_domain::plugin::Grant;
 
 /* === Constants === */
-const MAX_ROWS: u32 = 256;
-const MAX_BYTES: u32 = 4 * 1024 * 1024;
-const CURSOR_BYTES: usize = MAX_BYTES as usize;
+const MAX_ROWS: usize = 256;
+const MAX_BYTES: usize = 4 * 1024 * 1024;
+const CURSOR_BYTES: usize = MAX_BYTES;
 
 /* === Macros === */
 
@@ -76,17 +76,10 @@ impl OperationManager {
     pub(in crate::operations) fn discover(
         &self,
         source: &Source,
-        request: &Operations,
-    ) -> Result<OperationsResponse> {
+        request: &Catalog,
+    ) -> Result<CatalogPage> {
         let origin = source.check()?;
-        let rows = request.rows.unwrap_or(64);
-        let bytes = request.bytes.unwrap_or(64 * 1024);
-        if rows == 0 || rows > MAX_ROWS || !(2..=MAX_BYTES).contains(&bytes) {
-            return Err(Error::InvalidInput {
-                field: "discovery limits",
-                reason: "rows must be 1..=256 and bytes must be 2..=4194304",
-            });
-        }
+        let (rows, bytes) = limits(request)?;
         let after: Option<(String, String)> = request
             .after
             .as_ref()
@@ -114,7 +107,7 @@ impl OperationManager {
 
         let mut output = Bounded {
             bytes: vec![b'['],
-            limit: bytes as usize - 1,
+            limit: bytes - 1,
         };
         let mut count = 0;
         let mut last = None;
@@ -251,8 +244,8 @@ impl OperationManager {
             count += 1;
         }
         output.bytes.push(b']');
-        Ok(OperationsResponse {
-            catalog: output.bytes,
+        Ok(CatalogPage {
+            entries: output.bytes,
             next,
         })
     }
@@ -282,6 +275,18 @@ impl OperationManager {
 }
 
 /* === Public Functions === */
+// The Row And Byte Bounds Of One Catalog Page, Shared By Every Kind.
+pub(in crate::operations) fn limits(request: &Catalog) -> Result<(usize, usize)> {
+    let rows = request.rows.unwrap_or(64);
+    let bytes = request.bytes.unwrap_or(64 * 1024);
+    if rows == 0 || rows > MAX_ROWS || !(2..=MAX_BYTES).contains(&bytes) {
+        return Err(Error::InvalidInput {
+            field: "catalog limits",
+            reason: "rows must be 1..=256 and bytes must be 2..=4194304",
+        });
+    }
+    Ok((rows, bytes))
+}
 
 /* === Private Functions === */
 

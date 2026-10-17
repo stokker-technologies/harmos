@@ -32,6 +32,7 @@ use super::{
     StoreHistory, StoredRecord, StoredRow,
 };
 use crate::{Error, Result};
+use harmos_domain::model::storage::{IdentitySelection, StoredIdentity};
 
 /* === Constants === */
 
@@ -224,6 +225,21 @@ pub trait StorageBackend: Send + Sync + 'static {
     /// receipts beyond the bound are omitted, as the in-memory ledger evicts them.
     fn recover_mutations(&self, _limits: ReadLimits) -> StorageFuture<'_, Vec<MutationReceipt>> {
         unsupported("storage mutations")
+    }
+
+    // Stored Identity Catalog
+    /// Distinct stream or object identities durable at the snapshot, ordered by
+    /// the position where each first appeared, within the scan page contract.
+    /// Identities persist across restart in the backend's own metadata index;
+    /// a page costs O(page), never a scan of the rows or revisions behind it.
+    /// Backends without that index refuse rather than derive identities.
+    fn read_identities<'a>(
+        &'a self,
+        _snapshot: &'a BackendSnapshot,
+        _selection: &'a IdentitySelection,
+        _page: ScanPage,
+    ) -> StorageFuture<'a, Vec<StoredIdentity>> {
+        unsupported("storage identity catalog")
     }
 }
 

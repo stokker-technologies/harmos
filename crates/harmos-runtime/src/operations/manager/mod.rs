@@ -23,6 +23,7 @@ mod staging;
 mod submission;
 
 mod discovery;
+pub(in crate::operations) use discovery::limits;
 mod residents;
 
 /* === Re-Exports === */

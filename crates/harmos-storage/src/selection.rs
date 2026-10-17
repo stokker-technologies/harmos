@@ -34,6 +34,7 @@ use super::{
     StoredRow,
 };
 use crate::Identifier;
+use harmos_domain::model::storage::{IdentitySelection, StoredIdentity};
 
 /* === Constants === */
 
@@ -80,6 +81,7 @@ impl sealed::Sealed for StoredRecord {}
 impl sealed::Sealed for StoredRow {}
 impl sealed::Sealed for StorageSchema {}
 impl sealed::Sealed for FileReference {}
+impl sealed::Sealed for StoredIdentity {}
 
 impl Entry for ObjectEntry {
     type Selection = ObjectSelection;
@@ -250,6 +252,32 @@ impl Entry for FileReference {
         page: ScanPage,
     ) -> StorageFuture<'a, Vec<Self>> {
         backend.read_files(snapshot, selection, page)
+    }
+}
+
+// Identities Are Catalogued From Durable Storage Only; None Wait In The Queue.
+impl Entry for StoredIdentity {
+    type Selection = IdentitySelection;
+
+    fn position(&self) -> &StorageCursor {
+        self.first()
+    }
+
+    fn matches(&self, selection: &IdentitySelection) -> bool {
+        selection.matches(self)
+    }
+
+    fn pending(_: Queued<'_>) -> &[Self] {
+        &[]
+    }
+
+    fn scan<'a>(
+        backend: &'a dyn StorageBackend,
+        snapshot: &'a BackendSnapshot,
+        selection: &'a IdentitySelection,
+        page: ScanPage,
+    ) -> StorageFuture<'a, Vec<Self>> {
+        backend.read_identities(snapshot, selection, page)
     }
 }
 
