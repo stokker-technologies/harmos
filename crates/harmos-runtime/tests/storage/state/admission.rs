@@ -77,7 +77,7 @@ impl Application for Model {
 
 impl harmos_runtime::state::Transaction<u64> for Advance {
     type Error = std::convert::Infallible;
-    fn check(&self, _: &u64) -> Result<(), Self::Error> {
+    fn check(&self, _: &u64) -> std::result::Result<(), Self::Error> {
         Ok(())
     }
     fn records(&self, state: &u64, output: &mut harmos_runtime::state::Records) {
@@ -97,12 +97,11 @@ impl RecordProjection for Projection {
         Box::pin(async move {
             let schema = waveforms::schema();
             let item = Identifier::new(format!("observed-{}", entry.position.0)).unwrap();
-            let payload = waveforms::Sample {
+            let payload = harmos_runtime::Message::encode_to_vec(&waveforms::Sample {
                 phase: 0,
                 ordinal: entry.position.0,
                 value: 1.0,
-            }
-            .encode_to_vec();
+            });
             output.push(record(&schema, &item, &payload)).await
         })
     }

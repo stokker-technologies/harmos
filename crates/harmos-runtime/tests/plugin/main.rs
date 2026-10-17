@@ -157,7 +157,7 @@ impl PluginLifecycle for Shutdown {
         panic!("shutdown must retain the original activation adapter")
     }
 }
-#[harmos_runtime::message(harmos_path = harmos)]
+#[harmos_runtime::message(harmos_path = harmos_runtime)]
 struct RunRequest {
     value: String,
 }
@@ -171,7 +171,7 @@ struct Running<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> {
 }
 struct Operations<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool>;
 
-#[harmos_runtime::lanes(harmos_path = harmos)]
+#[harmos_runtime::lanes(harmos_path = harmos_runtime)]
 enum Lanes {
     #[default]
     Open,

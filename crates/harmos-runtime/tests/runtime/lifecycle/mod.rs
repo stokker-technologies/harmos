@@ -37,7 +37,7 @@ use harmos_runtime::{Error, Runtime};
 
 /* === Structs === */
 // A flush held open until the story releases it, announcing when it is entered.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 struct Held {
     entered: Arc<Notify>,
     release: Arc<Semaphore>,
@@ -48,6 +48,12 @@ struct Held {
 /* === Traits === */
 
 /* === Implementations === */
+impl Default for Held {
+    fn default() -> Self {
+        Self { entered: Arc::default(), release: Arc::new(Semaphore::new(0)) }
+    }
+}
+
 impl Held {
     // Close the gate for good, so every later flush passes straight through.
     fn open(&self) {

@@ -159,7 +159,7 @@ impl Operation for Read {
             self.attempts += 1;
             self.phase.set(2);
             self.trace.running.notify_one();
-            match mode {
+            match request.mode {
                 Mode::WaitRun => std::future::pending().await,
                 Mode::PanicRun => panic!("authored run panicked"),
                 _ => Ok(Answer { value: 42 }),
@@ -210,10 +210,6 @@ impl Drop for Read {
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn cache_key(request: &ReadContract) -> Option<CacheKey> {
-    matches!(request.mode, Mode::Cache).then(|| CacheKey::new(vec![42]).unwrap())
-}
-
 async fn runtime() -> (Runtime<App>, Arc<Trace>) {
     let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
     let trace = Arc::new(Trace::default());

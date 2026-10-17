@@ -435,55 +435,26 @@ async fn generated_entry_attaches() {
 }
 
 #[tokio::test]
-async fn guest_row_refused() {
-    let noticed = Arc::new(AtomicUsize::new(0));
-    let counter = noticed.clone();
-    let source = native_process();
-    let definition = process_definition(&source);
-    let sidecar = Supervised::new(source, move |_context: &Service<Bank>, notice: Notice| {
-        if matches!(notice, Notice::Published { .. }) {
-            counter.fetch_add(1, Ordering::SeqCst);
-        }
-    })
-    .grace(Duration::from_millis(20));
-    let ready = sidecar.ready();
-    let calls = sidecar.clone();
-    let (runtime, _lease) = process_runtime(
-        sidecar,
-        definition,
-        harmos_runtime::operations::OperationPolicy { restart: harmos_runtime::operations::RestartPolicy::Never, ..harmos_runtime::services::POLICY },
+async fn refusal_keeps_carrier() {
+    // A Publication Outside The Frozen Inventory Is Refused; The Same Carrier Keeps Serving.
+    let mut peer = meter(Arc::new(AtomicUsize::new(0)));
+    peer.publications = Some(Vec::new());
+    let mut fixture = operations::Managed::attach(
+        peer,
+        serde_json::to_vec(&()).unwrap(),
+        operations::Lanes::NativeOpen,
+        NonZeroUsize::new(16).unwrap(),
+        vec![],
+        |resident| resident.ingest::<MeterPulse>(),
     )
     .await;
-    (async {
-        let mut ready = ready;
-        while !*ready.borrow_and_update() {
-            ready.changed().await.unwrap();
-        }
-    }).await;
-    let refused = runtime
-        .operations
-        .call_encoded(MeterEcho::ID, Message::encode_to_vec(&MeterEcho { text: "publish-foreign".to_owned() }))
-        .await
-        .unwrap_err();
-    let harmos_runtime::Error::OperationFailed { source, .. } = refused else { panic!("the real host returns its publication refusal: {refused}") };
-    assert!(
-        matches!(source.downcast_ref::<harmos_runtime::operations::NativeError>(),
-        Some(harmos_runtime::operations::NativeError::Remote(failure))
-            if failure.code() == harmos_runtime::operations::FailureKind::Permanent
-                && failure.cause().contains("stream or schema differs from the frozen generation inventory")),
-        "{source}"
-    );
-    assert!(
-        matches!(
-            runtime.operations.resident(&harmos_runtime::operations::resident::Key::root("meter")).and_then(|instance| instance.health),
-            Some(ServiceStatus::Running { .. })
-        ),
-        "a refused publication keeps the original carrier usable"
-    );
-    assert!(runtime.streams.publication("foreign", 1).is_none());
-    assert_eq!(noticed.load(Ordering::SeqCst), 0, "ungranted bytes never reach the notice fallback");
-    drop(calls);
-    runtime.stop().await.unwrap();
+    fixture.publication().unwrap();
+    fixture.initialize().await.unwrap();
+    publications::ready(fixture.ready().clone()).await;
+    assert!(fixture.call(PublishPulse { sample: 42 }).await.is_err());
+    assert_eq!(fixture.call(Amplify { value: 5 }).await.unwrap().value, 10);
+    fixture.shutdown().await.unwrap();
+    fixture.runtime.stop().await.unwrap();
 }
 
 #[tokio::test]

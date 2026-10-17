@@ -149,7 +149,7 @@ async fn portable_call_context() {
     context
         .insert_portable(Tenant { name: "lab".into() })
         .unwrap();
-    fixture.call_in::<Read>(context, ()).await.unwrap();
+    fixture.call_in::<Read>(context, Read {}).await.unwrap();
     assert_eq!(
         *counts.tenants.lock().unwrap(),
         [None, None, Some("lab".to_owned()), Some("lab".to_owned())],

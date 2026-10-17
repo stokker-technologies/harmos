@@ -256,7 +256,7 @@ impl Fixture {
 
     // Publish `rows` rows in calls of `batch` rows; answers each call's latency.
     pub async fn publish(&self, rows: u32, batch: u32) -> Vec<Duration> {
-        let bytes = self.runtime.operations.call_encoded(Publish::ID, Burst { rows, batch }.encode_to_vec()).await.unwrap();
+        let bytes = self.runtime.operations.call_encoded(Publish::ID, Publish { rows, batch }.encode_to_vec()).await.unwrap();
         Timings::decode(&bytes).unwrap().durations()
     }
 }

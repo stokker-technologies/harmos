@@ -194,7 +194,7 @@ async fn transfer_blocks_retry() {
 
 #[harmos_runtime::message]
 #[harmos_runtime::operation(
-    harmos_path = harmos,
+    harmos_path = harmos_runtime,
     id = "streaming",
     version = 1,
     response = (),
@@ -206,7 +206,7 @@ struct StreamingDeclaration {
     mode: u32,
 }
 struct Streaming(Arc<std::sync::atomic::AtomicUsize>, bool);
-#[harmos_runtime::operation(harmos_path = harmos)]
+#[harmos_runtime::operation(harmos_path = harmos_runtime)]
 impl Streaming {
     async fn initialize(resources: Arc<std::sync::atomic::AtomicUsize>, _: Context<'_>) -> Self {
         Self(resources, false)

@@ -52,10 +52,11 @@ use support::{Bank, Ledger, catalog};
 struct Ping;
 
 /* === Enums === */
+#[harmos_runtime::message]
 #[harmos_runtime::operation(
-        request = (),
-        response = usize,
+        response = u64,
         id = "service.ping",
+        version = 1,
         policy = OperationPolicy {
             timeout: Duration::from_secs(30),
             attempt_timeout: Duration::from_secs(1),
@@ -63,7 +64,7 @@ struct Ping;
             restart: RestartPolicy::Never,
         },
     )]
-struct PingContract;
+struct PingContract {}
 
 #[harmos_runtime::catalog]
 enum Operations {
@@ -93,9 +94,9 @@ impl Operation for Ping {
     }
 
     async fn run<'ctx>(
-        &mut self, _: Self::Context<'ctx>, _request: &mut (), _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos_runtime::operations::Response<usize>, Self::Error> {
-        let result: ::core::result::Result<usize, Self::Error> = async move { Ok(42) }.await;
+        &mut self, _: Self::Context<'ctx>, _request: &mut PingContract, _endpoints: &mut Self::Endpoints,
+    ) -> Result<harmos_runtime::operations::Response<u64>, Self::Error> {
+        let result: ::core::result::Result<u64, Self::Error> = async move { Ok(42) }.await;
         result.map(::core::convert::Into::into)
     }
 }
@@ -164,7 +165,7 @@ async fn shutdown_preserves_work() {
     manager.shutdown_residents().await.unwrap();
     assert!(matches!(manager.submit_resident("late").await, Err(Error::Closing { .. })));
     runtime.operations.register_operation::<Ping>("service", Lanes::Open, Arc::new(())).unwrap();
-    assert_eq!(*runtime.operations.call(()).await.unwrap(), 42);
+    assert_eq!(*runtime.operations.call(PingContract {}).await.unwrap(), 42);
     runtime.stop().await.unwrap();
 }
 

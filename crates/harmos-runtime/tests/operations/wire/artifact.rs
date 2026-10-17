@@ -11,7 +11,7 @@
 
 #[cfg(feature = "plugin-guest")]
 mod facade {
-    pub use harmos as __harmos;
+    pub use harmos_runtime as __harmos;
 }
 
 /* === Re-Exports === */

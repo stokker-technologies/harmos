@@ -146,6 +146,7 @@ tokio = { workspace = true, features = ["rt", "macros"] }
 [[test]]
 name = "integration"
 path = "tests/kit/main.rs"
+required-features = ["derive"]
 
 # === Bench Targets ===
 

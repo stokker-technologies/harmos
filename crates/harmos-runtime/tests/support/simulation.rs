@@ -16,7 +16,8 @@
 
 /* === Imports === */
 use harmos_runtime::{Builder, services::Fault, simulation::SimulatedRuntime};
-use super::support::{Bank, Deposit, Noted, alice, pulse};
+use super::support::{Bank, DEPOSIT, Deposit, NOTED, Noted, alice, pulse};
+use harmos_runtime::{DefinitionId, Identified};
 
 // Standard Library Imports
 
@@ -38,6 +39,18 @@ use super::support::{Bank, Deposit, Noted, alice, pulse};
 /* === Traits === */
 
 /* === Implementations === */
+impl Identified for Deposit {
+    fn definition() -> (DefinitionId, u32) {
+        (DefinitionId::new(DEPOSIT.1), DEPOSIT.2)
+    }
+}
+
+impl Identified for Noted {
+    fn definition() -> (DefinitionId, u32) {
+        (DefinitionId::new(NOTED.1), NOTED.2)
+    }
+}
+
 
 /* === Public Functions === */
 pub(crate) fn scripted(builder: Builder<Bank>) -> SimulatedRuntime<Bank> {

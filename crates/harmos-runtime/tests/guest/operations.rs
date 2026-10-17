@@ -358,7 +358,7 @@ async fn phases_retain_capacity() {
         .operations
         .submit_at::<Read>(
             "retired.read",
-            Value {
+            Read {
                 value: "later".into(),
             },
         )

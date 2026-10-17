@@ -178,11 +178,11 @@ async fn object_batch_atomic() {
 
 #[tokio::test]
 async fn object_follow_resumes() {
-    use harmos_runtime::storage::{ObjectEntry, follow::Objects as ObjectSelection, operations::FollowObjects, query::ObjectVersions};
+    use harmos_runtime::storage::{ObjectEntry, operations::FollowObjects, query::ObjectVersions};
     let (runtime, storage, _) = query_fixture().await;
     let first = storage.write_object(&Document { id: "key".into(), text: "saved".into() }).await.unwrap();
     storage.flush().await.unwrap();
-    let mut request = ObjectSelection {
+    let mut request = FollowObjects {
         after: None,
         selection: harmos_runtime::storage::query::ObjectSelection { schema: None, key: None, versions: ObjectVersions::Revisions },
     };

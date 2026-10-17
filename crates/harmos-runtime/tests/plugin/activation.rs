@@ -28,9 +28,9 @@ use super::*;
 
 /* === Structs === */
 struct WireClient;
-#[harmos_runtime::message(harmos_path = harmos)]
+#[harmos_runtime::message(harmos_path = harmos_runtime)]
 #[harmos_runtime::operation(
-    harmos_path = harmos,
+    harmos_path = harmos_runtime,
     id = "client.run",
     version = 1,
     response = String,

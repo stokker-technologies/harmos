@@ -14,6 +14,7 @@
 /* === Imports === */
 // Standard Library Imports
 use std::num::NonZeroUsize;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 // Third Party Imports
@@ -44,6 +45,8 @@ type Seen = Vec<(bool, u32, Position)>;
 #[derive(Serialize, Deserialize)]
 struct Fact {
     value: u32,
+    #[serde(skip)]
+    dropped: Arc<AtomicUsize>,
 }
 
 #[harmos_runtime::message]
@@ -62,12 +65,18 @@ struct Owner {
     observed: Notify,
     started: Notify,
     resume: Notify,
+    finalizing: Notify,
+    release: Notify,
+    finalizations: AtomicUsize,
+    fail_cleanup: AtomicBool,
+    fail_attempt: AtomicBool,
     block: bool,
     reenter: bool,
 }
 
 #[derive(Default)]
 struct Resources {
+    owner: Option<Arc<Owner>>,
     endpoint: Option<PluginEndpoint>,
     operations: Option<PluginRegistration>,
     listeners: Option<Arc<tokio::sync::Mutex<PluginListenerRegistration>>>,
@@ -77,6 +86,10 @@ struct Host {
     operations: harmos_runtime::operations::OperationManager,
     owner: Arc<Owner>,
     scope: Option<PluginScope>,
+    fail_start: bool,
+    skip_sources: bool,
+    drop_before_commit: bool,
+    original_drop: Arc<AtomicUsize>,
     view: Option<Arc<tokio::sync::Mutex<PluginListenerRegistration>>>,
 }
 
@@ -100,6 +113,8 @@ enum Lanes {
 
 #[derive(Debug, thiserror::Error)]
 enum Failed {
+    #[error("scripted original callback failure")]
+    Scripted,
     #[error(transparent)]
     Runtime(#[from] Error),
 }
@@ -107,6 +122,12 @@ enum Failed {
 /* === Traits === */
 
 /* === Implementations === */
+impl Drop for Fact {
+    fn drop(&mut self) {
+        self.dropped.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
 impl Described for Fact {
     const NAME: &'static str = concat!(module_path!(), "::", stringify!(Fact));
     const FIELDS: &'static [Field] = WireFact::FIELDS;
@@ -124,7 +145,7 @@ impl Message for Fact {
         WireFact { value: self.value }.encoded_len()
     }
     fn decode(bytes: &[u8]) -> std::result::Result<Self, MessageError> {
-        Ok(Self { value: WireFact::decode(bytes)?.value })
+        Ok(Self { value: WireFact::decode(bytes)?.value, dropped: Arc::new(AtomicUsize::new(0)) })
     }
 }
 
@@ -155,6 +176,7 @@ enum ImplementedCallbacks {
 
 struct Hearing<const FIRST: bool> {
     resources: Arc<Owner>,
+    wait_cleanup: bool,
 }
 
 impl<const FIRST: bool> Operation for Hearing<FIRST> {
@@ -164,12 +186,13 @@ impl<const FIRST: bool> Operation for Hearing<FIRST> {
     type Resources = Owner;
     type Error = Failed;
     async fn initialize<'ctx>(resources: Arc<Owner>, _: Self::Context<'ctx>) -> std::result::Result<Self, Failed> {
-        Ok(Self { resources })
+        Ok(Self { resources, wait_cleanup: false })
     }
     async fn run<'a>(
         &mut self, _: Self::Context<'a>, request: &mut Delivery<Heard<FIRST>>, _endpoints: &mut Self::Endpoints,
     ) -> std::result::Result<harmos_runtime::operations::Response<()>, Failed> {
         let result: ::core::result::Result<(), Self::Error> = async move {
+            self.wait_cleanup = FIRST && request.row().value == 0 && self.resources.block;
             let DeliveryContext::Record { position } = request.context() else { panic!("original record coordinate") };
             self.resources.seen.lock().unwrap().push((FIRST, request.row().value, position));
             self.resources.observed.notify_one();
@@ -181,11 +204,25 @@ impl<const FIRST: bool> Operation for Hearing<FIRST> {
                     self.resources.started.notify_one();
                     self.resources.resume.notified().await;
                 }
+                if self.resources.fail_attempt.load(Ordering::SeqCst) {
+                    return Err(Failed::Scripted);
+                }
             }
             Ok(())
         }
         .await;
         result.map(::core::convert::Into::into)
+    }
+    async fn cleanup(&mut self) -> std::result::Result<(), Failed> {
+        self.resources.finalizations.fetch_add(1, Ordering::SeqCst);
+        if self.wait_cleanup {
+            self.resources.finalizing.notify_one();
+            if self.resources.fail_cleanup.load(Ordering::SeqCst) {
+                return Err(Failed::Scripted);
+            }
+            self.resources.release.notified().await;
+        }
+        Ok(())
     }
 }
 
@@ -194,7 +231,10 @@ impl PluginLifecycle for Host {
     type Sidecar = Resources;
     type Embedded = Resources;
     fn prepare(&mut self, _: &PluginDefinition) -> Result<Backends> {
-        Ok(PluginBackend::Embedded(Resources::default()))
+        Ok(PluginBackend::Embedded(Resources {
+            owner: Some(self.owner.clone()),
+            ..Resources::default()
+        }))
     }
     async fn fence(&mut self, _: PluginTransition, _: &[PluginDefinition]) -> Result<()> {
         Ok(())
@@ -228,6 +268,18 @@ impl PluginLifecycle for Host {
         let PluginBackend::Embedded(resources) = backend else { unreachable!() };
         if let Some(registration) = &mut resources.listeners {
             registration.lock().await.shutdown().await?;
+        } else if let Some(scope) = resources
+            .endpoint
+            .as_ref()
+            .and_then(|endpoint| endpoint.scope())
+        {
+            resources
+                .owner
+                .as_ref()
+                .unwrap()
+                .records
+                .shutdown_listeners_for(scope)
+                .await?;
         }
         if let Some(registration) = &mut resources.operations {
             registration.shutdown().await?;
@@ -241,7 +293,10 @@ impl PluginLifecycle for Host {
 
 /* === Private Functions === */
 fn fact(value: u32) -> Fact {
-    Fact { value }
+    Fact {
+        value,
+        dropped: Arc::new(AtomicUsize::new(0)),
+    }
 }
 
 fn candidate() -> PluginDefinitions {
@@ -303,10 +358,24 @@ async fn setup(block: bool, reenter: bool, tail: usize) -> (Runtime<Model>, Plug
         observed: Notify::new(),
         started: Notify::new(),
         resume: Notify::new(),
+        finalizing: Notify::new(),
+        release: Notify::new(),
+        finalizations: AtomicUsize::new(0),
+        fail_cleanup: AtomicBool::new(false),
+        fail_attempt: AtomicBool::new(false),
         block,
         reenter,
     });
-    let host = Host { operations: runtime.operations.clone(), owner, scope: None, view: None };
+    let host = Host {
+        operations: runtime.operations.clone(),
+        owner,
+        scope: None,
+        fail_start: false,
+        skip_sources: false,
+        drop_before_commit: false,
+        original_drop: Arc::new(AtomicUsize::new(0)),
+        view: None,
+    };
     (runtime, PluginManager::new(candidate()).unwrap(), host)
 }
 

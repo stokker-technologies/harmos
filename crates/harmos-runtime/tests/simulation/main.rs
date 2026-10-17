@@ -236,18 +236,6 @@ enum Lanes {
 /* === Traits === */
 
 /* === Implementations === */
-impl Identified for Deposit {
-    fn definition() -> (DefinitionId, u32) {
-        (DefinitionId::new(DEPOSIT.1), DEPOSIT.2)
-    }
-}
-
-impl Identified for Noted {
-    fn definition() -> (DefinitionId, u32) {
-        (DefinitionId::new(NOTED.1), NOTED.2)
-    }
-}
-
 impl Operation for Pending {
     type Endpoints = ();
     type Context<'a> = Context<'a>;

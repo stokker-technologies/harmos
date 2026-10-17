@@ -74,7 +74,7 @@ async fn read_file_streams() {
     let (fixture, mut producer, _) = setup().await;
     let finished = producer.finish().await.unwrap();
     fixture.storage.flush().await.unwrap();
-    let request = harmos_runtime::storage::files::ReadFile { file: finished, range: harmos_runtime::storage::files::ByteRange { offset: 0, limit: None } };
+    let request = ReadFile { file: finished, range: harmos_runtime::storage::files::ByteRange { offset: 0, limit: None } };
     let (sender, mut receiver) = harmos_runtime::operations::stream::<harmos_runtime::storage::files::FileBatch>(limits()).unwrap();
     let instance = fixture.runtime.operations.submit_endpoints::<ReadFile, _>(request, sender).unwrap();
     let first = receiver.recv().await.unwrap();
@@ -130,7 +130,7 @@ async fn follow_reconnect_resumes() {
 #[tokio::test]
 async fn future_offset_refused() {
     let (fixture, mut producer, request) = setup().await;
-    let beyond = FileSelection { offset: 7, ..request };
+    let beyond = FollowFile { offset: 7, ..request };
     let (sender, mut receiver) = harmos_runtime::operations::stream::<FileBytes>(limits()).unwrap();
     let result = fixture.runtime.operations.submit_endpoints::<FollowFile, _>(beyond, sender);
     if let Ok(instance) = result {

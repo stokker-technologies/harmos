@@ -148,7 +148,7 @@ impl Operation for Publish {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        row: &mut harmos_runtime::operations::streams::Publication,
+        row: &mut harmos_runtime::operations::streams::Publish,
         _endpoints: &mut Self::Endpoints,
     ) -> harmos_runtime::Result<harmos_runtime::operations::Response<()>> {
         let result: ::core::result::Result<(), Self::Error> = async move {

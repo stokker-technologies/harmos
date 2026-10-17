@@ -364,10 +364,6 @@ impl Fixture {
 /* === Private Functions === */
 fn notices(_: &Service<Bank>, _: Notice) {}
 
-fn nested(blob: Blob) -> Nested {
-    Nested { blob }
-}
-
 fn blob(id: u64, bytes: usize) -> Blob {
     Blob { id, data: vec![42; bytes] }
 }

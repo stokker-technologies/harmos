@@ -144,7 +144,7 @@ impl harmos_runtime::Plugin for Producer {
     fn bind_operations(&self, table: &mut harmos_runtime::operations::WireTable<Supervisor>) -> Result<(), harmos_runtime::operations::ServingError> {
         self.attachment.bind(table)
     }
-    fn attachment(&self) -> Option<Arc<dyn harmos_domain::plugin::Attachment<Supervisor>>> {
+    fn attachment(&self) -> Option<Arc<dyn harmos_sdk::plugin::Attachment<Supervisor>>> {
         Some(self.attachment.clone())
     }
     async fn stop(&mut self, _: &Supervisor) -> Result<(), Self::Error> {

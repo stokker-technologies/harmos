@@ -111,7 +111,7 @@ impl harmos_runtime::Application for Model {
 impl harmos_runtime::state::Transaction<State> for Advance {
     type Error = Infallible;
 
-    fn check(&self, _: &State) -> Result<(), Infallible> {
+    fn check(&self, _: &State) -> std::result::Result<(), Infallible> {
         Ok(())
     }
 

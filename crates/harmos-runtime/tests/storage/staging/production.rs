@@ -22,7 +22,7 @@ use std::sync::{Arc, atomic::Ordering};
 // Local Imports
 use super::{Fixture, config, metadata};
 use harmos_runtime::Identifier;
-use harmos_runtime::storage::operations::{AbandonFile, AppendFile, CreateFile, FinishFile};
+use harmos_runtime::storage::operations::{AbandonFile, AppendFile, CreateFile, DeleteFile, FinishFile};
 use harmos_runtime::storage::{FilePhase, MutationId, StagedFile};
 
 /* === Constants === */
@@ -103,7 +103,7 @@ async fn lost_responses_retry() {
     assert_eq!(f.runtime.operations.call(append).await.unwrap().length, 7);
     assert_eq!(f.data.staged.lock().unwrap()["lost"].1, b"partial");
     f.data.control.delete_failures.store(3, Ordering::SeqCst);
-    let delete = DeleteFileRequest {
+    let delete = DeleteFile {
         mutation: key(&f, "delete"),
         file: StagedFile { history: producer.session.history.clone(), id: producer.session.id.clone() },
     };

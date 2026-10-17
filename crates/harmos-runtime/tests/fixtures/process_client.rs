@@ -61,8 +61,7 @@ impl harmos_runtime::Plugin for Client {
     }
 
     async fn initialize(&mut self, context: &Supervisor) -> Result<(), Refusal> {
-        std::fs::create_dir_all(&self.resources.root).map_err(Refusal::of)?;
-        self.resources.mark("initializing")?;
+        self.resources.mark("initializing");
         let response = context.call(Read { phase: 1 }).await.map_err(Refusal::from)?;
         if response.phase != 1 {
             return Err(Refusal::of("initialization used another provider response"));
@@ -123,7 +122,7 @@ impl Operation for Probing {
         &mut self, _: Self::Context<'ctx>, request: &mut Probe, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<Step>, Refusal> {
         let result: ::core::result::Result<Step, Self::Error> = async move {
-            self.resources.mark("probe-started")?;
+            self.resources.mark("probe-started");
             Ok(Step { phase: request.phase })
         }
         .await;

@@ -8,13 +8,21 @@
  */
 
 /* === Modules === */
+#[path = "state/admission.rs"]
 mod admission;
+#[path = "state/boot.rs"]
 mod boot;
+#[path = "state/capture.rs"]
 mod capture;
+#[path = "state/composition.rs"]
 mod composition;
+#[path = "state/files.rs"]
 mod files;
+#[path = "state/managed.rs"]
 mod managed;
+#[path = "state/reconcile.rs"]
 mod reconcile;
+#[path = "state/snapshots.rs"]
 mod snapshots;
 
 /* === Re-Exports === */

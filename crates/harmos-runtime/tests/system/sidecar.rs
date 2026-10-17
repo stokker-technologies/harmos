@@ -39,8 +39,15 @@ const ENV_SCENE: &str = "HARMOS_SIDECAR_ENV_SCENE";
 /* === Type Aliases === */
 
 /* === Structs === */
+// The Host Application Serves Only The Sidecar's Declared Progress Stream
+struct Host;
 
 /* === Enums === */
+#[harmos_runtime::streams]
+enum Streams {
+    Progress(AnalysisProgress),
+}
+
 #[harmos_runtime::lanes]
 enum Lanes {
     #[default]
@@ -50,6 +57,13 @@ enum Lanes {
 /* === Traits === */
 
 /* === Implementations === */
+impl harmos_runtime::Application for Host {
+    type State = ();
+    type Transaction = harmos_runtime::state::Never;
+    type Record = ();
+    type Streams = Streams;
+    type Resources = ();
+}
 
 /* === Public Functions === */
 
@@ -109,9 +123,9 @@ async fn sidecar_composition_walks() {
         .unwrap()
         .directory(directory.path());
     assert_eq!(executable.declaration().id, PLUGIN);
-    let runtime = Runtime::builder(support::Ledger::default(), ())
+    let runtime = Runtime::<Host>::builder((), ())
         .register(Lanes::catalog())
-        .register(support::catalog())
+        .register(Streams::catalog())
         .runtime()
         .await
         .unwrap();

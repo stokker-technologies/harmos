@@ -30,7 +30,8 @@ use super::operations::Lanes;
 use harmos_runtime::Message;
 use harmos_runtime::config::SchemaSettings;
 use harmos_runtime::schema::{Described, graph::Schema as Graph};
-use harmos_runtime::storage::query::{Query, QueryArrow, RecordSelection, RowSlice, Source};
+use harmos_runtime::storage::operations::Query;
+use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
 
 /* === Constants === */
 

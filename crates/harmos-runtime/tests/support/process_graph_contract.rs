@@ -79,12 +79,6 @@ pub enum Queries {
 /* === Traits === */
 
 /* === Implementations === */
-impl Marks {
-    pub fn mark(&self, name: &str) -> Result<(), Refusal> {
-        let mut file = std::fs::OpenOptions::new().create(true).append(true).open(self.root.join(name)).map_err(Refusal::of)?;
-        file.write_all(b"1\n").map_err(Refusal::of)
-    }
-}
 
 /* === Public Functions === */
 

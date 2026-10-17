@@ -90,7 +90,7 @@ impl harmos_runtime::Application for Model {
 
 impl harmos_runtime::state::Transaction<u64> for Advance {
     type Error = Refusal;
-    fn check(&self, _: &u64) -> Result<(), Refusal> {
+    fn check(&self, _: &u64) -> std::result::Result<(), Refusal> {
         Ok(())
     }
     fn records(&self, state: &u64, out: &mut harmos_runtime::state::Records) {

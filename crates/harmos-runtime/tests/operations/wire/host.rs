@@ -20,7 +20,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 // Third Party Imports
 
 // Local Imports
-use super::wire::Text;
+use super::cases::Text;
 use harmos_runtime::operations::{Context, Operation, OperationDeclaration, PluginRegistration, Visibility, WireDeclaration};
 use harmos_runtime::plugin::{
     PluginArtifact, PluginBackend, PluginCaller, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
@@ -44,7 +44,7 @@ type Backends = PluginBackend<Resources, Resources, Resources>;
     version = 1,
     response = String,
     visibility = Visibility::Host,
-    policy = super::wire::Echo::POLICY
+    policy = super::cases::Echo::POLICY
 )]
 struct Control {
     value: String,
@@ -117,6 +117,12 @@ impl harmos_runtime::operations::Operation for CorePublication {
 
 
 
+
+impl From<&str> for Control {
+    fn from(value: &str) -> Self {
+        Self { value: value.to_owned() }
+    }
+}
 
 #[harmos_runtime::catalog]
 enum ImplementedControls {
@@ -238,7 +244,7 @@ fn requiring(required: Vec<Required>) -> PluginDefinitions {
 /* === Tests === */
 #[tokio::test]
 async fn host_requirements_route() {
-    use harmos_runtime::operations::streams::{Publication, Publish};
+    use harmos_runtime::operations::streams::Publish;
     let runtime = super::runtime_with_preparation(NonZeroUsize::new(4096).unwrap()).await;
     let owner = Arc::new(CoreOwner::default());
     runtime.operations.register_wire_operation::<CorePublication>("host", super::Lanes::Open, owner.clone()).unwrap();

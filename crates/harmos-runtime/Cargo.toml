@@ -170,6 +170,7 @@ syn = { workspace = true, default-features = true, features = ["visit"] }
 # Concurrency
 
 # Async
+futures-util = { workspace = true, features = ["async-await-macro"] }
 tokio = { workspace = true, default-features = true, features = [
   "io-util",
   "macros",
@@ -238,14 +239,17 @@ tokio = { workspace = true, default-features = true, features = [
 [[test]]
 name = "integration"
 path = "tests/integration/main.rs"
+required-features = ["grpc"]
 
 [[test]]
 name = "acceptance"
 path = "tests/acceptance/main.rs"
+required-features = ["grpc"]
 
 [[test]]
 name = "system"
 path = "tests/system/main.rs"
+required-features = ["grpc"]
 
 # === Bench Targets ===
 
@@ -257,45 +261,49 @@ path = "tests/system/main.rs"
 name = "integration-runtime"
 path = "benches/runtime/main.rs"
 harness = false
+required-features = ["grpc"]
 
 [[bench]]
 name = "integration-operations"
 path = "benches/operations/main.rs"
 harness = false
+required-features = ["grpc"]
 
 [[bench]]
 name = "integration-storage"
 path = "benches/storage/main.rs"
 harness = false
+required-features = ["grpc"]
 
 [[bench]]
 name = "integration-streams"
 path = "benches/streams/main.rs"
 harness = false
+required-features = ["grpc"]
 
 [[bench]]
 name = "integration-sidecar"
 path = "benches/sidecar/main.rs"
 harness = false
-required-features = ["plugin-sidecar"]
+required-features = ["plugin-sidecar", "grpc"]
 
 [[bench]]
 name = "unit-codecs"
 path = "benches/codecs/main.rs"
 harness = false
-required-features = ["plugin-sidecar"]
+required-features = ["plugin-sidecar", "grpc"]
 
 [[bench]]
 name = "system-transport"
 path = "benches/transport/main.rs"
 harness = false
-required-features = ["plugin-sidecar"]
+required-features = ["plugin-sidecar", "grpc"]
 
 [[bench]]
 name = "integration-simulation"
 path = "benches/simulation/main.rs"
 harness = false
-required-features = ["simulation"]
+required-features = ["simulation", "grpc"]
 
 # === Example Targets ===
 

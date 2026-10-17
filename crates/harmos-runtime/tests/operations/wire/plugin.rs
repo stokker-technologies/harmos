@@ -48,7 +48,7 @@ type Backends = PluginBackend<Resources, Resources, Resources>;
     version = 1,
     response = String,
     visibility = Visibility::Shared,
-    policy = super::wire::Echo::POLICY
+    policy = super::cases::Echo::POLICY
 )]
 struct Selected {
     value: String,
@@ -78,7 +78,7 @@ struct Shared(Request);
     id = "fixture.callback_cleanup",
     version = 1,
     response = String,
-    policy = super::wire::Echo::POLICY
+    policy = super::cases::Echo::POLICY
 )]
 struct Cleanup {
     value: String,
@@ -117,11 +117,39 @@ struct Host {
     cleanup: Option<Arc<CleanupOwner>>,
 }
 
+/// A Plugin Holding A Cleanup Callback And An Echo Callback Over One Preparation Budget.
+struct Credit {
+    runtime: harmos_runtime::Runtime<super::Bank>,
+    manager: PluginManager<Resources, Resources, Resources>,
+    host: Host,
+    cleanup: Arc<CleanupOwner>,
+    target: harmos_runtime::operations::PluginCallback,
+    echo: harmos_runtime::operations::PluginCallback,
+}
+
+/// A Plugin Whose Receipt Is Dropped At Shutdown While A Gated Compute Runs.
+struct Running {
+    runtime: harmos_runtime::Runtime<super::Bank>,
+    manager: PluginManager<Resources, Resources, Resources>,
+    host: Host,
+    gate: Arc<tokio::sync::Notify>,
+    invocation: harmos_runtime::operations::OperationInstance<Compute>,
+}
+
+
 /* === Enums === */
 /* === Traits === */
 
 /* === Implementations === */
 
+
+super::in_process!(Shared);
+
+impl harmos_runtime::MemorySize for Shared {
+    fn memory_size(&self) -> usize {
+        self.0.memory_size()
+    }
+}
 
 impl From<&str> for Selected {
     fn from(value: &str) -> Self {
@@ -516,7 +544,7 @@ fn candidate_with_cleanup() -> PluginDefinitions {
 #[cfg(feature = "grpc")]
 async fn grpc_call<O>(authority: harmos_runtime::grpc::server::Authority) -> tonic::codegen::http::Response<tonic::body::Body>
 where
-    O: OperationDeclaration<Request = Text, Response = String>,
+    O: OperationDeclaration<Response = String>,
 {
     use tonic::codec::Codec as _;
     let capacity = NonZeroUsize::new(4096).unwrap();

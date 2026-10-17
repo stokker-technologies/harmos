@@ -62,10 +62,11 @@ struct PhysicalStop(Arc<Cleanup>);
 struct StopWait(Arc<Cleanup>);
 
 /* === Enums === */
+#[harmos_runtime::message]
 #[harmos_runtime::operation(
-        request = bool,
         response = (),
         id = "shutdown.ordered",
+        version = 1,
         policy = OperationPolicy {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
@@ -73,7 +74,9 @@ struct StopWait(Arc<Cleanup>);
             restart: RestartPolicy::Never,
         },
     )]
-struct OrderedContract;
+struct OrderedContract {
+    running: bool,
+}
 
 #[harmos_runtime::catalog]
 enum Operations {
@@ -95,10 +98,10 @@ impl Operation for Ordered {
     }
 
     async fn run<'ctx>(
-        &mut self, _context: Self::Context<'ctx>, running: &mut bool, _endpoints: &mut Self::Endpoints,
+        &mut self, _context: Self::Context<'ctx>, request: &mut OrderedContract, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
-            self.running = *running;
+            self.running = request.running;
             if self.running {
                 self.sequence.events.lock().unwrap().push("job-start");
                 self.sequence.started.notify_one();
@@ -484,9 +487,9 @@ async fn domains_outlives_clones() {
         .expect("the work declarations are valid");
     service_status(runtime.operations.watch_residents(), "resident", |status| matches!(status, ServiceStatus::Running { .. })).await;
 
-    let running = runtime.operations.submit(true).unwrap();
+    let running = runtime.operations.submit(OrderedContract { running: true }).unwrap();
     started.notified().await;
-    let queued = runtime.operations.submit(false).unwrap();
+    let queued = runtime.operations.submit(OrderedContract { running: false }).unwrap();
 
     let mut participant = runtime.stop_participant();
     let participant_events = Arc::clone(&events);

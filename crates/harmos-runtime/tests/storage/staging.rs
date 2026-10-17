@@ -9,8 +9,11 @@
 
 /* === Modules === */
 
+#[path = "staging/mutations.rs"]
 mod mutations;
+#[path = "staging/production.rs"]
 mod production;
+#[path = "staging/recovery.rs"]
 mod recovery;
 
 /* === Re-Exports === */
