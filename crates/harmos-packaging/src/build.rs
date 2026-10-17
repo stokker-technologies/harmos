@@ -81,6 +81,8 @@ struct Capture {
     inputs: CaptureInputs,
     messages: CaptureFile,
     metadata: CaptureFile,
+    artifacts: BTreeMap<PathBuf, String>,
+    generated: BTreeMap<PathBuf, String>,
 }
 
 #[derive(Deserialize)]
@@ -197,7 +199,12 @@ impl Build {
         if provided.len() != artifacts.len() {
             return Err(Error::Settings("captured build contains ambiguous package artifacts".into()));
         }
-        finish_build(settings.backend, receipt.profile, receipt.target, artifacts, outputs, &BuildCancellation::default())
+        for artifact in &artifacts {
+            if receipt.artifacts.get(&artifact.path) != Some(&artifact.sha256) {
+                return Err(Error::ArtifactChanged(artifact.path.clone()));
+            }
+        }
+        finish_build(settings.backend, receipt.profile, receipt.target, artifacts, outputs, &BuildCancellation::default(), Some(&receipt.generated))
     }
 
     // Relocation Changes Locations Only; It Never Replaces The Original Byte Stamps.
@@ -305,7 +312,7 @@ pub(super) fn build_resolved(
         return Err(Error::Cargo(status.to_string()));
     }
 
-    finish_build(settings.backend, settings.profile, target, artifacts, outputs, cancellation)
+    finish_build(settings.backend, settings.profile, target, artifacts, outputs, cancellation, None)
 }
 
 fn finish_build(
@@ -315,6 +322,7 @@ fn finish_build(
     mut artifacts: Vec<Artifact>,
     outputs: BTreeSet<(String, PathBuf)>,
     cancellation: &BuildCancellation,
+    generated: Option<&BTreeMap<PathBuf, String>>,
 ) -> Result<Build, Error> {
     artifacts.retain(|artifact| {
         (artifact
@@ -343,6 +351,7 @@ fn finish_build(
             continue;
         }
         let module = std::fs::read(&artifact.path)?;
+        if digest(&module) != artifact.sha256 { return Err(Error::ArtifactChanged(artifact.path.clone())); }
         super::Declaration::inspect(&module, super::Facility::Guest)?;
         if module.starts_with(b"\0asm\x0d\0\x01\0") {
             continue;
@@ -388,6 +397,14 @@ fn finish_build(
         }
     }
     let schemas: Vec<_> = schemas.into_values().collect();
+    if let Some(generated) = generated {
+        for schema in &schemas {
+            for (name, sha256) in &schema.files {
+                let path = schema.directory.join(name);
+                if generated.get(&path) != Some(sha256) { return Err(Error::ArtifactChanged(path)); }
+            }
+        }
+    }
     cancellation.check()?;
     for (path, bytes) in components {
         publish(&path, &bytes)?;
