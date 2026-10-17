@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/registry.py; sha256:705e16fd58e9c8aebaef5c8fa7a4895b9a0f82acfeda6dd2c01a0e1e6ad52f4f
+# Rendered by stkr project update from templates/python/release/registry.py; sha256:750a751f4ec1db111072f1aec3aaa906caca854da72174ae9770c926d99dcfc0
 # ***
 #
 # Harmos
@@ -105,10 +105,16 @@ def request(
                 headers = {"Authorization": "Bearer " + token}
             else:
                 allowed = (method == "PUT" and endpoint.startswith("packages/generic/")) or (method == "POST" and endpoint == "releases")
-                if not allowed:
+                authoring = method == "POST" and endpoint in ("merge_requests", "repository/tags")
+                if not allowed and not authoring:
                     raise policy.ToolError("GitLab release write endpoint is not allowed")
                 ci_project = os.environ.get("CI_PROJECT_ID")
-                if job_token:
+                if authoring:
+                    identity = document(settings, "")
+                    if not token or not ci_project or not isinstance(identity, dict) or str(identity.get("id")) != ci_project:
+                        raise policy.ToolError("candidate authoring requires the native protected project token")
+                    headers = {"Authorization": "Bearer " + token}
+                elif job_token:
                     identity = document(settings, "")
                     if not ci_project or not isinstance(identity, dict) or str(identity.get("id")) != ci_project:
                         raise policy.ToolError("GitLab job-token publication requires the same CI project")
@@ -293,7 +299,7 @@ def route(directory: Path, settings: dict, source: str, destination: str, base_s
         return
     if destination == "dev" and (source == "main" or source.startswith("release/")):
         return
-    if destination == "main" and source == f"release/{settings['tag'][1:]}":
+    if destination == "main" and source == f"release/{settings['tag']}":
         return
     if destination == "main" and source.startswith("fix/"):
         context = settings.get("hotfix", {})
@@ -333,7 +339,7 @@ def route(directory: Path, settings: dict, source: str, destination: str, base_s
         for descendant in [base_sha, "HEAD"]:
             policy.execute(directory, ["git", "merge-base", "--is-ancestor", tagged, descendant])
         return
-    raise policy.ToolError("forbidden branch route; main requires release/<version> or verified hotfix context")
+    raise policy.ToolError("forbidden branch route; main requires release/v<version> or verified hotfix context")
 
 
 def require_tag(directory: Path, settings: dict) -> None:
@@ -391,16 +397,9 @@ def check_route(directory: Path, settings: dict) -> None:
             authorize(directory, settings, {"sha": os.environ["CI_COMMIT_SHA"]})
 
 
-def authorize(directory: Path, settings: dict, manifest: dict) -> None:
-    require_tag(directory, settings)
-    sha = manifest["sha"]
+def merged_review(directory: Path, settings: dict, sha: str) -> None:
+    """Require The Existing Approved Main Merge And Preserved Release Ancestry."""
     if settings["provider"] == "github":
-        if (
-            os.environ.get("GITHUB_EVENT_NAME") != "push"
-            or os.environ.get("GITHUB_REF") != "refs/tags/" + settings["tag"]
-            or os.environ.get("GITHUB_SHA") != sha
-        ):
-            raise policy.ToolError("publication requires the protected release-tag push")
         branch = document(settings, "branches/main")
         if not isinstance(branch, dict) or not branch.get("protected"):
             raise policy.ToolError("publication main protection cannot be verified")
@@ -421,13 +420,9 @@ def authorize(directory: Path, settings: dict, manifest: dict) -> None:
             proposal["base"]["sha"],
         )
     else:
-        if (
-            os.environ.get("CI_PIPELINE_SOURCE") != "push"
-            or os.environ.get("CI_COMMIT_TAG") != settings["tag"]
-            or os.environ.get("CI_COMMIT_SHA") != sha
-            or os.environ.get("CI_COMMIT_REF_PROTECTED") != "true"
-        ):
-            raise policy.ToolError("publication requires the protected release-tag push")
+        branch = document(settings, "repository/branches/main")
+        if not isinstance(branch, dict) or not branch.get("protected"):
+            raise policy.ToolError("main protection cannot be verified")
         proposals = pages(settings, f"repository/commits/{sha}/merge_requests")
         matches = [
             item
@@ -460,6 +455,26 @@ def authorize(directory: Path, settings: dict, manifest: dict) -> None:
     # A Release Tag Selects An Approved Merge; Ancestry Must Survive Promotion.
     source_sha = proposal["head"]["sha"] if settings["provider"] == "github" else proposal["sha"]
     policy.execute(directory, ["git", "merge-base", "--is-ancestor", source_sha, sha])
+
+
+def authorize(directory: Path, settings: dict, manifest: dict) -> None:
+    require_tag(directory, settings)
+    sha = manifest["sha"]
+    if settings["provider"] == "github":
+        if (
+            os.environ.get("GITHUB_EVENT_NAME") != "push"
+            or os.environ.get("GITHUB_REF") != "refs/tags/" + settings["tag"]
+            or os.environ.get("GITHUB_SHA") != sha
+        ):
+            raise policy.ToolError("publication requires the protected release-tag push")
+    elif (
+        os.environ.get("CI_PIPELINE_SOURCE") != "push"
+        or os.environ.get("CI_COMMIT_TAG") != settings["tag"]
+        or os.environ.get("CI_COMMIT_SHA") != sha
+        or os.environ.get("CI_COMMIT_REF_PROTECTED") != "true"
+    ):
+        raise policy.ToolError("publication requires the protected release-tag push")
+    merged_review(directory, settings, sha)
 
 
 def files(root: Path, manifest: dict) -> list[dict]:

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/release/run.py; sha256:f8af2a8ac1fccb314a1cf76d3e46a53ed7ea4423fbdba7064a430d4a2614c19b
+# Rendered by stkr project update from templates/python/release/run.py; sha256:811ae46e3b8574f92daf3f1838c5f98a6dc2b5339ffed357dfb43fb093aa92bf
 # ***
 #
 # Harmos
@@ -21,6 +21,7 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.parse
 from functools import cache
 from pathlib import Path
 
@@ -28,7 +29,7 @@ from pathlib import Path
 # Local Imports
 # isort: split
 from ..test import archive, run as test
-from . import policy, registry, version
+from . import policy, registry, screenshots, version
 
 # Type Checking Imports
 
@@ -203,8 +204,8 @@ def assets(directory: Path, settings: dict) -> list[dict]:
 
 def prepare(directory: Path, settings: dict) -> None:
     branch = policy.execute(directory, ["git", "symbolic-ref", "--short", "HEAD"], capture=True).strip()
-    if not branch.startswith("release/"):
-        raise policy.ToolError("prepare requires a release/<version> stabilization branch")
+    if not branch.startswith("release/v"):
+        raise policy.ToolError("prepare requires a release/v<version> stabilization branch")
     if policy.execute(directory, ["git", "status", "--porcelain"], capture=True).strip():
         raise policy.ToolError("prepare requires clean committed candidate source")
     tags = policy.execute(
@@ -235,8 +236,8 @@ def prepare(directory: Path, settings: dict) -> None:
             .strip()
             .removeprefix("v")
         )
-    if re.fullmatch(STABLE, planned) is None or branch != f"release/{planned}":
-        raise policy.ToolError(f"candidate branch must be release/{planned}")
+    if re.fullmatch(STABLE, planned) is None or branch != f"release/v{planned}":
+        raise policy.ToolError(f"candidate branch must be release/v{planned}")
     if tags:
         major, minor, patch = map(int, tags[0][1:].split("."))
         if planned != f"{major}.{minor}.{patch + 1}":
@@ -292,7 +293,130 @@ def prepare(directory: Path, settings: dict) -> None:
             commands.append(["uv", "lock", "--offline", "--project", project])
     for command in commands:
         policy.execute(directory, policy.command(command, "release.lock_commands"))
+    if policy.policy(directory, "screenshots").get("scenes"):
+        screenshots.capture(directory)
     print(f"Prepared v{planned}; review and commit before building the candidate")
+
+
+def candidate(directory: Path, settings: dict) -> None:
+    """Prepare Or Resume One Stable Candidate From Published Dev And Open Its Review."""
+    version = os.environ.get("RELEASE_VERSION", "")
+    tag_version("v" + version)
+    github = settings["provider"] == "github"
+    if (
+        github
+        and os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch"
+        or not github
+        and os.environ.get("CI_PIPELINE_SOURCE") != "web"
+    ):
+        raise policy.ToolError("candidate authoring requires the native manual release workflow")
+    if policy.execute(directory, ["git", "status", "--porcelain"], capture=True).strip():
+        raise policy.ToolError("candidate authoring requires a clean checkout")
+    remote = settings.get("remote", "origin")
+    branch = "release/v" + version
+    policy.execute(directory, ["git", "fetch", remote, "dev"])
+    development = policy.execute(directory, ["git", "rev-parse", "FETCH_HEAD"], capture=True).strip()
+    existing = policy.execute(directory, ["git", "ls-remote", "--heads", remote, "refs/heads/" + branch], capture=True).strip()
+    if existing:
+        policy.execute(directory, ["git", "fetch", remote, branch])
+        revision = policy.execute(directory, ["git", "rev-parse", "FETCH_HEAD"], capture=True).strip()
+        local = policy.execute(directory, ["git", "branch", "--list", branch], capture=True).strip()
+        if local:
+            policy.execute(directory, ["git", "switch", branch])
+            if archive.revision(directory) != revision:
+                raise policy.ToolError("local candidate differs from its published branch; refuse to reset it")
+        else:
+            policy.execute(directory, ["git", "switch", "--create", branch, revision])
+        if policy.policy(directory, "version").get("value") != version or policy.policy(directory, "release").get("tag") != "v" + version:
+            raise policy.ToolError("existing release branch has another prepared version")
+    else:
+        policy.execute(directory, ["git", "switch", "--create", branch, development])
+        prepare(directory, settings)
+        policy.execute(directory, ["git", "add", "--all"])
+        if policy.execute(directory, ["git", "status", "--porcelain"], capture=True).strip():
+            author = os.environ.get("GITHUB_ACTOR", os.environ.get("GITLAB_USER_NAME", "Release Maintainer"))
+            email = os.environ.get("GITLAB_USER_EMAIL", author + "@users.noreply.github.com")
+            policy.execute(
+                directory,
+                ["git", "-c", "user.name=" + author, "-c", "user.email=" + email, "commit", "-m", "chore: prepare release v" + version],
+            )
+    policy.execute(directory, ["mise", "run", "ci"])
+    if policy.execute(directory, ["git", "status", "--porcelain"], capture=True).strip():
+        raise policy.ToolError("candidate CI changed source; commit a coherent repair before retrying")
+    destination = remote
+    if not github:
+        identity = registry.document(settings, "")
+        if not identity or str(identity.get("id")) != os.environ.get("CI_PROJECT_ID") or not os.environ.get("GITLAB_TOKEN"):
+            raise policy.ToolError("candidate push requires the native protected project token")
+        destination = f"https://oauth2:{os.environ['GITLAB_TOKEN']}@{os.environ['CI_SERVER_HOST']}/{os.environ['CI_PROJECT_PATH']}.git"
+    policy.execute(directory, ["git", "push", destination, "HEAD:refs/heads/" + branch])
+    query = (
+        "state=open&head="
+        + urllib.parse.quote(os.environ.get("GITHUB_REPOSITORY", settings.get("repository", "")).split("/")[0] + ":" + branch, safe="")
+        + "&base=main"
+        if github
+        else "state=opened&source_branch=" + urllib.parse.quote(branch, safe="") + "&target_branch=main"
+    )
+    endpoint = "pulls" if github else "merge_requests"
+    proposals = registry.pages(settings, endpoint + "?" + query)
+    if len(proposals) > 1:
+        raise policy.ToolError("multiple open reviews identify the release branch")
+    if not proposals:
+        body = (
+            {"title": "Release v" + version, "body": "Prepare Stable Release v" + version, "head": branch, "base": "main"}
+            if github
+            else {
+                "title": "Release v" + version,
+                "description": "Prepare Stable Release v" + version,
+                "source_branch": branch,
+                "target_branch": "main",
+                "squash": False,
+                "remove_source_branch": False,
+            }
+        )
+        proposals = [registry.document(settings, endpoint, "POST", body)]
+    print(proposals[0].get("html_url", proposals[0].get("web_url", "")))
+
+
+def tag(directory: Path, settings: dict) -> None:
+    """Tag One Verified Main Merge Idempotently, Without Publishing A Release."""
+    sha = archive.revision(directory)
+    github = settings["provider"] == "github"
+    if not sha or policy.execute(directory, ["git", "status", "--porcelain"], capture=True).strip():
+        raise policy.ToolError("tagging requires clean committed main source")
+    if github:
+        valid = (
+            os.environ.get("GITHUB_EVENT_NAME") == "push"
+            and os.environ.get("GITHUB_REF") == "refs/heads/main"
+            and os.environ.get("GITHUB_SHA") == sha
+        )
+    else:
+        valid = (
+            os.environ.get("CI_PIPELINE_SOURCE") == "push"
+            and os.environ.get("CI_COMMIT_BRANCH") == "main"
+            and os.environ.get("CI_COMMIT_SHA") == sha
+            and os.environ.get("CI_COMMIT_REF_PROTECTED") == "true"
+        )
+    if not valid or settings["tag"] != "v" + str(policy.policy(directory, "version").get("value")):
+        raise policy.ToolError("tagging requires the prepared version on a protected native main push")
+    registry.merged_review(directory, settings, sha)
+    name = settings["tag"]
+    endpoint = "git/ref/tags/" + name if github else "repository/tags/" + name
+    existing = registry.document(settings, endpoint)
+    if existing:
+        if github:
+            object = existing.get("object", {})
+            if object.get("type") == "tag":
+                object = registry.document(settings, "git/tags/" + object["sha"]).get("object", {})
+            revision = object.get("sha")
+        else:
+            revision = existing.get("commit", {}).get("id")
+        if revision != sha:
+            raise policy.ToolError("existing release tag identifies another revision; never move it")
+        return
+    endpoint = "git/refs" if github else "repository/tags"
+    body = {"ref": "refs/tags/" + name, "sha": sha} if github else {"tag_name": name, "ref": sha}
+    registry.document(settings, endpoint, "POST", body)
 
 
 def stage(directory: Path, settings: dict, folder: Path) -> None:
@@ -445,10 +569,16 @@ def assemble(directory: Path, settings: dict, root: Path) -> dict:
 
 def run(directory: Path, verb: str) -> None:
     settings = policy.policy(directory, "release")
+    if verb == "candidate":
+        candidate(directory, settings)
+        return
     if verb == "prepare":
         prepare(directory, settings)
         return
     tag_version(settings["tag"])
+    if verb == "tag":
+        tag(directory, settings)
+        return
     if verb == "guard":
         registry.require_tag(directory, settings)
         return
@@ -537,6 +667,8 @@ if __name__ == "__main__":
             [
                 "guard",
                 "prepare",
+                "candidate",
+                "tag",
                 "stage",
                 "validate",
                 "assemble",

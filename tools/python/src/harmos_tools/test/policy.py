@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/policy.py; sha256:d7d3fe92b2201ef1be7016d32ace934fb67a021260ebfb5d0c960775e0652663
+# Rendered by stkr project update from templates/python/test/policy.py; sha256:42eb7a7c36444fba6ad857fc72599f47a931903bad2c632a719628baedcea662
 # ***
 #
 # Harmos
@@ -15,6 +15,7 @@ Keys, all optional:
     limits = { unit = 512, integration = 256, acceptance = 128, system = 64 }
     deadlines = { unit = 10, integration = 120, acceptance = 600, system = 900 }
     hosts = ["dist/build/{profile}/app"]
+    bench_regression_percent = 20
 
     [[conventions.testing.overrides]]
     category = "acceptance"
@@ -38,6 +39,7 @@ The expected lanes are the `test:<category>:<language>` leaf tasks of `mise.toml
 
 # Standard Library Imports
 import fnmatch
+import math
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -90,6 +92,7 @@ class Policy:
     deadlines: dict[str, int]
     overrides: tuple[Override, ...]
     hosts: tuple[str, ...]
+    bench_regression_percent: float = 20
 
     def deadline(self, category: str, coverage: bool = False) -> int:
         """The lane maximum per story, multiplied for instrumented runs."""
@@ -147,7 +150,10 @@ def load(directory: Path) -> Policy:
         if not _positive(entry["timeout_seconds"]) or not str(entry["reason"]).strip():
             raise TestError(f"override needs a positive timeout and a reason: {entry}")
         overrides.append(Override(**entry))
-    return Policy(limits, deadlines, tuple(overrides), tuple(hosts))
+    threshold = testing.get("bench_regression_percent", 20)
+    if isinstance(threshold, bool) or not isinstance(threshold, (int, float)) or not math.isfinite(threshold) or threshold <= 0:
+        raise TestError("bench_regression_percent must be finite and positive")
+    return Policy(limits, deadlines, tuple(overrides), tuple(hosts), float(threshold))
 
 
 def lanes(directory: Path) -> list[tuple[str, str]]:

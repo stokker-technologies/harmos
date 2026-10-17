@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:698a13ba355d05aef38f9b5c7c0837178d14403921492f57813b8254bf287b52
+# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:0bf4c419372016c607e8cfce5528e54367b3068635c5941729f31333494ad154
 name: CI
 "on":
   push:
@@ -115,9 +115,10 @@ jobs:
         install: true
         cache: false
         mise_dir: ${{ github.workspace }}/.cache/mise
-    - run: >-
-        test "${{ contains(needs.*.result, 'failure') || contains(needs.*.result,
-        'cancelled') }}" = false
+    - if: >-
+        contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') ||
+        contains(needs.*.result, 'skipped')
+      run: exit 1
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         pattern: evidence-*-${{ github.sha }}

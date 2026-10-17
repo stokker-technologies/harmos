@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/nightly.yml; sha256:47c0e40767543e74a052524c08646ae7180729e0504d4640671cd8ef200cd1a1
+# Rendered by stkr project update from templates/ci/.github/workflows/nightly.yml; sha256:9df03ab88d873a5a20c28166093a846a733f76133b361025cf33921b1a805713
 name: Nightly
 "on":
   schedule:
@@ -14,8 +14,7 @@ jobs:
   ci_nightly:
     name: CI / Nightly
     runs-on:
-    - self-hosted
-    - linux
+    - stokker-local-linux-x64
     timeout-minutes: 180
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1

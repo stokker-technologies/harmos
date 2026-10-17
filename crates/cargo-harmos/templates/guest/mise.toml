@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/profiles/mise.toml; sha256:f2de17bb927de15583c8131ad260455ecbe2a2bf034f5da4480478a41bf4428d
+# Rendered by stkr project update from templates/profiles/mise.toml; sha256:2779b315e1335bf4d2bce1057a8f6f39a356601c8a706df47eebd34c4ae41764
 # === Settings === #
 
 [settings]
@@ -162,15 +162,16 @@ run = "cargo package --workspace --no-verify"
 
 [tasks.ci]
 description = "Run The CI Flow Locally"
+usage = 'flag "--profile <profile>" default="dev"'
 run = [
   { task = "format:toml --check" },
   { task = "format:rust --check" },
   { task = "format:python --check" },
   { task = "check" },
   { task = "lint" },
-  { task = "build" },
-  { task = "test" },
-  { task = "package" },
+  { task = "build --profile {{usage.profile}}" },
+  { task = "test --profile {{usage.profile}}" },
+  { task = "package --profile {{usage.profile}}" },
   { task = "test:verify" },
 ]
 
@@ -188,7 +189,6 @@ description = "Prepare And Validate A Release"
 run = [
   { task = "release:prepare" },
   { task = "ci" },
-  { task = "package:rust --profile release" },
   { task = "release:publish:dry" },
 ]
 

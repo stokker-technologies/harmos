@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/run.py; sha256:9b74142144d4ef94922ad16b283697feea6ab960b1165be6626c09552e3bf5fb
+# Rendered by stkr project update from templates/python/test/run.py; sha256:3661d04d3321c31e4bb0b0d96b1f41e1d47a709ee78d3aaf864de42473e367ef
 # ***
 #
 # __PRODUCT_NAME__
@@ -47,7 +47,10 @@ passed, unfocused lane for the current tree hash, and lists what is missing.
 
 # Standard Library Imports
 import argparse
+import glob
 import json
+import math
+import platform
 import os
 import shutil
 import statistics
@@ -216,27 +219,69 @@ def bench(
     project: str,
     refresh: bool,
     extra: Sequence[str],
+    archive_arguments: Sequence[str] = (),
 ) -> int:
     """Measure one benchmark layer and compare it with the `dev` baseline."""
     rules = policy.load(directory)
     measure = category in ("integration", "system")
+    current = archive.tree(directory)
+    _preflight(directory, rules, category, "bench", current)
+    identity = {
+        "platform": [sys.platform, platform.machine(), platform.platform(), platform.processor()],
+        "runner": os.environ.get("RUNNER_NAME", os.environ.get("CI_RUNNER_ID", platform.node())),
+        "profile": "bench",
+        "metric": "median-nanoseconds",
+        "arguments": list(extra),
+        "cargo_arguments": list(archive_arguments),
+    }
     if language == "rust":
-        rows, status = _bench_rust(directory, category, refresh, measure, extra)
+        identity["rustc"] = archive._toolchain(directory)
+        rows, status = _bench_rust(directory, category, refresh, measure, extra, archive_arguments, identity)
     elif language == "python":
-        rows, status = _bench_python(directory, category, project, refresh, measure, extra)
+        identity["python"] = {"version": sys.version, "executable": archive._digest(Path(sys.executable))}
+        rows, status = _bench_python(directory, category, project, refresh, measure, extra, identity)
     else:
         raise policy.TestError("benchmarks run for rust and python")
     if not rows:
         raise policy.TestError(f"no {category} {language} benchmark produced results")
 
     with report.locked(directory):
-        kept = [row for row in report.parse_bench(directory / report.BENCH_CSV) if (row.category, row.language) != (category, language)]
+        previous = report.load(directory / report.BENCHMARKS / "manifest.json")
+        same = previous.get("tree") == current and previous.get("revision") == archive.revision(directory)
+        kept = [
+            row for row in report.parse_bench(directory / report.BENCH_CSV) if same and (row.category, row.language) != (category, language)
+        ]
         merged = sorted(
             [*kept, *rows],
             key=lambda row: (row.category, row.language, row.domain, row.name),
         )
         report.write(directory / report.BENCH_CSV, report.bench_csv(merged))
         report.write(directory / report.BENCH_MARKDOWN, report.bench_markdown(merged))
+        lanes = previous.get("lanes", {}) if same else {}
+        lanes[f"{category}-{language}"] = {"identity": identity, "revision": archive.revision(directory), "provider": archive._provider()}
+        report.write(
+            directory / report.BENCHMARKS / "manifest.json",
+            json.dumps(
+                {"schema": 1, "tree": current, "revision": archive.revision(directory), "profile": "bench", "lanes": lanes}, indent=2
+            )
+            + "\n",
+        )
+        findings = [
+            {
+                "category": row.category,
+                "language": row.language,
+                "domain": row.domain,
+                "name": row.name,
+                "change_percent": row.change_pct,
+                "threshold_percent": rules.bench_regression_percent,
+            }
+            for row in merged
+            if row.change_pct is not None and math.isfinite(row.change_pct) and row.change_pct > rules.bench_regression_percent
+        ]
+        report.write(
+            directory / report.BENCHMARKS / "findings.json",
+            json.dumps({"schema": 1, "tree": current, "revision": archive.revision(directory), "findings": findings}, indent=2) + "\n",
+        )
         report.write(directory / report.INDEX, report.index(directory, rules))
     print(f"bench {category}-{language}: {len(rows)} results; see {report.BENCH_MARKDOWN}")
     return 0 if status == 0 else 1
@@ -278,7 +323,13 @@ def collect(directory: Path, sources: Sequence[Path]) -> int:
     """Aggregate lane evidence downloaded from CI jobs into one manifest for this tree."""
     current = archive.tree(directory)
     documents = []
+    expanded = []
     for source in sources:
+        matched = glob.glob(str(source))
+        if not matched:
+            raise policy.TestError(f"no collected evidence matches {source}")
+        expanded.extend(Path(path) for path in matched)
+    for source in expanded:
         manifest = report.load(source / "manifest.json")
         if manifest.get("schema") != report.SCHEMA or manifest.get("tree") != current:
             raise policy.TestError(f"{source}: evidence is missing or from another tree")
@@ -330,6 +381,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
     bench_lane.add_argument("--category", choices=policy.BENCH_CATEGORIES, required=True)
     bench_lane.add_argument("--language", choices=("rust", "python"), required=True)
     bench_lane.add_argument("--refresh-baseline", action="store_true")
+    bench_lane.add_argument("--archive-argument", action="append", default=[])
     measured = commands.add_parser("coverage", help="instrumented run of every layer")
     measured.add_argument("--language", choices=("rust", "python"), required=True)
     for command in (lane, bench_lane, measured):
@@ -381,6 +433,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
                 options.project,
                 options.refresh_baseline,
                 extra,
+                options.archive_argument,
             )
         if options.command == "verify":
             return verify(directory, options.category)
@@ -580,29 +633,20 @@ def _bench_rust(
     refresh: bool,
     measure: bool,
     extra: Sequence[str],
+    archive_arguments: Sequence[str],
+    identity: dict,
 ) -> tuple[list[report.Bench], int]:
-    # Build Bench Executables Once, Then Measure Each Process Alone
-    built = subprocess.run(
-        [
-            "cargo",
-            "bench",
-            "--locked",
-            "--workspace",
-            "--no-run",
-            "--message-format",
-            "json",
-        ],
-        cwd=directory,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        check=False,
-    )
-    if built.returncode != 0:
-        sys.stderr.write(built.stderr)
-        raise policy.TestError("benchmark build failed")
+    archive_path = archive.require(directory, "bench", archive.tree(directory), archive_arguments)
+    producer = report.load(archive_path.with_name(archive.RECEIPT))
+    identity["build_inputs"] = {
+        **producer["inputs"],
+        "configuration": {name: digest for name, digest in producer["inputs"]["configuration"].items() if Path(name).is_absolute()},
+    }
+    identity["target"] = producer["target"]
+    project = Path(archive._git(directory, "rev-parse", "--show-toplevel"))
+    messages = project / producer["messages"]["path"]
     targets = []
-    for line in built.stdout.splitlines():
+    for line in messages.read_text(encoding="utf-8").splitlines():
         message = json.loads(line) if line.startswith("{") else {}
         target = message.get("target", {})
         name = target.get("name", "")
@@ -611,25 +655,43 @@ def _bench_rust(
                 targets.append((name, message["executable"], Path(message["manifest_path"]).parent))
 
     home = directory / CRITERION
-    baselines = _criterion_baselines(home)
-    flags = ["--save-baseline", BASELINE] if refresh or not baselines else ["--baseline-lenient", BASELINE]
+    baselines = _criterion_baselines(home, identity)
+    saving = refresh or not baselines
+    flags = ["--save-baseline", BASELINE] if saving else ["--baseline-lenient", BASELINE]
     environment = dict(os.environ, CRITERION_HOME=str(home))
     rows: list[report.Bench] = []
     status = 0
     for name, executable, package in targets:
+        archive.verify_outputs(producer, [Path(executable)])
         since = time.time()
         code, peak = _measured([executable, "--bench", *flags, *extra], package, environment)
         status = status or code
         domain = name.removeprefix(category).removeprefix("-") or name
         rows += _criterion_rows(home, category, domain, since, peak if measure else None, baselines)
+        if saving and code == 0:
+            for path in home.rglob(f"{BASELINE}/estimates.json"):
+                if path.stat().st_mtime >= since:
+                    report.write(
+                        path.with_name("inputs.json"),
+                        json.dumps({"identity": identity, "revision": producer["revision"], "sha256": archive._digest(path)}, indent=2)
+                        + "\n",
+                    )
     return rows, status
 
 
-def _criterion_baselines(home: Path) -> dict[Path, float]:
+def _criterion_baselines(home: Path, identity: dict) -> dict[Path, float]:
     """Median of every benchmark's `dev` baseline before this run replaces anything."""
     medians = {}
     for path in home.rglob(f"{BASELINE}/estimates.json") if home.is_dir() else []:
-        medians[path.parent.parent] = json.loads(path.read_text(encoding="utf-8"))["median"]["point_estimate"]
+        try:
+            recorded = report.load(path.with_name("inputs.json"))
+            if not isinstance(recorded, dict) or recorded.get("identity") != identity or recorded.get("sha256") != archive._digest(path):
+                continue
+            median = json.loads(path.read_text(encoding="utf-8"))["median"]["point_estimate"]
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+        if not isinstance(median, bool) and isinstance(median, (int, float)) and math.isfinite(median) and median > 0:
+            medians[path.parent.parent] = median
     return medians
 
 
@@ -674,6 +736,7 @@ def _bench_python(
     refresh: bool,
     measure: bool,
     extra: Sequence[str],
+    identity: dict,
 ) -> tuple[list[report.Bench], int]:
     scratch = _scratch(directory, f"bench-{category}-python")
     output = scratch / "benchmarks.json"
@@ -684,7 +747,17 @@ def _bench_python(
 
     # The Baseline Is This Runner's Own Record Of Medians
     stored = directory / report.BENCHMARKS / f"python-{category}-{BASELINE}.json"
-    baselines = report.load(stored)
+    try:
+        baseline = report.load(stored)
+    except (OSError, ValueError):
+        baseline = {}
+    baselines = baseline.get("medians", {}) if isinstance(baseline, dict) and baseline.get("identity") == identity else {}
+    baselines = baselines if isinstance(baselines, dict) else {}
+    baselines = {
+        name: median
+        for name, median in baselines.items()
+        if not isinstance(median, bool) and isinstance(median, (int, float)) and math.isfinite(median) and median > 0
+    }
     rows = []
     for entry in json.loads(output.read_text(encoding="utf-8"))["benchmarks"]:
         stats = entry["stats"]
@@ -706,7 +779,15 @@ def _bench_python(
             )
         )
     if refresh or not baselines:
-        report.dump(stored, {row.name: row.median_ns for row in rows})
+        report.dump(
+            stored,
+            {
+                "schema": 1,
+                "identity": identity,
+                "revision": archive.revision(directory),
+                "medians": {row.name: row.median_ns for row in rows},
+            },
+        )
     return rows, status
 
 

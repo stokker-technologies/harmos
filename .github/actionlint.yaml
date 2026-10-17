@@ -1,0 +1,4 @@
+self-hosted-runner:
+  # The Nightly Measurement Runner Declared In stkr.toml [ci.runners].
+  labels:
+    - stokker-local-linux-x64

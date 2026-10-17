@@ -2,7 +2,7 @@
 name: harmos-testing
 description: Author Harmos engine, runtime, carrier and packaging stories using the canonical fixture and boundary owners.
 ---
-<!-- Rendered by stkr project update from .agents/skills/harmos-testing/SKILL.md; sha256:a950cfe926311b9336f01b887ffc6d593ec6f065b5f70b2b8e023e6e486f040c -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-testing/SKILL.md; sha256:bd789a5dc0ffdca8aa1e7ffd33e48de5fd87f05000533f80f24bd92702ff2fb1 -->
 
 # Harmos Testing
 
@@ -39,9 +39,12 @@ inject a test fault.
 
 The dedicated sandbox guest retains guest-specific policy and cleanup behavior
 that schematic does not declare. Loading that component inside Wasmtime is an
-in-process integration boundary. Native attachment environment, process exit and
-physical cleanup belong to the sidecar owner; host reload and withdrawal belong
-to the public system scene.
+in-process integration boundary. Keep pure native command construction beside
+the sidecar owner. The schematic sidecar system scene owns effective environment
+clearing, pre-readiness process failure, cleanup, withdrawal and fresh-generation
+recovery. Its host runs with a poisoned worker-count variable; a valid multithread
+sidecar can recover only when the actual attachment clears that ambient value.
+Do not claim this startup failure proves a crash after readiness.
 
 ## Fixture Inputs
 

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/report.py; sha256:b11e86fa4185b60cae9ce73d806fccdca84ece81b8456f49bdc8bd354c917f96
+# Rendered by stkr project update from templates/python/test/report.py; sha256:6bf03b8d7e91fb893571a223a75da4396231e56b0bc081dd5dce15fb262b821a
 # ***
 #
 # __PRODUCT_NAME__
@@ -264,6 +264,13 @@ def index(directory: Path, rules: policy.Policy) -> str:
     benches = parse_bench(directory / BENCH_CSV)
     if benches:
         lines += ["", "## Benchmarks", "", *bench_table(benches, changed_only=True)]
+        findings = load(directory / BENCHMARKS / "findings.json").get("findings", [])
+        if isinstance(findings, list) and findings:
+            lines += ["", "### Advisory Regressions", ""]
+            lines += [
+                f"- {finding['category']} / {finding['language']} / {finding['name']}: {finding['change_percent']:+.1f}% (threshold {finding['threshold_percent']:g}%)."
+                for finding in findings
+            ]
 
     # Stories Grouped By Package, File And Story
     grouped: dict[str, dict[str, list[dict[str, str]]]] = defaultdict(lambda: defaultdict(list))

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/archive.py; sha256:e77f095c0b08fa5427aeb8846cf9a5ad502d894c92f21699c7403ef643f58682
+# Rendered by stkr project update from templates/python/test/archive.py; sha256:784787a49d6afca2c819154e1fff4500afca1ac7a8858b1b7ff7d725c51dcdf9
 # ***
 #
 # Harmos
@@ -44,10 +44,12 @@ import tempfile
 import tomllib
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import Any
 
 # Third Party Imports
 
 # Local Imports
+from . import backend as python_backend
 from . import policy
 
 # Type Checking Imports
@@ -125,9 +127,18 @@ def compile(directory: Path, profile: str, extra: Sequence[str] = (), *, parents
 
 
 def native(
-    directory: Path, profile: str, role: str, commands: Sequence[Sequence[str]], outputs: Sequence[Path], *,
-    locks: Sequence[Path], inputs: Sequence[Path] = (), installed: Sequence[Path] = (), parents: Sequence[dict] = (),
+    directory: Path,
+    profile: str,
+    role: str,
+    commands: Sequence[Sequence[str]],
+    outputs: Sequence[Path],
+    *,
+    locks: Sequence[Path],
+    inputs: Sequence[Path] = (),
+    installed: Sequence[Path] = (),
+    parents: Sequence[dict] = (),
     stdout: Mapping[int, Path] | None = None,
+    backend: Path | None = None,
 ) -> dict:
     """Capture an actual closed native producer; product tasks retain invocation and ordering ownership.
 
@@ -137,7 +148,12 @@ def native(
     Outputs must be fresh owned files/directories. Inputs copied from parents retain their
     original digests; installed dependency snapshots are backed by explicit native lockfiles.
     """
-    if role not in ("dependency-export", "frontend", "python-package", "rust-package", "package") or not commands or not outputs or not locks:
+    if (
+        role not in ("dependency-export", "frontend", "python-package", "rust-package", "package")
+        or not commands
+        or not outputs
+        or not locks
+    ):
         raise policy.TestError("native production requires a closed role, invocations, outputs and locked inputs")
     directory = directory.resolve()
     project = Path(_git(directory, "rev-parse", "--show-toplevel"))
@@ -150,6 +166,7 @@ def native(
     lock_inputs = {str(path.resolve()): _source(path) for path in locks}
     installed_inputs = {str(path.resolve()): _installed(path, project) for path in installed}
     command_tools = _command_tools(directory, commands)
+    backend_inputs = None
     origins = {digest for parent in parents for digest in _outputs(parent).values()}
     for command in commands:
         executable = Path(command[0]).name.lower().removesuffix(".exe")
@@ -157,14 +174,30 @@ def native(
             raise policy.TestError("frontend production requires the authored Node build invocation")
         if role == "python-package":
             prepared = {"--no-build-isolation", "--offline", "--python"}.issubset(command)
-            if executable != "uv" or command[1:2] != ["build"] or not prepared or not installed:
-                raise policy.TestError("Python package production requires offline, nonisolated uv build, an explicit Python and captured backend dependencies")
-        if role == "rust-package" and (executable != "cargo" or command[1:2] != ["package"] or not {"--locked", "--no-verify"}.issubset(command)):
+            if (
+                executable != "uv"
+                or command[1:2] != ["build"]
+                or not prepared
+                or backend is None
+                or os.environ.get("PYTHONDONTWRITEBYTECODE") != "1"
+            ):
+                raise policy.TestError(
+                    "Python package production requires offline, nonisolated uv build, an explicit Python, a declared prepared backend and PYTHONDONTWRITEBYTECODE=1"
+                )
+            python = command[command.index("--python") + 1]
+            backend_inputs = python_backend.capture(directory, python, backend, _digest)
+        if role == "rust-package" and (
+            executable != "cargo" or command[1:2] != ["package"] or not {"--locked", "--no-verify"}.issubset(command)
+        ):
             raise policy.TestError("Rust package production requires cargo package --locked --no-verify without compilation")
         if role == "dependency-export":
             cargo = executable == "cargo" and command[1:2] == ["vendor"] and "--locked" in command
             uv = executable == "uv" and command[1:2] == ["export"] and "--locked" in command
-            pip = Path(command_tools[command[0]]["path"]).resolve() == Path(sys.executable).resolve() and "download" in command and "--require-hashes" in command
+            pip = (
+                Path(command_tools[command[0]]["path"]).resolve() == Path(sys.executable).resolve()
+                and "download" in command
+                and "--require-hashes" in command
+            )
             if not (cargo or uv or pip):
                 raise policy.TestError("dependency exports require locked native Cargo/uv or hash-checked pip invocations")
         if role == "package" and command_tools[command[0]]["sha256"] not in origins:
@@ -181,7 +214,9 @@ def native(
         if destination is None:
             status = _run(command, directory)
         else:
-            if not any(destination.resolve() == output.resolve() or destination.resolve().is_relative_to(output.resolve()) for output in outputs):
+            if not any(
+                destination.resolve() == output.resolve() or destination.resolve().is_relative_to(output.resolve()) for output in outputs
+            ):
                 raise policy.TestError("native stdout must be a declared output")
             destination.parent.mkdir(parents=True, exist_ok=True)
             with destination.open("w", encoding="utf-8") as stream:
@@ -208,14 +243,32 @@ def native(
         raise policy.TestError("native dependency lock changed during production")
     if any(_installed(Path(name), project) != digest for name, digest in installed_inputs.items()):
         raise policy.TestError("installed dependency inputs changed during production")
+    if (
+        backend_inputs is not None
+        and python_backend.capture(directory, backend_inputs["interpreter"], Path(backend_inputs["manifest"]), _digest) != backend_inputs
+    ):
+        raise policy.TestError("prepared Python backend inputs changed during production")
     if _command_tools(directory, commands) != command_tools:
         raise policy.TestError("native producer executable changed during production")
     key = hashlib.sha256(json.dumps([role, [str(path) for path in outputs]]).encode()).hexdigest()[:16]
     receipt = project / "target/producers" / role / key / profile / "production.json"
-    record = {"schema": 1, "kind": role, "workspace": directory.relative_to(project).as_posix(), "receipt": _relative(project, receipt),
-              "profile": profile, "arguments": [], **capture, "resolution": {"locks": lock_inputs}, "installed_inputs": installed_inputs,
-              "commands": [list(command) for command in commands], "command": list(commands[0]), "command_tools": command_tools,
-              "exports": exports, "provider": _provider()}
+    record = {
+        "schema": 1,
+        "kind": role,
+        "workspace": directory.relative_to(project).as_posix(),
+        "receipt": _relative(project, receipt),
+        "profile": profile,
+        "arguments": [],
+        **capture,
+        "resolution": {"locks": lock_inputs},
+        "installed_inputs": installed_inputs,
+        "commands": [list(command) for command in commands],
+        "command": list(commands[0]),
+        "command_tools": command_tools,
+        "backend": backend_inputs,
+        "exports": exports,
+        "provider": _provider(),
+    }
     receipt.parent.mkdir(parents=True, exist_ok=True)
     receipt.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     return record
@@ -223,9 +276,24 @@ def native(
 
 def listed(directory: Path, profile: str) -> list[str]:
     """The test binary names of the workspace, from nextest's listing of the already built targets."""
-    command = ["cargo", "nextest", "list", "--archive-file", str(location(directory, profile)),
-               "--workspace-remap", str(directory), "--extract-to", str(location(directory, profile).parent / "listing"),
-               "--extract-overwrite", "--list-type", "binaries-only", "--message-format", "json"]
+    listing = location(directory, profile).parent / "listing"
+    listing.mkdir(parents=True, exist_ok=True)
+    command = [
+        "cargo",
+        "nextest",
+        "list",
+        "--archive-file",
+        str(location(directory, profile)),
+        "--workspace-remap",
+        str(directory),
+        "--extract-to",
+        str(listing),
+        "--extract-overwrite",
+        "--list-type",
+        "binaries-only",
+        "--message-format",
+        "json",
+    ]
     try:
         result = subprocess.run(command, cwd=directory, capture_output=True, text=True, check=False)
     except OSError as error:
@@ -302,6 +370,8 @@ def stamp(directory: Path, producers: Sequence[dict], files: Mapping[str, str], 
         raise policy.TestError("a fixture stamp requires original producer captures and expected files")
     current = tree(directory)
     profile = producers[0].get("profile")
+    if not isinstance(profile, str):
+        raise policy.TestError("a fixture stamp requires producer captures with a profile")
     for producer in producers:
         workspace = _inside(directory, producer.get("workspace", "."))
         _verify_inputs(workspace, producer, profile, current, producer.get("arguments", []))
@@ -309,8 +379,15 @@ def stamp(directory: Path, producers: Sequence[dict], files: Mapping[str, str], 
     if any(digest not in origins for digest in files.values()):
         raise policy.TestError("fixture files require an original compiler/generated/native-export digest")
     _verify_files(directory, files)
-    record = {"schema": 1, "tree": current, "revision": producers[0]["revision"], "profile": profile,
-              "producers": list(producers), "files": dict(files), "metadata": metadata or {}}
+    record = {
+        "schema": 1,
+        "tree": current,
+        "revision": producers[0]["revision"],
+        "profile": profile,
+        "producers": list(producers),
+        "files": dict(files),
+        "metadata": metadata or {},
+    }
     destination = _inside(directory, FIXTURES)
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
@@ -395,7 +472,11 @@ def _outputs(record: dict) -> dict[str, str]:
 
 
 def _provider() -> dict:
-    return {key: os.environ[key] for key in ("GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_JOB", "CI_JOB_ID", "CI_PIPELINE_ID") if key in os.environ}
+    return {
+        key: os.environ[key]
+        for key in ("GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_JOB", "CI_JOB_ID", "CI_PIPELINE_ID")
+        if key in os.environ
+    }
 
 
 def _snapshot(directory: Path, profile: str, parents: Sequence[dict], inputs: Sequence[Path]) -> dict:
@@ -406,7 +487,16 @@ def _snapshot(directory: Path, profile: str, parents: Sequence[dict], inputs: Se
     if linked := next((file for file in sources if file.is_symlink()), None):
         raise policy.TestError(f"unbounded symbolic link in workspace source: {linked}")
     current = tree(project)
-    record = {"project": str(project), "tree": current, "revision": revision(project), "inputs": _inputs(directory), "parents": list(parents), "parent_inputs": {}, "declared_inputs": {}, "input_directories": {}}
+    record: dict[str, Any] = {
+        "project": str(project),
+        "tree": current,
+        "revision": revision(project),
+        "inputs": _inputs(directory),
+        "parents": list(parents),
+        "parent_inputs": {},
+        "declared_inputs": {},
+        "input_directories": {},
+    }
     origins = {digest for parent in parents for digest in _outputs(parent).values()}
     for input in inputs:
         input = input if input.is_absolute() else directory / input
@@ -500,6 +590,16 @@ def _installed(path: Path, boundary: Path) -> str:
     return hashlib.sha256(json.dumps(sorted(entries)).encode()).hexdigest()
 
 
+def _consumed(inputs: dict) -> dict:
+    # Consumers On Other Runners Need The Producer's Native Platform, Toolchain And Configuration, Not Its PATH Or Tool Set.
+    return {
+        "platform": list(inputs.get("platform", []))[:2],
+        "configuration": inputs.get("configuration"),
+        "rustc": inputs.get("rustc"),
+        "cargo": inputs.get("cargo"),
+    }
+
+
 def _verify_inputs(directory: Path, record: dict, profile: str, current: str, arguments: Sequence[str]) -> None:
     if record.get("tree") != current or record.get("profile") != profile:
         raise policy.TestError("producer capture belongs to another source tree or profile")
@@ -509,8 +609,8 @@ def _verify_inputs(directory: Path, record: dict, profile: str, current: str, ar
         raise policy.TestError("producer capture uses another Cargo argument selection")
     if record.get("revision") != revision(directory):
         raise policy.TestError("producer capture belongs to another source revision")
-    if record.get("inputs") != _inputs(directory):
-        raise policy.TestError("producer capture uses another platform, environment or configuration")
+    if _consumed(record.get("inputs", {})) != _consumed(_inputs(directory)):
+        raise policy.TestError("producer capture uses another platform, toolchain or configuration")
     project = Path(_git(directory, "rev-parse", "--show-toplevel"))
     _verify_parents(directory, record, profile, current)
     _verify_directories(record, missing_parents=True)
@@ -524,6 +624,11 @@ def _verify_inputs(directory: Path, record: dict, profile: str, current: str, ar
         for name, digest in record.get("installed_inputs", {}).items():
             if Path(name).exists() and _installed(Path(name), project) != digest:
                 raise policy.TestError(f"installed native dependency changed: {name}")
+        backend = record.get("backend")
+        if record.get("kind") == "python-package" and backend is None:
+            raise policy.TestError("Python package capture has no prepared backend input proof")
+        if backend is not None and python_backend.capture(directory, backend["interpreter"], Path(backend["manifest"]), _digest) != backend:
+            raise policy.TestError("prepared Python backend inputs changed")
         origins = {name: digest for parent in record.get("parents", []) for name, digest in _outputs(parent).items()}
         for tool in record["command_tools"].values():
             path = Path(tool["path"])
@@ -560,13 +665,20 @@ def _inside(directory: Path, name: str) -> Path:
 
 def _verify_files(directory: Path, files: Mapping[str, str]) -> None:
     for name, expected in files.items():
-        if name == FIXTURES or not isinstance(expected, str) or len(expected) != 64 or any(character not in "0123456789abcdef" for character in expected):
+        if (
+            name == FIXTURES
+            or not isinstance(expected, str)
+            or len(expected) != 64
+            or any(character not in "0123456789abcdef" for character in expected)
+        ):
             raise policy.TestError(f"fixture requires an immutable expected SHA-256: {name}")
         if _source(_inside(directory, name)) != expected:
             raise policy.TestError(f"staged fixture differs from its original expected bytes: {name}")
 
 
-def _produce(directory: Path, profile: str, extra: Sequence[str], *, archived: bool, parents: Sequence[dict], inputs: Sequence[Path]) -> dict:
+def _produce(
+    directory: Path, profile: str, extra: Sequence[str], *, archived: bool, parents: Sequence[dict], inputs: Sequence[Path]
+) -> dict:
     if profile not in (*policy.PROFILES, "bench"):
         raise policy.TestError("build profile must be dev, release or bench")
     if any(argument in ("--config", "--manifest-path") or argument.startswith(("--config=", "--manifest-path=")) for argument in extra):
@@ -591,16 +703,26 @@ def _produce(directory: Path, profile: str, extra: Sequence[str], *, archived: b
     receipt.unlink(missing_ok=True)
     messages = path.with_name(MESSAGES)
     path.with_name(METADATA).write_text(metadata, encoding="utf-8")
-    external = sorted({str(Path(package["manifest_path"]).parent) for package in resolved["packages"]
-                       if not Path(package["manifest_path"]).is_relative_to(project)})
+    external = sorted(
+        {
+            str(Path(package["manifest_path"]).parent)
+            for package in resolved["packages"]
+            if not Path(package["manifest_path"]).is_relative_to(project)
+        }
+    )
     observed = {name: _source(Path(name)) for name in external}
-    dependencies = {str(Path(package["manifest_path"]).parent): observed[str(Path(package["manifest_path"]).parent)]
-                    for package in resolved["packages"]
-                    if package["source"] is None and str(Path(package["manifest_path"]).parent) in observed}
+    dependencies = {
+        str(Path(package["manifest_path"]).parent): observed[str(Path(package["manifest_path"]).parent)]
+        for package in resolved["packages"]
+        if package["source"] is None and str(Path(package["manifest_path"]).parent) in observed
+    }
     immutable = [Path(package["manifest_path"]).parent for package in resolved["packages"] if package["source"] is not None]
     lock = Path(resolved["workspace_root"]) / "Cargo.lock"
-    resolution = {"lock": _relative(project, lock), "sha256": _digest(lock),
-                  "packages": sorted((package["id"], package["source"]) for package in resolved["packages"])}
+    resolution = {
+        "lock": _relative(project, lock),
+        "sha256": _digest(lock),
+        "packages": sorted((package["id"], package["source"]) for package in resolved["packages"]),
+    }
     policy_root, configuration = _configuration(directory)
     declared = configuration.get("hooks", {}).get("validation_inputs", [])
     bounded = [*(Path(name) for name in external), *(policy_root / name for name in declared)]
@@ -608,8 +730,19 @@ def _produce(directory: Path, profile: str, extra: Sequence[str], *, archived: b
     environment = {name: hashlib.sha256(value.encode()).hexdigest() for name, value in os.environ.items()}
     original = revision(project)
     command = [
-        "cargo", "nextest", "archive", "--locked", "--workspace", "--all-targets",
-        "--cargo-profile", profile, "--cargo-message-format", "json", "--archive-file", str(path), *extra,
+        "cargo",
+        "nextest",
+        "archive",
+        "--locked",
+        "--workspace",
+        "--all-targets",
+        "--cargo-profile",
+        profile,
+        "--cargo-message-format",
+        "json",
+        "--archive-file",
+        str(path),
+        *extra,
     ]
     if not archived:
         command = ["cargo", "build", "--locked", "--profile", profile, "--message-format=json", *extra]
@@ -623,10 +756,15 @@ def _produce(directory: Path, profile: str, extra: Sequence[str], *, archived: b
     watched = _watched(directory, messages, resolved)
     for name in watched["files"]:
         if not _covered(Path(name), bounded, sources):
-            raise policy.TestError(f"build-script input was not bounded before compilation: {name}; declare hooks.validation_inputs and rebuild")
+            raise policy.TestError(
+                f"build-script input was not bounded before compilation: {name}; declare hooks.validation_inputs and rebuild"
+            )
     # Immutable Registry/Git Inputs Are Identified By The Locked Resolution, Not A Consumer's Optional Cargo Cache.
-    immutable_watches = {name: _source(Path(name)) for name in watched["files"]
-                         if any(Path(name).resolve().is_relative_to(root.resolve()) for root in immutable)}
+    immutable_watches = {
+        name: _source(Path(name))
+        for name in watched["files"]
+        if any(Path(name).resolve().is_relative_to(root.resolve()) for root in immutable)
+    }
     watched["files"] = [name for name in watched["files"] if name not in immutable_watches]
     watched_inputs = _watched_inputs(watched)
     if any(watched_inputs["environment"][name] != environment.get(name) for name in watched["environment"]):
@@ -652,7 +790,11 @@ def _produce(directory: Path, profile: str, extra: Sequence[str], *, archived: b
         "tree": before,
         "revision": original,
         "published_revision": published(project, before),
-        "provider": {key: os.environ[key] for key in ("GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_JOB", "CI_JOB_ID", "CI_PIPELINE_ID") if key in os.environ},
+        "provider": {
+            key: os.environ[key]
+            for key in ("GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_JOB", "CI_JOB_ID", "CI_PIPELINE_ID")
+            if key in os.environ
+        },
         "inputs": build_inputs,
         "parents": capture["parents"],
         "parent_inputs": capture["parent_inputs"],
@@ -712,17 +854,46 @@ def _output(directory: Path, command: Sequence[str]) -> str:
     return result.stdout
 
 
+def _runtime(directory: Path, name: str) -> str | None:
+    # A Shim This Project Does Not Configure Is An Unavailable Runtime, Recorded As Such.
+    result = subprocess.run([name, "--version"], cwd=directory, capture_output=True, text=True, encoding="utf-8", check=False)
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
 def _toolchain(directory: Path) -> str:
     return _output(directory, ["rustc", "-Vv"]).strip()
 
 
 def _inputs(directory: Path) -> dict:
     # Only Digests Leave The Process: Configuration And Environment May Contain Secrets.
-    environment = {key: hashlib.sha256(value.encode()).hexdigest() for key, value in os.environ.items()
-                   if key.startswith(("CARGO_", "RUST", "PYTHON", "UV_", "npm_config_", "PKG_CONFIG_"))
-                   or key in ("PATH", "PATHEXT", "CC", "CXX", "AR", "LD", "CFLAGS", "CXXFLAGS", "LDFLAGS",
-                              "MISE_ENV", "MISE_PROFILE", "MISE_CONFIG_FILE", "MISE_DATA_DIR",
-                              "INCLUDE", "LIB", "LIBPATH", "CPATH", "LIBRARY_PATH", "SDKROOT", "MACOSX_DEPLOYMENT_TARGET")}
+    environment = {
+        key: hashlib.sha256(value.encode()).hexdigest()
+        for key, value in os.environ.items()
+        if key.startswith(("CARGO_", "RUST", "PYTHON", "UV_", "npm_config_", "PKG_CONFIG_"))
+        or key
+        in (
+            "PATH",
+            "PATHEXT",
+            "CC",
+            "CXX",
+            "AR",
+            "LD",
+            "CFLAGS",
+            "CXXFLAGS",
+            "LDFLAGS",
+            "MISE_ENV",
+            "MISE_PROFILE",
+            "MISE_CONFIG_FILE",
+            "MISE_DATA_DIR",
+            "INCLUDE",
+            "LIB",
+            "LIBPATH",
+            "CPATH",
+            "LIBRARY_PATH",
+            "SDKROOT",
+            "MACOSX_DEPLOYMENT_TARGET",
+        )
+    }
     files = {}
     for ancestor in (directory, *directory.parents):
         for name in (".cargo/config", ".cargo/config.toml", "rust-toolchain", "rust-toolchain.toml"):
@@ -736,10 +907,15 @@ def _inputs(directory: Path) -> dict:
     for name in configuration.get("hooks", {}).get("validation_inputs", []):
         file = policy_root / name
         files[name] = _source(file)
-    return {"platform": [sys.platform, platform.machine(), platform.platform()], "environment": environment, "configuration": files,
-            "rustc": _toolchain(directory) if shutil.which("rustc") else None,
-            "cargo": _output(directory, ["cargo", "-V"]).strip() if shutil.which("cargo") else None,
-            "runtimes": {name: _output(directory, [name, "--version"]).strip() for name in ("node", "pnpm", "uv", "python") if shutil.which(name)}, "tools": _tools(directory)}
+    return {
+        "platform": [sys.platform, platform.machine(), platform.platform()],
+        "environment": environment,
+        "configuration": files,
+        "rustc": _toolchain(directory) if shutil.which("rustc") else None,
+        "cargo": _output(directory, ["cargo", "-V"]).strip() if shutil.which("cargo") else None,
+        "runtimes": {name: _runtime(directory, name) for name in ("node", "pnpm", "uv", "python") if shutil.which(name)},
+        "tools": _tools(directory),
+    }
 
 
 def _configuration(directory: Path) -> tuple[Path, dict]:
@@ -782,10 +958,18 @@ def _generated(messages: Path) -> dict:
 
 def _tools(directory: Path) -> dict:
     tools = {}
-    selected = {name: name for name in ("rustc", "cargo", "cc", "c++", "ld", "ar", "cl", "link", "pkg-config", "node", "pnpm", "uv", "python")}
-    selected.update({name: value for name, value in os.environ.items()
-                     if name in ("RUSTC", "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER", "CC", "CXX", "AR", "LD")
-                     or name.startswith("CARGO_TARGET_") and name.endswith("_LINKER")})
+    selected = {
+        name: name for name in ("rustc", "cargo", "cc", "c++", "ld", "ar", "cl", "link", "pkg-config", "node", "pnpm", "uv", "python")
+    }
+    selected.update(
+        {
+            name: value
+            for name, value in os.environ.items()
+            if name in ("RUSTC", "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER", "CC", "CXX", "AR", "LD")
+            or name.startswith("CARGO_TARGET_")
+            and name.endswith("_LINKER")
+        }
+    )
     for config in _cargo_configs(directory):
         document = tomllib.loads(config.read_text(encoding="utf-8"))
         if "include" in document:
@@ -798,7 +982,21 @@ def _tools(directory: Path) -> dict:
                 selected[f"{config}:{target}:linker"] = value
     for name, value in selected.items():
         executable = shutil.which(value)
-        if executable is None and name not in ("rustc", "cargo", "cc", "c++", "ld", "ar", "cl", "link", "pkg-config", "node", "pnpm", "uv", "python"):
+        if executable is None and name not in (
+            "rustc",
+            "cargo",
+            "cc",
+            "c++",
+            "ld",
+            "ar",
+            "cl",
+            "link",
+            "pkg-config",
+            "node",
+            "pnpm",
+            "uv",
+            "python",
+        ):
             raise policy.TestError(f"cannot identify effective {name} executable; declare an executable path")
         tools[name] = _digest(Path(executable).resolve()) if executable else None
     return tools
@@ -878,9 +1076,12 @@ def _watched(directory: Path, messages: Path, metadata: dict) -> dict:
 
 
 def _watched_inputs(watched: dict) -> dict:
-    return {"files": {name: _source(Path(name)) for name in watched["files"]},
-            "environment": {name: hashlib.sha256(os.environ[name].encode()).hexdigest() if name in os.environ else None
-                            for name in watched["environment"]}}
+    return {
+        "files": {name: _source(Path(name)) for name in watched["files"]},
+        "environment": {
+            name: hashlib.sha256(os.environ[name].encode()).hexdigest() if name in os.environ else None for name in watched["environment"]
+        },
+    }
 
 
 def _features(arguments: Sequence[str]) -> list[str]:
