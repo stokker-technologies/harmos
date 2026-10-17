@@ -8,6 +8,10 @@
  */
 
 /* === Modules === */
+#[path = "storage/file_backend.rs"]
+mod file_backend;
+#[path = "storage/read_backend.rs"]
+mod read_backend;
 #[path = "storage_settings.rs"]
 mod settings;
 pub use settings::storage_settings;
@@ -26,7 +30,6 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 // Third Party Imports
-use sha2::{Digest, Sha256};
 use tokio::sync::Notify;
 
 // Local Imports
@@ -623,60 +626,10 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
         Box::pin(async { self.control.close() })
     }
     fn open_snapshot<'a>(&'a self, at: &'a StorageCursor) -> StorageFuture<'a, BackendSnapshot> {
-        Box::pin(async move {
-            if self.control.block_view.load(Ordering::SeqCst) {
-                self.control.view_entered.notify_one();
-                self.control.view_release.notified().await;
-            }
-            self.history.check(&at.history)?;
-            let lost_objects_through =
-                self.control.lost_objects_through.load(Ordering::SeqCst) as u64;
-            // Pruned Revisions No Longer Reconstruct An Older Image.
-            if at.sequence < lost_objects_through {
-                return Err(Error::Gap {
-                    requested: at.sequence,
-                    available: lost_objects_through,
-                });
-            }
-            let snapshot = Snapshot {
-                lost_objects_through,
-                objects: self.objects.lock().unwrap().clone(),
-                files: self.files.lock().unwrap().clone(),
-                schemas: self.schemas.lock().unwrap().clone(),
-                records: self.records.lock().unwrap().clone(),
-                rows: self.rows.lock().unwrap().clone(),
-            };
-            let token = self
-                .next_snapshot
-                .fetch_add(1, Ordering::SeqCst)
-                .to_le_bytes()
-                .to_vec();
-            self.snapshots
-                .lock()
-                .unwrap()
-                .insert(token.clone(), snapshot);
-            Ok(BackendSnapshot {
-                at: at.clone(),
-                token,
-            })
-        })
+        self.fixture_open_snapshot(at)
     }
     fn release_snapshot<'a>(&'a self, snapshot: &'a BackendSnapshot) -> StorageFuture<'a, ()> {
-        Box::pin(async move {
-            self.control.releases.fetch_add(1, Ordering::SeqCst);
-            if self.control.block_release.load(Ordering::SeqCst) {
-                self.control.release_entered.notify_one();
-                self.control.release_release.notified().await;
-            }
-            if self.control.fail_release.load(Ordering::SeqCst) {
-                return Err(failure(BackendFailure::Permanent));
-            }
-            self.snapshots.lock().unwrap().remove(&snapshot.token);
-            self.control
-                .releases_completed
-                .fetch_add(1, Ordering::SeqCst);
-            Ok(())
-        })
+        self.fixture_release_snapshot(snapshot)
     }
     fn read_schemas<'a>(
         &'a self,
@@ -684,16 +637,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
         selection: &'a SchemaSelection,
         page: ScanPage,
     ) -> StorageFuture<'a, Vec<StorageSchema>> {
-        Box::pin(async move {
-            let image = self.image(snapshot)?;
-            scan(
-                image.schemas.values(),
-                snapshot,
-                page,
-                |row| &row.position,
-                |row| selection.schema.as_ref().is_none_or(|key| key == &row.key),
-            )
-        })
+        self.fixture_read_schemas(snapshot, selection, page)
     }
     fn read_objects<'a>(
         &'a self,
@@ -701,59 +645,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
         selection: &'a ObjectSelection,
         page: ScanPage,
     ) -> StorageFuture<'a, Vec<ObjectEntry>> {
-        Box::pin(async move {
-            self.control.gate_read().await;
-            let image = self.image(snapshot)?;
-            // Complete Revision History Cannot Begin Before Pruned Revisions.
-            if selection.versions == ObjectVersions::Revisions
-                && page.after < image.lost_objects_through
-            {
-                return Err(Error::Gap {
-                    requested: page.after + 1,
-                    available: image.lost_objects_through + 1,
-                });
-            }
-            let selected = |object: &ObjectEntry| {
-                selection
-                    .schema
-                    .as_ref()
-                    .is_none_or(|schema| schema == &object.value.schema)
-                    && selection
-                        .key
-                        .as_ref()
-                        .is_none_or(|item| item == &object.value.item)
-            };
-            // Latest Keeps Each Selected Key's Newest Revision At The Snapshot.
-            let latest = (selection.versions == ObjectVersions::Latest).then(|| {
-                let mut latest = BTreeMap::new();
-                for object in image.objects.values() {
-                    if object.position.sequence <= snapshot.at.sequence && selected(object) {
-                        latest.insert(
-                            (object.value.schema.id.clone(), object.value.item.clone()),
-                            object.position.sequence,
-                        );
-                    }
-                }
-                latest
-            });
-            let mut entries = scan(
-                image.objects.values(),
-                snapshot,
-                page,
-                |row| &row.position,
-                |object| {
-                    selected(object)
-                        && latest.as_ref().is_none_or(|latest| {
-                            latest.get(&(object.value.schema.id.clone(), object.value.item.clone()))
-                                == Some(&object.position.sequence)
-                        })
-                },
-            )?;
-            if self.control.invalid_page.load(Ordering::SeqCst) && !entries.is_empty() {
-                entries[0].value.payload = vec![0xff];
-            }
-            Ok(entries)
-        })
+        self.fixture_read_objects(snapshot, selection, page)
     }
     fn read_records<'a>(
         &'a self,
@@ -761,28 +653,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
         selection: &'a RecordSelection,
         page: ScanPage,
     ) -> StorageFuture<'a, Vec<StoredRecord>> {
-        Box::pin(async move {
-            self.control.gate_read().await;
-            let image = self.image(snapshot)?;
-            let mut entries = scan(
-                image.records.values(),
-                snapshot,
-                page,
-                |row| &row.position,
-                |row| {
-                    record_matches(row, &selection.schema, &selection.scope, &selection.item)
-                        && window(
-                            selection.source_start,
-                            selection.source_end,
-                            row.source_time,
-                        )
-                },
-            )?;
-            if self.control.invalid_page.load(Ordering::SeqCst) && !entries.is_empty() {
-                entries[0].item = Identifier::new("wrong-item").unwrap();
-            }
-            Ok(entries)
-        })
+        self.fixture_read_records(snapshot, selection, page)
     }
     fn read_stream<'a>(
         &'a self,
@@ -790,29 +661,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
         selection: &'a StreamSelection,
         page: ScanPage,
     ) -> StorageFuture<'a, Vec<StoredRow>> {
-        Box::pin(async move {
-            self.control.gate_read().await;
-            let image = self.image(snapshot)?;
-            scan(
-                image.rows.values(),
-                snapshot,
-                page,
-                |row| &row.record.position,
-                |row| {
-                    record_matches(
-                        &row.record,
-                        &selection.schema,
-                        &selection.scope,
-                        &selection.item,
-                    ) && selection.stream.as_ref().is_none_or(|id| id == &row.stream)
-                        && window(
-                            selection.source_start,
-                            selection.source_end,
-                            row.record.source_time,
-                        )
-                },
-            )
-        })
+        self.fixture_read_stream(snapshot, selection, page)
     }
     fn read_files<'a>(
         &'a self,
@@ -820,144 +669,32 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
         selection: &'a FileSelection,
         page: ScanPage,
     ) -> StorageFuture<'a, Vec<FileReference>> {
-        Box::pin(async move {
-            let image = self.image(snapshot)?;
-            scan(
-                image.files.values(),
-                snapshot,
-                page,
-                |file| &file.position,
-                |file| {
-                    selection
-                        .item
-                        .as_ref()
-                        .is_none_or(|id| id == &file.metadata.id)
-                        && selection
-                            .scope
-                            .as_ref()
-                            .is_none_or(|scope| Some(scope) == file.metadata.scope.as_ref())
-                },
-            )
-        })
+        self.fixture_read_files(snapshot, selection, page)
     }
     fn read_object<'a>(
         &'a self,
         snapshot: &'a BackendSnapshot,
         query: &'a ObjectPoint,
     ) -> StorageFuture<'a, Option<ObjectEntry>> {
-        Box::pin(async move {
-            self.control.gate_read().await;
-            let image = self.image(snapshot)?;
-            let object = image.objects.values().rev().find(|object| {
-                object.position.sequence <= snapshot.at.sequence
-                    && object.value.schema.id == query.schema
-                    && object.value.item == query.item
-                    && match &query.version {
-                        ObjectVersion::Latest => true,
-                        ObjectVersion::Exact(version) => version == &object.version,
-                    }
-            });
-            let mut object = object.cloned();
-            if self.control.invalid_page.load(Ordering::SeqCst)
-                && let Some(object) = &mut object
-            {
-                object.value.payload = vec![0xff];
-            }
-            Ok(object)
-        })
+        self.fixture_read_object(snapshot, query)
     }
     fn supports_file_sessions(&self) -> bool {
-        true
+        self.fixture_supports_file_sessions()
     }
     fn supports_mutation_receipts(&self) -> bool {
-        true
+        self.fixture_supports_mutation_receipts()
     }
     fn save_mutations<'a>(&'a self, receipts: &'a [MutationReceipt]) -> StorageFuture<'a, ()> {
-        Box::pin(async move {
-            let mut saved = self.mutation_receipts.lock().unwrap();
-            let now = std::time::SystemTime::now();
-            saved.retain(|_, receipt| receipt.expires_at > now);
-            for receipt in receipts {
-                if receipt.expires_at <= now {
-                    continue;
-                }
-                if saved
-                    .get(&receipt.mutation)
-                    .is_some_and(|prior| prior != receipt)
-                {
-                    return Err(failure(BackendFailure::Conflict));
-                }
-                saved.insert(receipt.mutation.clone(), receipt.clone());
-            }
-            if self
-                .control
-                .receipt_failures
-                .try_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
-                    value.checked_sub(1)
-                })
-                .is_ok()
-            {
-                return Err(failure(BackendFailure::Transient));
-            }
-            Ok(())
-        })
+        self.fixture_save_mutations(receipts)
     }
     fn recover_mutations(&self, limits: ReadLimits) -> StorageFuture<'_, Vec<MutationReceipt>> {
-        Box::pin(async move {
-            let mut saved = self.mutation_receipts.lock().unwrap();
-            saved.retain(|_, receipt| receipt.expires_at > std::time::SystemTime::now());
-            let mut newest: Vec<_> = saved.values().collect();
-            newest.sort_by_key(|receipt| std::cmp::Reverse(receipt.expires_at));
-            let mut bytes = std::mem::size_of::<Vec<MutationReceipt>>();
-            let mut receipts = Vec::new();
-            for receipt in newest.into_iter().take(limits.rows.get()) {
-                bytes = bytes.saturating_add(receipt.memory_size());
-                if bytes > limits.bytes.get() {
-                    break;
-                }
-                receipts.push(receipt.clone());
-            }
-            Ok(receipts)
-        })
+        self.fixture_recover_mutations(limits)
     }
     fn create_production<'a>(
         &'a self,
         metadata: &'a FileMetadata,
     ) -> StorageFuture<'a, StagedFile> {
-        Box::pin(async move {
-            if self
-                .staged
-                .lock()
-                .unwrap()
-                .contains_key(metadata.id.as_str())
-                && !self
-                    .resumable_files
-                    .lock()
-                    .unwrap()
-                    .contains(metadata.id.as_str())
-            {
-                return Err(failure(BackendFailure::Conflict));
-            }
-            if self
-                .blobs
-                .lock()
-                .unwrap()
-                .values()
-                .any(|(file, _)| file.metadata.id == metadata.id)
-            {
-                return Err(failure(BackendFailure::Conflict));
-            }
-            self.resumable_files
-                .lock()
-                .unwrap()
-                .insert(metadata.id.to_string());
-            self.file_generations
-                .lock()
-                .unwrap()
-                .entry(metadata.id.to_string())
-                .or_insert(1);
-            self.create_file(metadata).await
-        })
+        self.fixture_create_production(metadata)
     }
     fn fence_production<'a>(
         &'a self,
@@ -965,189 +702,16 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
         expected: u64,
         next: u64,
     ) -> StorageFuture<'a, ()> {
-        Box::pin(async move {
-            if self.control.block_fence.load(Ordering::SeqCst) {
-                self.control.fence_entered.notify_one();
-                self.control.fence_release.notified().await;
-            }
-            let _io = self.file_io.lock().unwrap();
-            self.history.check(&file.history)?;
-            if expected.checked_add(1) != Some(next) {
-                return Err(failure(BackendFailure::Conflict));
-            }
-            let mut generations = self.file_generations.lock().unwrap();
-            let generation = generations
-                .get_mut(file.id.as_str())
-                .ok_or_else(|| failure(BackendFailure::Permanent))?;
-            if *generation != expected && *generation != next {
-                return Err(failure(BackendFailure::Conflict));
-            }
-            *generation = next;
-            if self
-                .control
-                .fence_failures
-                .try_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
-                    value.checked_sub(1)
-                })
-                .is_ok()
-            {
-                return Err(failure(BackendFailure::Transient));
-            }
-            self.control.fenced.notify_one();
-            Ok(())
-        })
+        self.fixture_fence_production(file, expected, next)
     }
     fn save_production<'a>(&'a self, checkpoint: &'a FileCheckpoint) -> StorageFuture<'a, ()> {
-        Box::pin(async move {
-            if self.control.block_checkpoint.load(Ordering::SeqCst) {
-                self.control.checkpoint_entered.notify_one();
-                self.control.checkpoint_release.notified().await;
-            }
-            let _io = self.file_io.lock().unwrap();
-            self.history.check(&checkpoint.session.history)?;
-            let id = checkpoint.session.id.as_str();
-            if self.deleted_files.lock().unwrap().contains(id)
-                || self.abandoned_files.lock().unwrap().contains(id)
-                || self
-                    .blobs
-                    .lock()
-                    .unwrap()
-                    .values()
-                    .any(|(file, _)| file.metadata.id == checkpoint.session.id)
-            {
-                return Ok(());
-            }
-            if self
-                .file_generations
-                .lock()
-                .unwrap()
-                .get(id)
-                .is_none_or(|generation| *generation < checkpoint.session.generation)
-            {
-                return Err(failure(BackendFailure::Conflict));
-            }
-            let staged = self.staged.lock().unwrap();
-            let (metadata, bytes) = staged
-                .get(id)
-                .ok_or_else(|| failure(BackendFailure::Permanent))?;
-            let length =
-                usize::try_from(checkpoint.length).map_err(|_| failure(BackendFailure::Corrupt))?;
-            let prefix = bytes
-                .get(..length)
-                .ok_or_else(|| failure(BackendFailure::Corrupt))?;
-            if *metadata != checkpoint.metadata
-                || <[u8; 32]>::from(Sha256::digest(prefix)) != checkpoint.sha256()?
-            {
-                return Err(failure(BackendFailure::Corrupt));
-            }
-            let mut saved = self.saved_productions.lock().unwrap();
-            if let Some((prior, prior_bytes)) = saved.get(id) {
-                if prior.length > checkpoint.length {
-                    return Ok(());
-                }
-                if prior.length == checkpoint.length && prior_bytes != prefix {
-                    return Err(failure(BackendFailure::Conflict));
-                }
-            }
-            saved.insert(id.to_string(), (checkpoint.clone(), prefix.to_vec()));
-            if self
-                .control
-                .checkpoint_failures
-                .try_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
-                    value.checked_sub(1)
-                })
-                .is_ok()
-            {
-                return Err(failure(BackendFailure::Transient));
-            }
-            Ok(())
-        })
+        self.fixture_save_production(checkpoint)
     }
     fn recover_productions(&self, limits: ReadLimits) -> StorageFuture<'_, Vec<FileCheckpoint>> {
-        Box::pin(async move {
-            let _io = self.file_io.lock().unwrap();
-            let saved = self.saved_productions.lock().unwrap();
-            let required = std::mem::size_of::<Vec<FileCheckpoint>>().saturating_add(
-                saved
-                    .values()
-                    .map(|(checkpoint, _)| checkpoint.memory_size())
-                    .sum::<usize>(),
-            );
-            if saved.len() > limits.rows.get() || required > limits.bytes.get() {
-                return Err(failure(BackendFailure::Permanent));
-            }
-            let mut restored = Vec::with_capacity(saved.len());
-            for (id, (checkpoint, bytes)) in saved.iter() {
-                if <[u8; 32]>::from(Sha256::digest(bytes)) != checkpoint.sha256()?
-                    || bytes.len() as u64 != checkpoint.length
-                {
-                    return Err(failure(BackendFailure::Corrupt));
-                }
-                let mut checkpoint = checkpoint.clone();
-                checkpoint.session.generation = *self
-                    .file_generations
-                    .lock()
-                    .unwrap()
-                    .get(id)
-                    .ok_or_else(|| failure(BackendFailure::Corrupt))?;
-                self.staged
-                    .lock()
-                    .unwrap()
-                    .insert(id.clone(), (checkpoint.metadata.clone(), bytes.clone()));
-                restored.push(checkpoint);
-            }
-            // Unsaved Productions Have No Durable Resume Boundary.
-            for id in self.resumable_files.lock().unwrap().iter() {
-                if !saved.contains_key(id) && self.staged.lock().unwrap().contains_key(id) {
-                    self.abandoned_files.lock().unwrap().insert(id.clone());
-                }
-            }
-            Ok(restored)
-        })
+        self.fixture_recover_productions(limits)
     }
     fn file_progress<'a>(&'a self, file: &'a StagedFile) -> StorageFuture<'a, FileProgress> {
-        Box::pin(async move {
-            let _io = self.file_io.lock().unwrap();
-            self.history.check(&file.history)?;
-            if let Some((reference, _)) = self
-                .blobs
-                .lock()
-                .unwrap()
-                .values()
-                .find(|(reference, _)| reference.metadata.id == file.id)
-            {
-                return Ok(FileProgress {
-                    length: reference.length,
-                    phase: FilePhase::Finished,
-                });
-            }
-            if !self
-                .resumable_files
-                .lock()
-                .unwrap()
-                .contains(file.id.as_str())
-            {
-                return Err(failure(BackendFailure::Permanent));
-            }
-            let staged = self.staged.lock().unwrap();
-            let (_, bytes) = staged
-                .get(file.id.as_str())
-                .ok_or_else(|| failure(BackendFailure::Permanent))?;
-            let phase = if self
-                .abandoned_files
-                .lock()
-                .unwrap()
-                .contains(file.id.as_str())
-            {
-                FilePhase::Abandoned
-            } else {
-                FilePhase::Producing
-            };
-            Ok(FileProgress {
-                length: bytes.len() as u64,
-                phase,
-            })
-        })
+        self.fixture_file_progress(file)
     }
     fn read_production<'a>(
         &'a self,
@@ -1155,182 +719,21 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
         offset: u64,
         max_bytes: NonZeroUsize,
     ) -> StorageFuture<'a, Vec<u8>> {
-        Box::pin(async move {
-            self.history.check(&file.history)?;
-            if self.control.block_read.load(Ordering::SeqCst) {
-                self.control.read_entered.notify_one();
-                self.control.read_release.notified().await;
-            }
-            let _io = self.file_io.lock().unwrap();
-            let copy = |bytes: &[u8]| -> Result<Vec<u8>> {
-                let offset =
-                    usize::try_from(offset).map_err(|_| failure(BackendFailure::Permanent))?;
-                let end = bytes.len().min(offset.saturating_add(max_bytes.get()));
-                let chunk = bytes
-                    .get(offset..end)
-                    .ok_or_else(|| failure(BackendFailure::Permanent))?;
-                Ok(Box::<[u8]>::from(chunk).into_vec())
-            };
-            if let Some((_, bytes)) = self
-                .blobs
-                .lock()
-                .unwrap()
-                .values()
-                .find(|(reference, _)| reference.metadata.id == file.id)
-            {
-                return copy(bytes);
-            }
-            if !self
-                .resumable_files
-                .lock()
-                .unwrap()
-                .contains(file.id.as_str())
-            {
-                return Err(failure(BackendFailure::Permanent));
-            }
-            let staged = self.staged.lock().unwrap();
-            let (_, bytes) = staged
-                .get(file.id.as_str())
-                .ok_or_else(|| failure(BackendFailure::Permanent))?;
-            copy(bytes)
-        })
+        self.fixture_read_production(file, offset, max_bytes)
     }
 
     fn supports_file_deletion(&self) -> bool {
-        true
+        self.fixture_supports_file_deletion()
     }
     fn delete_file<'a>(&'a self, file: &'a StagedFile) -> StorageFuture<'a, ()> {
-        Box::pin(async move {
-            self.history.check(&file.history)?;
-            if self.control.block_delete.load(Ordering::SeqCst) {
-                self.control.delete_entered.notify_one();
-                self.control.delete_release.notified().await;
-            }
-            let _io = self.file_io.lock().unwrap();
-            let id = file.id.as_str();
-            let mut staged = self.staged.lock().unwrap();
-            if staged.contains_key(id) && !self.abandoned_files.lock().unwrap().contains(id) {
-                return Err(failure(BackendFailure::Conflict));
-            }
-            let mut files = self.files.lock().unwrap();
-            let mut deleted = self.deleted_files.lock().unwrap();
-            if deleted.insert(id.to_owned()) {
-                let last = files
-                    .values()
-                    .filter(|value| value.metadata.id == file.id)
-                    .map(|value| value.position.sequence)
-                    .max()
-                    .unwrap_or(0);
-                self.lost_files_through
-                    .fetch_max(last as usize, Ordering::SeqCst);
-            }
-            files.retain(|_, value| value.metadata.id != file.id);
-            staged.remove(id);
-            self.blobs.lock().unwrap().remove(id);
-            self.saved_productions.lock().unwrap().remove(id);
-            if self
-                .control
-                .delete_failures
-                .try_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
-                .is_ok()
-            {
-                return Err(failure(BackendFailure::Transient));
-            }
-            Ok(())
-        })
+        self.fixture_delete_file(file)
     }
 
     fn abandon_file<'a>(&'a self, staging: &'a StagedFile) -> StorageFuture<'a, ()> {
-        Box::pin(async move {
-            let _io = self.file_io.lock().unwrap();
-            self.history.check(&staging.history)?;
-            if self
-                .blobs
-                .lock()
-                .unwrap()
-                .values()
-                .any(|(file, _)| file.metadata.id == staging.id)
-            {
-                return Ok(());
-            }
-            if self.control.fail_abort.load(Ordering::SeqCst) {
-                return Err(failure(BackendFailure::Permanent));
-            }
-            self.saved_productions
-                .lock()
-                .unwrap()
-                .remove(staging.id.as_str());
-            self.abandoned_files
-                .lock()
-                .unwrap()
-                .insert(staging.id.to_string());
-            if self
-                .control
-                .abandon_failures
-                .try_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
-                    value.checked_sub(1)
-                })
-                .is_ok()
-            {
-                return Err(failure(BackendFailure::Transient));
-            }
-            self.control.abandoned.notify_one();
-            Ok(())
-        })
+        self.fixture_abandon_file(staging)
     }
     fn create_file<'a>(&'a self, metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile> {
-        Box::pin(async move {
-            if self
-                .abandoned_files
-                .lock()
-                .unwrap()
-                .contains(metadata.id.as_str())
-            {
-                return Err(failure(BackendFailure::Conflict));
-            }
-            {
-                let _io = self.file_io.lock().unwrap();
-                if self
-                    .deleted_files
-                    .lock()
-                    .unwrap()
-                    .contains(metadata.id.as_str())
-                {
-                    return Err(failure(BackendFailure::Conflict));
-                }
-                let mut files = self.staged.lock().unwrap();
-                let existing = files
-                    .entry(metadata.id.to_string())
-                    .or_insert_with(|| (metadata.clone(), Vec::new()));
-                if existing.0 != *metadata {
-                    return Err(failure(BackendFailure::Conflict));
-                }
-            }
-            if self.control.block_create.load(Ordering::SeqCst) {
-                self.control.create_entered.notify_one();
-                self.control.create_release.notified().await;
-            }
-            if self.control.fail_create.load(Ordering::SeqCst) {
-                return Err(failure(BackendFailure::Permanent));
-            }
-            if self
-                .control
-                .create_failures
-                .try_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
-                    value.checked_sub(1)
-                })
-                .is_ok()
-            {
-                return Err(failure(BackendFailure::Transient));
-            }
-            if let Some(journal) = &self.journal {
-                journal.stage(&metadata.id, &[])?;
-            }
-            Ok(StagedFile {
-                history: self.history.clone(),
-                id: metadata.id.clone(),
-            })
-        })
+        self.fixture_create_file(metadata)
     }
     fn write_file<'a>(
         &'a self,
@@ -1338,47 +741,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
         offset: u64,
         bytes: &'a [u8],
     ) -> StorageFuture<'a, ()> {
-        Box::pin(async move {
-            if self
-                .abandoned_files
-                .lock()
-                .unwrap()
-                .contains(staging.id.as_str())
-            {
-                return Err(failure(BackendFailure::Conflict));
-            }
-            self.control.chunk_sizes.lock().unwrap().push(bytes.len());
-            self.control.chunk_offsets.lock().unwrap().push(offset);
-            if self.control.block_chunk.load(Ordering::SeqCst) {
-                self.control.chunk_entered.notify_one();
-                self.control.chunk_release.notified().await;
-            }
-            {
-                let _io = self.file_io.lock().unwrap();
-                let mut files = self.staged.lock().unwrap();
-                let (_, stored) = files
-                    .get_mut(staging.id.as_str())
-                    .ok_or_else(|| failure(BackendFailure::Permanent))?;
-                let offset = usize::try_from(offset).unwrap();
-                if offset == stored.len() {
-                    stored.extend_from_slice(bytes);
-                } else if stored.get(offset..offset + bytes.len()) != Some(bytes) {
-                    return Err(failure(BackendFailure::Conflict));
-                }
-                if let Some(journal) = &self.journal {
-                    journal.stage(&staging.id, stored)?;
-                }
-            }
-            if self
-                .control
-                .chunk_failures
-                .try_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
-                .is_ok()
-            {
-                return Err(failure(BackendFailure::Transient));
-            }
-            Ok(())
-        })
+        self.fixture_write_file(staging, offset, bytes)
     }
     fn finish_file<'a>(
         &'a self,
@@ -1387,90 +750,10 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
         length: u64,
         sha256: [u8; 32],
     ) -> StorageFuture<'a, FileReference> {
-        Box::pin(async move {
-            if self
-                .abandoned_files
-                .lock()
-                .unwrap()
-                .contains(staging.id.as_str())
-            {
-                return Err(failure(BackendFailure::Conflict));
-            }
-            self.control
-                .finish_positions
-                .lock()
-                .unwrap()
-                .push(position.sequence);
-            if self.control.block_finish.load(Ordering::SeqCst) {
-                self.control.finish_entered.notify_one();
-                self.control.finish_release.notified().await;
-            }
-            if self.control.fail_finish.load(Ordering::SeqCst) {
-                return Err(failure(BackendFailure::Permanent));
-            }
-            let _io = self.file_io.lock().unwrap();
-            if let Some((file, _)) = self.blobs.lock().unwrap().get(staging.id.as_str()) {
-                if file.position != *position
-                    || file.length != length
-                    || file.sha256 != sha256
-                    || file.metadata.id != staging.id
-                {
-                    return Err(failure(BackendFailure::Conflict));
-                }
-                return Ok(file.clone());
-            }
-            let mut staged = self.staged.lock().unwrap();
-            let (_, bytes) = staged
-                .get(staging.id.as_str())
-                .ok_or_else(|| failure(BackendFailure::Permanent))?;
-            if bytes.len() as u64 != length || <[u8; 32]>::from(Sha256::digest(bytes)) != sha256 {
-                return Err(failure(BackendFailure::Corrupt));
-            }
-            if let Some(journal) = &self.journal {
-                journal.finish(&staging.id, bytes, &sha256)?;
-            }
-            // A Failed Integrity Check Must Retain The Last Recoverable Prefix.
-            let (metadata, bytes) = staged
-                .remove(staging.id.as_str())
-                .expect("verified staging");
-            self.saved_productions
-                .lock()
-                .unwrap()
-                .remove(staging.id.as_str());
-            let reference = FileReference {
-                position: position.clone(),
-                metadata,
-                length,
-                sha256,
-            };
-            self.blobs
-                .lock()
-                .unwrap()
-                .insert(staging.id.to_string(), (reference.clone(), bytes));
-            if self
-                .control
-                .finish_failures
-                .try_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
-                .is_ok()
-            {
-                return Err(failure(BackendFailure::Transient));
-            }
-            Ok(reference)
-        })
+        self.fixture_finish_file(staging, position, length, sha256)
     }
     fn abort_file<'a>(&'a self, staging: &'a StagedFile) -> StorageFuture<'a, ()> {
-        Box::pin(async move {
-            self.control.aborts.fetch_add(1, Ordering::SeqCst);
-            if self.control.block_abort.load(Ordering::SeqCst) {
-                self.control.abort_entered.notify_one();
-                self.control.abort_release.notified().await;
-            }
-            if self.control.fail_abort.load(Ordering::SeqCst) {
-                return Err(failure(BackendFailure::Permanent));
-            }
-            self.staged.lock().unwrap().remove(staging.id.as_str());
-            Ok(())
-        })
+        self.fixture_abort_file(staging)
     }
     fn read_file<'a>(
         &'a self,
@@ -1479,34 +762,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
         offset: u64,
         max_bytes: NonZeroUsize,
     ) -> StorageFuture<'a, Vec<u8>> {
-        Box::pin(async move {
-            if self.control.block_read.load(Ordering::SeqCst) {
-                self.control.read_entered.notify_one();
-                self.control.read_release.notified().await;
-            }
-            self.image(snapshot)?;
-            let mut result = {
-                let blobs = self.blobs.lock().unwrap();
-                let (actual, bytes) = blobs
-                    .get(file.metadata.id.as_str())
-                    .ok_or_else(|| failure(BackendFailure::Permanent))?;
-                if actual != file {
-                    return Err(failure(BackendFailure::Conflict));
-                }
-                let offset = usize::try_from(offset).unwrap();
-                let end = bytes.len().min(offset.saturating_add(max_bytes.get()));
-                bytes[offset..end].to_vec()
-            };
-            if self.control.corrupt_file.load(Ordering::SeqCst) && !result.is_empty() {
-                result[0] ^= 1;
-            }
-            let accepted = self.control.accepted_file_read.lock().unwrap().take();
-            if let Some((started, release)) = accepted {
-                started.send(()).unwrap();
-                release.await.unwrap();
-            }
-            Ok(result)
-        })
+        self.fixture_read_file(snapshot, file, offset, max_bytes)
     }
 }
 

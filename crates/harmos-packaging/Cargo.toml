@@ -92,6 +92,10 @@ protoc-bin-vendored = { workspace = true }
 # === Test Targets === #
 
 [[test]]
+name = "build"
+path = "tests/build/main.rs"
+
+[[test]]
 name = "grpc"
 path = "tests/grpc/main.rs"
 required-features = ["bindings-proto"]
