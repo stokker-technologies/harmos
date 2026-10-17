@@ -55,7 +55,7 @@ exclude = ["schematic-domain"]
 
 [conventions.testing.limits]
 unit = 512
-integration = 960
+integration = 256
 acceptance = 128
 system = 64
 
