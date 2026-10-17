@@ -107,6 +107,8 @@ enum Phase {
 
 enum Selection {
     Provided(usize),
+    // The built-in observe control, served outside the plugin's operation inventory.
+    Observe(Definition),
     Sdk(Definition),
 }
 
@@ -453,7 +455,8 @@ impl Native {
         if !self.endpoint.accepts() {
             return Err(NativeError::Unavailable);
         }
-        if !self.endpoint.definitions().contains(definition) {
+        let observe = self.scope().and_then(crate::plugin::PluginScope::observe_contract).map(|contract| contract.operation());
+        if !self.endpoint.definitions().contains(definition) && observe != Some(definition) {
             return Err(NativeError::Catalog { operation: definition.id.to_string() });
         }
         Ok(())
@@ -620,6 +623,9 @@ impl<E: super::StreamEndpoints + Shape> Operation for EncodedOperation<E> {
                         let definition = &binding.native.endpoint.definitions()[*index];
                         binding.native.prepare_encoded(definition, std::mem::take(&mut request.payload), Some(capacity))
                     }
+                    Selection::Observe(definition) => {
+                        binding.native.prepare_encoded(definition, std::mem::take(&mut request.payload), Some(capacity))
+                    }
                     Selection::Sdk(definition) => {
                         if request.grpc {
                             return Err(NativeError::Catalog { operation: definition.id.to_string() });
@@ -741,6 +747,7 @@ impl super::Bindings<'_> {
         let scope =
             self.scope.ok_or(Error::InvalidInput { field: "native operation scope", reason: "native inventory requires stage_plugin" })?;
         validate_inventory(&native, scope)?;
+        let lane_name = lane.name();
         let previous = self.entries.len();
         self.project::<C, NativeBindings, Native>(lane, Arc::clone(&native))?;
         let projected = &self.entries[previous..];
@@ -784,6 +791,8 @@ impl super::Bindings<'_> {
             }
             entry.native = Some(handler);
         }
+        let observe = observe_entry(self.operations, lane_name, &native, &capacity, scope)?;
+        self.entries.extend(observe);
         Ok(())
     }
 
@@ -807,7 +816,7 @@ pub(super) fn bindings(
     validate_inventory(&native, scope)?;
     let capacity = native.endpoint.bind_capacity(capacity)?;
     let definitions = native.endpoint.definitions();
-    definitions
+    let mut entries = definitions
         .iter()
         .enumerate()
         .map(|(index, definition)| {
@@ -816,37 +825,57 @@ pub(super) fn bindings(
             let mut contracts = native.endpoint.contracts().iter().filter(|contract| contract.operation().id == definition.id);
             let contract = contracts.next().filter(|contract| contract.operation() == definition).cloned();
             let exact_contract = if contracts.next().is_none() { contract } else { None };
-            let shape =
-                exact_contract.as_ref().map_or((false, false), |contract| (contract.input().is_some(), contract.output().is_some()));
-            let mut entry = match shape {
-                (false, false) => encoded_binding::<()>(operations, lane, &handler, definition, scope),
-                (true, false) => encoded_binding::<super::StreamInput<Opaque>>(operations, lane, &handler, definition, scope),
-                (false, true) => encoded_binding::<super::StreamOutput<Opaque>>(operations, lane, &handler, definition, scope),
-                (true, true) => encoded_binding::<(super::StreamInput<Opaque>, super::StreamOutput<Opaque>)>(
-                    operations, lane, &handler, definition, scope,
-                ),
-            }?;
-            let entry_mut = Arc::get_mut(&mut entry).expect("new native entry has one owner");
-            entry_mut.native = Some(handler);
-            // The observe control runs until cancelled outside any bounded lane.
-            if exact_contract.is_some() && scope.observe_contract() == exact_contract.as_ref() {
-                entry_mut.resident();
-            }
-            #[cfg(feature = "grpc")]
-            if exact_contract.as_ref().is_some_and(|contract| contract.grpc().is_some()) {
-                entry_mut.grpc = Some(match shape {
-                    (false, false) => crate::grpc::server::unary::<Encoded, Forwarded>,
-                    (true, false) => crate::grpc::server::upload::<Encoded<super::StreamInput<Opaque>>, Forwarded>,
-                    (false, true) => crate::grpc::server::download::<Encoded<super::StreamOutput<Opaque>>, Forwarded>,
-                    (true, true) => {
-                        crate::grpc::server::exchange::<Encoded<(super::StreamInput<Opaque>, super::StreamOutput<Opaque>)>, Forwarded>
-                    }
-                });
-            }
-            entry_mut.contract = exact_contract;
-            Ok(entry)
+            native_entry(operations, lane, handler, definition, exact_contract, scope)
         })
-        .collect()
+        .collect::<Result<Vec<_>>>()?;
+    entries.extend(observe_entry(operations, lane, &native, &capacity, scope)?);
+    Ok(entries)
+}
+
+// A sidecar that declares observers serves the built-in observe control beside its inventory.
+fn observe_entry(
+    operations: &super::OperationManager, lane: &'static str, native: &Arc<Native>, capacity: &Arc<Semaphore>,
+    scope: &crate::plugin::PluginScope,
+) -> Result<Option<Arc<super::manager::Entry>>> {
+    let Some(contract) = scope.observe_contract() else {
+        return Ok(None);
+    };
+    let definition = contract.operation();
+    let handler =
+        Arc::new(Binding { native: Arc::clone(native), selection: Selection::Observe(definition.clone()), capacity: Arc::clone(capacity) });
+    native_entry(operations, lane, handler, definition, Some(contract.clone()), scope).map(Some)
+}
+
+fn native_entry(
+    operations: &super::OperationManager, lane: &'static str, handler: Arc<Binding>, definition: &Definition,
+    exact_contract: Option<crate::operations::Contract>, scope: &crate::plugin::PluginScope,
+) -> Result<Arc<super::manager::Entry>> {
+    let shape = exact_contract.as_ref().map_or((false, false), |contract| (contract.input().is_some(), contract.output().is_some()));
+    let mut entry = match shape {
+        (false, false) => encoded_binding::<()>(operations, lane, &handler, definition, scope),
+        (true, false) => encoded_binding::<super::StreamInput<Opaque>>(operations, lane, &handler, definition, scope),
+        (false, true) => encoded_binding::<super::StreamOutput<Opaque>>(operations, lane, &handler, definition, scope),
+        (true, true) => {
+            encoded_binding::<(super::StreamInput<Opaque>, super::StreamOutput<Opaque>)>(operations, lane, &handler, definition, scope)
+        }
+    }?;
+    let entry_mut = Arc::get_mut(&mut entry).expect("new native entry has one owner");
+    entry_mut.native = Some(handler);
+    // The observe control runs until cancelled outside any bounded lane.
+    if exact_contract.is_some() && scope.observe_contract() == exact_contract.as_ref() {
+        entry_mut.resident();
+    }
+    #[cfg(feature = "grpc")]
+    if exact_contract.as_ref().is_some_and(|contract| contract.grpc().is_some()) {
+        entry_mut.grpc = Some(match shape {
+            (false, false) => crate::grpc::server::unary::<Encoded, Forwarded>,
+            (true, false) => crate::grpc::server::upload::<Encoded<super::StreamInput<Opaque>>, Forwarded>,
+            (false, true) => crate::grpc::server::download::<Encoded<super::StreamOutput<Opaque>>, Forwarded>,
+            (true, true) => crate::grpc::server::exchange::<Encoded<(super::StreamInput<Opaque>, super::StreamOutput<Opaque>)>, Forwarded>,
+        });
+    }
+    entry_mut.contract = exact_contract;
+    Ok(entry)
 }
 
 pub(super) fn dispatch(

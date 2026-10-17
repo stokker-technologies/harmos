@@ -179,11 +179,6 @@ impl PluginScope {
         self
     }
 
-    #[cfg(feature = "plugin-sidecar")]
-    pub(crate) fn wire_contract(&self, id: &crate::Identifier) -> Option<&crate::operations::Contract> {
-        self.wire_contracts.get(id)
-    }
-
     pub(super) fn with_requirements(
         mut self, contracts: Option<&Vec<harmos_domain::inventory::contracts::Required>>, providers: &BTreeMap<crate::Identifier, String>,
         dependencies: &BTreeSet<String>,
@@ -450,7 +445,10 @@ impl PluginScope {
     }
 
     pub(crate) fn validate_operations<'a>(&self, operations: impl IntoIterator<Item = &'a crate::operations::Definition>) -> Result<()> {
-        let actual: BTreeMap<_, _> = operations.into_iter().map(|operation| (&operation.id, operation)).collect();
+        // The built-in observe control is served beside the admitted inventory, never inside it.
+        let observe = self.observe_contract.as_ref().as_ref().map(|contract| contract.operation());
+        let actual: BTreeMap<_, _> =
+            operations.into_iter().filter(|operation| Some(*operation) != observe).map(|operation| (&operation.id, operation)).collect();
         if actual.len() != self.operations.len()
             || self.operations.iter().any(|(id, declared)| actual.get(id).is_none_or(|actual| *actual != declared))
         {

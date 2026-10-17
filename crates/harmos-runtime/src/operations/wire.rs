@@ -154,9 +154,7 @@ impl OperationManager {
     pub(crate) fn capture_host_control(
         &self, scope: &crate::plugin::PluginScope, contract: &crate::operations::Contract,
     ) -> Result<PluginControl> {
-        if contract.operation().visibility != crate::operations::Visibility::Host
-            || scope.wire_contract(&contract.operation().id) != Some(contract)
-        {
+        if contract.operation().visibility != crate::operations::Visibility::Host || scope.observe_contract() != Some(contract) {
             return Err(Error::InvalidInput { field: "observer control", reason: "control differs from the frozen Host contract" });
         }
         self.capture_callback(scope, contract).map(PluginControl)

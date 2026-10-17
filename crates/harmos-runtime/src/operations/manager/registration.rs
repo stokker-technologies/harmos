@@ -61,7 +61,13 @@ impl OperationManager {
     where
         T: for<'ctx> crate::operations::Operation<Context<'ctx> = Context<'ctx>>,
     {
-        definition.validate().map_err(|source| Error::OperationDeclaration { source })?;
+        // Only the scope's built-in observe control may carry a reserved id.
+        #[cfg(feature = "plugin-sidecar")]
+        let built_in = plugin.as_ref().and_then(PluginScope::observe_contract).is_some_and(|contract| *contract.operation() == definition);
+        #[cfg(not(feature = "plugin-sidecar"))]
+        let built_in = false;
+        if built_in { definition.policy.validate().map_err(harmos_domain::Error::from) } else { definition.validate() }
+            .map_err(|source| Error::OperationDeclaration { source })?;
         if <T::Endpoints as crate::operations::EndpointSet>::item_types() != crate::operations::item_types::<T::Declaration>() {
             return Err(Error::InvalidInput {
                 field: "operation endpoint types",
