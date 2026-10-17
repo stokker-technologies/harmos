@@ -126,6 +126,8 @@ run = [
 [tasks.build]
 description = "Build Binaries, Fixtures And The Test Archive"
 usage = 'flag "--profile <profile>" default="dev"'
+# Every Lane Runs On A Fresh Runner, So It Syncs The Locked Tooling Its No-Sync Commands Use.
+depends = ["prepare:tools"]
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.fixtures --profile {{usage.profile}}"
 
 # === Dev === #
@@ -150,6 +152,7 @@ depends = ["test:unit:rust --profile {{usage.profile}}"]
 [tasks."test:unit:rust"]
 description = "Test Unit Rust"
 usage = 'flag "--profile <profile>" default="dev"'
+depends = ["prepare:tools"]
 run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --profile {{usage.profile}}",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category unit --language rust --profile {{usage.profile}} --archive-argument=--all-features",
@@ -163,6 +166,7 @@ depends = ["test:integration:rust --profile {{usage.profile}}"]
 [tasks."test:integration:rust"]
 description = "Test Integration Rust"
 usage = 'flag "--profile <profile>" default="dev"'
+depends = ["prepare:tools"]
 run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --profile {{usage.profile}}",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category integration --language rust --profile {{usage.profile}} --archive-argument=--all-features",
@@ -176,6 +180,7 @@ depends = ["test:acceptance:rust --profile {{usage.profile}}"]
 [tasks."test:acceptance:rust"]
 description = "Test Acceptance Rust"
 usage = 'flag "--profile <profile>" default="dev"'
+depends = ["prepare:tools"]
 run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --profile {{usage.profile}}",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category acceptance --language rust --profile {{usage.profile}} --archive-argument=--all-features",
@@ -189,6 +194,7 @@ depends = ["test:system:rust --profile {{usage.profile}}"]
 [tasks."test:system:rust"]
 description = "Test System Rust"
 usage = 'flag "--profile <profile>" default="dev"'
+depends = ["prepare:tools"]
 run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --profile {{usage.profile}}",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category system --language rust --profile {{usage.profile}} --archive-argument=--all-features",
@@ -196,10 +202,12 @@ run = [
 
 [tasks."test:verify"]
 description = "Verify Complete Candidate Evidence"
+depends = ["prepare:tools"]
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run verify"
 
 [tasks.coverage]
 description = "Measure Instrumented Rust Coverage"
+depends = ["prepare:tools"]
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run coverage --language rust"
 
 # === Bench === #
@@ -221,6 +229,7 @@ depends = ["bench:unit:rust{% if usage.refresh_baseline %} --refresh-baseline{% 
 [tasks."bench:unit:rust"]
 description = "Bench Unit Rust"
 usage = 'flag "--refresh-baseline"'
+depends = ["prepare:tools"]
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run bench --category unit --language rust --archive-argument=--all-features{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"
 
 [tasks."bench:integration"]
@@ -231,6 +240,7 @@ depends = ["bench:integration:rust{% if usage.refresh_baseline %} --refresh-base
 [tasks."bench:integration:rust"]
 description = "Bench Integration Rust"
 usage = 'flag "--refresh-baseline"'
+depends = ["prepare:tools"]
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run bench --category integration --language rust --archive-argument=--all-features{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"
 
 [tasks."bench:system"]
@@ -241,6 +251,7 @@ depends = ["bench:system:rust{% if usage.refresh_baseline %} --refresh-baseline{
 [tasks."bench:system:rust"]
 description = "Bench System Rust"
 usage = 'flag "--refresh-baseline"'
+depends = ["prepare:tools"]
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run bench --category system --language rust --archive-argument=--all-features{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"
 
 # === Package === #
@@ -253,6 +264,7 @@ depends = ["package:rust --profile {{usage.profile}}"]
 [tasks."package:rust"]
 description = "Package Rust"
 usage = 'flag "--profile <profile>" default="dev"'
+depends = ["prepare:tools"]
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.package.rust --profile {{usage.profile}}"
 
 # === CI === #
