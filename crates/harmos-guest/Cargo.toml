@@ -24,13 +24,14 @@ default = ["derive"]
 derive = ["harmos-domain/derive"]
 # Optional Payload Codec Only; No Host Networking Or gRPC Carrier
 grpc = ["harmos-sdk/grpc"]
-# Stream Traffic Wakes An Original Operation Waiting On A Rust Channel.
-streaming = ["harmos-sdk/streaming", "wit-bindgen?/inter-task-wakeup"]
+# Stream Endpoints Add Rust Channel Traffic.
+streaming = ["harmos-sdk/streaming"]
 # The generated world bindings and the wrappers over them — everything a guest
 # author writes against. Optional because the other half of this crate is not
 # authoring at all: `Declaration::inspect` reads an already-built component's
 # custom sections, and a native host that only does that has no world to bind.
-kit = ["dep:wit-bindgen"]
+# Any Authored Async Lifecycle Or Operation May Wait On Rust-Originating Events.
+kit = ["dep:wit-bindgen", "wit-bindgen/inter-task-wakeup"]
 componentize = ["dep:wit-component"]
 
 # === Dependencies ===
