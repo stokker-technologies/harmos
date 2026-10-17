@@ -80,7 +80,7 @@ pub enum Aggregate {
     Max,
     Rms,
     Std,
-    Percentile(u8),
+    Percentile(#[serde(with = "rank")] u8),
 }
 
 /* === Traits === */
@@ -170,7 +170,9 @@ impl Aggregate {
     fn read_postcard(input: &mut PostcardReader<'_>) -> Result<Self, MessageError> {
         let ordinal: u32 = input.value()?;
         if ordinal == 8 {
-            return Ok(Self::Percentile(u8::read(input)?));
+            // The rank travels as the declared u32 and must fit a percentile rank.
+            let rank: u32 = input.value()?;
+            return u8::try_from(rank).map(Self::Percentile).map_err(|_| MessageError::borrowed("percentile rank exceeds 255"));
         }
         Self::unit(ordinal).ok_or(MessageError::borrowed("unknown Postcard enum variant"))
     }
@@ -203,12 +205,15 @@ impl PostcardValue for Aggregate {
     fn write(&self, bytes: &mut Vec<u8>) {
         self.ordinal().write(bytes);
         if let Self::Percentile(rank) = self {
-            rank.write(bytes);
+            u32::from(*rank).write(bytes);
         }
     }
 
     fn size(&self) -> usize {
-        let rank = usize::from(matches!(self, Self::Percentile(_)));
+        let rank = match self {
+            Self::Percentile(rank) => u32::from(*rank).size(),
+            _ => 0,
+        };
         self.ordinal().size().saturating_add(rank)
     }
 
@@ -235,6 +240,18 @@ impl RowMetadata for Aggregate {}
 /* === Public Functions === */
 
 /* === Private Functions === */
+// Serde carries the rank as the declared u32, so its Postcard matches the schema.
+mod rank {
+    pub(super) fn serialize<S: serde::Serializer>(rank: &u8, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_u32(u32::from(*rank))
+    }
+
+    pub(super) fn deserialize<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u8, D::Error> {
+        let rank = <u32 as serde::Deserialize>::deserialize(deserializer)?;
+        u8::try_from(rank).map_err(|_| serde::de::Error::custom("percentile rank exceeds 255"))
+    }
+}
+
 const fn variant(name: &'static str, tag: u32, payload: declaration::Definition) -> Field {
     Field { name: Cow::Borrowed(name), tag, kind: Kind::Message { definition: payload }, cardinality: Cardinality::Variant }
 }
