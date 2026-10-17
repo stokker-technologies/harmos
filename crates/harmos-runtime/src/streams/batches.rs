@@ -22,7 +22,7 @@ use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 // Third Party Imports
 use harmos_domain::Aggregate;
-use harmos_signal::Summary as Running;
+use harmos_storage::signal::Summary as Running;
 use tokio::sync::watch;
 // Local Imports
 use super::demand::Holding;

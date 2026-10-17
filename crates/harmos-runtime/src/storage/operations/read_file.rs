@@ -19,7 +19,7 @@ use std::sync::Arc;
 // Local Imports
 use crate::operations::{Context, Operation, OperationDeclaration, StreamOutput};
 use crate::storage::StorageManager;
-use crate::storage::config::IO_TIMEOUT;
+use super::IO_TIMEOUT;
 use crate::{Error, MemorySize, Result};
 use harmos_domain::model::storage::files::{FileBatch, FileCompletion};
 

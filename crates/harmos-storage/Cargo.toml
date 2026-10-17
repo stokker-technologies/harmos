@@ -1,0 +1,88 @@
+# === Package ===
+
+[package]
+name = "harmos-storage"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The authoring attributes, on by default the way serde ships its derives. Every
+# trait beneath them is an ordinary public contract, so a crate that turns this
+# off writes the implementations by hand and links no proc-macro chain at all.
+version = { workspace = true }
+
+# === Package Targets ===
+
+# === Features ===
+
+[features]
+default = []
+grpc = ["harmos-domain/grpc"]
+fft = ["dep:rustfft"]
+
+# === Dependencies ===
+
+[dependencies]
+# Local
+harmos-domain = { workspace = true }
+
+# Error Handling
+thiserror = { workspace = true, default-features = true }
+
+# Logging
+tracing = { workspace = true, default-features = true }
+
+# Utilities
+sha2 = { workspace = true, default-features = true }
+rustfft = { workspace = true, default-features = true, optional = true }
+
+# Serialization
+arrow-array = { workspace = true }
+arrow-buffer = { workspace = true }
+arrow-data = { workspace = true }
+arrow-ipc = { workspace = true }
+arrow-schema = { workspace = true }
+arrow-select = { workspace = true }
+base64 = { workspace = true }
+flatbuffers = { workspace = true }
+postcard = { workspace = true }
+serde = { workspace = true, default-features = true }
+serde_json = { workspace = true, default-features = true }
+
+# Filesystem
+tempfile = { workspace = true, default-features = true }
+
+# Async
+tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
+
+# === Build Dependencies ===
+
+# === Dev Dependencies ===
+
+[dev-dependencies]
+
+# === Target Dependencies ===
+
+# === Test Targets ===
+
+[[test]]
+name = "signal"
+path = "tests-signal/waveform/main.rs"
+
+# === Bench Targets ===
+
+# === Example Targets ===
+
+# === Workspace Lints ===
+
+# === Lints ===
+
+[lints]
+workspace = true
+
+# === Profiles ===
+
+# === Patches ===
+
+# === Other ===

@@ -16,7 +16,7 @@
 /* === Imports === */
 use crate::operations::{Context, Operation, OperationDeclaration, StreamOutput};
 use crate::storage::StorageManager;
-use crate::storage::config::IO_TIMEOUT;
+use super::IO_TIMEOUT;
 use crate::storage::query::{QueryCompletion, QueryOutput};
 use crate::{Error, MemorySize, Result};
 use harmos_domain::operations::storage::Query;

@@ -8,7 +8,7 @@
  */
 
 /* === Modules === */
-mod aggregate;
+pub(crate) use harmos_storage::aggregate;
 pub mod builtin;
 pub mod config;
 mod error;

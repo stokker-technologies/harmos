@@ -18,8 +18,7 @@ use std::collections::VecDeque;
 // Local Imports
 use crate::operations::{Context, StreamInput, StreamOutput};
 use crate::storage::StorageManager;
-use crate::storage::arrow::ArrowBatch;
-use crate::storage::writes::{BatchReceipt, DataBatch, WriteCompletion, WriteReceipt};
+use crate::storage::writes::{BatchReceipt, DataBatch, DecodedBatch, WriteCompletion, WriteReceipt};
 use crate::{Error, MemorySize, Result};
 
 /* === Constants === */
@@ -29,13 +28,6 @@ use crate::{Error, MemorySize, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
-// A Write Batch Whose Arrow IPC Data Has Been Decoded For Admission.
-pub(crate) struct DecodedBatch {
-    pub(crate) destination: crate::Identifier,
-    pub(crate) schema: crate::storage::SchemaKey,
-    pub(crate) data: ArrowBatch,
-}
-
 /* === Enums === */
 #[derive(Clone, Copy)]
 pub(crate) enum WriteKind {
@@ -47,37 +39,6 @@ pub(crate) enum WriteKind {
 /* === Traits === */
 
 /* === Implementations === */
-impl DecodedBatch {
-    fn of(batch: &DataBatch) -> Result<Self> {
-        Ok(Self {
-            data: ArrowBatch::from_ipc(batch.data.bytes())?,
-            destination: batch.destination.clone(),
-            schema: batch.schema.clone(),
-        })
-    }
-}
-
-impl MemorySize for DecodedBatch {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            .saturating_add(
-                self.destination
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(&self.destination)),
-            )
-            .saturating_add(
-                self.schema
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(&self.schema)),
-            )
-            .saturating_add(
-                self.data
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(&self.data)),
-            )
-    }
-}
-
 /* === Public Functions === */
 
 /* === Private Functions === */

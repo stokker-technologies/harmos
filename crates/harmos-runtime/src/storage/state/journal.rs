@@ -51,7 +51,7 @@ impl<C> StorageManager<C> {
             for entry in group.entries.iter().filter(|e| e.kind == Kind::Record) {
                 projection.handler.project(entry, &mut records).await?;
             }
-            records.check(self.inner.settings.max_batch_bytes())?;
+            records.check(self.settings().max_batch_bytes())?;
         }
         permit.encode(group)?;
         Ok(permit)

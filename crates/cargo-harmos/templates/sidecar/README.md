@@ -6,6 +6,7 @@ A Harmos sidecar plugin exposing `__PACKAGE_NAME__.greet` from its request type.
 ```sh
 mise install
 mise run prepare
+cargo generate-lockfile
 mise run check
 mise run build
 mise run test:unit

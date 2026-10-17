@@ -89,6 +89,7 @@ plugin-guest = [
 ]
 grpc = [
   "harmos-sdk/grpc",
+  "harmos-storage/grpc",
   "bindings-proto",
   "dep:tonic-reflection",
   "dep:http-body",
@@ -105,7 +106,7 @@ grpc = [
 bindings-proto = ["dep:harmos-packaging", "harmos-packaging/bindings-proto"]
 # Hands Out The Signal Kernels; Core Reductions Use Them Regardless.
 signal = []
-signal-fft = ["signal", "harmos-signal/fft"]
+signal-fft = ["signal", "harmos-storage/fft"]
 simulation = ["tokio/test-util"]
 
 # === Dependencies ===
@@ -117,7 +118,7 @@ harmos-packaging = { workspace = true, optional = true }
 harmos-domain = { workspace = true, features = ["derive"] }
 harmos-guest = { workspace = true, optional = true }
 harmos-macros = { workspace = true, default-features = true }
-harmos-signal = { workspace = true, default-features = false }
+harmos-storage = { workspace = true }
 
 # Git
 
@@ -137,14 +138,6 @@ semver = { workspace = true, default-features = true, optional = true }
 sha2 = { workspace = true, default-features = true }
 
 # Serialization
-arrow-array = { workspace = true }
-arrow-buffer = { workspace = true }
-arrow-data = { workspace = true }
-arrow-ipc = { workspace = true }
-arrow-schema = { workspace = true }
-arrow-select = { workspace = true }
-base64 = { workspace = true }
-flatbuffers = { workspace = true }
 postcard = { workspace = true }
 prost-reflect = { workspace = true, optional = true, features = ["serde"] }
 serde = { workspace = true, default-features = true }
@@ -203,6 +196,14 @@ tracing-subscriber = { workspace = true }
 # Utilities
 
 # Serialization
+arrow-array = { workspace = true }
+arrow-buffer = { workspace = true }
+arrow-data = { workspace = true }
+arrow-ipc = { workspace = true }
+arrow-schema = { workspace = true }
+arrow-select = { workspace = true }
+base64 = { workspace = true }
+flatbuffers = { workspace = true }
 protoc-bin-vendored = { workspace = true }
 
 # Configuration

@@ -69,7 +69,7 @@ impl<C: 'static> Operation for Handler<C> {
         let result: ::core::result::Result<FileReference, Self::Error> = async move {
             self.storage
                 .finish_file_once(&request.mutation, &request.session)
-                .await
+                .await.map_err(Into::into)
         }
         .await;
         result.map(::core::convert::Into::into)
