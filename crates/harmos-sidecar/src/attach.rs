@@ -404,30 +404,12 @@ impl Attach for Executable {
     }
 
     async fn attach(&self) -> Result<Attached, Error> {
-        let mut command = Command::new(&self.program);
-        command
-            .args(&self.arguments)
-            .env_clear()
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true);
-        #[cfg(windows)]
-        {
-            command.creation_flags(CREATE_NO_WINDOW);
-            command.env("SystemRoot", system_root()?);
-            let temporary = std::env::temp_dir();
-            command.env("TMP", &temporary).env("TEMP", &temporary);
-        }
-        if !cfg!(windows)
-            && let Some(tmpdir) = std::env::var_os("TMPDIR").filter(|value| !value.is_empty())
-        {
-            command.env("TMPDIR", tmpdir);
-        }
-        command.envs(self.environment.iter().cloned());
-        if let Some(directory) = &self.directory {
-            command.current_dir(directory);
-        }
+        let mut command = command(
+            &self.program,
+            &self.arguments,
+            self.directory.as_deref(),
+            &self.environment,
+        )?;
 
         #[cfg(any(unix, windows))]
         let control = control::prepare(&mut command)?;
@@ -465,6 +447,40 @@ impl Attach for Executable {
 /* === Public Functions === */
 
 /* === Private Functions === */
+fn command(
+    program: &Path,
+    arguments: &[OsString],
+    directory: Option<&Path>,
+    environment: &[(OsString, OsString)],
+) -> Result<Command, Error> {
+    let mut command = Command::new(program);
+    command
+        .args(arguments)
+        .env_clear()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    #[cfg(windows)]
+    {
+        command.creation_flags(CREATE_NO_WINDOW);
+        command.env("SystemRoot", system_root()?);
+        let temporary = std::env::temp_dir();
+        command.env("TMP", &temporary).env("TEMP", &temporary);
+    }
+    if !cfg!(windows)
+        && let Some(tmpdir) = std::env::var_os("TMPDIR").filter(|value| !value.is_empty())
+    {
+        command.env("TMPDIR", tmpdir);
+    }
+    command.envs(environment.iter().cloned());
+    if let Some(directory) = directory {
+        command.current_dir(directory);
+    }
+
+    Ok(command)
+}
+
 #[cfg(windows)]
 fn system_root() -> Result<OsString, Error> {
     use std::os::windows::ffi::OsStringExt;
@@ -493,3 +509,83 @@ fn system_root() -> Result<OsString, Error> {
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const CHILD: &str = "HARMOS_ATTACH_UNIT_CHILD";
+
+    #[test]
+    fn child() {
+        let Some(mode) = std::env::var_os(CHILD) else {
+            return;
+        };
+        match mode.to_str().expect("the private test mode is UTF-8") {
+            "environment" => {
+                assert_eq!(
+                    std::env::var_os("HARMOS_ATTACH_EXPLICIT"),
+                    Some("kept".into())
+                );
+                assert!(std::env::var_os("PATH").is_none());
+                #[cfg(windows)]
+                {
+                    assert!(std::env::var_os("SystemRoot").is_some());
+                    assert!(std::env::var_os("TMP").is_some());
+                    assert!(std::env::var_os("TEMP").is_some());
+                }
+            }
+            "crash" => std::process::exit(17),
+            _ => panic!("unknown private attachment test mode"),
+        }
+    }
+
+    fn spawn(mode: &str) -> Child {
+        let arguments = ["--exact", "attach::tests::child", "--nocapture"].map(OsString::from);
+        let environment = [
+            (CHILD.into(), mode.into()),
+            ("HARMOS_ATTACH_EXPLICIT".into(), "kept".into()),
+        ];
+        command(&std::env::current_exe().unwrap(), &arguments, None, &environment)
+            .unwrap()
+            .spawn()
+            .unwrap()
+    }
+
+    #[test]
+    fn command_clears_ambient_environment_and_preserves_explicit_values() {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+            let output = spawn("environment").wait_with_output().await.unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed"));
+        });
+    }
+
+    #[test]
+    fn owned_crashed_child_settles_idempotently() {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+            let mut child = spawn("crash");
+            assert_eq!(child.wait().await.unwrap().code(), Some(17));
+            let mut ending = ProcessEnd {
+                child,
+                signaled: false,
+                completed: false,
+            };
+            ending.settle().await.unwrap();
+            assert!(ending.completed);
+            ending.settle().await.unwrap();
+        });
+    }
+}
