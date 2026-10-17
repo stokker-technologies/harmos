@@ -94,8 +94,8 @@ const STREAM_POLICY: OperationPolicy = OperationPolicy {
 };
 
 const IO_POLICY: OperationPolicy = OperationPolicy {
-    timeout: harmos_contract::operations::UNBOUNDED,
-    attempt_timeout: harmos_contract::operations::UNBOUNDED,
+    timeout: harmos_domain::operations::UNBOUNDED,
+    attempt_timeout: harmos_domain::operations::UNBOUNDED,
     retries: RetryPolicy::Never,
     restart: RestartPolicy::Never,
 };

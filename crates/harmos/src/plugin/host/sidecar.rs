@@ -89,7 +89,7 @@ impl<A: Application> PluginHost<A> {
         definition.requires = settings.plugin.requires.clone();
         let declarations =
             Declarations::of::<C>().map_err(|source| failed(&definition.id, source))?;
-        harmos_contract::inventory::operations::validate_match(
+        harmos_domain::inventory::operations::validate_match(
             &declarations,
             &definition.contributions.operations,
         )

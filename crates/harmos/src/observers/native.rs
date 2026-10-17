@@ -82,7 +82,7 @@ where
                 .streams()
                 .iter()
                 .map(|entry| {
-                    Ok(harmos_contract::inventory::StreamDeclaration {
+                    Ok(harmos_domain::inventory::StreamDeclaration {
                         id: entry.id.to_owned(),
                         metadata: entry.metadata(),
                         row_metadata: entry.row_metadata(),

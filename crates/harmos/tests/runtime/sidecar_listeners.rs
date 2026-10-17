@@ -26,7 +26,7 @@ use harmos::operations::{
     Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility,
     WireOperation, WireTable,
 };
-use harmos_contract::listeners::{Context as DeliveryContext, Delivery};
+use harmos_domain::listeners::{Context as DeliveryContext, Delivery};
 use harmos_sidecar::{Refusal, Supervisor};
 
 /* === Constants === */

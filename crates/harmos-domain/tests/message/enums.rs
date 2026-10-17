@@ -12,16 +12,16 @@
 /* === Modules === */
 // The Deployed Schema Knows Two Modes
 mod known {
-    use harmos_contract::message;
+    use harmos_domain::message;
 
-    #[message(harmos_path = ::harmos_contract)]
+    #[message(harmos_path = ::harmos_domain)]
     #[derive(Clone, Debug, PartialEq)]
     pub enum Mode {
         Automatic,
         Manual,
     }
 
-    #[message(harmos_path = ::harmos_contract)]
+    #[message(harmos_path = ::harmos_domain)]
     #[derive(Clone, Debug, Default, PartialEq)]
     pub enum Preferred {
         Automatic,
@@ -29,21 +29,21 @@ mod known {
         Manual,
     }
 
-    #[message(harmos_path = ::harmos_contract)]
+    #[message(harmos_path = ::harmos_domain)]
     #[derive(Clone, Debug, PartialEq)]
     pub struct Run {
         pub id: u32,
         pub mode: Mode,
     }
 
-    #[message(harmos_path = ::harmos_contract)]
+    #[message(harmos_path = ::harmos_domain)]
     #[derive(Clone, Debug, PartialEq)]
     pub struct Boxed {
         pub id: u32,
         pub mode: Box<Mode>,
     }
 
-    #[message(harmos_path = ::harmos_contract)]
+    #[message(harmos_path = ::harmos_domain)]
     #[derive(Clone, Debug, PartialEq)]
     pub enum Wrapped {
         Hold(Box<Mode>),
@@ -52,9 +52,9 @@ mod known {
 
 // A Newer Client Adds A Third Mode Under The Same Names
 mod newer {
-    use harmos_contract::message;
+    use harmos_domain::message;
 
-    #[message(harmos_path = ::harmos_contract)]
+    #[message(harmos_path = ::harmos_domain)]
     #[derive(Clone, Debug, PartialEq)]
     pub enum Mode {
         Automatic,
@@ -62,21 +62,21 @@ mod newer {
         Remote,
     }
 
-    #[message(harmos_path = ::harmos_contract)]
+    #[message(harmos_path = ::harmos_domain)]
     #[derive(Clone, Debug, PartialEq)]
     pub struct Run {
         pub id: u32,
         pub mode: Mode,
     }
 
-    #[message(harmos_path = ::harmos_contract)]
+    #[message(harmos_path = ::harmos_domain)]
     #[derive(Clone, Debug, PartialEq)]
     pub enum Wrapped {
         Hold(Box<Mode>),
     }
 
     // Omits The Mode Field Entirely
-    #[message(harmos_path = ::harmos_contract)]
+    #[message(harmos_path = ::harmos_domain)]
     #[derive(Clone, Debug, PartialEq)]
     pub struct Bare {
         pub id: u32,
@@ -92,7 +92,7 @@ use std::fmt::Debug;
 
 // Local Imports
 use crate::scenario_runtime;
-use harmos_contract::{Message, Protobuf};
+use harmos_domain::{Message, Protobuf};
 
 /* === Constants === */
 

@@ -74,8 +74,8 @@ pub use grpc::GrpcBinding;
 #[cfg(feature = "grpc")]
 pub use grpc::GrpcMethod;
 #[cfg(feature = "grpc")]
-pub use harmos_contract::operations::GrpcVisitor;
-pub use harmos_contract::operations::{
+pub use harmos_domain::operations::GrpcVisitor;
+pub use harmos_domain::operations::{
     AuthoredContracts, AuthoredDeclarations, Backoff, CHILD_METHOD, CacheKey, CacheKeyError,
     CallValue, Codec, ContextError, ContextValue, Contract, ContractError, Contracts, Declarations,
     Declares, Definition, Entry, FailureKind, Grpc, InputDeclaration, Jitter, MAX_CACHE_KEY_BYTES,
@@ -85,7 +85,7 @@ pub use harmos_contract::operations::{
     WireChildControl, WireCodecError, WireCommand, WireDeclaration, WireEndpoints, WireOperation,
     WireStreamLimits, WireStreams, WireTable,
 };
-pub use harmos_contract::operations::{CallContext, Callable, Host, Instance, Response, instance};
+pub use harmos_domain::operations::{CallContext, Callable, Host, Instance, Response, instance};
 pub use lane::{Capacity, Lane, LaneSet};
 #[cfg(any(
     feature = "plugin-sidecar",
@@ -98,8 +98,8 @@ pub use crate::config::OperationSettings as Settings;
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 pub use component::{Component, ComponentBindings, ComponentError, ComponentOperation};
 pub use handler::{Context, OperationGeneration, OperationInstance, OperationInstanceId};
-pub use harmos_contract::observers;
-pub use harmos_contract::operations::{
+pub use harmos_domain::observers;
+pub use harmos_domain::operations::{
     EndpointSet, InputEndpoint, OutputEndpoint, WireVisitor, host, lifecycle,
 };
 pub use manager::OperationManager;

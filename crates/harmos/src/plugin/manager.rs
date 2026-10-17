@@ -211,7 +211,7 @@ impl PluginLifecycleAuthority<'_> {
         self.backend_kind
     }
 
-    pub fn declaration(&self) -> Option<&harmos_contract::operations::lifecycle::Descriptor> {
+    pub fn declaration(&self) -> Option<&harmos_domain::operations::lifecycle::Descriptor> {
         let pair = self.scope.lifecycle()?;
         Some(match self.phase {
             PluginLifecyclePhase::Initialize => &pair[0],
@@ -1126,7 +1126,7 @@ impl<G: Send + 'static, S: Send + 'static, E: Send + 'static> PluginManager<G, S
                         id.clone(),
                         format!(
                             "plugin cleanup: {}",
-                            harmos_contract::failure::Report(source.as_ref())
+                            harmos_domain::failure::Report(source.as_ref())
                         ),
                     );
                     self.failed.insert(id.clone());

@@ -87,7 +87,7 @@ enum Body<'a> {
     },
     Refusal {
         id: u64,
-        refusal: std::borrow::Cow<'a, harmos_contract::Refusal>,
+        refusal: std::borrow::Cow<'a, harmos_domain::Refusal>,
     },
     Credit {
         consumed: u64,

@@ -10,7 +10,7 @@
 /* === Modules === */
 
 /* === Re-Exports === */
-pub use harmos_contract::inventory::contracts::Required;
+pub use harmos_domain::inventory::contracts::Required;
 
 /* === Imports === */
 // Standard Library Imports

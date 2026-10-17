@@ -26,18 +26,18 @@ mod wire;
 #[cfg(feature = "transport")]
 pub use attach::{Attach, Attached, Executable, ExecutableError};
 pub use error::{Error, Result};
-pub use harmos_contract::inventory;
-pub use harmos_contract::operations::Host;
-pub use harmos_contract::operations::{
+pub use harmos_domain::inventory;
+pub use harmos_domain::operations::Host;
+pub use harmos_domain::operations::{
     CacheKey, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy,
 };
-pub use harmos_contract::{
+pub use harmos_domain::{
     ConfigError, Failure, Plugin, RESERVED, Refusal, Registrar, Registration, RegistrationError,
     StreamSpec, UNKNOWN, UNREADABLE, encode_config, reserved, validate_config,
 };
-pub use harmos_contract::{builtin, catalog, failure, listeners, operations};
+pub use harmos_domain::{builtin, catalog, failure, listeners, operations};
 
-pub use harmos_contract::StreamDeclaration;
+pub use harmos_domain::StreamDeclaration;
 #[cfg(feature = "kit")]
 pub use kit::{
     Activation, ActivationId, Activity, CATALOG_EXPORT_FLAG, CATALOG_EXPORT_LIMIT, CallError,
@@ -51,16 +51,16 @@ pub use kit::{
 pub use wire::{Frame, PluginCatalog, Publication};
 
 #[cfg(feature = "derive")]
-pub use harmos_contract::observer;
-pub use harmos_contract::plugin;
-pub use harmos_contract::schema;
-pub use harmos_contract::streams;
-pub use harmos_contract::{
+pub use harmos_domain::observer;
+pub use harmos_domain::plugin;
+pub use harmos_domain::schema;
+pub use harmos_domain::streams;
+pub use harmos_domain::{
     Axial, Batched, Definition, Metadata, Prefix, StreamField, Track, Tracked,
 };
-pub use harmos_contract::{MemorySize, Message, MessageError, RowMetadata, Storable};
+pub use harmos_domain::{MemorySize, Message, MessageError, RowMetadata, Storable};
 #[cfg(feature = "derive")]
-pub use harmos_contract::{listener, message, operation, stream};
+pub use harmos_domain::{listener, message, operation, stream};
 
 #[cfg(feature = "kit")]
 pub use kit::__private;
@@ -86,7 +86,7 @@ pub use kit::__private;
 
 /* === Implementations === */
 #[cfg(feature = "kit")]
-impl harmos_contract::__private::CarrierContext for Supervisor {
+impl harmos_domain::__private::CarrierContext for Supervisor {
     const FACILITY: &'static str = "sidecar";
 }
 

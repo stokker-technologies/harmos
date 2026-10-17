@@ -28,7 +28,7 @@ use crate::{
     Application, Error, Message, Result, state::CatalogCodec, state::Position, state::Record,
     state::RecordProjection, state::Recorded,
 };
-use harmos_contract::listeners::{Context, Delivery, Source};
+use harmos_domain::listeners::{Context, Delivery, Source};
 
 /* === Constants === */
 const PAGE_ROWS: usize = 64;
@@ -253,7 +253,7 @@ impl<A: Application> PluginListenerBindings<'_, A> {
             }
             let graph = crate::schema::graph::Schema::from_declaration(
                 R::DEFINITION,
-                &harmos_contract::config::SchemaSettings::default(),
+                &harmos_domain::config::SchemaSettings::default(),
             )
             .map_err(|source| Error::RecordSchema {
                 source: source.into(),
@@ -264,7 +264,7 @@ impl<A: Application> PluginListenerBindings<'_, A> {
                     graph.root,
                     source_graph,
                     source_graph.root,
-                    &harmos_contract::config::SchemaSettings::default(),
+                    &harmos_domain::config::SchemaSettings::default(),
                 )
                 .map_err(|source| Error::RecordSchema {
                     source: source.into(),

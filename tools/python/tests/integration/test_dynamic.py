@@ -211,7 +211,7 @@ def _projector() -> Callable[..., Any]:
     if name not in sys.modules:
         package = types.ModuleType(name)
         package.__dict__["__path__"] = [
-            str(ROOT / "crates/harmos-contract/src/bindings/python")
+            str(ROOT / "crates/harmos-domain/src/bindings/python")
         ]
         sys.modules[name] = package
     return importlib.import_module(name + ".dynamic").from_contract

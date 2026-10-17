@@ -29,7 +29,7 @@ pub use list_directories::ListDirectories;
 /* === Structs === */
 
 /* === Enums === */
-#[harmos_contract::catalog]
+#[harmos_domain::catalog]
 pub enum Operations {
     #[nested]
     Shared(crate::operations::Operations),

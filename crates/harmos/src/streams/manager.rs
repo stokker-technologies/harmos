@@ -22,7 +22,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 // Third Party Imports
-use harmos_contract::Aggregate;
+use harmos_domain::Aggregate;
 use tokio::sync::watch;
 // Local Imports
 use super::window::Window;

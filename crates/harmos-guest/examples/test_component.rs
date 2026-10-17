@@ -22,15 +22,15 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 // Local Imports
 use contract::{Heard, Metrics, NOTE, Note, POLICY, Progress};
-use harmos_contract::catalog::Node;
-use harmos_contract::inventory::{contracts, listeners, observers, publications};
-use harmos_contract::operations::{
+use harmos_domain::catalog::Node;
+use harmos_domain::inventory::{contracts, listeners, observers, publications};
+use harmos_domain::operations::{
     Operation, OperationDeclaration, OperationPolicy, ServingError, WireDeclaration, WireTable,
     host, lifecycle,
 };
-use harmos_contract::plugin::{Declared, Grant, Plugin, Requirement};
-use harmos_contract::schema::Described;
-use harmos_contract::{Refusal, StreamSpec, listeners::Delivery};
+use harmos_domain::plugin::{Declared, Grant, Plugin, Requirement};
+use harmos_domain::schema::Described;
+use harmos_domain::{Refusal, StreamSpec, listeners::Delivery};
 use harmos_guest::Context;
 use harmos_guest::Host;
 
@@ -68,17 +68,17 @@ const STREAMS: &[publications::Entry] = &[
         row_metadata_json: "[]",
     },
 ];
-const LISTENERS: &[Node<harmos_contract::listeners::Entry>] =
-    &[Node::Leaf(harmos_contract::listeners::Entry {
+const LISTENERS: &[Node<harmos_domain::listeners::Entry>] =
+    &[Node::Leaf(harmos_domain::listeners::Entry {
         id: "fixture.notes",
-        source: harmos_contract::listeners::SourceDeclaration::Record {
+        source: harmos_domain::listeners::SourceDeclaration::Record {
             id: NOTE,
             version: 1,
             row: Note::DEFINITION,
         },
         callback: WireDeclaration::of::<Heard>(),
     })];
-const SDK: [harmos_contract::operations::OperationPolicy; 2] = [POLICY, POLICY];
+const SDK: [harmos_domain::operations::OperationPolicy; 2] = [POLICY, POLICY];
 
 #[used]
 static IDENTITY: [u8; contracts::identity_len(
@@ -398,12 +398,12 @@ impl Declared for TestComponent {
     const DESCRIPTION: &'static str = "Guest host-call and lifecycle fixture.";
     const PROVIDES: &'static [Node<WireDeclaration>] = PROVIDED;
     const REQUIRES: &'static [Node<Requirement>] = REQUIRED;
-    const LISTENERS: &'static [Node<harmos_contract::listeners::Entry>] = LISTENERS;
+    const LISTENERS: &'static [Node<harmos_domain::listeners::Entry>] = LISTENERS;
     const STREAMS: &'static [publications::Entry] = STREAMS;
-    fn markers() -> Result<Vec<&'static [u8]>, harmos_contract::schema::graph::Error> {
-        harmos_contract::plugin::schema_markers::<Self>(
+    fn markers() -> Result<Vec<&'static [u8]>, harmos_domain::schema::graph::Error> {
+        harmos_domain::plugin::schema_markers::<Self>(
             vec![&IDENTITY, &CONTRACTS, &PUBLICATIONS, &AUDIENCE, &OBSERVERS],
-            &harmos_contract::config::SchemaSettings::default(),
+            &harmos_domain::config::SchemaSettings::default(),
         )
     }
 }

@@ -23,11 +23,11 @@ use std::num::NonZeroUsize;
 
 // Local Imports
 use crate::scenario_runtime;
-use harmos_contract::config::SchemaSettings;
-use harmos_contract::schema::Cardinality;
-use harmos_contract::schema::Described;
-use harmos_contract::schema::declaration::{self, Definition};
-use harmos_contract::schema::graph::{Error, Field, Kind, Schema};
+use harmos_domain::config::SchemaSettings;
+use harmos_domain::schema::Cardinality;
+use harmos_domain::schema::Described;
+use harmos_domain::schema::declaration::{self, Definition};
+use harmos_domain::schema::graph::{Error, Field, Kind, Schema};
 
 /* === Constants === */
 // Complete Dokime CheckpointDocument Declaration, Source SHA-256:
@@ -45,7 +45,7 @@ struct RecursiveDeclaration;
 
 /* === Traits === */
 /* === Implementations === */
-impl harmos_contract::schema::Described for RecursiveDeclaration {
+impl harmos_domain::schema::Described for RecursiveDeclaration {
     const NAME: &'static str = "recursive.test";
     const FIELDS: &'static [Field<Definition>] = &[Field {
         name: Cow::Borrowed("children"),
@@ -93,7 +93,7 @@ pub fn check() {
         assert_eq!(prepared.fields, 1);
         wire_round_trip(&schema);
         let validator =
-            harmos_contract::schema::Validator::from_schema(&schema, &SchemaSettings::default())
+            harmos_domain::schema::Validator::from_schema(&schema, &SchemaSettings::default())
                 .unwrap();
         validator.validate(&[1, 1, 0]).unwrap();
         let combined = Schema::from_declarations(
@@ -120,7 +120,7 @@ pub fn check() {
             unreachable!()
         };
         let prepared =
-            harmos_contract::schema::Validator::from_schema(&combined, &SchemaSettings::default())
+            harmos_domain::schema::Validator::from_schema(&combined, &SchemaSettings::default())
                 .unwrap();
         prepared
             .at(definition)
@@ -128,14 +128,14 @@ pub fn check() {
             .validate(&[1, 1, 0])
             .unwrap();
         assert!(prepared.at(combined.definitions.len()).is_err());
-        let protobuf = harmos_contract::schema::ProtobufValidator::from_schema(
+        let protobuf = harmos_domain::schema::ProtobufValidator::from_schema(
             &combined,
             &SchemaSettings::default(),
         )
         .unwrap();
         protobuf.at(definition).unwrap().validate(&[10, 0]).unwrap();
         assert!(protobuf.at(combined.definitions.len()).is_err());
-        let descriptor = harmos_contract::schema::reflection::descriptor_root(
+        let descriptor = harmos_domain::schema::reflection::descriptor_root(
             &combined,
             definition,
             "harmos.direction",
@@ -153,7 +153,7 @@ pub fn check() {
             ..SchemaSettings::default()
         };
         assert!(
-            harmos_contract::schema::reflection::descriptor_root(
+            harmos_domain::schema::reflection::descriptor_root(
                 &combined,
                 definition,
                 "harmos.direction",
@@ -165,7 +165,7 @@ pub fn check() {
         let markers = declaration::markers(root, &SchemaSettings::default()).unwrap();
         assert_eq!(markers.len(), 1);
         assert_eq!(markers[0], RecursiveDeclaration::MARKER);
-        let body = &markers[0][harmos_contract::PREFIX.len()..markers[0].len() - 1];
+        let body = &markers[0][harmos_domain::PREFIX.len()..markers[0].len() - 1];
         let data: serde_json::Value = serde_json::from_slice(body).unwrap();
         assert_eq!(
             data["fields"][0]["kind"]["definition"],
@@ -309,7 +309,7 @@ pub fn check() {
         assert_eq!(resolved_preparation.definitions, 164);
         assert_eq!(resolved_preparation.fields, 607);
         assert!(
-            harmos_contract::schema::reflection::descriptor_schema(
+            harmos_domain::schema::reflection::descriptor_schema(
                 &resolved,
                 "checkpoint",
                 &SchemaSettings::default()
@@ -330,16 +330,16 @@ pub fn check() {
         assert_eq!(preparation.fields, 607);
         assert!(preparation.bytes < 128 * 1024);
         let validator =
-            harmos_contract::schema::Validator::from_schema(&schema, &SchemaSettings::default())
+            harmos_domain::schema::Validator::from_schema(&schema, &SchemaSettings::default())
                 .unwrap();
-        assert!(harmos_contract::MemorySize::memory_size(&validator) < 64 * 1024);
-        let protobuf = harmos_contract::schema::ProtobufValidator::from_schema(
+        assert!(harmos_domain::MemorySize::memory_size(&validator) < 64 * 1024);
+        let protobuf = harmos_domain::schema::ProtobufValidator::from_schema(
             &schema,
             &SchemaSettings::default(),
         )
         .unwrap();
-        assert!(harmos_contract::MemorySize::memory_size(&protobuf) < 32 * 1024);
-        let descriptor = harmos_contract::schema::reflection::descriptor_schema(
+        assert!(harmos_domain::MemorySize::memory_size(&protobuf) < 32 * 1024);
+        let descriptor = harmos_domain::schema::reflection::descriptor_schema(
             &schema,
             "dokime.checkpoint",
             &SchemaSettings::default(),
@@ -401,7 +401,7 @@ pub fn check() {
             6000
         );
         let validator =
-            harmos_contract::schema::Validator::from_schema(&restored, &SchemaSettings::default())
+            harmos_domain::schema::Validator::from_schema(&restored, &SchemaSettings::default())
                 .unwrap();
         validator.validate(&vec![0; 6000]).unwrap();
     });
@@ -424,9 +424,9 @@ pub fn check() {
         assert_eq!(prepared.definitions, 1);
         assert_eq!(prepared.fields, 1);
         let validator =
-            harmos_contract::schema::Validator::from_schema(&schema, &SchemaSettings::default())
+            harmos_domain::schema::Validator::from_schema(&schema, &SchemaSettings::default())
                 .unwrap();
-        let protobuf = harmos_contract::schema::ProtobufValidator::from_schema(
+        let protobuf = harmos_domain::schema::ProtobufValidator::from_schema(
             &schema,
             &SchemaSettings::default(),
         )
@@ -448,7 +448,7 @@ pub fn check() {
         }
         assert!(matches!(
             protobuf.validate(&payload),
-            Err(harmos_contract::schema::ProtobufPayloadError::Depth)
+            Err(harmos_domain::schema::ProtobufPayloadError::Depth)
         ));
         validator.validate(&[0]).unwrap();
         validator.validate(&[1, 1, 0]).unwrap();
@@ -456,7 +456,7 @@ pub fn check() {
         let mut nested = vec![1; 64];
         nested.push(0);
         assert!(validator.validate(&nested).is_err());
-        let descriptor = harmos_contract::schema::reflection::descriptor_schema(
+        let descriptor = harmos_domain::schema::reflection::descriptor_schema(
             &schema,
             "harmos.recursive",
             &SchemaSettings::default(),
@@ -512,30 +512,24 @@ pub fn check() {
 
 /* === Private Functions === */
 fn wire_round_trip(schema: &Schema) {
-    let postcard = harmos_contract::Message::encode_to_vec(schema);
-    assert_eq!(
-        postcard.len(),
-        harmos_contract::Message::encoded_len(schema)
-    );
+    let postcard = harmos_domain::Message::encode_to_vec(schema);
+    assert_eq!(postcard.len(), harmos_domain::Message::encoded_len(schema));
     assert!(
-        <Schema as harmos_contract::Message>::decoding_memory(&postcard).unwrap()
+        <Schema as harmos_domain::Message>::decoding_memory(&postcard).unwrap()
             >= std::mem::size_of::<Schema>()
     );
     assert_eq!(
-        &<Schema as harmos_contract::Message>::decode(&postcard).unwrap(),
+        &<Schema as harmos_domain::Message>::decode(&postcard).unwrap(),
         schema
     );
-    let protobuf = harmos_contract::Protobuf::encode_to_vec(schema);
-    assert_eq!(
-        protobuf.len(),
-        harmos_contract::Protobuf::encoded_len(schema)
-    );
+    let protobuf = harmos_domain::Protobuf::encode_to_vec(schema);
+    assert_eq!(protobuf.len(), harmos_domain::Protobuf::encoded_len(schema));
     assert!(
-        <Schema as harmos_contract::Protobuf>::decoding_memory(&protobuf).unwrap()
+        <Schema as harmos_domain::Protobuf>::decoding_memory(&protobuf).unwrap()
             >= std::mem::size_of::<Schema>()
     );
     assert_eq!(
-        &<Schema as harmos_contract::Protobuf>::decode(&protobuf).unwrap(),
+        &<Schema as harmos_domain::Protobuf>::decode(&protobuf).unwrap(),
         schema
     );
 }

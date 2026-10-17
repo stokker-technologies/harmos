@@ -477,7 +477,7 @@ impl<C> StorageManager<C> {
         mutation: Option<&crate::storage::MutationId>,
     ) -> Result<StorageCursor> {
         let scratch = schema
-            .validation_memory_bytes(&harmos_contract::config::SchemaSettings::default())
+            .validation_memory_bytes(&harmos_domain::config::SchemaSettings::default())
             .map_err(|_| Error::InvalidInput {
                 field: "storage schema",
                 reason: "invalid message field budget",
@@ -503,7 +503,7 @@ impl<C> StorageManager<C> {
         }
         let scratch = self.reserve_scratch(scratch).await?;
         schema
-            .prepare(&harmos_contract::config::SchemaSettings::default())
+            .prepare(&harmos_domain::config::SchemaSettings::default())
             .map_err(|_| Error::InvalidInput {
                 field: "storage schema",
                 reason: "invalid message fields",
@@ -1010,7 +1010,7 @@ impl<C> StorageManager<C> {
         let scratch = self.reserve_arrow_write(batch).await?;
         let _writer = self.inner.object_writes.lock().await;
         let definition = (self.inner.object_definition)(&batch.schema)?;
-        let graph = definition.graph(&harmos_contract::config::SchemaSettings::default())?;
+        let graph = definition.graph(&harmos_domain::config::SchemaSettings::default())?;
         let values =
             super::writes::convert::objects(batch, &graph, self.inner.settings.max_batch_bytes())?;
         let count = std::num::NonZeroUsize::new(values.len()).ok_or(Error::InvalidInput {

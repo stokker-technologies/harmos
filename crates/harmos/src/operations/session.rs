@@ -29,7 +29,7 @@ use super::{
 use crate::operations::{InputDeclaration, OperationDeclaration, OutputDeclaration};
 use crate::supervision::instance::{Instance, Phase};
 use crate::{Error, Refusal, Result};
-use harmos_contract::MemorySize;
+use harmos_domain::MemorySize;
 
 /* === Constants === */
 

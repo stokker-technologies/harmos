@@ -60,11 +60,11 @@ impl StorageCursor {
     }
 }
 
-harmos_contract::postcard_product!(StoreHistory {
+harmos_domain::postcard_product!(StoreHistory {
     store: Identifier,
     epoch: Identifier
 });
-harmos_contract::postcard_product!(StorageCursor {
+harmos_domain::postcard_product!(StorageCursor {
     history: StoreHistory,
     sequence: u64
 });

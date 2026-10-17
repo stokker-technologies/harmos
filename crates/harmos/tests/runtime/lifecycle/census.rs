@@ -196,7 +196,7 @@ mod probe {
         value
     }
 
-    pub fn declared_sidecar<S: harmos_contract::plugin::Declared>()
+    pub fn declared_sidecar<S: harmos_domain::plugin::Declared>()
     -> (&'static str, &'static str, &'static str) {
         (S::ID, S::VERSION, S::DESCRIPTION)
     }
@@ -315,7 +315,7 @@ mod guest_probe {
         config
     }
 
-    pub fn declared_guest<D: harmos_contract::plugin::Declared>() {}
+    pub fn declared_guest<D: harmos_domain::plugin::Declared>() {}
 
     pub fn calls<O: harmos::guest::operations::OperationDeclaration>(operation: O) -> O {
         operation
@@ -767,7 +767,7 @@ const ALLOWANCE: [(&str, &[&str]); 17] = [
             "futures-util",
             "getrandom",
             "harmos-bundle",
-            "harmos-contract",
+            "harmos-domain",
             "harmos-guest",
             "harmos-macros",
             "harmos-sidecar",
@@ -803,7 +803,7 @@ const ALLOWANCE: [(&str, &[&str]); 17] = [
     (
         "harmos-bundle",
         &[
-            "harmos-contract",
+            "harmos-domain",
             "semver",
             "serde",
             "serde_json",
@@ -815,7 +815,7 @@ const ALLOWANCE: [(&str, &[&str]); 17] = [
         ],
     ),
     (
-        "harmos-contract",
+        "harmos-domain",
         &[
             "harmos-macros",
             "heck",
@@ -858,7 +858,7 @@ const ALLOWANCE: [(&str, &[&str]); 17] = [
     (
         "harmos-guest",
         &[
-            "harmos-contract",
+            "harmos-domain",
             "semver",
             "serde",
             "serde_json",
@@ -908,7 +908,7 @@ const ALLOWANCE: [(&str, &[&str]); 17] = [
             "criterion",
             "futures-util",
             "getrandom",
-            "harmos-contract",
+            "harmos-domain",
             "harmos-macros",
             "libc",
             "postcard",
@@ -959,7 +959,7 @@ const ALLOWANCE: [(&str, &[&str]); 17] = [
         &[
             "clap",
             "harmos",
-            "harmos-contract",
+            "harmos-domain",
             "schematic-app",
             "schematic-contract",
             "tempfile",
@@ -970,12 +970,12 @@ const ALLOWANCE: [(&str, &[&str]); 17] = [
     ),
     (
         "schematic-contract",
-        &["harmos-contract", "serde", "thiserror"],
+        &["harmos-domain", "serde", "thiserror"],
     ),
     (
         "schematic-guest",
         &[
-            "harmos-contract",
+            "harmos-domain",
             "harmos-guest",
             "schematic-contract",
             "serde",
@@ -1354,11 +1354,11 @@ fn contract_facility_gate(path: &str, attribute: &str) -> bool {
     let key: String = attribute.chars().filter(|c| !c.is_whitespace()).collect();
     let owners: &[&str] = match key.as_str() {
         "#[cfg(all(feature=\"grpc\",feature=\"streaming\"))]" => {
-            &["crates/harmos-contract/src/operations/serving/owned.rs"]
+            &["crates/harmos-domain/src/operations/serving/owned.rs"]
         }
         "#[cfg(all(test,feature=\"derive\"))]" => &[
-            "crates/harmos-contract/src/operations/authored.rs",
-            "crates/harmos-contract/src/operations/serving/streams.rs",
+            "crates/harmos-domain/src/operations/authored.rs",
+            "crates/harmos-domain/src/operations/serving/streams.rs",
         ],
         "#[cfg(all(test,feature=\"grpc\"))]" => &["crates/harmos/src/operations/native.rs"],
         "#[cfg(any())]" => &[
@@ -1369,20 +1369,20 @@ fn contract_facility_gate(path: &str, attribute: &str) -> bool {
             &["crates/harmos/src/operations/session.rs"]
         }
         "#[cfg(feature=\"grpc\")]" => &[
-            "crates/harmos-contract/src/builtin.rs",
-            "crates/harmos-contract/src/lib.rs",
-            "crates/harmos-contract/src/message/mod.rs",
-            "crates/harmos-contract/src/operations/contract.rs",
-            "crates/harmos-contract/src/operations/grpc.rs",
-            "crates/harmos-contract/src/operations/host.rs",
-            "crates/harmos-contract/src/operations/host/payloads.rs",
-            "crates/harmos-contract/src/operations/mod.rs",
-            "crates/harmos-contract/src/operations/serving.rs",
-            "crates/harmos-contract/src/operations/serving/owned.rs",
-            "crates/harmos-contract/src/operations/serving/streams.rs",
-            "crates/harmos-contract/src/operations/streaming.rs",
-            "crates/harmos-contract/src/schema.rs",
-            "crates/harmos-contract/src/schema/graph/codec.rs",
+            "crates/harmos-domain/src/builtin.rs",
+            "crates/harmos-domain/src/lib.rs",
+            "crates/harmos-domain/src/message/mod.rs",
+            "crates/harmos-domain/src/operations/contract.rs",
+            "crates/harmos-domain/src/operations/grpc.rs",
+            "crates/harmos-domain/src/operations/host.rs",
+            "crates/harmos-domain/src/operations/host/payloads.rs",
+            "crates/harmos-domain/src/operations/mod.rs",
+            "crates/harmos-domain/src/operations/serving.rs",
+            "crates/harmos-domain/src/operations/serving/owned.rs",
+            "crates/harmos-domain/src/operations/serving/streams.rs",
+            "crates/harmos-domain/src/operations/streaming.rs",
+            "crates/harmos-domain/src/schema.rs",
+            "crates/harmos-domain/src/schema/graph/codec.rs",
             "crates/harmos-guest/examples/operation_component/contract.rs",
             "crates/harmos/src/operations/mod.rs",
             "crates/harmos/src/operations/native.rs",
@@ -1390,29 +1390,29 @@ fn contract_facility_gate(path: &str, attribute: &str) -> bool {
         ],
         // Shared Python Generation Selects Build-Time Export, Never Persistence.
         "#[cfg(feature=\"bindings-python\")]" => &[
-            "crates/harmos-contract/src/lib.rs",
-            "crates/harmos-contract/src/grpc/export.rs",
+            "crates/harmos-domain/src/lib.rs",
+            "crates/harmos-domain/src/grpc/export.rs",
             "crates/harmos/src/lib.rs",
         ],
-        "#[cfg(feature=\"reflection\")]" => &["crates/harmos-contract/src/lib.rs"],
+        "#[cfg(feature=\"reflection\")]" => &["crates/harmos-domain/src/lib.rs"],
         "#[cfg(feature=\"streaming\")]" => &[
-            "crates/harmos-contract/src/config.rs",
-            "crates/harmos-contract/src/operations/mod.rs",
-            "crates/harmos-contract/src/operations/serving.rs",
-            "crates/harmos-contract/src/operations/serving/owned.rs",
-            "crates/harmos-contract/src/operations/serving/protobuf.rs",
+            "crates/harmos-domain/src/config.rs",
+            "crates/harmos-domain/src/operations/mod.rs",
+            "crates/harmos-domain/src/operations/serving.rs",
+            "crates/harmos-domain/src/operations/serving/owned.rs",
+            "crates/harmos-domain/src/operations/serving/protobuf.rs",
         ],
         "#[cfg(not(feature=\"grpc\"))]" => &[
             "crates/harmos/src/lib.rs",
-            "crates/harmos-contract/src/lib.rs",
-            "crates/harmos-contract/src/observers.rs",
-            "crates/harmos-contract/src/operations/serving/owned.rs",
+            "crates/harmos-domain/src/lib.rs",
+            "crates/harmos-domain/src/observers.rs",
+            "crates/harmos-domain/src/operations/serving/owned.rs",
         ],
         "#[cfg(not(feature=\"streaming\"))]" => &[
-            "crates/harmos-contract/src/operations/serving.rs",
-            "crates/harmos-contract/src/operations/serving/protobuf.rs",
+            "crates/harmos-domain/src/operations/serving.rs",
+            "crates/harmos-domain/src/operations/serving/protobuf.rs",
         ],
-        "#[cfg(not(target_arch=\"wasm32\"))]" => &["crates/harmos-contract/src/grpc/export.rs"],
+        "#[cfg(not(target_arch=\"wasm32\"))]" => &["crates/harmos-domain/src/grpc/export.rs"],
         _ => return false,
     };
     owners
@@ -2111,7 +2111,7 @@ fn contract_scenario() {
                         // writes the same implementations by hand. Not a
                         // durability decision by any reading.
                         && !(line == "#[cfg(feature = \"derive\")]"
-                            && (path.ends_with("/crates/harmos-contract/src/lib.rs")
+                            && (path.ends_with("/crates/harmos-domain/src/lib.rs")
                                 || path.ends_with("/crates/harmos-guest/src/lib.rs")
                                 || path.ends_with("/crates/harmos-sidecar/src/lib.rs")))
                         // Series analysis opens a read-only view over saved rows;
@@ -2122,9 +2122,9 @@ fn contract_scenario() {
                         // Reflection selects a standard row decoder; capture and
                         // durable storage still use the same Postcard bytes.
                         && !(line == "#[cfg(feature = \"reflection\")]"
-                            && path.ends_with("/crates/harmos-contract/src/schema.rs"))
+                            && path.ends_with("/crates/harmos-domain/src/schema.rs"))
                         && !(line == "#[cfg(all(test, feature = \"derive\"))]"
-                            && path.ends_with("/crates/harmos-contract/src/schema/reflection.rs"))
+                            && path.ends_with("/crates/harmos-domain/src/schema/reflection.rs"))
                         && !((line == "#[cfg(feature = \"egress\")]"
                             || line == "#[cfg(not(feature = \"egress\"))]")
                             && (path.ends_with("/crates/harmos-guest/src/kit/mod.rs")

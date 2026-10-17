@@ -23,7 +23,7 @@ use super::{
     Owner,
     contract::{Download, Exchange, Upload},
 };
-use harmos_contract::operations::streaming::{StreamInput, StreamOutput, StreamSettings};
+use harmos_domain::operations::streaming::{StreamInput, StreamOutput, StreamSettings};
 use harmos_guest::Context;
 use harmos_guest::operations::{Operation, ServingError, WireStreamLimits, WireTable};
 

@@ -68,7 +68,7 @@ serde_json = { workspace = true, default-features = true }
 
 [build-dependencies]
 # Local
-harmos-contract = { workspace = true, features = ["reflection"] }
+harmos-domain = { workspace = true, features = ["reflection"] }
 schematic-contract = { path = "../contract", features = ["grpc"] }
 
 # Git

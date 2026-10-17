@@ -17,8 +17,8 @@
 // Third Party Imports
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt};
 // Local Imports
-use harmos_contract::Message;
-use harmos_contract::operations::{
+use harmos_domain::Message;
+use harmos_domain::operations::{
     CHILD_METHOD, OperationDeclaration, WIRE_METHOD, WireAnswer, WireChildCall, WireCommand,
 };
 
@@ -69,7 +69,7 @@ pub enum Frame {
     },
     Refusal {
         id: u64,
-        refusal: harmos_contract::Refusal,
+        refusal: harmos_domain::Refusal,
     },
 }
 
@@ -255,7 +255,7 @@ fn answer_encoded_len(id: u64, payload_len: usize) -> usize {
         .saturating_add(binary_bytes_len(payload_len))
 }
 
-fn refusal_encoded_len(id: u64, refusal: &harmos_contract::Refusal) -> usize {
+fn refusal_encoded_len(id: u64, refusal: &harmos_domain::Refusal) -> usize {
     let refusal = postcard::experimental::serialized_size(refusal).unwrap_or(usize::MAX);
     2usize
         .saturating_add(varint_len(id))

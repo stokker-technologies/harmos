@@ -18,7 +18,7 @@ use std::cell::Cell;
 // Third Party Imports
 use prost::encoding::{WireType, encode_key, encode_varint};
 // Local Imports
-use harmos_contract::{MemorySize, MessageError, Protobuf, message, schema::Described};
+use harmos_domain::{MemorySize, MessageError, Protobuf, message, schema::Described};
 
 /* === Constants === */
 
@@ -37,13 +37,13 @@ struct Native {
     payload: Vec<u8>,
 }
 
-#[message(harmos_path = ::harmos_contract)]
+#[message(harmos_path = ::harmos_domain)]
 struct Wire {
     value: u64,
     payload: Vec<u8>,
 }
 
-#[message(harmos_path = ::harmos_contract)]
+#[message(harmos_path = ::harmos_domain)]
 #[derive(PartialEq)]
 struct Required {
     row: Native,
@@ -52,27 +52,27 @@ struct Required {
     label: String,
 }
 
-#[message(harmos_path = ::harmos_contract)]
+#[message(harmos_path = ::harmos_domain)]
 struct Optional {
     row: Option<Native>,
     rows: Vec<Native>,
 }
 
-#[message(skip_debug, harmos_path = ::harmos_contract)]
+#[message(skip_debug, harmos_path = ::harmos_domain)]
 #[derive(PartialEq)]
 struct Secret {
     secrets_json: String,
 }
 
 /* === Enums === */
-#[message(harmos_path = ::harmos_contract)]
+#[message(harmos_path = ::harmos_domain)]
 #[derive(PartialEq)]
 enum Choice {
     Selected { row: Native },
     Empty,
 }
 
-#[message(harmos_path = ::harmos_contract, skip_debug)]
+#[message(harmos_path = ::harmos_domain, skip_debug)]
 #[derive(PartialEq)]
 enum RedactedChoice {
     Selected { row: Native },
@@ -128,16 +128,16 @@ impl Protobuf for Native {
             + prost::encoding::bytes::encoded_len(payload_tag, &self.payload)
     }
     fn decode(bytes: &[u8]) -> Result<Self> {
-        Self::decode_input(harmos_contract::__private::DecodeInput::new(bytes))
+        Self::decode_input(harmos_domain::__private::DecodeInput::new(bytes))
     }
     fn decoding_memory(bytes: &[u8]) -> Result<usize> {
-        Self::decoding_memory_input(harmos_contract::__private::DecodeInput::new(bytes))
+        Self::decoding_memory_input(harmos_domain::__private::DecodeInput::new(bytes))
     }
-    fn decoding_memory_input(input: harmos_contract::__private::DecodeInput<'_>) -> Result<usize> {
+    fn decoding_memory_input(input: harmos_domain::__private::DecodeInput<'_>) -> Result<usize> {
         let wire = Wire::decoding_memory_input(input)?;
-        harmos_contract::__private::decoding_add(std::mem::size_of::<Self>(), wire)
+        harmos_domain::__private::decoding_add(std::mem::size_of::<Self>(), wire)
     }
-    fn decode_input(input: harmos_contract::__private::DecodeInput<'_>) -> Result<Self> {
+    fn decode_input(input: harmos_domain::__private::DecodeInput<'_>) -> Result<Self> {
         let wire = Wire::decode_input(input)?;
         if wire.value == 0 || wire.payload.is_empty() {
             return Err(MessageError::borrowed(
@@ -151,7 +151,7 @@ impl Protobuf for Native {
     }
 }
 
-harmos_contract::postcard_product!(Native { value: u64, payload: Vec<u8> }, validate = |value: &Native| {
+harmos_domain::postcard_product!(Native { value: u64, payload: Vec<u8> }, validate = |value: &Native| {
     if value.value == 0 || value.payload.is_empty() {
         return Err(MessageError::borrowed("native value and payload must be present"));
     }
@@ -166,9 +166,9 @@ impl MemorySize for Native {
 
 impl Described for Native {
     const NAME: &'static str = concat!(module_path!(), "::", stringify!(Native));
-    const FIELDS: &'static [harmos_contract::schema::Field] = Wire::FIELDS;
-    const MARKER: &'static [u8] = &harmos_contract::schema::declaration::encode::<
-        { harmos_contract::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    const FIELDS: &'static [harmos_domain::schema::Field] = Wire::FIELDS;
+    const MARKER: &'static [u8] = &harmos_domain::schema::declaration::encode::<
+        { harmos_domain::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
     >(Self::NAME, Self::FIELDS);
 }
 
@@ -323,13 +323,13 @@ fn contract_scenario() {
             let redacted = RedactedChoice::decode(&bytes).unwrap();
             assert_eq!(format!("{redacted:?}"), "RedactedChoice([REDACTED])");
             assert_eq!(redacted.encode_to_vec(), bytes);
-            let settings = harmos_contract::config::SchemaSettings::default();
-            let redacted_schema = harmos_contract::schema::graph::Schema::from_declaration(
+            let settings = harmos_domain::config::SchemaSettings::default();
+            let redacted_schema = harmos_domain::schema::graph::Schema::from_declaration(
                 RedactedChoice::DEFINITION,
                 &settings,
             )
             .unwrap();
-            let original_schema = harmos_contract::schema::graph::Schema::from_declaration(
+            let original_schema = harmos_domain::schema::graph::Schema::from_declaration(
                 Choice::DEFINITION,
                 &settings,
             )
@@ -355,17 +355,17 @@ fn contract_scenario() {
                 rows: vec![native(9)],
                 label: "postcard".into(),
             };
-            let encoded = harmos_contract::Message::encode_to_vec(&value);
-            let bound = <Required as harmos_contract::Message>::decoding_memory(&encoded).unwrap();
-            let decoded = <Required as harmos_contract::Message>::decode(&encoded).unwrap();
+            let encoded = harmos_domain::Message::encode_to_vec(&value);
+            let bound = <Required as harmos_domain::Message>::decoding_memory(&encoded).unwrap();
+            let decoded = <Required as harmos_domain::Message>::decode(&encoded).unwrap();
             assert_eq!(decoded, value);
             assert!(decoded.memory_size() <= bound);
             let invalid = Wire {
                 value: 0,
                 payload: vec![1],
             };
-            let encoded = harmos_contract::Message::encode_to_vec(&invalid);
-            assert!(<Native as harmos_contract::Message>::decode(&encoded).is_err());
+            let encoded = harmos_domain::Message::encode_to_vec(&invalid);
+            assert!(<Native as harmos_domain::Message>::decode(&encoded).is_err());
         });
     }
 }

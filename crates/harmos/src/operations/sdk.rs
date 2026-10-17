@@ -98,7 +98,7 @@ impl PluginSdkRegistration {
             };
             expected.id = crate::Identifier::new(format!("{}.sdk.{suffix}", scope.owner()))
                 .map_err(|source| Error::OperationDeclaration {
-                    source: harmos_contract::Error::from(source),
+                    source: harmos_domain::Error::from(source),
                 })?;
             if entry.declared() != &expected {
                 return Err(Error::InvalidInput {
@@ -129,7 +129,7 @@ impl PluginSdkRegistration {
             .plugin()
             .expect("SDK retains its original scope")
             .issue_generation_context()?;
-        harmos_contract::validate_config(config_json).map_err(|source| Error::OperationFailed {
+        harmos_domain::validate_config(config_json).map_err(|source| Error::OperationFailed {
             operation: self.entries[0].id().to_owned(),
             source: Arc::new(source),
         })?;

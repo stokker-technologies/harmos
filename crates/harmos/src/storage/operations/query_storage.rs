@@ -103,7 +103,7 @@ impl crate::schema::Described for QueryStorageRequest {
         { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
     >(Self::NAME, Self::FIELDS);
 }
-harmos_contract::postcard_product!(QueryStorageRequest {});
+harmos_domain::postcard_product!(QueryStorageRequest {});
 
 #[cfg(feature = "grpc")]
 impl crate::__private::Protobuf for QueryStorageRequest {

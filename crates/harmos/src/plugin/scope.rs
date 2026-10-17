@@ -42,13 +42,13 @@ pub struct PluginScope {
     dependencies: Arc<BTreeSet<String>>,
     operations: Arc<BTreeMap<crate::Identifier, crate::operations::Definition>>,
     wire_contracts: Arc<BTreeMap<crate::Identifier, crate::operations::Contract>>,
-    required_contracts: Arc<Option<Vec<harmos_contract::inventory::contracts::Required>>>,
+    required_contracts: Arc<Option<Vec<harmos_domain::inventory::contracts::Required>>>,
     required_providers: Arc<BTreeMap<String, String>>,
-    observers: Arc<[harmos_contract::inventory::observers::Declaration]>,
+    observers: Arc<[harmos_domain::inventory::observers::Declaration]>,
     observer_control: Arc<Option<crate::operations::Contract>>,
-    streams: Arc<[harmos_contract::StreamDeclaration]>,
-    listeners: Arc<[harmos_contract::listeners::Definition]>,
-    lifecycle: Arc<Option<[harmos_contract::operations::lifecycle::Descriptor; 2]>>,
+    streams: Arc<[harmos_domain::StreamDeclaration]>,
+    listeners: Arc<[harmos_domain::listeners::Definition]>,
+    lifecycle: Arc<Option<[harmos_domain::operations::lifecycle::Descriptor; 2]>>,
     activation: Arc<Mutex<Option<Weak<crate::streams::Activation>>>>,
 }
 
@@ -172,13 +172,13 @@ impl PluginScope {
 
     pub(super) fn with_lifecycle(
         mut self,
-        pair: Option<&[harmos_contract::operations::lifecycle::Descriptor; 2]>,
+        pair: Option<&[harmos_domain::operations::lifecycle::Descriptor; 2]>,
     ) -> Self {
         self.lifecycle = Arc::new(pair.cloned());
         self
     }
 
-    pub fn lifecycle(&self) -> Option<&[harmos_contract::operations::lifecycle::Descriptor; 2]> {
+    pub fn lifecycle(&self) -> Option<&[harmos_domain::operations::lifecycle::Descriptor; 2]> {
         self.lifecycle.as_ref().as_ref()
     }
 
@@ -204,7 +204,7 @@ impl PluginScope {
 
     pub(super) fn with_observers(
         mut self,
-        observers: &[harmos_contract::inventory::observers::Declaration],
+        observers: &[harmos_domain::inventory::observers::Declaration],
         control: Option<&crate::operations::Contract>,
     ) -> Self {
         self.observers = Arc::from(observers.to_vec());
@@ -213,7 +213,7 @@ impl PluginScope {
     }
 
     #[cfg(feature = "plugin-sidecar")]
-    pub(crate) fn observers(&self) -> &[harmos_contract::inventory::observers::Declaration] {
+    pub(crate) fn observers(&self) -> &[harmos_domain::inventory::observers::Declaration] {
         &self.observers
     }
 
@@ -242,7 +242,7 @@ impl PluginScope {
 
     pub(super) fn with_requirements(
         mut self,
-        contracts: Option<&Vec<harmos_contract::inventory::contracts::Required>>,
+        contracts: Option<&Vec<harmos_domain::inventory::contracts::Required>>,
         providers: &BTreeMap<crate::Identifier, String>,
         dependencies: &BTreeSet<String>,
     ) -> Self {
@@ -259,14 +259,14 @@ impl PluginScope {
 
     pub(crate) fn required_contracts(
         &self,
-    ) -> Option<&[harmos_contract::inventory::contracts::Required]> {
+    ) -> Option<&[harmos_domain::inventory::contracts::Required]> {
         self.required_contracts.as_ref().as_deref()
     }
 
     pub fn requirement(
         &self,
         id: &crate::Identifier,
-    ) -> Option<&harmos_contract::inventory::contracts::Required> {
+    ) -> Option<&harmos_domain::inventory::contracts::Required> {
         self.required_contracts()?
             .iter()
             .find(|required| required.contract.operation().id == *id)
@@ -319,7 +319,7 @@ impl PluginScope {
         Ok(())
     }
 
-    pub(super) fn with_streams(mut self, streams: &[harmos_contract::StreamDeclaration]) -> Self {
+    pub(super) fn with_streams(mut self, streams: &[harmos_domain::StreamDeclaration]) -> Self {
         let mut frozen = streams.to_vec();
         frozen.sort_unstable_by(|left, right| left.id.cmp(&right.id));
         self.streams = Arc::from(frozen);
@@ -335,7 +335,7 @@ impl PluginScope {
 
     pub(super) fn with_listeners(
         mut self,
-        listeners: &[harmos_contract::listeners::Definition],
+        listeners: &[harmos_domain::listeners::Definition],
     ) -> Self {
         self.listeners = Arc::from(listeners.to_vec());
         self.phase.send_if_modified(|phase| {
@@ -350,13 +350,13 @@ impl PluginScope {
             *record_listeners_bound = !listeners.iter().any(|listener| {
                 matches!(
                     listener.source(),
-                    harmos_contract::listeners::Source::Record { .. }
+                    harmos_domain::listeners::Source::Record { .. }
                 )
             });
             *stream_listeners_bound = !listeners.iter().any(|listener| {
                 matches!(
                     listener.source(),
-                    harmos_contract::listeners::Source::Stream { .. }
+                    harmos_domain::listeners::Source::Stream { .. }
                 )
             });
             true
@@ -364,7 +364,7 @@ impl PluginScope {
         self
     }
 
-    pub fn listeners(&self) -> &[harmos_contract::listeners::Definition] {
+    pub fn listeners(&self) -> &[harmos_domain::listeners::Definition] {
         &self.listeners
     }
 

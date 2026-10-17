@@ -47,7 +47,7 @@ pub use codec::{Codec, Encode, EncodeSettings, Encoder};
 pub use decoding::{DecodeSettings, Decoder};
 pub use envelope::{InputEnvelope, OutputEnvelope};
 pub use generation::{GenerateError, GeneratedService, Method, generate_server};
-pub use harmos_contract::grpc::{Artifacts, DescriptorError, ExportError, descriptor};
+pub use harmos_domain::grpc::{Artifacts, DescriptorError, ExportError, descriptor};
 
 pub use input::{InputError, input, open};
 

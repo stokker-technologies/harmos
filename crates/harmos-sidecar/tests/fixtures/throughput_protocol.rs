@@ -20,10 +20,10 @@ use std::time::{Duration, Instant};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 // Local Imports
-use harmos_contract::catalog::Node;
-use harmos_contract::inventory::{contracts, listeners, observers, publications};
-use harmos_contract::operations::{ServingError, WireDeclaration, WireOperation, lifecycle};
-use harmos_contract::plugin::{Declared, Plugin};
+use harmos_domain::catalog::Node;
+use harmos_domain::inventory::{contracts, listeners, observers, publications};
+use harmos_domain::operations::{ServingError, WireDeclaration, WireOperation, lifecycle};
+use harmos_domain::plugin::{Declared, Plugin};
 use harmos_sidecar::operations::{
     Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, WireTable,
 };
@@ -37,7 +37,7 @@ const SDK_POLICY: OperationPolicy = OperationPolicy {
     retries: RetryPolicy::Never,
     restart: RestartPolicy::Never,
 };
-const SDK: [harmos_contract::operations::OperationPolicy; 2] = [SDK_POLICY, SDK_POLICY];
+const SDK: [harmos_domain::operations::OperationPolicy; 2] = [SDK_POLICY, SDK_POLICY];
 
 #[used]
 static IDENTITY: [u8; contracts::identity_len(
@@ -361,15 +361,15 @@ impl Declared for TransportPlugin {
         Node::Leaf(WireDeclaration::of::<Echo>()),
         Node::Leaf(WireDeclaration::of::<Start>()),
     ];
-    const REQUIRES: &'static [Node<harmos_contract::plugin::Requirement>] = &[];
+    const REQUIRES: &'static [Node<harmos_domain::plugin::Requirement>] = &[];
     const STREAMS: &'static [publications::Entry] = &[
         publications::Entry::of::<Sample>(),
         publications::Entry::of::<Done>(),
     ];
-    fn markers() -> Result<Vec<&'static [u8]>, harmos_contract::schema::graph::Error> {
-        harmos_contract::plugin::schema_markers::<Self>(
+    fn markers() -> Result<Vec<&'static [u8]>, harmos_domain::schema::graph::Error> {
+        harmos_domain::plugin::schema_markers::<Self>(
             vec![&IDENTITY, &CONTRACTS, &PUBLICATIONS, &LISTENERS, &OBSERVERS],
-            &harmos_contract::config::SchemaSettings::default(),
+            &harmos_domain::config::SchemaSettings::default(),
         )
     }
 }

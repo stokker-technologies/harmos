@@ -23,8 +23,8 @@ mod scenario_runtime;
 use prost_reflect::DescriptorPool;
 
 // Local Imports
-use harmos_contract::grpc::Artifacts;
-use harmos_contract::operations::{Contracts, OperationPolicy, RestartPolicy, RetryPolicy};
+use harmos_domain::grpc::Artifacts;
+use harmos_domain::operations::{Contracts, OperationPolicy, RestartPolicy, RetryPolicy};
 
 /* === Constants === */
 
@@ -52,7 +52,7 @@ const POLICY: OperationPolicy = OperationPolicy {
     retries: RetryPolicy::Never,
     restart: RestartPolicy::Never,
 };
-#[harmos_contract::message(harmos_path = ::harmos_contract)]
+#[harmos_domain::message(harmos_path = ::harmos_domain)]
 struct Payload {
     text: String,
     optional: Option<u32>,
@@ -70,39 +70,39 @@ struct Upload;
 #[harmos_macros::operation(request = Payload, response = Payload, output = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Download"))]
 struct Download;
 
-#[harmos_macros::catalog(harmos_path = ::harmos_contract)]
+#[harmos_macros::catalog(harmos_path = ::harmos_domain)]
 enum Routes {
     Read(Read),
     Exchange(Exchange),
     Upload(Upload),
     Download(Download),
 }
-#[harmos_contract::message(harmos_path = ::harmos_contract)]
+#[harmos_domain::message(harmos_path = ::harmos_domain)]
 #[derive(Clone, PartialEq)]
 struct Annotated {
-    identifier: harmos_contract::Identifier,
-    metadata: harmos_contract::Metadata,
-    value: harmos_contract::Value,
-    optional: Option<harmos_contract::Value>,
-    values: Vec<harmos_contract::Value>,
+    identifier: harmos_domain::Identifier,
+    metadata: harmos_domain::Metadata,
+    value: harmos_domain::Value,
+    optional: Option<harmos_domain::Value>,
+    values: Vec<harmos_domain::Value>,
 }
 
 #[harmos_macros::operation(request = Annotated, response = Annotated, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Portable", method = "Annotate"))]
 struct Annotate;
 
-#[harmos_macros::catalog(harmos_path = ::harmos_contract)]
+#[harmos_macros::catalog(harmos_path = ::harmos_domain)]
 enum Portable {
     Annotate(Annotate),
 }
 
-#[harmos_contract::message(harmos_path = ::harmos_contract)]
+#[harmos_domain::message(harmos_path = ::harmos_domain)]
 #[derive(Clone, PartialEq)]
 struct Envelope {
     inner: Box<Annotated>,
     sequence: u64,
 }
 
-#[harmos_contract::message(harmos_path = ::harmos_contract)]
+#[harmos_domain::message(harmos_path = ::harmos_domain)]
 #[derive(Clone, PartialEq)]
 enum Delivered {
     Missing,
@@ -112,13 +112,13 @@ enum Delivered {
 #[harmos_macros::operation(request = Envelope, response = Delivered, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Boxed", method = "Wrap"))]
 struct Wrap;
 
-#[harmos_macros::catalog(harmos_path = ::harmos_contract)]
+#[harmos_macros::catalog(harmos_path = ::harmos_domain)]
 enum Boxed {
     Wrap(Wrap),
 }
 
 fn annotated() -> Annotated {
-    use harmos_contract::{Identifier, Metadata, Value};
+    use harmos_domain::{Identifier, Metadata, Value};
     let mut metadata = Metadata::definition(
         Identifier::new("device.reading").unwrap(),
         "Reading",
@@ -143,7 +143,7 @@ fn contract_scenario() {
     python::check();
     {
         scenario_runtime::check("portable_messages_cross", || {
-            use harmos_contract::{Message, Protobuf};
+            use harmos_domain::{Message, Protobuf};
             let value = annotated();
             let postcard = Message::encode_to_vec(&value);
             assert!(<Annotated as Message>::decode(&postcard).unwrap() == value);
@@ -174,7 +174,7 @@ fn contract_scenario() {
     }
     {
         scenario_runtime::check("boxed_messages_cross", || {
-            use harmos_contract::{Message, Protobuf};
+            use harmos_domain::{Message, Protobuf};
             let request = Envelope {
                 inner: Box::new(annotated()),
                 sequence: 3,
@@ -205,9 +205,9 @@ fn contract_scenario() {
             );
 
             // The Reflected Request Keeps The Plain Nested Message As A Singular Field
-            use harmos_contract::schema::{Described, reflection};
-            let settings = harmos_contract::config::SchemaSettings::default();
-            let graph = harmos_contract::schema::graph::Schema::from_declaration(
+            use harmos_domain::schema::{Described, reflection};
+            let settings = harmos_domain::config::SchemaSettings::default();
+            let graph = harmos_domain::schema::graph::Schema::from_declaration(
                 Envelope::DEFINITION,
                 &settings,
             )

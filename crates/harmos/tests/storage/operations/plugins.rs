@@ -41,8 +41,8 @@ use harmos::storage::query::{
 use harmos::storage::SchemaKey;
 use harmos::storage::writes::{WriteReceipt, WriteRequest};
 use harmos::{Error, Identifier, Result};
-use harmos_contract::inventory::contracts::Required;
-use harmos_contract::plugin::Grant;
+use harmos_domain::inventory::contracts::Required;
+use harmos_domain::plugin::Grant;
 
 /* === Constants === */
 

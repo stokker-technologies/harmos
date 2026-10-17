@@ -1037,7 +1037,7 @@ dependencies = [
  "futures-util",
  "getrandom 0.4.3",
  "harmos-bundle",
- "harmos-contract",
+ "harmos-domain",
  "harmos-guest",
  "harmos-macros",
  "harmos-sidecar",
@@ -1075,7 +1075,7 @@ dependencies = [
 name = "harmos-bundle"
 version = "0.2.0"
 dependencies = [
- "harmos-contract",
+ "harmos-domain",
  "semver",
  "serde",
  "serde_json",
@@ -1087,7 +1087,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "harmos-contract"
+name = "harmos-domain"
 version = "0.2.0"
 dependencies = [
  "harmos-macros",
@@ -1133,7 +1133,7 @@ dependencies = [
 name = "harmos-guest"
 version = "0.2.0"
 dependencies = [
- "harmos-contract",
+ "harmos-domain",
  "semver",
  "serde",
  "serde_json",
@@ -1193,7 +1193,7 @@ dependencies = [
  "criterion",
  "futures-util",
  "getrandom 0.4.3",
- "harmos-contract",
+ "harmos-domain",
  "harmos-macros",
  "libc",
  "postcard",
@@ -2296,7 +2296,7 @@ dependencies = [
 name = "schematic-contract"
 version = "0.2.0"
 dependencies = [
- "harmos-contract",
+ "harmos-domain",
  "serde",
  "thiserror",
 ]
@@ -2305,7 +2305,7 @@ dependencies = [
 name = "schematic-guest"
 version = "0.2.0"
 dependencies = [
- "harmos-contract",
+ "harmos-domain",
  "harmos-guest",
  "schematic-contract",
  "serde",

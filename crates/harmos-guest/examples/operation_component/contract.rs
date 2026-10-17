@@ -17,7 +17,7 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use harmos_contract::operations::{
+use harmos_domain::operations::{
     Backoff, Jitter, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy,
     WireOperation,
 };
@@ -74,17 +74,16 @@ impl harmos_guest::operations::ContextValue for Stage {
 impl WireOperation for Read {
     const VERSION: u32 = 1;
     #[cfg(feature = "grpc")]
-    fn visit_grpc<V: harmos_contract::operations::GrpcVisitor>(visitor: V) -> Option<V::Entry> {
+    fn visit_grpc<V: harmos_domain::operations::GrpcVisitor>(visitor: V) -> Option<V::Entry> {
         Some(visitor.unary::<Self>())
     }
 
     #[cfg(feature = "grpc")]
-    const GRPC: Option<harmos_contract::operations::Grpc> =
-        Some(harmos_contract::operations::Grpc {
-            package: std::borrow::Cow::Borrowed("fixture.v1"),
-            service: std::borrow::Cow::Borrowed("Guest"),
-            method: std::borrow::Cow::Borrowed("Read"),
-        });
+    const GRPC: Option<harmos_domain::operations::Grpc> = Some(harmos_domain::operations::Grpc {
+        package: std::borrow::Cow::Borrowed("fixture.v1"),
+        service: std::borrow::Cow::Borrowed("Guest"),
+        method: std::borrow::Cow::Borrowed("Read"),
+    });
 }
 
 impl OperationDeclaration for Read {

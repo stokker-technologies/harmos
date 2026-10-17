@@ -25,21 +25,21 @@
 /* === Type Aliases === */
 
 /* === Structs === */
-#[harmos_contract::message]
+#[harmos_domain::message]
 #[derive(Clone, Debug, PartialEq)]
 pub struct Point {
     pub x: i32,
     pub y: i32,
 }
 
-#[harmos_contract::message]
+#[harmos_domain::message]
 #[derive(Clone, Debug, PartialEq)]
 pub struct Connection {
     pub from: u64,
     pub to: u64,
 }
 
-#[harmos_contract::message]
+#[harmos_domain::message]
 #[derive(Clone, Debug, PartialEq)]
 pub struct Snapshot {
     pub symbols: Vec<u64>,

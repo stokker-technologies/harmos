@@ -32,8 +32,8 @@ use harmos::plugin::{
     PluginScope, PluginTransition, Requirement, Router,
 };
 use harmos::{Error, Message, Result, operations::OperationManager};
-use harmos_contract::inventory::contracts::Required;
-use harmos_contract::plugin::Grant;
+use harmos_domain::inventory::contracts::Required;
+use harmos_domain::plugin::Grant;
 
 /* === Constants === */
 

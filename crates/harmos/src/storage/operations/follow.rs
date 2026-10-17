@@ -35,7 +35,7 @@ use crate::storage::{StorageCursor, StoredRecord};
 
 use crate::{Error, Result};
 use crate::{MemorySize, MessageError};
-use harmos_contract::plugin::Grant;
+use harmos_domain::plugin::Grant;
 
 /* === Constants === */
 

@@ -40,8 +40,8 @@
 /* === Private Functions === */
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let contracts =
-        harmos_contract::operations::Contracts::of::<schematic_contract::operations::Operations>()?;
-    let artifacts = harmos_contract::grpc::Artifacts::new(&contracts)?;
+        harmos_domain::operations::Contracts::of::<schematic_contract::operations::Operations>()?;
+    let artifacts = harmos_domain::grpc::Artifacts::new(&contracts)?;
     artifacts.export_build("operations")?;
     Ok(())
 }

@@ -238,8 +238,8 @@ impl super::OperationDeclaration for Activation {
     type Response = ();
     const ID: &'static str = "";
     const POLICY: super::OperationPolicy = super::OperationPolicy {
-        timeout: harmos_contract::operations::UNBOUNDED,
-        attempt_timeout: harmos_contract::operations::UNBOUNDED,
+        timeout: harmos_domain::operations::UNBOUNDED,
+        attempt_timeout: harmos_domain::operations::UNBOUNDED,
         retries: super::RetryPolicy::Never,
         restart: super::RestartPolicy::Never,
     };

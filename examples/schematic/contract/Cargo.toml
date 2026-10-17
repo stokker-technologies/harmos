@@ -14,13 +14,13 @@ version = { workspace = true }
 # === Features ===
 
 [features]
-grpc = ["harmos-contract/grpc"]
+grpc = ["harmos-domain/grpc"]
 
 # === Dependencies ===
 
 [dependencies]
 # Local
-harmos-contract = { workspace = true, features = ["derive"] }
+harmos-domain = { workspace = true, features = ["derive"] }
 
 # Git
 

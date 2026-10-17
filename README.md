@@ -176,7 +176,7 @@ harmos = { git = "https://github.com/stokker-technologies/harmos", rev = "<teste
 ```
 
 Crates compiled to WebAssembly, shared declaration crates and guest components,
-must build without the host runtime, so they still depend on `harmos-contract`
+must build without the host runtime, so they still depend on `harmos-domain`
 and `harmos-guest` (`features = ["kit", "streaming"]`) directly.
 
 Tooling consumers use `harmos::packaging` with the `packaging` feature. It reuses

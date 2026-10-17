@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 // Local Imports
 use super::{CallError, ObserverContext, PublicationError, Supervisor};
-use harmos_contract::{Message, StreamSpec, inventory::publications};
+use harmos_domain::{Message, StreamSpec, inventory::publications};
 
 /* === Constants === */
 
@@ -81,7 +81,7 @@ impl<R> ObserverHost<R> for Supervisor {
 
 impl<R: Sync, C> ObserverCaller<R, C> for Supervisor
 where
-    C: harmos_contract::operations::OperationDeclaration,
+    C: harmos_domain::operations::OperationDeclaration,
     C::Request: Message,
     C::Response: Message,
 {

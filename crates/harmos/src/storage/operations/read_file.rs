@@ -53,8 +53,8 @@ impl OperationDeclaration for ReadFile {
     const VISIBILITY: Visibility = Visibility::Shared;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
 
-    fn grant(request: &ReadRequest) -> Option<harmos_contract::plugin::Grant> {
-        Some(harmos_contract::plugin::Grant::of(
+    fn grant(request: &ReadRequest) -> Option<harmos_domain::plugin::Grant> {
+        Some(harmos_domain::plugin::Grant::of(
             Self::ID,
             request.file.metadata.id.as_str().to_owned(),
         ))
@@ -94,7 +94,7 @@ impl<C: 'static> Operation for Handler<C> {
         request: &mut ReadRequest,
         output: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<FileCompletion>> {
-        let grant = harmos_contract::plugin::Grant::of(
+        let grant = harmos_domain::plugin::Grant::of(
             ReadFile::ID,
             request.file.metadata.id.as_str().to_owned(),
         );

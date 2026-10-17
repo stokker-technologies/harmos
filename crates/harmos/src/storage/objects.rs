@@ -140,8 +140,8 @@ impl<C> ObjectGroup<'_, C> {
         self.append(value, graph, bytes)
     }
 
-    fn schema_settings(&self) -> Result<harmos_contract::config::SchemaSettings> {
-        let mut settings = harmos_contract::config::SchemaSettings::default();
+    fn schema_settings(&self) -> Result<harmos_domain::config::SchemaSettings> {
+        let mut settings = harmos_domain::config::SchemaSettings::default();
         settings.preparation_bytes = NonZeroUsize::new(
             settings
                 .preparation_bytes

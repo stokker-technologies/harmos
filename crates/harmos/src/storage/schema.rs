@@ -57,21 +57,21 @@ impl StorageSchema {
     pub fn decoding_memory_bytes(encoded_bytes: usize) -> Option<usize> {
         encoded_bytes.checked_mul(36)?.checked_add(
             4 * std::mem::size_of::<Schema>()
-                + 4 * std::mem::size_of::<Vec<harmos_contract::schema::graph::Field>>()
-                + harmos_contract::schema::MAX_NAME_BYTES,
+                + 4 * std::mem::size_of::<Vec<harmos_domain::schema::graph::Field>>()
+                + harmos_domain::schema::MAX_NAME_BYTES,
         )
     }
 
     pub(super) fn encoded_bytes(&self) -> Result<usize> {
         self.schema
-            .preparation(&harmos_contract::config::SchemaSettings::default())
+            .preparation(&harmos_domain::config::SchemaSettings::default())
             .map_err(|_| invalid())?;
         encoded_size(self)
     }
 
     pub fn encoding_memory_bytes(&self) -> Result<usize> {
         self.schema
-            .validation_memory_bytes(&harmos_contract::config::SchemaSettings::default())
+            .validation_memory_bytes(&harmos_domain::config::SchemaSettings::default())
             .map_err(|_| invalid())
     }
 }
@@ -111,7 +111,7 @@ impl<'de> Visitor<'de> for StorageVisitor {
         // Forward Only The Graph Fields To The Canonical Seed Without Buffering
         // The JSON Object Or Allocating A Second Representation Of Its Fields.
         let schema = crate::schema::graph::Seed {
-            settings: &harmos_contract::config::SchemaSettings::default(),
+            settings: &harmos_domain::config::SchemaSettings::default(),
         }
         .deserialize(serde::de::value::MapAccessDeserializer::new(&mut input))?;
         let Encoding::GraphV1 = input

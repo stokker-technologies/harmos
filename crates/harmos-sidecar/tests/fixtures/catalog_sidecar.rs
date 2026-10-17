@@ -17,16 +17,16 @@
 // Third Party Imports
 
 // Local Imports
-use harmos_contract::inventory::{contracts, listeners, observers, publications};
-use harmos_contract::operations::lifecycle::Policy;
-use harmos_contract::operations::{
+use harmos_domain::inventory::{contracts, listeners, observers, publications};
+use harmos_domain::operations::lifecycle::Policy;
+use harmos_domain::operations::{
     OperationPolicy, RestartPolicy, RetryPolicy, ServingError, WireTable, lifecycle,
 };
-use harmos_contract::plugin::{Declared, Plugin};
+use harmos_domain::plugin::{Declared, Plugin};
 use harmos_sidecar::{Refusal, Registrar, RegistrationError, Supervisor};
 
 /* === Constants === */
-const SDK: [harmos_contract::operations::OperationPolicy; 2] =
+const SDK: [harmos_domain::operations::OperationPolicy; 2] =
     [Catalog::INITIALIZATION_POLICY, Catalog::SHUTDOWN_POLICY];
 
 #[used]
@@ -78,16 +78,16 @@ struct Read;
 /* === Traits === */
 
 /* === Implementations === */
-impl harmos_contract::operations::OperationDeclaration for Read {
+impl harmos_domain::operations::OperationDeclaration for Read {
     type Request = ();
     type Response = ();
     const ID: &'static str = "read";
     const POLICY: OperationPolicy = Catalog::INITIALIZATION_POLICY;
 }
-impl harmos_contract::operations::WireOperation for Read {
+impl harmos_domain::operations::WireOperation for Read {
     const VERSION: u32 = 1;
-    const GRPC: Option<harmos_contract::operations::Grpc> = Some(
-        harmos_contract::operations::Grpc::new("fixture.v1", "Native", "Read"),
+    const GRPC: Option<harmos_domain::operations::Grpc> = Some(
+        harmos_domain::operations::Grpc::new("fixture.v1", "Native", "Read"),
     );
 }
 impl lifecycle::Policy for Catalog {
@@ -143,19 +143,18 @@ impl Declared for Catalog {
     const ID: &'static str = "catalog-fixture";
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
     const DESCRIPTION: &'static str = "Exports a catalog and never runs.";
-    const PROVIDES: &'static [harmos_contract::catalog::Node<
-        harmos_contract::operations::WireDeclaration,
-    >] = &[harmos_contract::catalog::Node::Leaf(
-        harmos_contract::operations::WireDeclaration::of::<Read>(),
+    const PROVIDES: &'static [harmos_domain::catalog::Node<
+        harmos_domain::operations::WireDeclaration,
+    >] = &[harmos_domain::catalog::Node::Leaf(
+        harmos_domain::operations::WireDeclaration::of::<Read>(),
     )];
-    const REQUIRES: &'static [harmos_contract::catalog::Node<
-        harmos_contract::plugin::Requirement,
-    >] = &[];
+    const REQUIRES: &'static [harmos_domain::catalog::Node<harmos_domain::plugin::Requirement>] =
+        &[];
     const STREAMS: &'static [publications::Entry] = &[];
-    fn markers() -> Result<Vec<&'static [u8]>, harmos_contract::schema::graph::Error> {
-        harmos_contract::plugin::schema_markers::<Self>(
+    fn markers() -> Result<Vec<&'static [u8]>, harmos_domain::schema::graph::Error> {
+        harmos_domain::plugin::schema_markers::<Self>(
             vec![&IDENTITY, &CONTRACTS, &PUBLICATIONS, &LISTENERS, &OBSERVERS],
-            &harmos_contract::config::SchemaSettings::default(),
+            &harmos_domain::config::SchemaSettings::default(),
         )
     }
 }

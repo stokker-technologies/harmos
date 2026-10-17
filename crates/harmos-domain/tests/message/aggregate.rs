@@ -12,9 +12,9 @@
 /* === Modules === */
 // The Shape `#[harmos::message]` Derives For The Same Vocabulary
 mod twin {
-    use harmos_contract::message;
+    use harmos_domain::message;
 
-    #[message(harmos_path = ::harmos_contract)]
+    #[message(harmos_path = ::harmos_domain)]
     #[derive(Clone, Copy, PartialEq)]
     pub enum Aggregate {
         Count,
@@ -38,10 +38,10 @@ mod twin {
 
 // Local Imports
 use crate::scenario_runtime;
-use harmos_contract::config::SchemaSettings;
-use harmos_contract::schema::graph::Schema;
-use harmos_contract::schema::{Cardinality, Described, Kind};
-use harmos_contract::{Aggregate, MemorySize, Message, Protobuf, message};
+use harmos_domain::config::SchemaSettings;
+use harmos_domain::schema::graph::Schema;
+use harmos_domain::schema::{Cardinality, Described, Kind};
+use harmos_domain::{Aggregate, MemorySize, Message, Protobuf, message};
 
 /* === Constants === */
 const EVERY: [Aggregate; 11] = [
@@ -64,7 +64,7 @@ const EVERY: [Aggregate; 11] = [
 
 /* === Structs === */
 // The Aggregate Reaches Every Field Cardinality Of A Derived Message
-#[message(harmos_path = ::harmos_contract)]
+#[message(harmos_path = ::harmos_domain)]
 #[derive(Clone, PartialEq)]
 struct Summary {
     aggregate: Aggregate,
@@ -205,7 +205,7 @@ pub fn check() {
     #[cfg(feature = "reflection")]
     {
         scenario_runtime::check("aggregate_reflects_as_oneof", || {
-            use harmos_contract::schema::reflection::DynamicMessage;
+            use harmos_domain::schema::reflection::DynamicMessage;
             let schema = crate::schema_descriptor(Aggregate::DEFINITION);
             assert_eq!(schema.oneofs().count(), 1);
             for value in EVERY {

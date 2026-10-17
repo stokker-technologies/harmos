@@ -22,7 +22,7 @@ use tokio::io::AsyncWriteExt;
 use super::{Opening, Supervisor, catalog, local};
 use crate::inventory::{Declaration, Facility};
 use crate::{Attach, Attached, PluginCatalog, Refusal, StreamDeclaration};
-use harmos_contract::plugin::{Declared, Owner, Plugin};
+use harmos_domain::plugin::{Declared, Owner, Plugin};
 
 /* === Constants === */
 
@@ -47,16 +47,16 @@ impl<P: Plugin<Context = Supervisor> + Declared> PluginNative<P> {
         let markers = std::hint::black_box(P::markers().map_err(std::io::Error::other)?);
         let declaration = Declaration::inspect(&markers.concat(), Facility::Sidecar)
             .map_err(std::io::Error::other)?;
-        harmos_contract::inventory::publications::validate_match(P::STREAMS, &declaration.streams)
+        harmos_domain::inventory::publications::validate_match(P::STREAMS, &declaration.streams)
             .map_err(std::io::Error::other)?;
         let manifest = &declaration.contracts;
         let provides =
             crate::operations::Contracts::from_tree(P::PROVIDES).map_err(std::io::Error::other)?;
-        let requires = harmos_contract::inventory::contracts::Required::from_tree(P::REQUIRES)
+        let requires = harmos_domain::inventory::contracts::Required::from_tree(P::REQUIRES)
             .map_err(std::io::Error::other)?;
-        let listeners = harmos_contract::listeners::Declarations::from_tree(P::LISTENERS)
+        let listeners = harmos_domain::listeners::Declarations::from_tree(P::LISTENERS)
             .map_err(std::io::Error::other)?;
-        harmos_contract::inventory::listeners::validate(&listeners, &provides)
+        harmos_domain::inventory::listeners::validate(&listeners, &provides)
             .map_err(std::io::Error::other)?;
         let pair = [
             crate::operations::lifecycle::Descriptor::of_initialize::<P>()
@@ -79,7 +79,7 @@ impl<P: Plugin<Context = Supervisor> + Declared> PluginNative<P> {
             ));
         }
         let mut observers = Vec::new();
-        harmos_contract::catalog::try_for_each(P::OBSERVERS, |entry| {
+        harmos_domain::catalog::try_for_each(P::OBSERVERS, |entry| {
             observers.push(entry.declaration());
             Ok::<(), std::io::Error>(())
         })?;
@@ -130,25 +130,25 @@ impl<P: Plugin<Context = Supervisor> + Declared> Attach for PluginNative<P> {
         self.declaration.streams.clone()
     }
 
-    fn operations(&self) -> harmos_contract::Result<Vec<crate::operations::Definition>> {
+    fn operations(&self) -> harmos_domain::Result<Vec<crate::operations::Definition>> {
         Ok(self.declaration.operations.clone())
     }
 
     fn operation_contracts(
         &self,
-    ) -> harmos_contract::Result<Option<Vec<crate::operations::Contract>>> {
+    ) -> harmos_domain::Result<Option<Vec<crate::operations::Contract>>> {
         Ok(Some(self.declaration.contracts.provides.clone()))
     }
 
     fn required_contracts(
         &self,
-    ) -> harmos_contract::Result<Option<Vec<harmos_contract::inventory::contracts::Required>>> {
+    ) -> harmos_domain::Result<Option<Vec<harmos_domain::inventory::contracts::Required>>> {
         Ok(Some(self.declaration.contracts.requires.clone()))
     }
 
     fn sdk_lifecycle(
         &self,
-    ) -> harmos_contract::Result<Option<[crate::operations::lifecycle::Descriptor; 2]>> {
+    ) -> harmos_domain::Result<Option<[crate::operations::lifecycle::Descriptor; 2]>> {
         Ok(Some(self.declaration.contracts.lifecycle.clone()))
     }
 
@@ -156,13 +156,13 @@ impl<P: Plugin<Context = Supervisor> + Declared> Attach for PluginNative<P> {
         self.declaration.observers.clone()
     }
 
-    fn observer_control(&self) -> harmos_contract::Result<Option<crate::operations::Contract>> {
+    fn observer_control(&self) -> harmos_domain::Result<Option<crate::operations::Contract>> {
         Ok(self.declaration.observer_control().cloned())
     }
 
     fn listener_declarations(
         &self,
-    ) -> harmos_contract::Result<Option<Vec<harmos_contract::listeners::Definition>>> {
+    ) -> harmos_domain::Result<Option<Vec<harmos_domain::listeners::Definition>>> {
         Ok(Some(self.declaration.listeners.clone()))
     }
 

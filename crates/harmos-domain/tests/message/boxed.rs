@@ -13,16 +13,16 @@
 // Plain Nested Messages Own The Reference Wire Shape
 mod plain {
     use super::Leaf;
-    use harmos_contract::message;
+    use harmos_domain::message;
 
-    #[message(harmos_path = ::harmos_contract)]
+    #[message(harmos_path = ::harmos_domain)]
     #[derive(Clone, Debug, PartialEq)]
     pub struct Holder {
         pub row: Leaf,
         pub count: u32,
     }
 
-    #[message(harmos_path = ::harmos_contract)]
+    #[message(harmos_path = ::harmos_domain)]
     #[derive(Clone, Debug, PartialEq)]
     pub enum Choice {
         Empty,
@@ -34,16 +34,16 @@ mod plain {
 // Boxed Twins Keep Every Authored Name And Shape
 mod heap {
     use super::Leaf;
-    use harmos_contract::message;
+    use harmos_domain::message;
 
-    #[message(harmos_path = ::harmos_contract)]
+    #[message(harmos_path = ::harmos_domain)]
     #[derive(Clone, Debug, PartialEq)]
     pub struct Holder {
         pub row: Box<Leaf>,
         pub count: u32,
     }
 
-    #[message(harmos_path = ::harmos_contract)]
+    #[message(harmos_path = ::harmos_domain)]
     #[derive(Clone, Debug, PartialEq)]
     pub enum Choice {
         Empty,
@@ -64,10 +64,10 @@ use std::fmt::Debug;
 
 // Local Imports
 use crate::scenario_runtime;
-use harmos_contract::config::SchemaSettings;
-use harmos_contract::schema::graph::Schema;
-use harmos_contract::schema::{Described, Kind};
-use harmos_contract::{MemorySize, Message, Protobuf, message};
+use harmos_domain::config::SchemaSettings;
+use harmos_domain::schema::graph::Schema;
+use harmos_domain::schema::{Described, Kind};
+use harmos_domain::{MemorySize, Message, Protobuf, message};
 
 /* === Constants === */
 
@@ -76,7 +76,7 @@ use harmos_contract::{MemorySize, Message, Protobuf, message};
 /* === Type Aliases === */
 
 /* === Structs === */
-#[message(harmos_path = ::harmos_contract)]
+#[message(harmos_path = ::harmos_domain)]
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Leaf {
     value: u64,

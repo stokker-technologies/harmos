@@ -78,8 +78,8 @@ run = "git-cliff --unreleased --strip all"
 description = "Check / Wasm"
 # Portable Contracts And Guest SDKs Must Build Without The Host Runtime.
 run = [
-  "{{vars.cargo_guard}}cargo check --locked -p harmos-contract --target wasm32-unknown-unknown",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos-contract --target wasm32-wasip2",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos-domain --target wasm32-unknown-unknown",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos-domain --target wasm32-wasip2",
   "{{vars.cargo_guard}}cargo check --locked -p schematic-contract --target wasm32-unknown-unknown",
   "{{vars.cargo_guard}}cargo check --locked -p schematic-guest --target wasm32-unknown-unknown",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-guest --example operation-component --features componentize,kit,streaming --target wasm32-unknown-unknown",
@@ -134,7 +134,7 @@ description = "Check / Plugin"
 run = [
   "{{vars.cargo_guard}}cargo check --locked -p harmos --features plugin --lib",
   "{{vars.cargo_guard}}cargo clippy --locked -p harmos --features plugin-sidecar,plugin-guest --all-targets -- -D warnings",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos-contract --features derive --target wasm32-unknown-unknown",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos-domain --features derive --target wasm32-unknown-unknown",
 ]
 
 [tasks."lint:authoring"]
@@ -142,19 +142,19 @@ description = "Lint / Authoring"
 run = "{{vars.cargo_guard}}cargo clippy --locked -p harmos-macros --all-targets -- -D warnings"
 
 [tasks."format:python"]
-run = "uv run --locked --project tools/python ruff format --config tools/python/pyproject.toml tools/python crates/harmos-contract/src/bindings/python crates/harmos-contract/tests/grpc/python.py"
+run = "uv run --locked --project tools/python ruff format --config tools/python/pyproject.toml tools/python crates/harmos-domain/src/bindings/python crates/harmos-domain/tests/grpc/python.py"
 
 [tasks."format:python:check"]
-run = "uv run --locked --project tools/python ruff format --check --config tools/python/pyproject.toml tools/python crates/harmos-contract/src/bindings/python crates/harmos-contract/tests/grpc/python.py"
+run = "uv run --locked --project tools/python ruff format --check --config tools/python/pyproject.toml tools/python crates/harmos-domain/src/bindings/python crates/harmos-domain/tests/grpc/python.py"
 
 [tasks."lint:python"]
-run = "uv run --locked --project tools/python ruff check --config tools/python/pyproject.toml tools/python crates/harmos-contract/src/bindings/python crates/harmos-contract/tests/grpc/python.py"
+run = "uv run --locked --project tools/python ruff check --config tools/python/pyproject.toml tools/python crates/harmos-domain/src/bindings/python crates/harmos-domain/tests/grpc/python.py"
 
 [tasks."build:workspace:dev"]
 run = "{{vars.cargo_guard}}cargo build --locked --workspace --timings"
 
 [tasks."check:types:python"]
-run = "uv run --locked --project tools/python --group test ty check --project tools/python --extra-search-path crates/harmos-contract/src/bindings tools/python crates/harmos-contract/src/bindings/python"
+run = "uv run --locked --project tools/python --group test ty check --project tools/python --extra-search-path crates/harmos-domain/src/bindings tools/python crates/harmos-domain/src/bindings/python"
 
 # === Tasks | Continuous Integration === #
 
@@ -221,7 +221,7 @@ run = [
   "{{vars.cargo_guard}}cargo check --locked -p cargo-harmos --no-default-features --features guest",
   "{{vars.cargo_guard}}cargo check --locked -p cargo-harmos --no-default-features --features sidecar,guest",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-bundle",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos-contract --no-default-features",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos-domain --no-default-features",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-guest --no-default-features --features kit,derive,streaming",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-guest --no-default-features --features componentize",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-sidecar --no-default-features",

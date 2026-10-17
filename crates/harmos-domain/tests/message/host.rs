@@ -18,12 +18,12 @@ use crate::scenario_runtime;
 // Third Party Imports
 
 // Local Imports
-use harmos_contract::__private::DecodeInput;
-use harmos_contract::operations::host::{
+use harmos_domain::__private::DecodeInput;
+use harmos_domain::operations::host::{
     EgressRequest, Fetched, FollowingRow, Header, Measured, Publication, RecallResponse,
     Remembered, SurveyResponse,
 };
-use harmos_contract::{MemorySize, Protobuf};
+use harmos_domain::{MemorySize, Protobuf};
 
 /* === Constants === */
 

@@ -24,7 +24,7 @@ use std::time::{Duration, Instant};
 use tokio::io::{duplex, split};
 // Local Imports
 use capacity::{Case, MIB, Observation, Settings, WARMUP_MIB};
-use harmos_contract::operations::lifecycle::{Initialize, InitializeRequest, Shutdown};
+use harmos_domain::operations::lifecycle::{Initialize, InitializeRequest, Shutdown};
 use harmos_sidecar::Message;
 use harmos_sidecar::operations::{OperationDeclaration, WIRE_METHOD, WireAnswer, WireCommand};
 use harmos_sidecar::transport;
@@ -453,14 +453,14 @@ async fn throughput_case(
     while done.is_none() || !answered || samples < case.samples as usize {
         match receive(incoming).await {
             Frame::Call { id, method, params }
-                if method == harmos_contract::operations::CHILD_METHOD =>
+                if method == harmos_domain::operations::CHILD_METHOD =>
             {
-                let call: harmos_contract::operations::WireChildCall =
-                    harmos_contract::operations::WireChildCall::decode(&params)
+                let call: harmos_domain::operations::WireChildCall =
+                    harmos_domain::operations::WireChildCall::decode(&params)
                         .expect("typed child envelope");
                 assert_eq!(call.operation, "host.publish");
                 assert_eq!(call.generation_context, Some([2; 32]));
-                let row = harmos_contract::operations::host::Publication::decode(&call.payload)
+                let row = harmos_domain::operations::host::Publication::decode(&call.payload)
                     .expect("typed publication");
                 calls += 1;
                 if row.stream == Done::ID {

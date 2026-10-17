@@ -28,8 +28,8 @@ pub mod __private {
     };
     pub use super::task::spawn as spawn_observer;
     pub use crate as sidecar;
-    pub use harmos_contract::__private::*;
-    pub use harmos_contract::{qualified, qualified_len, qualify};
+    pub use harmos_domain::__private::*;
+    pub use harmos_domain::{qualified, qualified_len, qualify};
 }
 
 /* === Re-Exports === */
@@ -56,7 +56,7 @@ use tokio::sync::{mpsc, oneshot};
 // Local Imports
 use crate::Frame;
 use carrier::{Failure, Input, Sender};
-use harmos_contract::{Refusal, UNKNOWN, UNREADABLE, reserved};
+use harmos_domain::{Refusal, UNKNOWN, UNREADABLE, reserved};
 use host::Outgoing;
 
 /* === Constants === */
@@ -573,7 +573,7 @@ async fn answer(opening: &mut Opening, host: &Supervisor, frame: Frame) -> Answe
             }
             match answer.encode() {
                 Ok(result) => Frame::Answer { id, result },
-                Err(harmos_contract::operations::WireCodecError::Oversized) => oversized_reply(id),
+                Err(harmos_domain::operations::WireCodecError::Oversized) => oversized_reply(id),
                 Err(error) => Frame::Refusal {
                     id,
                     refusal: Refusal::new(UNREADABLE, error.to_string()),

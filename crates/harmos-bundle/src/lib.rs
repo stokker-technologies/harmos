@@ -26,7 +26,7 @@ use std::path::Path;
 // Third Party Imports
 
 // Local Imports
-use harmos_contract::inventory::Declaration;
+use harmos_domain::inventory::Declaration;
 
 /* === Constants === */
 
@@ -128,8 +128,8 @@ impl Bundle {
             let content = &bytes[contents[&file.path].clone()];
             if let Some(executable) = &file.executable {
                 let facility = match executable.facility {
-                    Facility::Sidecar => harmos_contract::inventory::Facility::Sidecar,
-                    Facility::Guest => harmos_contract::inventory::Facility::Guest,
+                    Facility::Sidecar => harmos_domain::inventory::Facility::Sidecar,
+                    Facility::Guest => harmos_domain::inventory::Facility::Guest,
                 };
                 let declaration = Declaration::inspect(content, facility)
                     .map_err(|error| invalid(error.to_string()))?;
@@ -244,7 +244,7 @@ fn validate(manifest: &Manifest, limits: Limits) -> Result<(), Error> {
             }
             let mut previous = None;
             for registration in &executable.registrations {
-                if !harmos_contract::artifact_subset(&registration.namespace)
+                if !harmos_domain::artifact_subset(&registration.namespace)
                     || registration.schema == 0
                     || previous.is_some_and(|value: &str| value >= registration.namespace.as_str())
                 {

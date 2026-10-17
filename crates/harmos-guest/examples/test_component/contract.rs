@@ -17,9 +17,9 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use harmos_contract::StreamSpec;
-use harmos_contract::listeners::Delivery;
-use harmos_contract::operations::{
+use harmos_domain::StreamSpec;
+use harmos_domain::listeners::Delivery;
+use harmos_domain::operations::{
     OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireOperation,
 };
 

@@ -124,7 +124,7 @@ impl Registry {
         graph: &Schema,
     ) -> Result<Pending> {
         schema.require_postcard()?;
-        if !harmos_contract::artifact_subset(owner)
+        if !harmos_domain::artifact_subset(owner)
             || owner.len() > NAME_BYTES
             || schema.id.as_str().len() > NAME_BYTES
         {
@@ -133,7 +133,7 @@ impl Registry {
                 reason: "invalid or oversized identity",
             });
         }
-        let settings = harmos_contract::config::SchemaSettings::default();
+        let settings = harmos_domain::config::SchemaSettings::default();
         graph.preparation(&settings).map_err(|_| limit())?;
         let fields_bytes = graph
             .clone_memory_bytes()

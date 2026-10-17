@@ -41,7 +41,7 @@ use std::time::Duration;
 
 // Local Imports
 use crate::{Error, Result};
-use harmos_contract::inventory::StreamDeclaration;
+use harmos_domain::inventory::StreamDeclaration;
 
 /* === Constants === */
 

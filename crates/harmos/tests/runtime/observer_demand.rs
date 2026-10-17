@@ -114,11 +114,11 @@ impl Drop for Seed {
 }
 
 impl OperationDeclaration for Observe {
-    type Request = harmos_contract::observers::Control;
+    type Request = harmos_domain::observers::Control;
     type Response = ();
     const ID: &'static str = "demand.observer.observe";
     const VISIBILITY: Visibility = Visibility::Host;
-    const POLICY: OperationPolicy = harmos_contract::observers::POLICY;
+    const POLICY: OperationPolicy = harmos_domain::observers::POLICY;
 }
 
 impl WireOperation for Observe {
@@ -156,7 +156,7 @@ impl harmos::Plugin for Producer {
         let resources = Arc::new(Resources { counts });
         let attachment = ObserverAttachment::from_catalog::<Observers>(
             resources.clone(),
-            <Self as harmos_contract::plugin::Declared>::STREAMS,
+            <Self as harmos_domain::plugin::Declared>::STREAMS,
         )?;
         Ok(Self {
             resources,
@@ -176,7 +176,7 @@ impl harmos::Plugin for Producer {
     ) -> Result<(), harmos::operations::ServingError> {
         self.attachment.bind::<Observe>(table)
     }
-    fn attachment(&self) -> Option<Arc<dyn harmos_contract::plugin::Attachment<Supervisor>>> {
+    fn attachment(&self) -> Option<Arc<dyn harmos_domain::plugin::Attachment<Supervisor>>> {
         Some(self.attachment.clone())
     }
     async fn stop(&mut self, _: &Supervisor) -> Result<(), Self::Error> {

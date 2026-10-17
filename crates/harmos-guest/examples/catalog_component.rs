@@ -17,8 +17,8 @@
 // Third Party Imports
 
 // Local Imports
-use harmos_contract::inventory::{contracts, listeners, observers, publications};
-use harmos_contract::operations::{OperationPolicy, RestartPolicy, RetryPolicy};
+use harmos_domain::inventory::{contracts, listeners, observers, publications};
+use harmos_domain::operations::{OperationPolicy, RestartPolicy, RetryPolicy};
 use harmos_guest::kit::plugin::__bindings::{
     self as bindings,
     harmos::guest::capabilities::{Refusal, Registration},
@@ -32,7 +32,7 @@ const POLICY: OperationPolicy = OperationPolicy {
     retries: RetryPolicy::Never,
     restart: RestartPolicy::Never,
 };
-const SDK: [harmos_contract::operations::OperationPolicy; 2] = [POLICY, POLICY];
+const SDK: [harmos_domain::operations::OperationPolicy; 2] = [POLICY, POLICY];
 
 #[used]
 static IDENTITY: [u8; contracts::identity_len(

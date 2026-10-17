@@ -190,8 +190,8 @@ pub(super) fn contract_scenario() {
     #[cfg(feature = "plugin-sidecar")]
     {
         scenario_runtime::check("native_inventory_contains", || {
-            use harmos_contract::inventory::{Declaration, Facility};
-            use harmos_contract::plugin::Declared;
+            use harmos_domain::inventory::{Declaration, Facility};
+            use harmos_domain::plugin::Declared;
 
             let bytes = <Native as Declared>::markers().unwrap().concat();
             let inspected = Declaration::inspect(&bytes, Facility::Sidecar).unwrap();
@@ -223,8 +223,8 @@ pub(super) fn contract_scenario() {
     #[cfg(feature = "plugin-guest")]
     {
         scenario_runtime::check("guest_inventory_contains", || {
-            use harmos_contract::inventory::{Declaration, Facility};
-            use harmos_contract::plugin::Declared;
+            use harmos_domain::inventory::{Declaration, Facility};
+            use harmos_domain::plugin::Declared;
 
             let bytes = <Guest as Declared>::markers().unwrap().concat();
             let inspected = Declaration::inspect(&bytes, Facility::Guest).unwrap();

@@ -18,8 +18,8 @@ use std::marker::PhantomData;
 
 // Local Imports
 use super::Context;
-use harmos_contract::operations::{Host, host};
-use harmos_contract::{Message, StreamSpec, plugin::Declared};
+use harmos_domain::operations::{Host, host};
+use harmos_domain::{Message, StreamSpec, plugin::Declared};
 
 /* === Constants === */
 
@@ -39,14 +39,14 @@ pub enum PublishError {
     #[error("stream is not in the authored inventory")]
     UndeclaredStream,
     #[error(transparent)]
-    Call(#[from] harmos_contract::Refusal),
+    Call(#[from] harmos_domain::Refusal),
 }
 
 /* === Traits === */
 
 /* === Implementations === */
 // A refused publication forwards the host's failure unchanged.
-impl From<PublishError> for harmos_contract::Refusal {
+impl From<PublishError> for harmos_domain::Refusal {
     fn from(error: PublishError) -> Self {
         match error {
             PublishError::Call(refusal) => refusal,

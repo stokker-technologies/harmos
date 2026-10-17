@@ -1,7 +1,7 @@
 # === Package ===
 
 [package]
-name = "harmos-contract"
+name = "harmos-domain"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

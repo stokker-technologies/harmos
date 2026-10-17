@@ -378,7 +378,7 @@ impl Endpoint {
             return Err(SidecarError::Unavailable);
         }
         let params = command.encode().map_err(|error| match error {
-            harmos_contract::operations::WireCodecError::Oversized => SidecarError::refused(
+            harmos_domain::operations::WireCodecError::Oversized => SidecarError::refused(
                 Frame::OVERSIZED,
                 "operation control exceeds the native frame limit",
             ),

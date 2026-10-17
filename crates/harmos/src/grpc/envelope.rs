@@ -19,7 +19,7 @@
 
 // Local Imports
 use crate::{MemorySize, MessageError, Protobuf};
-use harmos_contract::__private::{DecodeInput, decoding_add, prost};
+use harmos_domain::__private::{DecodeInput, decoding_add, prost};
 
 /* === Constants === */
 

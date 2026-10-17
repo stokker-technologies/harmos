@@ -30,14 +30,14 @@ use wasmtime::{Config, Engine, Store};
 // Local Imports
 use contract::{Heard, Metrics, Note, Progress};
 use harmos::guest::capabilities::Refusal as BridgeRefusal;
-use harmos_contract::builtin::InstanceState;
-use harmos_contract::inventory::{Declaration, DeclarationError, Facility};
-use harmos_contract::operations::host::{self, Fetched, Header, Measured, Receipt, Remembered};
-use harmos_contract::operations::{
+use harmos_domain::builtin::InstanceState;
+use harmos_domain::inventory::{Declaration, DeclarationError, Facility};
+use harmos_domain::operations::host::{self, Fetched, Header, Measured, Receipt, Remembered};
+use harmos_domain::operations::{
     OperationDeclaration, WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl,
     WireCommand, lifecycle::InitializeRequest,
 };
-use harmos_contract::{Message, Refusal};
+use harmos_domain::{Message, Refusal};
 use support::{component, legacy_component, route_component};
 
 /* === Constants === */
@@ -755,8 +755,8 @@ fn contract_scenario() {
                 .build()
                 .expect("scenario runtime is valid")
                 .block_on(async {
-                    use harmos_contract::journal::Position;
-                    use harmos_contract::listeners::{Context, Delivery};
+                    use harmos_domain::journal::Position;
+                    use harmos_domain::listeners::{Context, Delivery};
                     for (mode, refused) in [("idle", false), ("refuse-delivery", true)] {
                         let mut session = instantiate(Stub::default()).await;
                         session

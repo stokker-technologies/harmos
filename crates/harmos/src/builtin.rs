@@ -14,7 +14,7 @@
 /* === Modules === */
 
 /* === Re-Exports === */
-pub use harmos_contract::builtin::{Cancel, InstanceState, Status, Watch};
+pub use harmos_domain::builtin::{Cancel, InstanceState, Status, Watch};
 
 /* === Imports === */
 

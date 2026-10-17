@@ -47,7 +47,7 @@ const DEFAULT_CACHE_CAPACITY: usize = 64;
 /* === Macros === */
 
 /* === Type Aliases === */
-type CachedResponse = harmos_contract::__private::ErasedResponse;
+type CachedResponse = harmos_domain::__private::ErasedResponse;
 
 /* === Structs === */
 #[derive(Clone)]
@@ -123,7 +123,7 @@ pub(super) struct Entry {
         feature = "plugin-guest",
         feature = "plugin-sidecar"
     ))]
-    pub(super) sdk: Option<harmos_contract::operations::lifecycle::Action>,
+    pub(super) sdk: Option<harmos_domain::operations::lifecycle::Action>,
 }
 
 pub(super) struct Submission {
@@ -148,10 +148,10 @@ pub(super) struct GrantAuthority {
     ))]
     plugin: Option<(
         String,
-        Option<harmos_contract::inventory::contracts::Required>,
+        Option<harmos_domain::inventory::contracts::Required>,
     )>,
     // The grants an external caller's authorizer selected for this operation.
-    external: Option<harmos_contract::inventory::contracts::Required>,
+    external: Option<harmos_domain::inventory::contracts::Required>,
 }
 
 struct Cached {
@@ -243,7 +243,7 @@ impl OperationManager {
         &self,
         entry: &Entry,
         origin: &Origin,
-    ) -> Result<Option<harmos_contract::inventory::contracts::Required>> {
+    ) -> Result<Option<harmos_domain::inventory::contracts::Required>> {
         #[cfg(feature = "grpc")]
         if matches!(origin.identity, super::caller::Identity::External(_)) {
             let Some(authorizer) = self.registry.middleware.authorizer() else {
@@ -1617,7 +1617,7 @@ impl Entry {
             feature = "plugin-guest",
             feature = "plugin-sidecar"
         ))]
-        if self.sdk == Some(harmos_contract::operations::lifecycle::Action::Shutdown) {
+        if self.sdk == Some(harmos_domain::operations::lifecycle::Action::Shutdown) {
             return true;
         }
         false
@@ -1642,7 +1642,7 @@ impl Entry {
         feature = "plugin-sidecar"
     ))]
     pub(super) fn admitted_shutdown(&self, control: &Arc<Instance>) -> bool {
-        self.sdk == Some(harmos_contract::operations::lifecycle::Action::Shutdown)
+        self.sdk == Some(harmos_domain::operations::lifecycle::Action::Shutdown)
             && self.active.load(Ordering::Acquire)
             && !control.is_settled()
             && self
@@ -1693,7 +1693,7 @@ impl Entry {
         ))]
         if let Some(scope) = &self.plugin {
             if let Some(action) = self.sdk {
-                use harmos_contract::operations::lifecycle::Action;
+                use harmos_domain::operations::lifecycle::Action;
                 return match action {
                     Action::Initialize if scope.is_closed() => Err(Error::Closing {
                         domain: "SDK initialization",
@@ -1731,7 +1731,7 @@ impl Entry {
     fn grant_authority(
         &self,
         _origin: &Origin,
-        external: Option<harmos_contract::inventory::contracts::Required>,
+        external: Option<harmos_domain::inventory::contracts::Required>,
     ) -> GrantAuthority {
         GrantAuthority {
             owner: self.owner.to_string(),
@@ -2033,7 +2033,7 @@ impl GrantAuthority {
     // Refuse a request whose grant the caller does not hold. A request resolves
     // only to a grant on the operation it calls; a provider preparing a grant on
     // another operation is refused for every caller.
-    pub(super) fn admit(&self, grant: Option<&harmos_contract::plugin::Grant>) -> Result<()> {
+    pub(super) fn admit(&self, grant: Option<&harmos_domain::plugin::Grant>) -> Result<()> {
         let denied = |caller: &str| Error::OperationUnauthorized {
             caller: caller.to_owned(),
             owner: self.owner.clone(),
@@ -2070,8 +2070,8 @@ impl GrantAuthority {
     feature = "plugin-sidecar"
 ))]
 fn grant_allowed(
-    required: Option<&harmos_contract::inventory::contracts::Required>,
-    grant: Option<&harmos_contract::plugin::Grant>,
+    required: Option<&harmos_domain::inventory::contracts::Required>,
+    grant: Option<&harmos_domain::plugin::Grant>,
 ) -> bool {
     match grant {
         None => true,

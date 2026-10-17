@@ -18,7 +18,7 @@
 use harmos_signal::{Series, Summary};
 
 // Local Imports
-use harmos_contract::Aggregate;
+use harmos_domain::Aggregate;
 
 /* === Constants === */
 

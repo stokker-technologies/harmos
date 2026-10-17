@@ -18,13 +18,13 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use harmos_contract::catalog::Node;
-use harmos_contract::inventory::{contracts, observers, publications};
-use harmos_contract::operations::{
+use harmos_domain::catalog::Node;
+use harmos_domain::inventory::{contracts, observers, publications};
+use harmos_domain::operations::{
     Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, WireDeclaration,
     WireOperation, WireTable, lifecycle,
 };
-use harmos_contract::plugin::{Declared, Plugin};
+use harmos_domain::plugin::{Declared, Plugin};
 use harmos_guest::Context;
 
 /* === Constants === */
@@ -35,7 +35,7 @@ const POLICY: OperationPolicy = OperationPolicy {
     restart: RestartPolicy::Never,
 };
 const PROVIDED: &[Node<WireDeclaration>] = &[Node::Leaf(WireDeclaration::of::<Read>())];
-const SDK: [harmos_contract::operations::OperationPolicy; 2] = [POLICY, POLICY];
+const SDK: [harmos_domain::operations::OperationPolicy; 2] = [POLICY, POLICY];
 
 #[used]
 static IDENTITY: [u8; contracts::identity_len(
@@ -102,20 +102,20 @@ impl Declared for Program {
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
     const DESCRIPTION: &'static str = "Unified SDK fixture.";
     const PROVIDES: &'static [Node<WireDeclaration>] = PROVIDED;
-    const REQUIRES: &'static [Node<harmos_contract::plugin::Requirement>] = &[];
+    const REQUIRES: &'static [Node<harmos_domain::plugin::Requirement>] = &[];
     const STREAMS: &'static [publications::Entry] = &[];
-    fn markers() -> Result<Vec<&'static [u8]>, harmos_contract::schema::graph::Error> {
-        harmos_contract::plugin::schema_markers::<Self>(
+    fn markers() -> Result<Vec<&'static [u8]>, harmos_domain::schema::graph::Error> {
+        harmos_domain::plugin::schema_markers::<Self>(
             vec![&IDENTITY, &CONTRACTS, &PUBLICATIONS, &OBSERVERS],
-            &harmos_contract::config::SchemaSettings::default(),
+            &harmos_domain::config::SchemaSettings::default(),
         )
     }
 }
 
 impl Plugin for Program {
     fn register(
-        registrar: &mut harmos_contract::Registrar,
-    ) -> Result<(), harmos_contract::RegistrationError> {
+        registrar: &mut harmos_domain::Registrar,
+    ) -> Result<(), harmos_domain::RegistrationError> {
         registrar.register("zeta.catalog", 2, &"second")?;
         registrar.register("alpha.catalog", 1, &"first")
     }
@@ -141,7 +141,7 @@ impl Plugin for Program {
     fn bind_operations(
         &self,
         table: &mut WireTable<Context>,
-    ) -> Result<(), harmos_contract::operations::ServingError> {
+    ) -> Result<(), harmos_domain::operations::ServingError> {
         table.bind_operation::<Reader>(self.resources())
     }
     async fn stop(&mut self, _: &Context) -> Result<(), Self::Error> {

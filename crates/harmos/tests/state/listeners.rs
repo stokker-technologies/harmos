@@ -34,7 +34,7 @@ use harmos::plugin::{
 use harmos::records::PluginListenerRegistration;
 use harmos::schema::{Described, Field};
 use harmos::{Error, Message, MessageError, Result, Runtime, state::Position};
-use harmos_contract::listeners::{Context as DeliveryContext, Delivery, Source};
+use harmos_domain::listeners::{Context as DeliveryContext, Delivery, Source};
 
 /* === Constants === */
 
@@ -378,7 +378,7 @@ fn candidate() -> PluginDefinitions {
         ),
     ] {
         listeners.push(
-            harmos_contract::listeners::Definition::new(
+            harmos_domain::listeners::Definition::new(
                 harmos::Identifier::new(id).unwrap(),
                 Source::Record {
                     id: "listener.fact".into(),

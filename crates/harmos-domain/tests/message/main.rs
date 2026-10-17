@@ -27,7 +27,7 @@ mod native;
 // Third Party Imports
 
 // Local Imports
-use harmos_contract::{MemorySize, Protobuf, Storable, message};
+use harmos_domain::{MemorySize, Protobuf, Storable, message};
 
 /* === Constants === */
 
@@ -36,21 +36,21 @@ use harmos_contract::{MemorySize, Protobuf, Storable, message};
 /* === Type Aliases === */
 
 /* === Structs === */
-#[message(harmos_path = ::harmos_contract)]
+#[message(harmos_path = ::harmos_domain)]
 #[derive(Clone, PartialEq)]
 struct Original {
     value: u64,
     payload: Vec<u8>,
 }
 
-#[message(harmos_path = ::harmos_contract)]
+#[message(harmos_path = ::harmos_domain)]
 #[derive(Clone, PartialEq)]
 struct Reordered {
     payload: Vec<u8>,
     value: u64,
 }
 
-#[message(harmos_path = ::harmos_contract)]
+#[message(harmos_path = ::harmos_domain)]
 #[derive(Clone, PartialEq)]
 struct Added {
     extra: String,
@@ -58,14 +58,14 @@ struct Added {
     payload: Vec<u8>,
 }
 
-#[message(harmos_path = ::harmos_contract)]
+#[message(harmos_path = ::harmos_domain)]
 #[derive(Clone, PartialEq)]
 struct Renamed {
     renamed: u64,
     payload: Vec<u8>,
 }
 
-#[message(harmos_path = ::harmos_contract)]
+#[message(harmos_path = ::harmos_domain)]
 #[derive(Clone, PartialEq, Default)]
 struct Nested {
     row: Original,
@@ -79,13 +79,13 @@ struct Nested {
     r#type: String,
 }
 
-#[message(harmos_path = ::harmos_contract)]
+#[message(harmos_path = ::harmos_domain)]
 #[derive(Clone, PartialEq)]
 struct QualifiedBytes {
     bytes: Vec<std::primitive::u8>,
 }
 
-#[message(harmos_path = ::harmos_contract)]
+#[message(harmos_path = ::harmos_domain)]
 #[derive(PartialEq)]
 struct DecoderNames {
     input: u64,
@@ -96,7 +96,7 @@ struct DecoderNames {
     __harmos_input: bool,
 }
 
-#[message(harmos_path = ::harmos_contract)]
+#[message(harmos_path = ::harmos_domain)]
 #[derive(PartialEq)]
 struct Choices {
     selected: Choice,
@@ -105,7 +105,7 @@ struct Choices {
 }
 
 /* === Enums === */
-#[message(harmos_path = ::harmos_contract)]
+#[message(harmos_path = ::harmos_domain)]
 #[derive(Debug, PartialEq)]
 enum Choice {
     Empty,
@@ -119,7 +119,7 @@ enum Choice {
     },
 }
 
-#[message(harmos_path = ::harmos_contract)]
+#[message(harmos_path = ::harmos_domain)]
 #[derive(Debug, PartialEq)]
 enum ReorderedChoice {
     Sample {
@@ -133,7 +133,7 @@ enum ReorderedChoice {
     Empty,
 }
 
-#[message(harmos_path = ::harmos_contract)]
+#[message(harmos_path = ::harmos_domain)]
 #[derive(Debug, Default, PartialEq)]
 enum ExplicitDefault {
     Other(String),
@@ -141,14 +141,14 @@ enum ExplicitDefault {
     Selected,
 }
 
-#[message(harmos_path = ::harmos_contract)]
+#[message(harmos_path = ::harmos_domain)]
 #[derive(Debug, PartialEq)]
 enum MergedChoice {
     Empty,
     Pair { left: String, right: String },
 }
 
-#[message(harmos_path = ::harmos_contract)]
+#[message(harmos_path = ::harmos_domain)]
 #[derive(PartialEq)]
 enum SingleVariant {
     Named { r#type: String },
@@ -162,11 +162,11 @@ enum SingleVariant {
 
 /* === Private Functions === */
 fn protobuf_fields(
-    definition: harmos_contract::schema::declaration::Definition,
-) -> harmos_contract::schema::graph::Schema {
-    let mut schema = harmos_contract::schema::graph::Schema::from_declaration(
+    definition: harmos_domain::schema::declaration::Definition,
+) -> harmos_domain::schema::graph::Schema {
+    let mut schema = harmos_domain::schema::graph::Schema::from_declaration(
         definition,
-        &harmos_contract::config::SchemaSettings::default(),
+        &harmos_domain::config::SchemaSettings::default(),
     )
     .unwrap();
     for fields in &mut schema.definitions {
@@ -177,12 +177,12 @@ fn protobuf_fields(
 
 #[cfg(feature = "reflection")]
 fn schema_descriptor(
-    definition: harmos_contract::schema::declaration::Definition,
-) -> harmos_contract::schema::reflection::MessageDescriptor {
-    let settings = harmos_contract::config::SchemaSettings::default();
+    definition: harmos_domain::schema::declaration::Definition,
+) -> harmos_domain::schema::reflection::MessageDescriptor {
+    let settings = harmos_domain::config::SchemaSettings::default();
     let graph =
-        harmos_contract::schema::graph::Schema::from_declaration(definition, &settings).unwrap();
-    harmos_contract::schema::reflection::descriptor_schema(&graph, "harmos.stream", &settings)
+        harmos_domain::schema::graph::Schema::from_declaration(definition, &settings).unwrap();
+    harmos_domain::schema::reflection::descriptor_schema(&graph, "harmos.stream", &settings)
         .unwrap()
 }
 
@@ -277,11 +277,11 @@ fn contract_scenario() {
     }
     {
         scenario_runtime::check("bytes_packed_numbers", || {
-            #[message(harmos_path = ::harmos_contract)]
+            #[message(harmos_path = ::harmos_domain)]
             struct Bytes {
                 payload: Vec<u8>,
             }
-            #[message(harmos_path = ::harmos_contract)]
+            #[message(harmos_path = ::harmos_domain)]
             struct Numbers {
                 payload: Vec<u32>,
             }
@@ -306,7 +306,7 @@ fn contract_scenario() {
     }
     {
         scenario_runtime::check("schemas_preserve_wire", || {
-            use harmos_contract::schema::{Cardinality, Described, Kind};
+            use harmos_domain::schema::{Cardinality, Described, Kind};
             assert_ne!(Original::FIELDS, Reordered::FIELDS);
             let left = protobuf_fields(Original::DEFINITION);
             let right = protobuf_fields(Reordered::DEFINITION);
@@ -315,7 +315,7 @@ fn contract_scenario() {
                     left.root,
                     &right,
                     right.root,
-                    &harmos_contract::config::SchemaSettings::default()
+                    &harmos_domain::config::SchemaSettings::default()
                 )
                 .unwrap()
             );
@@ -346,20 +346,20 @@ fn contract_scenario() {
                 assert_eq!((definition.identity)(), std::any::TypeId::of::<Original>());
                 assert_eq!((definition.fields)(), Original::FIELDS);
             }
-            let graph = harmos_contract::schema::graph::Schema::from_declaration(
+            let graph = harmos_domain::schema::graph::Schema::from_declaration(
                 Nested::DEFINITION,
-                &harmos_contract::config::SchemaSettings::default(),
+                &harmos_domain::config::SchemaSettings::default(),
             )
             .unwrap();
             let encoded = serde_json::to_vec(&graph).unwrap();
-            let owned: harmos_contract::schema::graph::Schema =
+            let owned: harmos_domain::schema::graph::Schema =
                 serde_json::from_slice(&encoded).unwrap();
             assert_eq!(owned, graph);
         });
     }
     {
         scenario_runtime::check("fields_keep_binary", || {
-            use harmos_contract::schema::{Described, Kind};
+            use harmos_domain::schema::{Described, Kind};
             assert_eq!(QualifiedBytes::FIELDS[0].kind, Kind::Bytes);
             let value = QualifiedBytes {
                 bytes: vec![0, 255],
@@ -396,14 +396,14 @@ fn contract_scenario() {
             assert_eq!(value.memory_size(), expected);
             assert_eq!(
                 value.encoded_size(),
-                harmos_contract::Message::encode_to_vec(&value).len()
+                harmos_domain::Message::encode_to_vec(&value).len()
             );
 
             value.optional = None;
             assert_eq!(value.memory_size(), expected - 32);
             assert_eq!(
                 value.encoded_size(),
-                harmos_contract::Message::encode_to_vec(&value).len()
+                harmos_domain::Message::encode_to_vec(&value).len()
             );
             assert!(value.memory_size() > value.encoded_size());
         });
@@ -426,7 +426,7 @@ fn contract_scenario() {
     }
     {
         scenario_runtime::check("enum_shapes_sizes", || {
-            use harmos_contract::schema::{Cardinality, Described};
+            use harmos_domain::schema::{Cardinality, Described};
             let choices = [
                 Choice::Empty,
                 Choice::Text("value".to_owned()),
@@ -462,7 +462,7 @@ fn contract_scenario() {
                     left.root,
                     &right,
                     right.root,
-                    &harmos_contract::config::SchemaSettings::default()
+                    &harmos_domain::config::SchemaSettings::default()
                 )
                 .unwrap()
             );
@@ -471,9 +471,9 @@ fn contract_scenario() {
                     .iter()
                     .all(|field| field.cardinality == Cardinality::Variant)
             );
-            harmos_contract::schema::graph::Schema::from_declaration(
+            harmos_domain::schema::graph::Schema::from_declaration(
                 Choice::DEFINITION,
-                &harmos_contract::config::SchemaSettings::default(),
+                &harmos_domain::config::SchemaSettings::default(),
             )
             .unwrap();
             assert_eq!(Choice::decode(&[]).unwrap(), Choice::Empty);
@@ -488,7 +488,7 @@ fn contract_scenario() {
             assert_eq!(value.memory_size(), std::mem::size_of::<Choice>() + 77);
             assert_eq!(
                 value.encoded_size(),
-                harmos_contract::Message::encode_to_vec(&value).len()
+                harmos_domain::Message::encode_to_vec(&value).len()
             );
         });
     }
@@ -502,7 +502,7 @@ fn contract_scenario() {
     }
     {
         scenario_runtime::check("variant_keeps_raw", || {
-            use harmos_contract::schema::{Described, Kind};
+            use harmos_domain::schema::{Described, Kind};
             let variant = Choice::FIELDS
                 .iter()
                 .find(|field| field.name == "Text")
@@ -540,7 +540,7 @@ fn contract_scenario() {
     #[cfg(feature = "reflection")]
     {
         scenario_runtime::check("enums_use_oneof", || {
-            use harmos_contract::schema::{Described, reflection::DynamicMessage};
+            use harmos_domain::schema::{Described, reflection::DynamicMessage};
             let schema = schema_descriptor(Choice::DEFINITION);
             assert_eq!(schema.oneofs().count(), 1);
             let value = Choice::Text("reflected".into());
@@ -553,7 +553,7 @@ fn contract_scenario() {
     #[cfg(feature = "reflection")]
     {
         scenario_runtime::check("composites_match_canonical", || {
-            use harmos_contract::schema::{Described, reflection::DynamicMessage};
+            use harmos_domain::schema::{Described, reflection::DynamicMessage};
             fn canonical<T: Protobuf + Described>(value: &T) {
                 let encoded = Protobuf::encode_to_vec(value);
                 let reflected =
@@ -590,7 +590,7 @@ fn contract_scenario() {
     }
     {
         scenario_runtime::check("variant_merge_payload", || {
-            use harmos_contract::schema::{Described, Kind};
+            use harmos_domain::schema::{Described, Kind};
             let variant = MergedChoice::FIELDS
                 .iter()
                 .find(|field| field.name == "Pair")
@@ -634,29 +634,29 @@ fn contract_scenario() {
     }
     {
         scenario_runtime::check("validation_accepts_generated", || {
-            use harmos_contract::schema::{Described, ProtobufValidator};
+            use harmos_domain::schema::{Described, ProtobufValidator};
             let value = Choices {
                 selected: Choice::Text("checked".into()),
                 optional: Some(Choice::Empty),
                 history: vec![Choice::Empty],
             };
             let validator = ProtobufValidator::from_schema(
-                &harmos_contract::schema::graph::Schema::from_declaration(
+                &harmos_domain::schema::graph::Schema::from_declaration(
                     Choices::DEFINITION,
-                    &harmos_contract::config::SchemaSettings::default(),
+                    &harmos_domain::config::SchemaSettings::default(),
                 )
                 .unwrap(),
-                &harmos_contract::config::SchemaSettings::default(),
+                &harmos_domain::config::SchemaSettings::default(),
             )
             .unwrap();
             validator.validate(&value.encode_to_vec()).unwrap();
             let validator = ProtobufValidator::from_schema(
-                &harmos_contract::schema::graph::Schema::from_declaration(
+                &harmos_domain::schema::graph::Schema::from_declaration(
                     Choice::DEFINITION,
-                    &harmos_contract::config::SchemaSettings::default(),
+                    &harmos_domain::config::SchemaSettings::default(),
                 )
                 .unwrap(),
-                &harmos_contract::config::SchemaSettings::default(),
+                &harmos_domain::config::SchemaSettings::default(),
             )
             .unwrap();
             validator

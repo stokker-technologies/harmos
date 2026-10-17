@@ -25,32 +25,32 @@
 /* === Type Aliases === */
 
 /* === Structs === */
-#[harmos_contract::message]
+#[harmos_domain::message]
 #[derive(Clone, Debug, PartialEq)]
 pub struct Finding {
     pub text: String,
 }
 
-#[harmos_contract::message]
+#[harmos_domain::message]
 #[derive(Clone, Debug, PartialEq)]
 pub struct Request {
     pub schematic: crate::model::Snapshot,
 }
 
-#[harmos_contract::message]
+#[harmos_domain::message]
 #[derive(Clone, Debug, PartialEq)]
 pub struct Response {
     pub checked: u32,
 }
 
-#[harmos_contract::operation(
+#[harmos_domain::operation(
     id = "schematic.analyze",
     request = Request,
     response = Response,
     output = Finding,
     policy = super::POLICY,
-    visibility = harmos_contract::operations::Visibility::Shared,
-    replay = harmos_contract::operations::ReplaySafety::Idempotent,
+    visibility = harmos_domain::operations::Visibility::Shared,
+    replay = harmos_domain::operations::ReplaySafety::Idempotent,
     version = 1,
     grpc(package = "schematic.v1", service = "Schematic", method = "Analyze"),
 )]

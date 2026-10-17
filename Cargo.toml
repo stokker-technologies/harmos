@@ -26,7 +26,7 @@ publish = true
 # Local
 harmos = { path = "crates/harmos" }
 harmos-bundle = { path = "crates/harmos-bundle" }
-harmos-contract = { path = "crates/harmos-contract", default-features = false }
+harmos-domain = { path = "crates/harmos-domain", default-features = false }
 harmos-guest = { path = "crates/harmos-guest", default-features = false }
 harmos-macros = { path = "crates/harmos-macros" }
 harmos-sidecar = { path = "crates/harmos-sidecar", default-features = false }

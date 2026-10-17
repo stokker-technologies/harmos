@@ -22,7 +22,7 @@ use tokio::sync::Notify;
 use super::operations::{Lanes, Managed};
 use super::*;
 use harmos::{storage::Batch, storage::Cursor, storage::StreamConsumer};
-use harmos_contract::plugin::Declared;
+use harmos_domain::plugin::Declared;
 use harmos_sidecar::{Attach, ObserverContext};
 
 /* === Constants === */
@@ -218,30 +218,30 @@ impl<S: harmos_sidecar::Attach> harmos_sidecar::Attach for Advertised<S> {
         self.observers.clone()
     }
 
-    fn operations(&self) -> harmos_contract::Result<Vec<harmos::operations::Definition>> {
+    fn operations(&self) -> harmos_domain::Result<Vec<harmos::operations::Definition>> {
         self.inner.operations()
     }
     fn operation_contracts(
         &self,
-    ) -> harmos_contract::Result<Option<Vec<harmos::operations::Contract>>> {
+    ) -> harmos_domain::Result<Option<Vec<harmos::operations::Contract>>> {
         self.inner.operation_contracts()
     }
     fn required_contracts(
         &self,
-    ) -> harmos_contract::Result<Option<Vec<harmos_contract::inventory::contracts::Required>>> {
+    ) -> harmos_domain::Result<Option<Vec<harmos_domain::inventory::contracts::Required>>> {
         self.inner.required_contracts()
     }
     fn sdk_lifecycle(
         &self,
-    ) -> harmos_contract::Result<Option<[harmos::operations::lifecycle::Descriptor; 2]>> {
+    ) -> harmos_domain::Result<Option<[harmos::operations::lifecycle::Descriptor; 2]>> {
         self.inner.sdk_lifecycle()
     }
-    fn observer_control(&self) -> harmos_contract::Result<Option<harmos::operations::Contract>> {
+    fn observer_control(&self) -> harmos_domain::Result<Option<harmos::operations::Contract>> {
         self.inner.observer_control()
     }
     fn listener_declarations(
         &self,
-    ) -> harmos_contract::Result<Option<Vec<harmos_contract::listeners::Definition>>> {
+    ) -> harmos_domain::Result<Option<Vec<harmos_domain::listeners::Definition>>> {
         self.inner.listener_declarations()
     }
 
@@ -330,7 +330,7 @@ impl harmos::Plugin for Ticking {
     ) -> Result<(), harmos::operations::ServingError> {
         self.attachment.bind::<ObserveControl>(table)
     }
-    fn attachment(&self) -> Option<Arc<dyn harmos_contract::plugin::Attachment<Self::Context>>> {
+    fn attachment(&self) -> Option<Arc<dyn harmos_domain::plugin::Attachment<Self::Context>>> {
         Some(self.attachment.clone())
     }
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -625,11 +625,11 @@ impl Drop for ObserverSeed {
 }
 
 impl harmos::operations::OperationDeclaration for ObserveControl {
-    type Request = harmos_contract::observers::Control;
+    type Request = harmos_domain::observers::Control;
     type Response = ();
     const ID: &'static str = "publications.observer.observe";
     const VISIBILITY: harmos::operations::Visibility = harmos::operations::Visibility::Host;
-    const POLICY: harmos::operations::OperationPolicy = harmos_contract::observers::POLICY;
+    const POLICY: harmos::operations::OperationPolicy = harmos_domain::observers::POLICY;
 }
 
 impl harmos::operations::WireOperation for ObserveControl {
@@ -668,7 +668,7 @@ impl harmos::Plugin for SampledTwins {
         });
         let attachment = harmos_sidecar::ObserverAttachment::from_catalog::<TwinObservers>(
             resources.clone(),
-            <Self as harmos_contract::plugin::Declared>::STREAMS,
+            <Self as harmos_domain::plugin::Declared>::STREAMS,
         )?;
         Ok(Self {
             resources,
@@ -691,7 +691,7 @@ impl harmos::Plugin for SampledTwins {
     ) -> Result<(), harmos::operations::ServingError> {
         self.attachment.bind::<ObserveControl>(table)
     }
-    fn attachment(&self) -> Option<Arc<dyn harmos_contract::plugin::Attachment<Self::Context>>> {
+    fn attachment(&self) -> Option<Arc<dyn harmos_domain::plugin::Attachment<Self::Context>>> {
         Some(self.attachment.clone())
     }
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -824,7 +824,7 @@ impl harmos::Plugin for MultiStream {
     ) -> Result<(), harmos::operations::ServingError> {
         self.attachment.bind::<ObserveControl>(table)
     }
-    fn attachment(&self) -> Option<Arc<dyn harmos_contract::plugin::Attachment<Self::Context>>> {
+    fn attachment(&self) -> Option<Arc<dyn harmos_domain::plugin::Attachment<Self::Context>>> {
         Some(self.attachment.clone())
     }
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -890,7 +890,7 @@ impl harmos::Plugin for Flood {
     ) -> Result<(), harmos::operations::ServingError> {
         self.attachment.bind::<ObserveControl>(table)
     }
-    fn attachment(&self) -> Option<Arc<dyn harmos_contract::plugin::Attachment<Self::Context>>> {
+    fn attachment(&self) -> Option<Arc<dyn harmos_domain::plugin::Attachment<Self::Context>>> {
         Some(self.attachment.clone())
     }
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -1974,7 +1974,7 @@ pub(super) fn contract_scenario() {
             assert_eq!(observers[0].streams.len(), 2);
 
             let empty = harmos::sidecar::inventory::Declaration::inspect(
-                &<Twins as harmos_contract::plugin::Declared>::markers()
+                &<Twins as harmos_domain::plugin::Declared>::markers()
                     .unwrap()
                     .concat(),
                 harmos::sidecar::inventory::Facility::Sidecar,

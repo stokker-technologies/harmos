@@ -1388,7 +1388,7 @@ struct EmbeddedReading {
 impl harmos::operations::Operation for EmbeddedReading {
     type Declaration = ProviderEcho;
     type Resources = ProviderOwner;
-    type Error = harmos_contract::Refusal;
+    type Error = harmos_domain::Refusal;
     type Endpoints = ();
     type Context<'a> = harmos::operations::Context<'a>;
     async fn initialize<'ctx>(
@@ -1421,7 +1421,7 @@ impl harmos::operations::Operation for EmbeddedReading {
     }
 }
 impl ProviderOwner {
-    async fn answer(&self, state: &Echo) -> Result<Echoed, harmos_contract::Refusal> {
+    async fn answer(&self, state: &Echo) -> Result<Echoed, harmos_domain::Refusal> {
         if state.say == "cancel" {
             let _cancelled = Cancelled(self.cancelled.clone());
             self.started.notify_one();
@@ -1431,7 +1431,7 @@ impl ProviderOwner {
             std::future::pending::<()>().await;
         }
         if state.say == "refuse" {
-            return Err(harmos_contract::Refusal::new(73, "provider refusal"));
+            return Err(harmos_domain::Refusal::new(73, "provider refusal"));
         }
         if !self.discard_observations {
             self.observed.lock().unwrap().push(state.say.clone());
@@ -1440,14 +1440,14 @@ impl ProviderOwner {
             said: state.say.clone(),
         })
     }
-    async fn cleanup(&self, physical: bool) -> Result<(), harmos_contract::Refusal> {
+    async fn cleanup(&self, physical: bool) -> Result<(), harmos_domain::Refusal> {
         use std::sync::atomic::Ordering;
         if !physical {
             return Ok(());
         }
         self.cleanup_attempts.fetch_add(1, Ordering::SeqCst);
         if self.fail_cleanup.load(Ordering::SeqCst) {
-            return Err(harmos_contract::Refusal::new(
+            return Err(harmos_domain::Refusal::new(
                 1,
                 "fixture physical cleanup refused",
             ));
@@ -1481,7 +1481,7 @@ struct NativeReading {
 impl harmos::operations::Operation for NativeReading {
     type Declaration = ProviderEcho;
     type Resources = NativeProvider;
-    type Error = harmos_contract::Refusal;
+    type Error = harmos_domain::Refusal;
     type Endpoints = ();
     type Context<'a> = &'a harmos_sidecar::Supervisor;
     async fn initialize<'ctx>(
@@ -1520,7 +1520,7 @@ struct NativeForwarding {
 impl harmos::operations::Operation for NativeForwarding {
     type Declaration = Forward;
     type Resources = NativeClient;
-    type Error = harmos_contract::Refusal;
+    type Error = harmos_domain::Refusal;
     type Endpoints = ();
     type Context<'a> = &'a harmos_sidecar::Supervisor;
     async fn initialize<'ctx>(
@@ -1667,7 +1667,7 @@ impl harmos_sidecar::Attach for NativeAttachment {
     fn owner(&self) -> &str {
         &self.id
     }
-    fn operations(&self) -> harmos_contract::Result<Vec<harmos::operations::Definition>> {
+    fn operations(&self) -> harmos_domain::Result<Vec<harmos::operations::Definition>> {
         if self.id == "provider" {
             native_provider().operations()
         } else {
@@ -1676,7 +1676,7 @@ impl harmos_sidecar::Attach for NativeAttachment {
     }
     fn operation_contracts(
         &self,
-    ) -> harmos_contract::Result<Option<Vec<harmos::operations::Contract>>> {
+    ) -> harmos_domain::Result<Option<Vec<harmos::operations::Contract>>> {
         if self.id == "provider" {
             native_provider().operation_contracts()
         } else {
@@ -1685,7 +1685,7 @@ impl harmos_sidecar::Attach for NativeAttachment {
     }
     fn required_contracts(
         &self,
-    ) -> harmos_contract::Result<Option<Vec<harmos_contract::inventory::contracts::Required>>> {
+    ) -> harmos_domain::Result<Option<Vec<harmos_domain::inventory::contracts::Required>>> {
         if self.id == "provider" {
             native_provider().required_contracts()
         } else {
@@ -1694,7 +1694,7 @@ impl harmos_sidecar::Attach for NativeAttachment {
     }
     fn sdk_lifecycle(
         &self,
-    ) -> harmos_contract::Result<Option<[harmos::operations::lifecycle::Descriptor; 2]>> {
+    ) -> harmos_domain::Result<Option<[harmos::operations::lifecycle::Descriptor; 2]>> {
         if self.id == "provider" {
             native_provider().sdk_lifecycle()
         } else {

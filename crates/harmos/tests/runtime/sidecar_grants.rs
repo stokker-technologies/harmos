@@ -29,7 +29,7 @@ use harmos::operations::{
     Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility,
     WireOperation, WireTable,
 };
-use harmos_contract::plugin::Grant;
+use harmos_domain::plugin::Grant;
 use harmos_sidecar::{Refusal, Supervisor};
 
 /* === Constants === */

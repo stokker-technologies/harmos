@@ -19,9 +19,9 @@ use std::cell::Cell;
 // Third Party Imports
 
 // Local Imports
-use harmos_contract::journal::Position;
-use harmos_contract::listeners::{Context, Delivery};
-use harmos_contract::{Protobuf, message};
+use harmos_domain::journal::Position;
+use harmos_domain::listeners::{Context, Delivery};
+use harmos_domain::{Protobuf, message};
 
 /* === Constants === */
 #[global_allocator]
@@ -35,7 +35,7 @@ thread_local! {
 
 macro_rules! layer {
     ($name:ident, $inner:ident) => {
-        #[message(harmos_path = ::harmos_contract)]
+        #[message(harmos_path = ::harmos_domain)]
         #[derive(PartialEq)]
         struct $name {
             row: $inner,
@@ -67,13 +67,13 @@ struct Measurement {
 
 struct MeasurementGuard;
 
-#[message(harmos_path = ::harmos_contract)]
+#[message(harmos_path = ::harmos_domain)]
 #[derive(PartialEq)]
 struct Leaf {
     payload: Vec<u8>,
 }
 
-#[message(harmos_path = ::harmos_contract)]
+#[message(harmos_path = ::harmos_domain)]
 #[derive(PartialEq)]
 struct Selection {
     row: Choice,
@@ -81,7 +81,7 @@ struct Selection {
     rows: Vec<Fifth>,
 }
 
-#[message(harmos_path = ::harmos_contract)]
+#[message(harmos_path = ::harmos_domain)]
 #[derive(PartialEq)]
 struct Strings {
     label: String,
@@ -90,28 +90,28 @@ struct Strings {
     counts: Vec<u32>,
 }
 
-#[message(harmos_path = ::harmos_contract)]
+#[message(harmos_path = ::harmos_domain)]
 #[derive(PartialEq)]
 struct BoxedSelection {
     row: Box<Fifth>,
     choice: BoxedChoice,
 }
 
-#[message(harmos_path = ::harmos_contract)]
+#[message(harmos_path = ::harmos_domain)]
 #[derive(PartialEq)]
 struct BoxedLeaf {
     row: Box<Leaf>,
 }
 
 /* === Enums === */
-#[message(harmos_path = ::harmos_contract)]
+#[message(harmos_path = ::harmos_domain)]
 #[derive(PartialEq)]
 enum BoxedChoice {
     Selected(Box<Fifth>),
     Named { row: Box<Leaf> },
 }
 
-#[message(harmos_path = ::harmos_contract)]
+#[message(harmos_path = ::harmos_domain)]
 #[derive(PartialEq)]
 enum Choice {
     Selected(Fifth),
@@ -253,11 +253,11 @@ fn contract_scenario() {
             assert!(measured.peak <= budget, "{measured:?}, budget {budget}");
             assert_eq!(
                 measured.peak,
-                harmos_contract::Message::encoded_len(&row) + encoded.capacity()
+                harmos_domain::Message::encoded_len(&row) + encoded.capacity()
             );
             assert_eq!(
                 encoded,
-                harmos_contract::Message::encode_to_vec(&Delivery::new(context, row).unwrap())
+                harmos_domain::Message::encode_to_vec(&Delivery::new(context, row).unwrap())
             );
         });
     }
@@ -304,8 +304,8 @@ fn contract_scenario() {
     }
     {
         scenario_runtime::check("boxed_allocates_after", || {
-            use harmos_contract::schema::Described;
-            let tag = |fields: &[harmos_contract::schema::graph::Field<_>], name: &str| {
+            use harmos_domain::schema::Described;
+            let tag = |fields: &[harmos_domain::schema::graph::Field<_>], name: &str| {
                 fields.iter().find(|field| field.name == name).unwrap().tag
             };
             // A Varint Where The Boxed Leaf Declares Bytes
@@ -361,8 +361,8 @@ fn contract_scenario() {
     }
     {
         scenario_runtime::check("core_header_expansion", || {
-            use harmos_contract::MemorySize;
-            use harmos_contract::operations::host::EgressRequest;
+            use harmos_domain::MemorySize;
+            use harmos_domain::operations::host::EgressRequest;
             let encoded = [0x22, 0].repeat(4096);
             let (budget, inspected) = measure(|| EgressRequest::decoding_memory(&encoded).unwrap());
             assert_eq!(inspected.allocations, 0, "{inspected:?}");
@@ -377,7 +377,7 @@ fn contract_scenario() {
     }
     {
         scenario_runtime::check("headers_refuse_container", || {
-            use harmos_contract::operations::host::EgressRequest;
+            use harmos_domain::operations::host::EgressRequest;
             let mut encoded = [0x22, 0].repeat(4096);
             encoded.extend_from_slice(&[0x22, 3, 0x0a, 1, 255]);
             let (refused, inspected) = measure(|| EgressRequest::decoding_memory(&encoded));
@@ -399,11 +399,11 @@ fn contract_scenario() {
             let encoding = Delivery::encoding_memory_bytes(context, &row).unwrap();
             let encoded = Delivery::encode_borrowed(context, &row, encoding).unwrap();
             let (bound, inspected) = measure(|| {
-                <Delivery<Leaf> as harmos_contract::Message>::decoding_memory(&encoded).unwrap()
+                <Delivery<Leaf> as harmos_domain::Message>::decoding_memory(&encoded).unwrap()
             });
             assert_eq!(inspected.allocations, 0, "{inspected:?}");
             let (decoded, allocated) =
-                measure(|| <Delivery<Leaf> as harmos_contract::Message>::decode(&encoded).unwrap());
+                measure(|| <Delivery<Leaf> as harmos_domain::Message>::decode(&encoded).unwrap());
             assert_eq!(decoded.row(), &row);
             assert_eq!(allocated.allocations, 1, "{allocated:?}");
             assert!(allocated.peak <= bound, "{allocated:?}, bound {bound}");
@@ -414,11 +414,11 @@ fn contract_scenario() {
             // Record Context With An Invalid Zero Journal Position
             let bytes = [0, 0, 0];
             let (refused, inspected) =
-                measure(|| <Delivery<Leaf> as harmos_contract::Message>::decoding_memory(&bytes));
+                measure(|| <Delivery<Leaf> as harmos_domain::Message>::decoding_memory(&bytes));
             assert!(refused.is_err());
             assert_eq!(inspected.allocations, 0, "{inspected:?}");
             let (refused, decoded) =
-                measure(|| <Delivery<Leaf> as harmos_contract::Message>::decode(&bytes));
+                measure(|| <Delivery<Leaf> as harmos_domain::Message>::decode(&bytes));
             assert!(refused.is_err());
             assert_eq!(decoded.allocations, 0, "{decoded:?}");
         });

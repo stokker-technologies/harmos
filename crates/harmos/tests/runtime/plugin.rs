@@ -19,8 +19,8 @@ use crate::scenario_runtime;
 use serde_json::json;
 // Local Imports
 use harmos::bundle::{Bundle, Executable, Facility, Identity, Limits, Source};
-use harmos_contract::Registrar;
-use harmos_contract::inventory::{Declaration, Facility as Inspected};
+use harmos_domain::Registrar;
+use harmos_domain::inventory::{Declaration, Facility as Inspected};
 
 /* === Constants === */
 
@@ -98,7 +98,7 @@ fn fragments(facility: &str, owner: &str) -> Vec<u8> {
     }
     let mut bytes = Vec::new();
     for fragment in fragments {
-        bytes.extend_from_slice(harmos_contract::PREFIX);
+        bytes.extend_from_slice(harmos_domain::PREFIX);
         bytes.extend(serde_json::to_vec(&fragment).unwrap());
         bytes.push(0);
     }

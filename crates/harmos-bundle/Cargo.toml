@@ -24,7 +24,7 @@ publish.workspace = true
 
 [dependencies]
 # Local
-harmos-contract = { workspace = true }
+harmos-domain = { workspace = true }
 
 # Git
 

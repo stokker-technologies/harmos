@@ -280,16 +280,16 @@ impl<A: Application> Service<A> {
     }
 }
 
-impl<A: Application> harmos_contract::operations::Host for Service<A> {
+impl<A: Application> harmos_domain::operations::Host for Service<A> {
     type Error = Error;
     type Instance<O: Callable> = OperationInstance<O>;
 
     fn context(&self) -> &CallContext {
-        harmos_contract::operations::Host::context(&self.operations)
+        harmos_domain::operations::Host::context(&self.operations)
     }
 
     fn with_value<T: ContextValue>(&self, value: T) -> std::result::Result<Self, ContextError> {
-        let operations = harmos_contract::operations::Host::with_value(&self.operations, value)?;
+        let operations = harmos_domain::operations::Host::with_value(&self.operations, value)?;
         let mut child = self.clone_context();
         child.operations = operations;
         Ok(child)
@@ -299,14 +299,14 @@ impl<A: Application> harmos_contract::operations::Host for Service<A> {
         &self,
         request: O::Request,
     ) -> impl Future<Output = Result<OperationInstance<O>>> + Send {
-        harmos_contract::operations::Host::submit_as::<O>(&self.operations, request)
+        harmos_domain::operations::Host::submit_as::<O>(&self.operations, request)
     }
 
     fn call_as<O: Callable>(
         &self,
         request: O::Request,
     ) -> impl Future<Output = Result<Response<O::Response>>> + Send {
-        harmos_contract::operations::Host::call_as::<O>(&self.operations, request)
+        harmos_domain::operations::Host::call_as::<O>(&self.operations, request)
     }
 
     fn submit_with_resources<O: Callable<Response = ()>, R: Send + Sync + 'static>(
@@ -314,7 +314,7 @@ impl<A: Application> harmos_contract::operations::Host for Service<A> {
         request: O::Request,
         resources: Arc<R>,
     ) -> impl Future<Output = Result<OperationInstance<O>>> + Send {
-        harmos_contract::operations::Host::submit_with_resources::<O, R>(
+        harmos_domain::operations::Host::submit_with_resources::<O, R>(
             &self.operations,
             request,
             resources,

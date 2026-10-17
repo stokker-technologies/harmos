@@ -1127,22 +1127,22 @@ impl Attach for MeterSource {
     fn owner(&self) -> &str {
         self.source.owner()
     }
-    fn operations(&self) -> harmos_contract::Result<Vec<harmos::operations::Definition>> {
+    fn operations(&self) -> harmos_domain::Result<Vec<harmos::operations::Definition>> {
         self.source.operations()
     }
     fn operation_contracts(
         &self,
-    ) -> harmos_contract::Result<Option<Vec<harmos::operations::Contract>>> {
+    ) -> harmos_domain::Result<Option<Vec<harmos::operations::Contract>>> {
         self.source.operation_contracts()
     }
     fn required_contracts(
         &self,
-    ) -> harmos_contract::Result<Option<Vec<harmos_contract::inventory::contracts::Required>>> {
+    ) -> harmos_domain::Result<Option<Vec<harmos_domain::inventory::contracts::Required>>> {
         self.source.required_contracts()
     }
     fn sdk_lifecycle(
         &self,
-    ) -> harmos_contract::Result<Option<[harmos::operations::lifecycle::Descriptor; 2]>> {
+    ) -> harmos_domain::Result<Option<[harmos::operations::lifecycle::Descriptor; 2]>> {
         self.source.sdk_lifecycle()
     }
     fn publications(&self) -> Vec<harmos_sidecar::StreamDeclaration> {
@@ -1153,12 +1153,12 @@ impl Attach for MeterSource {
     fn observers(&self) -> Vec<harmos_sidecar::inventory::observers::Declaration> {
         self.source.observers()
     }
-    fn observer_control(&self) -> harmos_contract::Result<Option<harmos::operations::Contract>> {
+    fn observer_control(&self) -> harmos_domain::Result<Option<harmos::operations::Contract>> {
         self.source.observer_control()
     }
     fn listener_declarations(
         &self,
-    ) -> harmos_contract::Result<Option<Vec<harmos_contract::listeners::Definition>>> {
+    ) -> harmos_domain::Result<Option<Vec<harmos_domain::listeners::Definition>>> {
         self.source.listener_declarations()
     }
     async fn attach(&self) -> Result<harmos_sidecar::Attached, Self::Error> {
@@ -2398,23 +2398,23 @@ fn own_contract() {
         fn owner(&self) -> &str {
             self.source.owner()
         }
-        fn operations(&self) -> harmos_contract::Result<Vec<harmos::operations::Definition>> {
+        fn operations(&self) -> harmos_domain::Result<Vec<harmos::operations::Definition>> {
             self.source.operations()
         }
         fn operation_contracts(
             &self,
-        ) -> harmos_contract::Result<Option<Vec<harmos::operations::Contract>>> {
+        ) -> harmos_domain::Result<Option<Vec<harmos::operations::Contract>>> {
             self.source.operation_contracts()
         }
         fn required_contracts(
             &self,
-        ) -> harmos_contract::Result<Option<Vec<harmos_contract::inventory::contracts::Required>>>
+        ) -> harmos_domain::Result<Option<Vec<harmos_domain::inventory::contracts::Required>>>
         {
             self.source.required_contracts()
         }
         fn sdk_lifecycle(
             &self,
-        ) -> harmos_contract::Result<Option<[harmos::operations::lifecycle::Descriptor; 2]>>
+        ) -> harmos_domain::Result<Option<[harmos::operations::lifecycle::Descriptor; 2]>>
         {
             self.source.sdk_lifecycle()
         }
@@ -2424,12 +2424,12 @@ fn own_contract() {
         fn observers(&self) -> Vec<harmos_sidecar::inventory::observers::Declaration> {
             self.source.observers()
         }
-        fn observer_control(&self) -> harmos_contract::Result<Option<harmos::operations::Contract>> {
+        fn observer_control(&self) -> harmos_domain::Result<Option<harmos::operations::Contract>> {
             self.source.observer_control()
         }
         fn listener_declarations(
             &self,
-        ) -> harmos_contract::Result<Option<Vec<harmos_contract::listeners::Definition>>> {
+        ) -> harmos_domain::Result<Option<Vec<harmos_domain::listeners::Definition>>> {
             self.source.listener_declarations()
         }
         async fn attach(&self) -> Result<harmos_sidecar::Attached, Self::Error> {

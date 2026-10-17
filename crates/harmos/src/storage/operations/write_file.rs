@@ -52,8 +52,8 @@ impl OperationDeclaration for WriteFile {
     const VISIBILITY: Visibility = Visibility::Shared;
     const REPLAY: ReplaySafety = ReplaySafety::Unknown;
 
-    fn grant(request: &FileMetadata) -> Option<harmos_contract::plugin::Grant> {
-        Some(harmos_contract::plugin::Grant::of(
+    fn grant(request: &FileMetadata) -> Option<harmos_domain::plugin::Grant> {
+        Some(harmos_domain::plugin::Grant::of(
             Self::ID,
             request.id.as_str().to_owned(),
         ))
@@ -100,7 +100,7 @@ impl<C: 'static> Operation for Handler<C> {
         input: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<FileReference>> {
         let grant =
-            harmos_contract::plugin::Grant::of(WriteFile::ID, metadata.id.as_str().to_owned());
+            harmos_domain::plugin::Grant::of(WriteFile::ID, metadata.id.as_str().to_owned());
         ctx.admit_stream_grant(&grant)?;
         self.storage.retry_transient_persistence();
         let mut file = self.storage.create_file(metadata.clone()).await?;

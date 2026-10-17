@@ -25,12 +25,12 @@ pub use validate::ValidateSchematic;
 // Local Imports
 
 /* === Constants === */
-pub const POLICY: harmos_contract::operations::OperationPolicy =
-    harmos_contract::operations::OperationPolicy {
+pub const POLICY: harmos_domain::operations::OperationPolicy =
+    harmos_domain::operations::OperationPolicy {
         timeout: std::time::Duration::from_secs(10),
         attempt_timeout: std::time::Duration::from_secs(10),
-        retries: harmos_contract::operations::RetryPolicy::Never,
-        restart: harmos_contract::operations::RestartPolicy::Never,
+        retries: harmos_domain::operations::RetryPolicy::Never,
+        restart: harmos_domain::operations::RestartPolicy::Never,
     };
 
 /* === Macros === */
@@ -40,7 +40,7 @@ pub const POLICY: harmos_contract::operations::OperationPolicy =
 /* === Structs === */
 
 /* === Enums === */
-#[harmos_contract::catalog]
+#[harmos_domain::catalog]
 pub enum Operations {
     Validate(ValidateSchematic),
     Route(ProposeRoute),

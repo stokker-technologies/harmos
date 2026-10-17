@@ -52,7 +52,7 @@ struct NativeState {
     payload: Option<Vec<u8>>,
     invocation: Option<u64>,
     operation: Identifier,
-    sdk: Option<harmos_contract::operations::lifecycle::Action>,
+    sdk: Option<harmos_domain::operations::lifecycle::Action>,
     acknowledged: bool,
     _capacity: Option<OwnedSemaphorePermit>,
 }
@@ -126,19 +126,19 @@ pub enum NativeError {
     #[error("operation `{operation}` differs from the selected native catalog")]
     Catalog { operation: String },
     #[error(transparent)]
-    Declaration(#[from] harmos_contract::Error),
+    Declaration(#[from] harmos_domain::Error),
     #[error("native operation transport failed")]
     Transport(#[from] SidecarError),
     #[error("native operation response codec failed")]
     Payload(#[from] crate::MessageError),
     // The provider refused the request while preparing it.
     #[error(transparent)]
-    Preparation(harmos_contract::Failure),
+    Preparation(harmos_domain::Failure),
     #[error("native operation request is not granted")]
     Unauthorized(#[source] crate::Error),
     // The provider's handler failed; its failure crosses unchanged.
     #[error(transparent)]
-    Remote(harmos_contract::Failure),
+    Remote(harmos_domain::Failure),
 }
 
 /* === Traits === */
@@ -149,7 +149,7 @@ impl NativeError {
         classify(self)
     }
 
-    pub(crate) fn failure(&self) -> Option<&harmos_contract::Failure> {
+    pub(crate) fn failure(&self) -> Option<&harmos_domain::Failure> {
         match self {
             Self::Preparation(failure) | Self::Remote(failure) => Some(failure),
             Self::Stream(source) => source.failure(),
@@ -362,13 +362,13 @@ impl Native {
                     capacity: Arc::clone(&capacity),
                 });
                 let suffix = match descriptor.action() {
-                    harmos_contract::operations::lifecycle::Action::Initialize => "initialize",
-                    harmos_contract::operations::lifecycle::Action::Shutdown => "shutdown",
+                    harmos_domain::operations::lifecycle::Action::Initialize => "initialize",
+                    harmos_domain::operations::lifecycle::Action::Shutdown => "shutdown",
                 };
                 let mut definition = descriptor.contract().operation().clone();
                 definition.id = crate::Identifier::new(format!("{}.sdk.{suffix}", scope.owner()))
                     .map_err(|source| Error::OperationDeclaration {
-                    source: harmos_contract::Error::from(source),
+                    source: harmos_domain::Error::from(source),
                 })?;
                 let mut entry = operations.binding_owned_definition::<EncodedOperation>(
                     scope.owner(),
@@ -600,7 +600,7 @@ impl Native {
             // The provider decoded the request; refuse it before any attempt runs.
             let payload = ready(answer)?;
             let grant =
-                harmos_contract::operations::decode_prepared_grant(&payload).map_err(|error| {
+                harmos_domain::operations::decode_prepared_grant(&payload).map_err(|error| {
                     SidecarError::Malformed(format!("prepared grant is malformed: {error}"))
                 })?;
             context
@@ -697,7 +697,7 @@ impl Native {
             Ok(answer) => {
                 acknowledged(answer)?;
                 if state.acknowledged
-                    && state.sdk == Some(harmos_contract::operations::lifecycle::Action::Initialize)
+                    && state.sdk == Some(harmos_domain::operations::lifecycle::Action::Initialize)
                 {
                     self.endpoint.acknowledge_initialize();
                 }

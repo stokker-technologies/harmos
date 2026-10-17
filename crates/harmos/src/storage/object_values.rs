@@ -189,7 +189,7 @@ impl ObjectVersionToken {
     }
 }
 
-harmos_contract::postcard_product!(ObjectVersionToken {
+harmos_domain::postcard_product!(ObjectVersionToken {
     history: StoreHistory,
     revision: NonZeroU64
 });

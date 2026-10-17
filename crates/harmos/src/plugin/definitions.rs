@@ -80,7 +80,7 @@ impl PluginDefinitions {
     ) -> impl Iterator<
         Item = (
             &PluginDefinition,
-            &harmos_contract::inventory::contracts::Required,
+            &harmos_domain::inventory::contracts::Required,
         ),
     > {
         self.definitions().flat_map(move |definition| {

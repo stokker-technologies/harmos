@@ -52,7 +52,7 @@ pub struct SchemaInfo {
 impl SchemaInput {
     pub fn new(key: SchemaKey, graph: &Schema) -> Result<Self> {
         graph
-            .prepare(&harmos_contract::config::SchemaSettings::default())
+            .prepare(&harmos_domain::config::SchemaSettings::default())
             .map_err(|_| Error::InvalidInput {
                 field: "storage schema",
                 reason: "invalid finite schema graph",

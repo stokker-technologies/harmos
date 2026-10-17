@@ -426,7 +426,7 @@ fn contract_scenario() {
                             },
                             |definition| {
                                 definition.contributions.registrations.push(
-                                    harmos_contract::Registration {
+                                    harmos_domain::Registration {
                                         namespace: "owner.catalog".into(),
                                         schema: 1,
                                         payload: b"{}".to_vec(),

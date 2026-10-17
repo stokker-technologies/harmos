@@ -150,7 +150,7 @@ pub trait ObjectCatalog: Catalog<ObjectDefinitions> + Send + Sync + 'static {
             if key.id.as_str().len() > MAX_IDENTITY_BYTES {
                 return Err(invalid("object schema identity exceeds its byte limit"));
             }
-            let mut settings = harmos_contract::config::SchemaSettings::default();
+            let mut settings = harmos_domain::config::SchemaSettings::default();
             settings.preparation_bytes = NonZeroUsize::new(
                 settings
                     .preparation_bytes
@@ -378,7 +378,7 @@ impl ObjectDefinition {
 
     pub fn graph(
         &self,
-        settings: &harmos_contract::config::SchemaSettings,
+        settings: &harmos_domain::config::SchemaSettings,
     ) -> Result<schema::graph::Schema> {
         schema::graph::Schema::from_declaration(self.declaration, settings)
             .map_err(|_| invalid("invalid object schema or preparation allowance"))

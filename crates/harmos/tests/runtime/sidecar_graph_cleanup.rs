@@ -203,36 +203,36 @@ impl Attach for Joined {
     fn owner(&self) -> &str {
         forwarded!(self, owner)
     }
-    fn operations(&self) -> harmos_contract::Result<Vec<harmos::operations::Definition>> {
+    fn operations(&self) -> harmos_domain::Result<Vec<harmos::operations::Definition>> {
         forwarded!(self, operations)
     }
     fn operation_contracts(
         &self,
-    ) -> harmos_contract::Result<Option<Vec<harmos::operations::Contract>>> {
+    ) -> harmos_domain::Result<Option<Vec<harmos::operations::Contract>>> {
         forwarded!(self, operation_contracts)
     }
     fn required_contracts(
         &self,
-    ) -> harmos_contract::Result<Option<Vec<harmos_contract::inventory::contracts::Required>>> {
+    ) -> harmos_domain::Result<Option<Vec<harmos_domain::inventory::contracts::Required>>> {
         forwarded!(self, required_contracts)
     }
     fn sdk_lifecycle(
         &self,
-    ) -> harmos_contract::Result<Option<[harmos::operations::lifecycle::Descriptor; 2]>> {
+    ) -> harmos_domain::Result<Option<[harmos::operations::lifecycle::Descriptor; 2]>> {
         forwarded!(self, sdk_lifecycle)
     }
     fn publications(&self) -> Vec<harmos_sidecar::StreamDeclaration> {
         forwarded!(self, publications)
     }
-    fn observers(&self) -> Vec<harmos_contract::inventory::observers::Declaration> {
+    fn observers(&self) -> Vec<harmos_domain::inventory::observers::Declaration> {
         forwarded!(self, observers)
     }
-    fn observer_control(&self) -> harmos_contract::Result<Option<harmos::operations::Contract>> {
+    fn observer_control(&self) -> harmos_domain::Result<Option<harmos::operations::Contract>> {
         forwarded!(self, observer_control)
     }
     fn listener_declarations(
         &self,
-    ) -> harmos_contract::Result<Option<Vec<harmos_contract::listeners::Definition>>> {
+    ) -> harmos_domain::Result<Option<Vec<harmos_domain::listeners::Definition>>> {
         forwarded!(self, listener_declarations)
     }
     async fn attach(&self) -> Result<Attached, Self::Error> {

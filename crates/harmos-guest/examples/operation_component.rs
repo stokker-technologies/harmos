@@ -26,9 +26,9 @@ use std::time::Duration;
 
 // Local Imports
 use contract::{Counts, Read, Value};
-use harmos_contract::catalog::Node;
-use harmos_contract::inventory::{contracts, listeners, observers, publications};
-use harmos_contract::plugin::{Declared, Plugin};
+use harmos_domain::catalog::Node;
+use harmos_domain::inventory::{contracts, listeners, observers, publications};
+use harmos_domain::plugin::{Declared, Plugin};
 use harmos_guest::Context;
 use harmos_guest::Host;
 use harmos_guest::operations::{
@@ -342,12 +342,12 @@ impl Declared for Program {
         Node::Leaf(WireDeclaration::of::<contract::Download>()),
         Node::Leaf(WireDeclaration::of::<contract::Exchange>()),
     ];
-    const REQUIRES: &'static [Node<harmos_contract::plugin::Requirement>] = &[];
+    const REQUIRES: &'static [Node<harmos_domain::plugin::Requirement>] = &[];
     const STREAMS: &'static [publications::Entry] = &[];
-    fn markers() -> Result<Vec<&'static [u8]>, harmos_contract::schema::graph::Error> {
-        harmos_contract::plugin::schema_markers::<Self>(
+    fn markers() -> Result<Vec<&'static [u8]>, harmos_domain::schema::graph::Error> {
+        harmos_domain::plugin::schema_markers::<Self>(
             vec![&IDENTITY, &CONTRACTS, &PUBLICATIONS, &LISTENERS, &OBSERVERS],
-            &harmos_contract::config::SchemaSettings::default(),
+            &harmos_domain::config::SchemaSettings::default(),
         )
     }
 }

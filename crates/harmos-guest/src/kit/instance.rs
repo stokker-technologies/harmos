@@ -27,10 +27,10 @@ use std::marker::PhantomData;
 use super::UNKNOWN;
 use super::context::Context;
 use crate::OperationRefusal;
-use harmos_contract::Message;
-use harmos_contract::builtin::InstanceState;
-use harmos_contract::operations::instance::{Id, Status};
-use harmos_contract::operations::{
+use harmos_domain::Message;
+use harmos_domain::builtin::InstanceState;
+use harmos_domain::operations::instance::{Id, Status};
+use harmos_domain::operations::{
     CallContext, Callable, ContextError, ContextValue, Host, Instance, Response, WireChildAction,
     WireChildCall, WireChildControl,
 };
@@ -61,7 +61,7 @@ impl Context {
             .await
             .map_err(|error| {
                 let code = error.code.parse().unwrap_or(UNKNOWN);
-                match harmos_contract::Failure::decode(&error.failure) {
+                match harmos_domain::Failure::decode(&error.failure) {
                     Ok(failure) => OperationRefusal::failed(code, failure),
                     Err(source) => OperationRefusal::new(code, source),
                 }

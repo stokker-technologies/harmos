@@ -23,7 +23,7 @@ use crate::storage::StorageManager;
 use crate::storage::config::IO_TIMEOUT;
 use crate::storage::query::{Query as Request, QueryCompletion, QueryOutput};
 use crate::{Error, MemorySize, Result};
-use harmos_contract::plugin::Grant;
+use harmos_domain::plugin::Grant;
 use std::{any::TypeId, sync::Arc};
 
 // Standard Library Imports

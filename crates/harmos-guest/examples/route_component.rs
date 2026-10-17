@@ -22,15 +22,15 @@ use std::time::Duration;
 
 // Local Imports
 use contract::{Decline, Echo, Echoed, Fail, ProviderEcho, Spin, Wait};
-use harmos_contract::StreamSpec;
-use harmos_contract::catalog::Node;
-use harmos_contract::inventory::{contracts, listeners, observers, publications};
-use harmos_contract::operations::{
+use harmos_domain::StreamSpec;
+use harmos_domain::catalog::Node;
+use harmos_domain::inventory::{contracts, listeners, observers, publications};
+use harmos_domain::operations::{
     Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, ServingError,
     WireDeclaration, WireTable, host, lifecycle,
 };
-use harmos_contract::plugin::{Declared, Grant, Plugin, Requirement};
-use harmos_contract::schema::Described;
+use harmos_domain::plugin::{Declared, Grant, Plugin, Requirement};
+use harmos_domain::schema::Described;
 use harmos_guest::Host;
 use harmos_guest::{Context, Message, OperationRefusal, PublishError};
 
@@ -65,7 +65,7 @@ const STREAMS: &[publications::Entry] = &[publications::Entry {
     metadata_json: "",
     row_metadata_json: "[]",
 }];
-const SDK: [harmos_contract::operations::OperationPolicy; 2] = [POLICY, POLICY];
+const SDK: [harmos_domain::operations::OperationPolicy; 2] = [POLICY, POLICY];
 
 #[used]
 static IDENTITY: [u8; contracts::identity_len(
@@ -122,7 +122,7 @@ static LINKED_PUBLICATIONS: [&[u8]; 2] = {
         id: "foreign",
         schema: 1,
         window: 8,
-        row: <() as harmos_contract::schema::Described>::DEFINITION,
+        row: <() as harmos_domain::schema::Described>::DEFINITION,
     }];
     #[used]
     static OTHER: [u8; encoded_len("guest", "other", STREAMS)] = encode("guest", "other", STREAMS);
@@ -167,8 +167,8 @@ impl Declared for RouteComponent {
     const PROVIDES: &'static [Node<WireDeclaration>] = PROVIDED;
     const REQUIRES: &'static [Node<Requirement>] = REQUIRED;
     const STREAMS: &'static [publications::Entry] = STREAMS;
-    fn markers() -> Result<Vec<&'static [u8]>, harmos_contract::schema::graph::Error> {
-        harmos_contract::plugin::schema_markers::<Self>(
+    fn markers() -> Result<Vec<&'static [u8]>, harmos_domain::schema::graph::Error> {
+        harmos_domain::plugin::schema_markers::<Self>(
             vec![
                 &IDENTITY,
                 &CONTRACTS,
@@ -180,7 +180,7 @@ impl Declared for RouteComponent {
                 LINKED_PUBLICATIONS[0],
                 LINKED_PUBLICATIONS[1],
             ],
-            &harmos_contract::config::SchemaSettings::default(),
+            &harmos_domain::config::SchemaSettings::default(),
         )
     }
 }

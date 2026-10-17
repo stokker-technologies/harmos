@@ -24,7 +24,7 @@ use std::{
 // Third Party Imports
 // Local Imports
 use super::{Payload, Routes, scenario_runtime};
-use harmos_contract::{
+use harmos_domain::{
     Aggregate, Identifier, Protobuf,
     bindings::python::{self, Settings},
     config::SchemaSettings,
@@ -63,7 +63,7 @@ const AGGREGATE_SNAPSHOT: &str = include_str!("../fixtures/aggregate-bindings.py
 /* === Type Aliases === */
 
 /* === Structs === */
-#[harmos_contract::message(harmos_path = ::harmos_contract)]
+#[harmos_domain::message(harmos_path = ::harmos_domain)]
 #[derive(PartialEq)]
 struct Summary {
     aggregate: Aggregate,

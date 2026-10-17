@@ -27,7 +27,7 @@ use harmos::operations::{
     WireOperation, WireTable,
 };
 use harmos::sidecar::{Refusal, Supervisor};
-use harmos_contract::listeners::{Context as DeliveryContext, Delivery};
+use harmos_domain::listeners::{Context as DeliveryContext, Delivery};
 
 /* === Constants === */
 const POLICY: OperationPolicy = OperationPolicy {

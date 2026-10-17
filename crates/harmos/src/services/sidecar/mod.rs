@@ -37,7 +37,7 @@ use crate::streams::{Demand, StreamManager};
 use crate::supervision::executor;
 use crate::{Application, streams::ManagedPublication, streams::Stream};
 use carrier::{Receiver as CarrierReceiver, Sender as CarrierSender};
-use harmos_contract::Message;
+use harmos_domain::Message;
 use harmos_sidecar::{Attach, Attached, Frame, Registration, UNKNOWN};
 
 /* === Constants === */
@@ -194,7 +194,7 @@ pub enum SidecarError {
     Refused {
         code: i64,
         #[source]
-        failure: harmos_contract::Failure,
+        failure: harmos_domain::Failure,
     },
     #[error("the call left the route's contract: {0}")]
     Malformed(String),
@@ -232,7 +232,7 @@ impl SidecarError {
     // A refusal the host raises itself, before any plugin answered.
     pub(crate) fn refused(code: i64, message: impl Into<String>) -> Self {
         let failure =
-            harmos_contract::Failure::new(crate::operations::FailureKind::Permanent, message);
+            harmos_domain::Failure::new(crate::operations::FailureKind::Permanent, message);
         Self::Refused { code, failure }
     }
 }
@@ -742,7 +742,7 @@ impl Cleanup {
             if let Err(error) = (&mut task.running).await {
                 let failure = format!(
                     "native operation drain failed: {}",
-                    harmos_contract::failure::Report(&error)
+                    harmos_domain::failure::Report(&error)
                 );
                 task.failure = Some(failure.clone());
                 self.failure.get_or_insert(failure);
@@ -1217,7 +1217,7 @@ where
                     let child = match crate::operations::WireChild::decode(&params) {
                         Ok(child) => child,
                         Err(error) => {
-                            let refusal = harmos_contract::Refusal::of(error);
+                            let refusal = harmos_domain::Refusal::of(error);
                             return self.send(Frame::Refusal { id, refusal }).await.map_or_else(
                                 |error| Absorbed::Malformed(error.to_string()),
                                 |()| Absorbed::Carried,
@@ -1256,7 +1256,7 @@ where
                                             dyn Future<
                                                     Output = Result<
                                                         Vec<u8>,
-                                                        harmos_contract::Refusal,
+                                                        harmos_domain::Refusal,
                                                     >,
                                                 > + Send,
                                         >,
@@ -1270,8 +1270,8 @@ where
                                             call
                                         }
                                         _ => {
-                                            let refusal = harmos_contract::Refusal::new(
-                                                harmos_contract::UNKNOWN,
+                                            let refusal = harmos_domain::Refusal::new(
+                                                harmos_domain::UNKNOWN,
                                                 "submitted children require an attempt context",
                                             );
                                             return self
@@ -1390,7 +1390,7 @@ where
                         Err(error) => crate::operations::children::refused(error),
                     }
                 } else {
-                    harmos_contract::Refusal::new(
+                    harmos_domain::Refusal::new(
                         -32_606,
                         "no managed operation caller is configured",
                     )
@@ -1430,7 +1430,7 @@ where
                 if let Err(error) = (&mut task.running).await {
                     let failure = format!(
                         "native operation drain failed: {}",
-                        harmos_contract::failure::Report(&error)
+                        harmos_domain::failure::Report(&error)
                     );
                     task.failure = Some(failure.clone());
                     *self.cleanup_failure = Some(failure.clone());
