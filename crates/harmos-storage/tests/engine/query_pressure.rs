@@ -25,18 +25,16 @@ use arrow_array::{Float64Array, UInt64Array};
 // Local Imports
 use super::backend::{Data, history, storage_settings};
 use super::fixture::state_settings;
-use super::support::{Bank, Ledger, catalog};
 use super::waveforms;
-use harmos_runtime::Runtime;
-use harmos_runtime::storage::operations::Query;
-use harmos_runtime::storage::query::scalar::ScalarValue;
-use harmos_runtime::storage::query::transform::{
+use harmos_domain::operations::storage::Query;
+use harmos_storage::query::scalar::ScalarValue;
+use harmos_storage::query::transform::{
     Transform,
     aggregate::{Aggregate, Measure},
     filter::{Clause, Compare, Condition, Filter, Term},
 };
-use harmos_runtime::storage::query::{QueryArrow, QueryReader, RecordSelection, RowSlice, Source, StreamSelection};
-use harmos_runtime::storage::*;
+use harmos_storage::query::{QueryArrow, QueryReader, RecordSelection, RowSlice, Source, StreamSelection};
+use harmos_storage::*;
 
 /* === Constants === */
 const CONTENTION_BUDGET: usize = 4 * 1024 * 1024;
@@ -74,7 +72,7 @@ async fn pressure_reloads_page() {
     let storage: StorageManager = StorageManager::new(
         StorageBackends {
             primary: data.clone(),
-            state: Arc::new(harmos_runtime::storage::state::file::FileBackend::new(
+            state: Arc::new(harmos_storage::state::file::FileBackend::new(
                 directory.path().join("state"),
                 history(),
                 state_settings(),
@@ -83,11 +81,7 @@ async fn pressure_reloads_page() {
         settings,
     )
     .unwrap();
-    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .runtime_with_storage(&storage)
-        .await
-        .unwrap();
+    super::fixture::start(&storage).await;
     let schema = waveforms::schema();
     storage
         .write_schema(&schema, &waveforms::definition())
@@ -128,12 +122,12 @@ async fn pressure_reloads_page() {
                 measures: vec![
                     Measure {
                         field: "payload.value".into(),
-                        statistic: harmos_runtime::Aggregate::Count,
+                        statistic: harmos_domain::Aggregate::Count,
                         name: "count".into(),
                     },
                     Measure {
                         field: "payload.value".into(),
-                        statistic: harmos_runtime::Aggregate::Rms,
+                        statistic: harmos_domain::Aggregate::Rms,
                         name: "rms".into(),
                     },
                 ],
@@ -193,7 +187,6 @@ async fn pressure_reloads_page() {
     drop(reader);
     storage.close().await.unwrap();
     assert_eq!(storage.status().read_bytes, baseline);
-    runtime.stop().await.unwrap();
 }
 
 fn assert_result(output: QueryArrow) {
@@ -231,7 +224,7 @@ async fn cancelled_advance_poisons() {
     let storage: StorageManager = StorageManager::new(
         StorageBackends {
             primary: Arc::new(Data::<()>::journaled(directory.path(), history()).unwrap()),
-            state: Arc::new(harmos_runtime::storage::state::file::FileBackend::new(
+            state: Arc::new(harmos_storage::state::file::FileBackend::new(
                 directory.path().join("state"),
                 history(),
                 state_settings(),
@@ -240,15 +233,11 @@ async fn cancelled_advance_poisons() {
         settings,
     )
     .unwrap();
-    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .runtime_with_storage(&storage)
-        .await
-        .unwrap();
+    super::fixture::start(&storage).await;
     let at = storage.flush().await.unwrap();
     let query = || Query {
         at: at.clone(),
-        source: Source::Files(harmos_runtime::storage::query::FileSelection {
+        source: Source::Files(harmos_storage::query::FileSelection {
             scope: None,
             item: None,
         }),
@@ -283,7 +272,6 @@ async fn cancelled_advance_poisons() {
     assert_eq!(successor.completion().unwrap().rows, 0);
     drop(successor);
     storage.close().await.unwrap();
-    runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -498,7 +486,7 @@ async fn capture(mut reader: QueryReader, mut kept: Vec<QueryArrow>) -> harmos_s
 }
 
 // Take Every Remaining Byte Of The Read Pool With A Non-Waiting Reservation.
-fn fill(f: &super::fixture::Fixture) -> harmos_runtime::storage::arrow::RetainedMemory {
+fn fill(f: &super::fixture::Fixture) -> harmos_storage::arrow::RetainedMemory {
     let occupied = f.storage.status().read_bytes;
     let probe = f.storage.reserve_arrow_memory(0).unwrap();
     let overhead = f.storage.status().read_bytes - occupied;

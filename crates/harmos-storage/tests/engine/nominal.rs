@@ -18,20 +18,19 @@
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
 // Third Party Imports
-use harmos_runtime::storage::operations::{Query, ReadFile};
-use harmos_runtime::storage::query::transform::{
+use harmos_domain::operations::storage::{Query, ReadFile};
+use harmos_storage::query::transform::{
     Transform,
     aggregate::{Aggregate, Measure},
     downsample::{Algorithm, Downsample},
     histogram::Histogram,
     project::{Project, Projection},
 };
-use harmos_runtime::storage::query::{QueryArrow, RowSlice, Source, StreamSelection};
-use harmos_runtime::storage::*;
-use harmos_runtime::{Identifier, Runtime};
+use harmos_storage::query::{QueryArrow, RowSlice, Source, StreamSelection};
+use harmos_storage::*;
+use harmos_storage::Identifier;
 // Local Imports
 use super::backend::{Data, Recovery, history, storage_settings};
-use super::support::{Bank, Ledger, catalog};
 use super::waveforms::{self, Sample};
 
 /* === Constants === */
@@ -45,7 +44,6 @@ use super::waveforms::{self, Sample};
 struct Nominal {
     _directory: tempfile::TempDir,
     storage: StorageManager,
-    runtime: Runtime<Bank>,
     schema: SchemaKey,
     samples: Vec<Sample>,
     durable: StorageCursor,
@@ -69,11 +67,7 @@ impl Nominal {
             storage_settings(),
         )
         .unwrap();
-        let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-            .register(catalog())
-            .runtime_with_storage(&storage)
-            .await
-            .unwrap();
+        super::fixture::start(&storage).await;
 
         // Store The Schema And Balanced Three-Phase Samples In Several Batches.
         let schema = waveforms::schema();
@@ -91,7 +85,6 @@ impl Nominal {
         Self {
             _directory: directory,
             storage,
-            runtime,
             schema,
             samples,
             durable,
@@ -131,7 +124,6 @@ impl Nominal {
 
     async fn finish(self) {
         self.storage.close().await.unwrap();
-        self.runtime.stop().await.unwrap();
     }
 }
 
@@ -284,7 +276,7 @@ async fn period_aggregates_rms() {
         }],
         measures: vec![Measure {
             field: "payload.value".into(),
-            statistic: harmos_runtime::Aggregate::Rms,
+            statistic: harmos_domain::Aggregate::Rms,
             name: "rms".into(),
         }],
     });

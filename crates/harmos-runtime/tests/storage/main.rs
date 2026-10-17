@@ -16,12 +16,8 @@ mod exhaustion;
 mod files;
 #[path = "../support/storage_fixture.rs"]
 mod fixture;
-mod mapping;
-mod nominal;
 mod objects;
 mod operations;
-mod query_pressure;
-mod retention;
 mod runtime;
 mod staging;
 mod state;

@@ -13,16 +13,15 @@
 
 /* === Imports === */
 use super::backend::{Data, Recovery, history, storage_settings};
-use super::support::{Bank, Ledger, catalog};
 use super::waveforms::{Experiment, Objects};
-use harmos_runtime::storage::operations::Query;
-use harmos_runtime::storage::query::transform::{
+use harmos_domain::operations::storage::Query;
+use harmos_storage::query::transform::{
     Transform,
     project::{Project, Projection},
 };
-use harmos_runtime::storage::query::{ObjectSelection, ObjectVersions, QueryArrow, RowSlice, Source};
-use harmos_runtime::storage::*;
-use harmos_runtime::{Identifier, Runtime};
+use harmos_storage::query::{ObjectSelection, ObjectVersions, QueryArrow, RowSlice, Source};
+use harmos_storage::*;
+use harmos_storage::Identifier;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -45,7 +44,6 @@ struct Revisions {
     _directory: tempfile::TempDir,
     data: Arc<Data<Objects>>,
     storage: StorageManager<Objects>,
-    runtime: Runtime<Bank>,
     first: Experiment,
     first_receipt: ObjectReceipt,
     second_receipt: ObjectReceipt,
@@ -72,11 +70,7 @@ impl Revisions {
             storage_settings(),
         )
         .unwrap();
-        let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-            .register(catalog())
-            .runtime_with_storage(&storage)
-            .await
-            .unwrap();
+        super::fixture::start(&storage).await;
 
         // Two Revisions Of One Object Are Durable At Distinct Cursors.
         let first = Experiment {
@@ -98,7 +92,6 @@ impl Revisions {
             _directory: directory,
             data,
             storage,
-            runtime,
             first,
             first_receipt,
             second_receipt,
@@ -111,7 +104,6 @@ impl Revisions {
 
     async fn finish(self) {
         self.storage.close().await.unwrap();
-        self.runtime.stop().await.unwrap();
     }
 }
 

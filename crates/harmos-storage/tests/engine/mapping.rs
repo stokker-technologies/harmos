@@ -15,28 +15,27 @@ use std::sync::Arc;
 
 // Third Party Imports
 use arrow_array::{Array, Float64Array, ListArray, StructArray, UInt32Array};
-use harmos_runtime::storage::operations::Query;
-use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
-use harmos_runtime::storage::*;
-use harmos_runtime::{Identifier, Message, Runtime};
+use harmos_domain::operations::storage::Query;
+use harmos_storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
+use harmos_storage::*;
+use harmos_storage::{Identifier, Message};
 
 // Local Imports
 use super::backend::{Data, history, storage_settings};
 use super::fixture::state_settings;
-use super::support::{Bank, Ledger, catalog};
 
 /* === Constants === */
 /* === Macros === */
 /* === Type Aliases === */
 /* === Structs === */
-#[harmos_runtime::message]
+#[harmos_domain::message]
 struct Payload {
     label: Option<String>,
     values: Vec<f64>,
     event: Event,
 }
 
-#[harmos_runtime::message]
+#[harmos_domain::message]
 struct Expansion {
     values: Vec<String>,
 }
@@ -45,13 +44,12 @@ struct Expansion {
 struct Mapped {
     _directory: tempfile::TempDir,
     storage: StorageManager,
-    runtime: Runtime<Bank>,
     schema: SchemaKey,
     at: StorageCursor,
 }
 
 /* === Enums === */
-#[harmos_runtime::message]
+#[harmos_domain::message]
 enum Event {
     Reading(i64),
     Empty,
@@ -60,7 +58,7 @@ enum Event {
 /* === Traits === */
 /* === Implementations === */
 impl Mapped {
-    async fn new<T: harmos_runtime::schema::Described + Message>(
+    async fn new<T: harmos_domain::schema::Described + Message>(
         settings: StorageSettings,
         id: &str,
         payloads: &[T],
@@ -71,7 +69,7 @@ impl Mapped {
         let storage: StorageManager = StorageManager::new(
             StorageBackends {
                 primary: data,
-                state: Arc::new(harmos_runtime::storage::state::file::FileBackend::new(
+                state: Arc::new(harmos_storage::state::file::FileBackend::new(
                     directory.path().join("state"),
                     history(),
                     state_settings(),
@@ -80,11 +78,7 @@ impl Mapped {
             settings,
         )
         .unwrap();
-        let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-            .register(catalog())
-            .runtime_with_storage(&storage)
-            .await
-            .unwrap();
+        super::fixture::start(&storage).await;
 
         // Declare The Schema And Save One Record Per Payload.
         let schema = SchemaKey {
@@ -92,9 +86,9 @@ impl Mapped {
             version: NonZeroU32::MIN,
             payload_encoding: PayloadEncoding::PostcardV1,
         };
-        let graph = harmos_runtime::schema::graph::Schema::from_declaration(
+        let graph = harmos_domain::schema::graph::Schema::from_declaration(
             T::DEFINITION,
-            &harmos_runtime::config::SchemaSettings::default(),
+            &harmos_domain::config::SchemaSettings::default(),
         )
         .unwrap();
         storage.write_schema(&schema, &graph).await.unwrap();
@@ -116,7 +110,6 @@ impl Mapped {
         Self {
             _directory: directory,
             storage,
-            runtime,
             schema,
             at,
         }
@@ -142,7 +135,6 @@ impl Mapped {
 
     async fn finish(self) {
         self.storage.close().await.unwrap();
-        self.runtime.stop().await.unwrap();
     }
 }
 

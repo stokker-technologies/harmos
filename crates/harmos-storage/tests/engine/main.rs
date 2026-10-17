@@ -17,6 +17,12 @@ mod backend;
 mod batching;
 mod cursors;
 mod fixture;
+mod query_pressure;
+mod mapping;
+mod retention;
+mod nominal;
+#[path = "../support/waveforms.rs"]
+mod waveforms;
 
 /* === Re-Exports === */
 

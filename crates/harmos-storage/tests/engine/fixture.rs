@@ -70,13 +70,7 @@ impl Fixture {
         let storage = StorageManager::new(StorageBackends {
             primary: data.clone(), state: recovery.clone(),
         }, config).unwrap();
-        storage.start_with(Arc::new(()), |mut worker| {
-            let task = tokio::spawn(async move {
-                worker.run().await?;
-                worker.cleanup().await
-            });
-            Ok(Box::new(Task(Mutex::new(Some(task)))))
-        }).await.unwrap();
+        start(&storage).await;
         Self { storage, data, recovery }
     }
 
@@ -88,6 +82,22 @@ impl Fixture {
 }
 
 /* === Public Functions === */
+pub(crate) async fn start<C>(storage: &StorageManager<C>) {
+    storage.start_with(Arc::new(()), |mut worker| {
+            let task = tokio::spawn(async move {
+                worker.run().await?;
+                worker.cleanup().await
+            });
+            Ok(Box::new(Task(Mutex::new(Some(task)))))
+        }).await.unwrap();
+}
+
+pub(crate) fn state_settings() -> harmos_storage::state::StorageStateSettings {
+    harmos_storage::state::StorageStateSettings {
+        max_entry_bytes: std::num::NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
+        max_checkpoint_bytes: std::num::NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
+    }
+}
 
 /* === Private Functions === */
 pub(crate) fn config() -> StorageSettings {
