@@ -216,18 +216,6 @@ fn declaration(attribute: TokenStream) -> Result<Declaration, Error> {
                     "stream_entries",
                 )?;
             }
-            other if other.path().is_ident("core") || other.path().is_ident("capabilities") => {
-                return Err(Error::new(
-                    other.span(),
-                    "`core` and `capabilities` are retired; require host operations, scoping their grants: `requires(Op: scope(\"stream\"), Other)`",
-                ));
-            }
-            other if other.path().is_ident("operations") => {
-                return Err(Error::new(
-                    other.span(),
-                    "`operations` is retired for unified plugins; select explicit `provides` and `requires` catalogs",
-                ));
-            }
             other if other.path().is_ident("listeners") || other.path().is_ident("observers") => {
                 return Err(Error::new(
                     other.span(),
