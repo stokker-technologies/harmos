@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/run.py; sha256:ccdb021805fa0887790d42f83416388285c8e56e5f6fcb940efde05f248781a6
+# Rendered by stkr project update from templates/python/test/run.py; sha256:5d0ef8f5455dd3e4e56ccedef237b95d50381be827ccdda823035b55f11185c9
 # ***
 #
 # Harmos
@@ -89,6 +89,7 @@ def test(
     project: str,
     profile: str,
     extra: Sequence[str],
+    archive_arguments: Sequence[str] = (),
 ) -> int:
     """Run one lane and publish its evidence; nonzero when any story failed."""
     rules = policy.load(directory)
@@ -103,7 +104,10 @@ def test(
     environment = None
     cwd = directory / project
     if language == "rust":
-        path = archive.require(directory, profile, current)
+        temporary = directory / ".cache/tmp"
+        temporary.mkdir(parents=True, exist_ok=True)
+        environment = dict(os.environ, TMPDIR=str(temporary), TEMP=str(temporary), TMP=str(temporary))
+        path = archive.require(directory, profile, current, archive_arguments)
         names = archive.binaries(directory, profile)
         expression, rest = nextest.selection(category, extra, names)
         measured = nextest.overrides(rules, category, recorded, coverage=False, binaries=names)
@@ -161,6 +165,9 @@ def coverage(
 
     # Instrumented Run
     if language == "rust":
+        temporary = directory / ".cache/tmp"
+        temporary.mkdir(parents=True, exist_ok=True)
+        environment.update(TMPDIR=str(temporary), TEMP=str(temporary), TMP=str(temporary))
         names = archive.binaries(directory, profile)
         expression, rest = nextest.selection(category, extra, names)
         measured = nextest.overrides(rules, category, {}, coverage=True, binaries=names)
@@ -324,6 +331,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
     lane.add_argument("--category", choices=policy.CATEGORIES, required=True)
     lane.add_argument("--language", choices=policy.LANGUAGES, required=True)
     lane.add_argument("--coverage", action="store_true")
+    lane.add_argument("--archive-argument", action="append", default=[])
     bench_lane = commands.add_parser("bench", help="run one benchmark layer")
     bench_lane.add_argument("--category", choices=policy.BENCH_CATEGORIES, required=True)
     bench_lane.add_argument("--language", choices=("rust", "python"), required=True)
@@ -360,6 +368,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
                 options.project,
                 options.profile,
                 extra,
+                options.archive_argument,
             )
         if options.command == "coverage":
             return coverage(

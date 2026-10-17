@@ -2,7 +2,7 @@
 name: harmos-authoring
 description: Author Harmos operations, plugins, streaming endpoints, and generated transport contracts.
 ---
-<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/SKILL.md; sha256:fd9e0559f06e7270368302303354df45b8b6b5c7f39e63ec4251f35051958b24 -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/SKILL.md; sha256:b251b4369a5d65f336abeb840b289ea42b874a49f5d76f61d8dc7e78f9832364 -->
 
 # Harmos Authoring
 
@@ -18,10 +18,10 @@ Use the original runtime and resource owners. Consult the relevant section only;
   `Arc<Resources>`. Keep devices, clients, file handles and task ownership out of
   portable requests and persisted configuration.
 - The original OperationManager owns admission, generation, policy and physical
-  settlement. `#[harmos::operation(declaration = contract::Read)]` forwards the
-  resource-bound implementation to the shared declaration. Put declaration
-  metadata on a unit struct in its vertical operation file, including unshared
-  declarations. Never put operation metadata on catalog enum entries. Catalogs
+  settlement. `#[harmos::operation]` on a resource-bound implementation infers
+  its declaration from the request argument; an explicit trait implementation
+  selects `type Declaration = domain::Read`. Put declaration metadata on the
+  request struct in its vertical operation file, including unshared declarations. Never put operation metadata on catalog enum entries. Catalogs
   assemble already-declared leaf types.
 - Lifecycle verbs are shared by operations, observers, services and plugins:
   `initialize` constructs, the work verb (`run`, `observe`) works, `stop` ends
@@ -93,7 +93,7 @@ Use the original runtime and resource owners. Consult the relevant section only;
 
   async fn body<H: Host>(host: &H) -> Result<(), H::Error> {
       let read = host.call(Read { channel: 3 }).await?; // Request = Self
-      let receipt = host.call_as::<host::Invoke>(invoke).await?;
+      let receipt = host.call(invoke).await?;
       let child = host.submit(Read { channel: 4 }).await?;
       let status = child.status().await?;
       let joined = child.join().await?;
@@ -110,7 +110,7 @@ Use the original runtime and resource owners. Consult the relevant section only;
   belong to the submitting attempt and travel as child controls (join, status,
   cancel, release, detach) on the existing child call path. Guests submit unary
   children only; streaming child sessions stay in process. In-process inherent
-  `submit`/`submit_as` admit synchronously; the trait forms are asynchronous.
+  `submit` admits synchronously; the trait form is asynchronous.
 - A sidecar `Publisher` publishes an ordered batch on one stream: build it with
   `publisher.batch::<S>()`, add rows with `push(row)` (stamped by the kit clock
   at push time, never earlier than the previous stamp) or `push_at(row,
@@ -169,25 +169,27 @@ Use the original runtime and resource owners. Consult the relevant section only;
 
 
 A shared contract crate compiled into WebAssembly guests depends on
-`harmos-contract`; host-only crates write the same declarations with
+`harmos-domain`; host-only crates write the same declarations with
 `#[harmos::operation]` and `#[harmos::catalog]`.
 
 ```rust
 // operations/validate.rs
-#[harmos_contract::operation(
+#[harmos_domain::message]
+#[harmos_domain::operation(
     id = "schematic.validate",
-    request = Request,
-    response = Response,
+    response = Validation,
     policy = POLICY,
     version = 1,
 )]
-pub struct Validate;
+pub struct Validate {
+    pub schematic: Snapshot,
+}
 
 // operations/mod.rs
 mod validate;
 pub use validate::Validate;
 
-#[harmos_contract::catalog]
+#[harmos_domain::catalog]
 pub enum Operations {
     Validate(Validate),
 }
@@ -259,28 +261,22 @@ declare operation metadata.
   values. The outer layer handles browser preflight; actual calls still pass
   through ingress authentication. Empty origins emit no CORS headers.
 - Macro expansion produces metadata only. Each producer's `build.rs` imports
-  its shared contract crate as a build dependency with the intended explicit
-  features and calls
-  `Artifacts::new(&Contracts::of::<Operations>()?)?.export_build("operations")`
-  through `harmos::operations::Contracts` and `harmos::grpc::Artifacts`, with
-  `harmos` as a build dependency enabling `reflection`; WebAssembly guests keep
-  the host out of their graph and use `harmos-contract` with `reflection`
-  instead. Build scripts cannot import their
-  own not-yet-built crate.
-- Generated bundles live under that producer's `OUT_DIR/grpc/<catalog>/`,
-  containing package-relative `.proto` files, `descriptors.bin`, canonical
-  `contracts.json` and `manifest.txt`.
-  Packaging selects the current invocation's `build-script-executed` Cargo JSON
-  messages and preserves producer/catalog ownership. Never glob stale Cargo
-  output directories or generate schemas during componentization. Static bundles
-  describe known catalogs; runtime reflection describes currently ready methods.
-- Generate Python bindings through `harmos::bindings::python::export`
-  with the `bindings-python` feature, or the thin `cargo harmos bindings python`
-  adapter. Supply explicit distribution/module/version/description/license
-  metadata and an exact `Artifacts` export. CLI selection uses an exact export
-  directory or the selected build receipt's producer/catalog; never scan stale
-  `OUT_DIR`s. Ordinary Rust builds export schemas without Python packaging or
-  `protoc`; explicit binding generation invokes the selected `protoc` tool.
+  its domain crate and `harmos-packaging` with `bindings-proto`, then calls
+  `harmos_packaging::proto::generate(&Contracts::of::<Operations>()?, &out_dir.join("grpc/operations"))`.
+  Build scripts cannot import their own not-yet-built crate.
+- Generated catalogs live under that producer's `OUT_DIR/grpc/<catalog>/`,
+  with `.proto` files, `descriptors.bin`, `contracts.json` and `manifest.txt`.
+  Build collection uses the current invocation's captured Cargo messages and
+  metadata, retaining producer/catalog ownership. Never scan stale output
+  directories. Static catalogs describe known contracts; runtime reflection
+  describes currently ready methods.
+- Generate consumer-owned Python bindings with
+  `harmos_packaging::python::generate(python::Catalog { contracts, settings, protoc }, output)`
+  (`bindings-python`), or `cargo harmos bindings python`. TypeScript uses
+  `harmos_packaging::typescript::generate(contracts, output)` (`bindings-typescript`).
+  Select exact exported contracts and explicit distribution metadata. No generic
+  Harmos Python client or internal tooling distribution is published. Ordinary
+  Rust builds export schemas without packaging Python or invoking protoc.
 - Python output is a normal `src/` package with standard protobuf message
   classes and stubs, `py.typed`, canonical contracts and descriptors. Wheels and
   sdists install without Rust or the producer source. Preserve optional fields,
@@ -420,19 +416,22 @@ layouts for guests and sidecars.
   partial setup or EOF. Acknowledged domain stop is not replayed while
   physical cleanup resumes. The SDK lifecycle leaves keep their wire ids
   (`harmos.initialize`, `harmos.shutdown`).
-- Author native plugins through `harmos::sidecar` (`plugin-sidecar`), naming
-  `harmos::` paths only. WebAssembly guests author with `harmos-guest`, which
-  must build without the host runtime; the host loads them through `harmos::guest`.
-  The SDK context identifies its carrier. Host features `plugin-guest` and
-  `plugin-sidecar` enable execution and imply the shared `plugin` manager.
-  `harmos::packaging` exposes reusable build, inspection, bundle and componentization
-  APIs under the `packaging` feature. `cargo-harmos` consumes that facade;
-  portable SDK authors retain their dedicated SDK dependency.
-  Use `cargo harmos sidecar build|dev` or `cargo harmos guest build|dev` with
-  Cargo package/feature selections. Both `dev` commands watch source and local
-  dependencies, coalesce and serialize builds, retain usable packages on failure,
-  exclude generated outputs and settle the Cargo tree on cancellation. They do
-  not activate or reload plugins; hosts own that application integration.
+- Native plugins depend on `harmos-sidecar`; guests depend on `harmos-guest`.
+  Both use shared declarations from `harmos-domain` without importing the host
+  runtime. Hosts compose plugin execution through `harmos::plugin` and select
+  `plugin-sidecar` or `plugin-guest`.
+- `harmos-packaging` owns inspection, build receipts, bundling and binding
+  generators; `cargo-harmos` is its CLI. `cargo harmos sidecar|guest build`
+  compiles and stamps a `Build`. `package --build-json RECEIPT --output DIR`
+  consumes its exact byte hashes without running Cargo. Preserve receipt
+  backend, target, profile and hashes when relocating staged artifacts.
+- Both `dev` commands watch source and local dependencies, serialize/coalesce
+  builds, retain usable artifacts on failure and exclude generated output.
+  Cancellation settles the owned Cargo process tree. Hosts own activation and reload.
+- Start new plugins with `cargo harmos new sidecar|guest DEST --harmos-rev FULL_SHA`.
+  An explicit local authoring checkout uses `--harmos-path CHECKOUT`. The
+  generated project carries pinned source selection and managed tools; keep its
+  guidance and generated assets current through the owning authoring tool.
 - Host launch settings, grants and `PluginRestartSettings` are supplied once to
   the runtime plugin owner. Automatic restarts default to zero; configured
   allowance is bounded per explicit activation cycle and successful startup does
@@ -509,18 +508,19 @@ layouts for guests and sidecars.
   when wrapping attachments and retain the original driver and physical ending.
 - Preserve authored stream, observer and listener contributions through the
   unified inventories and ordinary operation callbacks. Portable unit listener descriptors use the same
-  `#[harmos::listener]` attribute and `listeners = Audience` catalog selection.
+  `#[harmos::listener(id = "...", callback = "...", policy = POLICY, ...)]`
+  attribute and `listeners = Audience` catalog selection. Callback implementations
+  select `type Declaration = listeners::Delivery<Listener>` rather than declaring
+  a second request or operation marker.
   Their source identity/schema and exact provided callback contract are inert
   metadata; manager feed/readiness belongs to the original host managers.
   Observers construct with `async fn initialize(resources: &Resources) ->
   Result<Self, Error>` (or `Default`), work in `observe`, and end with `stop`
   and `cleanup`; a failed initialization drops its partial owner and retries on
   the next cadence without cleanup.
-  Native observers select `observers = Catalog` and one Host
-  `observer_control = Observe` leaf (request `observers::Control`, response `()`,
-  `POLICY = observers::POLICY`). Bind the same `ObserverAttachment<Resources, Host>`
-  to initialized resources with `bind::<Observe>(table)`; the host submits the
-  control per activation and cancels it to stop and clean up the observer, which
-  runs on a thread of its own. In process, `Instance::activate(resources, host)`
-  yields an `Activity` to drive with `observe`, `stop` and `cleanup`. Guest
-  observer callbacks remain unsupported and nonempty selections are rejected.
+  Native observers select `observers = Catalog`. `ObserverAttachment` binds the
+  one built-in `observers::Control` contract with `.bind(table)`; do not declare
+  a per-plugin control operation. The host drives activation and cancellation
+  through that original callback and retains physical cleanup. In process,
+  `Instance::activate(resources, host)` yields an `Activity` driven through
+  `observe`, `stop` and `cleanup`. Guest observer callbacks remain unsupported.

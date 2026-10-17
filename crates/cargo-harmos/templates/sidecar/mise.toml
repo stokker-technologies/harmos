@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/profiles/mise.toml; sha256:026fff9a7256c0e3ff24651424abb52ce7d3b473f903a2cbc524a275881ea0d4
+# Rendered by stkr project update from templates/profiles/mise.toml; sha256:9c44a64263692b211b4d27e791057e8b46ae51ce0e3e1af889e9f70ea15378bf
 # === Settings === #
 
 [settings]
@@ -99,10 +99,8 @@ run = [
 
 [tasks.build]
 description = "Build Binaries, Fixtures, Wheels And The Test Archive"
-run = [
-  "cargo build --workspace --all-targets",
-  "uv run --locked --project tools/python python -m project_tools.test.archive",
-]
+usage = 'flag "--profile <profile>" default="dev"'
+run = "uv run --locked --project tools/python python -m project_tools.test.archive --profile {{usage.profile}}"
 
 # === Dev === #
 
@@ -123,15 +121,18 @@ run = "cargo harmos sidecar dev"
 
 [tasks.test]
 description = "Test Every Layer"
-depends = ["test:unit"]
+usage = 'flag "--profile <profile>" default="dev"'
+depends = ["test:unit --profile {{usage.profile}}"]
 
 [tasks."test:unit"]
 description = "Test Unit Layer"
-depends = ["test:unit:rust"]
+usage = 'flag "--profile <profile>" default="dev"'
+depends = ["test:unit:rust --profile {{usage.profile}}"]
 
 [tasks."test:unit:rust"]
 description = "Test Unit Rust"
-run = "uv run --locked --project tools/python python -m project_tools.test.run test --category unit --language rust"
+usage = 'flag "--profile <profile>" default="dev"'
+run = "uv run --locked --project tools/python python -m project_tools.test.run test --profile {{usage.profile}} --category unit --language rust"
 
 [tasks."test:verify"]
 description = "Verify The Evidence Of One Tree"
