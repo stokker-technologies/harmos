@@ -57,11 +57,12 @@ pub use file_reads::FileReader;
 pub use harmos_domain::model::storage::files;
 pub use harmos_domain::model::storage::{
     ByteRange, FileBatch, FileCompletion, FileMetadata, FilePhase, FileProducer, FileProgress,
-    FileReference, FileSession, MutationId, MutationWindow, ObjectCatalog, ObjectDefinition,
-    ObjectDefinitions, ObjectEntry, ObjectKey, ObjectPoint, ObjectReceipt, ObjectRetention,
-    ObjectRevision, ObjectValue, ObjectVersion, ObjectVersionToken, PayloadEncoding, RecordInput,
-    RecordWrite, RecoveryPosition, SchemaInfo, SchemaInput, SchemaKey, StagedFile, StorageCursor,
-    StorageInfo, StoreHistory, StoredObject, StoredRecord, StoredRow, StreamInput, StreamWrite,
+    FileReference, FileSession, IdentityKind, IdentitySelection, MutationId, MutationWindow,
+    ObjectCatalog, ObjectDefinition, ObjectDefinitions, ObjectEntry, ObjectKey, ObjectPoint,
+    ObjectReceipt, ObjectRetention, ObjectRevision, ObjectValue, ObjectVersion, ObjectVersionToken,
+    PayloadEncoding, RecordInput, RecordWrite, RecoveryPosition, SchemaInfo, SchemaInput,
+    SchemaKey, StagedFile, StorageCursor, StorageInfo, StoreHistory, StoredIdentity, StoredObject,
+    StoredRecord, StoredRow, StreamInput, StreamWrite,
 };
 pub use manager::{ErasedCatalog, StorageManager, StorageMetrics, WorkerOwner, encoded_size};
 pub use objects::ObjectGroup;
@@ -76,6 +77,4 @@ pub use writes::StorageSchema;
 // Internal Paths Refer To This Crate's One Canonical Engine Namespace.
 use crate as storage;
 extern crate self as harmos_storage;
-#[cfg(feature = "grpc")]
-pub use harmos_domain::Protobuf;
 pub use harmos_domain::{Aggregate, Identifier, MemorySize, Message, btree_map_memory, schema};

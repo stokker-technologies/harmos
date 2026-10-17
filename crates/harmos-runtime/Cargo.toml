@@ -42,7 +42,6 @@ plugin-guest = [
 ]
 grpc = [
   "harmos-sdk/grpc",
-  "harmos-storage/grpc",
   "bindings-proto",
   "dep:tonic-reflection",
   "dep:http-body",

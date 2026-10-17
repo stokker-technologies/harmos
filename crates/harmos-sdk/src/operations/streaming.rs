@@ -388,17 +388,6 @@ impl<T: Message + MemorySize, E: From<Error>> StreamOutput<T, E> {
     }
 }
 
-#[cfg(feature = "grpc")]
-impl<T: crate::Protobuf + MemorySize, E: From<Error>> StreamOutput<T, E> {
-    pub async fn decode_protobuf(&self, encoded: &[u8]) -> Result<(), E> {
-        let bytes = T::decoding_memory(encoded).map_err(decoding)?;
-        self.send_with(bytes, || {
-            T::decode(encoded).map_err(|error| decoding(error).into())
-        })
-        .await
-    }
-}
-
 /* === Public Functions === */
 pub fn validate(settings: &StreamSettings) -> Result<()> {
     if settings.bytes.get() > Semaphore::MAX_PERMITS

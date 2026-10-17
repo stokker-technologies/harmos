@@ -64,17 +64,11 @@ pub mod __private {
 
     pub use crate::answer::Answer;
     pub use crate::message::MessageError;
-    #[cfg(feature = "grpc")]
-    pub use crate::message::Protobuf;
-    pub use crate::message::input::{
-        DecodeField, DecodeInput, DecodeScalar, DecodeValue, add as decoding_add,
-        multiply as decoding_multiply, vector as decoding_vector,
+    pub use crate::message::allocation::{
+        add as decoding_add, multiply as decoding_multiply, vector as decoding_vector,
     };
     pub use crate::message::postcard::{Reader as PostcardReader, Value as PostcardValue};
     pub use crate::state::{Catalogued, Mutual};
-    pub use crate::with_protobuf;
-    #[cfg(feature = "grpc")]
-    pub use prost;
 }
 
 /* === Re-Exports === */
@@ -99,20 +93,9 @@ pub use harmos_macros::{
     catalog, listener, message, observer, operation, plugin, record, records, stream, streams,
     transaction, transactions,
 };
-#[cfg(feature = "grpc")]
-pub use message::Protobuf;
 pub use message::{MemorySize, Message, MessageError, Portable, Storable, btree_map_memory};
 pub use presentation::{RowMetadata, StreamField};
 pub use streams::{Axial, Batched, Definition, Prefix, Track, Tracked};
-
-#[cfg(feature = "grpc")]
-#[macro_export]
-macro_rules! with_protobuf { ($($tokens:tt)*) => { $($tokens)* }; }
-#[cfg(not(feature = "grpc"))]
-#[macro_export]
-macro_rules! with_protobuf {
-    ($($tokens:tt)*) => {};
-}
 
 /* === Imports === */
 // Standard Library Imports

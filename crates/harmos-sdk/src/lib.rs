@@ -8,6 +8,8 @@
  */
 
 /* === Modules === */
+#[cfg(feature = "grpc")]
+pub mod grpc;
 pub mod operations;
 pub mod plugin;
 

@@ -22,7 +22,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 // Third Party Imports
 
 // Local Imports
-use super::backend::ScanPage;
+use super::backend::{ReadLimits, ScanPage};
 use super::capacity::{Attempt, Held, Pool, Refusal, Reservation};
 use super::config::SCAN_ROWS;
 use super::manager::{Domain, ENTRY_OVERHEAD, Inner, State, encoded_size};
@@ -121,6 +121,37 @@ impl<C> StorageManager<C> {
             follower.history = Some(self.snapshot(&follower.saved).await?);
         }
         Ok(follower)
+    }
+}
+
+impl<C> StorageManager<C> {
+    /// One page of durable entries after storage position `after`, read at the
+    /// saved frontier; its entries stay charged until the page drops.
+    pub async fn page<T: Entry>(
+        &self,
+        selection: &T::Selection,
+        after: u64,
+        limits: ReadLimits,
+    ) -> Result<FollowPage<T>> {
+        let held = Held::default();
+        let rows = limits.rows.min(SCAN_ROWS);
+        let bytes = limits.bytes.min(self.inner.settings.scan_bytes());
+        let charge = rows
+            .get()
+            .saturating_mul(ENTRY_OVERHEAD)
+            .saturating_add(bytes.get());
+        let mut reservation = Reservation::wait(&self.inner, Pool::Read, &held, charge, None)
+            .await
+            .map_err(Refusal::into_error)?;
+        let snapshot = self.snapshot(&self.cursor_saved()).await?;
+        let (entries, encoded) = snapshot
+            .scan::<T>(selection, ScanPage { after, rows, bytes })
+            .await?;
+        reservation.shrink_to(encoded.saturating_add(entries.len().saturating_mul(ENTRY_OVERHEAD)));
+        Ok(FollowPage {
+            entries,
+            _charge: reservation,
+        })
     }
 }
 

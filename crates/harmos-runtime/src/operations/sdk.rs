@@ -75,27 +75,6 @@ impl crate::Message for Encoded {
 }
 
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-harmos_domain::with_protobuf! {
-impl harmos_domain::Protobuf for Encoded {
-    fn encode_to_vec(&self) -> Vec<u8> {
-        self.0.clone()
-    }
-
-    fn encoded_len(&self) -> usize {
-        self.0.len()
-    }
-
-    fn decoding_memory(bytes: &[u8]) -> std::result::Result<usize, crate::MessageError> {
-        <Self as crate::Message>::decoding_memory(bytes)
-    }
-
-    fn decode(bytes: &[u8]) -> std::result::Result<Self, crate::MessageError> {
-        <Self as crate::Message>::decode(bytes)
-    }
-}
-}
-
-#[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 impl crate::schema::Described for Encoded {
     const NAME: &'static str = "harmos::sdk_encoded";
     const FIELDS: &'static [crate::schema::declaration::Field] = &[];

@@ -19,7 +19,7 @@ version = { workspace = true }
 [features]
 default = ["derive"]
 derive = ["harmos-domain/derive"]
-grpc = ["harmos-domain/grpc"]
+grpc = ["dep:prost"]
 streaming = ["dep:tokio"]
 
 # === Dependencies ===
@@ -35,6 +35,7 @@ thiserror = { workspace = true, default-features = true }
 serde = { workspace = true, default-features = true }
 serde_json = { workspace = true, default-features = true }
 postcard = { workspace = true }
+prost = { workspace = true, default-features = true, optional = true }
 
 # Async
 tokio = { workspace = true, optional = true }

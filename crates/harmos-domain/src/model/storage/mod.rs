@@ -16,6 +16,7 @@ pub mod catalog;
 pub mod codec;
 pub mod data;
 pub mod files;
+pub mod identities;
 pub mod keys;
 pub mod mutations;
 pub mod objects;
@@ -33,6 +34,7 @@ pub use files::{
     ByteRange, FileBatch, FileCompletion, FileMetadata, FilePhase, FileProgress, FileReference,
     FileSession, StagedFile,
 };
+pub use identities::{IdentityKind, IdentitySelection, StoredIdentity};
 pub use keys::{
     ObjectKey, ObjectRetention, ObjectValue, PayloadEncoding, SchemaKey, check_length, invalid,
     object_key,

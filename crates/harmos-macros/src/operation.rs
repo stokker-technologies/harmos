@@ -116,18 +116,6 @@ fn expand(attribute: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
     }
     let sdk = HarmosPath::resolve(sdk);
     let owner = &implementation.self_ty;
-    if let Some(renamed) = optional(&implementation, "new") {
-        return Err(Error::new_spanned(
-            &renamed.sig,
-            "operation `new` was renamed: use `async fn initialize(resources: Arc<Resources>, context) -> Result<Self, Error>`",
-        ));
-    }
-    if let Some(renamed) = optional(&implementation, "finalize") {
-        return Err(Error::new_spanned(
-            &renamed.sig,
-            "operation `finalize` was renamed to `cleanup`",
-        ));
-    }
     let constructor = method(&implementation, "initialize")?;
     let run = method(&implementation, "run")?;
     if constructor.sig.asyncness.is_none()

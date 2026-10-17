@@ -19,12 +19,8 @@
 
 // Local Imports
 use super::{ObjectEntry, ObjectReceipt, ObjectVersionToken};
-#[cfg(feature = "grpc")]
-use crate::__private::DecodeInput;
 use crate::MessageError;
 use crate::model::storage::codec::{Bytes, Nested, Value, product};
-#[cfg(feature = "grpc")]
-use crate::model::storage::position::codec::{field_len, text_field, write_bytes};
 use crate::model::storage::{ObjectKey, ObjectValue, SchemaKey, StorageCursor};
 
 /* === Constants === */
@@ -61,31 +57,6 @@ impl Value for Key {
     crate::model::storage::codec::postcard_field!();
     type Native = ObjectKey;
     const KIND: crate::schema::declaration::Kind = crate::schema::declaration::Kind::String;
-    #[cfg(feature = "grpc")]
-    fn write(value: &ObjectKey, tag: u32, bytes: &mut Vec<u8>) {
-        write_bytes(tag, value.as_str().as_bytes(), bytes);
-    }
-
-    #[cfg(feature = "grpc")]
-    fn size(value: &ObjectKey, tag: u32) -> usize {
-        field_len(value.as_str().len())
-            .saturating_add(crate::__private::prost::encoding::key_len(tag) - 1)
-    }
-
-    #[cfg(feature = "grpc")]
-    fn memory(input: DecodeInput<'_>, tag: u32) -> Result<usize> {
-        let text = text_field(input, tag)?.unwrap_or("");
-        if text.is_empty() {
-            return Err(MessageError::borrowed("empty object key"));
-        }
-        Ok(text.len())
-    }
-
-    #[cfg(feature = "grpc")]
-    fn read(input: DecodeInput<'_>, tag: u32) -> Result<ObjectKey> {
-        ObjectKey::from_owned(text_field(input, tag)?.unwrap_or("").into())
-            .map_err(|_| MessageError::borrowed("empty object key"))
-    }
 }
 
 impl crate::__private::PostcardValue for ObjectKey {

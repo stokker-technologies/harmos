@@ -19,7 +19,6 @@ version = { workspace = true }
 
 [features]
 default = []
-grpc = ["harmos-domain/grpc"]
 fft = ["dep:rustfft"]
 
 # === Dependencies ===

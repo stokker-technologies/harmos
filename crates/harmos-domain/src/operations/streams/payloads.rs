@@ -18,15 +18,10 @@
 
 // Local Imports
 use crate::operations::common::payload::payload;
-#[cfg(feature = "grpc")]
-use crate::operations::common::payload::repeated;
 
 /* === Constants === */
 
 /* === Macros === */
-crate::with_protobuf! {
-    repeated!(FollowingRow);
-}
 
 // One Ordered Batch On One Stream: The Head Row Carries `sequence`; Each
 // Following Row Takes The Next Sequence. A Single Row Has No Following Rows.

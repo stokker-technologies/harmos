@@ -1020,7 +1020,6 @@ dependencies = [
  "harmos-packaging",
  "memchr",
  "postcard",
- "prost",
  "prost-reflect",
  "protoc-bin-vendored",
  "semver",
@@ -1141,6 +1140,7 @@ version = "0.2.0"
 dependencies = [
  "harmos-domain",
  "postcard",
+ "prost",
  "serde",
  "serde_json",
  "thiserror",

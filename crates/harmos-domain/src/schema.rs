@@ -14,15 +14,9 @@ pub mod declaration;
 pub mod graph;
 mod payload;
 
-#[cfg(feature = "grpc")]
-mod protobuf;
-
 /* === Re-Exports === */
 pub use declaration::{Field, Kind};
 pub use payload::{Event, PathElement, PayloadError, Scalar, Validator, VisitError};
-
-#[cfg(feature = "grpc")]
-pub use protobuf::{PayloadError as ProtobufPayloadError, Validator as ProtobufValidator};
 
 /* === Imports === */
 // Standard Library Imports
@@ -36,7 +30,7 @@ pub const MAX_DEPTH: usize = 32;
 pub const MAX_NAME_BYTES: usize = 256;
 
 /* === Macros === */
-// Actual Prost Scalar Wrapper Payloads, With Their Fixed Field-One Identity
+// Scalar Wrapper Payloads, With Their Fixed Field-One Identity
 macro_rules! wrapper {
     ($($ty:ty => $kind:ident),* $(,)?) => {$(
         impl Described for $ty {
@@ -82,6 +76,9 @@ pub trait Described: 'static {
     const NAME: &'static str;
     const FIELDS: &'static [graph::Field<declaration::Definition>];
     const MARKER: &'static [u8];
+    /// The variant an absent oneof decodes to, or `None` when a variant is
+    /// required; meaningful for enums only.
+    const DEFAULT_VARIANT: Option<usize> = Some(0);
     const DEFINITION: declaration::Definition = declaration::Definition::of::<Self>();
 }
 

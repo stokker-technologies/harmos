@@ -23,7 +23,9 @@ use tokio::sync::Semaphore;
 use tonic::{Status, codec::DecodeBuf};
 
 // Local Imports
-use crate::{MemorySize, Protobuf, operations::StreamItem};
+use super::codec::Wire;
+use crate::{MemorySize, operations::StreamItem};
+use harmos_sdk::grpc::DecodeInput;
 
 /* === Constants === */
 
@@ -33,11 +35,11 @@ use crate::{MemorySize, Protobuf, operations::StreamItem};
 
 /* === Structs === */
 
-pub struct Decoder<T> {
+pub struct Decoder<W, T> {
     settings: DecodeSettings,
     budget: Arc<Semaphore>,
     failure: Option<Status>,
-    message: PhantomData<fn() -> T>,
+    message: PhantomData<fn() -> (W, T)>,
 }
 
 /* === Enums === */
@@ -59,7 +61,7 @@ impl DecodeSettings {
     }
 }
 
-impl<T: Protobuf + MemorySize + 'static> Decoder<T> {
+impl<W: Wire<T>, T: MemorySize + 'static> Decoder<W, T> {
     pub(super) fn message_limit(&self) -> usize {
         self.settings.message_bytes.get()
     }
@@ -109,7 +111,7 @@ impl<T: Protobuf + MemorySize + 'static> Decoder<T> {
                 "gRPC message exceeds wire ceiling",
             ));
         }
-        let bytes = T::decoding_memory(encoded)
+        let bytes = W::decoding_memory(DecodeInput::new(encoded))
             .map_err(|error| Status::invalid_argument(error.to_string()))?
             .max(std::mem::size_of::<T>())
             .max(1);
@@ -123,13 +125,13 @@ impl<T: Protobuf + MemorySize + 'static> Decoder<T> {
             .clone()
             .try_acquire_many_owned(bytes as u32)
             .map_err(|_| Status::resource_exhausted("gRPC decoded items retain byte capacity"))?;
-        let value =
-            T::decode(encoded).map_err(|error| Status::invalid_argument(error.to_string()))?;
+        let value = W::decode(DecodeInput::new(encoded))
+            .map_err(|error| Status::invalid_argument(error.to_string()))?;
         StreamItem::charged(value, claim).map_err(|error| Status::internal(error.to_string()))
     }
 }
 
-impl<T: Protobuf + MemorySize + 'static> tonic::codec::Decoder for Decoder<T> {
+impl<W: Wire<T>, T: MemorySize + 'static> tonic::codec::Decoder for Decoder<W, T> {
     type Item = StreamItem<T>;
     type Error = Status;
 

@@ -20,15 +20,7 @@ use std::time::SystemTime;
 
 // Local Imports
 use super::Value;
-#[cfg(feature = "grpc")]
-use super::length_delimited_size;
-#[cfg(feature = "grpc")]
-use crate::__private::DecodeInput;
-#[cfg(feature = "grpc")]
-use crate::__private::prost::encoding::{bool as boolean, uint32, uint64};
 use crate::MessageError;
-#[cfg(feature = "grpc")]
-use crate::model::storage::position::codec::{bytes_field, uint_field, write_header};
 use crate::model::storage::time::Wire;
 use crate::schema::{Cardinality, Field, Kind};
 
@@ -87,40 +79,6 @@ impl Value for Time {
     const KIND: Kind = Kind::Message {
         definition: <Self as crate::schema::Described>::DEFINITION,
     };
-    #[cfg(feature = "grpc")]
-    fn write(value: &SystemTime, tag: u32, bytes: &mut Vec<u8>) {
-        let wire = Wire::from(*value);
-        write_header(tag, size(&wire), bytes);
-        uint64::encode(1, &wire.secs_since_epoch, bytes);
-        uint32::encode(2, &wire.nanos_since_epoch, bytes);
-        boolean::encode(3, &wire.before_epoch, bytes);
-    }
-
-    #[cfg(feature = "grpc")]
-    fn size(value: &SystemTime, tag: u32) -> usize {
-        length_delimited_size(tag, size(&Wire::from(*value)))
-    }
-
-    #[cfg(feature = "grpc")]
-    fn memory(input: DecodeInput<'_>, tag: u32) -> Result<usize, MessageError> {
-        Self::read(input, tag)?;
-        Ok(0)
-    }
-
-    #[cfg(feature = "grpc")]
-    fn read(input: DecodeInput<'_>, tag: u32) -> Result<SystemTime, MessageError> {
-        bytes_field(input, tag)?
-            .ok_or_else(|| MessageError::borrowed("missing source timestamp"))?;
-        let input = input.field(tag)?;
-        let nanos = uint_field(input, 2)?.unwrap_or(0);
-        let wire = Wire {
-            secs_since_epoch: uint_field(input, 1)?.unwrap_or(0),
-            nanos_since_epoch: u32::try_from(nanos)
-                .map_err(|_| MessageError::borrowed("invalid source timestamp nanoseconds"))?,
-            before_epoch: uint_field(input, 3)?.unwrap_or(0) != 0,
-        };
-        wire.timestamp().map_err(MessageError::borrowed)
-    }
 }
 
 impl crate::schema::Described for Time {
@@ -160,11 +118,5 @@ const FIELDS: &[Field] = &[
 /* === Public Functions === */
 
 /* === Private Functions === */
-#[cfg(feature = "grpc")]
-fn size(wire: &Wire) -> usize {
-    uint64::encoded_len(1, &wire.secs_since_epoch)
-        + uint32::encoded_len(2, &wire.nanos_since_epoch)
-        + boolean::encoded_len(3, &wire.before_epoch)
-}
 
 /* === Tests === */

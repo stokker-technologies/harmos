@@ -17,12 +17,11 @@ use std::any::Any;
 // Third Party Imports
 
 // Local Imports
-#[cfg(feature = "streaming")]
-use crate::MemorySize;
+use crate::grpc::{self, DecodeInput};
 #[cfg(feature = "streaming")]
 use crate::operations::Direction;
 use crate::operations::OperationDeclaration;
-use crate::{MessageError, Protobuf};
+use crate::{MessageError, Portable};
 
 /* === Constants === */
 
@@ -82,37 +81,43 @@ fn direction<D: Direction>() -> Option<ItemCodec> {
 }
 
 #[cfg(feature = "streaming")]
-fn item<T: Protobuf + MemorySize + 'static>() -> ItemCodec {
+fn item<T: Portable>() -> ItemCodec {
     ItemCodec {
         item_type: std::any::TypeId::of::<T>(),
-        memory: T::decoding_memory,
+        memory: |payload| grpc::decoding_memory::<T>(DecodeInput::new(payload)),
         decode: decode::<T>,
         length: |value| {
             value
                 .downcast_ref::<T>()
-                .map(Protobuf::encoded_len)
                 .ok_or_else(|| {
                     MessageError::borrowed("protobuf stream item type differs from operation")
+                })
+                .and_then(|value| {
+                    let mut bytes = Vec::new();
+                    grpc::encode(value, &mut bytes)?;
+                    Ok(bytes.len())
                 })
         },
         encode: encode::<T>,
     }
 }
 
-fn decode<T: Protobuf + 'static>(payload: &[u8], target: &mut dyn Any) -> Result<(), MessageError> {
+fn decode<T: Portable>(payload: &[u8], target: &mut dyn Any) -> Result<(), MessageError> {
     let target = target
         .downcast_mut::<Option<T>>()
         .ok_or_else(|| MessageError::borrowed("protobuf request type differs from operation"))?;
-    T::decoding_memory(payload)?;
-    *target = Some(T::decode(payload)?);
+    grpc::decoding_memory::<T>(DecodeInput::new(payload))?;
+    *target = Some(grpc::decode::<T>(DecodeInput::new(payload))?);
     Ok(())
 }
 
-fn encode<T: Protobuf + 'static>(value: &dyn Any) -> Result<Vec<u8>, MessageError> {
+fn encode<T: Portable>(value: &dyn Any) -> Result<Vec<u8>, MessageError> {
     let value = value
         .downcast_ref::<T>()
         .ok_or_else(|| MessageError::borrowed("protobuf response type differs from operation"))?;
-    Ok(value.encode_to_vec())
+    let mut bytes = Vec::new();
+    grpc::encode(value, &mut bytes)?;
+    Ok(bytes)
 }
 
 /* === Tests === */

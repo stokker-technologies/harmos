@@ -14,9 +14,6 @@ version = { workspace = true }
 
 # === Features ===
 
-[features]
-grpc = ["harmos-domain/grpc"]
-
 # === Dependencies ===
 
 [dependencies]

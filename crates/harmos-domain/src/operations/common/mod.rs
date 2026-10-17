@@ -75,11 +75,8 @@ macro_rules! declare {
             $(const DESCRIPTION: &'static str = $description;)?
             $(const VISIBILITY: $crate::operations::Visibility = $visibility;)?
             $(const REPLAY: $crate::operations::ReplaySafety = $replay;)?
-            // A Build Whose Messages Carry No Protobuf Codec Declares No Method.
-            $crate::__private::with_protobuf! {
-                $(const GRPC: ::core::option::Option<$crate::operations::Grpc> =
-                    ::core::option::Option::Some($crate::operations::Grpc::new($package, $service, $method));)?
-            }
+            $(const GRPC: ::core::option::Option<$crate::operations::Grpc> =
+                ::core::option::Option::Some($crate::operations::Grpc::new($package, $service, $method));)?
             $(fn grant(&self) -> ::core::option::Option<$crate::plugin::Grant> {
                 ($grant)(self)
             })?

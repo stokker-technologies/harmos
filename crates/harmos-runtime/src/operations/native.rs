@@ -81,6 +81,10 @@ struct EncodedOperation<E = ()> {
 #[derive(Clone)]
 pub(crate) struct Opaque(Vec<u8>);
 
+// The gRPC Strategy For Native Payloads, Which Providers Decode Themselves.
+#[cfg(feature = "grpc")]
+pub(crate) struct Forwarded;
+
 // The Erased Request Forwarded To A Native Provider: Bytes And A Pre-Owned
 // Permit Stay Together Through Original Preparation. `E` Is The Endpoint Set.
 pub(crate) struct Encoded<E = ()> {
@@ -183,33 +187,6 @@ impl super::StreamPeer for Native {
     }
 }
 
-harmos_domain::with_protobuf! {
-impl<E> harmos_domain::Protobuf for Encoded<E> {
-    fn encode_to_vec(&self) -> Vec<u8> {
-        self.payload.clone()
-    }
-
-    fn encoded_len(&self) -> usize {
-        self.payload.len()
-    }
-
-    fn decoding_memory(bytes: &[u8]) -> std::result::Result<usize, crate::MessageError> {
-        std::mem::size_of::<Self>()
-            .checked_add(bytes.len())
-            .ok_or_else(|| crate::MessageError::borrowed("forwarded request size overflows"))
-    }
-
-    fn decode(bytes: &[u8]) -> std::result::Result<Self, crate::MessageError> {
-        Ok(Self {
-            payload: bytes.to_vec(),
-            grpc: true,
-            capacity: None,
-            endpoints: PhantomData,
-        })
-    }
-}
-}
-
 impl<E> Message for Encoded<E> {
     fn encode_to_vec(&self) -> Vec<u8> {
         self.payload.clone()
@@ -283,28 +260,57 @@ impl crate::MemorySize for Opaque {
         std::mem::size_of::<Self>().saturating_add(self.0.capacity())
     }
 }
-harmos_domain::with_protobuf! {
-impl harmos_domain::Protobuf for Opaque {
-    fn encode_to_vec(&self) -> Vec<u8> {
-        Message::encode_to_vec(self)
+// Native Payloads Cross gRPC Unchanged: The Provider Decodes Its Own Protobuf.
+#[cfg(feature = "grpc")]
+impl<E: 'static> crate::grpc::Wire<Encoded<E>> for Forwarded {
+    fn encode(
+        value: &Encoded<E>,
+        bytes: &mut Vec<u8>,
+    ) -> std::result::Result<(), crate::MessageError> {
+        bytes.extend_from_slice(&value.payload);
+        Ok(())
     }
 
-    fn encode_into(&self, bytes: &mut Vec<u8>) {
-        Message::encode_into(self, bytes);
+    fn decoding_memory(
+        input: harmos_sdk::grpc::DecodeInput<'_>,
+    ) -> std::result::Result<usize, crate::MessageError> {
+        std::mem::size_of::<Encoded<E>>()
+            .checked_add(input.contiguous()?.len())
+            .ok_or_else(|| crate::MessageError::borrowed("forwarded request size overflows"))
     }
 
-    fn encoded_len(&self) -> usize {
-        Message::encoded_len(self)
-    }
-
-    fn decoding_memory(bytes: &[u8]) -> std::result::Result<usize, crate::MessageError> {
-        <Self as Message>::decoding_memory(bytes)
-    }
-
-    fn decode(bytes: &[u8]) -> std::result::Result<Self, crate::MessageError> {
-        <Self as Message>::decode(bytes)
+    fn decode(
+        input: harmos_sdk::grpc::DecodeInput<'_>,
+    ) -> std::result::Result<Encoded<E>, crate::MessageError> {
+        Ok(Encoded {
+            payload: input.contiguous()?.to_vec(),
+            grpc: true,
+            capacity: None,
+            endpoints: PhantomData,
+        })
     }
 }
+
+#[cfg(feature = "grpc")]
+impl crate::grpc::Wire<Opaque> for Forwarded {
+    fn encode(value: &Opaque, bytes: &mut Vec<u8>) -> std::result::Result<(), crate::MessageError> {
+        bytes.extend_from_slice(&value.0);
+        Ok(())
+    }
+
+    fn decoding_memory(
+        input: harmos_sdk::grpc::DecodeInput<'_>,
+    ) -> std::result::Result<usize, crate::MessageError> {
+        std::mem::size_of::<Opaque>()
+            .checked_add(input.contiguous()?.len())
+            .ok_or_else(|| crate::MessageError::borrowed("forwarded payload size overflows"))
+    }
+
+    fn decode(
+        input: harmos_sdk::grpc::DecodeInput<'_>,
+    ) -> std::result::Result<Opaque, crate::MessageError> {
+        Ok(Opaque(input.contiguous()?.to_vec()))
+    }
 }
 
 impl Native {
@@ -1079,16 +1085,17 @@ pub(super) fn bindings(
                 .is_some_and(|contract| contract.grpc().is_some())
             {
                 entry_mut.grpc = Some(match shape {
-                    (false, false) => crate::grpc::server::unary::<Encoded>,
+                    (false, false) => crate::grpc::server::unary::<Encoded, Forwarded>,
                     (true, false) => {
-                        crate::grpc::server::upload::<Encoded<super::StreamInput<Opaque>>>
+                        crate::grpc::server::upload::<Encoded<super::StreamInput<Opaque>>, Forwarded>
                     }
                     (false, true) => {
-                        crate::grpc::server::download::<Encoded<super::StreamOutput<Opaque>>>
+                        crate::grpc::server::download::<Encoded<super::StreamOutput<Opaque>>, Forwarded>
                     }
                     (true, true) => {
                         crate::grpc::server::exchange::<
                             Encoded<(super::StreamInput<Opaque>, super::StreamOutput<Opaque>)>,
+                            Forwarded,
                         >
                     }
                 });

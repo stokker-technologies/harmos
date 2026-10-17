@@ -62,23 +62,6 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
         .unwrap_or_else(|| quote!(concat!(module_path!(), "::", stringify!(#name))));
     let description = super::description(description, &block.attrs);
 
-    if let Some(start) = declared(&block, "start") {
-        return Err(Error::new(
-            start.sig.ident.span(),
-            "observer `start` was renamed: use `async fn initialize(resources: &Resources) -> Result<Self, Error>`; observe receives `&ObserverContext<'_, Resources>`",
-        ));
-    }
-    for (renamed, message) in [
-        (
-            "new",
-            "observer `new` was folded into `async fn initialize(resources: &Resources) -> Result<Self, Error>`",
-        ),
-        ("finalize", "observer `finalize` was renamed to `cleanup`"),
-    ] {
-        if let Some(found) = declared(&block, renamed) {
-            return Err(Error::new(found.sig.ident.span(), message));
-        }
-    }
     let observing = required(
         &block,
         "observe",

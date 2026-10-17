@@ -58,20 +58,16 @@ pub mod __private {
     pub use harmos_domain::plugin::schema_markers as PluginSchemaMarkers;
     pub extern crate serde;
     pub extern crate serde_json;
-    // Generated Codecs Follow The Domain's Codec Feature, Which The Portable
-    // Bound Names, So Feature Unification Never Splits The Two.
     pub use harmos_domain::__private::CarrierContext;
     pub use harmos_domain::__private::{
-        DecodeInput, DecodeScalar, DecodeValue, MessageError, PostcardReader, PostcardValue,
-        decoding_add, decoding_multiply, decoding_vector, postcard_product,
+        MessageError, PostcardReader, PostcardValue, decoding_add, decoding_multiply,
+        decoding_vector, postcard_product,
     };
-    #[cfg(feature = "grpc")]
-    pub use harmos_domain::__private::{Protobuf, prost};
+    pub use harmos_domain::declare;
     pub use harmos_domain::inventory as PluginInventory;
     pub use harmos_domain::{
         Registrar as PluginRegistrar, RegistrationError as PluginRegistrationError,
     };
-    pub use harmos_domain::{declare, with_protobuf};
     pub use harmos_sdk::plugin::{
         Contribution as PluginContribution, Declared as PluginDeclared, Grant as PluginGrant,
         Requirement as PluginRequirement, Requirements as PluginRequirements,
@@ -108,8 +104,6 @@ pub use harmos_domain::{DefinitionId, Identified};
 pub use operations::refusal::Refusal;
 pub use runtime::{Builder, Runtime};
 
-#[cfg(feature = "grpc")]
-pub use harmos_domain::Protobuf;
 pub use harmos_domain::{
     Aggregate, Failure, Identifier, IdentifierError, MemorySize, Message, MessageError, Metadata,
     RowMetadata, Storable, StreamField, StreamSpec, Value, ValueError, btree_map_memory,

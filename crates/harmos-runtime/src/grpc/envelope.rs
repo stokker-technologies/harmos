@@ -18,8 +18,10 @@
 // Third Party Imports
 
 // Local Imports
-use crate::{MemorySize, MessageError, Protobuf};
-use harmos_domain::__private::{DecodeInput, decoding_add, prost};
+use super::codec::Wire;
+use crate::{MemorySize, MessageError};
+use harmos_domain::__private::decoding_add;
+use harmos_sdk::grpc::{DecodeInput, prost};
 
 /* === Constants === */
 
@@ -43,45 +45,40 @@ macro_rules! envelope {
                 )
             }
         }
-        impl<A: Protobuf, B: Protobuf> Protobuf for $name<A, B> {
-            fn encode_to_vec(&self) -> Vec<u8> {
-                let mut bytes = Vec::with_capacity(self.encoded_len());
-                self.encode_into(&mut bytes);
-                bytes
-            }
-            fn encode_into(&self, bytes: &mut Vec<u8>) {
-                match self {
-                    Self::$first(value) => encode(1, value, bytes),
-                    Self::$second(value) => encode(2, value, bytes),
+        impl<W, A, B> Wire<$name<A, B>> for W
+        where
+            W: Wire<A> + Wire<B>,
+            A: Send + Sync + 'static,
+            B: Send + Sync + 'static,
+        {
+            fn encode(value: &$name<A, B>, bytes: &mut Vec<u8>) -> Result<(), MessageError> {
+                match value {
+                    $name::$first(value) => {
+                        delimited(1, bytes, |bytes| <W as Wire<A>>::encode(value, bytes))
+                    }
+                    $name::$second(value) => {
+                        delimited(2, bytes, |bytes| <W as Wire<B>>::encode(value, bytes))
+                    }
                 }
             }
-            fn encoded_len(&self) -> usize {
-                let length = match self {
-                    Self::$first(value) => value.encoded_len(),
-                    Self::$second(value) => value.encoded_len(),
-                };
-                size(length)
-            }
-            fn decode(bytes: &[u8]) -> Result<Self, MessageError> {
-                let input = DecodeInput::new(bytes);
+            fn decode(input: DecodeInput<'_>) -> Result<$name<A, B>, MessageError> {
                 let (tag, payload) = input
                     .variant(&[1, 2])?
                     .ok_or_else(|| MessageError::borrowed("empty operation envelope"))?;
                 match tag {
-                    1 => A::decode_input(payload).map(Self::$first),
-                    _ => B::decode_input(payload).map(Self::$second),
+                    1 => <W as Wire<A>>::decode(payload).map($name::$first),
+                    _ => <W as Wire<B>>::decode(payload).map($name::$second),
                 }
             }
-            fn decoding_memory(bytes: &[u8]) -> Result<usize, MessageError> {
-                let input = DecodeInput::new(bytes);
+            fn decoding_memory(input: DecodeInput<'_>) -> Result<usize, MessageError> {
                 let (tag, payload) = input
                     .variant(&[1, 2])?
                     .ok_or_else(|| MessageError::borrowed("empty operation envelope"))?;
                 let bound = match tag {
-                    1 => A::decoding_memory_input(payload)?,
-                    _ => B::decoding_memory_input(payload)?,
+                    1 => <W as Wire<A>>::decoding_memory(payload)?,
+                    _ => <W as Wire<B>>::decoding_memory(payload)?,
                 };
-                decoding_add(std::mem::size_of::<Self>(), bound)
+                decoding_add(std::mem::size_of::<$name<A, B>>(), bound)
             }
         }
         impl<A: MemorySize, B: MemorySize> MemorySize for $name<A, B> {
@@ -126,16 +123,16 @@ envelope!(OutputEnvelope, Item, Response);
 /* === Public Functions === */
 
 /* === Private Functions === */
-pub(super) fn size(payload: usize) -> usize {
-    1usize
-        .saturating_add(prost::encoding::encoded_len_varint(payload as u64))
-        .saturating_add(payload)
-}
-
-pub(super) fn encode<T: Protobuf>(tag: u32, value: &T, bytes: &mut Vec<u8>) {
+// Frame One Length-Delimited Field Around A Payload Written Into Scratch.
+pub(super) fn delimited(
+    tag: u32,
+    bytes: &mut Vec<u8>,
+    write: impl FnOnce(&mut Vec<u8>) -> Result<(), MessageError>,
+) -> Result<(), MessageError> {
+    let mut payload = Vec::new();
+    write(&mut payload)?;
     prost::encoding::encode_key(tag, prost::encoding::WireType::LengthDelimited, bytes);
-    prost::encoding::encode_varint(value.encoded_len() as u64, bytes);
-    value.encode_into(bytes);
+    prost::encoding::encode_varint(payload.len() as u64, bytes);
+    bytes.extend_from_slice(&payload);
+    Ok(())
 }
-
-/* === Tests === */

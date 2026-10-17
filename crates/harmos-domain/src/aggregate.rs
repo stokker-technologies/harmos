@@ -38,9 +38,6 @@ const PERCENTILE: u32 = 455_936_439;
 const RANK: u32 = 211_531_165;
 
 // Variant tags in declaration order, indexed by the Postcard ordinal.
-crate::with_protobuf! {
-    const TAGS: [u32; 9] = [COUNT, SUM, MEAN, MEDIAN, MIN, MAX, RMS, STD, PERCENTILE];
-}
 
 /* === Macros === */
 
@@ -235,76 +232,6 @@ impl PostcardValue for Aggregate {
     }
 }
 
-crate::with_protobuf! {
-    impl crate::Protobuf for Aggregate {
-        fn encode_to_vec(&self) -> Vec<u8> {
-            let mut bytes = Vec::with_capacity(crate::Protobuf::encoded_len(self));
-            crate::Protobuf::encode_into(self, &mut bytes);
-            bytes
-        }
-
-        fn encode_into(&self, bytes: &mut Vec<u8>) {
-            use prost::encoding::{self, WireType};
-            let tag = TAGS[self.ordinal() as usize];
-            encoding::encode_key(tag, WireType::LengthDelimited, bytes);
-            encoding::encode_varint(protobuf_payload_len(self) as u64, bytes);
-            if let Self::Percentile(rank @ 1..) = self {
-                encoding::uint32::encode(RANK, &u32::from(*rank), bytes);
-            }
-        }
-
-        fn encoded_len(&self) -> usize {
-            use prost::encoding;
-            let length = protobuf_payload_len(self);
-            encoding::key_len(TAGS[self.ordinal() as usize])
-                .saturating_add(encoding::encoded_len_varint(length as u64))
-                .saturating_add(length)
-        }
-
-        fn decoding_memory(bytes: &[u8]) -> Result<usize, MessageError> {
-            Self::decoding_memory_input(crate::message::DecodeInput::new(bytes))
-        }
-
-        fn decoding_memory_input(
-            input: crate::message::DecodeInput<'_>,
-        ) -> Result<usize, MessageError> {
-            Self::decode_input(input)?;
-            Ok(std::mem::size_of::<Self>())
-        }
-
-        fn decode(bytes: &[u8]) -> Result<Self, MessageError> {
-            Self::decode_input(crate::message::DecodeInput::new(bytes))
-        }
-
-        // Unknown members refuse the body, an absent member is `Count`, and the
-        // last rank occurrence wins, matching derived enum messages.
-        fn decode_input(input: crate::message::DecodeInput<'_>) -> Result<Self, MessageError> {
-            use crate::message::{DecodeScalar, DecodeValue};
-            let Some((tag, selected)) = input.variant(&TAGS)? else {
-                return Ok(Self::Count);
-            };
-            let ordinal = TAGS.iter().position(|known| *known == tag);
-            let ordinal = ordinal.expect("selected a declared variant") as u32;
-            if let Some(unit) = Self::unit(ordinal) {
-                return Ok(unit);
-            }
-            let mut rank = 0;
-            selected.fields(&mut |field| {
-                if field.tag != RANK {
-                    return Ok(());
-                }
-                let DecodeValue::Varint(value) = field.scalar(DecodeScalar::Varint)? else {
-                    unreachable!("validated varint wire type");
-                };
-                rank = u8::try_from(value)
-                    .map_err(|_| MessageError::borrowed("percentile rank exceeds 255"))?;
-                Ok(())
-            })?;
-            Ok(Self::Percentile(rank))
-        }
-    }
-}
-
 impl MemorySize for Aggregate {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
@@ -328,15 +255,5 @@ const fn variant(name: &'static str, tag: u32, payload: declaration::Definition)
 }
 
 // A zero rank is the proto3 default and stays off the wire.
-crate::with_protobuf! {
-    fn protobuf_payload_len(value: &Aggregate) -> usize {
-        match value {
-            Aggregate::Percentile(rank @ 1..) => {
-                prost::encoding::uint32::encoded_len(RANK, &u32::from(*rank))
-            }
-            _ => 0,
-        }
-    }
-}
 
 /* === Tests === */

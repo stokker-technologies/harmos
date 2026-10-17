@@ -25,7 +25,6 @@ pub(crate) mod children;
 
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 mod component;
-pub mod discovery;
 mod execution;
 mod finalization;
 #[cfg(feature = "grpc")]
@@ -33,6 +32,7 @@ mod grpc;
 mod handler;
 pub(crate) mod instances;
 pub(crate) mod lane;
+pub mod listing;
 mod manager;
 pub mod middleware;
 pub(crate) mod refusal;
