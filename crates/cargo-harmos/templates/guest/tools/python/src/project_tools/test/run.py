@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/run.py; sha256:80737507ca54bc21cac6be7dac61133a0d95438de0210d7e0c607ddf87c89fcb
+# Rendered by stkr project update from templates/python/test/run.py; sha256:0a884fe8a889bbadd8c552f8e06b69d3d6f5098545feccbad9a19f182923e522
 # ***
 #
 # __PRODUCT_NAME__
@@ -89,6 +89,7 @@ def test(
     project: str,
     profile: str,
     extra: Sequence[str],
+    archive_arguments: Sequence[str] = (),
 ) -> int:
     """Run one lane and publish its evidence; nonzero when any story failed."""
     rules = policy.load(directory)
@@ -106,7 +107,7 @@ def test(
         temporary = directory / ".cache/tmp"
         temporary.mkdir(parents=True, exist_ok=True)
         environment = dict(os.environ, TMPDIR=str(temporary), TEMP=str(temporary), TMP=str(temporary))
-        path = archive.require(directory, profile, current)
+        path = archive.require(directory, profile, current, archive_arguments)
         names = archive.binaries(directory, profile)
         expression, rest = nextest.selection(category, extra, names)
         measured = nextest.overrides(rules, category, recorded, coverage=False, binaries=names)
@@ -330,6 +331,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
     lane.add_argument("--category", choices=policy.CATEGORIES, required=True)
     lane.add_argument("--language", choices=policy.LANGUAGES, required=True)
     lane.add_argument("--coverage", action="store_true")
+    lane.add_argument("--archive-argument", action="append", default=[])
     bench_lane = commands.add_parser("bench", help="run one benchmark layer")
     bench_lane.add_argument("--category", choices=policy.BENCH_CATEGORIES, required=True)
     bench_lane.add_argument("--language", choices=("rust", "python"), required=True)
@@ -366,6 +368,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
                 options.project,
                 options.profile,
                 extra,
+                options.archive_argument,
             )
         if options.command == "coverage":
             return coverage(
