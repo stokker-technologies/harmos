@@ -152,12 +152,13 @@ are always available. Optional facilities are disabled by default.
 | `plugin` | Shared plugin management, activation, routing, and reload. |
 | `plugin-sidecar` | Native process hosting; includes `plugin`. |
 | `plugin-guest` | Sandboxed Wasmtime hosting; includes `plugin`. |
-| `grpc` | gRPC, reflection, TLS, and Web support; settings select their use. Includes `reflection`. |
-| `reflection` | Descriptor projection used by runtime transport. |
+| `grpc` | gRPC, reflection, TLS, and Web support; settings select their use. Includes `bindings-proto`. |
+| `bindings-proto` | Protobuf descriptor projection used by runtime transport. |
 | `signal` | Signal-processing kernels. |
 | `signal-fft` | FFT support; includes `signal`. |
 | `simulation` | Deterministic runtime simulation. |
 
+The `harmos` facade composes `harmos-domain` and `harmos-runtime`.
 Applications compose the runtime through `harmos`. Shared domain declarations,
 plugins and portable clients use `harmos-domain`; native plugins add
 `harmos-sidecar` and guests add `harmos-guest`. Build scripts and development tools
@@ -374,6 +375,13 @@ let records = storage
     .collect()
     .await?; // Vec<StoredRecord<Reading>>
 ```
+
+`harmos::filesystem::input::read(path, limit)` bounds regular-file reads.
+`harmos::filesystem::publication` owns staged atomic installation, replacement,
+removal and explicit durability confirmation across Unix and Windows.
+
+Stored objects can enforce domain invariants through `StoredObject::validate`;
+object encoding, decoding and catalog validation apply the same check.
 
 `storage::query::Accumulator` folds scalars over rows a caller already holds
 with the same semantics as query aggregates: exact rational `Sum`, `Mean` and

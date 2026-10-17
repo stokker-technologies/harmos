@@ -45,7 +45,7 @@ system = 64
 
 
 [barrels]
-exclude = ["crates/harmos/src/prelude.rs"]
+exclude = ["crates/harmos-runtime/src/prelude.rs"]
 
 # === Templates === #
 

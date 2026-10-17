@@ -11,6 +11,7 @@
 mod analyze;
 mod list_directories;
 mod propose;
+mod streaming;
 mod validate;
 
 /* === Re-Exports === */
@@ -31,12 +32,14 @@ mod validate;
 /* === Structs === */
 
 /* === Enums === */
-#[harmos::catalog]
+#[harmos_domain::catalog]
 pub(crate) enum Operations {
     Validate(validate::Validating),
     Route(propose::Routing),
     Analyze(analyze::Analyzing),
     ListDirectories(list_directories::Listing),
+    AnalyzeUpload(streaming::Uploading),
+    AnalyzeExchange(streaming::Exchanging),
 }
 
 /* === Traits === */

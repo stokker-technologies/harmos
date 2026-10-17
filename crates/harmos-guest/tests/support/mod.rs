@@ -9,7 +9,7 @@
 
 #![allow(dead_code)]
 /* === Modules === */
-#[path = "../../../harmos/tests/support/fixtures.rs"]
+#[path = "../../../harmos-runtime/tests/support/fixtures.rs"]
 mod fixtures;
 
 /* === Re-Exports === */

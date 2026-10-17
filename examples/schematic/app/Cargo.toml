@@ -1,6 +1,7 @@
 # === Package ===
 
 [package]
+publish = false
 name = "schematic-app"
 edition.workspace = true
 rust-version.workspace = true

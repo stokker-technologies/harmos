@@ -11,7 +11,7 @@
 // Exercise The Original Helper Without Selecting The Authoring Kit.
 #[path = "../../src/kit/task.rs"]
 mod observer;
-#[path = "../../../harmos/tests/support/fixtures.rs"]
+#[path = "../../../harmos-runtime/tests/support/fixtures.rs"]
 mod prepared_fixtures;
 mod task;
 

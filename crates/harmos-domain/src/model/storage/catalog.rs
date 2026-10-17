@@ -64,6 +64,8 @@ pub trait StoredObject:
     const RETENTION: ObjectRetention;
 
     fn key(&self) -> &Self::Key;
+
+    fn validate(&self) -> Result<()> { Ok(()) }
 }
 
 pub trait ObjectCatalog: Catalog<ObjectDefinitions> + Send + Sync + 'static {
@@ -148,6 +150,7 @@ pub trait ObjectCatalog: Catalog<ObjectDefinitions> + Send + Sync + 'static {
         Self: Contains<T>,
     {
         Self::validate()?;
+        value.validate()?;
         let schema = object_schema::<T>()?;
         let item = object_key(value.key(), max_payload_bytes)?;
         let length = value.encoded_len();
@@ -281,6 +284,7 @@ pub fn decode_admitted<T: StoredObject>(value: &ObjectValue, schema: &SchemaKey)
         operation: "decode object",
         source: error,
     })?;
+    decoded.validate()?;
     let mut key = KeyMatch {
         expected: value.item.as_str(),
         offset: 0,

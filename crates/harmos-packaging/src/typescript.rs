@@ -89,7 +89,8 @@ fn message_source(
             continue;
         }
         let kind = field_type(field.kind(), names)?;
-        let optional = field.supports_presence();
+        // ProtoJSON May Omit Defaults, Including Empty Lists And Scalars.
+        let optional = true;
         let field_name = serde_json::to_string(field.json_name())?;
         writeln!(source, "  {field_name}{}: {kind}{};", if optional { "?" } else { "" }, if field.is_list() { "[]" } else { "" })
             .expect("String Writer");

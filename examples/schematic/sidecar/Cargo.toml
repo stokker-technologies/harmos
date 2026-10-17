@@ -9,6 +9,7 @@
 # === Package ===
 
 [package]
+publish = false
 name = "schematic-sidecar"
 description = "Portable schematic analysis and routing"
 edition.workspace = true
@@ -24,7 +25,8 @@ version.workspace = true
 
 [dependencies]
 # Local
-harmos = { workspace = true, features = ["plugin-sidecar"] }
+harmos-domain = { workspace = true, features = ["derive"] }
+harmos-sidecar = { workspace = true, features = ["derive", "kit", "streaming"] }
 schematic-domain = { path = "../domain" }
 
 # Git
@@ -48,7 +50,7 @@ tracing = { workspace = true, default-features = true }
 # Concurrency
 
 # Async
-tokio = { workspace = true, default-features = true, features = ["macros", "rt-multi-thread"] }
+tokio = { workspace = true, default-features = true, features = ["macros", "rt-multi-thread", "sync"] }
 
 # Networking
 

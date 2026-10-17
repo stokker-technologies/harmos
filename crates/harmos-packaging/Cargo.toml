@@ -85,8 +85,6 @@ harmos-domain = { workspace = true, features = ["derive", "grpc"] }
 
 # Serialization
 protoc-bin-vendored = { workspace = true }
-prost = { workspace = true }
-tempfile = { workspace = true }
 
 
 # === Target Dependencies === #

@@ -36,16 +36,16 @@ pub(crate) struct Routing;
 /* === Traits === */
 
 /* === Implementations === */
-#[harmos::operation]
+#[harmos_sidecar::operation]
 impl Routing {
-    async fn initialize(_: Arc<()>, _: &harmos::sidecar::Supervisor) -> Self {
+    async fn initialize(_: Arc<crate::Resources>, _: &harmos_sidecar::Supervisor) -> Self {
         Self
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
     async fn run(
         &mut self,
-        _context: &harmos::sidecar::Supervisor,
+        _context: &harmos_sidecar::Supervisor,
         request: &mut ProposeRoute,
     ) -> Result<Route, Error> {
         let corner = schematic_domain::model::Point {

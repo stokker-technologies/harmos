@@ -18,6 +18,7 @@ pub mod schematic;
 /* === Re-Exports === */
 pub use common::POLICY;
 pub use directories::ListDirectories;
+pub use schematic::streaming::{AnalyzeUpload, AnalyzeExchange};
 pub use schematic::{AnalyzeSchematic, ProposeRoute, ValidateSchematic};
 
 /* === Imports === */
@@ -48,6 +49,13 @@ pub enum Native {
     #[nested]
     Shared(Operations),
     ListDirectories(ListDirectories),
+    AnalyzeUpload(AnalyzeUpload),
+    AnalyzeExchange(AnalyzeExchange),
+}
+
+#[harmos_domain::catalog]
+pub enum Requires {
+    Publish(harmos_domain::operations::streams::Publish),
 }
 
 /* === Traits === */
