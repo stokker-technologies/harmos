@@ -8,7 +8,7 @@
  */
 
 /* === Modules === */
-#[path = "../../../scenarios.rs"]
+#[path = "../../../../../tests/support/scenarios.rs"]
 mod scenario_runtime;
 
 mod source_scenarios;
