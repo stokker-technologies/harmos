@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:246b50d6b7a15ade6f5283cd94f00ec5d13d9f8934386015195fab5b865b7bbd
+# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:5a264aeb7ada9f57e4cc8212d1bbcadd177fdd879f0000ec0200fc8a66ba44c4
 name: CI
 "on":
   push:
@@ -140,7 +140,7 @@ jobs:
     name: Test / Acceptance / Rust
     runs-on:
     - ubuntu-24.04
-    timeout-minutes: 13
+    timeout-minutes: 11
     needs:
     - build
     - test_integration_rust
@@ -179,7 +179,7 @@ jobs:
     name: Test / System / Rust
     runs-on:
     - ubuntu-24.04
-    timeout-minutes: 24
+    timeout-minutes: 11
     needs:
     - build
     - test_integration_rust
