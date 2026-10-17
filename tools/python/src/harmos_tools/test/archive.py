@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/archive.py; sha256:784787a49d6afca2c819154e1fff4500afca1ac7a8858b1b7ff7d725c51dcdf9
+# Rendered by stkr project update from templates/python/test/archive.py; sha256:5360892e1e87eb9a0d76bc688961e874a408a36b767ae828f2907c49829253cf
 # ***
 #
 # Harmos
@@ -689,7 +689,9 @@ def _produce(
     before = capture["tree"]
     build_inputs = capture["inputs"]
     target = _target(directory, extra)
-    metadata_command = ["cargo", "metadata", "--locked", "--format-version", "1", "--filter-platform", target, *_features(extra)]
+    # Host Build Dependencies And Proc Macros Compile Beside A Cross Target, So Both Platforms Bound The Package Set.
+    platforms = [option for triple in dict.fromkeys((target, _host(directory))) for option in ("--filter-platform", triple)]
+    metadata_command = ["cargo", "metadata", "--locked", "--format-version", "1", *platforms, *_features(extra)]
     metadata = _output(directory, metadata_command)
     resolved = json.loads(metadata)
     if archived:
@@ -855,9 +857,12 @@ def _output(directory: Path, command: Sequence[str]) -> str:
 
 
 def _runtime(directory: Path, name: str) -> str | None:
-    # A Shim This Project Does Not Configure Is An Unavailable Runtime, Recorded As Such.
-    result = subprocess.run([name, "--version"], cwd=directory, capture_output=True, text=True, encoding="utf-8", check=False)
-    return result.stdout.strip() if result.returncode == 0 else None
+    # A Shim This Project Does Not Configure, Or One That Names No Version, Is An Unavailable Runtime, Recorded As Such.
+    try:
+        result = subprocess.run([name, "--version"], cwd=directory, capture_output=True, text=True, encoding="utf-8", check=False)
+    except (OSError, UnicodeDecodeError):
+        return None
+    return (result.stdout.strip() or None) if result.returncode == 0 else None
 
 
 def _toolchain(directory: Path) -> str:
@@ -1070,6 +1075,8 @@ def _watched(directory: Path, messages: Path, metadata: dict) -> dict:
             elif declaration.startswith("rerun-if-changed="):
                 path = Path(declaration.split("=", 1)[1])
                 if not path.is_absolute():
+                    if message["package_id"] not in packages:
+                        raise policy.TestError(f"compiled package is absent from the resolved metadata: {message['package_id']}")
                     path = packages[message["package_id"]] / path
                 files.add(str(path))
     return {"files": sorted(files), "environment": sorted(environment)}
@@ -1123,6 +1130,10 @@ def _target(directory: Path, arguments: Sequence[str]) -> str:
             if not isinstance(value, str):
                 raise policy.TestError("multiple Cargo build targets require separate archive producers")
             return value
+    return _host(directory)
+
+
+def _host(directory: Path) -> str:
     for line in _toolchain(directory).splitlines():
         if line.startswith("host: "):
             return line.removeprefix("host: ")
