@@ -364,18 +364,6 @@ impl Fixture {
 /* === Private Functions === */
 fn notices(_: &Service<Bank>, _: Notice) {}
 
-fn count(root: &Path, name: &str) -> usize {
-    std::fs::read_to_string(root.join(name)).unwrap().lines().count()
-}
-
-async fn marked(root: &Path, name: &str) {
-    (async {
-        while !std::fs::read(root.join(name)).is_ok_and(|bytes| bytes.ends_with(b"\n")) {
-            tokio::task::yield_now().await;
-        }
-    }).await;
-}
-
 fn nested(blob: Blob) -> Nested {
     Nested { blob }
 }
