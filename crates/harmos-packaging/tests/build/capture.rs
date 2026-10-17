@@ -87,7 +87,9 @@ impl Captured {
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn digest(bytes: &[u8]) -> String { format!("{:x}", Sha256::digest(bytes)) }
+fn digest(bytes: &[u8]) -> String {
+    Sha256::digest(bytes).iter().map(|byte| format!("{byte:02x}")).collect()
+}
 
 fn artifact(path: &Path, test: bool) -> Value {
     json!({"reason": "compiler-artifact", "package_id": PRODUCER,

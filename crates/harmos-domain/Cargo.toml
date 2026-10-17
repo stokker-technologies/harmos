@@ -82,6 +82,7 @@ harmos-macros = { workspace = true }
 # Utilities
 
 # Serialization
+prost-reflect = { workspace = true }
 protoc-bin-vendored = { workspace = true }
 
 # Configuration

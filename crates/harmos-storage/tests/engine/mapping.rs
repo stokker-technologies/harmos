@@ -274,7 +274,7 @@ async fn expansion_exceeds_budget() {
     let mut settings = storage_settings();
     settings.budget.read_memory_bytes = NonZeroUsize::new(512 * 1024).unwrap();
     let payload = compact();
-    assert!(payload[0].encode_to_vec().len() < 16 * 1024);
+    assert!(Message::encode_to_vec(&payload[0]).len() < 16 * 1024);
     let m = Mapped::new(settings.clone(), "expansion", &payload).await;
     let mut reader = m.storage.query(m.query(Some("row-0"))).await.unwrap();
     assert!(matches!(

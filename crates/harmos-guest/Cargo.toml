@@ -118,6 +118,7 @@ wit-bindgen = { workspace = true, default-features = true, features = [
 
 # Utilities
 wasmtime = { workspace = true }
+wit-component = { workspace = true, default-features = true }
 
 # Serialization
 

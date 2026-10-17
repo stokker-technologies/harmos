@@ -213,7 +213,8 @@ fn boxed_messages_cross() {
             );
 
             // The Reflected Request Keeps The Plain Nested Message As A Singular Field
-            use harmos_domain::schema::{Described, reflection};
+            use harmos_domain::schema::Described;
+            use harmos_packaging::proto::reflection;
             let settings = harmos_domain::config::SchemaSettings::default();
             let graph = harmos_domain::schema::graph::Schema::from_declaration(
                 Envelope::DEFINITION,
@@ -233,7 +234,7 @@ fn boxed_messages_cross() {
             )
             .unwrap();
             assert_eq!(
-                prost::Message::encode_to_vec(&decoded),
+                prost_reflect::prost::Message::encode_to_vec(&decoded),
                 Protobuf::encode_to_vec(&request)
             );
         }

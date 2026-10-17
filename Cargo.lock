@@ -1010,6 +1010,7 @@ dependencies = [
  "memchr",
  "postcard",
  "prost",
+ "prost-reflect",
  "protoc-bin-vendored",
  "semver",
  "serde",
@@ -1034,6 +1035,7 @@ dependencies = [
  "tracing",
  "wasmtime",
  "wit-bindgen 0.62.0",
+ "wit-component 0.261.0",
 ]
 
 [[package]]
@@ -1169,6 +1171,7 @@ dependencies = [
  "arrow-select",
  "base64",
  "flatbuffers",
+ "futures-util",
  "harmos-domain",
  "postcard",
  "rustfft",
