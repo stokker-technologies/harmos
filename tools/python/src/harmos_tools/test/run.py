@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/run.py; sha256:5d0ef8f5455dd3e4e56ccedef237b95d50381be827ccdda823035b55f11185c9
+# Rendered by stkr project update from templates/python/test/run.py; sha256:8e3e6d336893008b42613a7b72dad167565aefa3ee2d1aab46578b895a44546a
 # ***
 #
 # Harmos
@@ -104,9 +104,6 @@ def test(
     environment = None
     cwd = directory / project
     if language == "rust":
-        temporary = directory / ".cache/tmp"
-        temporary.mkdir(parents=True, exist_ok=True)
-        environment = dict(os.environ, TMPDIR=str(temporary), TEMP=str(temporary), TMP=str(temporary))
         path = archive.require(directory, profile, current, archive_arguments)
         names = archive.binaries(directory, profile)
         expression, rest = nextest.selection(category, extra, names)
@@ -165,9 +162,6 @@ def coverage(
 
     # Instrumented Run
     if language == "rust":
-        temporary = directory / ".cache/tmp"
-        temporary.mkdir(parents=True, exist_ok=True)
-        environment.update(TMPDIR=str(temporary), TEMP=str(temporary), TMP=str(temporary))
         names = archive.binaries(directory, profile)
         expression, rest = nextest.selection(category, extra, names)
         measured = nextest.overrides(rules, category, {}, coverage=True, binaries=names)
@@ -417,12 +411,8 @@ def _preflight(
     current: str,
 ) -> None:
     """Refuse a stale fixture stamp or absent host artifacts before any test runs."""
-    archive.fixtures(directory, current)
-    if category in (None, "acceptance", "system"):
-        hosts = [host.replace("{profile}", profile) for host in rules.hosts]
-        absent = [host for host in hosts if not (directory / host).exists()]
-        if absent:
-            raise policy.TestError("missing host artifacts: " + ", ".join(absent))
+    hosts = rules.hosts if category in (None, "acceptance", "system") else ()
+    archive.fixtures(directory, current, profile, hosts)
 
 
 def _scratch(directory: Path, key: str) -> Path:

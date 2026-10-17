@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/policy.py; sha256:e577952467866d55faa034cb922023e7b1d3ac09e19ddb0e82ac7ff8647e645e
+# Rendered by stkr project update from templates/python/test/policy.py; sha256:22b7e67f02571f22fe5823a4ee2d718a85c12863146c8bd959df61001c8732c4
 # ***
 #
 # __PRODUCT_NAME__
@@ -27,7 +27,9 @@ Limits are project-wide story counts per layer; exceeding one is a curation find
 index, never a failure. Deadlines are the per-story maximum of a lane in seconds. An override
 replaces the deadline of the stories it selects: for Rust `select` is a nextest filterset, for
 the other languages a glob over `<file>::<story>`. Hosts are artifacts acceptance and system
-lanes need; `{profile}` expands to the lane profile.
+lanes need; `{profile}`, `{platform}`, `{architecture}`, `{target}` and `{exe}` expand to the lane profile,
+native operating system, CPU architecture, producer target and executable suffix. Declared hosts require a
+fixture stamp whose immutable file map covers every host before a lane can run.
 
 The expected lanes are the `test:<category>:<language>` leaf tasks of `mise.toml`.
 """

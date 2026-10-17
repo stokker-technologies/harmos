@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/profiles/tools/python/pyproject.toml; sha256:7514111e8d8f5e52584ce3e76d1b194d05f868ab08a44665517d9bb7626b5a34
+# Rendered by stkr project update from templates/profiles/tools/python/pyproject.toml; sha256:0701eb57b9c65d78a3cedc82cba12ea88c27775c47ecd5638486b9fd164cc081
 [project]
 name = "project-tools"
 version = "0.0.0"
@@ -6,7 +6,7 @@ requires-python = ">=3.13"
 dependencies = []
 
 [dependency-groups]
-dev = ["ruff==0.17.0", "ty==0.0.86"]
+dev = ["hatchling==1.32.4", "ruff==0.17.0", "ty==0.0.86"]
 
 [build-system]
 requires = ["hatchling==1.32.4"]

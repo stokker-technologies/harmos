@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/python/test/archive.py; sha256:41ab5132f8711cb31675619108984b0cf030c1200f5f974666ad4fae3b585ac0
+# Rendered by stkr project update from templates/python/test/archive.py; sha256:e77f095c0b08fa5427aeb8846cf9a5ad502d894c92f21699c7403ef643f58682
 # ***
 #
 # Harmos
@@ -42,7 +42,7 @@ import subprocess
 import sys
 import tempfile
 import tomllib
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 # Third Party Imports
@@ -114,14 +114,111 @@ def location(directory: Path, profile: str) -> Path:
     return directory / "target" / "nextest" / profile / ARCHIVE
 
 
-def build(directory: Path, profile: str, extra: Sequence[str] = ()) -> dict:
+def build(directory: Path, profile: str, extra: Sequence[str] = (), *, parents: Sequence[dict] = (), inputs: Sequence[Path] = ()) -> dict:
     """Compile and archive every workspace target with its original producer receipt."""
-    return _produce(directory, profile, extra, archived=True)
+    return _produce(directory, profile, extra, archived=True, parents=parents, inputs=inputs)
 
 
-def compile(directory: Path, profile: str, extra: Sequence[str] = ()) -> dict:
+def compile(directory: Path, profile: str, extra: Sequence[str] = (), *, parents: Sequence[dict] = (), inputs: Sequence[Path] = ()) -> dict:
     """Capture one separate Cargo workspace/target invocation using the same producer contract."""
-    return _produce(directory, profile, extra, archived=False)
+    return _produce(directory, profile, extra, archived=False, parents=parents, inputs=inputs)
+
+
+def native(
+    directory: Path, profile: str, role: str, commands: Sequence[Sequence[str]], outputs: Sequence[Path], *,
+    locks: Sequence[Path], inputs: Sequence[Path] = (), installed: Sequence[Path] = (), parents: Sequence[dict] = (),
+    stdout: Mapping[int, Path] | None = None,
+) -> dict:
+    """Capture an actual closed native producer; product tasks retain invocation and ordering ownership.
+
+    Roles are dependency-export (locked cargo vendor/uv export/hashed pip download), frontend
+    (Node build), python-package (offline uv build with a prepared backend), and package
+    (a parent-produced native tool). rust-package captures locked, noncompiling Cargo packaging.
+    Outputs must be fresh owned files/directories. Inputs copied from parents retain their
+    original digests; installed dependency snapshots are backed by explicit native lockfiles.
+    """
+    if role not in ("dependency-export", "frontend", "python-package", "rust-package", "package") or not commands or not outputs or not locks:
+        raise policy.TestError("native production requires a closed role, invocations, outputs and locked inputs")
+    directory = directory.resolve()
+    project = Path(_git(directory, "rev-parse", "--show-toplevel"))
+    commands = [[str(argument) for argument in command] for command in commands]
+    outputs = [path if path.is_absolute() else directory / path for path in outputs]
+    locks = [path if path.is_absolute() else directory / path for path in locks]
+    installed = [path if path.is_absolute() else directory / path for path in installed]
+    stdout = {index: path if path.is_absolute() else directory / path for index, path in (stdout or {}).items()}
+    capture = _snapshot(directory, profile, parents, inputs)
+    lock_inputs = {str(path.resolve()): _source(path) for path in locks}
+    installed_inputs = {str(path.resolve()): _installed(path, project) for path in installed}
+    command_tools = _command_tools(directory, commands)
+    origins = {digest for parent in parents for digest in _outputs(parent).values()}
+    for command in commands:
+        executable = Path(command[0]).name.lower().removesuffix(".exe")
+        if role == "frontend" and (executable != "node" or "build" not in command):
+            raise policy.TestError("frontend production requires the authored Node build invocation")
+        if role == "python-package":
+            prepared = {"--no-build-isolation", "--offline", "--python"}.issubset(command)
+            if executable != "uv" or command[1:2] != ["build"] or not prepared or not installed:
+                raise policy.TestError("Python package production requires offline, nonisolated uv build, an explicit Python and captured backend dependencies")
+        if role == "rust-package" and (executable != "cargo" or command[1:2] != ["package"] or not {"--locked", "--no-verify"}.issubset(command)):
+            raise policy.TestError("Rust package production requires cargo package --locked --no-verify without compilation")
+        if role == "dependency-export":
+            cargo = executable == "cargo" and command[1:2] == ["vendor"] and "--locked" in command
+            uv = executable == "uv" and command[1:2] == ["export"] and "--locked" in command
+            pip = Path(command_tools[command[0]]["path"]).resolve() == Path(sys.executable).resolve() and "download" in command and "--require-hashes" in command
+            if not (cargo or uv or pip):
+                raise policy.TestError("dependency exports require locked native Cargo/uv or hash-checked pip invocations")
+        if role == "package" and command_tools[command[0]]["sha256"] not in origins:
+            raise policy.TestError("native packaging tool must come from a verified original parent compiler output")
+    for output in outputs:
+        _inside(project, output.relative_to(project).as_posix())
+        output = output.resolve()
+        if not output.is_relative_to(project) or output == project or output.is_symlink():
+            raise policy.TestError(f"native output must stay in the owned project: {output}")
+        if output.exists() and (not output.is_dir() or any(output.iterdir())):
+            raise policy.TestError(f"native output is not fresh; prepare a new owned output location: {output}")
+    for index, command in enumerate(commands):
+        destination = (stdout or {}).get(index)
+        if destination is None:
+            status = _run(command, directory)
+        else:
+            if not any(destination.resolve() == output.resolve() or destination.resolve().is_relative_to(output.resolve()) for output in outputs):
+                raise policy.TestError("native stdout must be a declared output")
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            with destination.open("w", encoding="utf-8") as stream:
+                status = _run(command, directory, stream)
+        if status != 0:
+            raise policy.TestError(f"native {role} production failed")
+    exports = {}
+    for output in outputs:
+        _inside(project, output.relative_to(project).as_posix())
+        if output.is_file():
+            exports[str(output.resolve())] = _source(output)
+        elif output.is_dir():
+            for path in output.rglob("*"):
+                if path.is_symlink():
+                    raise policy.TestError(f"unbounded symlink in native output: {path}")
+                if path.is_file():
+                    exports[str(path.resolve())] = _digest(path)
+        else:
+            raise policy.TestError(f"native producer did not write its declared output: {output}")
+    if not exports:
+        raise policy.TestError("native producer emitted no files")
+    _unchanged(directory, profile, capture)
+    if any(_source(Path(name)) != digest for name, digest in lock_inputs.items()):
+        raise policy.TestError("native dependency lock changed during production")
+    if any(_installed(Path(name), project) != digest for name, digest in installed_inputs.items()):
+        raise policy.TestError("installed dependency inputs changed during production")
+    if _command_tools(directory, commands) != command_tools:
+        raise policy.TestError("native producer executable changed during production")
+    key = hashlib.sha256(json.dumps([role, [str(path) for path in outputs]]).encode()).hexdigest()[:16]
+    receipt = project / "target/producers" / role / key / profile / "production.json"
+    record = {"schema": 1, "kind": role, "workspace": directory.relative_to(project).as_posix(), "receipt": _relative(project, receipt),
+              "profile": profile, "arguments": [], **capture, "resolution": {"locks": lock_inputs}, "installed_inputs": installed_inputs,
+              "commands": [list(command) for command in commands], "command": list(commands[0]), "command_tools": command_tools,
+              "exports": exports, "provider": _provider()}
+    receipt.parent.mkdir(parents=True, exist_ok=True)
+    receipt.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    return record
 
 
 def listed(directory: Path, profile: str) -> list[str]:
@@ -154,26 +251,10 @@ def require(directory: Path, profile: str, current: str, arguments: Sequence[str
     if not path.is_file() or not receipt.is_file():
         raise policy.TestError(f"no {profile} nextest archive; run the build that produces {path.relative_to(directory)}")
     record = json.loads(receipt.read_text(encoding="utf-8"))
-    if record.get("tree") != current or record.get("profile") != profile:
-        raise policy.TestError(f"the {profile} nextest archive was built from another tree; rebuild it")
-    if record.get("schema") != 1 or "dependencies" not in record:
-        raise policy.TestError("the nextest archive has no complete input receipt; rebuild it")
-    if record.get("arguments") != list(arguments):
-        raise policy.TestError("the nextest archive uses another Cargo argument selection")
-    if record.get("revision") != revision(directory):
-        raise policy.TestError("the nextest archive belongs to another source revision")
-    if record.get("inputs") != _inputs(directory):
-        raise policy.TestError("the nextest archive uses another platform, environment or configuration")
+    if record.get("kind") != "nextest":
+        raise policy.TestError("nextest archive has no original archive producer receipt")
+    _verify_inputs(directory, record, profile, current, arguments)
     project = Path(_git(directory, "rev-parse", "--show-toplevel"))
-    resolution = record.get("resolution", {})
-    lock = project / resolution.get("lock", "Cargo.lock")
-    if not resolution.get("packages") or resolution.get("sha256") != _digest(lock):
-        raise policy.TestError("the nextest archive uses another locked dependency resolution")
-    if "watched" not in record or record.get("watched_inputs") != _watched_inputs(record["watched"]):
-        raise policy.TestError("the nextest archive build-script inputs changed")
-    for name, digest in record.get("dependencies", {}).items():
-        if _source(Path(name)) != digest:
-            raise policy.TestError(f"the nextest archive dependency changed: {name}")
     for key, name in (("metadata", METADATA), ("messages", MESSAGES)):
         artifact = path.with_name(name)
         if record.get(key) != {"path": _relative(project, artifact), "sha256": _digest(artifact)}:
@@ -185,14 +266,95 @@ def require(directory: Path, profile: str, current: str, arguments: Sequence[str
     return path
 
 
-def fixtures(directory: Path, current: str) -> None:
-    """Refuse a fixture stamp from another tree; projects without fixtures have no stamp."""
-    stamp = directory / FIXTURES
-    if not stamp.is_file():
+def verify_outputs(record: dict, paths: Sequence[Path] | None = None) -> None:
+    """Require unchanged producer output bytes before staging selected regular binaries or generated files.
+
+    Use the record returned by build/compile, or first require the persisted archive's inputs.
+    Omitting paths checks every expected output, including entries deleted after production.
+    """
+    if record.get("schema") != 1 or not _outputs(record):
+        raise policy.TestError("no complete producer output map; rebuild the artifacts")
+    expected = _outputs(record)
+    selected = list(expected) if paths is None else [str(path) for path in paths]
+    for name in selected:
+        if name not in expected:
+            raise policy.TestError(f"output was not recorded by the compiler producer: {name}")
+        if _source(Path(name)) != expected[name]:
+            raise policy.TestError(f"output changed after compiler production: {name}")
+
+
+def verify_copy(record: dict, source: Path, destination: Path) -> str:
+    """Verify source and copied bytes against the immutable producer map; return its original digest."""
+    verify_outputs(record, [source])
+    expected = _outputs(record)[str(source)]
+    if _source(destination) != expected:
+        raise policy.TestError(f"staged copy differs from original compiler output: {destination}")
+    return expected
+
+
+def stamp(directory: Path, producers: Sequence[dict], files: Mapping[str, str], metadata: dict | None = None) -> dict:
+    """Bind staged files to unchanged original captures and caller-supplied immutable expected digests.
+
+    Expected hashes come from verified producer maps or typed package/export receipts, never
+    by hashing the staged copies to declare them valid. Product selectors belong in metadata.
+    """
+    if not producers or not files:
+        raise policy.TestError("a fixture stamp requires original producer captures and expected files")
+    current = tree(directory)
+    profile = producers[0].get("profile")
+    for producer in producers:
+        workspace = _inside(directory, producer.get("workspace", "."))
+        _verify_inputs(workspace, producer, profile, current, producer.get("arguments", []))
+    origins = {digest for producer in producers for digest in _outputs(producer).values()}
+    if any(digest not in origins for digest in files.values()):
+        raise policy.TestError("fixture files require an original compiler/generated/native-export digest")
+    _verify_files(directory, files)
+    record = {"schema": 1, "tree": current, "revision": producers[0]["revision"], "profile": profile,
+              "producers": list(producers), "files": dict(files), "metadata": metadata or {}}
+    destination = _inside(directory, FIXTURES)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    return record
+
+
+def fixtures(directory: Path, current: str, profile: str = "dev", hosts: Sequence[str] = ()) -> None:
+    """Verify original producer identity and every expected staged byte before consuming fixtures."""
+    path = _inside(directory, FIXTURES)
+    if not path.is_file():
+        if hosts:
+            raise policy.TestError(f"{FIXTURES} is absent; build the declared host fixtures")
         return
-    record = json.loads(stamp.read_text(encoding="utf-8"))
-    if record.get("tree") != current:
-        raise policy.TestError(f"{FIXTURES} is stale; rebuild the fixtures")
+    record = json.loads(path.read_text(encoding="utf-8"))
+    if record.get("schema") != 1 or record.get("tree") != current or record.get("profile") != profile:
+        raise policy.TestError(f"{FIXTURES} belongs to another source tree or profile; rebuild the fixtures")
+    if record.get("revision") != revision(directory) or not record.get("producers"):
+        raise policy.TestError(f"{FIXTURES} has no current original producer identity")
+    for producer in record["producers"]:
+        workspace = _inside(directory, producer.get("workspace", "."))
+        _verify_inputs(workspace, producer, profile, current, producer.get("arguments", []))
+    files = record.get("files", {})
+    origins = {digest for producer in record["producers"] for digest in _outputs(producer).values()}
+    if any(digest not in origins for digest in files.values()):
+        raise policy.TestError("fixture digest has no original producer output")
+    if not files:
+        raise policy.TestError(f"{FIXTURES} has no expected artifact files")
+    _verify_files(directory, files)
+    machine = {"amd64": "x86_64", "arm64": "aarch64"}.get(platform.machine().lower(), platform.machine().lower())
+    system = {"linux": "linux", "win32": "windows", "darwin": "macos"}.get(sys.platform, sys.platform)
+    target = record["producers"][0].get("target", "")
+    for host in hosts:
+        name = host.format(profile=profile, platform=system, architecture=machine, target=target, exe=".exe" if os.name == "nt" else "")
+        artifact = _inside(directory, name)
+        if artifact.is_file():
+            if name not in files:
+                raise policy.TestError(f"host has no immutable fixture digest: {name}")
+        elif artifact.is_dir():
+            expected = {file for file in files if Path(file).is_relative_to(name)}
+            actual = {file.relative_to(directory).as_posix() for file in artifact.rglob("*") if file.is_file() or file.is_symlink()}
+            if not expected or actual != expected:
+                raise policy.TestError(f"host directory differs from its expected fixture files: {name}")
+        else:
+            raise policy.TestError(f"missing host artifact: {name}")
 
 
 def main(arguments: Sequence[str] | None = None) -> int:
@@ -223,15 +385,197 @@ def main(arguments: Sequence[str] | None = None) -> int:
 # === Private Functions === #
 
 
-def _produce(directory: Path, profile: str, extra: Sequence[str], *, archived: bool) -> dict:
+def _outputs(record: dict) -> dict[str, str]:
+    outputs = {**record.get("artifacts", {}), **record.get("generated", {}), **record.get("exports", {})}
+    if record.get("project") and record.get("receipt"):
+        path = Path(record["project"]) / record["receipt"]
+        original = (json.dumps(record, indent=2) + "\n").encode()
+        outputs[str(path)] = hashlib.sha256(original).hexdigest()
+    return outputs
+
+
+def _provider() -> dict:
+    return {key: os.environ[key] for key in ("GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_JOB", "CI_JOB_ID", "CI_PIPELINE_ID") if key in os.environ}
+
+
+def _snapshot(directory: Path, profile: str, parents: Sequence[dict], inputs: Sequence[Path]) -> dict:
+    if profile not in (*policy.PROFILES, "bench"):
+        raise policy.TestError("producer profile must be dev, release or bench")
+    project = Path(_git(directory, "rev-parse", "--show-toplevel"))
+    sources = {project / name for name in _git(project, "ls-files", "--cached", "--others", "--exclude-standard", "-z").split("\0") if name}
+    if linked := next((file for file in sources if file.is_symlink()), None):
+        raise policy.TestError(f"unbounded symbolic link in workspace source: {linked}")
+    current = tree(project)
+    record = {"project": str(project), "tree": current, "revision": revision(project), "inputs": _inputs(directory), "parents": list(parents), "parent_inputs": {}, "declared_inputs": {}, "input_directories": {}}
+    origins = {digest for parent in parents for digest in _outputs(parent).values()}
+    for input in inputs:
+        input = input if input.is_absolute() else directory / input
+        _unlinked(input)
+        paths = [input] if input.is_file() else [path for path in input.rglob("*") if path.is_file() or path.is_symlink()]
+        if not paths:
+            raise policy.TestError(f"declared producer input is missing or empty: {input}")
+        if input.is_dir():
+            record["input_directories"][str(input.resolve())] = sorted(str(path.resolve()) for path in paths)
+        for path in paths:
+            digest = _source(path)
+            group = "parent_inputs" if digest in origins else "declared_inputs"
+            record[group][str(path.resolve())] = digest
+    _verify_parents(directory, record, profile, current)
+    return record
+
+
+def _unchanged(directory: Path, profile: str, record: dict) -> None:
+    if tree(directory) != record["tree"] or revision(directory) != record["revision"] or _inputs(directory) != record["inputs"]:
+        raise policy.TestError("source, revision or effective tool/configuration inputs changed during production")
+    _verify_directories(record)
+    for group in ("parent_inputs", "declared_inputs"):
+        if any(_source(Path(name)) != digest for name, digest in record[group].items()):
+            raise policy.TestError("a declared/generated producer input changed during production")
+    _verify_parents(directory, record, profile, record["tree"])
+
+
+def _verify_directories(record: dict, *, missing_parents: bool = False) -> None:
+    for name, expected in record.get("input_directories", {}).items():
+        directory = Path(name)
+        _unlinked(directory)
+        if missing_parents and not directory.exists() and expected and all(path in record.get("parent_inputs", {}) for path in expected):
+            continue
+        actual = sorted(str(path.resolve()) for path in directory.rglob("*") if path.is_file() or path.is_symlink())
+        if directory.is_symlink() or actual != expected:
+            raise policy.TestError(f"declared producer input directory membership changed: {name}")
+
+
+def _verify_parents(directory: Path, record: dict, profile: str, current: str) -> None:
+    project = Path(_git(directory, "rev-parse", "--show-toplevel"))
+    origins = set()
+    for parent in record.get("parents", []):
+        workspace = _inside(project, parent.get("workspace", "."))
+        _verify_inputs(workspace, parent, profile, current, parent.get("arguments", []))
+        origins.update(_outputs(parent).values())
+    for name, digest in record.get("parent_inputs", {}).items():
+        if digest not in origins:
+            raise policy.TestError(f"generated input has no verified original parent output: {name}")
+        if Path(name).exists() and _source(Path(name)) != digest:
+            raise policy.TestError(f"present generated input differs from its original parent: {name}")
+
+
+def _command_tools(directory: Path, commands: Sequence[Sequence[str]]) -> dict:
+    tools = {}
+    for command in commands:
+        if not command:
+            raise policy.TestError("native invocation is empty")
+        names = [command[0]]
+        if "--python" in command:
+            index = command.index("--python") + 1
+            if index == len(command):
+                raise policy.TestError("native Python selection requires an executable path")
+            names.append(command[index])
+        for name in names:
+            path = Path(name)
+            executable = directory / path if not path.is_absolute() and len(path.parts) > 1 else Path(shutil.which(name) or name)
+            executable = executable.resolve()
+            tools[name] = {"path": str(executable), "sha256": _digest(executable)}
+    return tools
+
+
+def _installed(path: Path, boundary: Path) -> str:
+    entries, visited = [], set()
+    pending = [path]
+    while pending:
+        file = pending.pop()
+        resolved = file.resolve()
+        if not resolved.is_relative_to(boundary):
+            raise policy.TestError(f"installed dependency escapes its declared project boundary: {file}")
+        if file.is_symlink():
+            entries.append((str(file), "link", str(resolved)))
+        if resolved in visited:
+            continue
+        visited.add(resolved)
+        if resolved.is_file():
+            entries.append((str(resolved), "file", _digest(resolved)))
+        elif resolved.is_dir():
+            pending.extend(resolved.iterdir())
+        else:
+            raise policy.TestError(f"installed dependency input is missing: {file}")
+    return hashlib.sha256(json.dumps(sorted(entries)).encode()).hexdigest()
+
+
+def _verify_inputs(directory: Path, record: dict, profile: str, current: str, arguments: Sequence[str]) -> None:
+    if record.get("tree") != current or record.get("profile") != profile:
+        raise policy.TestError("producer capture belongs to another source tree or profile")
+    if record.get("schema") != 1 or "inputs" not in record:
+        raise policy.TestError("producer capture has no complete input receipt; rebuild it")
+    if record.get("arguments") != list(arguments):
+        raise policy.TestError("producer capture uses another Cargo argument selection")
+    if record.get("revision") != revision(directory):
+        raise policy.TestError("producer capture belongs to another source revision")
+    if record.get("inputs") != _inputs(directory):
+        raise policy.TestError("producer capture uses another platform, environment or configuration")
+    project = Path(_git(directory, "rev-parse", "--show-toplevel"))
+    _verify_parents(directory, record, profile, current)
+    _verify_directories(record, missing_parents=True)
+    for name, digest in record.get("declared_inputs", {}).items():
+        if _source(Path(name)) != digest:
+            raise policy.TestError(f"declared producer input changed: {name}")
+    resolution = record.get("resolution", {})
+    if record.get("kind") in ("dependency-export", "frontend", "python-package", "rust-package", "package"):
+        if not resolution.get("locks") or any(_source(Path(name)) != digest for name, digest in resolution["locks"].items()):
+            raise policy.TestError("native producer lock inputs changed")
+        for name, digest in record.get("installed_inputs", {}).items():
+            if Path(name).exists() and _installed(Path(name), project) != digest:
+                raise policy.TestError(f"installed native dependency changed: {name}")
+        origins = {name: digest for parent in record.get("parents", []) for name, digest in _outputs(parent).items()}
+        for tool in record["command_tools"].values():
+            path = Path(tool["path"])
+            if not path.exists() and origins.get(str(path)) == tool["sha256"]:
+                continue
+            if _source(path) != tool["sha256"]:
+                raise policy.TestError("native producer executable identity changed")
+        return
+    lock = project / resolution.get("lock", "Cargo.lock")
+    if not resolution.get("packages") or resolution.get("sha256") != _digest(lock):
+        raise policy.TestError("producer capture uses another locked dependency resolution")
+    if "watched" not in record or record.get("watched_inputs") != _watched_inputs(record["watched"]):
+        raise policy.TestError("producer capture build-script inputs changed")
+    for name, digest in record.get("dependencies", {}).items():
+        if _source(Path(name)) != digest:
+            raise policy.TestError(f"producer capture dependency changed: {name}")
+
+
+def _inside(directory: Path, name: str) -> Path:
+    relative = Path(name)
+    if relative.is_absolute() or ".." in relative.parts or "\\" in name:
+        raise policy.TestError(f"fixture path must stay relative to the project: {name}")
+    root = directory.resolve()
+    path = root / relative
+    current = root
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            raise policy.TestError(f"fixture path contains an unbounded symlink: {name}")
+    if not path.resolve().is_relative_to(root):
+        raise policy.TestError(f"fixture path escapes the project: {name}")
+    return path
+
+
+def _verify_files(directory: Path, files: Mapping[str, str]) -> None:
+    for name, expected in files.items():
+        if name == FIXTURES or not isinstance(expected, str) or len(expected) != 64 or any(character not in "0123456789abcdef" for character in expected):
+            raise policy.TestError(f"fixture requires an immutable expected SHA-256: {name}")
+        if _source(_inside(directory, name)) != expected:
+            raise policy.TestError(f"staged fixture differs from its original expected bytes: {name}")
+
+
+def _produce(directory: Path, profile: str, extra: Sequence[str], *, archived: bool, parents: Sequence[dict], inputs: Sequence[Path]) -> dict:
     if profile not in (*policy.PROFILES, "bench"):
         raise policy.TestError("build profile must be dev, release or bench")
     if any(argument in ("--config", "--manifest-path") or argument.startswith(("--config=", "--manifest-path=")) for argument in extra):
         raise policy.TestError("build inputs require repository-owned Cargo configuration and the current workspace manifest")
     directory = directory.resolve()
     project = Path(_git(directory, "rev-parse", "--show-toplevel"))
-    before = tree(project)
-    inputs = _inputs(directory)
+    capture = _snapshot(directory, profile, parents, inputs)
+    before = capture["tree"]
+    build_inputs = capture["inputs"]
     target = _target(directory, extra)
     metadata_command = ["cargo", "metadata", "--locked", "--format-version", "1", "--filter-platform", target, *_features(extra)]
     metadata = _output(directory, metadata_command)
@@ -261,8 +605,6 @@ def _produce(directory: Path, profile: str, extra: Sequence[str], *, archived: b
     declared = configuration.get("hooks", {}).get("validation_inputs", [])
     bounded = [*(Path(name) for name in external), *(policy_root / name for name in declared)]
     sources = {project / name for name in _git(project, "ls-files", "--cached", "--others", "--exclude-standard", "-z").split("\0") if name}
-    if linked := next((file for file in sources if file.is_symlink()), None):
-        raise policy.TestError(f"unbounded symbolic link in workspace source: {linked}")
     environment = {name: hashlib.sha256(value.encode()).hexdigest() for name, value in os.environ.items()}
     original = revision(project)
     command = [
@@ -293,8 +635,10 @@ def _produce(directory: Path, profile: str, extra: Sequence[str], *, archived: b
         raise policy.TestError("a resolved dependency changed during compilation")
     if _digest(lock) != resolution["sha256"]:
         raise policy.TestError("the Cargo lock changed during compilation")
-    if _inputs(directory) != inputs or revision(project) != original:
+    if _inputs(directory) != build_inputs or revision(project) != original:
         raise policy.TestError("the build environment or source revision changed while the archive was built")
+
+    _unchanged(directory, profile, capture)
 
     # Edits During Compilation Make The Archive Unattributable.
     if tree(project) != before:
@@ -302,13 +646,18 @@ def _produce(directory: Path, profile: str, extra: Sequence[str], *, archived: b
     record = {
         "schema": 1,
         "kind": "nextest" if archived else "cargo",
+        "project": str(project),
         "workspace": directory.relative_to(project).as_posix(),
         "receipt": _relative(project, receipt),
         "tree": before,
         "revision": original,
         "published_revision": published(project, before),
         "provider": {key: os.environ[key] for key in ("GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_JOB", "CI_JOB_ID", "CI_PIPELINE_ID") if key in os.environ},
-        "inputs": inputs,
+        "inputs": build_inputs,
+        "parents": capture["parents"],
+        "parent_inputs": capture["parent_inputs"],
+        "declared_inputs": capture["declared_inputs"],
+        "input_directories": capture["input_directories"],
         "dependencies": dependencies,
         "dependency_inputs": observed,
         "resolution": resolution,
@@ -388,7 +737,9 @@ def _inputs(directory: Path) -> dict:
         file = policy_root / name
         files[name] = _source(file)
     return {"platform": [sys.platform, platform.machine(), platform.platform()], "environment": environment, "configuration": files,
-            "rustc": _toolchain(directory), "cargo": _output(directory, ["cargo", "-V"]).strip(), "tools": _tools(directory)}
+            "rustc": _toolchain(directory) if shutil.which("rustc") else None,
+            "cargo": _output(directory, ["cargo", "-V"]).strip() if shutil.which("cargo") else None,
+            "runtimes": {name: _output(directory, [name, "--version"]).strip() for name in ("node", "pnpm", "uv", "python") if shutil.which(name)}, "tools": _tools(directory)}
 
 
 def _configuration(directory: Path) -> tuple[Path, dict]:
@@ -431,7 +782,7 @@ def _generated(messages: Path) -> dict:
 
 def _tools(directory: Path) -> dict:
     tools = {}
-    selected = {name: name for name in ("rustc", "cargo", "cc", "c++", "ld", "ar", "cl", "link", "pkg-config")}
+    selected = {name: name for name in ("rustc", "cargo", "cc", "c++", "ld", "ar", "cl", "link", "pkg-config", "node", "pnpm", "uv", "python")}
     selected.update({name: value for name, value in os.environ.items()
                      if name in ("RUSTC", "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER", "CC", "CXX", "AR", "LD")
                      or name.startswith("CARGO_TARGET_") and name.endswith("_LINKER")})
@@ -447,7 +798,7 @@ def _tools(directory: Path) -> dict:
                 selected[f"{config}:{target}:linker"] = value
     for name, value in selected.items():
         executable = shutil.which(value)
-        if executable is None and name not in ("cc", "c++", "ld", "ar", "cl", "link", "pkg-config"):
+        if executable is None and name not in ("rustc", "cargo", "cc", "c++", "ld", "ar", "cl", "link", "pkg-config", "node", "pnpm", "uv", "python"):
             raise policy.TestError(f"cannot identify effective {name} executable; declare an executable path")
         tools[name] = _digest(Path(executable).resolve()) if executable else None
     return tools
@@ -481,9 +832,14 @@ def _covered(path: Path, bounded: Sequence[Path], sources: set[Path]) -> bool:
     return False
 
 
+def _unlinked(path: Path) -> None:
+    for ancestor in (path, *path.parents):
+        if ancestor.is_symlink():
+            raise policy.TestError(f"unbounded symlink in declared build input: {ancestor}")
+
+
 def _source(path: Path) -> str:
-    if path.is_symlink():
-        raise policy.TestError(f"unbounded symlink in declared build input: {path}")
+    _unlinked(path)
     if path.is_file():
         return _digest(path)
     if not path.is_dir():
