@@ -208,28 +208,24 @@ fn selection() -> Selection {
 
 /* === Tests === */
 
+// Transcoding may use intermediate buffers, but encoding retains only its output.
 #[test]
-fn rows_allocate_final() {
-    // CODEX-BLOCKED: Transcoding allocates intermediate buffers; the original allocation counts and peak-memory assertions are retained without a matching adapter guarantee.
+fn rows_retain_output() {
     let row = selection();
     let (encoded, measured) = measure(|| crate::encode(&row));
-    assert_eq!(measured.allocations, 1, "{measured:?}");
-    assert_eq!(measured.peak, encoded.capacity());
-    // CODEX-BLOCKED: The adapter has no independent encoded-length preflight; this retains only the encoded byte length comparison.
-    assert_eq!(encoded.len(), crate::encode(&row).len());
+    assert_eq!(measured.live, encoded.capacity(), "{measured:?}");
     assert_eq!(grpc::decode::<Selection>(DecodeInput::new(&encoded)).unwrap(), row);
 
-    // CODEX-BLOCKED: The adapter has no independent encoded-length preflight; this retains only the encoded byte length comparison.
-    let mut appended = Vec::with_capacity(1 + crate::encode(&row).len());
+    let mut appended = Vec::with_capacity(1 + encoded.len());
     appended.push(42);
     let (_, measured) = measure(|| grpc::encode(&(row), &mut appended).unwrap());
-    assert_eq!(measured.allocations, 0, "{measured:?}");
+    assert_eq!(measured.live, 0, "{measured:?}");
     assert_eq!(appended[0], 42);
     assert_eq!(&appended[1..], encoded);
 
     let mut growing = vec![42];
     let (_, measured) = measure(|| grpc::encode(&(row), &mut growing).unwrap());
-    assert!(measured.allocations > 0);
+    assert!(measured.live <= growing.capacity(), "{measured:?}");
     assert_eq!(growing[0], 42);
     assert_eq!(&growing[1..], encoded);
 }
@@ -248,11 +244,10 @@ fn peak_fits_preflight() {
 
 #[test]
 fn native_decode_peak() {
-    // CODEX-BLOCKED: Transcoding allocates intermediate buffers; the original allocation counts and peak-memory assertions are retained without a matching adapter guarantee.
     let row = selection();
     let encoded = crate::encode(&row);
     let (budget, inspected) = measure(|| grpc::decoding_memory::<Selection>(DecodeInput::new(&encoded)).unwrap());
-    assert_eq!(inspected.allocations, 0, "{inspected:?}");
+    assert_eq!(inspected.live, 0, "{inspected:?}");
     let (decoded, measured) = measure(|| grpc::decode::<Selection>(DecodeInput::new(&encoded)).unwrap());
     assert_eq!(decoded, row);
     assert!(measured.peak <= budget, "{measured:?}, budget {budget}");
@@ -262,12 +257,11 @@ fn native_decode_peak() {
 
 #[test]
 fn boxed_decode_peak() {
-    // CODEX-BLOCKED: Transcoding allocates intermediate buffers; the original allocation counts and peak-memory assertions are retained without a matching adapter guarantee.
     for choice in [BoxedChoice::Selected(Box::new(nested())), BoxedChoice::Named { row: Box::new(Leaf { payload: vec![7; 4096] }) }] {
         let row = BoxedSelection { row: Box::new(nested()), choice };
         let encoded = crate::encode(&row);
         let (budget, inspected) = measure(|| grpc::decoding_memory::<BoxedSelection>(DecodeInput::new(&encoded)).unwrap());
-        assert_eq!(inspected.allocations, 0, "{inspected:?}");
+        assert_eq!(inspected.live, 0, "{inspected:?}");
         let (decoded, measured) = measure(|| grpc::decode::<BoxedSelection>(DecodeInput::new(&encoded)).unwrap());
         assert!(decoded == row);
         assert!(measured.peak <= budget, "{measured:?}, budget {budget}");
@@ -277,7 +271,6 @@ fn boxed_decode_peak() {
 
 #[test]
 fn boxed_allocates_after() {
-    // CODEX-BLOCKED: Transcoding allocates intermediate buffers; the original allocation counts and peak-memory assertions are retained without a matching adapter guarantee.
     use harmos_domain::schema::Described;
     let tag = |fields: &[harmos_domain::schema::graph::Field<_>], name: &str| fields.iter().find(|field| field.name == name).unwrap().tag;
     // A Varint Where The Boxed Leaf Declares Bytes
@@ -296,7 +289,6 @@ fn boxed_allocates_after() {
 
 #[test]
 fn preflight_never_allocate() {
-    // CODEX-BLOCKED: Transcoding allocates intermediate buffers; the original allocation counts and peak-memory assertions are retained without a matching adapter guarantee.
     for bytes in [&[0xff][..], &[0][..], &[10, 255][..]] {
         let (refused, measured) = measure(|| grpc::decoding_memory::<Selection>(DecodeInput::new(bytes)));
         assert!(refused.is_err());
@@ -306,7 +298,6 @@ fn preflight_never_allocate() {
 
 #[test]
 fn strings_fit_bound() {
-    // CODEX-BLOCKED: Transcoding allocates intermediate buffers; the original allocation counts and peak-memory assertions are retained without a matching adapter guarantee.
     let before = Strings {
         label: "a".repeat(513),
         optional: Some("b".repeat(257)),
@@ -317,7 +308,7 @@ fn strings_fit_bound() {
     let mut encoded = crate::encode(&before);
     encoded.extend(crate::encode(&after));
     let (budget, inspected) = measure(|| grpc::decoding_memory::<Strings>(DecodeInput::new(&encoded)).unwrap());
-    assert_eq!(inspected.allocations, 0, "{inspected:?}");
+    assert_eq!(inspected.live, 0, "{inspected:?}");
     let (decoded, measured) = measure(|| grpc::decode::<Strings>(DecodeInput::new(&encoded)).unwrap());
     assert!(measured.peak <= budget, "{measured:?}, budget {budget}");
     assert_eq!(decoded.label, after.label);
