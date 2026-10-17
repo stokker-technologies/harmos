@@ -22,8 +22,6 @@ mod process;
 pub mod proto;
 #[cfg(feature = "bindings-python")]
 pub mod python;
-#[cfg(feature = "bindings-typescript")]
-pub mod typescript;
 
 /* === Re-Exports === */
 pub use build::{
