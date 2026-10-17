@@ -77,9 +77,6 @@ fn authoring_refusals_compile() {
         ("defaultless_lanes.rs", "exactly one lane `#[default]`"),
         ("doubly_defaulted_lanes.rs", "exactly one lane `#[default]`"),
         ("operation_owned_request.rs", "request and endpoints must be borrowed"),
-        // Lifecycle verbs: `initialize` constructs, `cleanup` releases.
-        ("operation_new_renamed.rs", "operation `new` was renamed"),
-        ("observer_new_renamed.rs", "observer `new` was folded"),
         // Direct artifact declaration failures.
         ("explicit_version_plugin.rs", "remove `version`"),
         ("plugin_on_struct.rs", "belongs on `impl Plugin for ConcreteType`"),
@@ -89,11 +86,9 @@ fn authoring_refusals_compile() {
         ("undeclared_observer_output.rs", "observer outputs must be a subset"),
         ("undeclared_custom_observer_output.rs", "observer outputs must be a subset"),
         // A requirement grants its own operation, scoped by name; an empty
-        // or unknown scope declares nothing a planner could read, and the
-        // grant kinds and core are retired.
+        // or unknown scope declares nothing a planner could read.
         ("empty_grant.rs", "grant scopes are nonempty"),
         ("unknown_grant.rs", "a requirement scopes its operation's grant"),
-        ("retired_core.rs", "`core` and `capabilities` are retired"),
         ("malformed_harmos_path.rs", "`harmos_path` names the crate path"),
         // A message field owns a nested message directly or through one
         // `Box<T>`; every other boxed or shared shape is refused.

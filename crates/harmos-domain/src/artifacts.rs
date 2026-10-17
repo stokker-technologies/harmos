@@ -59,7 +59,7 @@ struct Kinded {
 /* === Enums === */
 #[derive(Debug, thiserror::Error)]
 pub enum ScanError {
-    #[error("the artifact uses retired Harmos metadata; rebuild it with the current SDK")]
+    #[error("the artifact uses another Harmos metadata format; rebuild it with the current SDK")]
     IncompatiblePayload,
     #[error("artifact metadata exceeds the schema preparation memory or work budget")]
     Budget,
@@ -98,14 +98,10 @@ pub(crate) fn fragments_with_settings<F: DeserializeOwned>(
     // Keep Complete Search Markers Out Of Reader Binaries Themselves.
     let family = &FAMILY[..FAMILY.len() - 1];
     let retired = memmem::Finder::new(family);
+    // One Current Format: Any Other Versioned Fragment Is Refused, Never Interpreted.
     for position in retired.find_iter(artifact) {
         let version = &artifact[position + family.len()..];
-        if version.starts_with(b"V1:")
-            || version.starts_with(b"V2:")
-            || version.starts_with(b"V3:")
-            || version.starts_with(b"V4:")
-            || version.starts_with(b"V5:")
-        {
+        if version.starts_with(b"V") && !version.starts_with(&PREFIX[family.len()..]) {
             return Err(ScanError::IncompatiblePayload);
         }
     }

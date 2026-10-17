@@ -84,7 +84,7 @@ pub enum CarrierSection {
 
 #[derive(Debug, thiserror::Error)]
 pub enum DeclarationError {
-    #[error("the artifact uses retired Harmos metadata; rebuild it with the current SDK")]
+    #[error("the artifact uses another Harmos metadata format; rebuild it with the current SDK")]
     IncompatiblePayload,
     #[error(transparent)]
     Schema(#[from] crate::schema::graph::Error),
