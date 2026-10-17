@@ -81,11 +81,18 @@ struct Message {
     target: Option<Target>,
     out_dir: Option<PathBuf>,
     message: Option<Diagnostic>,
+    success: Option<bool>,
+    profile: Option<Profile>,
 }
 
 #[derive(Deserialize)]
 struct Diagnostic {
     rendered: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct Profile {
+    test: bool,
 }
 
 #[derive(Deserialize)]
@@ -119,6 +126,49 @@ impl Schema {
 }
 
 impl Build {
+    // The Caller Supplies Package Identities From The Same Captured Cargo Metadata.
+    // Collection Reads One Existing Build Stream; It Never Invokes Cargo Or Metadata.
+    pub fn from_cargo_messages(
+        input: impl BufRead,
+        backend: BuildBackend,
+        profile: BuildProfile,
+        target: String,
+        packages: &BTreeMap<String, String>,
+    ) -> Result<Self, Error> {
+        if packages.is_empty() || target.is_empty() || packages.values().collect::<BTreeSet<_>>().len() != packages.len() {
+            return Err(Error::Settings("collection needs unambiguous selected Cargo packages and a target".into()));
+        }
+        if (backend == BuildBackend::Guest) != target.starts_with("wasm32-") {
+            return Err(Error::Settings("backend and selected target disagree".into()));
+        }
+        let (artifacts, outputs) = read_messages(input, packages)?;
+        let build = finish_build(backend, profile, target, artifacts, outputs, &BuildCancellation::default())?;
+        let provided = build.artifacts.iter().map(|artifact| artifact.producer.as_str()).collect::<BTreeSet<_>>();
+        if packages.values().any(|name| !provided.contains(name.as_str())) {
+            return Err(Error::Settings("captured build is missing a selected package artifact".into()));
+        }
+        let identities = build.artifacts.iter().map(|artifact| (&artifact.producer, &artifact.name)).collect::<BTreeSet<_>>();
+        if identities.len() != build.artifacts.len() {
+            return Err(Error::Settings("captured build contains ambiguous package artifacts".into()));
+        }
+        Ok(build)
+    }
+
+    // Select Opaque Package Ids From Captured Metadata Without Running Cargo.
+    pub fn from_cargo_outputs(
+        messages: impl BufRead,
+        metadata: impl std::io::Read,
+        settings: &BuildSettings,
+    ) -> Result<Self, Error> {
+        validate_backend(settings)?;
+        let metadata: Metadata = serde_json::from_reader(metadata)?;
+        let packages = metadata.select(settings)?;
+        let target = settings.target.clone().ok_or_else(|| Error::Settings(
+            "collection requires the target used by the captured build".into(),
+        ))?;
+        Self::from_cargo_messages(messages, settings.backend, settings.profile, target, &packages)
+    }
+
     // Relocation Changes Locations Only; It Never Replaces The Original Byte Stamps.
     pub fn relocate(&mut self, from: &Path, to: &Path) -> Result<(), Error> {
         let relocate = |path: &Path| path.strip_prefix(from)
@@ -219,17 +269,28 @@ pub(super) fn build_resolved(
     }
     let status = child.wait()?;
     cancellation.check()?;
-    let (mut artifacts, outputs) = parsed?;
+    let (artifacts, outputs) = parsed?;
     if !status.success() {
         return Err(Error::Cargo(status.to_string()));
     }
 
+    finish_build(settings.backend, settings.profile, target, artifacts, outputs, cancellation)
+}
+
+fn finish_build(
+    backend: BuildBackend,
+    profile: BuildProfile,
+    target: String,
+    mut artifacts: Vec<Artifact>,
+    outputs: BTreeSet<(String, PathBuf)>,
+    cancellation: &BuildCancellation,
+) -> Result<Build, Error> {
     artifacts.retain(|artifact| {
         (artifact
             .path
             .extension()
             .is_some_and(|extension| extension == "wasm"))
-            == (settings.backend == BuildBackend::Guest)
+            == (backend == BuildBackend::Guest)
     });
     if artifacts.is_empty() {
         return Err(Error::Settings(
@@ -301,8 +362,8 @@ pub(super) fn build_resolved(
         publish(&path, &bytes)?;
     }
     Ok(Build {
-        backend: settings.backend,
-        profile: settings.profile,
+        backend,
+        profile,
         target,
         artifacts,
         schemas,
@@ -484,8 +545,19 @@ fn read_messages(
 ) -> Result<BuildMessages, Error> {
     let mut artifacts = Vec::new();
     let mut outputs = BTreeSet::new();
+    let mut finished = false;
     for line in reader.lines() {
         let message: Message = serde_json::from_str(&line?)?;
+        if finished {
+            return Err(Error::Cargo("messages follow the completed Cargo build".into()));
+        }
+        if message.reason == "build-finished" {
+            if message.success != Some(true) {
+                return Err(Error::Cargo("captured Cargo build did not succeed".into()));
+            }
+            finished = true;
+            continue;
+        }
         if let Some(rendered) = message
             .message
             .as_ref()
@@ -502,7 +574,7 @@ fn read_messages(
             }
             continue;
         }
-        if message.reason != "compiler-artifact" {
+        if message.reason != "compiler-artifact" || message.profile.is_some_and(|profile| profile.test) {
             continue;
         }
         let Some(target) = message.target else {
@@ -524,6 +596,11 @@ fn read_messages(
             artifacts.push(Artifact::read(producer.clone(), target.name.clone(), path)?);
         }
     }
+    if !finished {
+        return Err(Error::Cargo("captured Cargo stream has no successful build-finished event".into()));
+    }
+    artifacts.sort_by(|left, right| (&left.producer, &left.name, &left.path).cmp(&(&right.producer, &right.name, &right.path)));
+    artifacts.dedup_by(|left, right| left.producer == right.producer && left.name == right.name && left.path == right.path);
     Ok((artifacts, outputs))
 }
 

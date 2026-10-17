@@ -7,7 +7,7 @@
  * ***
  */
 
-// Prepare And Package Sidecar Artifacts Through The Harmos Facade.
+// Build Or Collect Sidecar Artifacts Through Harmos Packaging.
 
 /* === Modules === */
 
@@ -32,6 +32,8 @@
 pub struct Arguments {
     #[command(flatten)]
     build: crate::input::BuildArguments,
+    #[command(flatten)]
+    collection: crate::input::CollectionArguments,
 }
 
 /* === Enums === */
@@ -49,7 +51,7 @@ pub fn run(
     let settings = arguments
         .build
         .settings(harmos_packaging::config::BuildBackend::Sidecar);
-    let result = harmos_packaging::build_with_cancellation(&settings, cancellation)?;
+    let result = arguments.collection.build(&settings, cancellation)?;
     crate::output::build(&result, json)
 }
 

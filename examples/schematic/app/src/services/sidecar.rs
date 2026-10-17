@@ -52,9 +52,11 @@ pub async fn start(runtime: &Runtime, path: &Path, directory: &Path) -> Result<(
             domain: "schematic plugin identity",
         });
     }
+    let mut settings = PluginSidecarSettings::default();
+    settings.plugin.host_operations.push(harmos::Identifier::declared("host.publish", "host operation"));
     runtime
         .plugin
-        .register_sidecar::<Native>(executable, PluginSidecarSettings::default(), Lanes::Open)
+        .register_sidecar::<Native>(executable, settings, Lanes::Open)
         .await?;
     runtime.plugin.initialize().await
 }
