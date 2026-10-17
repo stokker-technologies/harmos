@@ -105,7 +105,7 @@ fn value(key: &str, text: &str) -> ObjectValue {
 /* === Tests === */
 
 #[tokio::test]
-async fn object_writes_preserve() {
+async fn object_exchange_saves() {
     let storage = StorageManager::<Objects>::new(
         StorageBackends {
             primary: Arc::new(Data::<Objects>::with_catalog(history())),
@@ -196,7 +196,7 @@ async fn object_writes_preserve() {
 }
 
 #[tokio::test]
-async fn object_writes_reject() {
+async fn object_batch_atomic() {
     let storage = StorageManager::<Objects>::new(
         StorageBackends {
             primary: Arc::new(Data::<Objects>::with_catalog(history())),
@@ -241,160 +241,74 @@ async fn object_writes_reject() {
 }
 
 #[tokio::test]
-async fn shared_object_receipts() {
-    use std::sync::atomic::Ordering;
-    let data = Arc::new(Data::<Objects>::with_catalog(history()));
-    let storage = StorageManager::<Objects>::new(
-        StorageBackends {
-            primary: data.clone(),
-            state: Arc::new(Recovery::new(history())),
-        },
-        config(),
-    )
-    .unwrap();
-    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .runtime_with_storage(&storage)
-        .await
-        .unwrap();
-    let saved = MutationId {
-        window: storage.mutation_window().unwrap().id,
-        key: Identifier::new("saved").unwrap(),
-    };
-    let lost = MutationId {
-        key: Identifier::new("unsaved").unwrap(),
-        ..saved.clone()
-    };
-    let objects = vec![value("first", "saved"), value("second", "saved")];
-    let receipts = storage.write_objects_once(&saved, &objects).await.unwrap();
-    storage.flush_until(&receipts[1].position).await.unwrap();
-    storage
-        .write_objects_once(&lost, &[value("third", "lost")])
-        .await
-        .unwrap();
-    // Reconstruct Only The Backend's Durable Prefix, Without Graceful Close.
-    let recovered = Arc::new(Data::<Objects>::with_catalog(history()));
-    let frontier = data.saved.load(Ordering::SeqCst);
-    recovered.saved.store(frontier, Ordering::SeqCst);
-    *recovered.schemas.lock().unwrap() = data
-        .schemas
-        .lock()
-        .unwrap()
-        .iter()
-        .filter(|(position, _)| **position <= frontier as u64)
-        .map(|(position, value)| (*position, value.clone()))
-        .collect();
-    *recovered.objects.lock().unwrap() = data
-        .objects
-        .lock()
-        .unwrap()
-        .iter()
-        .filter(|(position, _)| **position <= frontier as u64)
-        .map(|(position, value)| (*position, value.clone()))
-        .collect();
-    *recovered.mutation_receipts.lock().unwrap() = data.mutation_receipts.lock().unwrap().clone();
-    let restored = StorageManager::<Objects>::new(
-        StorageBackends {
-            primary: recovered,
-            state: Arc::new(Recovery::new(history())),
-        },
-        config(),
-    )
-    .unwrap();
-    let restarted = Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .runtime_with_storage(&restored)
-        .await
-        .unwrap();
-    assert_ne!(restored.mutation_window().unwrap().id, saved.window);
-    assert_eq!(
-        restored.write_objects_once(&saved, &objects).await.unwrap(),
-        receipts
-    );
-    assert!(
-        restored
-            .write_objects_once(&lost, &[value("third", "lost")])
-            .await
-            .is_err()
-    );
-    assert_eq!(restored.cursor_accepted(), receipts[1].position);
-    restarted.stop().await.unwrap();
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn follow_resumes_saved() {
+async fn object_follow_resumes() {
     use harmos::storage::{
         ObjectEntry, follow::Objects as ObjectSelection, operations::FollowObjects,
         query::ObjectVersions,
     };
-    tokio::time::timeout(std::time::Duration::from_secs(5), async {
-        let (runtime, storage, _) = query_fixture().await;
-        let first = storage
-            .write_object(&Document {
-                id: "key".into(),
-                text: "saved".into(),
-            })
-            .await
-            .unwrap();
-        storage.flush().await.unwrap();
-        let mut request = ObjectSelection {
-            after: None,
-            selection: harmos::storage::query::ObjectSelection {
-                schema: None,
-                key: None,
-                versions: ObjectVersions::Revisions,
-            },
-        };
-        let limits = harmos::operations::StreamSettings {
-            items: NonZeroUsize::MIN,
-            bytes: NonZeroUsize::new(4096).unwrap(),
-        };
-        let (sender, mut receiver) = harmos::operations::stream::<ObjectEntry>(limits).unwrap();
-        let call = runtime
-            .operations
-            .submit_endpoints::<FollowObjects, _>(request.clone(), sender)
-            .unwrap();
-        let received = receiver.recv().await.unwrap();
-        assert_eq!(received.version, first.version);
-        drop(received);
-        let second = storage
-            .write_object(&Document {
-                id: "key".into(),
-                text: "live".into(),
-            })
-            .await
-            .unwrap();
-        let received = receiver.recv().await.unwrap();
-        assert_eq!(received.version, second.version);
-        drop(received);
-        storage.flush().await.unwrap();
-        call.cancel();
-        assert!(call.await.is_err());
-        drop(receiver);
-        request.after = Some(second.position);
-        let (sender, mut receiver) = harmos::operations::stream::<ObjectEntry>(limits).unwrap();
-        let call = runtime
-            .operations
-            .submit_endpoints::<FollowObjects, _>(request, sender)
-            .unwrap();
-        let third = storage
-            .write_object(&Document {
-                id: "key".into(),
-                text: "reconnected".into(),
-            })
-            .await
-            .unwrap();
-        let received = receiver.recv().await.unwrap();
-        assert_eq!(received.version, third.version);
-        drop(received);
-        call.cancel();
-        assert!(call.await.is_err());
-        drop(receiver);
-        runtime.stop().await.unwrap();
-    })
-    .await
-    .unwrap();
+    let (runtime, storage, _) = query_fixture().await;
+    let first = storage
+        .write_object(&Document {
+            id: "key".into(),
+            text: "saved".into(),
+        })
+        .await
+        .unwrap();
+    storage.flush().await.unwrap();
+    let mut request = ObjectSelection {
+        after: None,
+        selection: harmos::storage::query::ObjectSelection {
+            schema: None,
+            key: None,
+            versions: ObjectVersions::Revisions,
+        },
+    };
+    let limits = harmos::operations::StreamSettings {
+        items: NonZeroUsize::MIN,
+        bytes: NonZeroUsize::new(4096).unwrap(),
+    };
+    let (sender, mut receiver) = harmos::operations::stream::<ObjectEntry>(limits).unwrap();
+    let call = runtime
+        .operations
+        .submit_endpoints::<FollowObjects, _>(request.clone(), sender)
+        .unwrap();
+    let received = receiver.recv().await.unwrap();
+    assert_eq!(received.version, first.version);
+    drop(received);
+    let second = storage
+        .write_object(&Document {
+            id: "key".into(),
+            text: "live".into(),
+        })
+        .await
+        .unwrap();
+    let received = receiver.recv().await.unwrap();
+    assert_eq!(received.version, second.version);
+    drop(received);
+    storage.flush().await.unwrap();
+    call.cancel();
+    assert!(call.await.is_err());
+    drop(receiver);
+    request.after = Some(second.position);
+    let (sender, mut receiver) = harmos::operations::stream::<ObjectEntry>(limits).unwrap();
+    let call = runtime
+        .operations
+        .submit_endpoints::<FollowObjects, _>(request, sender)
+        .unwrap();
+    let third = storage
+        .write_object(&Document {
+            id: "key".into(),
+            text: "reconnected".into(),
+        })
+        .await
+        .unwrap();
+    let received = receiver.recv().await.unwrap();
+    assert_eq!(received.version, third.version);
+    drop(received);
+    call.cancel();
+    assert!(call.await.is_err());
+    drop(receiver);
+    runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -403,53 +317,50 @@ async fn follow_reports_pruned() {
         ObjectEntry, follow::Objects as ObjectSelection, operations::FollowObjects,
         query::ObjectVersions,
     };
-    tokio::time::timeout(std::time::Duration::from_secs(5), async {
-        let (runtime, storage, data) = query_fixture().await;
-        for index in 0..9 {
-            storage
-                .write_object(&Document {
-                    id: "key".into(),
-                    text: index.to_string(),
-                })
-                .await
-                .unwrap();
-        }
-        storage.flush().await.unwrap();
-        while data.objects.lock().unwrap().len() != 8 {
-            tokio::task::yield_now().await;
-        }
-        let request = ObjectSelection {
-            after: None,
-            selection: harmos::storage::query::ObjectSelection {
-                schema: None,
-                key: None,
-                versions: ObjectVersions::Revisions,
-            },
-        };
-        let (sender, mut receiver) =
-            harmos::operations::stream::<ObjectEntry>(harmos::operations::StreamSettings {
-                items: NonZeroUsize::MIN,
-                bytes: NonZeroUsize::new(4096).unwrap(),
+    let (runtime, storage, data) = query_fixture().await;
+    for index in 0..9 {
+        storage
+            .write_object(&Document {
+                id: "key".into(),
+                text: index.to_string(),
             })
+            .await
             .unwrap();
-        let call = runtime
-            .operations
-            .submit_endpoints::<FollowObjects, _>(request, sender)
-            .unwrap();
-        let error = call.await.err().unwrap();
-        let error = std::iter::successors(
-            Some(&error as &(dyn std::error::Error + 'static)),
-            |error| error.source(),
-        )
-        .map(ToString::to_string)
-        .collect::<Vec<_>>()
-        .join(": ");
-        assert!(error.contains("retained data begins"), "{error}");
-        assert!(receiver.recv().await.is_none());
-        runtime.stop().await.unwrap();
-    })
-    .await
-    .unwrap();
+    }
+    storage.flush().await.unwrap();
+    // Retention Prunes The Oldest Revision After The Flush.
+    while data.objects.lock().unwrap().len() != 8 {
+        data.control.pruned.notified().await;
+    }
+    let request = ObjectSelection {
+        after: None,
+        selection: harmos::storage::query::ObjectSelection {
+            schema: None,
+            key: None,
+            versions: ObjectVersions::Revisions,
+        },
+    };
+    let (sender, mut receiver) =
+        harmos::operations::stream::<ObjectEntry>(harmos::operations::StreamSettings {
+            items: NonZeroUsize::MIN,
+            bytes: NonZeroUsize::new(4096).unwrap(),
+        })
+        .unwrap();
+    let call = runtime
+        .operations
+        .submit_endpoints::<FollowObjects, _>(request, sender)
+        .unwrap();
+    let error = call.await.err().unwrap();
+    let error = std::iter::successors(
+        Some(&error as &(dyn std::error::Error + 'static)),
+        |error| error.source(),
+    )
+    .map(ToString::to_string)
+    .collect::<Vec<_>>()
+    .join(": ");
+    assert!(error.contains("retained data begins"), "{error}");
+    assert!(receiver.recv().await.is_none());
+    runtime.stop().await.unwrap();
 }
 
 async fn query_fixture() -> (Runtime<Bank>, StorageManager<Objects>, Arc<Data<Objects>>) {

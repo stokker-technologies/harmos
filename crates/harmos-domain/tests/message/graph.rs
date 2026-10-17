@@ -22,7 +22,6 @@ use std::num::NonZeroUsize;
 // Third Party Imports
 
 // Local Imports
-use crate::scenario_runtime;
 use harmos_domain::config::SchemaSettings;
 use harmos_domain::schema::Cardinality;
 use harmos_domain::schema::Described;
@@ -65,8 +64,8 @@ impl harmos_domain::schema::Described for RecursiveDeclaration {
 }
 
 /* === Public Functions === */
-pub fn check() {
-    scenario_runtime::check("typed_recursive_declaration", || {
+#[test]
+fn typed_recursive_declaration() {
         let root = RecursiveDeclaration::DEFINITION;
         // Type Identity Survives Distinct Accessor Functions
         let alias = Definition {
@@ -253,8 +252,10 @@ pub fn check() {
         let mut malformed = data.clone();
         malformed["kind"] = "operations".into();
         assert!(serde_json::from_value::<declaration::Named>(malformed).is_err());
-    });
-    scenario_runtime::check("shared_checkpoint_schema", || {
+    }
+
+#[test]
+fn shared_checkpoint_schema() {
         let schema: Schema = serde_json::from_str(CHECKPOINT).unwrap();
         // Resolve The Same Complete Contract Through Inert Named Fragments
         let named: Vec<declaration::Named> = schema
@@ -379,8 +380,10 @@ pub fn check() {
             ..Default::default()
         };
         assert!(matches!(schema.prepare(&bounded), Err(Error::Budget)));
-    });
-    scenario_runtime::check("large_schema_preparation", || {
+    }
+
+#[test]
+fn large_schema_preparation() {
         let schema = Schema {
             root: 0,
             definitions: vec![
@@ -404,8 +407,10 @@ pub fn check() {
             harmos_domain::schema::Validator::from_schema(&restored, &SchemaSettings::default())
                 .unwrap();
         validator.validate(&vec![0; 6000]).unwrap();
-    });
-    scenario_runtime::check("recursive_schema_validation", || {
+    }
+
+#[test]
+fn recursive_schema_validation() {
         assert!(serde_json::from_str::<Kind>(r#"{"type":"bool","definition":0}"#).is_err());
         assert!(
             serde_json::from_str::<Kind>(r#"{"type":"message","definition":0,"fields":[]}"#)
@@ -507,8 +512,8 @@ pub fn check() {
                 ..
             })
         ));
-    });
-}
+    }
+
 
 /* === Private Functions === */
 fn wire_round_trip(schema: &Schema) {

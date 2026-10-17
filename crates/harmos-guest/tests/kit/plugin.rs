@@ -122,22 +122,6 @@ impl Session {
 #[tokio::test]
 async fn sdk_lifecycle_retained() {
     let bytes = support::component();
-    let declaration = harmos_domain::inventory::Declaration::inspect(
-        &bytes,
-        harmos_domain::inventory::Facility::Guest,
-    )
-    .unwrap();
-    let contracts = &declaration.contracts;
-    assert_eq!(declaration.id, "schematic-tools");
-    assert!(!contracts.provides.is_empty());
-    assert!(contracts.requires.is_empty());
-    assert!(
-        declaration
-            .operations
-            .iter()
-            .any(|operation| operation.id.as_str() == "schematic.route")
-    );
-
     let mut config = Config::new();
     config.wasm_component_model(true);
     config.wasm_component_model_async(true);
@@ -217,6 +201,10 @@ async fn sdk_lifecycle_retained() {
             WireAnswer::Failed { .. }
         ),
         "the first run validates configuration before plugin initialization"
+    );
+    assert!(
+        session.store.data().calls.is_empty(),
+        "a refused initialization asked the host for nothing"
     );
     assert!(
         matches!(

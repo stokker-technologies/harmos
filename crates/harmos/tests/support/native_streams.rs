@@ -19,7 +19,6 @@ pub use plugin::{Acknowledged, Payload};
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use std::time::Duration;
 
 // Third Party Imports
 use sha2::{Digest, Sha256};
@@ -87,16 +86,11 @@ impl Fixture {
             },
             "1.0.0".parse().unwrap(),
             harmos::sidecar::Managed::new,
-            None,
         )
         .await
     }
 
     pub async fn executable(path: &std::path::Path) -> Self {
-        Self::executable_paused(path, None).await
-    }
-
-    pub async fn executable_paused(path: &std::path::Path, pause_after: Option<u64>) -> Self {
         let path = std::fs::canonicalize(path).unwrap();
         let source = Executable::at(&path).unwrap();
         let version = source.declaration().version.clone();
@@ -112,7 +106,6 @@ impl Fixture {
             artifact,
             version,
             harmos::sidecar::Managed::new_executable,
-            pause_after,
         )
         .await
     }
@@ -122,14 +115,13 @@ impl Fixture {
         artifact: PluginArtifact,
         version: semver::Version,
         construct: Constructor<T>,
-        pause_after: Option<u64>,
     ) -> Self {
         let capacity = NonZeroUsize::new(8).unwrap();
         let definition = PluginDefinition {
             id: source.owner().into(),
             version,
             artifact,
-            configuration: serde_json::to_vec(&pause_after).unwrap(),
+            configuration: serde_json::to_vec(&()).unwrap(),
             requires: vec![],
             contributions: PluginContributions {
                 operations: source.operations().unwrap(),
@@ -183,8 +175,7 @@ impl Fixture {
             .await
             .unwrap();
         let mut statuses = runtime.operations.watch_residents();
-        tokio::time::timeout(Duration::from_secs(5), async {
-            loop {
+        loop {
                 let status = statuses
                     .borrow_and_update()
                     .get(&harmos::operations::resident::Key::root("consumer"))
@@ -196,11 +187,8 @@ impl Fixture {
                     }
                     _ => {}
                 }
-                statuses.changed().await.unwrap();
-            }
-        })
-        .await
-        .expect("native consumer becomes ready");
+            statuses.changed().await.unwrap();
+        }
         Self {
             runtime,
             _lease: lease,
@@ -208,15 +196,12 @@ impl Fixture {
     }
 
     pub async fn acknowledged(&self, rows: u64) -> Acknowledged {
-        let bytes = tokio::time::timeout(
-            Duration::from_secs(5),
-            self.runtime
-                .operations
-                .call_encoded(Progress::ID, rows.encode_to_vec()),
-        )
-        .await
-        .expect("consumer acknowledges rows")
-        .unwrap();
+        let bytes = self
+            .runtime
+            .operations
+            .call_encoded(Progress::ID, rows.encode_to_vec())
+            .await
+            .unwrap();
         Acknowledged::decode(&bytes).unwrap()
     }
 }

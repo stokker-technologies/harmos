@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -191,9 +190,7 @@ fn native(value: u64) -> Native {
 /* === Tests === */
 
 #[test]
-fn contract_scenario() {
-    {
-        scenario_runtime::check("custom_codec_default", || {
+fn custom_codec_default() {
             let value = native(7);
             let expected = value.encode_to_vec();
             let mut bytes = vec![255];
@@ -204,10 +201,10 @@ fn contract_scenario() {
             assert_eq!(&bytes[1..], expected);
             assert_eq!(Native::decode(&bytes[1..]).unwrap(), value);
             assert!(Native::decode(&[]).is_err());
-        });
-    }
-    {
-        scenario_runtime::check("fields_keep_types", || {
+        }
+
+#[test]
+fn fields_keep_types() {
             let value = Required {
                 row: native(7),
                 optional: Some(native(8)),
@@ -229,10 +226,10 @@ fn contract_scenario() {
             assert_eq!(bytes.len(), selected.encoded_len());
             assert_eq!(Choice::decode(&bytes).unwrap(), selected);
             assert!(Choice::decode(&[]).is_err());
-        });
-    }
-    {
-        scenario_runtime::check("fields_merge_domain", || {
+        }
+
+#[test]
+fn fields_merge_domain() {
             let tag = Required::FIELDS
                 .iter()
                 .find(|field| field.name == "row")
@@ -267,10 +264,10 @@ fn contract_scenario() {
             assert!(Required::decode(&invalid).is_err());
             frame(tag, &[0xff], &mut invalid);
             assert!(Required::decode(&invalid).is_err());
-        });
-    }
-    {
-        scenario_runtime::check("encoding_matches_protobuf", || {
+        }
+
+#[test]
+fn encoding_matches_protobuf() {
             let value = Required {
                 row: native(7),
                 optional: None,
@@ -293,10 +290,10 @@ fn contract_scenario() {
                 &mut expected,
             );
             assert_eq!(value.encode_to_vec(), expected);
-        });
-    }
-    {
-        scenario_runtime::check("debug_preserves_secret", || {
+        }
+
+#[test]
+fn debug_preserves_secret() {
             let secret = Secret {
                 secrets_json: "private-token".into(),
             };
@@ -309,10 +306,10 @@ fn contract_scenario() {
             let decoded = Secret::decode(&previous).unwrap();
             assert_eq!(decoded, secret);
             assert!(decoded.memory_size() <= bound);
-        });
-    }
-    {
-        scenario_runtime::check("debug_preserves_wire", || {
+        }
+
+#[test]
+fn debug_preserves_wire() {
             let original = Choice::Selected {
                 row: Native {
                     value: 7,
@@ -345,10 +342,10 @@ fn contract_scenario() {
                     .unwrap()
             );
             assert!(redacted.memory_size() <= RedactedChoice::decoding_memory(&bytes).unwrap());
-        });
-    }
-    {
-        scenario_runtime::check("composition_preserves_domain", || {
+        }
+
+#[test]
+fn composition_preserves_domain() {
             let value = Required {
                 row: native(7),
                 optional: Some(native(8)),
@@ -366,6 +363,5 @@ fn contract_scenario() {
             };
             let encoded = harmos_domain::Message::encode_to_vec(&invalid);
             assert!(<Native as harmos_domain::Message>::decode(&encoded).is_err());
-        });
-    }
-}
+        }
+

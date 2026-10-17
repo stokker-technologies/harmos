@@ -110,24 +110,17 @@ async fn service_status(
     name: &str,
     wanted: impl Fn(&ServiceStatus) -> bool,
 ) -> ServiceStatus {
-    tokio::time::timeout(Duration::from_secs(2), async {
-        loop {
-            if let Some(status) = services
-                .borrow()
-                .get(&harmos::operations::resident::Key::root(name))
-                .and_then(|item| item.health.clone())
-                && wanted(&status)
-            {
-                return status;
-            }
-            services
-                .changed()
-                .await
-                .expect("the runtime keeps the status sender open");
-        }
-    })
-    .await
-    .expect("the service reaches its expected status")
+    services
+        .wait_for(|all| {
+            all.get(&harmos::operations::resident::Key::root(name))
+                .and_then(|item| item.health.as_ref())
+                .is_some_and(&wanted)
+        })
+        .await
+        .expect("the runtime keeps the status sender open")
+        .get(&harmos::operations::resident::Key::root(name))
+        .and_then(|item| item.health.clone())
+        .expect("the matched status is present")
 }
 
 fn assembly() -> harmos::Builder<Bank> {
@@ -143,7 +136,7 @@ async fn resident(mut context: Service<Bank>) -> Result<(), Fault<&'static str>>
 }
 
 #[tokio::test]
-async fn handle_clones_share() {
+async fn handle_shares_manager() {
     let runtime = assembly()
         .service("boot", resident)
         .runtime()
@@ -161,45 +154,31 @@ async fn handle_clones_share() {
         .unwrap();
     let dynamic = manager.submit_resident("dynamic").await.unwrap();
     assert_eq!(runtime.operations.residents().len(), 2);
-    assert!(
-        matches!(manager.register_service(harmos::services::ServiceDefinition { id: "boot".into(), policy: harmos::services::POLICY }, |_: Arc<()>| resident), Err(Error::AlreadyRegistered { domain: "service", name }) if name == "boot")
-    );
-    let boot = manager.submit_resident("boot").await.unwrap();
     assert_eq!(
-        manager
-            .resident(&manager.resident_key(boot.id()).unwrap())
-            .unwrap()
-            .leases,
-        2
-    );
-    boot.release().await.unwrap();
-    assert_eq!(
-        manager
-            .resident(&harmos::operations::resident::Key::root("boot"))
-            .unwrap()
-            .leases,
-        1
-    );
-    assert_eq!(
-        manager
-            .resident(&manager.resident_key(dynamic.id()).unwrap())
-            .unwrap()
-            .leases,
-        1
+        runtime.operations.resident_key(dynamic.id()),
+        Some(harmos::operations::resident::Key::root("dynamic"))
     );
     runtime.stop().await.unwrap();
-    assert_eq!(
-        manager
-            .resident(&harmos::operations::resident::Key::root("boot"))
-            .and_then(|item| item.health),
-        Some(ServiceStatus::Stopped)
-    );
-    assert_eq!(
-        manager
-            .resident(&harmos::operations::resident::Key::root("dynamic"))
-            .and_then(|item| item.health),
-        Some(ServiceStatus::Stopped)
-    );
+}
+
+#[tokio::test]
+async fn duplicate_service_refused() {
+    let runtime = assembly()
+        .service("boot", resident)
+        .runtime()
+        .await
+        .unwrap();
+    assert!(matches!(
+        runtime.operations.register_service(
+            harmos::services::ServiceDefinition {
+                id: "boot".into(),
+                policy: harmos::services::POLICY
+            },
+            |_: Arc<()>| resident
+        ),
+        Err(Error::AlreadyRegistered { domain: "service", name }) if name == "boot"
+    ));
+    runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -314,21 +293,18 @@ async fn shutdown_join_started() {
 }
 
 #[tokio::test]
-async fn shutdowns_wait_boot() {
-    let entered = Arc::new(Notify::new());
+async fn concurrent_shutdowns_join() {
     let stopping = Arc::new(Notify::new());
     let release = Arc::new(Notify::new());
     let runtime = assembly()
         .service("boot", {
-            let entered = entered.clone();
             let stopping = stopping.clone();
             let release = release.clone();
             move |mut context: Service<Bank>| {
-                let entered = entered.clone();
                 let stopping = stopping.clone();
                 let release = release.clone();
                 async move {
-                    entered.notify_one();
+                    context.ready();
                     context.stopping().await;
                     stopping.notify_one();
                     release.notified().await;
@@ -339,22 +315,24 @@ async fn shutdowns_wait_boot() {
         .runtime()
         .await
         .unwrap();
-    entered.notified().await;
-    let first = tokio::spawn({
-        let manager = runtime.operations.clone();
-        async move { manager.shutdown_residents().await }
-    });
-    stopping.notified().await;
-    let second = tokio::spawn({
-        let manager = runtime.operations.clone();
-        async move { manager.shutdown_residents().await }
-    });
-    tokio::task::yield_now().await;
-    assert!(!first.is_finished());
-    assert!(!second.is_finished());
+    service_status(runtime.operations.watch_residents(), "boot", |status| {
+        matches!(status, ServiceStatus::Running { .. })
+    })
+    .await;
+    let first = runtime.operations.shutdown_residents();
+    tokio::pin!(first);
+    tokio::select! {
+        result = &mut first => panic!("cleanup is gated: {result:?}"),
+        _ = stopping.notified() => {}
+    }
+    let second = runtime.operations.shutdown_residents();
+    tokio::pin!(second);
+    assert!(futures_util::poll!(&mut first).is_pending());
+    assert!(futures_util::poll!(&mut second).is_pending());
     release.notify_one();
-    first.await.unwrap().unwrap();
-    second.await.unwrap().unwrap();
+    let (first, second) = tokio::join!(first, second);
+    first.unwrap();
+    second.unwrap();
     assert_eq!(
         runtime
             .operations

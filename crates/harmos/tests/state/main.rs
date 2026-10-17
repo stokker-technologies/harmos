@@ -18,6 +18,8 @@ mod capture;
 #[path = "consumers.rs"]
 mod consumers;
 
+mod durability;
+
 #[path = "idempotency.rs"]
 mod idempotency;
 

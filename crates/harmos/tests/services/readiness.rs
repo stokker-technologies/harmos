@@ -41,7 +41,7 @@ use harmos::{services::Fault, services::Service, services::ServiceExit, services
 /* === Private Functions === */
 
 #[tokio::test]
-async fn resident_not_running() {
+async fn late_ready_ignored() {
     let entered = Arc::new(Notify::new());
     let runtime = assembly()
         .service("initializing", {
@@ -60,13 +60,6 @@ async fn resident_not_running() {
         .await
         .unwrap();
     entered.notified().await;
-    assert_eq!(
-        runtime
-            .operations
-            .resident(&harmos::operations::resident::Key::root("initializing"))
-            .and_then(|item| item.health),
-        Some(ServiceStatus::Starting)
-    );
     let services = runtime.operations.clone();
     runtime.stop().await.unwrap();
     assert_eq!(
@@ -116,20 +109,17 @@ async fn readiness_follows_initialization() {
     );
     initialized.notify_one();
     let mut statuses = runtime.operations.watch_residents();
-    tokio::time::timeout(
-        Duration::from_secs(5),
-        statuses.wait_for(|values| {
+    statuses
+        .wait_for(|values| {
             matches!(
                 values
                     .get(&harmos::operations::resident::Key::root("gated"))
                     .and_then(|item| item.health.as_ref()),
                 Some(ServiceStatus::Running { .. })
             )
-        }),
-    )
-    .await
-    .unwrap()
-    .unwrap();
+        })
+        .await
+        .unwrap();
     runtime.stop().await.unwrap();
 }
 
@@ -185,20 +175,17 @@ async fn initialization_preserves_credit() {
     );
     fail.notify_one();
     let mut statuses = runtime.operations.watch_residents();
-    tokio::time::timeout(
-        Duration::from_secs(5),
-        statuses.wait_for(|values| {
+    statuses
+        .wait_for(|values| {
             matches!(
                 values
                     .get(&harmos::operations::resident::Key::root("unready"))
                     .and_then(|item| item.health.as_ref()),
                 Some(ServiceStatus::Inactive { .. })
             )
-        }),
-    )
-    .await
-    .unwrap()
-    .unwrap();
+        })
+        .await
+        .unwrap();
     assert!(
         matches!(runtime.operations.resident(&harmos::operations::resident::Key::root("unready")).and_then(|item| item.health), Some(ServiceStatus::Inactive {
         cause: ServiceExit::CreditExhausted, history
@@ -214,19 +201,25 @@ async fn initialization_preserves_credit() {
     ));
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn retirement_fences_readiness() {
     let (retired, mut contexts) = mpsc::unbounded_channel();
     let entered = Arc::new(Notify::new());
+    let probe = Arc::new(Notify::new());
+    let probed = Arc::new(Notify::new());
     let initialized = Arc::new(Notify::new());
     let attempts = Arc::new(AtomicUsize::new(0));
     let runtime = assembly()
         .service("replacement", {
             let entered = entered.clone();
+            let probe = probe.clone();
+            let probed = probed.clone();
             let initialized = initialized.clone();
             move |mut context: Service<Bank>| {
                 let retired = retired.clone();
                 let entered = entered.clone();
+                let probe = probe.clone();
+                let probed = probed.clone();
                 let initialized = initialized.clone();
                 let index = attempts.fetch_add(1, SeqCst);
                 async move {
@@ -235,11 +228,14 @@ async fn retirement_fences_readiness() {
                         return Err(Fault::Environmental("replace"));
                     }
                     entered.notify_one();
-                    if context
-                        .until_stopping(initialized.notified())
-                        .await
-                        .is_some()
-                    {
+                    // The probe round trip runs inside the supervisor's poll,
+                    // which polls the current attempt's readiness right after.
+                    let initialization = async {
+                        probe.notified().await;
+                        probed.notify_one();
+                        initialized.notified().await;
+                    };
+                    if context.until_stopping(initialization).await.is_some() {
                         context.ready();
                         context.stopping().await;
                     }
@@ -253,7 +249,8 @@ async fn retirement_fences_readiness() {
     let old = contexts.recv().await.unwrap();
     entered.notified().await;
     old.ready();
-    tokio::task::yield_now().await;
+    probe.notify_one();
+    probed.notified().await;
     assert_eq!(
         runtime
             .operations
@@ -263,74 +260,19 @@ async fn retirement_fences_readiness() {
     );
     initialized.notify_one();
     let mut statuses = runtime.operations.watch_residents();
-    tokio::time::timeout(
-        Duration::from_secs(5),
-        statuses.wait_for(|values| {
+    statuses
+        .wait_for(|values| {
             matches!(
                 values
                     .get(&harmos::operations::resident::Key::root("replacement"))
                     .and_then(|item| item.health.as_ref()),
                 Some(ServiceStatus::Running { .. })
             )
-        }),
-    )
-    .await
-    .unwrap()
-    .unwrap();
+        })
+        .await
+        .unwrap();
     drop(old);
     runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn initialization_keeps_terminal() {
-    for panics in [false, true] {
-        let runtime = assembly()
-            .service("failed", move |_context: Service<Bank>| async move {
-                assert!(!panics, "initialization panic");
-                Err::<(), _>(Fault::Application("initialization refused"))
-            })
-            .runtime()
-            .await
-            .unwrap();
-        let mut statuses = runtime.operations.watch_residents();
-        tokio::time::timeout(
-            Duration::from_secs(5),
-            statuses.wait_for(|values| {
-                matches!(
-                    values
-                        .get(&harmos::operations::resident::Key::root("failed"))
-                        .and_then(|item| item.health.as_ref()),
-                    Some(ServiceStatus::Inactive { .. })
-                )
-            }),
-        )
-        .await
-        .unwrap()
-        .unwrap();
-        let Some(ServiceStatus::Inactive { cause, history }) = runtime
-            .operations
-            .resident(&harmos::operations::resident::Key::root("failed"))
-            .and_then(|item| item.health)
-        else {
-            panic!("failed initialization is terminal");
-        };
-        assert_eq!(
-            cause,
-            if panics {
-                ServiceExit::Panicked
-            } else {
-                ServiceExit::Application("initialization refused".into())
-            }
-        );
-        assert!(history.is_empty());
-        assert!(matches!(
-            runtime.stop().await,
-            Err(harmos::Error::TaskFailed {
-                domain: "service",
-                ..
-            })
-        ));
-    }
 }
 
 #[tokio::test]

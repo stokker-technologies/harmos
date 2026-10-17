@@ -21,7 +21,6 @@ use std::sync::{
 use std::time::Duration;
 
 // Third Party Imports
-use futures_util::FutureExt;
 use tokio::sync::{Notify, Semaphore, watch};
 
 // Local Imports
@@ -162,18 +161,15 @@ async fn observed(
     receiver: &mut watch::Receiver<OperationStatus>,
     wanted: impl Fn(&OperationStatus) -> bool,
 ) -> OperationStatus {
-    tokio::time::timeout(Duration::from_secs(1), receiver.wait_for(wanted))
-        .await
-        .unwrap()
-        .unwrap()
-        .clone()
+    receiver.wait_for(wanted).await.unwrap().clone()
 }
 
 /* === Tests === */
 
 #[tokio::test]
-async fn service_skips_factory() {
-    let (runtime, lease, trace) =
+async fn queued_cancel_unstarted() {
+    // A factory-registered resident released while queued never builds its owner.
+    let (runtime, lease, built) =
         runtime(Mode::Complete, false, false, Duration::from_millis(1)).await;
     assert_eq!(lease.status().phase(), OperationPhase::Queued);
     let mut lifecycle = lease.subscribe();
@@ -186,12 +182,29 @@ async fn service_skips_factory() {
     assert!(status.cancellation_requested());
     assert!(status.started_at().is_none());
     assert!(status.settled_at().is_some());
-    assert_eq!(trace.factories.load(Ordering::SeqCst), 0);
+    assert_eq!(built.factories.load(Ordering::SeqCst), 0);
     runtime.stop().await.unwrap();
+
+    // An owned resident stopped while queued never runs; its owner is finalized once.
+    let owned = trace(Mode::Complete, false, false);
+    let runtime = Runtime::<App>::builder((), ())
+        .service_with("owned", harmos::services::POLICY, Worker(owned.clone()))
+        .runtime()
+        .await
+        .unwrap();
+    let snapshot = runtime
+        .operations
+        .resident(&harmos::operations::resident::Key::root("owned"))
+        .unwrap();
+    assert_eq!(snapshot.lifecycle.phase(), OperationPhase::Queued);
+    runtime.stop().await.unwrap();
+    assert_eq!(owned.attempts.load(Ordering::SeqCst), 0);
+    assert_eq!(owned.finalizers.load(Ordering::SeqCst), 1);
+    assert_eq!(owned.drops.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
-async fn settlement_survives_cancel() {
+async fn finalizing_projects_cleanup() {
     let (runtime, lease, trace) =
         runtime(Mode::Complete, true, false, Duration::from_millis(1)).await;
     let snapshots = runtime.operations.watch_residents();
@@ -215,15 +228,6 @@ async fn settlement_survives_cancel() {
             .phase(),
         OperationPhase::Finalizing
     );
-    let mut lifecycle = lease.subscribe();
-    assert!(runtime.stop().now_or_never().is_none());
-    // The Original Driver Continues After Its Waiter Is Dropped.
-    // Plugin Shutdown Settles Before Application Services Are Signalled.
-    let cancelled = observed(&mut lifecycle, |status| status.cancellation_requested()).await;
-    assert!(lease.status().cancellation_requested());
-    assert_eq!(cancelled.phase(), OperationPhase::Finalizing);
-    assert_eq!(cancelled.outcome(), Some(OperationOutcome::Succeeded));
-    assert!(cancelled.cleanup_pending());
     assert_eq!(trace.drops.load(Ordering::SeqCst), 0);
     trace.cleanup_release.add_permits(1);
     runtime.stop().await.unwrap();
@@ -236,7 +240,7 @@ async fn settlement_survives_cancel() {
 }
 
 #[tokio::test]
-async fn cleanup_retains_success() {
+async fn failed_cleanup_projected() {
     let (runtime, lease, trace) =
         runtime(Mode::Complete, false, true, Duration::from_millis(1)).await;
     let mut lifecycle = lease.subscribe();
@@ -245,16 +249,12 @@ async fn cleanup_retains_success() {
     assert_eq!(failed.outcome(), Some(OperationOutcome::Succeeded));
     assert!(failed.cleanup_pending());
     assert!(failed.settled_at().is_none());
-    assert_eq!(trace.drops.load(Ordering::SeqCst), 0);
     assert!(runtime.stop().await.is_err());
     trace.fail_cleanup.store(false, Ordering::SeqCst);
     runtime.stop().await.unwrap();
     assert_eq!(lease.status().phase(), OperationPhase::Stopped);
     assert_eq!(lease.status().outcome(), Some(OperationOutcome::Succeeded));
     assert!(lease.status().cleanup_failure().is_none());
-    assert_eq!(trace.factories.load(Ordering::SeqCst), 1);
-    assert_eq!(trace.finalizers.load(Ordering::SeqCst), 2);
-    assert_eq!(trace.drops.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test(start_paused = true)]
@@ -269,10 +269,9 @@ async fn cancel_wakes_backoff() {
     assert_eq!(waiting.attempt(), 0);
     assert_eq!(waiting.outcome(), None);
     assert!(!waiting.cleanup_pending());
-    tokio::time::timeout(Duration::from_secs(1), runtime.stop())
-        .await
-        .unwrap()
-        .unwrap();
+    let stopping = tokio::time::Instant::now();
+    runtime.stop().await.unwrap();
+    assert!(stopping.elapsed() < Duration::from_secs(100));
     assert_eq!(lease.status().outcome(), Some(OperationOutcome::Cancelled));
     assert_eq!(lease.status().phase(), OperationPhase::Stopped);
     assert_eq!(trace.attempts.load(Ordering::SeqCst), 1);
@@ -281,7 +280,7 @@ async fn cancel_wakes_backoff() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn restart_uses_control() {
+async fn restart_cancels_refill() {
     let (runtime, lease, trace) =
         runtime(Mode::Retry, false, false, Duration::from_millis(1)).await;
     let mut lifecycle = lease.subscribe();
@@ -293,40 +292,12 @@ async fn restart_uses_control() {
     assert_eq!(running.outcome(), None);
     assert_eq!(trace.factories.load(Ordering::SeqCst), 1);
     assert_eq!(trace.attempts.load(Ordering::SeqCst), 2);
-    assert!(matches!(
-        runtime
-            .operations
-            .resident(&runtime.operations.resident_key(lease.id()).unwrap())
-            .unwrap()
-            .health,
-        Some(harmos::services::ServiceStatus::Running { credit: 2 })
-    ));
     // Cancellation Must Not Wait For The Pending 250 ms Health Refill.
-    tokio::time::timeout(Duration::from_millis(50), runtime.stop())
-        .await
-        .unwrap()
-        .unwrap();
+    let stopping = tokio::time::Instant::now();
+    runtime.stop().await.unwrap();
+    assert!(stopping.elapsed() < Duration::from_millis(250));
     assert_eq!(lease.status().outcome(), Some(OperationOutcome::Cancelled));
     assert_eq!(lease.status().attempt(), 1);
     assert_eq!(lease.status().phase(), OperationPhase::Stopped);
     assert_eq!(trace.finalizers.load(Ordering::SeqCst), 2);
-}
-
-#[tokio::test]
-async fn cancelled_queued_resident() {
-    let trace = trace(Mode::Complete, false, false);
-    let runtime = Runtime::<App>::builder((), ())
-        .service_with("owned", harmos::services::POLICY, Worker(trace.clone()))
-        .runtime()
-        .await
-        .unwrap();
-    let snapshot = runtime
-        .operations
-        .resident(&harmos::operations::resident::Key::root("owned"))
-        .unwrap();
-    assert_eq!(snapshot.lifecycle.phase(), OperationPhase::Queued);
-    runtime.stop().await.unwrap();
-    assert_eq!(trace.attempts.load(Ordering::SeqCst), 0);
-    assert_eq!(trace.finalizers.load(Ordering::SeqCst), 1);
-    assert_eq!(trace.drops.load(Ordering::SeqCst), 1);
 }

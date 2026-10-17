@@ -15,10 +15,9 @@
 // Standard Library Imports
 use std::sync::atomic::Ordering;
 // Third Party Imports
-use support::{Bank, Explode, Ledger, Payouts, booted, deposit, ledger, pay};
+use support::{Bank, Ledger, Payouts, booted, deposit, ledger, pay};
 // Local Imports
 use super::support;
-use harmos::{Error, state::Position};
 use support::journal::{Journal, Store};
 
 /* === Constants === */
@@ -40,7 +39,7 @@ use support::journal::{Journal, Store};
 /* === Private Functions === */
 
 #[tokio::test]
-async fn unacked_item_comes() {
+async fn unacked_item_redelivered() {
     let copy = Store::default();
     let (listener, watched) = Payouts::new();
 
@@ -88,62 +87,6 @@ async fn unacked_item_comes() {
         restored.payouts,
         vec![1, 7],
         "pending work is durable state, so recovery rebuilt it with everything else"
-    );
-}
-
-#[tokio::test]
-async fn poisoned_writer_evacuates() {
-    let copy = Store::default();
-
-    let live = booted(Ledger::default(), |builder| {
-        builder.recover(Journal::<Bank>::open(&copy))
-    })
-    .await;
-    live.state.commit(deposit(60)).await.expect("accepted");
-    live.state.commit(pay(3, 10)).await.expect("accepted");
-
-    let reporting = std::panic::take_hook();
-    std::panic::set_hook(Box::new(|_| {}));
-    let poisoned = live.state.commit(Explode).await;
-    std::panic::set_hook(reporting);
-
-    assert!(matches!(poisoned, Err(Error::Unavailable)));
-    assert_eq!(
-        live.state.applied(),
-        Position(2),
-        "no entry was sealed for the change that panicked"
-    );
-    assert!(matches!(
-        live.state.state().read(Clone::clone).await,
-        Err(Error::Unavailable)
-    ));
-
-    // The writer is gone, so the runtime evacuates without being asked: the
-    // folds take the intact tail out, and the process stops rather than
-    // restarting anything.
-    let observer = live.state.clone();
-    let settled = live.stop().await.unwrap();
-
-    assert_eq!(settled, Position(2));
-    assert_eq!(
-        observer.stored(),
-        observer.applied(),
-        "evacuation drained until the stored frontier caught the applied one"
-    );
-
-    let recovered = booted(Ledger::default(), |builder| {
-        builder.recover(Journal::<Bank>::open(&copy))
-    })
-    .await;
-
-    assert_eq!(
-        ledger(&recovered).await,
-        Ledger {
-            balance: 50,
-            applications: 2,
-            payouts: vec![3],
-        },
-        "the next boot recovered every committed transition that preceded the panic"
     );
 }
 

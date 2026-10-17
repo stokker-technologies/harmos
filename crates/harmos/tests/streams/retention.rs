@@ -14,9 +14,10 @@
 /* === Imports === */
 // Standard Library Imports
 use std::io;
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 // Third Party Imports
+use tokio::sync::watch;
 use support::{Bank, Change, Ledger, booted, catalog, deposit};
 // Local Imports
 use crate::support;
@@ -45,13 +46,13 @@ struct Prunable {
     take: bool,
     advance: Arc<AtomicBool>,
     durable: Arc<AtomicU64>,
-    pruned: Arc<Mutex<Vec<Position>>>,
+    pruned: watch::Sender<Option<Position>>,
     batches: Arc<Mutex<Vec<Vec<Position>>>>,
 }
 
 struct Watched {
     advance: Arc<AtomicBool>,
-    pruned: Arc<Mutex<Vec<Position>>>,
+    pruned: watch::Sender<Option<Position>>,
     batches: Arc<Mutex<Vec<Vec<Position>>>>,
 }
 
@@ -72,7 +73,7 @@ impl Prunable {
     fn new(take: bool, advance: bool) -> (Self, Watched) {
         let watched = Watched {
             advance: Arc::new(AtomicBool::new(advance)),
-            pruned: Arc::new(Mutex::new(Vec::new())),
+            pruned: watch::Sender::new(None),
             batches: Arc::new(Mutex::new(Vec::new())),
         };
         let durable = Arc::new(AtomicU64::new(0));
@@ -81,7 +82,7 @@ impl Prunable {
             take,
             advance: Arc::clone(&watched.advance),
             durable,
-            pruned: Arc::clone(&watched.pruned),
+            pruned: watched.pruned.clone(),
             batches: Arc::clone(&watched.batches),
         };
 
@@ -153,10 +154,7 @@ impl Source<Bank> for Prunable {
     }
 
     async fn prune(&mut self, beneath: Position) {
-        self.pruned
-            .lock()
-            .expect("the probe is never poisoned")
-            .push(beneath);
+        self.pruned.send_replace(Some(beneath));
     }
 }
 
@@ -168,12 +166,12 @@ impl Source<Bank> for Prunable {
 async fn snapshot_blocks_pruning() {
     let (source, watched) = Prunable::controlled(true);
     let failing = Arc::new(AtomicBool::new(true));
-    let attempts = Arc::new(AtomicUsize::new(0));
+    let attempts = watch::Sender::new(0_usize);
     let snapshot = Snapshot::new({
         let failing = Arc::clone(&failing);
-        let attempts = Arc::clone(&attempts);
+        let attempts = attempts.clone();
         move || {
-            attempts.fetch_add(1, Ordering::AcqRel);
+            attempts.send_modify(|attempts| *attempts += 1);
             if failing.load(Ordering::Acquire) {
                 Err(io::Error::other("injected snapshot failure"))
             } else {
@@ -192,13 +190,13 @@ async fn snapshot_blocks_pruning() {
 
     let first = runtime.state.commit(deposit(1)).await.expect("accepted");
     runtime.state.wait_until_stored(first.position).await;
-    wait_for(|| attempts.load(Ordering::Acquire) > 0).await;
-    assert!(watched.pruned.lock().expect("not poisoned").is_empty());
+    saved(&attempts).await;
+    assert_eq!(*watched.pruned.borrow(), None);
 
     failing.store(false, Ordering::Release);
     let second = runtime.state.commit(deposit(1)).await.expect("accepted");
     runtime.state.wait_until_stored(second.position).await;
-    wait_for(|| last_prune(&watched) == Some(second.position)).await;
+    pruned(&watched, second.position).await;
 
     assert!(matches!(
         runtime.state.query::<Change>(Position::ORIGIN).await.next(),
@@ -210,11 +208,11 @@ async fn snapshot_blocks_pruning() {
 #[tokio::test]
 async fn checkpoint_blocks_pruning() {
     let (source, watched) = Prunable::controlled(false);
-    let writes = Arc::new(AtomicUsize::new(0));
+    let writes = watch::Sender::new(0_usize);
     let snapshot = Snapshot::new({
-        let writes = Arc::clone(&writes);
+        let writes = writes.clone();
         move || {
-            writes.fetch_add(1, Ordering::AcqRel);
+            writes.send_modify(|writes| *writes += 1);
             Ok(())
         }
     });
@@ -227,18 +225,18 @@ async fn checkpoint_blocks_pruning() {
     .await;
 
     runtime.state.commit(deposit(1)).await.expect("accepted");
-    wait_for(|| writes.load(Ordering::Acquire) > 0).await;
-    assert!(watched.pruned.lock().expect("not poisoned").is_empty());
+    saved(&writes).await;
+    assert_eq!(*watched.pruned.borrow(), None);
 
     watched.advance.store(true, Ordering::Release);
     let recovered = runtime.state.commit(deposit(1)).await.expect("accepted");
     runtime.state.wait_until_stored(recovered.position).await;
-    wait_for(|| last_prune(&watched) == Some(recovered.position)).await;
+    pruned(&watched, recovered.position).await;
     runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
-async fn snapshot_requires_snapshot() {
+async fn retention_requires_snapshot() {
     let started = Runtime::<Bank>::builder(Ledger::default(), ())
         .register(catalog())
         .retain(Horizon::BeneathSnapshot)
@@ -256,7 +254,7 @@ async fn snapshot_requires_snapshot() {
 }
 
 #[tokio::test]
-async fn storage_ac006_declared() {
+async fn stalled_redelivery_tail() {
     let beneath = run_stalled(2).await;
     let within = run_stalled(3).await;
 
@@ -281,18 +279,21 @@ async fn run_stalled(tail: usize) -> Vec<Vec<Position>> {
     watched.batches.lock().expect("not poisoned").clone()
 }
 
-async fn wait_for(done: impl Fn() -> bool) {
-    for _ in 0..10_000 {
-        if done() {
-            return;
-        }
-        tokio::task::yield_now().await;
-    }
-    panic!("the supervisor did not reach the expected frontier");
+async fn saved(attempts: &watch::Sender<usize>) {
+    attempts
+        .subscribe()
+        .wait_for(|attempts| *attempts > 0)
+        .await
+        .expect("the snapshot keeps its counter");
 }
 
-fn last_prune(watched: &Watched) -> Option<Position> {
-    watched.pruned.lock().expect("not poisoned").last().copied()
+async fn pruned(watched: &Watched, beneath: Position) {
+    watched
+        .pruned
+        .subscribe()
+        .wait_for(|pruned| *pruned == Some(beneath))
+        .await
+        .expect("the source keeps its prune record");
 }
 
 /* === Tests === */

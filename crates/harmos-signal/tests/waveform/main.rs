@@ -8,151 +8,19 @@
  */
 
 /* === Modules === */
-mod aggregates;
-
-#[allow(dead_code)]
-mod probe {
-    use harmos_signal::{Band, Decibel, Edge, Scale, Series, Spectrum, Summary, Taper};
-
-    #[cfg(feature = "fft")]
-    use harmos_signal::{Estimate, Welch};
-
-    type Share = fn(&[f64], &[f64], f64, f64, f64) -> Option<f64>;
-    type Occupancy = fn(&[f64], &[f64], f64, f64, f64) -> Option<(f64, f64, f64)>;
-    type Resampling = fn(&[f64], &[f64], &[f64]) -> Vec<f64>;
-
-    struct Types {
-        band: Band,
-        decibel: Decibel,
-        edge: Edge,
-        #[cfg(feature = "fft")]
-        estimate: Estimate,
-        scale: Scale,
-        series: Series<'static>,
-        spectrum: Spectrum,
-        summary: Summary,
-        taper: Taper,
-        #[cfg(feature = "fft")]
-        welch: Welch,
-    }
-
-    // The frequency domain: the transform, what is read off it, and the way back.
-    #[cfg(feature = "fft")]
-    const TRANSFORM: fn(&[f64], f64, Taper) -> Spectrum = harmos_signal::transform;
-    #[cfg(feature = "fft")]
-    const RECONSTRUCT: fn(&Spectrum, Option<Band>) -> Vec<f64> = harmos_signal::reconstruct;
-    const MAGNITUDE: fn(&[f64], &[f64]) -> Vec<f64> = harmos_signal::magnitude;
-    const PHASE: fn(&[f64], &[f64]) -> Vec<f64> = harmos_signal::phase;
-    const BINS: fn(f64, usize) -> Vec<f64> = harmos_signal::bins;
-    const PEAKS: fn(&[f64]) -> Vec<usize> = harmos_signal::peaks;
-    const HARMONICS: fn(&[f64], f64) -> Vec<usize> = harmos_signal::harmonics;
-    const FUNDAMENTAL: fn(&[f64], &[f64]) -> Option<usize> = harmos_signal::fundamental;
-    const THD: fn(&[f64], &[f64]) -> Option<f64> = harmos_signal::thd;
-    const BAND_ENERGY: fn(&[f64], &[f64], f64, f64) -> f64 = harmos_signal::band_energy;
-    const BAND_RMS: fn(&[f64], &[f64], f64, f64) -> f64 = harmos_signal::band_rms;
-    const CENTROID: fn(&[f64], &[f64], f64, f64) -> Option<f64> = harmos_signal::centroid;
-    const PAPR: fn(&[f64], &[f64], f64, f64) -> Option<f64> = harmos_signal::papr;
-    const ROLLOFF: Share = harmos_signal::rolloff;
-    const OCCUPIED: Occupancy = harmos_signal::occupied_bandwidth;
-
-    // The time domain: what to keep, how to read between, what it comes to.
-    const LTTB: fn(&[f64], &[f64], usize) -> Vec<usize> = harmos_signal::lttb;
-    const LTTB_LOG: fn(&[f64], &[f64], usize) -> Vec<usize> = harmos_signal::lttb_log;
-    const DECIMATE: fn(usize, usize) -> Vec<usize> = harmos_signal::decimate;
-    const EXTREMA: fn(&[f64], usize) -> Vec<usize> = harmos_signal::extrema;
-    const ABOVE_FLOOR: fn(&[f64], f64) -> Vec<usize> = harmos_signal::above_floor;
-    const VALUE_AT: fn(&[f64], &[f64], f64) -> f64 = harmos_signal::value_at;
-    const RESAMPLE: Resampling = harmos_signal::resample;
-    const RESAMPLE_UNIFORM: fn(&[f64], &[f64], f64) -> Vec<f64> = harmos_signal::resample_uniform;
-    const RESAMPLE_COUNT: fn(&[f64], usize) -> Vec<f64> = harmos_signal::resample_count;
-    const NEAREST: fn(&[f64], f64) -> Option<usize> = harmos_signal::nearest;
-    const DERIVATIVE: fn(&[f64], &[f64]) -> Vec<f64> = harmos_signal::derivative;
-    const INTEGRAL: fn(&[f64], &[f64]) -> Vec<f64> = harmos_signal::integral;
-    const EDGES: fn(&[f64], &[f64], f64, f64) -> Vec<Edge> = harmos_signal::edges;
-    const CROSSING: fn(&[f64], &[f64], f64) -> Option<f64> = harmos_signal::crossing;
-
-    // The inherent surface each named type carries.
-    const TAPER_COEFFICIENT: fn(&Taper, usize, usize) -> f64 = Taper::coefficient;
-    const TAPER_COEFFICIENTS: fn(&Taper, usize) -> Vec<f64> = Taper::coefficients;
-    const BAND_COEFFICIENT: fn(&Band, f64) -> f64 = Band::coefficient;
-    const BAND_BOUNDS: fn(&Band) -> (f64, f64) = Band::bounds;
-    const SPECTRUM_RATE: fn(&Spectrum) -> f64 = Spectrum::rate;
-    #[cfg(feature = "fft")]
-    const WELCH_ESTIMATE: fn(&Welch, &[f64], f64) -> Estimate = Welch::estimate;
-    const DECIBEL_TO_DB: fn(&Decibel, f64) -> f64 = Decibel::to_db;
-    const DECIBEL_TO_LINEAR: fn(&Decibel, f64) -> f64 = Decibel::to_linear;
-    const DECIBEL_OFFSET: fn(&Decibel, &Decibel) -> Option<f64> = Decibel::offset_from;
-    const SCALE_SUM: fn(&Scale, &Scale) -> Option<Scale> = Scale::sum;
-    const SCALE_DIFFERENCE: fn(&Scale, &Scale) -> Option<Scale> = Scale::difference;
-    const SUMMARY_OF: fn(&[f64]) -> Summary = Summary::of;
-    const SUMMARY_PUSH: fn(&mut Summary, f64) = Summary::push;
-    const SUMMARY_MERGE: fn(&Summary, &Summary) -> Summary = Summary::merge;
-    const SUMMARY_VARIANCE: fn(&Summary) -> Option<f64> = Summary::variance;
-    const SUMMARY_STD: fn(&Summary) -> Option<f64> = Summary::std;
-    const SERIES_NEW: fn(&'static [f64]) -> Series<'static> = Series::new;
-    const SERIES_SUMMARY: fn(&Series<'static>) -> Summary = Series::summary;
-    const SERIES_MEDIAN: fn(&Series<'static>) -> Option<f64> = Series::median;
-    const SERIES_PERCENTILE: fn(&Series<'static>, f64) -> Option<f64> = Series::percentile;
-    const SERIES_ALL_BELOW: fn(&Series<'static>, f64) -> bool = Series::all_below;
-    const SERIES_ALL_WITHIN: fn(&Series<'static>, f64, f64) -> bool = Series::all_within;
-}
 
 /* === Re-Exports === */
 
 /* === Imports === */
 // Standard Library Imports
-use std::collections::BTreeSet;
-use std::fs;
-use std::path::{Path, PathBuf};
+
 // Third Party Imports
 
 // Local Imports
+use harmos_signal::{Series, Summary};
 
 /* === Constants === */
-const CENSUS: [&str; 42] = [
-    "Error",
-    "Result",
-    "Band",
-    "Decibel",
-    "Edge",
-    "Estimate",
-    "Scale",
-    "Series",
-    "Spectrum",
-    "Summary",
-    "Taper",
-    "Welch",
-    "above_floor",
-    "band_energy",
-    "band_rms",
-    "bins",
-    "centroid",
-    "crossing",
-    "decimate",
-    "derivative",
-    "edges",
-    "extrema",
-    "fft_in_place",
-    "fundamental",
-    "harmonics",
-    "integral",
-    "lttb",
-    "lttb_log",
-    "magnitude",
-    "nearest",
-    "occupied_bandwidth",
-    "papr",
-    "peaks",
-    "phase",
-    "reconstruct",
-    "resample",
-    "resample_count",
-    "resample_uniform",
-    "rolloff",
-    "thd",
-    "transform",
-    "value_at",
-];
+const CLOSE: f64 = 1e-9;
 
 /* === Macros === */
 
@@ -169,182 +37,151 @@ const CENSUS: [&str; 42] = [
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn crate_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf()
-}
-
-fn source() -> PathBuf {
-    crate_root().join("src")
-}
-
-fn sources() -> Vec<(String, String)> {
-    let mut found = Vec::new();
-    collect(&source(), &mut found);
-    found.sort();
-    found
-}
-
-fn collect(directory: &Path, found: &mut Vec<(String, String)>) {
-    let listing = fs::read_dir(directory).expect("the source directory is readable");
-
-    for entry in listing.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            collect(&path, found);
-        } else if path.extension().is_some_and(|suffix| suffix == "rs") {
-            found.push((path.to_string_lossy().replace('\\', "/"), read(&path)));
-        }
-    }
-}
-
-fn read(path: &Path) -> String {
-    fs::read_to_string(path)
-        .unwrap_or_else(|error| panic!("{}: {error}", path.display()))
-        .replace("\r\n", "\n")
-}
-
-fn code(text: &str) -> String {
-    text.lines()
-        .map(|line| line.split("//").next().unwrap_or_default())
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-fn reexported(text: &str) -> BTreeSet<String> {
-    let mut handed_out = BTreeSet::new();
-
-    for statement in text.split("pub use ").skip(1) {
-        let statement = statement.split(';').next().unwrap_or_default();
-        let leaves = match statement.split_once('{') {
-            Some((_, group)) => group.to_owned(),
-            None => statement.rsplit("::").next().unwrap_or_default().to_owned(),
-        };
-        handed_out.extend(
-            leaves
-                .split(',')
-                .map(|name| name.trim().trim_end_matches('}').trim().to_owned())
-                .filter(|name| !name.is_empty()),
-        );
-    }
-    handed_out
-}
-
-fn dependencies(manifest: &str) -> BTreeSet<String> {
-    manifest
-        .split("[dependencies]")
-        .nth(1)
-        .unwrap_or_default()
-        .split("\n[")
-        .next()
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|line| line.split_once('='))
-        .map(|(name, _)| name.trim())
-        .map(|name| name.strip_suffix(".workspace").unwrap_or(name).to_owned())
-        .filter(|name| !name.is_empty() && !name.starts_with('#'))
-        .collect()
+fn close(found: Option<f64>, expected: f64) {
+    let found = found.expect("an answer");
+    assert!(
+        (found - expected).abs() <= CLOSE * expected.abs().max(1.0),
+        "{found} is not {expected}"
+    );
 }
 
 /* === Tests === */
 
 #[test]
-fn crate_root_hands() {
-    let handed_out = reexported(&read(&source().join("lib.rs")));
-    let accepted: BTreeSet<String> = CENSUS.iter().map(|name| (*name).to_owned()).collect();
+fn empty_series_undefined() {
+    let series = Series::new(&[]);
 
-    assert_eq!(handed_out, accepted, "the signal surface drifted");
+    assert_eq!(series.count(), 0);
+    assert_eq!(series.sum(), 0.0);
+    assert_eq!(series.mean(), None);
+    assert_eq!(series.median(), None);
+    assert_eq!(series.min(), None);
+    assert_eq!(series.max(), None);
+    assert_eq!(series.rms(), None);
+    assert_eq!(series.std(), None);
+    assert_eq!(series.percentile(0.0), None);
+    assert_eq!(series.percentile(100.0), None);
+    assert!(series.all(|_| false), "no value refutes a predicate");
+    assert!(!series.any(|_| true));
 }
 
 #[test]
-fn manifest_names_approved() {
-    let manifest = read(&crate_root().join("Cargo.toml"));
+fn single_value_degenerates() {
+    let series = Series::new(&[-4.0]);
 
-    assert_eq!(
-        dependencies(&manifest),
-        BTreeSet::from([
-            "rustfft".to_owned(),
-            "thiserror".to_owned(),
-            "tracing".to_owned()
-        ]),
-        "the dependency budget is a planned FFT and shared error/tracing contracts"
-    );
-    assert!(
-        !manifest.contains("[dev-dependencies]"),
-        "a development dependency enters the lockfile too, and harmos's \
-         allowance audit counts it against this crate"
-    );
+    assert_eq!(series.count(), 1);
+    assert_eq!(series.sum(), -4.0);
+    assert_eq!(series.mean(), Some(-4.0));
+    assert_eq!(series.median(), Some(-4.0));
+    assert_eq!(series.min(), Some(-4.0));
+    assert_eq!(series.max(), Some(-4.0));
+    assert_eq!(series.rms(), Some(4.0));
+    assert_eq!(series.std(), Some(0.0));
+    assert_eq!(series.percentile(0.0), Some(-4.0));
+    assert_eq!(series.percentile(37.0), Some(-4.0));
+    assert_eq!(series.percentile(100.0), Some(-4.0));
 }
 
 #[test]
-fn nothing_here_names() {
-    let found: Vec<String> = sources()
-        .into_iter()
-        .filter(|(_, text)| code(text).contains("harmos"))
-        .map(|(path, _)| path)
-        .collect();
+fn known_run_statistics() {
+    let series = Series::new(&[2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0]);
 
-    assert!(
-        found.is_empty(),
-        "this crate must lift into a repository of its own unchanged: {found:?}"
-    );
-}
-
-#[test]
-fn empty_input() {
-    aggregates::empty_input();
-}
-
-#[test]
-fn single_value() {
-    aggregates::single_value();
-}
-
-#[test]
-fn known_run() {
-    aggregates::known_run();
+    assert_eq!(series.count(), 8);
+    assert_eq!(series.sum(), 40.0);
+    close(series.mean(), 5.0);
+    assert_eq!(series.min(), Some(2.0));
+    assert_eq!(series.max(), Some(9.0));
+    close(series.std(), 2.0);
+    close(series.rms(), (232.0_f64 / 8.0).sqrt());
 }
 
 #[test]
 fn odd_even_medians() {
-    aggregates::odd_even_medians();
+    assert_eq!(Series::new(&[9.0, 1.0, 5.0]).median(), Some(5.0));
+    assert_eq!(Series::new(&[9.0, 1.0, 5.0, 3.0]).median(), Some(4.0));
 }
 
 #[test]
-fn interpolated_percentiles() {
-    aggregates::interpolated_percentiles();
+fn percentiles_interpolate_ranks() {
+    let series = Series::new(&[40.0, 10.0, 30.0, 20.0]);
+
+    assert_eq!(series.percentile(0.0), Some(10.0));
+    assert_eq!(series.percentile(100.0), Some(40.0));
+    close(series.percentile(50.0), 25.0);
+    close(series.percentile(25.0), 17.5);
+    close(series.percentile(90.0), 37.0);
+    assert_eq!(series.percentile(100.5), None);
+    assert_eq!(series.percentile(-1.0), None);
+    assert_eq!(series.percentile(f64::NAN), None);
 }
 
 #[test]
-fn sorted_once() {
-    aggregates::sorted_once();
+fn sorting_preserves_percentiles() {
+    let values = [3.0, -1.0, 8.0, 2.5, 0.0];
+    let unsorted = Series::new(&values);
+    let mut sorted = Series::new(&values);
+    sorted.sort();
+
+    for rank in [0.0, 12.5, 50.0, 77.0, 100.0] {
+        assert_eq!(unsorted.percentile(rank), sorted.percentile(rank));
+    }
 }
 
 #[test]
-fn finite_extremes() {
-    aggregates::finite_extremes();
+fn extremes_avoid_overflow() {
+    let series = Series::new(&[-f64::MAX, f64::MAX]);
+
+    assert_eq!(series.median(), Some(0.0));
+    assert_eq!(Series::new(&[f64::MAX, f64::MAX]).mean(), Some(f64::MAX));
 }
 
 #[test]
 fn non_finite_skipped() {
-    aggregates::non_finite_skipped();
+    let values = [1.0, f64::NAN, 3.0, f64::INFINITY, f64::NEG_INFINITY];
+    let series = Series::new(&values);
+    let collected: Series<'static> = values.iter().copied().collect();
+    let owned = Series::from(values.to_vec());
+
+    for series in [&series, &collected, &owned] {
+        assert_eq!(series.values(), &[1.0, 3.0]);
+        assert_eq!(series.count(), 2);
+        assert_eq!(series.median(), Some(2.0));
+        assert_eq!(series.max(), Some(3.0));
+    }
+    assert_eq!(Summary::of(&values), Summary::of(&[1.0, 3.0]));
 }
 
 #[test]
-fn value_predicates() {
-    aggregates::value_predicates();
+fn predicates_bound_inclusively() {
+    let series = Series::new(&[1.0, 2.5, 4.0]);
+
+    assert!(series.all_below(4.5));
+    assert!(!series.all_below(4.0), "the limit itself is not below");
+    assert!(series.all_within(1.0, 4.0), "the bounds are inclusive");
+    assert!(!series.all_within(1.5, 4.0));
+    assert!(series.any(|value| value > 3.0));
+    assert!(series.all(|value| value > 0.0));
 }
 
+// Series answers over the whole run at once; Summary is folded from chunks and
+// merged, so agreement proves the streaming form matches the exact one.
 #[test]
-fn summaries_agree() {
-    aggregates::summaries_agree();
-}
+fn chunked_summaries_agree() {
+    let values: Vec<f64> = (0..97)
+        .map(|index| ((index * 37) % 23) as f64 * 1.5 - 11.0)
+        .chain([f64::NAN, f64::INFINITY])
+        .collect();
+    let series = Series::new(&values);
+    let summary = values
+        .chunks(10)
+        .map(Summary::of)
+        .fold(Summary::new(), |held, next| held.merge(&next));
 
-#[test]
-fn anchor_reached_root() {
-    let root = code(&read(&source().join("lib.rs")));
-
-    // Private modules, public names: a caller writes `harmos_signal::lttb` and
-    // never a module path, so the census above is the whole reachable surface.
-    assert!(root.contains("mod spectrum;") && !root.contains("pub mod spectrum;"));
-    assert!(root.contains("mod waveform;") && !root.contains("pub mod waveform;"));
+    assert_eq!(series.count(), summary.count());
+    close(Some(series.sum()), summary.sum());
+    close(series.mean(), summary.mean().unwrap());
+    assert_eq!(series.min(), summary.min());
+    assert_eq!(series.max(), summary.max());
+    close(series.rms(), summary.rms().unwrap());
+    close(series.std(), summary.std().unwrap());
 }

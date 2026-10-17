@@ -320,7 +320,7 @@ async fn boot(copy: &Store, tail: usize) -> Runtime<Model> {
 }
 
 #[tokio::test]
-async fn preparation_ignored_nothing() {
+async fn preparation_failure_inert() {
     let copy = Store::default();
     let runtime = boot(&copy, 16).await;
     assert!(matches!(
@@ -427,7 +427,7 @@ async fn restart_preserves_members() {
 }
 
 #[tokio::test]
-async fn undo_redo_emit() {
+async fn reversals_emit_records() {
     let copy = Store::default();
     let runtime = boot(&copy, 1).await;
     let principal = PrincipalId::new("operator");

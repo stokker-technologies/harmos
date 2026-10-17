@@ -22,44 +22,6 @@ version = { workspace = true }
 # === Package Targets ===
 
 [[bin]]
-name = "harmos-sidecar-fixture"
-path = "tests/fixtures/sidecar.rs"
-required-features = ["plugin-sidecar", "plugin-guest"]
-
-[[bin]]
-name = "harmos-admission-fixture"
-path = "tests/fixtures/admission.rs"
-required-features = ["plugin-sidecar"]
-
-[[bin]]
-name = "harmos-process-fixture"
-path = "tests/fixtures/routing.rs"
-required-features = ["plugin-sidecar"]
-test = false
-bench = false
-
-[[bin]]
-name = "harmos-process-core-fixture"
-path = "tests/fixtures/process_core.rs"
-required-features = ["plugin-sidecar"]
-test = false
-bench = false
-
-[[bin]]
-name = "harmos-process-provider-fixture"
-path = "tests/fixtures/process_provider_main.rs"
-required-features = ["plugin-sidecar"]
-test = false
-bench = false
-
-[[bin]]
-name = "harmos-process-client-fixture"
-path = "tests/fixtures/process_client_main.rs"
-required-features = ["plugin-sidecar"]
-test = false
-bench = false
-
-[[bin]]
 name = "harmos-stream-consumer-fixture"
 path = "tests/fixtures/stream_consumer.rs"
 required-features = ["plugin-sidecar"]
@@ -285,18 +247,9 @@ tokio = { workspace = true, default-features = true, features = [
 # === Test Targets ===
 
 [[test]]
-name = "census"
-path = "tests/runtime/lifecycle/census.rs"
-required-features = ["plugin-sidecar", "plugin-guest"]
-
-[[test]]
 name = "plugin"
 path = "tests/plugin/main.rs"
 required-features = ["plugin"]
-
-[[test]]
-name = "runtime_boot"
-path = "tests/runtime/lifecycle/main.rs"
 
 [[test]]
 name = "state"
@@ -309,26 +262,6 @@ path = "tests/streams/main.rs"
 [[test]]
 name = "storage"
 path = "tests/storage/main.rs"
-
-[[test]]
-name = "storage_recovery"
-path = "tests/storage/recovery/main.rs"
-
-[[test]]
-name = "storage_files"
-path = "tests/storage/files/main.rs"
-
-[[test]]
-name = "storage_objects"
-path = "tests/storage/objects/main.rs"
-
-[[test]]
-name = "storage_operations"
-path = "tests/storage/operations/main.rs"
-
-[[test]]
-name = "operations_wire"
-path = "tests/operations/wire/main.rs"
 
 [[test]]
 name = "observers"
@@ -347,16 +280,22 @@ name = "evidence"
 path = "tests/evidence/main.rs"
 
 [[test]]
-name = "durability"
-path = "tests/state/durable.rs"
-
-[[test]]
-name = "authoring"
+name = "application"
 path = "tests/application/main.rs"
 
 [[test]]
-name = "boundaries"
+name = "runtime"
 path = "tests/runtime/main.rs"
+
+[[test]]
+name = "sidecar"
+path = "tests/sidecar/main.rs"
+required-features = ["plugin-sidecar"]
+
+[[test]]
+name = "guest"
+path = "tests/guest/main.rs"
+required-features = ["plugin-guest", "plugin-sidecar"]
 
 [[test]]
 name = "simulation"
@@ -364,8 +303,12 @@ path = "tests/simulation/main.rs"
 required-features = ["simulation"]
 
 [[test]]
-name = "streams_allocation"
-path = "tests/streams/allocation.rs"
+name = "system"
+path = "tests/system/main.rs"
+
+[[test]]
+name = "acceptance"
+path = "tests/acceptance/main.rs"
 
 # === Bench Targets ===
 

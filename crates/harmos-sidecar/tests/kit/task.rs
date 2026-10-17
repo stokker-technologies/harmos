@@ -13,14 +13,12 @@
 
 /* === Imports === */
 // Standard Library Imports
-use std::{sync::mpsc, thread};
-use std::{
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-    time::Duration,
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+    mpsc,
 };
+use std::thread;
 // Third Party Imports
 use tokio::sync::oneshot;
 // Local Imports
@@ -56,22 +54,19 @@ async fn blocking_preserves_runtimes() {
     let (entered, started) = oneshot::channel();
     let blocking = spawn("blocking-observer".into(), async move {
         let _ = entered.send(thread::current().id());
-        // A bounded fallback makes a regression fail instead of hanging CI.
-        let _ = blocked.recv_timeout(Duration::from_secs(3));
+        // Block The Observer Thread Until The Test Releases It.
+        let _ = blocked.recv();
     })
     .unwrap();
     let blocking_thread = started.await.unwrap();
 
+    // A Shared Runtime Would Starve This Observer Behind The Blocked One.
     let (measured, measurement) = oneshot::channel();
     let healthy = spawn("healthy-observer".into(), async move {
-        tokio::time::sleep(Duration::from_millis(10)).await;
         let _ = measured.send(thread::current().id());
     })
     .unwrap();
-    let healthy_thread = tokio::time::timeout(Duration::from_secs(1), measurement)
-        .await
-        .unwrap()
-        .unwrap();
+    let healthy_thread = measurement.await.unwrap();
     assert_ne!(healthy_thread, blocking_thread);
     assert_ne!(healthy_thread, thread::current().id());
 

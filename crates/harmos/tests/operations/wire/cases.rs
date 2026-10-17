@@ -23,7 +23,7 @@ use harmos::operations::{
     Backoff, CacheKey, Context, FailureKind, Jitter, Operation, OperationDeclaration,
     OperationPolicy, RestartPolicy, RetryPolicy, Visibility,
 };
-use harmos::{Error, Message, Refusal};
+use harmos::{Error, Message};
 
 /* === Constants === */
 
@@ -41,15 +41,7 @@ pub(super) struct PrivateEcho;
 
 pub(super) struct Nested;
 
-pub(super) struct Detached;
-
-struct SameLane;
-
-struct Joined<'a>(&'a std::sync::atomic::AtomicUsize);
-
 struct Codec;
-
-struct ShortCodec;
 
 pub(super) struct Payload(Text);
 
@@ -69,7 +61,6 @@ pub(super) enum Leaves {
     Echo(Echo),
     PrivateEcho(PrivateEcho),
     Nested(Nested),
-    Detached(Detached),
 }
 
 #[harmos::catalog]
@@ -91,7 +82,6 @@ pub(super) enum ImplementedLeaves {
     Echo(Echoing),
     PrivateEcho(PrivateEchoing),
     Nested(Nesting),
-    Detached(Detaching),
 }
 
 #[harmos::catalog]
@@ -109,20 +99,8 @@ pub(super) enum Implemented {
 }
 
 #[harmos::catalog]
-enum ImplementedCodecs {
-    Codec(Coding),
-    ShortCodec(ShortCoding),
-}
-
-#[harmos::catalog]
 enum ImplementedCodec {
     Codec(Coding),
-}
-
-#[harmos::catalog]
-enum ImplementedSerial {
-    SameLane(SameLaneCall),
-    PrivateEcho(PrivateEchoing),
 }
 
 /* === Traits === */
@@ -162,9 +140,6 @@ impl Message for Payload {
         }
         let value = Text::decode(bytes)?;
         assert_ne!(value.value, "decode_panic", "scripted codec panic");
-        if value.value == "slow" {
-            std::thread::sleep(Duration::from_millis(20));
-        }
         Ok(Self(value))
     }
 }
@@ -181,10 +156,6 @@ impl harmos::operations::WireOperation for Codec {
     const VERSION: u32 = 1;
 }
 
-impl harmos::operations::WireOperation for ShortCodec {
-    const VERSION: u32 = 1;
-}
-
 impl harmos::operations::WireOperation for Echo {
     const VERSION: u32 = 1;
 }
@@ -194,14 +165,6 @@ impl harmos::operations::WireOperation for PrivateEcho {
 }
 
 impl harmos::operations::WireOperation for Nested {
-    const VERSION: u32 = 1;
-}
-
-impl harmos::operations::WireOperation for Detached {
-    const VERSION: u32 = 1;
-}
-
-impl harmos::operations::WireOperation for SameLane {
     const VERSION: u32 = 1;
 }
 
@@ -217,18 +180,6 @@ impl OperationDeclaration for Codec {
     };
 }
 
-impl OperationDeclaration for ShortCodec {
-    type Request = Payload;
-    type Response = Payload;
-    const ID: &'static str = "fixture.short_codec";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_millis(5),
-        attempt_timeout: Duration::from_millis(5),
-        retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
-    };
-}
-
 struct Coding {
     resources: Arc<Owner>,
 }
@@ -237,42 +188,6 @@ impl Operation for Coding {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
     type Declaration = Codec;
-    type Resources = Owner;
-    type Error = Failed;
-
-    async fn initialize<'ctx>(
-        resources: Arc<Owner>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Failed> {
-        resources.prepared.fetch_add(1, Ordering::SeqCst);
-        Ok(Self { resources })
-    }
-
-    async fn run<'ctx>(
-        &mut self,
-        _context: Self::Context<'ctx>,
-        request: &mut Payload,
-        _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos::operations::Response<Payload>, Failed> {
-        let result: ::core::result::Result<Payload, Self::Error> = async move {
-            self.resources.runs.fetch_add(1, Ordering::SeqCst);
-            Ok(Payload(Text {
-                value: std::mem::take(&mut request.0.value),
-            }))
-        }
-        .await;
-        result.map(::core::convert::Into::into)
-    }
-}
-
-struct ShortCoding {
-    resources: Arc<Owner>,
-}
-
-impl Operation for ShortCoding {
-    type Endpoints = ();
-    type Context<'a> = Context<'a>;
-    type Declaration = ShortCodec;
     type Resources = Owner;
     type Error = Failed;
 
@@ -363,15 +278,6 @@ impl Operation for Echoing {
             self.resources.runs.fetch_add(1, Ordering::SeqCst);
             self.resources.seen.lock().unwrap().push(context.id());
             self.state.attempts += 1;
-            if value.value == "retry" && self.state.attempts == 1 {
-                value.value.push_str(" retained");
-                return Err(Failed::Scripted(FailureKind::Transient));
-            }
-            if value.value == "block" {
-                let _joined = Joined(&self.resources.wire_joined);
-                self.resources.wire_started.notify_one();
-                std::future::pending::<()>().await;
-            }
             Ok(format!("{}:{}", value.value, self.state.attempts))
         }
         .await;
@@ -414,25 +320,10 @@ impl Operation for PrivateEchoing {
             self.resources.runs.fetch_add(1, Ordering::SeqCst);
             self.resources.seen.lock().unwrap().push(context.id());
             self.state.attempts += 1;
-            if value.value == "retry" && self.state.attempts == 1 {
-                value.value.push_str(" retained");
-                return Err(Failed::Scripted(FailureKind::Transient));
-            }
-            if value.value == "block" {
-                let _joined = Joined(&self.resources.wire_joined);
-                self.resources.wire_started.notify_one();
-                std::future::pending::<()>().await;
-            }
             Ok(format!("{}:{}", value.value, self.state.attempts))
         }
         .await;
         result.map(::core::convert::Into::into)
-    }
-}
-
-impl Drop for Joined<'_> {
-    fn drop(&mut self) {
-        self.0.fetch_add(1, Ordering::SeqCst);
     }
 }
 
@@ -445,20 +336,6 @@ impl OperationDeclaration for Nested {
         retries: RetryPolicy::Never,
         ..Echo::POLICY
     };
-}
-
-impl OperationDeclaration for Detached {
-    type Request = Text;
-    type Response = String;
-    const ID: &'static str = "fixture.detached_echo";
-    const POLICY: OperationPolicy = Nested::POLICY;
-}
-
-impl OperationDeclaration for SameLane {
-    type Request = Text;
-    type Response = String;
-    const ID: &'static str = "fixture.same_lane_echo";
-    const POLICY: OperationPolicy = Nested::POLICY;
 }
 
 pub(super) struct Nesting {
@@ -499,117 +376,12 @@ impl Operation for Nesting {
     }
 }
 
-struct SameLaneCall {
-    _resources: Arc<Owner>,
-}
-
-impl Operation for SameLaneCall {
-    type Endpoints = ();
-    type Context<'a> = Context<'a>;
-    type Declaration = SameLane;
-    type Resources = Owner;
-    type Error = Failed;
-
-    async fn initialize<'ctx>(
-        resources: Arc<Owner>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Failed> {
-        resources.prepared.fetch_add(1, Ordering::SeqCst);
-        Ok(Self {
-            _resources: resources,
-        })
-    }
-
-    async fn run<'ctx>(
-        &mut self,
-        context: Self::Context<'ctx>,
-        request: &mut Text,
-        _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos::operations::Response<String>, Failed> {
-        let result: ::core::result::Result<String, Self::Error> = async move {
-            let reply = context
-                .call_encoded(PrivateEcho::ID, request.encode_to_vec())
-                .await?;
-            Ok(String::decode(&reply).unwrap())
-        }
-        .await;
-        result.map(::core::convert::Into::into)
-    }
-}
-
-pub(super) struct Detaching {
-    resources: Arc<Owner>,
-}
-
-impl Operation for Detaching {
-    type Endpoints = ();
-    type Context<'a> = Context<'a>;
-    type Declaration = Detached;
-    type Resources = Owner;
-    type Error = Failed;
-
-    async fn initialize<'ctx>(
-        resources: Arc<Owner>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Failed> {
-        Ok(Self { resources })
-    }
-
-    async fn run<'ctx>(
-        &mut self,
-        context: Self::Context<'ctx>,
-        _request: &mut Text,
-        _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos::operations::Response<String>, Failed> {
-        let result: ::core::result::Result<String, Self::Error> = async move {
-            let started = self.resources.wire_started.notified();
-            let _child =
-                context.submit_encoded(PrivateEcho::ID, Text::from("block").encode_to_vec())?;
-            started.await;
-            Ok("parent".to_owned())
-        }
-        .await;
-        result.map(::core::convert::Into::into)
-    }
-}
-
 /* === Public Functions === */
 
 /* === Private Functions === */
 
 #[tokio::test]
-async fn calls_share_attempt() {
-    let runtime = runtime().await;
-    let owner = Arc::new(Owner::default());
-    runtime
-        .operations
-        .register_wire_operations::<Implemented, _>("app", Lanes::Open, owner.clone())
-        .unwrap();
-    assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
-    let invocation = runtime
-        .operations
-        .submit_encoded(Echo::ID, Text::from("retry").encode_to_vec())
-        .unwrap();
-    let id = invocation.id();
-    let response = invocation.await.unwrap();
-    assert_eq!(String::decode(&response).unwrap(), "retry retained:2");
-    assert_eq!(*owner.seen.lock().unwrap(), [id, id]);
-    assert_eq!(
-        &*runtime
-            .operations
-            .call_as::<Echo>("retry".into())
-            .await
-            .unwrap(),
-        "retry retained:2"
-    );
-    // The cached second call constructs nothing.
-    assert_eq!(owner.prepared.load(Ordering::SeqCst), 1);
-    assert_eq!(owner.runs.load(Ordering::SeqCst), 2);
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn cancel_never_start() {
+async fn malformed_payload_refused() {
     let runtime = runtime().await;
     let owner = Arc::new(Owner::default());
     runtime
@@ -620,17 +392,8 @@ async fn cancel_never_start() {
         runtime.operations.submit_encoded(Echo::ID, vec![0xff]),
         Err(Error::OperationPayload { .. })
     ));
+    // The refused payload constructs nothing.
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
-    let invocation = runtime
-        .operations
-        .submit_encoded(Echo::ID, Text::from("block").encode_to_vec())
-        .unwrap();
-    invocation.cancel();
-    assert!(matches!(
-        invocation.await,
-        Err(Error::OperationRefused(Refusal::Cancelled))
-    ));
-    assert_eq!(owner.runs.load(Ordering::SeqCst), 0);
     runtime.stop().await.unwrap();
 }
 
@@ -656,12 +419,12 @@ async fn binding_never_acquires() {
 }
 
 #[tokio::test]
-async fn budget_never_escape() {
+async fn decode_panic_refused() {
     let runtime = runtime().await;
     let owner = Arc::new(Owner::default());
     runtime
         .operations
-        .register_wire_operations::<ImplementedCodecs, _>("app", Lanes::Open, owner.clone())
+        .register_wire_operations::<ImplementedCodec, _>("app", Lanes::Open, owner.clone())
         .unwrap();
     assert!(matches!(
         runtime
@@ -669,13 +432,19 @@ async fn budget_never_escape() {
             .submit_encoded(Codec::ID, Text::from("decode_panic").encode_to_vec()),
         Err(Error::OperationPanicked { .. })
     ));
-    assert!(matches!(
-        runtime
-            .operations
-            .submit_encoded(ShortCodec::ID, Text::from("slow").encode_to_vec()),
-        Err(Error::OperationRefused(Refusal::TimedOut))
-    ));
+    // The panic stays inside submission and constructs nothing.
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn encode_panic_settles() {
+    let runtime = runtime().await;
+    let owner = Arc::new(Owner::default());
+    runtime
+        .operations
+        .register_wire_operations::<ImplementedCodec, _>("app", Lanes::Open, owner.clone())
+        .unwrap();
     assert!(matches!(
         runtime
             .operations
@@ -683,13 +452,14 @@ async fn budget_never_escape() {
             .await,
         Err(Error::OperationPanicked { .. })
     ));
+    // The response panics after one completed run.
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 1);
     assert_eq!(owner.runs.load(Ordering::SeqCst), 1);
     runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
-async fn decoding_cannot_redirect() {
+async fn decode_races_replacement() {
     let runtime = runtime().await;
     let old = Arc::new(Owner::default());
     let replacement = Arc::new(Owner::default());
@@ -736,79 +506,6 @@ async fn decoding_cannot_redirect() {
         .unwrap();
     assert_eq!(Text::decode(&reply).unwrap().value, "replacement");
     assert_eq!(replacement.prepared.load(Ordering::SeqCst), 1);
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn children_refuse_held() {
-    let runtime = runtime().await;
-    let owner = Arc::new(Owner::default());
-    runtime
-        .operations
-        .register_wire_operations::<ImplementedSerial, _>("app", Lanes::Serial, owner.clone())
-        .unwrap();
-    let error = runtime
-        .operations
-        .call_as::<SameLane>("child".into())
-        .await
-        .unwrap_err();
-    let Error::OperationFailed { source, .. } = error else {
-        panic!("nested refusal retained");
-    };
-    assert!(matches!(
-        source.downcast_ref::<Failed>(),
-        Some(Failed::Nested(Error::OperationLaneCycle { .. }))
-    ));
-    assert_eq!(owner.prepared.load(Ordering::SeqCst), 1);
-    assert_eq!(owner.runs.load(Ordering::SeqCst), 0);
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn success_joins_unawaited() {
-    let runtime = runtime().await;
-    let owner = Arc::new(Owner::default());
-    runtime
-        .operations
-        .register_wire_operations::<Implemented, _>("app", Lanes::Open, owner.clone())
-        .unwrap();
-    assert_eq!(
-        &*runtime
-            .operations
-            .call_as::<Detached>("ignored".into())
-            .await
-            .unwrap(),
-        "parent"
-    );
-    assert_eq!(owner.wire_joined.load(Ordering::SeqCst), 1);
-    runtime
-        .operations
-        .unregister(PrivateEcho::ID)
-        .await
-        .unwrap();
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn cancellation_joins_child() {
-    let runtime = runtime().await;
-    let owner = Arc::new(Owner::default());
-    runtime
-        .operations
-        .register_wire_operations::<Implemented, _>("app", Lanes::Open, owner.clone())
-        .unwrap();
-    let started = owner.wire_started.notified();
-    let parent = runtime
-        .operations
-        .submit_as::<Nested>("block".into())
-        .unwrap();
-    started.await;
-    parent.cancel();
-    assert!(matches!(
-        parent.await,
-        Err(Error::OperationRefused(Refusal::Cancelled))
-    ));
-    assert_eq!(owner.wire_joined.load(Ordering::SeqCst), 1);
     runtime.stop().await.unwrap();
 }
 

@@ -61,7 +61,7 @@ rustfft = { workspace = true, default-features = true, optional = true }
 # === Test Targets ===
 
 [[test]]
-name = "census"
+name = "waveform"
 path = "tests/waveform/main.rs"
 
 # === Bench Targets ===

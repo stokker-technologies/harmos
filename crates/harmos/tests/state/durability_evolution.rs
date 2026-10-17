@@ -82,7 +82,7 @@ impl JournalConsumer<Bank> for Kept {
 /* === Private Functions === */
 
 #[tokio::test]
-async fn change_applies_own() {
+async fn replay_applies_version() {
     let copy = Store::default();
 
     // What this build writes: a bonus of 10 credits 10.
@@ -132,7 +132,7 @@ async fn change_applies_own() {
 }
 
 #[tokio::test]
-async fn stored_fact_comes() {
+async fn stored_fact_upgrades() {
     let copy = Store::default();
 
     let live = booted(Ledger::default(), |builder| {

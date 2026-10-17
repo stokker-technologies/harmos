@@ -12,11 +12,15 @@
 #[cfg(feature = "plugin-sidecar")]
 mod execution;
 #[cfg(feature = "plugin-sidecar")]
+mod host_accessor;
+#[cfg(feature = "plugin-sidecar")]
 mod lifecycle;
 #[cfg(feature = "plugin-sidecar")]
 mod native;
 mod registration;
 
+#[path = "../support/pending.rs"]
+mod pending;
 #[path = "../support/mod.rs"]
 mod support;
 
@@ -259,9 +263,9 @@ impl Observing {
     }
 
     async fn ready(&mut self) {
-        tokio::time::timeout(Duration::from_secs(3), self.ready.wait_for(|ready| *ready))
+        self.ready
+            .wait_for(|ready| *ready)
             .await
-            .expect("observer becomes ready")
             .expect("observer reports readiness");
     }
 
@@ -314,26 +318,19 @@ async fn runtime() -> Runtime<Bank> {
 }
 
 async fn reached(signal: &Semaphore) {
-    tokio::time::timeout(Duration::from_secs(2), signal.acquire())
-        .await
-        .unwrap()
-        .unwrap()
-        .forget();
+    signal.acquire().await.unwrap().forget();
 }
 
 async fn phase(manager: &OperationManager, key: &Key, phases: &[OperationPhase]) {
     let mut states = manager.watch_residents();
-    tokio::time::timeout(
-        Duration::from_secs(2),
-        states.wait_for(|states| {
+    states
+        .wait_for(|states| {
             states
                 .get(key)
                 .is_some_and(|state| phases.contains(&state.lifecycle.phase()))
-        }),
-    )
-    .await
-    .unwrap()
-    .unwrap();
+        })
+        .await
+        .unwrap();
 }
 
 fn key(manager: &OperationManager, lease: &Lease) -> Key {
@@ -428,11 +425,7 @@ async fn clones_share_activation() {
     assert!(resources.stops.try_acquire().is_err());
     drop(second);
     reached(&resources.stops).await;
-    assert!(
-        tokio::time::timeout(Duration::from_millis(10), manager.stop_observers())
-            .await
-            .is_err()
-    );
+    pending::parked(std::pin::pin!(manager.stop_observers())).await;
     resources.finish.add_permits(1);
     runtime.stop().await.unwrap();
     assert_eq!(resources.completed.load(Ordering::SeqCst), 1);
@@ -458,20 +451,9 @@ async fn activation_waits_cancelled() {
     let key = key(manager, &first);
     let generation = first.id();
     phase(manager, &key, RUNNING).await;
-    assert!(
-        tokio::time::timeout(Duration::from_millis(10), first.release())
-            .await
-            .is_err()
-    );
+    pending::parked(std::pin::pin!(first.release())).await;
     reached(&resources.stops).await;
-    assert!(
-        tokio::time::timeout(
-            Duration::from_millis(10),
-            manager.submit_with_resources_at("watch", resources.clone())
-        )
-        .await
-        .is_err()
-    );
+    pending::parked(std::pin::pin!(manager.submit_with_resources_at("watch", resources.clone()))).await;
     resources.initialize.add_permits(1);
     resources.finish.add_permits(1);
     let next = manager
@@ -592,11 +574,7 @@ async fn scope_stop_revokes() {
     let (a_key, b_key) = (key(manager, &a), key(manager, &b));
     phase(manager, &a_key, RUNNING).await;
     phase(manager, &b_key, RUNNING).await;
-    assert!(
-        tokio::time::timeout(Duration::from_millis(10), manager.retire_resources(&first))
-            .await
-            .is_err()
-    );
+    pending::parked(std::pin::pin!(manager.retire_resources(&first))).await;
     assert!(matches!(
         manager
             .submit_with_resources_at("watch", first.clone())
@@ -624,14 +602,7 @@ async fn unregister_reserves_name() {
         .await
         .unwrap();
     phase(manager, &key(manager, &old), RUNNING).await;
-    assert!(
-        tokio::time::timeout(
-            Duration::from_millis(10),
-            manager.unregister_resident("watch")
-        )
-        .await
-        .is_err()
-    );
+    pending::parked(std::pin::pin!(manager.unregister_resident("watch"))).await;
     assert!(manager.resident_definition("watch").is_some());
     assert!(matches!(
         manager
@@ -922,16 +893,8 @@ async fn closing_preserves_failure() {
             .await
             .map(|lease| lease.id())
     });
-    assert!(
-        tokio::time::timeout(Duration::from_millis(10), &mut activating)
-            .await
-            .is_err()
-    );
-    assert!(
-        tokio::time::timeout(Duration::from_millis(10), runtime.stop())
-            .await
-            .is_err()
-    );
+    pending::parked(std::pin::Pin::new(&mut activating)).await;
+    pending::parked(std::pin::pin!(runtime.stop())).await;
     resources.finish.add_permits(1);
     assert!(matches!(
         activating.await.unwrap(),

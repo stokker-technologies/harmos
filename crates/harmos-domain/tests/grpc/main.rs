@@ -8,10 +8,6 @@
  */
 
 /* === Modules === */
-#[cfg(feature = "bindings-python")]
-mod python;
-#[path = "../support/scenarios.rs"]
-mod scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -138,11 +134,7 @@ fn annotated() -> Annotated {
 }
 
 #[test]
-fn contract_scenario() {
-    #[cfg(feature = "bindings-python")]
-    python::check();
-    {
-        scenario_runtime::check("portable_messages_cross", || {
+fn portable_messages_cross() {
             use harmos_domain::{Message, Protobuf};
             let value = annotated();
             let postcard = Message::encode_to_vec(&value);
@@ -170,10 +162,10 @@ fn contract_scenario() {
                 "{}",
                 String::from_utf8_lossy(&output.stderr)
             );
-        });
-    }
-    {
-        scenario_runtime::check("boxed_messages_cross", || {
+        }
+
+#[test]
+fn boxed_messages_cross() {
             use harmos_domain::{Message, Protobuf};
             let request = Envelope {
                 inner: Box::new(annotated()),
@@ -228,10 +220,10 @@ fn contract_scenario() {
                 prost::Message::encode_to_vec(&decoded),
                 Protobuf::encode_to_vec(&request)
             );
-        });
-    }
-    {
-        scenario_runtime::check("export_removes_retired", || {
+        }
+
+#[test]
+fn export_removes_retired() {
             let target = tempfile::tempdir().unwrap();
             let contracts = Contracts::of::<Routes>().unwrap();
             let artifacts = Artifacts::new(&contracts).unwrap();
@@ -260,10 +252,10 @@ fn contract_scenario() {
                 .is_none()
             );
             assert!(artifacts.export(target.path(), "../escape").is_err());
-        });
-    }
-    {
-        scenario_runtime::check("independent_schema_catalogs", || {
+        }
+
+#[test]
+fn independent_schema_catalogs() {
             let target = tempfile::tempdir().unwrap();
             let first = target.path().join("producer-a");
             let second = target.path().join("producer-b");
@@ -320,10 +312,10 @@ fn contract_scenario() {
                     .keys()
                     .all(|name| manifest.lines().any(|line| line == name))
             );
-        });
-    }
-    {
-        scenario_runtime::check("exported_sources_compile", || {
+        }
+
+#[test]
+fn exported_sources_compile() {
             let target = tempfile::tempdir().unwrap();
             let contracts = Contracts::of::<Routes>().unwrap();
             let artifacts = Artifacts::new(&contracts).unwrap();
@@ -370,9 +362,8 @@ fn contract_scenario() {
                 }
                 assert_eq!(actual, expected, "{}", file.name());
             }
-        });
-    }
-}
+        }
+
 
 fn normalize(message: &mut prost_reflect::prost_types::DescriptorProto) {
     // protoc Materializes JSON Names Which Are Implicit In Authored Descriptors.

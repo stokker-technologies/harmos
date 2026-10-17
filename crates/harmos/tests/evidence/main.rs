@@ -19,11 +19,10 @@ mod vault;
 /* === Imports === */
 // Standard Library Imports
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 // Third Party Imports
 use serde::{Deserialize, Serialize};
+use tokio::sync::watch;
 // Local Imports
 use harmos::{
     Builder, DefinitionId, Identified, Runtime, evidence::EvidenceError, evidence::EvidenceKind,
@@ -59,7 +58,7 @@ struct Interrupted {
 
 struct Counted {
     inner: Directory,
-    looks: Arc<AtomicUsize>,
+    looks: watch::Sender<usize>,
 }
 
 #[derive(Clone)]
@@ -185,12 +184,12 @@ impl Counted {
     fn new(inner: Directory) -> Self {
         Self {
             inner: inner.watching(Duration::from_millis(5)),
-            looks: Arc::new(AtomicUsize::new(0)),
+            looks: watch::Sender::new(0),
         }
     }
 
-    fn looks(&self) -> Arc<AtomicUsize> {
-        Arc::clone(&self.looks)
+    fn looks(&self) -> watch::Receiver<usize> {
+        self.looks.subscribe()
     }
 }
 
@@ -216,7 +215,7 @@ impl Vault for Counted {
     }
 
     async fn length(&self, name: &str) -> Result<u64, EvidenceError> {
-        self.looks.fetch_add(1, Ordering::AcqRel);
+        self.looks.send_modify(|looks| *looks += 1);
         self.inner.length(name).await
     }
 
@@ -337,7 +336,7 @@ async fn written_evidence_verified() {
 }
 
 #[tokio::test]
-async fn declares_survives_fact() {
+async fn details_survive_reboot() {
     let directory = scratch("described");
     let history = Stored::default();
     {
@@ -396,7 +395,7 @@ async fn declares_survives_fact() {
 }
 
 #[tokio::test]
-async fn names_never_visible() {
+async fn unnamed_bytes_invisible() {
     let directory = scratch("crashed");
     let history = Stored::default();
     {
@@ -451,7 +450,7 @@ async fn names_never_visible() {
 }
 
 #[tokio::test]
-async fn fact_recorded_claim() {
+async fn interrupted_claim_heals() {
     let directory = scratch("healed");
     let history = Stored::default();
     let vault = Interrupted::new(Directory::at(&directory), Interruption::Claim);
@@ -547,7 +546,7 @@ async fn bounded_read_clamps() {
 }
 
 #[tokio::test]
-async fn scope_finalize_visible() {
+async fn scope_finalizes_all() {
     let runtime = kept(Directory::at(scratch("scoped"))).await;
     let evidence = &runtime.evidence;
 
@@ -628,10 +627,12 @@ async fn watch_coalesces_final() {
     );
 }
 
-#[tokio::test]
-async fn draft_never_looked() {
+// The vault's looking cadence is a Tokio timer and the directory vault does
+// synchronous file I/O, so the paused clock steps the cadence exactly.
+#[tokio::test(start_paused = true)]
+async fn watch_drives_looking() {
     let counted = Counted::new(Directory::at(scratch("unwatched")));
-    let looks = counted.looks();
+    let mut looks = counted.looks();
     let runtime = kept(counted).await;
     let evidence = &runtime.evidence;
 
@@ -639,33 +640,30 @@ async fn draft_never_looked() {
         .external::<Recording>("run-5", "quiet.log", upload())
         .await
         .expect("a filesystem vault hands out a path");
-    tokio::time::sleep(Duration::from_millis(60)).await;
+    tokio::time::advance(Duration::from_millis(60)).await;
 
-    assert_eq!(
-        looks.load(Ordering::Acquire),
-        0,
-        "nobody is watching, so nothing polls"
-    );
+    assert_eq!(*looks.borrow(), 0, "nobody is watching, so nothing polls");
 
     let watching = evidence.watch(&draft).expect("a live draft is watchable");
-    tokio::time::sleep(Duration::from_millis(60)).await;
-    let observed = looks.load(Ordering::Acquire);
-    assert!(observed > 0, "a watcher is what starts the looking");
+    looks
+        .wait_for(|looks| *looks > 0)
+        .await
+        .expect("a watcher is what starts the looking");
 
     drop(watching);
-    tokio::time::sleep(Duration::from_millis(60)).await;
-    let settled = looks.load(Ordering::Acquire);
-    tokio::time::sleep(Duration::from_millis(60)).await;
+    tokio::time::advance(Duration::from_millis(60)).await;
+    let settled = *looks.borrow();
+    tokio::time::advance(Duration::from_millis(60)).await;
 
     assert_eq!(
-        looks.load(Ordering::Acquire),
+        *looks.borrow(),
         settled,
         "the last watcher leaving is what stops it again"
     );
 }
 
 #[tokio::test]
-async fn nothing_verified_means() {
+async fn unverified_draft_survives() {
     let directory = scratch("unverified");
     let runtime = kept(Interrupted::new(
         Directory::at(&directory),
@@ -698,7 +696,7 @@ async fn nothing_verified_means() {
 }
 
 #[tokio::test]
-async fn abandoned_draft_nothing() {
+async fn abandoned_draft_quarantined() {
     let directory = scratch("abandoned");
     let runtime = kept(Directory::at(&directory)).await;
     let evidence = &runtime.evidence;
@@ -767,7 +765,7 @@ async fn key_claimed_once() {
 }
 
 #[tokio::test]
-async fn build_lacks_path() {
+async fn undeclared_vault_unserved() {
     let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
         .register(catalog())
         .runtime()
@@ -786,7 +784,7 @@ async fn build_lacks_path() {
 }
 
 #[tokio::test]
-async fn source_not_service() {
+async fn artifact_service_refused() {
     let refused = refusal(
         Runtime::<Bank>::builder(Ledger::default(), ())
             .register(catalog())
@@ -802,7 +800,7 @@ async fn source_not_service() {
 }
 
 #[tokio::test]
-async fn twice_never_stands() {
+async fn duplicate_kind_refused() {
     let refused = refusal(
         Runtime::<Bank>::builder(Ledger::default(), ())
             .register(catalog())

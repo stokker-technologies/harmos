@@ -11,33 +11,30 @@
 mod arrow;
 #[path = "../support/storage.rs"]
 mod backend;
+mod batching;
 mod cancellation;
+mod coordinator;
+mod cursors;
 mod exhaustion;
+mod files;
 #[path = "../support/storage_fixture.rs"]
 mod fixture;
 mod mapping;
 mod nominal;
+mod objects;
+mod operations;
 mod policy;
 mod query_pressure;
 mod retention;
-mod state_admission;
+mod runtime;
+mod staging;
+mod state;
 #[path = "../support/mod.rs"]
 mod support;
 mod typed_reads;
 #[path = "../support/storage/waveforms.rs"]
 mod waveforms;
 use fixture::*;
-#[path = "../storage/batching.rs"]
-mod batching;
-#[path = "../storage/coordinator.rs"]
-mod coordinator;
-#[path = "../storage/cursors.rs"]
-mod cursors;
-#[allow(dead_code, unused_imports)]
-#[path = "../support/storage_operations.rs"]
-mod operations;
-#[path = "../storage/runtime.rs"]
-mod runtime;
 
 /* === Re-Exports === */
 

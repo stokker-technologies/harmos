@@ -206,7 +206,7 @@ async fn unregister_retains_cleanup() {
 }
 
 #[tokio::test]
-async fn shutdown_retains_resident() {
+async fn stop_joins_cleanup() {
     for tenant in [false, true] {
         let entered = Arc::new(Notify::new());
         let release = Arc::new(Notify::new());
@@ -258,14 +258,9 @@ async fn shutdown_retains_resident() {
                 _ = entered.notified() => {}
             }
         }
-        assert!(runtime.operations.submit_resident("late").await.is_err());
         let stop = runtime.stop();
         tokio::pin!(stop);
-        assert!(
-            tokio::time::timeout(Duration::from_millis(10), &mut stop)
-                .await
-                .is_err()
-        );
+        assert!(futures_util::poll!(&mut stop).is_pending());
         assert!(!cleaned.load(Ordering::SeqCst));
         release.notify_one();
         stop.await.unwrap();
@@ -275,7 +270,7 @@ async fn shutdown_retains_resident() {
 }
 
 #[tokio::test]
-async fn resident_retains_cleanup() {
+async fn timeout_retains_cleanup() {
     for (panic_first, request) in [false, true].into_iter().flat_map(|panic_first| {
         [
             CleanupRequest::Instance,
@@ -402,7 +397,7 @@ async fn resident_retains_cleanup() {
 }
 
 #[tokio::test]
-async fn exit_survives_physical() {
+async fn exit_cause_preserved() {
     let runtime = Runtime::<App>::builder((), ()).runtime().await.unwrap();
     let (release, gate) = tokio::sync::oneshot::channel();
     let gate = Arc::new(Mutex::new(Some(gate)));

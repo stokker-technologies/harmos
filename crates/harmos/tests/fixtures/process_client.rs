@@ -14,12 +14,12 @@
 /* === Imports === */
 // Standard Library Imports
 use std::sync::Arc;
-use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
 use super::contract;
-use contract::{Marks, POLICY, Probe, Queries, Read, Readings, Step};
+use crate::witness::Witness;
+use contract::{POLICY, Probe, Queries, Read, Readings, Step};
 use harmos::operations::Host as _;
 use harmos::operations::{Operation, OperationPolicy, WireTable};
 use harmos::sidecar::{Refusal, Supervisor};
@@ -32,11 +32,11 @@ use harmos::sidecar::{Refusal, Supervisor};
 
 /* === Structs === */
 pub(crate) struct Client {
-    resources: Arc<Marks>,
+    resources: Arc<Witness>,
 }
 
 struct Probing {
-    resources: Arc<Marks>,
+    resources: Arc<Witness>,
 }
 
 /* === Enums === */
@@ -54,17 +54,16 @@ impl harmos::Plugin for Client {
     type Context = Supervisor;
     type Config = String;
     type Error = Refusal;
-    type Resources = Marks;
+    type Resources = Witness;
 
-    fn prepare(root: String) -> Result<Self, Refusal> {
+    fn prepare(key: String) -> Result<Self, Refusal> {
         Ok(Self {
-            resources: Arc::new(Marks { root: root.into() }),
+            resources: Witness::find(&key).ok_or_else(|| Refusal::of("the story witness is gone"))?,
         })
     }
 
     async fn initialize(&mut self, context: &Supervisor) -> Result<(), Refusal> {
-        std::fs::create_dir_all(&self.resources.root).map_err(Refusal::of)?;
-        self.resources.mark("initializing")?;
+        self.resources.mark("initializing");
         let response = context
             .call_as::<Read>(Step { phase: 1 })
             .await
@@ -72,16 +71,15 @@ impl harmos::Plugin for Client {
         if response.phase != 1 {
             return Err(Refusal::of("initialization used another provider response"));
         }
-        self.resources.mark("dependency-initialized")?;
-        if self.resources.root.join("hold-initialization").exists() {
-            while !self.resources.root.join("release-initialization").exists() {
-                tokio::time::sleep(Duration::from_millis(5)).await;
-            }
+        self.resources.mark("dependency-initialized");
+        if self.resources.seen("hold-initialization") {
+            self.resources.marked("release-initialization").await;
         }
-        self.resources.mark("initialized")
+        self.resources.mark("initialized");
+        Ok(())
     }
 
-    fn resources(&self) -> Arc<Marks> {
+    fn resources(&self) -> Arc<Witness> {
         Arc::clone(&self.resources)
     }
 
@@ -100,31 +98,34 @@ impl harmos::Plugin for Client {
         if response.phase != 2 {
             return Err(Refusal::of("shutdown used another provider response"));
         }
-        self.resources.mark("dependency-shutdown")?;
-        self.resources.mark("shutdown")
+        self.resources.mark("dependency-shutdown");
+        self.resources.mark("shutdown");
+        Ok(())
     }
 
     async fn cleanup(&mut self) -> Result<(), Refusal> {
-        self.resources.mark("cleaned")
+        self.resources.mark("cleaned");
+        Ok(())
     }
 }
 
 impl Operation for Probing {
     type Declaration = Probe;
-    type Resources = Marks;
+    type Resources = Witness;
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
 
     async fn initialize<'ctx>(
-        resources: Arc<Marks>,
+        resources: Arc<Witness>,
         _context: Self::Context<'ctx>,
     ) -> Result<Self, Refusal> {
         let constructed: Result<Self, Refusal> = async move { Ok(Self { resources }) }.await;
         let mut operation = constructed?;
         let started: Result<(), Refusal> = async {
             let operation = &mut operation;
-            operation.resources.mark("probe-initialized")
+            operation.resources.mark("probe-initialized");
+            Ok(())
         }
         .await;
         started?;
@@ -138,7 +139,7 @@ impl Operation for Probing {
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Step>, Refusal> {
         let result: ::core::result::Result<Step, Self::Error> = async move {
-            self.resources.mark("probe-started")?;
+            self.resources.mark("probe-started");
             Ok(request.clone())
         }
         .await;
@@ -146,7 +147,8 @@ impl Operation for Probing {
     }
 
     async fn cleanup(&mut self) -> Result<(), Refusal> {
-        self.resources.mark("probe-finalized")
+        self.resources.mark("probe-finalized");
+        Ok(())
     }
 }
 

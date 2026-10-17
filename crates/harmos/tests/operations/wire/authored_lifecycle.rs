@@ -147,8 +147,8 @@ impl Operation for Read {
     }
 }
 
-#[tokio::test]
-async fn owned_request_lifecycle() {
+#[tokio::test(start_paused = true)]
+async fn request_outlives_cleanup() {
     let runtime =
         harmos::Runtime::<crate::probe::Editor>::builder(crate::probe::Sheet::default(), ())
             .register(LifecycleLanes::catalog())
@@ -185,7 +185,7 @@ async fn owned_request_lifecycle() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn transfer_fences_retries() {
+async fn transfer_blocks_retry() {
     use std::{
         num::NonZeroUsize,
         sync::atomic::{AtomicUsize, Ordering},
@@ -214,15 +214,15 @@ async fn transfer_fences_retries() {
             .submit_endpoints::<StreamingDeclaration, _>(mode, (input, output))
             .unwrap();
         if mode == 2 {
-            for _ in 0..1000 {
-                if instance.status().phase() == harmos::operations::OperationPhase::RetryWaiting {
-                    break;
-                }
-                tokio::task::yield_now().await;
-            }
-            assert_eq!(
-                instance.status().phase(),
-                harmos::operations::OperationPhase::RetryWaiting
+            // The input item arrives while the failed attempt waits to retry.
+            drop(
+                instance
+                    .subscribe()
+                    .wait_for(|status| {
+                        status.phase() == harmos::operations::OperationPhase::RetryWaiting
+                    })
+                    .await
+                    .unwrap(),
             );
             send.send_with(4, || Ok(9)).await.unwrap();
         }

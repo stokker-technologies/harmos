@@ -64,15 +64,15 @@ syn = { workspace = true, default-features = true }
 # === Test Targets ===
 
 [[test]]
-name = "facade"
+name = "path"
 path = "tests/path/main.rs"
 
 [[test]]
-name = "metadata"
+name = "artifact"
 path = "tests/artifact/main.rs"
 
 [[test]]
-name = "ui"
+name = "catalog"
 path = "tests/catalog/main.rs"
 
 # === Bench Targets ===

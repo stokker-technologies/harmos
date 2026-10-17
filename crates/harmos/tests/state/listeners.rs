@@ -14,7 +14,6 @@
 /* === Imports === */
 // Standard Library Imports
 use std::num::NonZeroUsize;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 // Third Party Imports
@@ -49,8 +48,6 @@ type Seen = Vec<(bool, u32, Position)>;
 #[derive(Serialize, Deserialize)]
 struct Fact {
     value: u32,
-    #[serde(skip)]
-    dropped: Arc<AtomicUsize>,
 }
 
 #[harmos::message]
@@ -68,18 +65,12 @@ struct Owner {
     observed: Notify,
     started: Notify,
     resume: Notify,
-    finalizing: Notify,
-    release: Notify,
-    finalizations: AtomicUsize,
-    fail_cleanup: AtomicBool,
-    fail_attempt: AtomicBool,
     block: bool,
     reenter: bool,
 }
 
 #[derive(Default)]
 struct Resources {
-    owner: Option<Arc<Owner>>,
     endpoint: Option<PluginEndpoint>,
     operations: Option<PluginRegistration>,
     listeners: Option<Arc<tokio::sync::Mutex<PluginListenerRegistration>>>,
@@ -89,10 +80,6 @@ struct Host {
     operations: harmos::operations::OperationManager,
     owner: Arc<Owner>,
     scope: Option<PluginScope>,
-    fail_start: bool,
-    skip_sources: bool,
-    drop_before_commit: bool,
-    original_drop: Arc<AtomicUsize>,
     view: Option<Arc<tokio::sync::Mutex<PluginListenerRegistration>>>,
 }
 
@@ -116,8 +103,6 @@ enum Lanes {
 
 #[derive(Debug, thiserror::Error)]
 enum Failed {
-    #[error("scripted original callback failure")]
-    Scripted,
     #[error(transparent)]
     Runtime(#[from] Error),
 }
@@ -125,12 +110,6 @@ enum Failed {
 /* === Traits === */
 
 /* === Implementations === */
-impl Drop for Fact {
-    fn drop(&mut self) {
-        self.dropped.fetch_add(1, Ordering::SeqCst);
-    }
-}
-
 impl Described for Fact {
     const NAME: &'static str = concat!(module_path!(), "::", stringify!(Fact));
     const FIELDS: &'static [Field] = WireFact::FIELDS;
@@ -150,7 +129,6 @@ impl Message for Fact {
     fn decode(bytes: &[u8]) -> std::result::Result<Self, MessageError> {
         Ok(Self {
             value: WireFact::decode(bytes)?.value,
-            dropped: Arc::new(AtomicUsize::new(0)),
         })
     }
 }
@@ -192,7 +170,6 @@ enum ImplementedCallbacks {
 
 struct Hearing<const FIRST: bool> {
     resources: Arc<Owner>,
-    wait_cleanup: bool,
 }
 
 impl<const FIRST: bool> Operation for Hearing<FIRST> {
@@ -205,10 +182,7 @@ impl<const FIRST: bool> Operation for Hearing<FIRST> {
         resources: Arc<Owner>,
         _: Self::Context<'ctx>,
     ) -> std::result::Result<Self, Failed> {
-        Ok(Self {
-            resources,
-            wait_cleanup: false,
-        })
+        Ok(Self { resources })
     }
     async fn run<'a>(
         &mut self,
@@ -217,7 +191,6 @@ impl<const FIRST: bool> Operation for Hearing<FIRST> {
         _endpoints: &mut Self::Endpoints,
     ) -> std::result::Result<harmos::operations::Response<()>, Failed> {
         let result: ::core::result::Result<(), Self::Error> = async move {
-            self.wait_cleanup = FIRST && request.row().value == 0 && self.resources.block;
             let DeliveryContext::Record { position } = request.context() else {
                 panic!("original record coordinate")
             };
@@ -235,25 +208,11 @@ impl<const FIRST: bool> Operation for Hearing<FIRST> {
                     self.resources.started.notify_one();
                     self.resources.resume.notified().await;
                 }
-                if self.resources.fail_attempt.load(Ordering::SeqCst) {
-                    return Err(Failed::Scripted);
-                }
             }
             Ok(())
         }
         .await;
         result.map(::core::convert::Into::into)
-    }
-    async fn cleanup(&mut self) -> std::result::Result<(), Failed> {
-        self.resources.finalizations.fetch_add(1, Ordering::SeqCst);
-        if self.wait_cleanup {
-            self.resources.finalizing.notify_one();
-            if self.resources.fail_cleanup.load(Ordering::SeqCst) {
-                return Err(Failed::Scripted);
-            }
-            self.resources.release.notified().await;
-        }
-        Ok(())
     }
 }
 
@@ -262,10 +221,7 @@ impl PluginLifecycle for Host {
     type Sidecar = Resources;
     type Embedded = Resources;
     fn prepare(&mut self, _: &PluginDefinition) -> Result<Backends> {
-        Ok(PluginBackend::Embedded(Resources {
-            owner: Some(self.owner.clone()),
-            ..Resources::default()
-        }))
+        Ok(PluginBackend::Embedded(Resources::default()))
     }
     async fn fence(&mut self, _: PluginTransition, _: &[PluginDefinition]) -> Result<()> {
         Ok(())
@@ -289,38 +245,21 @@ impl PluginLifecycle for Host {
                 self.owner.clone(),
             )
         })?);
-        if !self.skip_sources {
-            let original = Arc::new(tokio::sync::Mutex::new(
-                self.owner.records.stage_listeners(
-                    scope,
-                    &self.operations,
-                    Position::ORIGIN,
-                    |bindings| bindings.record::<Fact>(),
-                )?,
-            ));
-            self.view = Some(original.clone());
-            resources.listeners = Some(original);
-        }
+        let original = Arc::new(tokio::sync::Mutex::new(
+            self.owner.records.stage_listeners(
+                scope,
+                &self.operations,
+                Position::ORIGIN,
+                |bindings| bindings.record::<Fact>(),
+            )?,
+        ));
+        self.view = Some(original.clone());
+        resources.listeners = Some(original);
+
         // The Same Scope Still Blocks Delivery Until PluginManager Commits.
-        self.owner
-            .records
-            .publish(Fact {
-                value: 0,
-                dropped: self.original_drop.clone(),
-            })
-            .await?;
+        self.owner.records.publish(fact(0)).await?;
         tokio::task::yield_now().await;
         assert!(self.owner.seen.lock().unwrap().is_empty());
-        if self.drop_before_commit {
-            resources.listeners.take();
-            self.view.take();
-        }
-        if self.fail_start {
-            return Err(Error::InvalidInput {
-                field: "listener fixture",
-                reason: "failed original setup",
-            });
-        }
         Ok(())
     }
     async fn stop(
@@ -333,18 +272,6 @@ impl PluginLifecycle for Host {
         };
         if let Some(registration) = &mut resources.listeners {
             registration.lock().await.shutdown().await?;
-        } else if let Some(scope) = resources
-            .endpoint
-            .as_ref()
-            .and_then(|endpoint| endpoint.scope())
-        {
-            resources
-                .owner
-                .as_ref()
-                .unwrap()
-                .records
-                .shutdown_listeners_for(scope)
-                .await?;
         }
         if let Some(registration) = &mut resources.operations {
             registration.shutdown().await?;
@@ -358,10 +285,7 @@ impl PluginLifecycle for Host {
 
 /* === Private Functions === */
 fn fact(value: u32) -> Fact {
-    Fact {
-        value,
-        dropped: Arc::new(AtomicUsize::new(0)),
-    }
+    Fact { value }
 }
 
 fn candidate() -> PluginDefinitions {
@@ -439,11 +363,6 @@ async fn setup(
         observed: Notify::new(),
         started: Notify::new(),
         resume: Notify::new(),
-        finalizing: Notify::new(),
-        release: Notify::new(),
-        finalizations: AtomicUsize::new(0),
-        fail_cleanup: AtomicBool::new(false),
-        fail_attempt: AtomicBool::new(false),
         block,
         reenter,
     });
@@ -451,27 +370,29 @@ async fn setup(
         operations: runtime.operations.clone(),
         owner,
         scope: None,
-        fail_start: false,
-        skip_sources: false,
-        drop_before_commit: false,
-        original_drop: Arc::new(AtomicUsize::new(0)),
         view: None,
     };
     (runtime, PluginManager::new(candidate()).unwrap(), host)
 }
 
 async fn observed(owner: &Owner, count: usize) {
-    tokio::time::timeout(Duration::from_secs(3), async {
-        loop {
-            let changed = owner.observed.notified();
-            if owner.seen.lock().unwrap().len() >= count {
-                return;
-            }
-            changed.await;
+    loop {
+        let changed = owner.observed.notified();
+        if owner.seen.lock().unwrap().len() >= count {
+            return;
         }
-    })
-    .await
-    .unwrap();
+        changed.await;
+    }
+}
+
+// Listener failure records its error, then closes the plugin scope. Only the
+// crate-private `PluginScope::closed` awaits that close; until it is public
+// this yields to the delivery task, and becomes `scope.closed().await` then.
+async fn fenced(host: &Host) {
+    let scope = host.scope.as_ref().unwrap();
+    while scope.is_ready() {
+        tokio::task::yield_now().await;
+    }
 }
 
 #[tokio::test]
@@ -493,200 +414,22 @@ async fn reentrancy_preserve_positions() {
 }
 
 #[tokio::test]
-async fn sources_never_commit() {
-    for mode in 0..3 {
-        let (runtime, mut manager, mut host) = setup(false, false, 8).await;
-        host.skip_sources = mode == 0;
-        host.drop_before_commit = mode == 1;
-        host.fail_start = mode == 2;
-        assert!(manager.initialize(&mut host).await.is_err());
-        assert!(!host.scope.as_ref().unwrap().is_ready());
-        assert!(host.owner.seen.lock().unwrap().is_empty());
-        manager.shutdown(&mut host).await.unwrap();
-        runtime.stop().await.unwrap();
-    }
-}
-
-#[tokio::test]
-async fn failure_fences_side() {
-    let (runtime, mut manager, mut host) = setup(false, false, 8).await;
-    host.owner.fail_attempt.store(true, Ordering::SeqCst);
-    manager.initialize(&mut host).await.unwrap();
-    observed(&host.owner, 1).await;
-    tokio::time::timeout(Duration::from_secs(3), async {
-        while host.scope.as_ref().unwrap().is_ready() {
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .unwrap();
-    assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
-    assert_eq!(
-        manager.status("listener").unwrap().state,
-        harmos::plugin::PluginState::Failed
-    );
-    assert!(matches!(
-        host.view
-            .as_ref()
-            .unwrap()
-            .lock()
-            .await
-            .failure()
-            .as_deref(),
-        Some(Error::OperationFailed { .. })
-    ));
-    assert!(matches!(
-        runtime.operations.definition(Heard::<false>::ID),
-        Err(Error::Closing { .. })
-    ));
-    manager.shutdown(&mut host).await.unwrap();
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn runtime_signals_listener() {
-    struct BlockedObserver;
-    struct Gates {
-        running: Notify,
-        stopping: Notify,
-        release: Notify,
-    }
-    impl harmos::observers::ObserverBackend for BlockedObserver {
-        type Resources = Gates;
-        fn definition(&self) -> harmos::Result<harmos::observers::ObserverDefinition> {
-            Ok(harmos::observers::ObserverDefinition {
-                id: "blocked-cleanup".into(),
-                interval: Duration::from_secs(10),
-                streams: vec![],
-                demand_keys: vec![],
-            })
-        }
-        async fn run(
-            &self,
-            gates: Arc<Gates>,
-            mut activation: harmos::observers::ObserverActivation,
-        ) -> Result<()> {
-            activation.ready();
-            gates.running.notify_one();
-            activation.stopping().await;
-            gates.stopping.notify_one();
-            gates.release.notified().await;
-            Ok(())
-        }
-    }
-    let (runtime, mut manager, mut host) = setup(true, false, 1).await;
-    manager.initialize(&mut host).await.unwrap();
-    tokio::time::timeout(Duration::from_secs(3), host.owner.started.notified())
-        .await
-        .unwrap();
-    let gates = Arc::new(Gates {
-        running: Notify::new(),
-        stopping: Notify::new(),
-        release: Notify::new(),
-    });
-    runtime
-        .operations
-        .register_observer(BlockedObserver)
-        .unwrap();
-    let lease = runtime
-        .operations
-        .submit_with_resources_at("blocked-cleanup", gates.clone())
-        .await
-        .unwrap();
-    tokio::time::timeout(Duration::from_secs(2), gates.running.notified())
-        .await
-        .expect("the observer starts before testing blocked cleanup");
-    let mut stopping = Box::pin(runtime.stop());
-    tokio::time::timeout(Duration::from_secs(2), async {
-        tokio::select! {
-            _ = async {
-                gates.stopping.notified().await;
-                host.owner.finalizing.notified().await;
-            } => {},
-            result = &mut stopping => panic!("runtime settled before blocked cleanup: {result:?}"),
-        }
-    })
-    .await
-    .unwrap();
-    assert_eq!(host.owner.finalizations.load(Ordering::SeqCst), 1);
-    drop(stopping);
-    host.owner.release.notify_one();
-    gates.release.notify_one();
-    runtime.stop().await.unwrap();
-    drop(lease);
-}
-
-#[tokio::test]
-async fn shutdown_retains_callback() {
-    let (runtime, mut manager, mut host) = setup(true, false, 1).await;
-    manager.initialize(&mut host).await.unwrap();
-    tokio::time::timeout(Duration::from_secs(3), host.owner.started.notified())
-        .await
-        .unwrap();
-    runtime.records.publish(fact(1)).await.unwrap();
-    let owner = host.owner.clone();
-    let mut closing = Box::pin(manager.shutdown(&mut host));
-    tokio::select! { biased; _ = owner.finalizing.notified() => {}, result = &mut closing => panic!("cleanup returned before original finalizer: {result:?}") }
-    assert!(
-        tokio::time::timeout(Duration::from_millis(20), &mut closing)
-            .await
-            .is_err()
-    );
-    drop(closing);
-    assert_eq!(host.original_drop.load(Ordering::SeqCst), 0);
-    assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
-    host.owner.release.notify_one();
-    manager.shutdown(&mut host).await.unwrap();
-    assert_eq!(host.owner.finalizations.load(Ordering::SeqCst), 1);
-    assert_eq!(host.original_drop.load(Ordering::SeqCst), 1);
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn cleanup_retries_finalizer() {
-    let (runtime, mut manager, mut host) = setup(true, false, 1).await;
-    manager.initialize(&mut host).await.unwrap();
-    tokio::time::timeout(Duration::from_secs(3), host.owner.started.notified())
-        .await
-        .unwrap();
-    runtime.records.publish(fact(1)).await.unwrap();
-    host.owner.fail_cleanup.store(true, Ordering::SeqCst);
-    assert!(manager.shutdown(&mut host).await.is_err());
-    assert_eq!(host.original_drop.load(Ordering::SeqCst), 0);
-    let before = host.owner.finalizations.load(Ordering::SeqCst);
-    assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
-    host.owner.fail_cleanup.store(false, Ordering::SeqCst);
-    host.owner.release.notify_one();
-    manager.shutdown(&mut host).await.unwrap();
-    assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
-    assert_eq!(host.owner.finalizations.load(Ordering::SeqCst), before + 1);
-    assert_eq!(host.original_drop.load(Ordering::SeqCst), 1);
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
 async fn pages_deliver_native() {
     let (runtime, mut manager, mut host) = setup(true, false, 512).await;
     manager.initialize(&mut host).await.unwrap();
-    tokio::time::timeout(Duration::from_secs(3), host.owner.started.notified())
-        .await
-        .unwrap();
+    host.owner.started.notified().await;
     for value in 1..=260 {
         runtime.records.publish(fact(value)).await.unwrap();
     }
     host.owner.resume.notify_one();
-    host.owner.release.notify_one();
     observed(&host.owner, 522).await;
-    tokio::time::timeout(Duration::from_secs(3), async {
-        loop {
-            if host.view.as_ref().unwrap().lock().await.frontier() == Some(Position(261)) {
-                break;
-            }
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .unwrap();
+
+    // The frontier advances only after a record's last callback settles, so
+    // one more record's first callback proves every earlier page settled.
+    runtime.records.publish(fact(261)).await.unwrap();
+    observed(&host.owner, 523).await;
+    let frontier = host.view.as_ref().unwrap().lock().await.frontier();
+    assert!(matches!(frontier, Some(Position(261 | 262))));
     {
         let seen = host.owner.seen.lock().unwrap();
         for (value, pair) in seen.as_chunks::<2>().0.iter().enumerate() {
@@ -707,23 +450,11 @@ async fn pages_deliver_native() {
 async fn gap_fences_generation() {
     let (runtime, mut manager, mut host) = setup(true, false, 1).await;
     manager.initialize(&mut host).await.unwrap();
-    tokio::time::timeout(Duration::from_secs(3), host.owner.started.notified())
-        .await
-        .unwrap();
+    host.owner.started.notified().await;
     runtime.records.publish(fact(1)).await.unwrap();
     runtime.records.publish(fact(2)).await.unwrap();
     host.owner.resume.notify_one();
-    host.owner.release.notify_one();
-    tokio::time::timeout(Duration::from_secs(3), async {
-        loop {
-            if host.view.as_ref().unwrap().lock().await.failure().is_some() {
-                break;
-            }
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .unwrap();
+    fenced(&host).await;
     assert!(matches!(
         host.view
             .as_ref()
@@ -742,60 +473,6 @@ async fn gap_fences_generation() {
         *host.owner.seen.lock().unwrap(),
         [(true, 0, Position(1)), (false, 0, Position(1))]
     );
-    manager.shutdown(&mut host).await.unwrap();
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn receipt_cleans_replacement() {
-    let (runtime, mut manager, mut host) = setup(false, false, 8).await;
-    host.drop_before_commit = true;
-    assert!(manager.initialize(&mut host).await.is_err());
-    let old = host.scope.as_ref().unwrap().clone();
-    assert!(!old.is_ready());
-    assert!(host.owner.seen.lock().unwrap().is_empty());
-    host.drop_before_commit = false;
-    manager.initialize(&mut host).await.unwrap();
-    observed(&host.owner, 4).await;
-    let current = host.scope.as_ref().unwrap();
-    assert!(current.is_ready());
-    assert!(runtime.records.shutdown_listeners_for(&old).await.is_err());
-    assert!(current.is_ready());
-    manager.shutdown(&mut host).await.unwrap();
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn codec_panic_fences() {
-    let (runtime, mut manager, mut host) = setup(false, false, 8).await;
-    manager.initialize(&mut host).await.unwrap();
-    observed(&host.owner, 2).await;
-    runtime.records.publish(fact(u32::MAX)).await.unwrap();
-    tokio::time::timeout(Duration::from_secs(3), async {
-        loop {
-            if host.view.as_ref().unwrap().lock().await.failure().is_some() {
-                break;
-            }
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .unwrap();
-    assert!(matches!(
-        host.view
-            .as_ref()
-            .unwrap()
-            .lock()
-            .await
-            .failure()
-            .as_deref(),
-        Some(Error::OperationPanicked { .. })
-    ));
-    assert_eq!(
-        manager.status("listener").unwrap().state,
-        harmos::plugin::PluginState::Failed
-    );
-    assert_eq!(host.owner.seen.lock().unwrap().len(), 2);
     manager.shutdown(&mut host).await.unwrap();
     runtime.stop().await.unwrap();
 }

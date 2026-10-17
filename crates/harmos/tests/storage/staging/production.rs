@@ -16,7 +16,6 @@
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::{Arc, atomic::Ordering};
-use std::time::Duration;
 
 // Third Party Imports
 
@@ -24,8 +23,8 @@ use std::time::Duration;
 use super::{Fixture, config, metadata};
 use harmos::Identifier;
 use harmos::storage::operations::{
-    AbandonFile, AppendFile, AppendFileRequest, CreateFile, CreateFileRequest, FileMutation,
-    FinishFile,
+    AbandonFile, AppendFile, AppendFileRequest, CreateFile, CreateFileRequest, DeleteFile,
+    DeleteFileRequest, FileMutation, FinishFile,
 };
 use harmos::storage::{FilePhase, MutationId, StagedFile};
 
@@ -67,7 +66,7 @@ fn key(f: &Fixture, key: &str) -> MutationId {
 /* === Tests === */
 
 #[tokio::test]
-async fn file_preserve_receipts() {
+async fn file_receipts_replay() {
     let f = fixture().await;
     let create = CreateFileRequest {
         mutation: key(&f, "create"),
@@ -172,21 +171,11 @@ async fn file_preserve_receipts() {
             .unwrap(),
         *producer
     );
-    f.storage.flush().await.unwrap();
-    let restored = super::recovery::restart(&f).await;
-    assert_eq!(
-        restored
-            .storage
-            .finish_file_once(&finish.mutation, &finish.session)
-            .await
-            .unwrap(),
-        *reference
-    );
     let identity = StagedFile {
         history: producer.session.history.clone(),
         id: producer.session.id.clone(),
     };
-    let mut reader = restored.storage.follow_file(&identity, 0).await.unwrap();
+    let mut reader = f.storage.follow_file(&identity, 0).await.unwrap();
     assert_eq!(
         reader
             .next_batch(NonZeroUsize::new(16).unwrap())
@@ -204,12 +193,11 @@ async fn file_preserve_receipts() {
             .is_none()
     );
     drop(reader);
-    restored.finish().await;
     f.finish().await;
 }
 
 #[tokio::test(start_paused = true)]
-async fn creation_append_abandon() {
+async fn lost_responses_retry() {
     let f = fixture().await;
     f.data.control.create_failures.store(3, Ordering::SeqCst);
     let producer = f
@@ -274,32 +262,56 @@ async fn creation_append_abandon() {
         7
     );
     assert_eq!(f.data.staged.lock().unwrap()["lost"].1, b"partial");
+    f.data.control.delete_failures.store(3, Ordering::SeqCst);
+    let delete = DeleteFileRequest {
+        mutation: key(&f, "delete"),
+        file: StagedFile {
+            history: producer.session.history.clone(),
+            id: producer.session.id.clone(),
+        },
+    };
+    let deleted = f
+        .runtime
+        .operations
+        .call_as::<DeleteFile>(delete.clone())
+        .await
+        .unwrap();
+    assert_eq!(*deleted, delete.file);
+    assert_eq!(f.data.control.delete_failures.load(Ordering::SeqCst), 0);
     f.finish().await;
 }
 
 #[tokio::test]
-async fn append_replays_chunk() {
-    tokio::time::timeout(Duration::from_secs(5), async {
-        let f = fixture().await;
-        let producer = f.storage.create_file_once(&key(&f, "create"), &metadata("cancelled")).await.unwrap();
-        let id = key(&f, "append");
-        f.data.control.block_chunk.store(true, Ordering::SeqCst);
-        {
-            let append = f.storage.append_file_once(&id, &producer.session, 0, b"bytes");
-            tokio::pin!(append);
-            tokio::select! { biased; _ = &mut append => panic!("chunk must block"), _ = f.data.control.chunk_entered.notified() => {} }
-        }
-        f.data.control.block_chunk.store(false, Ordering::SeqCst);
-        f.data.control.chunk_release.notify_one();
-        let appended = f.storage.append_file_once(&id, &producer.session, 0, b"bytes").await.unwrap();
-        assert_eq!(appended.length, 5);
-        assert_eq!(*f.data.control.chunk_offsets.lock().unwrap(), vec![0]);
-        f.finish().await;
-    }).await.unwrap();
+async fn cancelled_append_replays() {
+    let f = fixture().await;
+    let producer = f
+        .storage
+        .create_file_once(&key(&f, "create"), &metadata("cancelled"))
+        .await
+        .unwrap();
+    let id = key(&f, "append");
+    f.data.control.block_chunk.store(true, Ordering::SeqCst);
+    {
+        let append = f
+            .storage
+            .append_file_once(&id, &producer.session, 0, b"bytes");
+        tokio::pin!(append);
+        tokio::select! { biased; _ = &mut append => panic!("chunk must block"), _ = f.data.control.chunk_entered.notified() => {} }
+    }
+    f.data.control.block_chunk.store(false, Ordering::SeqCst);
+    f.data.control.chunk_release.notify_one();
+    let appended = f
+        .storage
+        .append_file_once(&id, &producer.session, 0, b"bytes")
+        .await
+        .unwrap();
+    assert_eq!(appended.length, 5);
+    assert_eq!(*f.data.control.chunk_offsets.lock().unwrap(), vec![0]);
+    f.finish().await;
 }
 
 #[tokio::test]
-async fn appends_claim_exclusively() {
+async fn concurrent_appends_exclusive() {
     let f = fixture().await;
     let producer = f
         .storage
@@ -321,7 +333,7 @@ async fn appends_claim_exclusively() {
 }
 
 #[tokio::test]
-async fn integrity_retains_bytes() {
+async fn integrity_failure_abandons() {
     let f = fixture().await;
     let mut metadata = metadata("integrity");
     metadata.expected_length = Some(6);
@@ -360,7 +372,7 @@ async fn integrity_retains_bytes() {
 }
 
 #[tokio::test]
-async fn save_never_persist() {
+async fn receipt_awaits_flush() {
     let f = fixture().await;
     let through = f.storage.cursor_accepted();
     let producer = f
@@ -383,7 +395,7 @@ async fn save_never_persist() {
 }
 
 #[tokio::test]
-async fn bytes_survive_restart() {
+async fn unsaved_file_survives() {
     let f = fixture().await;
     let first = f
         .storage
@@ -419,79 +431,5 @@ async fn bytes_survive_restart() {
         );
     }
     recovered.finish().await;
-    f.finish().await;
-}
-
-#[tokio::test]
-async fn finish_reconciles_lost() {
-    let f = fixture().await;
-    let producer = f
-        .storage
-        .create_file_once(&key(&f, "create"), &metadata("lost-finish"))
-        .await
-        .unwrap();
-    f.storage
-        .append_file_once(&key(&f, "append"), &producer.session, 0, b"finished")
-        .await
-        .unwrap();
-    f.data.control.finish_failures.store(1, Ordering::SeqCst);
-    let request = FileMutation {
-        mutation: key(&f, "finish"),
-        session: producer.session,
-    };
-    let result = f
-        .runtime
-        .operations
-        .call_as::<FinishFile>(request.clone())
-        .await
-        .unwrap();
-    let replay = f
-        .runtime
-        .operations
-        .call_as::<FinishFile>(request)
-        .await
-        .unwrap();
-    assert_eq!(result, replay);
-    assert_eq!(
-        f.data.control.finish_positions.lock().unwrap().as_slice(),
-        &[result.position.sequence, result.position.sequence]
-    );
-    f.finish().await;
-}
-
-#[tokio::test]
-async fn retries_never_multiply() {
-    let f = Fixture::new(config()).await;
-    harmos::storage::operations::register(
-        &f.runtime.operations,
-        "storage",
-        crate::operations::Lanes::Open,
-        Arc::new(f.storage.clone()),
-    )
-    .unwrap();
-    let request = CreateFileRequest {
-        mutation: key(&f, "create"),
-        metadata: metadata("retry-budget"),
-    };
-    f.data.control.create_failures.store(5, Ordering::SeqCst);
-    assert!(
-        f.runtime
-            .operations
-            .call_as::<CreateFile>(request.clone())
-            .await
-            .is_err()
-    );
-    assert_eq!(f.data.control.create_failures.load(Ordering::SeqCst), 1);
-    f.data.control.create_failures.store(0, Ordering::SeqCst);
-    let producer = f
-        .runtime
-        .operations
-        .call_as::<CreateFile>(request)
-        .await
-        .unwrap();
-    f.storage
-        .abandon_file_once(&key(&f, "abandon"), &producer.session)
-        .await
-        .unwrap();
     f.finish().await;
 }

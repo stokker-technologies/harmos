@@ -279,8 +279,7 @@ impl Fixture {
             .await
             .unwrap();
         let mut statuses = runtime.operations.watch_residents();
-        tokio::time::timeout(Duration::from_secs(5), async {
-            loop {
+        loop {
                 let status = statuses
                     .borrow_and_update()
                     .get(&harmos::operations::resident::Key::root("producer"))
@@ -292,11 +291,8 @@ impl Fixture {
                     }
                     _ => {}
                 }
-                statuses.changed().await.unwrap();
-            }
-        })
-        .await
-        .expect("native producer becomes ready");
+            statuses.changed().await.unwrap();
+        }
         Self {
             runtime,
             _lease: lease,
@@ -305,15 +301,12 @@ impl Fixture {
 
     // Publish `rows` rows in calls of `batch` rows; answers each call's latency.
     pub async fn publish(&self, rows: u32, batch: u32) -> Vec<Duration> {
-        let bytes = tokio::time::timeout(
-            Duration::from_secs(60),
-            self.runtime
-                .operations
-                .call_encoded(Publish::ID, Burst { rows, batch }.encode_to_vec()),
-        )
-        .await
-        .expect("producer publishes within the bench deadline")
-        .unwrap();
+        let bytes = self
+            .runtime
+            .operations
+            .call_encoded(Publish::ID, Burst { rows, batch }.encode_to_vec())
+            .await
+            .unwrap();
         Timings::decode(&bytes).unwrap().durations()
     }
 }

@@ -40,27 +40,7 @@ use harmos::{Error, Identifier};
 /* === Private Functions === */
 
 #[tokio::test]
-async fn progress_survives_queue() {
-    let f = Fixture::new(config()).await;
-    assert_eq!(f.storage.cursor_accepted().sequence, 0);
-    assert_eq!(f.storage.cursor_saved().sequence, 0);
-    let first = write(&f.storage, "first").await;
-    assert_eq!(f.storage.cursor_accepted(), first);
-    assert_eq!(f.storage.cursor_saved().sequence, 0);
-    assert_eq!(f.storage.flush_until(&first).await.unwrap(), first);
-    assert_eq!(f.storage.status().pending_batches, 0);
-    assert_eq!(f.storage.cursor_accepted(), first);
-    assert_eq!(f.storage.cursor_saved(), first);
-
-    let second = write(&f.storage, "second").await;
-    assert_eq!(second.sequence, first.sequence + 1);
-    assert_eq!(f.storage.cursor_accepted(), second);
-    assert_eq!(f.storage.cursor_saved(), first);
-    f.finish().await;
-}
-
-#[tokio::test]
-async fn cursors_never_schedule() {
+async fn foreign_cursor_refused() {
     let f = Fixture::new(config()).await;
     let first = write(&f.storage, "first").await;
     let mut foreign = first.clone();
@@ -108,7 +88,7 @@ async fn earlier_cursor_excludes() {
 }
 
 #[tokio::test]
-async fn admitted_group_preserves() {
+async fn group_flushes_whole() {
     let f = Fixture::new(config()).await;
     let key = schema();
     let item = Identifier::new("item").unwrap();
@@ -172,11 +152,10 @@ async fn receipt_releases_covered() {
     {
         let earlier = f.storage.flush_until(&first);
         tokio::pin!(earlier);
-        tokio::select! {
-            biased;
-            _ = &mut earlier => panic!("backend write is still blocked"),
-            _ = tokio::task::yield_now() => {}
-        }
+        assert!(
+            crate::pending(earlier.as_mut()).await,
+            "backend write is still blocked"
+        );
         f.data.control.block_write.store(false, Ordering::SeqCst);
         f.data.control.write_release.notify_one();
         assert_eq!(earlier.await.unwrap(), second);

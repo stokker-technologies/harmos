@@ -14,7 +14,6 @@
 /* === Imports === */
 // Standard Library Imports
 use std::task::Poll;
-use std::time::Duration;
 // Third Party Imports
 use futures_core::Stream;
 use support::{Change, Deposit, deposit, runtime};
@@ -41,7 +40,7 @@ use harmos::{state::Entry, state::Position};
 /* === Private Functions === */
 
 #[tokio::test]
-async fn ac003_publish_precedes() {
+async fn publish_precedes_receipt() {
     let runtime = runtime().await;
     let mut feed = Box::pin(runtime.state.watch::<Change>(Position::ORIGIN));
 
@@ -68,7 +67,7 @@ async fn ac003_publish_precedes() {
 }
 
 #[tokio::test]
-async fn journal_ac003_positions() {
+async fn positions_follow_arrival() {
     let runtime = runtime().await;
     let journal = &runtime.state;
 
@@ -90,7 +89,7 @@ async fn journal_ac003_positions() {
 }
 
 #[tokio::test]
-async fn consumes_lacks_position() {
+async fn refusal_skips_position() {
     let runtime = runtime().await;
 
     runtime.state.commit(deposit(5)).await.expect("accepted");
@@ -109,7 +108,7 @@ async fn consumes_lacks_position() {
 }
 
 #[tokio::test]
-async fn memory_durability_past() {
+async fn memory_never_parks() {
     let runtime = runtime().await;
     let receipt = runtime.state.commit(deposit(10)).await.expect("accepted");
 
@@ -119,16 +118,12 @@ async fn memory_durability_past() {
         "with nothing attached, stored tracks applied"
     );
 
-    // A zero-length timeout polls the inner future once before its deadline
-    // fires, so completing under it means the gate resolved on the first poll —
-    // the same gate, and the same code path, a persisted runtime parks on.
-    let gated = tokio::time::timeout(
-        Duration::ZERO,
-        runtime.state.wait_until_stored(receipt.position),
-    )
-    .await;
+    // One poll resolving means the gate opened at once: the same gate, and
+    // the same code path, a persisted runtime parks on.
+    let mut waiting = Box::pin(runtime.state.wait_until_stored(receipt.position));
+    let gated = std::future::poll_fn(|context| Poll::Ready(waiting.as_mut().poll(context))).await;
 
-    assert!(gated.is_ok(), "memory-only durability never parks");
+    assert!(gated.is_ready(), "memory-only durability never parks");
 }
 
 async fn amounts(runtime: &harmos::Runtime<support::Bank>) -> Vec<(Position, i64)> {

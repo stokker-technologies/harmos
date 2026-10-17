@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -216,9 +215,7 @@ fn selection() -> Selection {
 /* === Tests === */
 
 #[test]
-fn contract_scenario() {
-    {
-        scenario_runtime::check("rows_allocate_final", || {
+fn rows_allocate_final() {
             let row = selection();
             let (encoded, measured) = measure(|| row.encode_to_vec());
             assert_eq!(measured.allocations, 1, "{measured:?}");
@@ -238,10 +235,10 @@ fn contract_scenario() {
             assert!(measured.allocations > 0);
             assert_eq!(growing[0], 42);
             assert_eq!(&growing[1..], encoded);
-        });
-    }
-    {
-        scenario_runtime::check("peak_fits_preflight", || {
+        }
+
+#[test]
+fn peak_fits_preflight() {
             let row = selection();
             let context = Context::Record {
                 position: Position(7),
@@ -259,10 +256,10 @@ fn contract_scenario() {
                 encoded,
                 harmos_domain::Message::encode_to_vec(&Delivery::new(context, row).unwrap())
             );
-        });
-    }
-    {
-        scenario_runtime::check("native_decode_peak", || {
+        }
+
+#[test]
+fn native_decode_peak() {
             let row = selection();
             let encoded = row.encode_to_vec();
             let (budget, inspected) = measure(|| Selection::decoding_memory(&encoded).unwrap());
@@ -275,10 +272,10 @@ fn contract_scenario() {
                 decoded.rows[0].row.row.row.row.row.payload.capacity(),
                 32_768
             );
-        });
-    }
-    {
-        scenario_runtime::check("boxed_decode_peak", || {
+        }
+
+#[test]
+fn boxed_decode_peak() {
             for choice in [
                 BoxedChoice::Selected(Box::new(nested())),
                 BoxedChoice::Named {
@@ -300,10 +297,10 @@ fn contract_scenario() {
                 assert!(measured.peak <= budget, "{measured:?}, budget {budget}");
                 assert_eq!(decoded.row.row.row.row.row.row.payload.capacity(), 32_768);
             }
-        });
-    }
-    {
-        scenario_runtime::check("boxed_allocates_after", || {
+        }
+
+#[test]
+fn boxed_allocates_after() {
             use harmos_domain::schema::Described;
             let tag = |fields: &[harmos_domain::schema::graph::Field<_>], name: &str| {
                 fields.iter().find(|field| field.name == name).unwrap().tag
@@ -320,19 +317,19 @@ fn contract_scenario() {
             let (refused, decoded) = measure(|| BoxedLeaf::decode(&bytes));
             assert!(refused.is_err());
             assert_eq!(decoded.allocations, 0, "{decoded:?}");
-        });
-    }
-    {
-        scenario_runtime::check("preflight_never_allocate", || {
+        }
+
+#[test]
+fn preflight_never_allocate() {
             for bytes in [&[0xff][..], &[0][..], &[10, 255][..]] {
                 let (refused, measured) = measure(|| Selection::decoding_memory(bytes));
                 assert!(refused.is_err());
                 assert_eq!(measured.allocations, 0, "{measured:?}");
             }
-        });
-    }
-    {
-        scenario_runtime::check("strings_fit_bound", || {
+        }
+
+#[test]
+fn strings_fit_bound() {
             let before = Strings {
                 label: "a".repeat(513),
                 optional: Some("b".repeat(257)),
@@ -357,10 +354,10 @@ fn contract_scenario() {
             assert_eq!(decoded.counts, [1, 128, u32::MAX]);
             assert_eq!(decoded.labels.capacity(), 3);
             assert_eq!(decoded.counts.capacity(), 3);
-        });
-    }
-    {
-        scenario_runtime::check("listener_decode_borrows", || {
+        }
+
+#[test]
+fn listener_decode_borrows() {
             let row = Leaf {
                 payload: vec![9; 32768],
             };
@@ -378,10 +375,10 @@ fn contract_scenario() {
             assert_eq!(decoded.row(), &row);
             assert_eq!(allocated.allocations, 1, "{allocated:?}");
             assert!(allocated.peak <= bound, "{allocated:?}, bound {bound}");
-        });
-    }
-    {
-        scenario_runtime::check("context_refuses_allocations", || {
+        }
+
+#[test]
+fn context_refuses_allocations() {
             // Record Context With An Invalid Zero Journal Position
             let bytes = [0, 0, 0];
             let (refused, inspected) =
@@ -392,6 +389,5 @@ fn contract_scenario() {
                 measure(|| <Delivery<Leaf> as harmos_domain::Message>::decode(&bytes));
             assert!(refused.is_err());
             assert_eq!(decoded.allocations, 0, "{decoded:?}");
-        });
-    }
-}
+        }
+

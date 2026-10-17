@@ -24,13 +24,6 @@ required-features = ["kit"]
 test = false
 bench = false
 
-[[bin]]
-name = "harmos-sidecar-attach-fixture"
-path = "tests/fixtures/attach_sidecar.rs"
-required-features = ["transport"]
-test = false
-bench = false
-
 # === Features ===
 
 [features]

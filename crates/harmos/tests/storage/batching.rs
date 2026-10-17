@@ -102,7 +102,7 @@ async fn append_kinds_coalesce() {
 }
 
 #[tokio::test]
-async fn batch_stops_existing() {
+async fn batch_excludes_later() {
     let f = Fixture::new(config()).await;
     f.data.control.block_write.store(true, Ordering::SeqCst);
     write(&f.storage, "first").await;
@@ -124,13 +124,13 @@ async fn batch_stops_existing() {
 }
 
 #[tokio::test]
-async fn admission_leaves_pressure() {
+async fn cancelled_admission_unqueued() {
     let mut policy = config();
     policy.request.max_pending_write_batches = NonZeroUsize::new(2).unwrap();
     let f = Fixture::new(policy).await;
     f.data.control.block_flush.store(true, Ordering::SeqCst);
     write(&f.storage, "one").await;
-    write(&f.storage, "two").await;
+    let second = write(&f.storage, "two").await;
     {
         let blocked = write(&f.storage, "cancelled");
         tokio::pin!(blocked);
@@ -144,13 +144,7 @@ async fn admission_leaves_pressure() {
     assert_eq!(f.storage.status().pending_batches, 2);
     f.data.control.block_flush.store(false, Ordering::SeqCst);
     f.data.control.flush_release.notify_one();
-    tokio::time::timeout(Duration::from_secs(5), async {
-        while f.storage.status().saved.sequence != 2 {
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .unwrap();
+    f.storage.await_durable(&second).await.unwrap();
     assert_eq!(write(&f.storage, "later").await.sequence, 3);
     assert_eq!(f.storage.status().saved.sequence, 2);
     assert_eq!(*f.data.control.flushes.lock().unwrap(), [2]);
@@ -171,14 +165,10 @@ async fn pressure_preserves_flush() {
     write(&f.storage, "two").await;
     let blocked = write(&storage, "three");
     tokio::pin!(blocked);
-    tokio::select! { biased; _ = &mut blocked => panic!("queue is full"), _ = tokio::task::yield_now() => {} }
+    assert!(crate::pending(blocked.as_mut()).await, "queue is full");
     f.data.control.block_write.store(false, Ordering::SeqCst);
     f.data.control.write_release.notify_one();
-    let (saved, admitted) = tokio::time::timeout(Duration::from_secs(5), async {
-        tokio::join!(flush, blocked)
-    })
-    .await
-    .unwrap();
+    let (saved, admitted) = tokio::join!(flush, blocked);
     assert_eq!(saved.unwrap().sequence, 1);
     assert_eq!(admitted.sequence, 3);
     assert_eq!(*f.data.control.flushes.lock().unwrap(), [1]);
@@ -195,10 +185,7 @@ async fn failure_retains_work() {
     let key = schema();
     let item = Identifier::new("not-admitted").unwrap();
     let inputs = [record(&key, &item, &[1])];
-    let failure = tokio::time::timeout(Duration::from_secs(5), f.storage.write_records(&inputs))
-        .await
-        .unwrap()
-        .unwrap_err();
+    let failure = f.storage.write_records(&inputs).await.unwrap_err();
     assert!(matches!(failure, harmos::Error::Persistence { .. }));
     assert_eq!(f.storage.status().accepted.sequence, 1);
     assert_eq!(f.storage.status().saved.sequence, 0);
@@ -218,13 +205,11 @@ async fn reservation_never_flush() {
     policy.request.max_pending_write_bytes = NonZeroUsize::new(8192).unwrap();
     let f = Fixture::new(policy).await;
     write(&f.storage, "one").await;
-    let snapshot = tokio::time::timeout(
-        Duration::from_secs(5),
-        f.storage.read_snapshot(NonZeroUsize::new(7000).unwrap()),
-    )
-    .await
-    .unwrap()
-    .unwrap();
+    let snapshot = f
+        .storage
+        .read_snapshot(NonZeroUsize::new(7000).unwrap())
+        .await
+        .unwrap();
     assert!(snapshot.is_none());
     assert_eq!(f.storage.status().saved.sequence, 0);
     f.finish().await;
@@ -403,7 +388,7 @@ async fn whole_batch_retries() {
 }
 
 #[tokio::test]
-async fn admission_keeps_memory() {
+async fn schema_decoding_bounded() {
     let fields: Vec<_> = (1..=64)
         .map(|tag| Field {
             name: Cow::Owned(format!("field-{tag}")),
@@ -453,21 +438,6 @@ async fn admission_keeps_memory() {
         assert!(harmos::storage::StorageSchema::decoding_memory_bytes(usize::MAX).is_none());
         assert!(harmos::storage::StorageSchema::decoding_memory_bytes(usize::MAX / 36).is_none());
     }
-    f.finish().await;
-
-    policy.request.max_pending_write_bytes = NonZeroUsize::new(1024).unwrap();
-    let f = Fixture::new(policy).await;
-    assert!(matches!(
-        f.storage.write_schema(&key, &graph).await,
-        Err(harmos::Error::ResourceExhausted { .. }
-            | harmos::Error::InvalidInput {
-                field: "storage admission",
-                ..
-            })
-    ));
-    assert_eq!(f.storage.cursor_accepted().sequence, 0);
-    assert_eq!(f.storage.status().pending_bytes, 0);
-    assert!(f.data.schemas.lock().unwrap().is_empty());
     f.finish().await;
 }
 

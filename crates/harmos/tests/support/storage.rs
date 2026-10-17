@@ -62,6 +62,7 @@ pub struct Control {
     pub block_fence: AtomicBool,
     pub fence_entered: Notify,
     pub fence_release: Notify,
+    pub fenced: Notify,
     pub block_checkpoint: AtomicBool,
     pub checkpoint_entered: Notify,
     pub checkpoint_release: Notify,
@@ -72,6 +73,7 @@ pub struct Control {
     pub prune_entered: Notify,
     pub prune_release: Notify,
     pub prune_failures: AtomicUsize,
+    pub pruned: Notify,
     pub block_prune_result: AtomicBool,
     pub prune_result_entered: Notify,
     pub prune_result_release: Notify,
@@ -81,6 +83,7 @@ pub struct Control {
     pub fail_create: AtomicBool,
     pub create_failures: AtomicUsize,
     pub abandon_failures: AtomicUsize,
+    pub abandoned: Notify,
     pub block_chunk: AtomicBool,
     pub chunk_entered: Notify,
     pub chunk_release: Notify,
@@ -128,6 +131,7 @@ pub struct Control {
     pub block_open: AtomicBool,
     pub open_entered: Notify,
     pub open_release: Notify,
+    pub snapshot_written: Notify,
     pub wrong_receipt: AtomicBool,
     pub flush_advance: AtomicUsize,
     pub flush_failures: AtomicUsize,
@@ -607,6 +611,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
                 }
                 done
             };
+            self.control.pruned.notify_one();
             if self.control.block_prune_result.load(Ordering::SeqCst) {
                 self.control.prune_result_entered.notify_one();
                 self.control.prune_result_release.notified().await;
@@ -988,6 +993,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
             {
                 return Err(failure(BackendFailure::Transient));
             }
+            self.control.fenced.notify_one();
             Ok(())
         })
     }
@@ -1268,6 +1274,7 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
             {
                 return Err(failure(BackendFailure::Transient));
             }
+            self.control.abandoned.notify_one();
             Ok(())
         })
     }
@@ -1568,6 +1575,7 @@ impl StateBackend for Recovery {
         Box::pin(async move {
             self.control.write([snapshot.through.sequence]).await?;
             *self.pending_snapshot.lock().unwrap() = Some(snapshot.clone());
+            self.control.snapshot_written.notify_one();
             Ok(())
         })
     }

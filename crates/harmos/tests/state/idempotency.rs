@@ -39,7 +39,7 @@ use harmos::{state::Entry, state::Position, state::RequestKey};
 /* === Private Functions === */
 
 #[tokio::test]
-async fn journal_ac006_retried() {
+async fn keyed_retry_dedupes() {
     let runtime = runtime().await;
     let key = RequestKey::new("transfer-9");
 
@@ -72,7 +72,7 @@ async fn journal_ac006_retried() {
 }
 
 #[tokio::test]
-async fn journal_ac006_second() {
+async fn distinct_keys_commit() {
     let runtime = runtime().await;
 
     let first = runtime

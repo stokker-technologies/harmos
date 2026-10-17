@@ -15,13 +15,9 @@
 
 /* === Imports === */
 // Standard Library Imports
-use std::future::{Future, poll_fn};
 use std::num::{NonZeroU128, NonZeroUsize};
-use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
-use std::task::Poll;
-use std::time::Duration;
 
 // Third Party Imports
 
@@ -165,19 +161,8 @@ fn ratio(negative: bool, numerator: u128, denominator: u128) -> ScalarValue {
     ))
 }
 
-async fn assert_pending<F: Future>(mut future: Pin<&mut F>) {
-    poll_fn(|context| {
-        assert!(
-            future.as_mut().poll(context).is_pending(),
-            "gated future completed unexpectedly"
-        );
-        Poll::Ready(())
-    })
-    .await;
-}
-
 #[tokio::test]
-async fn typed_object_pages_versions() {
+async fn typed_objects_page() {
     let (runtime, storage, _) = manager(paged()).await;
     let first = write(&storage, "a", "one").await;
     let second = write(&storage, "a", "two").await;
@@ -260,7 +245,7 @@ async fn typed_object_pages_versions() {
 }
 
 #[tokio::test]
-async fn typed_records_pages() {
+async fn typed_records_page() {
     let (runtime, storage, _) = manager(paged()).await;
     storage
         .write_schema(&waveforms::schema(), &waveforms::definition())
@@ -393,7 +378,7 @@ async fn unwritten_schema_empty() {
 }
 
 #[tokio::test]
-async fn typed_read_budget_refusal() {
+async fn typed_budget_refuses() {
     let mut settings = paged();
     settings.budget.read_memory_bytes = NonZeroUsize::new(128).unwrap();
     settings.response.batch_bytes = settings.budget.read_memory_bytes;
@@ -458,8 +443,8 @@ async fn typed_read_budget_refusal() {
     runtime.stop().await.unwrap();
 }
 
-#[tokio::test]
-async fn public_scalar_fold() {
+#[test]
+fn public_scalar_fold() {
     let unsigned = [1u64, 2, 3, 4].map(ScalarValue::Unsigned);
     assert_eq!(
         fold(Agg::Of(Aggregate::Sum), &unsigned),
@@ -548,20 +533,15 @@ async fn snapshot_reads_concurrent() {
 
     // A Second Read Enters The Backend While The First Is Still Inside.
     let mut second = Box::pin(read());
-    let entered = async {
-        tokio::select! {
-            _ = &mut second => panic!("gated read completed"),
-            _ = data.control.read_entered.notified() => {}
-        }
-    };
-    tokio::time::timeout(Duration::from_secs(60), entered)
-        .await
-        .expect("snapshot reads serialize behind the storage lifecycle");
+    tokio::select! {
+        _ = &mut second => panic!("gated read completed"),
+        _ = data.control.read_entered.notified() => {}
+    }
     assert_eq!(data.control.reads_gated_peak.load(Ordering::SeqCst), 2);
 
     // Closing Still Waits For Every In-Flight Read Before Releasing The Backend.
     let mut closing = Box::pin(storage.close());
-    assert_pending(closing.as_mut()).await;
+    assert!(crate::pending(closing.as_mut()).await);
     assert_eq!(data.control.closes.load(Ordering::SeqCst), 0);
     data.control.block_read.store(false, Ordering::SeqCst);
     data.control.read_release.notify_waiters();

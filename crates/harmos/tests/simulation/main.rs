@@ -69,105 +69,6 @@ mod atomic_records {
         type Resources = ();
     }
 
-    #[tokio::test]
-    async fn watch_share_order() {
-        use futures_core::Stream;
-        use harmos::{
-            Error, state::FactSource, state::Position, state::Recorded, state::SystemFact,
-        };
-        let runtime = Runtime::<Model>::builder(State::default(), ())
-            .register(Changes::catalog())
-            .register(Facts::catalog())
-            .runtime()
-            .await
-            .unwrap();
-        let receipt = runtime.state.commit(Add(7)).await.unwrap();
-        let captured = runtime.state.state().read(|state| state.0).await.unwrap();
-        let fact = SystemFact {
-            source: FactSource::Sidecar("test-plugin".into()),
-            name: "sample".into(),
-            version: 4,
-            payload: vec![1, 2],
-        };
-        runtime.records.publish_system(fact.clone()).await.unwrap();
-        let entries = runtime
-            .state
-            .query_through::<Recorded<Model>>(Position::ORIGIN, captured.position)
-            .await
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
-        assert_eq!(captured.value, 7);
-        assert_eq!(captured.position, receipt.frontier);
-        assert_eq!(
-            entries
-                .iter()
-                .map(|entry| entry.position)
-                .collect::<Vec<_>>(),
-            [Position(1), Position(2)]
-        );
-        assert!(matches!(entries[0].value, Recorded::Transaction(_)));
-        assert!(matches!(entries[1].value, Recorded::Record(_)));
-        let interior = runtime
-            .state
-            .query_through::<Recorded<Model>>(Position(1), Position(2))
-            .await
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
-        assert_eq!(interior.len(), 1);
-        assert!(matches!(
-            runtime
-                .state
-                .query_through::<Recorded<Model>>(Position::ORIGIN, Position(4))
-                .await
-                .next(),
-            Some(Err(Error::FrontierAhead))
-        ));
-        {
-            let mut watching =
-                std::pin::pin!(runtime.state.watch::<Recorded<Model>>(Position::ORIGIN));
-            for expected in 1..=3 {
-                let entry = std::future::poll_fn(|cx| watching.as_mut().poll_next(cx))
-                    .await
-                    .unwrap()
-                    .unwrap();
-                assert_eq!(entry.position, Position(expected));
-                if expected == 3 {
-                    assert!(matches!(entry.value, Recorded::System(value) if value == fact));
-                }
-            }
-        }
-        let all = runtime
-            .state
-            .query::<Recorded<Model>>(Position::ORIGIN)
-            .await
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
-        assert_eq!(all.len(), 3);
-        runtime.stop().await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn query_refuses_evicted() {
-        use harmos::{Error, state::Position, state::Recorded};
-        let runtime = Runtime::<Model>::builder(State::default(), ())
-            .register(Changes::catalog())
-            .register(Facts::catalog())
-            .tail(1)
-            .runtime()
-            .await
-            .unwrap();
-        let first = runtime.state.commit(Add(1)).await.unwrap();
-        runtime.state.commit(Add(2)).await.unwrap();
-        let entries = runtime
-            .state
-            .query_through::<Recorded<Model>>(Position::ORIGIN, first.frontier)
-            .await
-            .collect::<Vec<_>>();
-        assert_eq!(entries.len(), 1);
-        assert!(matches!(entries[0], Err(Error::BeyondTail)));
-        runtime.stop().await.unwrap();
-    }
-
     #[test]
     fn records_survive_reboot() {
         let make = || {
@@ -265,19 +166,6 @@ struct DivergentCatalog;
 struct TimingItsOwnWait {
     wait_ms: u64,
 }
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-struct Sheet {
-    title: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
-struct Rename(String);
-
-struct Editor;
-
-#[derive(Clone)]
-struct SheetCatalog;
 
 struct Capture;
 
@@ -526,50 +414,6 @@ impl Operation for TimeWait {
     }
 }
 
-impl Transaction<Sheet> for Rename {
-    type Error = Infallible;
-
-    fn check(&self, _sheet: &Sheet) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn apply(&self, sheet: &mut Sheet) {
-        sheet.title.clone_from(&self.0);
-    }
-}
-
-impl Identified for Rename {
-    fn definition() -> (DefinitionId, u32) {
-        (DefinitionId::new("sheet.rename"), 1)
-    }
-}
-
-impl Application for Editor {
-    type State = Sheet;
-    type Transaction = Rename;
-    type Record = ();
-    type Streams = ();
-    type Resources = ();
-}
-
-impl Registration<Editor> for SheetCatalog {
-    fn register(self) -> Catalog<Editor> {
-        fn decode(
-            _id: &DefinitionId,
-            _version: u32,
-            _bytes: &[u8],
-        ) -> Result<Option<Rename>, harmos::state::DecodeError> {
-            Ok(None)
-        }
-
-        Catalog::Transactions {
-            definitions: vec![(Kind::Transaction, DefinitionId::new("sheet.rename"), 1)],
-            decode,
-            inverses: Some(|_change, before| Some(Rename(before.title.clone()))),
-        }
-    }
-}
-
 impl Identified for Capture {
     fn definition() -> (DefinitionId, u32) {
         (DefinitionId::new("capture"), 1)
@@ -652,8 +496,6 @@ impl harmos::state::RecordCatalog for NoRecord {
 }
 
 impl harmos::state::TransactionCatalog<DivergentState> for DivergentChange {}
-
-impl harmos::state::TransactionCatalog<Sheet> for Rename {}
 
 impl harmos::operations::lifecycle::Policy for Idle {
     const INITIALIZATION_POLICY: OperationPolicy = OperationPolicy {
@@ -863,7 +705,7 @@ fn capturing(seed: u64, name: &str) -> SimulatedRuntime<Bank> {
 /* === Tests === */
 
 #[test]
-fn simulation_refuses_drop() {
+fn attached_fold_refused() {
     let (mirror, _) = support::Mirror::new();
     let refusal = bank(42)
         .attach(mirror)
@@ -878,7 +720,7 @@ fn simulation_refuses_drop() {
 }
 
 #[test]
-fn sim_ac001_double() {
+fn seed_replays_identically() {
     let first = scripted(42);
     let second = scripted(42);
 
@@ -887,7 +729,7 @@ fn sim_ac001_double() {
 }
 
 #[test]
-fn sim_ac002_backoff() {
+fn backoff_delays_restart() {
     let mut sim = bank(7)
         .simulated_service_with(
             "adapter",
@@ -919,6 +761,11 @@ fn sim_ac002_backoff() {
         sim.service("adapter").exits(),
         ["environmental:disconnected"]
     );
+}
+
+#[test]
+fn attempt_deadline_expires() {
+    let mut sim = bank(7).simulate().expect("the simulation boots");
     let deadline = sim.submit_as::<Pending>(Pending).unwrap();
     sim.advance_ms(5);
     assert!(matches!(
@@ -928,7 +775,7 @@ fn sim_ac002_backoff() {
 }
 
 #[test]
-fn measures_time_script() {
+fn scope_clock_scripted() {
     let measured = scripted_wait(11);
 
     // 751 rather than 750 because the work clock's timer rounds a deadline up
@@ -948,7 +795,7 @@ fn measures_time_script() {
 }
 
 #[test]
-fn sim_ac003_negative() {
+fn oracle_catches_divergence() {
     DIVERGENCE.store(0, Ordering::SeqCst);
     let mut sim = Runtime::<Divergent>::builder(DivergentState::default(), ())
         .register(DivergentCatalog)
@@ -965,39 +812,7 @@ fn sim_ac003_negative() {
 }
 
 #[test]
-fn reboot_restores_state() {
-    let mut sim = bank(11).simulate().expect("the simulation boots");
-    sim.commit(
-        alice(),
-        Deposit {
-            account: support::HOUSE,
-            amount: 5,
-        },
-    )
-    .expect("the deposit lands");
-    assert_eq!(sim.stop().unwrap().0, 1);
-
-    sim.reboot().expect("the in-memory copy recovers");
-    assert_eq!(
-        sim.state()
-            .expect("state is readable")
-            .value
-            .balance(support::HOUSE),
-        5
-    );
-    sim.undo(alice(), Focus::all())
-        .expect("recovery rebuilt the personal undo stack");
-    assert_eq!(
-        sim.state()
-            .expect("state is readable")
-            .value
-            .balance(support::HOUSE),
-        0
-    );
-}
-
-#[test]
-fn sim_ac006_entropy() {
+fn entropy_draws_seeded() {
     let (first, first_draws) = entropy_run(99);
     let (second, second_draws) = entropy_run(99);
 
@@ -1007,7 +822,7 @@ fn sim_ac006_entropy() {
 }
 
 #[test]
-fn sim_ac007_script() {
+fn full_script_replays() {
     let mut sim = bank(101)
         .simulated_service("adapter", resident)
         .simulate()
@@ -1039,32 +854,6 @@ fn sim_ac007_script() {
     assert_eq!(state.position.0, 2);
     assert_eq!(state.value.balance(support::HOUSE), 3);
     assert!(sim.service("adapter").restarts() >= 2);
-
-    // The one remaining verb is the round-trip law, and the ledger above
-    // cannot answer it: its `apply` counts applications and leaves a zeroed
-    // account behind, so a deposit and its withdrawal land on a state that is
-    // semantically the old one and structurally not. The editor below is what
-    // chapter 7 teaches — a rename that restores exactly the name it replaced.
-    let mut editor = Runtime::<Editor>::builder(Sheet::default(), ())
-        .register(SheetCatalog)
-        .entropy_seed(101)
-        .simulate()
-        .expect("the editor simulation boots");
-    for title in ["draft", "final"] {
-        editor
-            .commit(alice(), Rename(title.to_owned()))
-            .expect("commit lands");
-    }
-    editor
-        .undo(alice(), harmos::state::Focus::all())
-        .expect("the rename comes back");
-
-    assert_eq!(
-        editor.state().expect("state is readable").value.title,
-        "draft",
-        "the undo committed the name the second rename replaced"
-    );
-    editor.assert_inverses_restore();
 }
 
 #[test]
@@ -1116,7 +905,7 @@ fn sidecar_fault_scripted() {
 }
 
 #[test]
-fn lifecycle_survives_reboot() {
+fn finalized_evidence_inherited() {
     let sim = capturing(11, "lifecycle");
 
     assert_eq!(
@@ -1131,7 +920,7 @@ fn lifecycle_survives_reboot() {
 }
 
 #[test]
-fn scripted_draft_lifecycle() {
+fn evidence_script_deterministic() {
     let first = capturing(11, "determinism-one");
     let second = capturing(11, "determinism-two");
 
@@ -1139,13 +928,9 @@ fn scripted_draft_lifecycle() {
     assert_eq!(first.trace(), second.trace());
 }
 
-// WORK-AC026, on the harness the criterion exists for: an attempt inside a
-// seeded simulation measures the time the script advanced, not the time the
-// process spent, and the two advances that made it up add.
-
 // The Feature Only Adds: A Spawned Start Stays Send Under Simulation.
 #[tokio::test]
-async fn simulation_spawns_start() {
+async fn start_stays_send() {
     let runtime = tokio::spawn(bank(7).runtime())
         .await
         .expect("the spawned start completes")

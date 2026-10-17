@@ -43,8 +43,8 @@ mod resources;
 mod scoped;
 #[path = "../operations/shutdown.rs"]
 mod shutdown;
-#[allow(dead_code, unused_imports)]
-#[path = "../support/operations_wire.rs"]
+#[path = "../support/runtime_probe.rs"]
+mod probe;
 mod wire;
 
 /* === Re-Exports === */

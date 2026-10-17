@@ -568,17 +568,23 @@ async fn setup_source(
 }
 
 async fn observed(owner: &Owner, count: usize) {
-    tokio::time::timeout(Duration::from_secs(3), async {
-        loop {
-            let changed = owner.observed.notified();
-            if owner.seen.lock().unwrap().len() >= count {
-                return;
-            }
-            changed.await;
+    loop {
+        let changed = owner.observed.notified();
+        if owner.seen.lock().unwrap().len() >= count {
+            return;
         }
-    })
-    .await
-    .unwrap();
+        changed.await;
+    }
+}
+
+// Listener failure records its error, then closes the plugin scope. Only the
+// crate-private `PluginScope::closed` awaits that close; until it is public
+// this yields to the delivery task, and becomes `scope.closed().await` then.
+async fn fenced(host: &Host) {
+    let scope = host.scope.as_ref().unwrap();
+    while scope.is_ready() {
+        tokio::task::yield_now().await;
+    }
 }
 
 #[tokio::test]
@@ -648,13 +654,7 @@ async fn failure_fences_side() {
     host.owner.fail_attempt.store(true, Ordering::SeqCst);
     manager.initialize(&mut host).await.unwrap();
     observed(&host.owner, 1).await;
-    tokio::time::timeout(Duration::from_secs(3), async {
-        while host.scope.as_ref().unwrap().is_ready() {
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .unwrap();
+    fenced(&host).await;
     assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
     assert_eq!(
         manager.status("listener").unwrap().state,
@@ -711,9 +711,7 @@ async fn runtime_signals_listener() {
     }
     let (runtime, mut manager, mut host) = setup(true, false, 1).await;
     manager.initialize(&mut host).await.unwrap();
-    tokio::time::timeout(Duration::from_secs(3), host.owner.started.notified())
-        .await
-        .unwrap();
+    host.owner.started.notified().await;
     let gates = Arc::new(Gates {
         running: Notify::new(),
         stopping: Notify::new(),
@@ -728,21 +726,15 @@ async fn runtime_signals_listener() {
         .submit_with_resources_at("blocked-cleanup", gates.clone())
         .await
         .unwrap();
-    tokio::time::timeout(Duration::from_secs(2), gates.running.notified())
-        .await
-        .expect("the observer starts before testing blocked cleanup");
+    gates.running.notified().await;
     let mut stopping = Box::pin(runtime.stop());
-    tokio::time::timeout(Duration::from_secs(2), async {
-        tokio::select! {
-            _ = async {
-                gates.stopping.notified().await;
-                host.owner.finalizing.notified().await;
-            } => {},
-            result = &mut stopping => panic!("runtime settled before blocked cleanup: {result:?}"),
-        }
-    })
-    .await
-    .unwrap();
+    tokio::select! {
+        _ = async {
+            gates.stopping.notified().await;
+            host.owner.finalizing.notified().await;
+        } => {},
+        result = &mut stopping => panic!("runtime settled before blocked cleanup: {result:?}"),
+    }
     assert_eq!(host.owner.finalizations.load(Ordering::SeqCst), 1);
     drop(stopping);
     host.owner.release.notify_one();
@@ -755,20 +747,18 @@ async fn runtime_signals_listener() {
 async fn shutdown_retains_callback() {
     let (runtime, mut manager, mut host) = setup(true, false, 1).await;
     manager.initialize(&mut host).await.unwrap();
-    tokio::time::timeout(Duration::from_secs(3), host.owner.started.notified())
-        .await
-        .unwrap();
+    host.owner.started.notified().await;
     for value in 1..=512 {
         runtime.streams.publish(fact(value));
     }
     let owner = host.owner.clone();
     let mut closing = Box::pin(manager.shutdown(&mut host));
     tokio::select! { biased; _ = owner.finalizing.notified() => {}, result = &mut closing => panic!("cleanup returned before original finalizer: {result:?}") }
-    assert!(
-        tokio::time::timeout(Duration::from_millis(20), &mut closing)
-            .await
-            .is_err()
-    );
+    let pending = std::future::poll_fn(|context| {
+        std::task::Poll::Ready(closing.as_mut().poll(context).is_pending())
+    })
+    .await;
+    assert!(pending, "shutdown waits on the held finalizer");
     drop(closing);
     assert_eq!(host.original_drop.load(Ordering::SeqCst), 0);
     assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
@@ -783,9 +773,7 @@ async fn shutdown_retains_callback() {
 async fn cleanup_retries_finalizer() {
     let (runtime, mut manager, mut host) = setup(true, false, 1).await;
     manager.initialize(&mut host).await.unwrap();
-    tokio::time::timeout(Duration::from_secs(3), host.owner.started.notified())
-        .await
-        .unwrap();
+    host.owner.started.notified().await;
     for value in 1..=512 {
         runtime.streams.publish(fact(value));
     }
@@ -807,33 +795,26 @@ async fn cleanup_retries_finalizer() {
 async fn pages_deliver_native() {
     let (runtime, mut manager, mut host) = setup(true, false, 512).await;
     manager.initialize(&mut host).await.unwrap();
-    tokio::time::timeout(Duration::from_secs(3), host.owner.started.notified())
-        .await
-        .unwrap();
+    host.owner.started.notified().await;
     for value in 1..=260 {
         runtime.streams.publish(fact(value));
     }
     host.owner.resume.notify_one();
     host.owner.release.notify_one();
     observed(&host.owner, 522).await;
-    tokio::time::timeout(Duration::from_secs(3), async {
-        loop {
-            if host
-                .view
-                .as_ref()
-                .unwrap()
-                .lock()
-                .await
-                .frontier("listener.samples", 1)
-                == Some(261)
-            {
-                break;
-            }
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .unwrap();
+
+    // The frontier advances only after a row's last callback settles, so one
+    // more row's first callback proves every earlier page settled.
+    runtime.streams.publish(fact(261));
+    observed(&host.owner, 523).await;
+    let frontier = host
+        .view
+        .as_ref()
+        .unwrap()
+        .lock()
+        .await
+        .frontier("listener.samples", 1);
+    assert!(matches!(frontier, Some(261 | 262)));
     {
         let seen = host.owner.seen.lock().unwrap();
         for (value, pair) in seen.as_chunks::<2>().0.iter().enumerate() {
@@ -868,9 +849,7 @@ async fn pages_deliver_native() {
 async fn overwrite_reports_logical() {
     let (runtime, mut manager, mut host) = setup(true, false, 8).await;
     manager.initialize(&mut host).await.unwrap();
-    tokio::time::timeout(Duration::from_secs(3), host.owner.started.notified())
-        .await
-        .unwrap();
+    host.owner.started.notified().await;
     for value in 1..=520 {
         runtime.streams.publish(fact(value));
     }
@@ -943,16 +922,7 @@ async fn codec_panic_fences() {
     manager.initialize(&mut host).await.unwrap();
     observed(&host.owner, 2).await;
     runtime.streams.publish(fact(u32::MAX));
-    tokio::time::timeout(Duration::from_secs(3), async {
-        loop {
-            if host.view.as_ref().unwrap().lock().await.failure().is_some() {
-                break;
-            }
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .unwrap();
+    fenced(&host).await;
     assert!(matches!(
         host.view
             .as_ref()

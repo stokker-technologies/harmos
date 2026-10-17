@@ -57,7 +57,7 @@ impl harmos::Application for Model {
 /* === Private Functions === */
 
 #[tokio::test]
-async fn consume_lacks_position() {
+async fn undeclared_record_refused() {
     let runtime = Runtime::<Model>::builder((), ()).runtime().await.unwrap();
     let refused = runtime.records.publish(Noted("absent".into())).await;
     assert!(matches!(refused,

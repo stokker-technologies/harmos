@@ -12,6 +12,8 @@
 #[path = "../support/mod.rs"]
 mod support;
 
+pub mod allocation;
+
 #[cfg(feature = "signal")]
 #[path = "aggregates.rs"]
 mod aggregates;
@@ -55,7 +57,6 @@ mod colliding {
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::task::{Context, Poll};
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 // Local Imports
@@ -103,15 +104,6 @@ async fn next<S: Clone + 'static>(
     std::future::poll_fn(|context| Pin::new(&mut *watching).poll_next(context)).await
 }
 
-fn ready<S: Clone + 'static>(
-    watching: &mut (impl futures_core::Stream<Item = Item<S>> + Unpin),
-) -> Poll<Option<Item<S>>> {
-    let waker = std::task::Waker::noop();
-    let mut context = Context::from_waker(waker);
-
-    Pin::new(watching).poll_next(&mut context)
-}
-
 #[cfg(feature = "signal")]
 #[test]
 fn aggregate_wire_names() {
@@ -134,40 +126,6 @@ fn aggregate_empty_input() {
 #[test]
 fn summary_refuses_order() {
     aggregates::summary_refuses_order();
-}
-
-#[tokio::test]
-async fn overrunning_window_yields() {
-    let runtime = streaming().await;
-    let mut live = runtime.streams.watch::<Pulse>();
-
-    // A hundred thousand rows into a window of eight, published back to back
-    // with the watcher never polled: the deepest lag the facility can express.
-    let published: u64 = 100_000;
-    for sample in 1..=published {
-        runtime.streams.publish(pulse(sample));
-    }
-
-    let window = Pulse::WINDOW as u64;
-    assert_eq!(
-        next(&mut live).await,
-        Some(Item::Gap {
-            missed: published - window
-        }),
-        "the missed count is exact, never rounded and never silent"
-    );
-    for sample in (published - window + 1)..=published {
-        assert!(
-            matches!(
-                next(&mut live).await,
-                Some(Item::Row(At { value, .. })) if value == pulse(sample)
-            ),
-            "after the gap the watch continues from the oldest retained row"
-        );
-    }
-    assert!(ready(&mut live).is_pending());
-
-    runtime.stop().await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -217,7 +175,7 @@ async fn rows_gaps_account() {
 }
 
 #[tokio::test]
-async fn waits_lacks_consumer() {
+async fn publish_never_waits() {
     let runtime = streaming().await;
     // A watcher that makes no progress at all while publishing runs, and a
     // snapshot taken before it: zero consumer progress of any kind.
@@ -266,7 +224,7 @@ async fn waits_lacks_consumer() {
 }
 
 #[tokio::test]
-async fn refused_never_truncated() {
+async fn beneath_window_refused() {
     let runtime = streaming().await;
 
     // Advance the journal between publishes so stamps genuinely move.
@@ -323,7 +281,7 @@ async fn refused_never_truncated() {
 }
 
 #[tokio::test]
-async fn promises_state_consistency() {
+async fn as_of_cuts_stamp() {
     let runtime = streaming().await;
 
     let first = runtime.state.commit(deposit(10)).await.expect("accepted");
@@ -391,7 +349,7 @@ async fn demand_reflects_watchers() {
 }
 
 #[tokio::test]
-async fn streams_ac003_demand() {
+async fn consumer_selection_demand() {
     let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
         .register(support::catalog())
         .register(streams())
@@ -423,7 +381,7 @@ async fn streams_ac003_demand() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn capture_loop_pattern() {
+async fn demand_drives_capture() {
     let runtime = streaming().await;
     let capture = Arc::new(AtomicBool::new(false));
 
@@ -476,7 +434,7 @@ async fn capture_loop_pattern() {
 }
 
 #[tokio::test]
-async fn streams_stop_ends() {
+async fn stop_ends_watch() {
     let runtime = streaming().await;
     let mut live = runtime.streams.watch::<Pulse>();
 
@@ -498,7 +456,7 @@ async fn streams_stop_ends() {
 }
 
 #[tokio::test]
-async fn catalog_refuses_boot() {
+async fn colliding_id_refused() {
     let refused = Runtime::<Bank>::builder(Ledger::default(), ())
         .register(support::catalog())
         .register(streams())
@@ -516,7 +474,7 @@ async fn catalog_refuses_boot() {
 }
 
 #[tokio::test]
-async fn window_refuses_boot() {
+async fn empty_window_refused() {
     #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
     struct Hollow;
 
@@ -539,31 +497,6 @@ async fn window_refuses_boot() {
         refused.to_string().contains("hollow"),
         "the refusal names the stream it cannot honor: {refused}"
     );
-}
-
-#[tokio::test]
-async fn streams_locked_surface() {
-    let runtime = streaming().await;
-
-    runtime.streams.publish(pulse(7));
-
-    let at = runtime.state.applied();
-    let rows: Vec<At<Pulse>> = runtime
-        .streams
-        .query::<Pulse>(..)
-        .as_of(at)
-        .await
-        .expect("nothing was evicted")
-        .collect();
-    let mut live = runtime.streams.watch::<Pulse>();
-    let demand = runtime.streams.demand::<Pulse>();
-
-    assert_eq!(rows.len(), 1);
-    assert_eq!(*demand.borrow(), 1);
-    runtime.streams.publish(pulse(8));
-    assert!(matches!(next(&mut live).await, Some(Item::Row(_))));
-
-    runtime.stop().await.unwrap();
 }
 
 #[allow(dead_code)]

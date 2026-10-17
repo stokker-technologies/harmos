@@ -7,14 +7,16 @@
  * ***
  */
 
+// Journaled Stream And File Read Stories Over Balanced Three-Phase Samples
+
 /* === Modules === */
+
 /* === Re-Exports === */
+
 /* === Imports === */
 // Standard Library Imports
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
-
 // Third Party Imports
 use harmos::storage::query::transform::{
     Transform,
@@ -26,32 +28,152 @@ use harmos::storage::query::transform::{
 use harmos::storage::query::{Query, QueryArrow, RowSlice, Source, StreamSelection};
 use harmos::storage::*;
 use harmos::{Identifier, Runtime};
-
 // Local Imports
 use super::backend::{Data, Recovery, history, storage_settings};
 use super::support::{Bank, Ledger, catalog};
-use super::waveforms::{self, Experiment, Objects, Sample};
+use super::waveforms::{self, Sample};
 
 /* === Constants === */
+
 /* === Macros === */
+
 /* === Type Aliases === */
+
 /* === Structs === */
+// Journaled Storage Holding Durable Three-Phase Stream Samples.
+struct Nominal {
+    _directory: tempfile::TempDir,
+    storage: StorageManager,
+    runtime: Runtime<Bank>,
+    schema: SchemaKey,
+    samples: Vec<Sample>,
+    durable: StorageCursor,
+}
+
 /* === Enums === */
+
 /* === Traits === */
+
 /* === Implementations === */
+impl Nominal {
+    async fn new() -> Self {
+        // Configure And Start A Real Temporary Journal.
+        let directory = tempfile::tempdir().unwrap();
+        let data = Arc::new(Data::<()>::journaled(directory.path(), history()).unwrap());
+        let storage: StorageManager = StorageManager::new(
+            StorageBackends {
+                primary: data,
+                state: Arc::new(Recovery::new(history())),
+            },
+            storage_settings(),
+        )
+        .unwrap();
+        let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
+            .register(catalog())
+            .runtime_with_storage(&storage)
+            .await
+            .unwrap();
+
+        // Store The Schema And Balanced Three-Phase Samples In Several Batches.
+        let schema = waveforms::schema();
+        storage
+            .write_schema(&schema, &waveforms::definition())
+            .await
+            .unwrap();
+        let samples = waveforms::samples(4);
+        let inputs = waveforms::inputs(&samples);
+        for inputs in inputs.chunks(192) {
+            let batch: Vec<_> = inputs.iter().map(StreamInput::borrowed).collect();
+            storage.write_stream(&batch).await.unwrap();
+        }
+        let durable = storage.flush().await.unwrap();
+        Self {
+            _directory: directory,
+            storage,
+            runtime,
+            schema,
+            samples,
+            durable,
+        }
+    }
+
+    fn query(&self, selection: StreamSelection, transforms: Vec<Transform>) -> Query {
+        Query {
+            at: self.durable.clone(),
+            source: Source::Stream(selection),
+            transforms,
+            slice: RowSlice::default(),
+        }
+    }
+
+    fn all(&self, after: u64) -> StreamSelection {
+        StreamSelection {
+            schema: self.schema.clone(),
+            scope: None,
+            item: None,
+            stream: None,
+            source_start: None,
+            source_end: None,
+            after,
+        }
+    }
+
+    // One Half-Open Period Of The Experiment Scope.
+    fn period(&self) -> StreamSelection {
+        StreamSelection {
+            scope: Some(Identifier::new("experiment").unwrap()),
+            source_start: Some(UNIX_EPOCH + Duration::from_millis(64)),
+            source_end: Some(UNIX_EPOCH + Duration::from_millis(128)),
+            ..self.all(0)
+        }
+    }
+
+    async fn finish(self) {
+        self.storage.close().await.unwrap();
+        self.runtime.stop().await.unwrap();
+    }
+}
+
 /* === Public Functions === */
+
 /* === Private Functions === */
-// Stored Position And Ordinal Of Every Projected Row, In Delivery Order.
-async fn positions<C>(storage: &StorageManager<C>, query: Query) -> Vec<(u64, u64)> {
+fn project(fields: &[(&str, &str)]) -> Transform {
+    Transform::Project(Project {
+        fields: fields
+            .iter()
+            .map(|(field, name)| Projection {
+                field: (*field).into(),
+                name: (*name).into(),
+            })
+            .collect(),
+    })
+}
+
+// Every Data Batch A Query Delivers, In Order.
+async fn batches(storage: &StorageManager, query: Query) -> Vec<arrow_array::RecordBatch> {
     let mut reader = storage.query(query).await.unwrap();
-    let mut rows = Vec::new();
+    assert!(matches!(
+        reader.next().await.unwrap(),
+        Some(QueryArrow::Schema(_))
+    ));
+    let mut batches = Vec::new();
     while let Some(output) = reader.next().await.unwrap() {
         let QueryArrow::Batch(batch) = output else {
-            continue;
+            panic!("schema must be emitted once");
         };
-        let batch = batch.as_record_batch();
-        let position = column::<arrow_array::UInt64Array>(batch, "position");
-        let ordinal = column::<arrow_array::UInt64Array>(batch, "ordinal");
+        batches.push(batch.as_record_batch().clone());
+    }
+    let rows: usize = batches.iter().map(|batch| batch.num_rows()).sum();
+    assert_eq!(reader.completion().unwrap().rows, rows as u64);
+    batches
+}
+
+// Stored Position And Ordinal Of Every Projected Row, In Delivery Order.
+async fn positions(storage: &StorageManager, query: Query) -> Vec<(u64, u64)> {
+    let mut rows = Vec::new();
+    for batch in batches(storage, query).await {
+        let position = column::<arrow_array::UInt64Array>(&batch, "position");
+        let ordinal = column::<arrow_array::UInt64Array>(&batch, "ordinal");
         for row in 0..batch.num_rows() {
             rows.push((position.value(row), ordinal.value(row)));
         }
@@ -59,11 +181,7 @@ async fn positions<C>(storage: &StorageManager<C>, query: Query) -> Vec<(u64, u6
     rows
 }
 
-async fn read_range<C>(
-    storage: &StorageManager<C>,
-    file: &FileReference,
-    range: ByteRange,
-) -> Vec<u8> {
+async fn read_range(storage: &StorageManager, file: &FileReference, range: ByteRange) -> Vec<u8> {
     let mut reader = storage
         .read_file(ReadFile {
             file: file.clone(),
@@ -88,179 +206,26 @@ fn column<'a, T: 'static>(batch: &'a arrow_array::RecordBatch, name: &str) -> &'
         .downcast_ref::<T>()
         .unwrap()
 }
+
+fn rms() -> f64 {
+    waveforms::AMPLITUDE / 2.0_f64.sqrt()
+}
+
 /* === Tests === */
 #[tokio::test]
-async fn nominal() {
-    // Configure And Start A Real Temporary Journal.
-    let directory = tempfile::tempdir().unwrap();
-    let identity = history();
-    let settings = storage_settings();
-    let data = Arc::new(Data::<Objects>::journaled(directory.path(), identity.clone()).unwrap());
-    let storage = StorageManager::<Objects>::new(
-        StorageBackends {
-            primary: data.clone(),
-            state: Arc::new(Recovery::new(identity.clone())),
-        },
-        settings.clone(),
-    )
-    .unwrap();
-    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .runtime_with_storage(&storage)
-        .await
-        .unwrap();
-
-    // Store Schema, Objects, Generated Records And Balanced Three-Phase Samples.
-    let schema = waveforms::schema();
-    storage
-        .write_schema(&schema, &waveforms::definition())
-        .await
-        .unwrap();
-    let object = Experiment {
-        id: "experiment".into(),
-        label: "Three Phase".into(),
-    };
-    let object_receipt = storage.write_object(&object).await.unwrap();
-    storage
-        .write_object(&Experiment {
-            id: object.id.clone(),
-            label: "Final".into(),
-        })
-        .await
-        .unwrap();
-    let samples = waveforms::samples(4);
-    let inputs = waveforms::inputs(&samples);
-    let records: Vec<_> = inputs
-        .iter()
-        .take(9)
-        .map(|input| input.record.borrowed())
-        .collect();
-    storage.write_records(&records).await.unwrap();
-    for inputs in inputs.chunks(192) {
-        let batch: Vec<_> = inputs.iter().map(StreamInput::borrowed).collect();
-        storage.write_stream(&batch).await.unwrap();
-    }
-
-    // Empty, Small And Multi-Batch Files Use Deterministic Binary Contents.
-    let mut files = Vec::new();
-    for length in [0, 17, settings.response.batch_bytes.get() * 2 + 13] {
-        let bytes = waveforms::binary(length);
-        let metadata = FileMetadata {
-            id: Identifier::new(format!("binary-{length}")).unwrap(),
-            scope: None,
-            media_type: "application/octet-stream".into(),
-            expected_length: Some(length as u64),
-            expected_sha256: None,
-        };
-        let reference = storage.write_file(metadata, &bytes).await.unwrap();
-        files.push((reference, bytes));
-    }
-    let durable = storage.flush().await.unwrap();
-    assert_eq!(storage.cursor_saved(), durable);
-
-    assert_eq!(
-        data.objects.lock().unwrap().len(),
-        2,
-        "unreleased lifecycle retains every revision"
-    );
-    // Round Trip Typed Objects And Finished File Bytes.
-    let found = storage
-        .read_object::<Experiment>(&object.id, ObjectVersion::Exact(object_receipt.version))
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(found.value, object);
-    for (reference, expected) in &files {
-        let whole = read_range(
-            &storage,
-            reference,
-            ByteRange {
-                offset: 0,
-                limit: None,
-            },
-        )
-        .await;
-        assert_eq!(&whole, expected);
-
-        // Finished References Support Checked Half-Open Byte Ranges.
-        let offset = reference.length.min(3);
-        let selected = read_range(
-            &storage,
-            reference,
-            ByteRange {
-                offset,
-                limit: Some(7),
-            },
-        )
-        .await;
-        assert_eq!(
-            selected,
-            expected[offset as usize..expected.len().min(offset as usize + 7)]
-        );
-        let end = read_range(
-            &storage,
-            reference,
-            ByteRange {
-                offset: reference.length,
-                limit: None,
-            },
-        )
-        .await;
-        assert!(end.is_empty());
-        let beyond = storage
-            .read_file(ReadFile {
-                file: reference.clone(),
-                range: ByteRange {
-                    offset: reference.length + 1,
-                    limit: None,
-                },
-            })
-            .await;
-        assert!(beyond.is_err());
-    }
-
-    // Persisted Stream Values Independently Match The Generator And Analytical RMS.
-    let mut reader = storage
-        .query(Query {
-            at: durable.clone(),
-            source: Source::Stream(StreamSelection {
-                schema: schema.clone(),
-                scope: None,
-                item: None,
-                stream: None,
-                source_start: None,
-                source_end: None,
-                after: 0,
-            }),
-            transforms: vec![Transform::Project(Project {
-                fields: vec![
-                    Projection {
-                        field: "payload.phase".into(),
-                        name: "phase".into(),
-                    },
-                    Projection {
-                        field: "payload.ordinal".into(),
-                        name: "ordinal".into(),
-                    },
-                    Projection {
-                        field: "payload.value".into(),
-                        name: "value".into(),
-                    },
-                ],
-            })],
-            slice: RowSlice::default(),
-        })
-        .await
-        .unwrap();
+async fn stream_values_roundtrip() {
+    // Persisted Stream Values Match The Generator And Analytical RMS.
+    let n = Nominal::new().await;
+    let projection = project(&[
+        ("payload.phase", "phase"),
+        ("payload.ordinal", "ordinal"),
+        ("payload.value", "value"),
+    ]);
     let mut received = Vec::new();
-    while let Some(output) = reader.next().await.unwrap() {
-        let QueryArrow::Batch(batch) = output else {
-            continue;
-        };
-        let batch = batch.as_record_batch();
-        let phase = column::<arrow_array::UInt32Array>(batch, "phase");
-        let ordinal = column::<arrow_array::UInt64Array>(batch, "ordinal");
-        let value = column::<arrow_array::Float64Array>(batch, "value");
+    for batch in batches(&n.storage, n.query(n.all(0), vec![projection])).await {
+        let phase = column::<arrow_array::UInt32Array>(&batch, "phase");
+        let ordinal = column::<arrow_array::UInt64Array>(&batch, "ordinal");
+        let value = column::<arrow_array::Float64Array>(&batch, "value");
         for row in 0..batch.num_rows() {
             received.push(Sample {
                 phase: phase.value(row),
@@ -269,7 +234,7 @@ async fn nominal() {
             });
         }
     }
-    assert_eq!(received, samples);
+    assert_eq!(received, n.samples);
     for phase in 0..3 {
         let values: Vec<_> = received
             .iter()
@@ -277,135 +242,78 @@ async fn nominal() {
             .map(|sample| sample.value)
             .collect();
         let mean = values.iter().sum::<f64>() / values.len() as f64;
-        let rms =
+        let measured =
             (values.iter().map(|value| value * value).sum::<f64>() / values.len() as f64).sqrt();
         assert!(mean.abs() < 1e-12);
-        assert!((rms - waveforms::AMPLITUDE / 2.0_f64.sqrt()).abs() < 1e-12);
+        assert!((measured - rms()).abs() < 1e-12);
     }
-    drop(reader);
+    n.finish().await;
+}
 
+#[tokio::test]
+async fn stream_resumes_after() {
     // Resuming After A Stored Position Yields Exactly The Later Rows, In Order.
-    let positioned = |after: u64| Query {
-        at: durable.clone(),
-        source: Source::Stream(StreamSelection {
-            schema: schema.clone(),
-            scope: None,
-            item: None,
-            stream: None,
-            source_start: None,
-            source_end: None,
-            after,
-        }),
-        transforms: vec![Transform::Project(Project {
-            fields: vec![
-                Projection {
-                    field: "_storage.position".into(),
-                    name: "position".into(),
-                },
-                Projection {
-                    field: "payload.ordinal".into(),
-                    name: "ordinal".into(),
-                },
-            ],
-        })],
-        slice: RowSlice::default(),
+    let n = Nominal::new().await;
+    let positioned = |after| {
+        n.query(
+            n.all(after),
+            vec![project(&[
+                ("_storage.position", "position"),
+                ("payload.ordinal", "ordinal"),
+            ])],
+        )
     };
-    let all = positions(&storage, positioned(0)).await;
-    assert_eq!(all.len(), samples.len());
+    let all = positions(&n.storage, positioned(0)).await;
+    assert_eq!(all.len(), n.samples.len());
     let middle = all[all.len() / 2].0;
-    let resumed = positions(&storage, positioned(middle)).await;
+    let resumed = positions(&n.storage, positioned(middle)).await;
     assert_eq!(resumed, all[all.len() / 2 + 1..]);
     assert!(resumed.windows(2).all(|pair| pair[0].0 < pair[1].0));
+    n.finish().await;
+}
 
-    // Query One Half-Open Period And Aggregate Every Selected Sample.
-    let selection = StreamSelection {
-        schema: schema.clone(),
-        scope: Some(Identifier::new("experiment").unwrap()),
-        item: None,
-        stream: None,
-        source_start: Some(UNIX_EPOCH + Duration::from_millis(64)),
-        source_end: Some(UNIX_EPOCH + Duration::from_millis(128)),
-        after: 0,
-    };
-    let mut reader = storage
-        .query(Query {
-            at: durable.clone(),
-            source: Source::Stream(selection.clone()),
-            transforms: vec![Transform::Aggregate(Aggregate {
-                groups: vec![Projection {
-                    field: "payload.phase".into(),
-                    name: "phase".into(),
-                }],
-                measures: vec![Measure {
-                    field: "payload.value".into(),
-                    statistic: harmos::Aggregate::Rms,
-                    name: "rms".into(),
-                }],
-            })],
-            slice: RowSlice {
-                offset: 0,
-                limit: None,
-            },
-        })
-        .await
-        .unwrap();
-    assert!(matches!(
-        reader.next().await.unwrap(),
-        Some(QueryArrow::Schema(_))
-    ));
+#[tokio::test]
+async fn period_aggregates_rms() {
+    // One Half-Open Period Aggregates Every Selected Sample Per Phase.
+    let n = Nominal::new().await;
+    let aggregate = Transform::Aggregate(Aggregate {
+        groups: vec![Projection {
+            field: "payload.phase".into(),
+            name: "phase".into(),
+        }],
+        measures: vec![Measure {
+            field: "payload.value".into(),
+            statistic: harmos::Aggregate::Rms,
+            name: "rms".into(),
+        }],
+    });
     let mut phases = 0;
-    while let Some(output) = reader.next().await.unwrap() {
-        let QueryArrow::Batch(batch) = output else {
-            panic!("schema must be emitted once");
-        };
-        let values = batch
-            .as_record_batch()
-            .column_by_name("rms")
-            .unwrap()
-            .as_any()
-            .downcast_ref::<arrow_array::Float64Array>()
-            .unwrap();
-        for value in values.values() {
-            assert!((value - waveforms::AMPLITUDE / 2.0_f64.sqrt()).abs() < 1e-12);
+    for batch in batches(&n.storage, n.query(n.period(), vec![aggregate])).await {
+        for value in column::<arrow_array::Float64Array>(&batch, "rms").values() {
+            assert!((value - rms()).abs() < 1e-12);
             phases += 1;
         }
     }
     assert_eq!(phases, 3);
-    assert_eq!(reader.completion().unwrap().at, durable);
-    drop(reader);
+    n.finish().await;
+}
 
-    // Histograms Count Full Inputs; Display Downsampling Has A Separate Plan.
-    let mut histogram = storage
-        .query(Query {
-            at: durable.clone(),
-            source: Source::Stream(selection.clone()),
-            transforms: vec![Transform::Histogram(Histogram {
-                field: "payload.value".into(),
-                edges: vec![-12.0, -6.0, 0.0, 6.0, 12.0],
-            })],
-            slice: RowSlice {
-                offset: 0,
-                limit: None,
-            },
-        })
-        .await
-        .unwrap();
-    let mut counts_actual = Vec::new();
-    let mut counted = 0;
-    while let Some(output) = histogram.next().await.unwrap() {
-        if let QueryArrow::Batch(batch) = output {
-            let counts = batch
-                .as_record_batch()
-                .column_by_name("count")
-                .unwrap()
-                .as_any()
-                .downcast_ref::<arrow_array::UInt64Array>()
-                .unwrap();
-            counted += counts.values().iter().sum::<u64>();
-            counts_actual.extend_from_slice(counts.values());
-        }
+#[tokio::test]
+async fn histogram_counts_inputs() {
+    // Histograms Count Every Selected Input Into Closed-Ended Bins.
+    let n = Nominal::new().await;
+    let histogram = Transform::Histogram(Histogram {
+        field: "payload.value".into(),
+        edges: vec![-12.0, -6.0, 0.0, 6.0, 12.0],
+    });
+    let mut counts = Vec::new();
+    for batch in batches(&n.storage, n.query(n.period(), vec![histogram])).await {
+        counts.extend_from_slice(column::<arrow_array::UInt64Array>(&batch, "count").values());
     }
-    assert_eq!(counted, (waveforms::SAMPLES_PER_PERIOD * 3) as u64);
+    assert_eq!(
+        counts.iter().sum::<u64>(),
+        (waveforms::SAMPLES_PER_PERIOD * 3) as u64
+    );
     let expected: Vec<u64> = [
         (-f64::INFINITY, -12.0),
         (-12.0, -6.0),
@@ -417,7 +325,7 @@ async fn nominal() {
     .into_iter()
     .enumerate()
     .map(|(bin, (lower, upper))| {
-        samples
+        n.samples
             .iter()
             .filter(|sample| (64..128).contains(&sample.ordinal))
             .filter(|sample| match bin {
@@ -428,69 +336,64 @@ async fn nominal() {
             .count() as u64
     })
     .collect();
-    assert_eq!(counts_actual, expected);
-    drop(histogram);
-    let mut display = storage
-        .query(Query {
-            at: durable.clone(),
-            source: Source::Stream(selection),
-            transforms: vec![Transform::Downsample(Downsample {
-                max_rows: 32,
-                algorithm: Algorithm::Extrema,
-                axis: None,
-                value: Some("payload.value".into()),
-            })],
-            slice: RowSlice {
-                offset: 0,
-                limit: None,
-            },
-        })
-        .await
-        .unwrap();
-    let mut displayed = 0;
-    while let Some(output) = display.next().await.unwrap() {
-        if let QueryArrow::Batch(batch) = output {
-            displayed += batch.as_record_batch().num_rows();
-        }
-    }
-    assert!(displayed > 0 && displayed <= 32);
-    assert_eq!(display.completion().unwrap().rows, displayed as u64);
-    drop(display);
-    let encoded = Objects::encode(&object, NonZeroUsize::new(16 * 1024).unwrap()).unwrap();
-    storage
-        .release_object_history(&encoded.schema, &encoded.item, &durable)
-        .await
-        .unwrap();
-    storage.close().await.unwrap();
-    runtime.stop().await.unwrap();
-    drop(storage);
-    drop(data);
+    assert_eq!(counts, expected);
+    n.finish().await;
+}
 
-    // Reopen Rebuilds Indexes From The Journal And Preserves The Durable Boundary.
-    use std::io::Write;
-    std::fs::OpenOptions::new()
-        .append(true)
-        .open(directory.path().join("journal.jsonl"))
-        .unwrap()
-        .write_all(b"{uncommitted")
-        .unwrap();
-    let reopened = Arc::new(Data::<Objects>::journaled(directory.path(), identity).unwrap());
-    assert_eq!(reopened.cursor_saved().await.unwrap(), durable);
-    assert_eq!(reopened.rows.lock().unwrap().len(), samples.len());
-    assert_eq!(reopened.records.lock().unwrap().len(), 9);
-    assert_eq!(reopened.object_releases.lock().unwrap().len(), 1);
-    assert_eq!(reopened.object_releases.lock().unwrap()[0].through, durable);
-    for (reference, bytes) in files {
+#[tokio::test]
+async fn downsample_bounds_rows() {
+    // Display Downsampling Delivers A Bounded, Non-Empty Plan.
+    let n = Nominal::new().await;
+    let downsample = Transform::Downsample(Downsample {
+        max_rows: 32,
+        algorithm: Algorithm::Extrema,
+        axis: None,
+        value: Some("payload.value".into()),
+    });
+    let displayed: usize = batches(&n.storage, n.query(n.period(), vec![downsample]))
+        .await
+        .iter()
+        .map(|batch| batch.num_rows())
+        .sum();
+    assert!(displayed > 0 && displayed <= 32);
+    n.finish().await;
+}
+
+#[tokio::test]
+async fn file_ranges_read() {
+    // Empty, Small And Multi-Batch Files Use Deterministic Binary Contents.
+    let n = Nominal::new().await;
+    let batch_bytes = storage_settings().response.batch_bytes.get();
+    for length in [0, 17, batch_bytes * 2 + 13] {
+        let expected = waveforms::binary(length);
+        let metadata = FileMetadata {
+            id: Identifier::new(format!("binary-{length}")).unwrap(),
+            scope: None,
+            media_type: "application/octet-stream".into(),
+            expected_length: Some(length as u64),
+            expected_sha256: None,
+        };
+        let reference = n.storage.write_file(metadata, &expected).await.unwrap();
+        let range = |offset, limit| ByteRange { offset, limit };
+        assert_eq!(read_range(&n.storage, &reference, range(0, None)).await, expected);
+
+        // Finished References Support Checked Half-Open Byte Ranges.
+        let offset = reference.length.min(3);
+        let selected = read_range(&n.storage, &reference, range(offset, Some(7))).await;
         assert_eq!(
-            reopened.blobs.lock().unwrap()[reference.metadata.id.as_str()].1,
-            bytes
+            selected,
+            expected[offset as usize..expected.len().min(offset as usize + 7)]
         );
+        let end = read_range(&n.storage, &reference, range(reference.length, None)).await;
+        assert!(end.is_empty());
+        let beyond = n
+            .storage
+            .read_file(ReadFile {
+                file: reference.clone(),
+                range: range(reference.length + 1, None),
+            })
+            .await;
+        assert!(beyond.is_err());
     }
-    assert!(directory.path().join("journal.jsonl").is_file());
-    assert_eq!(
-        std::fs::read_dir(directory.path().join("staging"))
-            .unwrap()
-            .count(),
-        0
-    );
+    n.finish().await;
 }

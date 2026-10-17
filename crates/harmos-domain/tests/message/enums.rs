@@ -91,7 +91,6 @@ use std::fmt::Debug;
 // Third Party Imports
 
 // Local Imports
-use crate::scenario_runtime;
 use harmos_domain::{Message, Protobuf};
 
 /* === Constants === */
@@ -109,9 +108,8 @@ use harmos_domain::{Message, Protobuf};
 /* === Implementations === */
 
 /* === Public Functions === */
-pub fn check() {
-    {
-        scenario_runtime::check("enum_unknown_variant_refused", || {
+#[test]
+fn unknown_variant_refused() {
             let remote = wire(&newer::Mode::Remote);
             refused::<known::Mode>(&remote);
             refused::<known::Preferred>(&remote);
@@ -123,10 +121,10 @@ pub fn check() {
             refused::<known::Boxed>(&run);
             let wrapped = wire(&newer::Wrapped::Hold(Box::new(newer::Mode::Remote)));
             refused::<known::Wrapped>(&wrapped);
-        });
-    }
-    {
-        scenario_runtime::check("enum_absent_variant_defaults", || {
+        }
+
+#[test]
+fn absent_variant_defaults() {
             assert_eq!(read::<known::Mode>(&[]), known::Mode::Automatic);
             assert_eq!(read::<known::Preferred>(&[]), known::Preferred::Manual);
             let bare = wire(&newer::Bare { id: 7 });
@@ -134,10 +132,10 @@ pub fn check() {
             assert_eq!(run.mode, known::Mode::Automatic);
             assert_eq!(*read::<known::Boxed>(&bare).mode, run.mode);
             <known::Run as Protobuf>::decoding_memory(&bare).unwrap();
-        });
-    }
-    {
-        scenario_runtime::check("enum_known_variant_decodes", || {
+        }
+
+#[test]
+fn known_variant_decodes() {
             let manual = wire(&newer::Mode::Manual);
             assert_eq!(read::<known::Mode>(&manual), known::Mode::Manual);
             let run = wire(&newer::Run {
@@ -151,10 +149,10 @@ pub fn check() {
                 read::<known::Wrapped>(&wrapped),
                 known::Wrapped::Hold(Box::new(known::Mode::Manual))
             );
-        });
-    }
-    {
-        scenario_runtime::check("enum_segments_keep_selection", || {
+        }
+
+#[test]
+fn segments_keep_selection() {
             let manual = wire(&newer::Mode::Manual);
             let remote = wire(&newer::Mode::Remote);
             // A Known Variant Never Masks An Unknown One In Either Order
@@ -171,10 +169,10 @@ pub fn check() {
             let segmented = [run(newer::Mode::Manual), run(newer::Mode::Remote)].concat();
             refused::<known::Run>(&segmented);
             refused::<known::Boxed>(&segmented);
-        });
-    }
-    {
-        scenario_runtime::check("enum_postcard_parity", || {
+        }
+
+#[test]
+fn enum_postcard_parity() {
             let remote = Message::encode_to_vec(&newer::Mode::Remote);
             assert!(<known::Mode as Message>::decode(&remote).is_err());
             refused::<known::Mode>(&wire(&newer::Mode::Remote));
@@ -183,9 +181,8 @@ pub fn check() {
                 <known::Mode as Message>::decode(&manual).unwrap(),
                 known::Mode::Manual
             );
-        });
-    }
-}
+        }
+
 
 /* === Private Functions === */
 fn wire<T: Protobuf>(value: &T) -> Vec<u8> {

@@ -266,7 +266,8 @@ impl Operation for SlowCall {
     ) -> Result<harmos::operations::Response<Response>, Failed> {
         let result: ::core::result::Result<Response, Self::Error> = async move {
             self.owner.runs.fetch_add(1, Ordering::SeqCst);
-            tokio::time::sleep(Duration::from_secs(1)).await;
+            // The Attempt Outlives Every Deadline; Only The Policy Ends It.
+            std::future::pending::<()>().await;
             Ok(Response {
                 value: request.value,
                 attempts: 1,

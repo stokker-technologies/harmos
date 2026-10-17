@@ -14,7 +14,6 @@
 /* === Imports === */
 // Standard Library Imports
 use std::num::NonZeroUsize;
-use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
@@ -51,11 +50,7 @@ struct Call {
 
 /* === Private Functions === */
 async fn receive(incoming: &mut Receiver) -> Frame {
-    let received = tokio::time::timeout(Duration::from_secs(5), incoming.receive())
-        .await
-        .expect("the carrier answers within five seconds")
-        .unwrap()
-        .unwrap();
+    let received = incoming.receive().await.unwrap().unwrap();
     if let Some(consumption) = received.consumption {
         consumption.consumed().unwrap();
     }

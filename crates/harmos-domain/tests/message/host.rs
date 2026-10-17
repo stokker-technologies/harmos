@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -92,9 +91,7 @@ fn roundtrip<T: Protobuf + MemorySize + std::fmt::Debug + PartialEq>(value: T) {
 /* === Tests === */
 
 #[test]
-fn contract_scenario() {
-    {
-        scenario_runtime::check("publication_keeps_tags", || {
+fn publication_keeps_tags() {
             for value in [
                 Publication::default(),
                 Publication {
@@ -124,10 +121,10 @@ fn contract_scenario() {
                 );
                 roundtrip(value);
             }
-        });
-    }
-    {
-        scenario_runtime::check("batch_rows_follow", || {
+        }
+
+#[test]
+fn batch_rows_follow() {
             // A Steady 1 kHz Series: The Head Carries The Base Stamp And Each
             // Following Row A Short Delta; A Backwards Row Stays Encodable.
             let deltas = [Some(1_000), Some(1_000), Some(-1), None];
@@ -178,6 +175,5 @@ fn contract_scenario() {
             );
             assert_eq!(steady.encode_to_vec().len(), 6);
             roundtrip(value);
-        });
-    }
-}
+        }
+

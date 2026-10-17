@@ -20,7 +20,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 // Third Party Imports
 
 // Local Imports
-use super::wire::Text;
+use super::cases::Text;
 use super::{
     Compute, ComputeCall, Failed, Implemented, Lanes, Operations, Owner, Parent, ParentCall,
     ParentOwner, Request, Response, SlowCall, State, request, runtime,
@@ -91,6 +91,25 @@ struct Host {
     cleanup: Option<Arc<CleanupOwner>>,
 }
 
+/// A Plugin Holding A Cleanup Callback And An Echo Callback Over One Preparation Budget.
+struct Credit {
+    runtime: harmos::Runtime<super::Bank>,
+    manager: PluginManager<Resources, Resources, Resources>,
+    host: Host,
+    cleanup: Arc<CleanupOwner>,
+    target: harmos::operations::PluginCallback,
+    echo: harmos::operations::PluginCallback,
+}
+
+/// A Plugin Whose Receipt Is Dropped At Shutdown While A Gated Compute Runs.
+struct Running {
+    runtime: harmos::Runtime<super::Bank>,
+    manager: PluginManager<Resources, Resources, Resources>,
+    host: Host,
+    gate: Arc<tokio::sync::Notify>,
+    invocation: harmos::operations::OperationInstance<Response>,
+}
+
 /* === Enums === */
 /* === Traits === */
 
@@ -99,7 +118,7 @@ impl OperationDeclaration for Selected {
     type Request = Text;
     type Response = String;
     const ID: &'static str = "fixture.selected_provider";
-    const POLICY: OperationPolicy = super::wire::Echo::POLICY;
+    const POLICY: OperationPolicy = super::cases::Echo::POLICY;
     const VISIBILITY: Visibility = Visibility::Shared;
 }
 
@@ -241,7 +260,7 @@ impl OperationDeclaration for Cleanup {
     type Request = Text;
     type Response = String;
     const ID: &'static str = "fixture.callback_cleanup";
-    const POLICY: OperationPolicy = super::wire::Echo::POLICY;
+    const POLICY: OperationPolicy = super::cases::Echo::POLICY;
 }
 
 impl WireOperation for Cleanup {
@@ -268,10 +287,10 @@ impl harmos::operations::Operation for Cleaning {
         resources: Arc<CleanupOwner>,
         _: Self::Context<'ctx>,
     ) -> std::result::Result<Self, Failed> {
-        // Exercise Deadline Expiry During Synchronous Construction.
+        // The Deadline Passes Before Construction Returns (Paused Clock Only).
         let wait_cleanup = resources.expire.load(Ordering::SeqCst);
         if wait_cleanup {
-            std::thread::sleep(Cleanup::POLICY.timeout);
+            tokio::time::advance(Cleanup::POLICY.timeout).await;
         }
         Ok(Self {
             resources,
@@ -364,7 +383,7 @@ impl PluginLifecycle for Host {
         }
         resources.registration = Some(self.operations.stage_plugin(scope, |bindings| {
             bindings.register_operations::<Implemented, _>(Lanes::Open, self.owner.clone())?;
-            bindings.register_wire_operations::<super::wire::Implemented, _>(
+            bindings.register_wire_operations::<super::cases::Implemented, _>(
                 Lanes::Open,
                 self.owner.clone(),
             )?;
@@ -423,6 +442,106 @@ impl PluginLifecycle for Host {
     }
 }
 
+impl Credit {
+    async fn start(expire: bool) -> Self {
+        let runtime = super::runtime_with_preparation(NonZeroUsize::new(128).unwrap()).await;
+        let mut manager = PluginManager::new(candidate_with_cleanup()).unwrap();
+        let mut host = host(runtime.operations.clone());
+        let cleanup = Arc::new(CleanupOwner::default());
+        cleanup.fail.store(expire, Ordering::SeqCst);
+        cleanup.expire.store(expire, Ordering::SeqCst);
+        host.cleanup = Some(cleanup.clone());
+        manager.initialize(&mut host).await.unwrap();
+        let scope = host.scope.as_ref().unwrap();
+        let target = runtime
+            .operations
+            .capture_callback(scope, &WireDeclaration::of::<Cleanup>().contract().unwrap())
+            .unwrap();
+        let echo = runtime
+            .operations
+            .capture_callback(
+                scope,
+                &WireDeclaration::of::<super::cases::Echo>()
+                    .contract()
+                    .unwrap(),
+            )
+            .unwrap();
+        Self {
+            runtime,
+            manager,
+            host,
+            cleanup,
+            target,
+            echo,
+        }
+    }
+
+    /// The Echo Callback Is Refused Before Encoding While The Cleanup Holds The Credit.
+    fn assert_held(&self) {
+        let encoded = AtomicBool::new(false);
+        assert!(matches!(
+            self.echo.submit_with(NonZeroUsize::new(64).unwrap(), |_| {
+                encoded.store(true, Ordering::SeqCst);
+                Ok(Text::from("busy").encode_to_vec())
+            }),
+            Err(Error::ResourceExhausted {
+                resource: "operation preparation bytes"
+            })
+        ));
+        assert!(!encoded.load(Ordering::SeqCst));
+    }
+
+    /// Retried Cleanup Succeeds On Unregister And Returns The Credit To The Echo Callback.
+    async fn settle(mut self) {
+        self.cleanup.fail.store(false, Ordering::SeqCst);
+        self.cleanup.release.notify_one();
+        self.runtime
+            .operations
+            .unregister(Cleanup::ID)
+            .await
+            .unwrap();
+        assert_eq!(self.cleanup.finalized.load(Ordering::SeqCst), 2);
+        let bytes = self
+            .echo
+            .submit_with(NonZeroUsize::new(64).unwrap(), |_| {
+                Ok(Text::from("settled").encode_to_vec())
+            })
+            .unwrap()
+            .await
+            .unwrap();
+        assert_eq!(String::decode(&bytes).unwrap(), "settled:1");
+        self.manager.shutdown(&mut self.host).await.unwrap();
+        self.runtime.stop().await.unwrap();
+    }
+}
+
+impl Running {
+    async fn start() -> Self {
+        let runtime = runtime().await;
+        let mut manager = PluginManager::new(candidate()).unwrap();
+        let mut host = host(runtime.operations.clone());
+        host.drop_receipt.store(true, Ordering::SeqCst);
+        manager.initialize(&mut host).await.unwrap();
+        let opened = Arc::new(tokio::sync::Notify::new());
+        let gate = Arc::new(tokio::sync::Notify::new());
+        let invocation = runtime
+            .operations
+            .submit_as::<Compute>(super::Request {
+                gate: Some((opened.clone(), gate.clone())),
+                ..request()
+            })
+            .unwrap();
+        opened.notified().await;
+        Self {
+            runtime,
+            manager,
+            host,
+            gate,
+            invocation,
+        }
+    }
+}
+
 /* === Public Functions === */
 
 /* === Private Functions === */
@@ -472,7 +591,7 @@ fn selected_candidate(provider: &str, first: bool) -> PluginDefinitions {
 
 fn candidate() -> PluginDefinitions {
     let mut operations = harmos::operations::Declarations::of::<Operations>().unwrap();
-    operations.extend(harmos::operations::Declarations::of::<super::wire::Operations>().unwrap());
+    operations.extend(harmos::operations::Declarations::of::<super::cases::Operations>().unwrap());
     operations.push(harmos::operations::Definition::of::<Shared>().unwrap());
     operations.push(harmos::operations::Definition::of::<Parent>().unwrap());
     PluginDefinitions::new(
@@ -553,6 +672,50 @@ fn candidate_with_cleanup() -> PluginDefinitions {
     PluginDefinitions::new([definition], []).unwrap()
 }
 
+#[cfg(feature = "grpc")]
+async fn grpc_call<O>(
+    authority: harmos::grpc::server::Authority,
+) -> tonic::codegen::http::Response<tonic::body::Body>
+where
+    O: OperationDeclaration<Request = Text, Response = String>,
+{
+    use tonic::codec::Codec as _;
+    let capacity = NonZeroUsize::new(4096).unwrap();
+    let decode = harmos::grpc::DecodeSettings {
+        message_bytes: capacity,
+        retained_bytes: capacity,
+    };
+    let encode = harmos::grpc::EncodeSettings {
+        message_bytes: capacity,
+        buffer_bytes: capacity,
+    };
+    let channel = harmos::operations::StreamSettings {
+        items: NonZeroUsize::new(1).unwrap(),
+        bytes: capacity,
+    };
+    let settings = harmos::grpc::server::Settings {
+        calls: NonZeroUsize::new(8).unwrap(),
+        decode,
+        encode,
+        input: channel,
+        output: channel,
+        opening_timeout: std::time::Duration::from_secs(1),
+    };
+    let mut codec =
+        harmos::grpc::Codec::<Text, harmos::operations::Response<Text>>::new(decode, encode)
+            .unwrap();
+    let message =
+        futures_util::stream::iter([Ok(harmos::operations::Response::new(Text::from("grpc")))]);
+    let body = tonic::codec::EncodeBody::new_client(codec.encoder(), message, None, Some(4096));
+    let request = tonic::codegen::http::Request::builder()
+        .header("content-type", "application/grpc")
+        .body(tonic::body::Body::new(body))
+        .unwrap();
+    harmos::grpc::server::unary::<O>(authority, settings, request).await
+}
+
+/* === Tests === */
+
 #[tokio::test]
 async fn callback_requires_budget() {
     let runtime =
@@ -565,7 +728,7 @@ async fn callback_requires_budget() {
     let mut manager = PluginManager::new(candidate()).unwrap();
     let mut host = host(runtime.operations.clone());
     manager.initialize(&mut host).await.unwrap();
-    let contract = WireDeclaration::of::<super::wire::Echo>()
+    let contract = WireDeclaration::of::<super::cases::Echo>()
         .contract()
         .unwrap();
     let target: harmos::operations::PluginCallback = runtime
@@ -595,14 +758,14 @@ async fn callback_contract_generation() {
     let mut manager = PluginManager::new(candidate()).unwrap();
     let mut host = host(runtime.operations.clone());
     manager.initialize(&mut host).await.unwrap();
-    let contract = WireDeclaration::of::<super::wire::Echo>()
+    let contract = WireDeclaration::of::<super::cases::Echo>()
         .contract()
         .unwrap();
     let target = runtime
         .operations
         .capture_callback(host.scope.as_ref().unwrap(), &contract)
         .unwrap();
-    let mut changed = WireDeclaration::of::<super::wire::Echo>();
+    let mut changed = WireDeclaration::of::<super::cases::Echo>();
     changed.version = 2;
     assert!(matches!(
         runtime
@@ -651,7 +814,7 @@ async fn encoder_panic_releases() {
     let mut manager = PluginManager::new(candidate()).unwrap();
     let mut host = host(runtime.operations.clone());
     manager.initialize(&mut host).await.unwrap();
-    let contract = WireDeclaration::of::<super::wire::Echo>()
+    let contract = WireDeclaration::of::<super::cases::Echo>()
         .contract()
         .unwrap();
     let target = runtime
@@ -678,100 +841,31 @@ async fn encoder_panic_releases() {
 }
 
 #[tokio::test]
-async fn credit_survives_physical() {
-    let runtime = super::runtime_with_preparation(NonZeroUsize::new(128).unwrap()).await;
-    let mut manager = PluginManager::new(candidate_with_cleanup()).unwrap();
-    let mut host = host(runtime.operations.clone());
-    let cleanup = Arc::new(CleanupOwner::default());
-    host.cleanup = Some(cleanup.clone());
-    manager.initialize(&mut host).await.unwrap();
-    let scope = host.scope.as_ref().unwrap();
-    let cleanup_contract = WireDeclaration::of::<Cleanup>().contract().unwrap();
-    let target = runtime
-        .operations
-        .capture_callback(scope, &cleanup_contract)
-        .unwrap();
-    let echo_contract = WireDeclaration::of::<super::wire::Echo>()
-        .contract()
-        .unwrap();
-    let echo = runtime
-        .operations
-        .capture_callback(scope, &echo_contract)
-        .unwrap();
-    let invocation = target
+async fn preparation_credit_held() {
+    let credit = Credit::start(false).await;
+    let invocation = credit
+        .target
         .submit_with(NonZeroUsize::new(64).unwrap(), |_| {
             Ok(Text::from("block").encode_to_vec())
         })
         .unwrap();
-    tokio::time::timeout(
-        std::time::Duration::from_secs(2),
-        cleanup.started.notified(),
-    )
-    .await
-    .unwrap();
-    let encoded = AtomicBool::new(false);
-    assert!(matches!(
-        echo.submit_with(NonZeroUsize::new(64).unwrap(), |_| {
-            encoded.store(true, Ordering::SeqCst);
-            Ok(Text::from("active").encode_to_vec())
-        }),
-        Err(Error::ResourceExhausted {
-            resource: "operation preparation bytes"
-        })
-    ));
-    assert!(!encoded.load(Ordering::SeqCst));
+    credit.cleanup.started.notified().await;
+    credit.assert_held();
     invocation.cancel();
-    tokio::time::timeout(
-        std::time::Duration::from_secs(2),
-        cleanup.finalizing.notified(),
-    )
-    .await
-    .unwrap();
-    let blocked = echo.submit_with(NonZeroUsize::new(64).unwrap(), |_| {
-        encoded.store(true, Ordering::SeqCst);
-        Ok(Text::from("busy").encode_to_vec())
-    });
-    assert!(matches!(
-        blocked,
-        Err(Error::ResourceExhausted {
-            resource: "operation preparation bytes"
-        })
-    ));
-    assert!(!encoded.load(Ordering::SeqCst));
-    cleanup.fail.store(true, Ordering::SeqCst);
-    cleanup.release.notify_one();
+    credit.cleanup.finalizing.notified().await;
+    credit.assert_held();
+    credit.cleanup.fail.store(true, Ordering::SeqCst);
+    credit.cleanup.release.notify_one();
     assert!(matches!(
         invocation.await,
         Err(Error::OperationFinalization { .. })
     ));
-    assert!(matches!(
-        echo.submit_with(NonZeroUsize::new(64).unwrap(), |_| {
-            encoded.store(true, Ordering::SeqCst);
-            Ok(Text::from("still busy").encode_to_vec())
-        }),
-        Err(Error::ResourceExhausted {
-            resource: "operation preparation bytes"
-        })
-    ));
-    assert!(!encoded.load(Ordering::SeqCst));
-    cleanup.fail.store(false, Ordering::SeqCst);
-    cleanup.release.notify_one();
-    runtime.operations.unregister(Cleanup::ID).await.unwrap();
-    assert_eq!(cleanup.finalized.load(Ordering::SeqCst), 2);
-    let bytes = echo
-        .submit_with(NonZeroUsize::new(64).unwrap(), |_| {
-            Ok(Text::from("settled").encode_to_vec())
-        })
-        .unwrap()
-        .await
-        .unwrap();
-    assert_eq!(String::decode(&bytes).unwrap(), "settled:1");
-    manager.shutdown(&mut host).await.unwrap();
-    runtime.stop().await.unwrap();
+    credit.assert_held();
+    credit.settle().await;
 }
 
 #[tokio::test]
-async fn catalog_waits_manager() {
+async fn plugin_catalog_lifecycle() {
     let runtime = runtime().await;
     let mut manager = PluginManager::new(candidate()).unwrap();
     let mut host = host(runtime.operations.clone());
@@ -809,7 +903,7 @@ async fn catalog_waits_manager() {
 }
 
 #[tokio::test]
-async fn setup_conflicts_release() {
+async fn staging_releases_names() {
     let runtime = runtime().await;
     let mut manager = PluginManager::new(candidate()).unwrap();
     let mut host = host(runtime.operations.clone());
@@ -843,25 +937,11 @@ async fn setup_conflicts_release() {
 }
 
 #[tokio::test]
-async fn receipt_keeps_running() {
-    let runtime = runtime().await;
-    let mut manager = PluginManager::new(candidate()).unwrap();
-    let mut host = host(runtime.operations.clone());
-    host.drop_receipt
-        .store(true, std::sync::atomic::Ordering::SeqCst);
-    manager.initialize(&mut host).await.unwrap();
-    let opened = Arc::new(tokio::sync::Notify::new());
-    let gate = Arc::new(tokio::sync::Notify::new());
-    let invocation = runtime
-        .operations
-        .submit_as::<Compute>(super::Request {
-            gate: Some((opened.clone(), gate.clone())),
-            ..request()
-        })
-        .unwrap();
-    tokio::time::timeout(std::time::Duration::from_secs(2), opened.notified())
-        .await
-        .unwrap();
+async fn dropped_receipt_defers() {
+    let running = Running::start().await;
+    let runtime = &running.runtime;
+    let mut manager = running.manager;
+    let mut host = running.host;
     manager.shutdown(&mut host).await.unwrap();
     assert!(runtime.operations.definitions().is_empty());
     assert!(matches!(
@@ -873,8 +953,8 @@ async fn receipt_keeps_running() {
         Err(Error::AlreadyRegistered { .. })
     ));
 
-    gate.notify_one();
-    assert_eq!(invocation.await.unwrap().value, 7);
+    running.gate.notify_one();
+    assert_eq!(running.invocation.await.unwrap().value, 7);
     runtime
         .operations
         .register_operation::<ComputeCall>("fixture", Lanes::Open, Arc::new(Owner::default()))
@@ -883,41 +963,24 @@ async fn receipt_keeps_running() {
         runtime.operations.owner(Compute::ID).unwrap().as_str(),
         "fixture"
     );
-    runtime.stop().await.unwrap();
+    running.runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
-async fn receipt_drop_preserves() {
-    let runtime = runtime().await;
-    let mut manager = PluginManager::new(candidate()).unwrap();
-    let mut host = host(runtime.operations.clone());
-    host.drop_receipt
-        .store(true, std::sync::atomic::Ordering::SeqCst);
-    manager.initialize(&mut host).await.unwrap();
-    let opened = Arc::new(tokio::sync::Notify::new());
-    let gate = Arc::new(tokio::sync::Notify::new());
-    let invocation = runtime
-        .operations
-        .submit_as::<Compute>(super::Request {
-            gate: Some((opened.clone(), gate.clone())),
-            ..request()
-        })
-        .unwrap();
-    tokio::time::timeout(std::time::Duration::from_secs(2), opened.notified())
-        .await
-        .unwrap();
-    assert!(
-        tokio::time::timeout(
-            std::time::Duration::from_millis(10),
-            runtime.operations.unregister(Compute::ID)
-        )
-        .await
-        .is_err()
-    );
+async fn unregister_cancel_retained() {
+    let running = Running::start().await;
+    let runtime = &running.runtime;
+    let mut manager = running.manager;
+    let mut host = running.host;
+    {
+        // The gated invocation holds retirement, so the first poll cannot finish it.
+        let mut unregister = std::pin::pin!(runtime.operations.unregister(Compute::ID));
+        assert!(futures_util::poll!(&mut unregister).is_pending());
+    }
     manager.shutdown(&mut host).await.unwrap();
 
-    gate.notify_one();
-    assert_eq!(invocation.await.unwrap().value, 7);
+    running.gate.notify_one();
+    assert_eq!(running.invocation.await.unwrap().value, 7);
     assert!(matches!(
         runtime.operations.register_operation::<ComputeCall>(
             "fixture",
@@ -931,11 +994,11 @@ async fn receipt_drop_preserves() {
         .operations
         .register_operation::<ComputeCall>("fixture", Lanes::Open, Arc::new(Owner::default()))
         .unwrap();
-    runtime.stop().await.unwrap();
+    running.runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
-async fn caller_permissions_precede() {
+async fn plugin_caller_authorization() {
     let runtime = runtime().await;
     let mut manager = PluginManager::new(with_clients(true)).unwrap();
     let mut host = host(runtime.operations.clone());
@@ -965,7 +1028,7 @@ async fn caller_permissions_precede() {
     #[cfg(feature = "grpc")]
     {
         let response =
-            grpc_call::<super::wire::Echo>(harmos::grpc::server::Authority::Plugin(caller.clone()))
+            grpc_call::<super::cases::Echo>(harmos::grpc::server::Authority::Plugin(caller.clone()))
                 .await;
         use http_body_util::BodyExt as _;
         let body = response.into_body().collect().await.unwrap();
@@ -980,7 +1043,7 @@ async fn caller_permissions_precede() {
             <String as harmos::Protobuf>::decode(&bytes[5..]).unwrap(),
             "grpc:1"
         );
-        let response = grpc_call::<super::wire::PrivateEcho>(
+        let response = grpc_call::<super::cases::PrivateEcho>(
             harmos::grpc::server::Authority::Plugin(caller.clone()),
         )
         .await;
@@ -1064,7 +1127,7 @@ async fn caller_permissions_precede() {
     #[cfg(feature = "grpc")]
     {
         let response =
-            grpc_call::<super::wire::Echo>(harmos::grpc::server::Authority::Plugin(caller.clone()))
+            grpc_call::<super::cases::Echo>(harmos::grpc::server::Authority::Plugin(caller.clone()))
                 .await;
         assert_eq!(response.headers()["grpc-status"], "16");
     }
@@ -1163,9 +1226,7 @@ async fn queued_operations_recheck() {
             ..request()
         })
         .unwrap();
-    tokio::time::timeout(std::time::Duration::from_secs(2), opened.notified())
-        .await
-        .unwrap();
+    opened.notified().await;
     let queued = source.submit_as::<Shared>(request()).unwrap();
     manager
         .reload(with_clients(false), &mut host)
@@ -1181,7 +1242,7 @@ async fn queued_operations_recheck() {
 }
 
 #[tokio::test]
-async fn instances_lacks_authority() {
+async fn unmanaged_endpoint_refused() {
     let runtime = runtime().await;
     let router = Router::new(candidate().graph().clone());
     let endpoint = router.enter("fixture").unwrap();
@@ -1195,8 +1256,8 @@ async fn instances_lacks_authority() {
 }
 
 #[tokio::test]
-async fn calls_retain_permissions() {
-    use super::wire::{Echo, Nested, PrivateEcho};
+async fn encoded_calls_authorized() {
+    use super::cases::{Echo, Nested, PrivateEcho};
     use harmos::Message;
     let runtime = runtime().await;
     let mut manager = PluginManager::new(with_clients(true)).unwrap();
@@ -1252,10 +1313,6 @@ async fn calls_retain_permissions() {
         prepared
     );
     manager.shutdown(&mut host).await.unwrap();
-    assert!(matches!(
-        client.submit_encoded(Echo::ID, Vec::new()),
-        Err(Error::OperationCaller { .. })
-    ));
     runtime.stop().await.unwrap();
 }
 
@@ -1338,89 +1395,31 @@ async fn commit_requires_operation() {
     }
 }
 
-#[tokio::test]
-async fn credit_survives_post() {
-    let runtime = super::runtime_with_preparation(NonZeroUsize::new(128).unwrap()).await;
-    let mut manager = PluginManager::new(candidate_with_cleanup()).unwrap();
-    let mut host = host(runtime.operations.clone());
-    let cleanup = Arc::new(CleanupOwner::default());
-    cleanup.fail.store(true, Ordering::SeqCst);
-    cleanup.expire.store(true, Ordering::SeqCst);
-    host.cleanup = Some(cleanup.clone());
-    manager.initialize(&mut host).await.unwrap();
-    let scope = host.scope.as_ref().unwrap();
-    let contract = WireDeclaration::of::<Cleanup>().contract().unwrap();
-    let target = runtime
-        .operations
-        .capture_callback(scope, &contract)
-        .unwrap();
-    let contract = WireDeclaration::of::<super::wire::Echo>()
-        .contract()
-        .unwrap();
-    let echo = runtime
-        .operations
-        .capture_callback(scope, &contract)
-        .unwrap();
-    let invocation = target
+#[tokio::test(start_paused = true)]
+async fn preparation_credit_expired() {
+    let credit = Credit::start(true).await;
+    let invocation = credit
+        .target
         .submit_with(NonZeroUsize::new(64).unwrap(), |_| {
             Ok(Text::from("expire").encode_to_vec())
         })
         .unwrap();
-    tokio::time::timeout(
-        std::time::Duration::from_secs(2),
-        cleanup.finalizing.notified(),
-    )
-    .await
-    .unwrap();
-    assert_eq!(cleanup.attempted.load(Ordering::SeqCst), 0);
-    let encoded = AtomicBool::new(false);
-    let refused = || {
-        echo.submit_with(NonZeroUsize::new(64).unwrap(), |_| {
-            encoded.store(true, Ordering::SeqCst);
-            Ok(Text::from("busy").encode_to_vec())
-        })
-    };
-    assert!(matches!(
-        refused(),
-        Err(Error::ResourceExhausted {
-            resource: "operation preparation bytes"
-        })
-    ));
-    assert!(!encoded.load(Ordering::SeqCst));
-    cleanup.release.notify_one();
-    tokio::time::timeout(std::time::Duration::from_secs(2), cleanup.failed.notified())
-        .await
-        .unwrap();
-    assert!(matches!(
-        refused(),
-        Err(Error::ResourceExhausted {
-            resource: "operation preparation bytes"
-        })
-    ));
-    assert!(!encoded.load(Ordering::SeqCst));
+    credit.cleanup.finalizing.notified().await;
+    assert_eq!(credit.cleanup.attempted.load(Ordering::SeqCst), 0);
+    credit.assert_held();
+    credit.cleanup.release.notify_one();
+    credit.cleanup.failed.notified().await;
+    credit.assert_held();
     let outcome = invocation.await;
     assert!(matches!(outcome,
         Err(Error::OperationFinalization { outcome: Some(ref error), .. })
             if matches!(error.as_ref(), Error::OperationRefused(harmos::Refusal::TimedOut))
     ));
-    cleanup.fail.store(false, Ordering::SeqCst);
-    cleanup.release.notify_one();
-    runtime.operations.unregister(Cleanup::ID).await.unwrap();
-    assert_eq!(cleanup.finalized.load(Ordering::SeqCst), 2);
-    let bytes = echo
-        .submit_with(NonZeroUsize::new(64).unwrap(), |_| {
-            Ok(Text::from("settled").encode_to_vec())
-        })
-        .unwrap()
-        .await
-        .unwrap();
-    assert_eq!(String::decode(&bytes).unwrap(), "settled:1");
-    manager.shutdown(&mut host).await.unwrap();
-    runtime.stop().await.unwrap();
+    credit.settle().await;
 }
 
 #[tokio::test]
-async fn reload_preserves_callback() {
+async fn provider_selection_reload() {
     let runtime = runtime().await;
     let mut host = SelectedHost {
         operations: runtime.operations.clone(),
@@ -1527,47 +1526,3 @@ async fn reload_preserves_callback() {
     drop((first, second, client, old_client, manager, host));
     runtime.stop().await.unwrap();
 }
-
-#[cfg(feature = "grpc")]
-async fn grpc_call<O>(
-    authority: harmos::grpc::server::Authority,
-) -> tonic::codegen::http::Response<tonic::body::Body>
-where
-    O: OperationDeclaration<Request = Text, Response = String>,
-{
-    use tonic::codec::Codec as _;
-    let capacity = NonZeroUsize::new(4096).unwrap();
-    let decode = harmos::grpc::DecodeSettings {
-        message_bytes: capacity,
-        retained_bytes: capacity,
-    };
-    let encode = harmos::grpc::EncodeSettings {
-        message_bytes: capacity,
-        buffer_bytes: capacity,
-    };
-    let channel = harmos::operations::StreamSettings {
-        items: NonZeroUsize::new(1).unwrap(),
-        bytes: capacity,
-    };
-    let settings = harmos::grpc::server::Settings {
-        calls: NonZeroUsize::new(8).unwrap(),
-        decode,
-        encode,
-        input: channel,
-        output: channel,
-        opening_timeout: std::time::Duration::from_secs(1),
-    };
-    let mut codec =
-        harmos::grpc::Codec::<Text, harmos::operations::Response<Text>>::new(decode, encode)
-            .unwrap();
-    let message =
-        futures_util::stream::iter([Ok(harmos::operations::Response::new(Text::from("grpc")))]);
-    let body = tonic::codec::EncodeBody::new_client(codec.encoder(), message, None, Some(4096));
-    let request = tonic::codegen::http::Request::builder()
-        .header("content-type", "application/grpc")
-        .body(tonic::body::Body::new(body))
-        .unwrap();
-    harmos::grpc::server::unary::<O>(authority, settings, request).await
-}
-
-/* === Tests === */

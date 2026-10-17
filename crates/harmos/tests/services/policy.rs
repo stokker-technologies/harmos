@@ -93,68 +93,50 @@ async fn work_facts(runtime: &Runtime<Bank>) -> Vec<SystemFact> {
 /* === Tests === */
 
 #[tokio::test]
-async fn failure_panic_deactivate() {
-    let application = assembly()
-        .service("analysis", |_context| async {
-            Err::<(), _>(Fault::Application("bad invariant"))
+async fn fault_deactivates_service() {
+    for panics in [false, true] {
+        let runtime = assembly()
+            .service("analysis", move |_context| async move {
+                assert!(!panics, "analysis invariant panicked");
+                Err::<(), _>(Fault::Application("bad invariant"))
+            })
+            .runtime()
+            .await
+            .expect("the service declaration is valid");
+        let status = service_status(runtime.operations.watch_residents(), "analysis", |status| {
+            matches!(status, ServiceStatus::Inactive { .. })
         })
-        .runtime()
-        .await
-        .expect("the service declaration is valid");
-    let status = service_status(
-        application.operations.watch_residents(),
-        "analysis",
-        |status| matches!(status, ServiceStatus::Inactive { .. }),
-    )
-    .await;
-    assert!(matches!(
-        status,
-        ServiceStatus::Inactive {
-            cause: ServiceExit::Application(ref error),
-            ref history,
-        } if error == "bad invariant" && history.is_empty()
-    ));
-    assert_eq!(work_facts(&application).await.len(), 1);
-    assert!(matches!(
-        application.stop().await,
-        Err(harmos::Error::TaskFailed {
-            domain: "service",
-            ..
-        })
-    ));
-
-    let panicked = assembly()
-        .service("capture", |_context| async {
-            panic!("capture invariant failed");
-            #[allow(unreachable_code)]
-            Ok::<(), Fault<&'static str>>(())
-        })
-        .runtime()
-        .await
-        .expect("the service declaration is valid");
-    let status = service_status(panicked.operations.watch_residents(), "capture", |status| {
-        matches!(status, ServiceStatus::Inactive { .. })
-    })
-    .await;
-    assert!(matches!(
-        status,
-        ServiceStatus::Inactive {
-            cause: ServiceExit::Panicked,
-            ..
-        }
-    ));
-    assert_eq!(work_facts(&panicked).await.len(), 1);
-    assert!(matches!(
-        panicked.stop().await,
-        Err(harmos::Error::TaskFailed {
-            domain: "service",
-            ..
-        })
-    ));
+        .await;
+        let ServiceStatus::Inactive { cause, history } = status else {
+            unreachable!("the status matched Inactive");
+        };
+        assert_eq!(
+            cause,
+            if panics {
+                ServiceExit::Panicked
+            } else {
+                ServiceExit::Application("bad invariant".into())
+            }
+        );
+        assert!(history.is_empty());
+        let facts = work_facts(&runtime).await;
+        assert_eq!(facts.len(), 1);
+        assert_eq!(
+            facts[0].identify().0.as_str(),
+            "harmos:work/analysis/deactivated"
+        );
+        assert!(matches!(
+            runtime.stop().await,
+            Err(harmos::Error::TaskFailed {
+                domain: "service",
+                ..
+            })
+        ));
+    }
 }
 
-#[tokio::test]
-async fn exhaustion_retains_attempt() {
+#[tokio::test(start_paused = true)]
+async fn credit_exhaustion_history() {
     let attempts = Arc::new(AtomicUsize::new(0));
     let service_attempts = Arc::clone(&attempts);
     let runtime = assembly()
@@ -191,7 +173,7 @@ async fn exhaustion_retains_attempt() {
     ));
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn credit_survive_restarts() {
     let (exits, receiver) = tokio::sync::mpsc::unbounded_channel();
     let policy = harmos::operations::OperationPolicy {
@@ -261,34 +243,6 @@ async fn credit_survive_restarts() {
             ref history,
         } if error == "failed on attempt 2" && history == &["reset on attempt 1"]
     ));
-    assert!(matches!(
-        runtime.stop().await,
-        Err(harmos::Error::TaskFailed {
-            domain: "service",
-            ..
-        })
-    ));
-}
-
-#[tokio::test]
-async fn service_deactivation_records() {
-    let runtime = assembly()
-        .service("analysis", |_context| async {
-            Err::<(), _>(Fault::Application("bad state"))
-        })
-        .runtime()
-        .await
-        .expect("the service declaration is valid");
-    service_status(runtime.operations.watch_residents(), "analysis", |status| {
-        matches!(status, ServiceStatus::Inactive { .. })
-    })
-    .await;
-    let facts = work_facts(&runtime).await;
-    assert_eq!(facts.len(), 1);
-    assert_eq!(
-        facts[0].identify().0.as_str(),
-        "harmos:work/analysis/deactivated"
-    );
     assert!(matches!(
         runtime.stop().await,
         Err(harmos::Error::TaskFailed {

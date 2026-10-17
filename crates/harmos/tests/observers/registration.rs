@@ -250,10 +250,7 @@ async fn catalogs_share_runtime() {
         .runtime()
         .await
         .unwrap();
-    let generation = tokio::time::timeout(Duration::from_secs(2), scope_ready.recv())
-        .await
-        .unwrap()
-        .unwrap();
+    let generation = scope_ready.recv().await.unwrap();
     let shared = runtime
         .handle()
         .operations
@@ -311,11 +308,7 @@ async fn foreign_closed_shutdown() {
         .await
         .unwrap();
     phase(manager, &key(manager, &lease), RUNNING).await;
-    assert!(
-        tokio::time::timeout(Duration::from_millis(10), manager.retire_resources(&closed))
-            .await
-            .is_err()
-    );
+    pending::parked(std::pin::pin!(manager.retire_resources(&closed))).await;
     assert!(matches!(
         manager.stage_observers(&closed, [backend("closed")]),
         Err(Error::Closing { .. })

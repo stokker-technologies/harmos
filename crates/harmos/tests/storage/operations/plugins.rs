@@ -196,7 +196,7 @@ async fn seed(fixture: &Fixture, values: &[u64]) {
 /* === Tests === */
 
 #[tokio::test]
-async fn requirements_route_plugins() {
+async fn write_grants_enforced() {
     let fixture = Fixture::new(config()).await;
     harmos::storage::operations::register(
         &fixture.runtime.operations,
@@ -287,7 +287,7 @@ async fn requirements_route_plugins() {
 }
 
 #[tokio::test]
-async fn query_enforces_grants() {
+async fn query_grants_enforced() {
     let fixture = Fixture::new(config()).await;
     seed(&fixture, &[9_007_199_254_740_993, 9_007_199_254_740_995]).await;
     harmos::storage::operations::register(

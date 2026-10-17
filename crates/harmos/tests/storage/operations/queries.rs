@@ -105,7 +105,7 @@ object!(Third, "test.query.third");
 
 /* === Public Functions === */
 #[tokio::test]
-async fn query_schema_batches_completion() {
+async fn query_operation_batches() {
     // Configure Response Boundaries And Register The Actual Operation.
     let mut settings = config();
     settings.response.batch_rows = NonZeroUsize::new(2).unwrap();

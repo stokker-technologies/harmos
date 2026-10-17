@@ -37,7 +37,6 @@ mod twin {
 // Third Party Imports
 
 // Local Imports
-use crate::scenario_runtime;
 use harmos_domain::config::SchemaSettings;
 use harmos_domain::schema::graph::Schema;
 use harmos_domain::schema::{Cardinality, Described, Kind};
@@ -79,9 +78,8 @@ struct Summary {
 /* === Implementations === */
 
 /* === Public Functions === */
-pub fn check() {
-    {
-        scenario_runtime::check("aggregate_protobuf_matches_derive", || {
+#[test]
+fn protobuf_matches_derive() {
             for value in EVERY {
                 let encoded = Protobuf::encode_to_vec(&value);
                 assert_eq!(encoded.len(), Protobuf::encoded_len(&value));
@@ -94,10 +92,10 @@ pub fn check() {
                 let derived = <twin::Aggregate as Protobuf>::decode(&encoded).unwrap();
                 assert!(derived == twin(value), "{value:?}");
             }
-        });
-    }
-    {
-        scenario_runtime::check("aggregate_protobuf_edges", || {
+        }
+
+#[test]
+fn aggregate_protobuf_edges() {
             assert_eq!(
                 <Aggregate as Protobuf>::decode(&[]).unwrap(),
                 Aggregate::Count
@@ -116,10 +114,10 @@ pub fn check() {
             prost::encoding::bytes::encode(7, &Vec::new(), &mut unknown);
             assert!(<Aggregate as Protobuf>::decode(&unknown).is_err());
             assert!(<Aggregate as Protobuf>::decode(&[0xff]).is_err());
-        });
-    }
-    {
-        scenario_runtime::check("aggregate_postcard_matches_serde", || {
+        }
+
+#[test]
+fn postcard_matches_serde() {
             for value in EVERY {
                 let encoded = Message::encode_to_vec(&value);
                 assert_eq!(encoded.len(), Message::encoded_len(&value));
@@ -132,10 +130,10 @@ pub fn check() {
             }
             assert!(<Aggregate as Message>::decode(&[9]).is_err());
             assert!(<Aggregate as Message>::decode(&[8]).is_err());
-        });
-    }
-    {
-        scenario_runtime::check("aggregate_serde_json_unchanged", || {
+        }
+
+#[test]
+fn aggregate_json_unchanged() {
             assert_eq!(
                 serde_json::to_string(&Aggregate::Count).unwrap(),
                 "\"count\""
@@ -146,10 +144,10 @@ pub fn check() {
             );
             assert_eq!(Aggregate::Percentile(95).name(), "p95");
             assert_eq!(Aggregate::parse("p95"), Some(Aggregate::Percentile(95)));
-        });
-    }
-    {
-        scenario_runtime::check("aggregate_message_field", || {
+        }
+
+#[test]
+fn aggregate_message_field() {
             let value = Summary {
                 aggregate: Aggregate::Percentile(95),
                 optional: Some(Aggregate::Rms),
@@ -162,10 +160,10 @@ pub fn check() {
             let empty = <Summary as Protobuf>::decode(&[]).unwrap();
             assert_eq!(empty.aggregate, Aggregate::Count);
             assert_eq!(empty.optional, None);
-        });
-    }
-    {
-        scenario_runtime::check("aggregate_schema_matches_derive", || {
+        }
+
+#[test]
+fn schema_matches_derive() {
             assert_eq!(Aggregate::FIELDS.len(), twin::Aggregate::FIELDS.len());
             for (field, derived) in Aggregate::FIELDS.iter().zip(twin::Aggregate::FIELDS) {
                 assert_eq!(field.name, derived.name);
@@ -200,11 +198,11 @@ pub fn check() {
                     .unwrap()
             );
             Schema::from_declaration(Summary::DEFINITION, &settings).unwrap();
-        });
-    }
-    #[cfg(feature = "reflection")]
-    {
-        scenario_runtime::check("aggregate_reflects_as_oneof", || {
+        }
+
+#[cfg(feature = "reflection")]
+#[test]
+fn aggregate_reflects_oneof() {
             use harmos_domain::schema::reflection::DynamicMessage;
             let schema = crate::schema_descriptor(Aggregate::DEFINITION);
             assert_eq!(schema.oneofs().count(), 1);
@@ -213,9 +211,8 @@ pub fn check() {
                 let reflected = DynamicMessage::decode(schema.clone(), encoded.as_slice()).unwrap();
                 assert_eq!(prost::Message::encode_to_vec(&reflected), encoded);
             }
-        });
-    }
-}
+        }
+
 
 /* === Private Functions === */
 fn twin(value: Aggregate) -> twin::Aggregate {

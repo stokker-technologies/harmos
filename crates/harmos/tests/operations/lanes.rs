@@ -173,13 +173,11 @@ async fn capacity_bounds_admission() {
 }
 
 #[tokio::test]
-async fn unbounded_lane_admits() {
-    assert_admission(Lanes::Unbounded, 8, 8).await;
-}
-
-#[tokio::test]
-async fn lane_admits_instances() {
-    assert_admission(Lanes::default(), 8, 8).await;
+async fn unbounded_lanes_admit() {
+    // The default lane is unbounded like an explicit unbounded lane.
+    for lane in [Lanes::Unbounded, Lanes::default()] {
+        assert_admission(lane, 8, 8).await;
+    }
 }
 
 #[test]

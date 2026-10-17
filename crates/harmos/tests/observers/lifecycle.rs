@@ -17,11 +17,12 @@ use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
+use std::pin::pin;
 use std::time::Duration;
 // Third Party Imports
-use tokio::sync::Semaphore;
+use tokio::sync::{Semaphore, watch};
 // Local Imports
-use super::{Observing, RUNNING, STOPPED, STOPPING, phase};
+use super::{Observing, RUNNING, STOPPED, STOPPING, pending, phase};
 use harmos::sidecar::{Activity, Instance, Observer, ObserverContext, ObserverError};
 
 /* === Constants === */
@@ -41,6 +42,8 @@ struct Resources {
     acquired: AtomicUsize,
     ticks: AtomicUsize,
     dropped: Arc<AtomicUsize>,
+    // Announces every initialization attempt and observed tick.
+    progress: watch::Sender<()>,
 }
 
 struct Watch<const MODE: u8, const INTERVAL_MS: u64 = 5>(Arc<Resources>, bool);
@@ -62,6 +65,7 @@ impl Resources {
             acquired: AtomicUsize::new(0),
             ticks: AtomicUsize::new(0),
             dropped: Arc::new(AtomicUsize::new(0)),
+            progress: watch::Sender::new(()),
         })
     }
 }
@@ -82,6 +86,7 @@ impl<const MODE: u8, const INTERVAL_MS: u64> Observer<()> for Watch<MODE, INTERV
             observer.1 = true;
             resources.acquired.fetch_add(1, Ordering::SeqCst);
             let attempt = resources.attempts.fetch_add(1, Ordering::SeqCst);
+            resources.progress.send_replace(());
             assert!(MODE != 4 || attempt != 0, "initialization panic");
             if MODE == 3 && attempt == 0 {
                 return Err(std::io::Error::other("initialization refusal"));
@@ -99,6 +104,7 @@ impl<const MODE: u8, const INTERVAL_MS: u64> Observer<()> for Watch<MODE, INTERV
         _: &ObserverContext<'_, Arc<Resources>, ()>,
     ) -> Result<(), Self::Error> {
         self.0.ticks.fetch_add(1, Ordering::SeqCst);
+        self.0.progress.send_replace(());
         assert_ne!(MODE, 1, "callback panic");
         Err(std::io::Error::other("ordinary refusal"))
     }
@@ -144,41 +150,31 @@ fn activity<S: Observer<(), Resources = Arc<Resources>>>(resources: &Arc<Resourc
         .unwrap()
 }
 
-async fn count(value: &AtomicUsize, minimum: usize) {
-    tokio::time::timeout(Duration::from_secs(2), async {
-        while value.load(Ordering::SeqCst) < minimum {
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .expect("observer advances");
+async fn count(resources: &Resources, value: fn(&Resources) -> &AtomicUsize, minimum: usize) {
+    resources
+        .progress
+        .subscribe()
+        .wait_for(|_| value(resources).load(Ordering::SeqCst) >= minimum)
+        .await
+        .expect("resources outlive the observer");
 }
 
 #[tokio::test]
 async fn readiness_follows_lifecycle() {
     let resources = Resources::new();
     let mut task = Observing::start(activity::<Watch<0>>(&resources));
-    count(&resources.attempts, 1).await;
+    count(&resources, |held| &held.attempts, 1).await;
     assert!(!task.is_ready());
     resources.initialization.add_permits(1);
     task.ready().await;
-    count(&resources.ticks, 2).await;
+    count(&resources, |held| &held.ticks, 2).await;
     assert!(task.is_observing());
 
     assert!(task.interrupt().await.is_none());
     let activity = task.activity();
     assert!(activity.is_initialized());
-    {
-        let stopping = activity.stop();
-        tokio::pin!(stopping);
-        assert!(
-            tokio::time::timeout(Duration::from_millis(20), &mut stopping)
-                .await
-                .is_err()
-        );
-        resources.cleanup.add_permits(1);
-        stopping.await.unwrap();
-    }
+    resources.cleanup.add_permits(1);
+    activity.stop().await.unwrap();
     activity.cleanup().await.unwrap();
     assert_eq!(resources.dropped.load(Ordering::SeqCst), 1);
     assert!(!activity.is_initialized());
@@ -192,7 +188,7 @@ async fn readiness_follows_lifecycle() {
 async fn cancelled_initialization_unready() {
     let resources = Resources::new();
     let mut task = Observing::start(activity::<Watch<0>>(&resources));
-    count(&resources.attempts, 1).await;
+    count(&resources, |held| &held.attempts, 1).await;
     assert_eq!(resources.acquired.load(Ordering::SeqCst), 1);
     // Initialization owns its partial acquisition; interrupting it
     // drops that owner without running stop or cleanup.
@@ -225,9 +221,8 @@ async fn callback_panic_cleanup() {
     let resources = Resources::new();
     resources.initialization.add_permits(1);
     let mut task = Observing::start(activity::<Watch<1>>(&resources));
-    let failure = tokio::time::timeout(Duration::from_secs(3), task.ended())
-        .await
-        .expect("a panicked callback ends observation");
+    // A panicked callback ends observation.
+    let failure = task.ended().await;
     assert!(matches!(failure, Some(ObserverError::CallbackPanicked)));
     assert_eq!(resources.dropped.load(Ordering::SeqCst), 0);
     let activity = task.activity();
@@ -258,8 +253,8 @@ async fn finalization_panic_retries() {
     finalization_recovery::<6>(|failure| matches!(failure, ObserverError::CleanupPanicked)).await;
 }
 
-#[tokio::test]
-async fn slow_cleanup_settles() {
+#[tokio::test(start_paused = true)]
+async fn slow_stop_retained() {
     let resources = Resources::new();
     resources.initialization.add_permits(1);
     let mut task = Observing::start(activity::<Watch<0>>(&resources));
@@ -267,14 +262,9 @@ async fn slow_cleanup_settles() {
     assert!(task.interrupt().await.is_none());
     let activity = task.activity();
     {
-        let stopping = activity.stop();
-        tokio::pin!(stopping);
-        assert!(
-            tokio::time::timeout(Duration::from_millis(1200), &mut stopping)
-                .await
-                .is_err(),
-            "a slow stop keeps the observer owned"
-        );
+        // No deadline abandons a slow stop: the observer stays owned.
+        let mut stopping = pin!(activity.stop());
+        pending::outlasts(stopping.as_mut(), Duration::from_secs(60)).await;
         assert_eq!(resources.dropped.load(Ordering::SeqCst), 0);
         resources.cleanup.add_permits(1);
         stopping.await.unwrap();
@@ -286,8 +276,8 @@ async fn slow_cleanup_settles() {
     assert_eq!(resources.dropped.load(Ordering::SeqCst), 1);
 }
 
-#[tokio::test]
-async fn dropped_task_cleanup() {
+#[tokio::test(start_paused = true)]
+async fn dropped_lease_cleans() {
     // Dropping a bare activity skips stop and cleanup; the host owns
     // them, so a dropped lease still stops and cleans up the observer.
     let runtime = super::runtime().await;
@@ -305,20 +295,14 @@ async fn dropped_task_cleanup() {
     phase(manager, &key, RUNNING).await;
     drop(lease);
     phase(manager, &key, STOPPING).await;
+    // Dropping a lease retains cleanup until it completes.
     let mut states = manager.watch_residents();
-    assert!(
-        tokio::time::timeout(
-            Duration::from_millis(1200),
-            states.wait_for(|states| {
-                states
-                    .get(&key)
-                    .is_some_and(|state| state.lifecycle.phase().is_terminal())
-            }),
-        )
-        .await
-        .is_err(),
-        "dropping a lease must retain cleanup until it completes"
-    );
+    let settling = pin!(states.wait_for(|states| {
+        states
+            .get(&key)
+            .is_some_and(|state| state.lifecycle.phase().is_terminal())
+    }));
+    pending::outlasts(settling, Duration::from_secs(60)).await;
     assert_eq!(resources.dropped.load(Ordering::SeqCst), 0);
     resources.cleanup.add_permits(1);
     phase(manager, &key, STOPPED).await;
@@ -329,10 +313,10 @@ async fn dropped_task_cleanup() {
 }
 
 #[tokio::test]
-async fn cancelled_retry_skips_cleanup() {
+async fn refused_retry_cancels() {
     let resources = Resources::new();
     let mut task = Observing::start(activity::<Watch<3>>(&resources));
-    count(&resources.attempts, 1).await;
+    count(&resources, |held| &held.attempts, 1).await;
     // A refused initialization already released its partial owner.
     assert!(task.interrupt().await.is_none());
     let activity = task.activity();
@@ -365,10 +349,8 @@ async fn cancellation_wakes_cadence() {
     let mut task = Observing::start(activity::<Watch<0, 10_000>>(&resources));
     task.ready().await;
     assert_eq!(resources.ticks.load(Ordering::SeqCst), 0);
-    tokio::time::timeout(Duration::from_secs(1), task.shutdown())
-        .await
-        .expect("interruption must wake the cadence wait")
-        .unwrap();
+    // Interruption wakes the cadence wait long before its next tick.
+    task.shutdown().await.unwrap();
     assert_eq!(resources.ticks.load(Ordering::SeqCst), 0);
     assert_eq!(resources.stops.load(Ordering::SeqCst), 1);
     assert_eq!(resources.finalizations.load(Ordering::SeqCst), 1);
@@ -420,19 +402,10 @@ async fn finalization_recovery<const MODE: u8>(expected: fn(&ObserverError) -> b
     assert_eq!(resources.dropped.load(Ordering::SeqCst), 0);
     assert_eq!(resources.stops.load(Ordering::SeqCst), 1);
     {
-        let retrying = activity.cleanup();
-        tokio::pin!(retrying);
-        assert!(
-            tokio::time::timeout(Duration::from_millis(20), &mut retrying)
-                .await
-                .is_err()
-        );
+        let mut retrying = pin!(activity.cleanup());
+        pending::parked(retrying.as_mut()).await;
         assert_eq!(resources.finalizations.load(Ordering::SeqCst), 2);
-        assert!(
-            tokio::time::timeout(Duration::from_millis(20), &mut retrying)
-                .await
-                .is_err()
-        );
+        pending::parked(retrying.as_mut()).await;
         assert_eq!(resources.finalizations.load(Ordering::SeqCst), 2);
         resources.finalization.add_permits(1);
         retrying.await.unwrap();
@@ -450,7 +423,7 @@ async fn initialization_retry<const MODE: u8>() {
     let mut task = Observing::start(activity::<Watch<MODE>>(&resources));
     // A failed initialization drops its partial owner and retries on the next
     // cadence without stop or cleanup.
-    count(&resources.attempts, 2).await;
+    count(&resources, |held| &held.attempts, 2).await;
     assert!(!task.is_ready());
     assert_eq!(resources.dropped.load(Ordering::SeqCst), 1);
     assert_eq!(resources.acquired.load(Ordering::SeqCst), 1);

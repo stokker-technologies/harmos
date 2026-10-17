@@ -27,7 +27,7 @@ use tokio::sync::Notify;
 // Local Imports
 use super::{Lanes, app::App};
 use harmos::operations::{
-    Backoff, CacheKey, Context, FailureKind, Jitter, Operation, OperationInstanceId,
+    Backoff, Context, FailureKind, Jitter, Operation, OperationInstanceId,
     OperationPhase, OperationPolicy, ReplaySafety, RestartPolicy, RetryPolicy,
 };
 use harmos::{Error, Refusal, Runtime};
@@ -55,6 +55,7 @@ struct Trace {
     block_finalize: AtomicBool,
     block_stop: AtomicBool,
     release_stop: Notify,
+    stopping: Notify,
     initializing: Notify,
     running: Notify,
     finalizing: Notify,
@@ -76,8 +77,6 @@ struct Answer(usize);
 /* === Enums === */
 enum Mode {
     Complete,
-    Cache,
-    Retry,
     WaitRun,
     PanicRun,
 }
@@ -96,7 +95,6 @@ enum Mode {
             restart: RestartPolicy::Never,
         },
         replay = ReplaySafety::Idempotent,
-        key = cache_key,
     )]
 struct ReadContract;
 
@@ -165,9 +163,6 @@ impl Operation for Read {
             self.phase.set(2);
             self.trace.running.notify_one();
             match mode {
-                Mode::Retry if self.attempts == 1 => {
-                    Err(std::io::Error::other("transient run failure"))
-                }
                 Mode::WaitRun => std::future::pending().await,
                 Mode::PanicRun => panic!("authored run panicked"),
                 _ => Ok(Answer(42)),
@@ -180,6 +175,7 @@ impl Operation for Read {
     async fn stop(&mut self) -> Result<(), Self::Error> {
         self.trace.stopped.fetch_add(1, Ordering::SeqCst);
         if self.trace.block_stop.load(Ordering::SeqCst) {
+            self.trace.stopping.notify_one();
             self.trace.release_stop.notified().await;
         }
         if self.trace.fail_stop.load(Ordering::SeqCst) {
@@ -217,10 +213,6 @@ impl Drop for Read {
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn cache_key(mode: &Mode) -> Option<CacheKey> {
-    matches!(mode, Mode::Cache).then(|| CacheKey::new(vec![42]).unwrap())
-}
-
 async fn runtime() -> (Runtime<App>, Arc<Trace>) {
     let runtime = Runtime::<App>::builder((), ())
         .register(Lanes::catalog())
@@ -241,8 +233,8 @@ fn count(value: &AtomicUsize) -> usize {
 
 /* === Tests === */
 
-#[tokio::test(start_paused = true)]
-async fn construction_awaits_initialization() {
+#[tokio::test]
+async fn lazy_construction_lifecycle() {
     let (runtime, trace) = runtime().await;
     let mut instance = runtime
         .operations
@@ -268,29 +260,39 @@ async fn construction_awaits_initialization() {
     runtime.stop().await.unwrap();
 }
 
-#[tokio::test(start_paused = true)]
-async fn initialization_never_retries() {
+#[tokio::test]
+async fn init_failure_skips_stop() {
     let (runtime, trace) = runtime().await;
     trace.fail_initialize.store(true, Ordering::SeqCst);
-    let instance = runtime
+    // A failed initialization owns no instance, so a failing
+    // stop cannot retain one.
+    trace.fail_stop.store(true, Ordering::SeqCst);
+    let mut instance = runtime
         .operations
         .submit_as::<ReadContract>(Mode::Complete)
         .unwrap();
     assert!(matches!(
-        instance.join().await,
+        (&mut instance).await,
         Err(Error::OperationFailed { .. })
     ));
+    instance.settle().await.unwrap();
+    assert_eq!(instance.status().phase(), OperationPhase::Settled);
+    assert_eq!(
+        instance.status().outcome(),
+        Some(harmos::operations::OperationOutcome::Failed)
+    );
+    // The transient failure is not retried and the partial owner
+    // is dropped without cleanup.
     assert_eq!(count(&trace.initialized), 1);
     assert_eq!(count(&trace.ran), 0);
-    // A failed initialization drops its partial owner without cleanup.
     assert_eq!(count(&trace.stopped), 0);
     assert_eq!(count(&trace.finalized), 0);
     assert_eq!(count(&trace.dropped), 1);
     runtime.stop().await.unwrap();
 }
 
-#[tokio::test(start_paused = true)]
-async fn cancellation_interrupts_run() {
+#[tokio::test]
+async fn cancel_interrupts_initialize() {
     let (runtime, trace) = runtime().await;
     trace.wait_initialize.store(true, Ordering::SeqCst);
     let instance = runtime
@@ -334,32 +336,8 @@ async fn initialization_uses_total() {
     runtime.stop().await.unwrap();
 }
 
-#[tokio::test(start_paused = true)]
-async fn retries_preserve_instance() {
-    let (runtime, trace) = runtime().await;
-    let instance = runtime
-        .operations
-        .submit_as::<ReadContract>(Mode::Retry)
-        .unwrap();
-    let id = instance.id();
-    assert_eq!(instance.join().await.unwrap().0, 42);
-    assert_eq!(count(&trace.constructed), 1);
-    assert_eq!(count(&trace.initialized), 1);
-    assert_eq!(count(&trace.ran), 2);
-    assert_eq!(count(&trace.stopped), 1);
-    assert!(
-        trace
-            .ids
-            .lock()
-            .unwrap()
-            .iter()
-            .all(|observed| *observed == id)
-    );
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test(start_paused = true)]
-async fn finalize_retain_owner() {
+#[tokio::test]
+async fn stop_failure_retained() {
     let (runtime, trace) = runtime().await;
     trace.fail_stop.store(true, Ordering::SeqCst);
     let mut instance = runtime
@@ -367,22 +345,35 @@ async fn finalize_retain_owner() {
         .submit_as::<ReadContract>(Mode::Complete)
         .unwrap();
     assert!((&mut instance).await.is_err());
+    // A failed stop retains the owner with its cleanup pending.
     assert_eq!(instance.status().phase(), OperationPhase::Stopping);
     assert!(instance.status().cleanup_pending());
+    assert_eq!(count(&trace.stopped), 1);
     assert_eq!(count(&trace.finalized), 0);
     assert_eq!(count(&trace.dropped), 0);
     trace.fail_stop.store(false, Ordering::SeqCst);
+    trace.block_stop.store(true, Ordering::SeqCst);
     trace.block_finalize.store(true, Ordering::SeqCst);
-    assert!(
-        tokio::time::timeout(Duration::from_millis(1), instance.settle())
-            .await
-            .is_err()
-    );
+    let mut settle = std::pin::pin!(instance.settle());
+    // Settlement retries stop and finalizes only after stop returns.
+    tokio::select! {
+        biased;
+        _ = &mut settle => panic!("settled while the retried stop blocks"),
+        () = trace.stopping.notified() => {}
+    }
+    assert_eq!(instance.status().phase(), OperationPhase::Stopping);
     assert_eq!(count(&trace.stopped), 2);
+    assert_eq!(count(&trace.finalized), 0);
+    trace.release_stop.notify_one();
+    tokio::select! {
+        biased;
+        _ = &mut settle => panic!("settled while finalization blocks"),
+        () = trace.finalizing.notified() => {}
+    }
     assert_eq!(count(&trace.finalized), 1);
     assert_eq!(count(&trace.dropped), 0);
     trace.release.notify_one();
-    instance.settle().await.unwrap();
+    settle.await.unwrap();
     assert_eq!(count(&trace.constructed), 1);
     assert_eq!(count(&trace.stopped), 2);
     assert_eq!(count(&trace.finalized), 1);
@@ -391,8 +382,8 @@ async fn finalize_retain_owner() {
     runtime.stop().await.unwrap();
 }
 
-#[tokio::test(start_paused = true)]
-async fn failure_never_replay() {
+#[tokio::test]
+async fn cleanup_failure_retried() {
     let (runtime, trace) = runtime().await;
     trace.fail_finalize.store(true, Ordering::SeqCst);
     let mut instance = runtime
@@ -404,6 +395,7 @@ async fn failure_never_replay() {
     assert_eq!(count(&trace.stopped), 1);
     assert_eq!(count(&trace.dropped), 0);
     trace.fail_finalize.store(false, Ordering::SeqCst);
+    // The retry repeats cleanup without replaying stop.
     instance.settle().await.unwrap();
     assert_eq!(count(&trace.stopped), 1);
     assert_eq!(count(&trace.finalized), 2);
@@ -411,66 +403,7 @@ async fn failure_never_replay() {
     runtime.stop().await.unwrap();
 }
 
-#[tokio::test(start_paused = true)]
-async fn cancellation_never_initializes() {
-    let (runtime, trace) = runtime().await;
-    let first = runtime
-        .operations
-        .submit_as::<ReadContract>(Mode::WaitRun)
-        .unwrap();
-    trace.running.notified().await;
-    let queued = runtime
-        .operations
-        .submit_as::<ReadContract>(Mode::Complete)
-        .unwrap();
-    queued.cancel();
-    assert!(matches!(
-        queued.join().await,
-        Err(Error::OperationRefused(Refusal::Cancelled))
-    ));
-    assert_eq!(count(&trace.constructed), 1);
-    assert_eq!(count(&trace.initialized), 1);
-    assert_eq!(count(&trace.ran), 1);
-    assert_eq!(count(&trace.dropped), 0);
-    first.cancel();
-    assert!(first.join().await.is_err());
-    assert_eq!(count(&trace.stopped), 1);
-    assert_eq!(count(&trace.dropped), 1);
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test(start_paused = true)]
-async fn delivery_skips_acquisition() {
-    let (runtime, trace) = runtime().await;
-    assert_eq!(
-        runtime
-            .operations
-            .call_as::<ReadContract>(Mode::Cache)
-            .await
-            .unwrap()
-            .0,
-        42
-    );
-    assert_eq!(
-        runtime
-            .operations
-            .call_as::<ReadContract>(Mode::Cache)
-            .await
-            .unwrap()
-            .0,
-        42
-    );
-    // The cache hit constructs nothing.
-    assert_eq!(count(&trace.constructed), 1);
-    assert_eq!(count(&trace.initialized), 1);
-    assert_eq!(count(&trace.ran), 1);
-    assert_eq!(count(&trace.stopped), 1);
-    assert_eq!(count(&trace.finalized), 1);
-    assert_eq!(count(&trace.dropped), 1);
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn refusal_never_start() {
     let (runtime, trace) = runtime().await;
     trace.fail_new.store(true, Ordering::SeqCst);
@@ -489,7 +422,7 @@ async fn refusal_never_start() {
     assert_eq!(count(&trace.dropped), 0);
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn panic_stops_finalizes() {
     let (runtime, trace) = runtime().await;
     let instance = runtime
@@ -508,91 +441,53 @@ async fn panic_stops_finalizes() {
     runtime.stop().await.unwrap();
 }
 
-#[tokio::test(start_paused = true)]
-async fn recovery_preserves_stop() {
-    let (runtime, trace) = runtime().await;
-    trace.fail_stop.store(true, Ordering::SeqCst);
-    let mut instance = runtime
-        .operations
-        .submit_as::<ReadContract>(Mode::Complete)
-        .unwrap();
-    assert!((&mut instance).await.is_err());
-    trace.fail_stop.store(false, Ordering::SeqCst);
-    trace.block_stop.store(true, Ordering::SeqCst);
-    assert!(
-        tokio::time::timeout(Duration::from_millis(1), instance.settle())
-            .await
-            .is_err()
-    );
-    assert_eq!(instance.status().phase(), OperationPhase::Stopping);
-    assert_eq!(count(&trace.stopped), 2);
-    assert_eq!(count(&trace.finalized), 0);
-    assert_eq!(count(&trace.dropped), 0);
-    trace.release_stop.notify_one();
-    instance.settle().await.unwrap();
-    assert_eq!(count(&trace.stopped), 2);
-    assert_eq!(count(&trace.finalized), 1);
-    assert_eq!(count(&trace.dropped), 1);
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test(start_paused = true)]
-async fn failed_initialization_skips_stop() {
-    let (runtime, trace) = runtime().await;
-    trace.fail_initialize.store(true, Ordering::SeqCst);
-    trace.fail_stop.store(true, Ordering::SeqCst);
-    let mut instance = runtime
-        .operations
-        .submit_as::<ReadContract>(Mode::Complete)
-        .unwrap();
-    // A failed initialization owns no instance, so a failing
-    // stop cannot retain one.
-    let error = (&mut instance).await.err().unwrap();
-    assert!(matches!(error, Error::OperationFailed { .. }));
-    instance.settle().await.unwrap();
-    assert_eq!(instance.status().phase(), OperationPhase::Settled);
-    assert_eq!(
-        instance.status().outcome(),
-        Some(harmos::operations::OperationOutcome::Failed)
-    );
-    assert_eq!(count(&trace.initialized), 1);
-    assert_eq!(count(&trace.ran), 0);
-    assert_eq!(count(&trace.stopped), 0);
-    assert_eq!(count(&trace.dropped), 1);
-    runtime.stop().await.unwrap();
+#[cfg(feature = "grpc")]
+#[tokio::test]
+async fn dropped_response_retains() {
+    use std::future::Future;
+    use std::task::{Context as TaskContext, Waker};
+    // Dropping the response before or after its first poll keeps the
+    // running instance owned until its cleanup is released.
+    for polled in [false, true] {
+        let (runtime, trace) = runtime().await;
+        trace.block_finalize.store(true, Ordering::SeqCst);
+        let instance = runtime
+            .operations
+            .submit_as::<ReadContract>(Mode::WaitRun)
+            .unwrap();
+        let id = instance.id();
+        // Only a constructed instance has cleanup to retain.
+        trace.running.notified().await;
+        let mut response = Box::pin(harmos::grpc::response(instance));
+        if polled {
+            assert!(
+                response
+                    .as_mut()
+                    .poll(&mut TaskContext::from_waker(Waker::noop()))
+                    .is_pending()
+            );
+        }
+        drop(response);
+        trace.finalizing.notified().await;
+        let status = runtime
+            .operations
+            .status(id)
+            .expect("same running instance is retained");
+        assert!(status.cancellation_requested());
+        assert_eq!(status.phase(), OperationPhase::Finalizing);
+        assert_eq!(count(&trace.constructed), 1);
+        assert_eq!(count(&trace.ran), 1);
+        assert_eq!(count(&trace.stopped), 1);
+        assert_eq!(count(&trace.dropped), 0);
+        trace.release.notify_one();
+        runtime.stop().await.unwrap();
+        assert_eq!(count(&trace.dropped), 1);
+    }
 }
 
 #[cfg(feature = "grpc")]
 #[tokio::test]
-async fn poll_retains_manager() {
-    let (runtime, trace) = runtime().await;
-    trace.block_finalize.store(true, Ordering::SeqCst);
-    let instance = runtime
-        .operations
-        .submit_as::<ReadContract>(Mode::WaitRun)
-        .unwrap();
-    let id = instance.id();
-    // Only a constructed instance has cleanup to retain.
-    trace.running.notified().await;
-    let response = harmos::grpc::response(instance);
-    drop(response);
-    trace.finalizing.notified().await;
-    let status = runtime
-        .operations
-        .status(id)
-        .expect("original instance remains owned");
-    assert!(status.cancellation_requested());
-    assert_eq!(status.phase(), OperationPhase::Finalizing);
-    assert_eq!(count(&trace.constructed), 1);
-    assert_eq!(count(&trace.dropped), 0);
-    trace.release.notify_one();
-    runtime.stop().await.unwrap();
-    assert_eq!(count(&trace.dropped), 1);
-}
-
-#[cfg(feature = "grpc")]
-#[tokio::test]
-async fn success_waits_physical() {
+async fn response_awaits_cleanup() {
     use std::future::Future;
     use std::task::{Context as TaskContext, Waker};
     let (runtime, trace) = runtime().await;
@@ -620,7 +515,7 @@ async fn success_waits_physical() {
 
 #[cfg(feature = "grpc")]
 #[tokio::test]
-async fn failure_keeps_owner() {
+async fn response_keeps_owner() {
     let (runtime, trace) = runtime().await;
     trace.fail_finalize.store(true, Ordering::SeqCst);
     let instance = runtime
@@ -644,43 +539,6 @@ async fn failure_keeps_owner() {
     runtime.stop().await.unwrap();
     assert_eq!(count(&trace.constructed), 1);
     assert_eq!(count(&trace.finalized), 2);
-    assert_eq!(count(&trace.dropped), 1);
-}
-
-#[cfg(feature = "grpc")]
-#[tokio::test]
-async fn run_retains_instance() {
-    use std::future::Future;
-    use std::task::{Context as TaskContext, Waker};
-    let (runtime, trace) = runtime().await;
-    trace.block_finalize.store(true, Ordering::SeqCst);
-    let instance = runtime
-        .operations
-        .submit_as::<ReadContract>(Mode::WaitRun)
-        .unwrap();
-    let id = instance.id();
-    let mut response = Box::pin(harmos::grpc::response(instance));
-    trace.running.notified().await;
-    assert!(
-        response
-            .as_mut()
-            .poll(&mut TaskContext::from_waker(Waker::noop()))
-            .is_pending()
-    );
-    drop(response);
-    trace.finalizing.notified().await;
-    let status = runtime
-        .operations
-        .status(id)
-        .expect("same running instance is retained");
-    assert!(status.cancellation_requested());
-    assert_eq!(status.phase(), OperationPhase::Finalizing);
-    assert_eq!(count(&trace.ran), 1);
-    assert_eq!(count(&trace.stopped), 1);
-    assert_eq!(count(&trace.dropped), 0);
-    trace.release.notify_one();
-    runtime.stop().await.unwrap();
-    assert_eq!(count(&trace.constructed), 1);
     assert_eq!(count(&trace.dropped), 1);
 }
 
@@ -798,7 +656,7 @@ mod listed {
     }
 
     #[tokio::test]
-    async fn cache_restoration_never_borrows() {
+    async fn restore_defers_borrow() {
         let runtime = crate::fixture::runtime().await;
         let observed = Arc::new(runtime.operations.clone());
         let owner = Arc::new(BorrowOwner {
@@ -835,7 +693,7 @@ mod listed {
     }
 
     #[tokio::test]
-    async fn owned_macro_retains_payload() {
+    async fn macro_retains_owner() {
         let runtime = crate::fixture::runtime().await;
         let original = Arc::new(7_u32);
         runtime

@@ -15,16 +15,14 @@
 
 // Standard Library Imports
 use std::num::NonZeroUsize;
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
-use std::time::Duration;
 
 // Third Party Imports
 
 // Local Imports
-use super::{Fixture, Lanes, config};
+use super::{Fixture, config};
 use harmos::Identifier;
-use harmos::storage::operations::{DeleteFile, DeleteFileRequest};
+use harmos::storage::operations::DeleteFileRequest;
 use harmos::storage::{FileMetadata, MutationId, StagedFile, StorageBackend};
 
 /* === Constants === */
@@ -69,7 +67,7 @@ fn request(f: &Fixture, id: &str) -> DeleteFileRequest {
 /* === Tests === */
 
 #[tokio::test]
-async fn deletion_rejects_producers() {
+async fn delete_removes_file() {
     let f = Fixture::new(config()).await;
     let mut producer = f.storage.produce_file(metadata("terminal")).await.unwrap();
     producer.write_all(b"abcdef").await.unwrap();
@@ -141,7 +139,7 @@ async fn deletion_rejects_producers() {
 }
 
 #[tokio::test]
-async fn abandoned_missing_files() {
+async fn delete_abandoned_missing() {
     let f = Fixture::new(config()).await;
     let mut producer = f.storage.produce_file(metadata("partial")).await.unwrap();
     producer.write_all(b"partial").await.unwrap();
@@ -163,66 +161,27 @@ async fn abandoned_missing_files() {
 }
 
 #[tokio::test]
-async fn deletion_finishes_retains() {
-    tokio::time::timeout(Duration::from_secs(5), async {
-        let f = Fixture::new(config()).await;
-        f.storage
-            .write_file(metadata("cancelled"), b"bytes")
-            .await
-            .unwrap();
-        let request = request(&f, "cancelled");
-        f.data.control.block_delete.store(true, Ordering::SeqCst);
-        let mut deletion = Box::pin(f.storage.delete_file_once(&request.mutation, &request.file));
-        tokio::select! {
-            biased;
-            _ = &mut deletion => panic!("deletion must wait"),
-            _ = f.data.control.delete_entered.notified() => {}
-        }
-        drop(deletion);
-        f.data.control.block_delete.store(false, Ordering::SeqCst);
-        f.data.control.delete_release.notify_one();
-        f.storage
-            .delete_file_once(&request.mutation, &request.file)
-            .await
-            .unwrap();
-        assert!(
-            f.data
-                .mutation_receipts
-                .lock()
-                .unwrap()
-                .contains_key(&request.mutation)
-        );
-        assert_eq!(f.storage.status().read_bytes, 0);
-        f.finish().await;
-    })
-    .await
-    .unwrap();
-}
-
-#[tokio::test]
-async fn deletion_retries_lost() {
+async fn cancelled_delete_settles() {
     let f = Fixture::new(config()).await;
-    harmos::storage::operations::register(
-        &f.runtime.operations,
-        "storage",
-        Lanes::Open,
-        Arc::new(f.storage.clone()),
-    )
-    .unwrap();
     f.storage
-        .write_file(metadata("retry"), b"bytes")
+        .write_file(metadata("cancelled"), b"bytes")
         .await
         .unwrap();
-    f.data.control.delete_failures.store(3, Ordering::SeqCst);
-    let request = request(&f, "retry");
-    let result = f
-        .runtime
-        .operations
-        .call_as::<DeleteFile>(request.clone())
+    let request = request(&f, "cancelled");
+    f.data.control.block_delete.store(true, Ordering::SeqCst);
+    let mut deletion = Box::pin(f.storage.delete_file_once(&request.mutation, &request.file));
+    tokio::select! {
+        biased;
+        _ = &mut deletion => panic!("deletion must wait"),
+        _ = f.data.control.delete_entered.notified() => {}
+    }
+    drop(deletion);
+    f.data.control.block_delete.store(false, Ordering::SeqCst);
+    f.data.control.delete_release.notify_one();
+    f.storage
+        .delete_file_once(&request.mutation, &request.file)
         .await
         .unwrap();
-    assert_eq!(*result, request.file);
-    assert_eq!(f.data.control.delete_failures.load(Ordering::SeqCst), 0);
     assert!(
         f.data
             .mutation_receipts
@@ -230,38 +189,7 @@ async fn deletion_retries_lost() {
             .unwrap()
             .contains_key(&request.mutation)
     );
-    f.finish().await;
-}
-
-#[tokio::test]
-async fn deletion_never_multiplies() {
-    let f = Fixture::new(config()).await;
-    harmos::storage::operations::register(
-        &f.runtime.operations,
-        "storage",
-        Lanes::Open,
-        Arc::new(f.storage.clone()),
-    )
-    .unwrap();
-    f.storage
-        .write_file(metadata("budget"), b"bytes")
-        .await
-        .unwrap();
-    f.data.control.delete_failures.store(5, Ordering::SeqCst);
-    let request = request(&f, "budget");
-    assert!(
-        f.runtime
-            .operations
-            .call_as::<DeleteFile>(request.clone())
-            .await
-            .is_err()
-    );
-    assert_eq!(f.data.control.delete_failures.load(Ordering::SeqCst), 1);
-    f.data.control.delete_failures.store(0, Ordering::SeqCst);
-    f.storage
-        .delete_file_once(&request.mutation, &request.file)
-        .await
-        .unwrap();
+    assert_eq!(f.storage.status().read_bytes, 0);
     f.finish().await;
 }
 
@@ -301,7 +229,7 @@ async fn deletion_preserves_other() {
 }
 
 #[tokio::test]
-async fn cannot_restore_deleted() {
+async fn deleted_checkpoint_refused() {
     let f = Fixture::new(config()).await;
     let mut producer = f
         .storage
@@ -327,44 +255,40 @@ async fn cannot_restore_deleted() {
 
 #[tokio::test]
 async fn close_settles_deletion() {
-    tokio::time::timeout(Duration::from_secs(5), async {
-        let f = Fixture::new(config()).await;
-        f.storage
-            .write_file(metadata("close"), b"bytes")
-            .await
-            .unwrap();
-        let request = request(&f, "close");
-        f.data.control.block_delete.store(true, Ordering::SeqCst);
-        let mut deletion = Box::pin(f.storage.delete_file_once(&request.mutation, &request.file));
-        tokio::select! {
-            biased;
-            _ = &mut deletion => panic!("deletion must wait"),
-            _ = f.data.control.delete_entered.notified() => {}
-        }
-        drop(deletion);
-        let closing = f.storage.close();
-        tokio::pin!(closing);
-        tokio::select! {
-            biased;
-            result = &mut closing => panic!("close must wait for the blocked deletion: {result:?}"),
-            // One poll of close: it must already observe the in-flight deletion.
-            _ = std::future::ready(()) => {}
-        }
-        assert!(f.storage.status().closing);
-        f.data.control.block_delete.store(false, Ordering::SeqCst);
-        f.data.control.delete_release.notify_one();
-        closing.await.unwrap();
-        assert!(
-            f.data
-                .mutation_receipts
-                .lock()
-                .unwrap()
-                .contains_key(&request.mutation)
-        );
-        assert!(f.data.blobs.lock().unwrap().is_empty());
-        assert_eq!(f.storage.status().read_bytes, 0);
-        f.runtime.stop().await.unwrap();
-    })
-    .await
-    .unwrap();
+    let f = Fixture::new(config()).await;
+    f.storage
+        .write_file(metadata("close"), b"bytes")
+        .await
+        .unwrap();
+    let request = request(&f, "close");
+    f.data.control.block_delete.store(true, Ordering::SeqCst);
+    let mut deletion = Box::pin(f.storage.delete_file_once(&request.mutation, &request.file));
+    tokio::select! {
+        biased;
+        _ = &mut deletion => panic!("deletion must wait"),
+        _ = f.data.control.delete_entered.notified() => {}
+    }
+    drop(deletion);
+    let closing = f.storage.close();
+    tokio::pin!(closing);
+    tokio::select! {
+        biased;
+        result = &mut closing => panic!("close must wait for the blocked deletion: {result:?}"),
+        // One poll of close: it must already observe the in-flight deletion.
+        _ = std::future::ready(()) => {}
+    }
+    assert!(f.storage.status().closing);
+    f.data.control.block_delete.store(false, Ordering::SeqCst);
+    f.data.control.delete_release.notify_one();
+    closing.await.unwrap();
+    assert!(
+        f.data
+            .mutation_receipts
+            .lock()
+            .unwrap()
+            .contains_key(&request.mutation)
+    );
+    assert!(f.data.blobs.lock().unwrap().is_empty());
+    assert_eq!(f.storage.status().read_bytes, 0);
+    f.runtime.stop().await.unwrap();
 }

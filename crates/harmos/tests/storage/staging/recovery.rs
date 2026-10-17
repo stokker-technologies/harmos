@@ -109,7 +109,7 @@ pub(super) async fn restart(source: &Fixture) -> Fixture {
 /* === Tests === */
 
 #[tokio::test]
-async fn restart_restores_saved() {
+async fn restart_resumes_prefix() {
     let f = Fixture::new(config()).await;
     let mut producer = f
         .storage
@@ -142,7 +142,7 @@ async fn restart_restores_saved() {
 }
 
 #[tokio::test]
-async fn fences_survive_saving() {
+async fn fences_survive_restart() {
     let f = Fixture::new(config()).await;
     let mut original = f
         .storage
@@ -167,7 +167,7 @@ async fn fences_survive_saving() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn recovered_producers_receive() {
+async fn recovery_renews_deadline() {
     let f = Fixture::new(config()).await;
     let producer = f
         .storage
@@ -188,44 +188,40 @@ async fn recovered_producers_receive() {
 }
 
 #[tokio::test]
-async fn appends_never_extend() {
-    tokio::time::timeout(Duration::from_secs(5), async {
-        let f = Fixture::new(config()).await;
-        let mut producer = f.storage.produce_file(metadata("fixed-cut")).await.unwrap();
-        producer.write_all(b"saved").await.unwrap();
+async fn checkpoint_fixes_length() {
+    let f = Fixture::new(config()).await;
+    let mut producer = f.storage.produce_file(metadata("fixed-cut")).await.unwrap();
+    producer.write_all(b"saved").await.unwrap();
+    f.data
+        .control
+        .block_checkpoint
+        .store(true, Ordering::SeqCst);
+    {
+        let save = f.storage.flush();
+        tokio::pin!(save);
+        tokio::select! {
+            biased;
+            _ = &mut save => panic!("checkpoint must block"),
+            _ = f.data.control.checkpoint_entered.notified() => {}
+        }
+        producer.write_all(b"later").await.unwrap();
         f.data
             .control
             .block_checkpoint
-            .store(true, Ordering::SeqCst);
-        {
-            let save = f.storage.flush();
-            tokio::pin!(save);
-            tokio::select! {
-                biased;
-                _ = &mut save => panic!("checkpoint must block"),
-                _ = f.data.control.checkpoint_entered.notified() => {}
-            }
-            producer.write_all(b"later").await.unwrap();
-            f.data
-                .control
-                .block_checkpoint
-                .store(false, Ordering::SeqCst);
-            f.data.control.checkpoint_release.notify_one();
-            save.await.unwrap();
-        }
-        {
-            let checkpoints = f.data.saved_productions.lock().unwrap();
-            assert_eq!(checkpoints["fixed-cut"].0.length, 5);
-            assert_eq!(checkpoints["fixed-cut"].1, b"saved");
-        }
-        f.finish().await;
-    })
-    .await
-    .unwrap();
+            .store(false, Ordering::SeqCst);
+        f.data.control.checkpoint_release.notify_one();
+        save.await.unwrap();
+    }
+    {
+        let checkpoints = f.data.saved_productions.lock().unwrap();
+        assert_eq!(checkpoints["fixed-cut"].0.length, 5);
+        assert_eq!(checkpoints["fixed-cut"].1, b"saved");
+    }
+    f.finish().await;
 }
 
 #[tokio::test]
-async fn graceful_close_saves() {
+async fn close_retains_production() {
     let f = Fixture::new(config()).await;
     let mut producer = f
         .storage
@@ -259,7 +255,7 @@ async fn graceful_close_saves() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn lost_fence_response() {
+async fn fence_retries_transient() {
     let f = Fixture::new(config()).await;
     let mut producer = f
         .storage
@@ -279,7 +275,7 @@ async fn lost_fence_response() {
 }
 
 #[tokio::test]
-async fn recovery_releases_read() {
+async fn failed_recovery_releases() {
     let source = Fixture::new(config()).await;
     let first = source
         .storage
@@ -334,7 +330,7 @@ async fn recovery_releases_read() {
 }
 
 #[tokio::test]
-async fn receipts_replay_readmitting() {
+async fn receipts_replay_restart() {
     use harmos::Identifier;
     use harmos::storage::MutationId;
     let f = Fixture::new(config()).await;
@@ -394,7 +390,7 @@ async fn receipts_replay_readmitting() {
 }
 
 #[tokio::test]
-async fn files_retry_outcomes() {
+async fn deletion_survives_restart() {
     let f = Fixture::new(config()).await;
     let metadata = metadata("deleted-restart");
     let reference = f
@@ -422,49 +418,6 @@ async fn files_retry_outcomes() {
     );
     assert!(recovered.storage.follow_file(&file, 0).await.is_err());
     assert!(recovered.storage.produce_file(metadata).await.is_err());
-    recovered.finish().await;
-    f.finish().await;
-}
-
-#[tokio::test]
-async fn mutation_replays_restart() {
-    let f = Fixture::new(config()).await;
-    let key = crate::schema();
-    let mutation = harmos::storage::MutationId {
-        window: f.storage.mutation_window().unwrap().id,
-        key: harmos::Identifier::new("write-schema").unwrap(),
-    };
-    let accepted = f
-        .storage
-        .write_schema_once(
-            &mutation,
-            &key,
-            &harmos::schema::graph::Schema {
-                root: 0,
-                definitions: vec![vec![]],
-            },
-        )
-        .await
-        .unwrap();
-    f.storage.flush().await.unwrap();
-    let recovered = restart(&f).await;
-    assert_eq!(
-        recovered
-            .storage
-            .write_schema_once(
-                &mutation,
-                &key,
-                &harmos::schema::graph::Schema {
-                    root: 0,
-                    definitions: vec![vec![]]
-                }
-            )
-            .await
-            .unwrap(),
-        accepted
-    );
-    assert_eq!(recovered.storage.cursor_accepted(), accepted);
-    assert_eq!(recovered.data.schemas.lock().unwrap().len(), 1);
     recovered.finish().await;
     f.finish().await;
 }

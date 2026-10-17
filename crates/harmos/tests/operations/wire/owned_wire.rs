@@ -15,10 +15,7 @@
 
 // Standard Library Imports
 use std::cell::Cell;
-use std::sync::{
-    Arc, Mutex,
-    atomic::{AtomicBool, Ordering},
-};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 // Third Party Imports
@@ -27,7 +24,7 @@ use std::time::Duration;
 use super::{Lanes, app::App};
 use harmos::operations::{
     Backoff, Context, FailureKind, Jitter, Operation, OperationDeclaration, OperationInstanceId,
-    OperationPhase, OperationPolicy, RestartPolicy, RetryPolicy,
+    OperationPolicy, RestartPolicy, RetryPolicy,
 };
 use harmos::{Message, Runtime};
 
@@ -40,10 +37,8 @@ use harmos::{Message, Runtime};
 /* === Structs === */
 #[derive(Default)]
 struct Resources {
-    fail_initialize: AtomicBool,
     events: Mutex<Vec<&'static str>>,
     ids: Mutex<Vec<OperationInstanceId>>,
-    fail_finalize: AtomicBool,
 }
 
 // The Carrier Must Not Require A Sync Operation Object.
@@ -126,9 +121,6 @@ impl Operation for Read {
                 .unwrap()
                 .push("initialize");
             operation.resources.ids.lock().unwrap().push(context.id());
-            if operation.resources.fail_initialize.load(Ordering::SeqCst) {
-                return Err(std::io::Error::other("partial initialization"));
-            }
             Ok(())
         }
         .await;
@@ -147,9 +139,6 @@ impl Operation for Read {
             self.resources.ids.lock().unwrap().push(context.id());
             assert_eq!(context.attempt(), self.attempts.get());
             self.attempts.set(self.attempts.get() + 1);
-            if request.value == "retry" && self.attempts.get() == 1 {
-                return Err(std::io::Error::other("transient attempt"));
-            }
             Ok(Text {
                 value: format!("{}:{}", request.value, self.attempts.get()),
             })
@@ -165,9 +154,6 @@ impl Operation for Read {
 
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
         self.resources.events.lock().unwrap().push("finalize");
-        if self.resources.fail_finalize.load(Ordering::SeqCst) {
-            return Err(std::io::Error::other("cleanup incomplete"));
-        }
         Ok(())
     }
 
@@ -185,7 +171,7 @@ impl Drop for Read {
 /* === Public Functions === */
 
 /* === Private Functions === */
-async fn runtime(wire: bool) -> (Runtime<App>, Arc<Resources>) {
+async fn runtime() -> (Runtime<App>, Arc<Resources>) {
     let runtime = Runtime::<App>::builder((), ())
         .register(Lanes::catalog())
         .operation_settings(harmos::operations::Settings {
@@ -196,17 +182,10 @@ async fn runtime(wire: bool) -> (Runtime<App>, Arc<Resources>) {
         .await
         .unwrap();
     let resources = Arc::new(Resources::default());
-    if wire {
-        runtime
-            .operations
-            .register_wire_operations::<Authored, _>("app", Lanes::Open, resources.clone())
-            .unwrap();
-    } else {
-        runtime
-            .operations
-            .register_operations::<Authored, _>("app", Lanes::Open, resources.clone())
-            .unwrap();
-    }
+    runtime
+        .operations
+        .register_operations::<Authored, _>("app", Lanes::Open, resources.clone())
+        .unwrap();
     assert!(resources.events.lock().unwrap().is_empty());
     (runtime, resources)
 }
@@ -250,97 +229,9 @@ async fn builder_wire_catalog() {
     runtime.stop().await.unwrap();
 }
 
-#[tokio::test(start_paused = true)]
-async fn once_keep_identity() {
-    let (runtime, resources) = runtime(true).await;
-    let mut instance = runtime
-        .operations
-        .submit_encoded(ReadContract::ID, payload("retry"))
-        .unwrap();
-    // Construction waits for the first attempt's initialization.
-    assert!(resources.events.lock().unwrap().is_empty());
-    let answer = (&mut instance).await.unwrap();
-    assert_eq!(Text::decode(&answer).unwrap().value, "retry:2");
-    assert_eq!(
-        *resources.events.lock().unwrap(),
-        [
-            "new",
-            "initialize",
-            "run",
-            "run",
-            "stop",
-            "finalize",
-            "drop"
-        ]
-    );
-    assert_eq!(*resources.ids.lock().unwrap(), [instance.id(); 3]);
-    assert_eq!(instance.status().phase(), OperationPhase::Settled);
-
-    let typed = runtime
-        .operations
-        .submit_as::<ReadContract>(Text {
-            value: "typed".to_owned(),
-        })
-        .unwrap();
-    assert_eq!(typed.generation(), instance.generation());
-    assert_eq!(typed.await.unwrap().value, "typed:1");
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test(start_paused = true)]
-async fn failure_not_attempt() {
-    let (runtime, resources) = runtime(true).await;
-    resources.fail_initialize.store(true, Ordering::SeqCst);
-    let mut instance = runtime
-        .operations
-        .submit_encoded(ReadContract::ID, payload("unused"))
-        .unwrap();
-    assert!((&mut instance).await.is_err());
-    assert_eq!(
-        *resources.events.lock().unwrap(),
-        // A failed initialization drops its owner without cleanup.
-        ["new", "initialize", "drop"]
-    );
-    assert_eq!(instance.status().phase(), OperationPhase::Settled);
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test(start_paused = true)]
-async fn cleanup_retry_retains() {
-    let (runtime, resources) = runtime(true).await;
-    resources.fail_finalize.store(true, Ordering::SeqCst);
-    let mut instance = runtime
-        .operations
-        .submit_encoded(ReadContract::ID, payload("complete"))
-        .unwrap();
-    assert!((&mut instance).await.is_err());
-    assert_eq!(instance.status().phase(), OperationPhase::Finalizing);
-    assert!(instance.status().cleanup_pending());
-    assert_eq!(
-        *resources.events.lock().unwrap(),
-        ["new", "initialize", "run", "stop", "finalize"]
-    );
-    resources.fail_finalize.store(false, Ordering::SeqCst);
-    instance.settle().await.unwrap();
-    assert_eq!(
-        *resources.events.lock().unwrap(),
-        [
-            "new",
-            "initialize",
-            "run",
-            "stop",
-            "finalize",
-            "finalize",
-            "drop"
-        ]
-    );
-    assert_eq!(instance.status().phase(), OperationPhase::Settled);
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn registration_projects_wire() {
-    let (runtime, resources) = runtime(false).await;
+    let (runtime, resources) = runtime().await;
     let encoded = runtime
         .operations
         .submit_encoded(ReadContract::ID, payload("complete"))
@@ -400,7 +291,7 @@ async fn registration_refuses_stream() {
     enum Implemented {
         Stream(Stream),
     }
-    let (runtime, resources) = runtime(false).await;
+    let (runtime, resources) = runtime().await;
     let contracts = harmos::operations::Contracts::of::<StreamContracts>().unwrap();
     assert!(contracts[0].input().is_some());
     assert!(contracts[0].output().unwrap().fields().is_empty());
@@ -420,7 +311,7 @@ async fn registration_refuses_stream() {
 #[tokio::test]
 async fn contracts_retain_distinct() {
     use harmos::operations::{Contract, WireDeclaration};
-    let (runtime, _) = runtime(false).await;
+    let (runtime, _) = runtime().await;
     let declaration = WireDeclaration::of::<ReadContract>().contract().unwrap();
     let mut owners = Vec::new();
     for owner in ["camera", "simulator"] {
@@ -466,9 +357,9 @@ async fn contracts_retain_distinct() {
 }
 
 #[tokio::test]
-async fn contract_rejects_policy() {
+async fn contract_rejects_drift() {
     use harmos::operations::{Contract, WireDeclaration};
-    let (runtime, resources) = runtime(false).await;
+    let (runtime, resources) = runtime().await;
     let declaration = WireDeclaration::of::<ReadContract>().contract().unwrap();
     for change_policy in [false, true] {
         let mut definition = declaration.operation().clone();

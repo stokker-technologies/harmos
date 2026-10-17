@@ -142,7 +142,7 @@ tokio = { workspace = true, features = ["rt", "macros"] }
 # === Test Targets ===
 
 [[test]]
-name = "world"
+name = "kit"
 path = "tests/kit/main.rs"
 required-features = ["componentize"]
 

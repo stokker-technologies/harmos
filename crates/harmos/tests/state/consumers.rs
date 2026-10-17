@@ -15,7 +15,6 @@
 // Standard Library Imports
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 // Third Party Imports
 use support::{
     Bank, Copied, Ledger, Pulse, booted, catalog, deposit, ledger, pulse, streams, withdraw,
@@ -177,7 +176,8 @@ impl JournalConsumer<Bank> for Networked {
 
 impl Source<Bank> for Networked {
     async fn load(&mut self) -> Result<Recovery<Bank>, Incompatible> {
-        tokio::time::sleep(Duration::from_millis(25)).await;
+        // A network source suspends before it answers.
+        tokio::task::yield_now().await;
         self.inner.load().await
     }
 }
@@ -187,7 +187,7 @@ impl Source<Bank> for Networked {
 /* === Private Functions === */
 
 #[tokio::test]
-async fn r003_stop_drains() {
+async fn drain_precedes_flush() {
     let (recorder, asked) = Recorder::new();
     let runtime = booted(Ledger::default(), |builder| builder.attach(recorder)).await;
 

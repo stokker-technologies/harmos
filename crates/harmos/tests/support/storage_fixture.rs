@@ -171,6 +171,16 @@ pub(crate) async fn saved_records<C>(
     records
 }
 
+/// Whether one poll of `future` leaves it pending, without waiting for anything.
+pub(crate) async fn pending<F: std::future::Future + ?Sized>(
+    mut future: std::pin::Pin<&mut F>,
+) -> bool {
+    std::future::poll_fn(|context| {
+        std::task::Poll::Ready(future.as_mut().poll(context).is_pending())
+    })
+    .await
+}
+
 pub(crate) async fn write<C>(storage: &StorageManager<C>, id: &str) -> StorageCursor {
     storage
         .write_records(&[record(&schema(), &Identifier::new(id).unwrap(), &[1, 2, 3])])

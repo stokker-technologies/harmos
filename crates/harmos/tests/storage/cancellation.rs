@@ -13,7 +13,6 @@
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::{Arc, atomic::Ordering};
-use std::task::Poll;
 
 // Third Party Imports
 use harmos::storage::*;
@@ -33,14 +32,12 @@ use super::waveforms;
 /* === Implementations === */
 /* === Public Functions === */
 /* === Private Functions === */
-/* === Tests === */
-#[tokio::test]
-async fn cancellation() {
-    let directory = tempfile::tempdir().unwrap();
+// Start Journaled Storage With One Active Query And One Pending Write Batch.
+async fn start(directory: &std::path::Path) -> (Arc<Data>, StorageManager, Runtime<Bank>) {
     let mut settings = storage_settings();
     settings.request.max_active_queries = NonZeroUsize::new(1).unwrap();
     settings.request.max_pending_write_batches = NonZeroUsize::new(1).unwrap();
-    let data = Arc::new(Data::<()>::journaled(directory.path(), history()).unwrap());
+    let data = Arc::new(Data::<()>::journaled(directory, history()).unwrap());
     let storage: StorageManager = StorageManager::new(
         StorageBackends {
             primary: data.clone(),
@@ -54,6 +51,14 @@ async fn cancellation() {
         .runtime_with_storage(&storage)
         .await
         .unwrap();
+    (data, storage, runtime)
+}
+
+/* === Tests === */
+#[tokio::test]
+async fn dropped_write_retained() {
+    let directory = tempfile::tempdir().unwrap();
+    let (data, storage, runtime) = start(directory.path()).await;
     let schema = waveforms::schema();
     let first = Identifier::new("first").unwrap();
     let second = Identifier::new("cancelled").unwrap();
@@ -77,11 +82,7 @@ async fn cancellation() {
     assert_eq!(storage.cursor_saved().sequence, 0);
     let batch = [record(&second)];
     let mut waiting = Box::pin(storage.write_records(&batch));
-    assert!(matches!(
-        std::future::poll_fn(|cx| Poll::Ready(std::future::Future::poll(waiting.as_mut(), cx)))
-            .await,
-        Poll::Pending
-    ));
+    assert!(crate::pending(waiting.as_mut()).await);
     drop(waiting);
     // Dropping The Future Must Not Retract The Already Accepted Batch.
     assert_eq!(storage.cursor_accepted(), accepted);
@@ -94,6 +95,15 @@ async fn cancellation() {
         first
     );
     assert_eq!(storage.status().pending_bytes, 0);
+    storage.close().await.unwrap();
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn cancelled_query_releases() {
+    let directory = tempfile::tempdir().unwrap();
+    let (_data, storage, runtime) = start(directory.path()).await;
+    let accepted = storage.cursor_accepted();
     // Cancelling A Queued Query Releases Its Admission Slot.
     let query = || harmos::storage::query::Query {
         at: accepted.clone(),
@@ -109,11 +119,7 @@ async fn cancellation() {
     };
     let first_reader = storage.query(query()).await.unwrap();
     let mut waiting = Box::pin(storage.query(query()));
-    assert!(matches!(
-        std::future::poll_fn(|cx| Poll::Ready(std::future::Future::poll(waiting.as_mut(), cx)))
-            .await,
-        Poll::Pending
-    ));
+    assert!(crate::pending(waiting.as_mut()).await);
     drop(waiting);
     drop(first_reader);
     let mut following = storage.query(query()).await.unwrap();

@@ -59,7 +59,6 @@ pub struct Acknowledged {
 
 #[derive(Default)]
 pub struct State {
-    pause_after: Option<u64>,
     rows: AtomicU64,
     bytes: AtomicU64,
     changed: Notify,
@@ -105,16 +104,13 @@ impl harmos::operations::lifecycle::Policy for Receiver {
 
 #[harmos::plugin(description = "Consumes Host Stream Rows And Acknowledges Verified Payload Bytes.", id = "consumption", provides = Callbacks, requires = (), listeners = Listeners)]
 impl harmos::Plugin for Receiver {
-    type Config = Option<u64>;
+    type Config = ();
     type Context = Supervisor;
     type Resources = State;
     type Error = Refusal;
-    fn prepare(pause_after: Option<u64>) -> Result<Self, Refusal> {
+    fn prepare(_: ()) -> Result<Self, Refusal> {
         Ok(Self {
-            state: Arc::new(State {
-                pause_after,
-                ..State::default()
-            }),
+            state: Arc::new(State::default()),
         })
     }
     async fn initialize(&mut self, _: &Supervisor) -> Result<(), Refusal> {
@@ -189,9 +185,6 @@ impl Operation for Consumption {
                 .fetch_add(row.bytes.len() as u64, Ordering::SeqCst);
             self.state.rows.store(expected + 1, Ordering::SeqCst);
             self.state.changed.notify_waiters();
-            if self.state.pause_after == Some(expected + 1) {
-                std::future::pending::<()>().await;
-            }
             Ok(())
         }
         .await;

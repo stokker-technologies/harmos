@@ -12,12 +12,21 @@
 /* === Re-Exports === */
 
 /* === Imports === */
-
 // Standard Library Imports
+use std::pin::pin;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
 
 // Third Party Imports
+use tokio::sync::Notify;
 
 // Local Imports
+use crate::boot::catalog;
+use crate::probe::{Editor, Sheet};
+use harmos::state::{Entry, Position, Recorded};
+use harmos::storage::JournalConsumer;
+use harmos::{Error, Runtime};
 
 /* === Constants === */
 
@@ -38,12 +47,6 @@
 /* === Private Functions === */
 
 /* === Tests === */
-
-use super::*;
-use crate::probe::{Editor, Sheet};
-use harmos::{state::Entry, state::Recorded, storage::JournalConsumer};
-use std::sync::atomic::AtomicUsize;
-use tokio::sync::Notify;
 
 struct HeldDrain {
     attempts: Arc<AtomicUsize>,
@@ -146,7 +149,7 @@ impl std::task::Wake for StopNotification {
 }
 
 #[tokio::test]
-async fn services_stop_before_calls() {
+async fn services_stop_first() {
     let runtime = Runtime::<Editor>::builder(Sheet::default(), ())
         .register(Lanes::catalog())
         .runtime()
@@ -259,17 +262,21 @@ async fn shutdown_budget_shared() {
         .await
         .unwrap();
     let participant = runtime.stop_participant();
-    let leaving = tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(6)).await;
-        drop(participant);
-    });
     let started = tokio::time::Instant::now();
+    let mut stopping = pin!(runtime.stop_with_timeout(Duration::from_millis(10)));
+    // The first poll fixes the shared deadline while the participant still holds.
+    assert!(
+        futures_util::FutureExt::now_or_never(stopping.as_mut()).is_none(),
+        "the stop waits for its participant"
+    );
+    tokio::time::advance(Duration::from_millis(6)).await;
+    drop(participant);
     assert!(matches!(
-        runtime.stop_with_timeout(Duration::from_millis(10)).await,
+        stopping.await,
         Err(Error::ShutdownTimeout { phase: "journal" })
     ));
+    // The journal phase spends what the participant phase left of the budget.
     assert_eq!(started.elapsed(), Duration::from_millis(10));
-    leaving.await.unwrap();
     assert_eq!(attempts.load(Ordering::SeqCst), 1);
     release.notify_one();
     runtime.stop().await.unwrap();

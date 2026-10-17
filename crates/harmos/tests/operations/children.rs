@@ -226,63 +226,50 @@ async fn runtime(block_cleanup: bool) -> (Runtime<App>, Arc<Trace>) {
     (runtime, trace)
 }
 
-async fn torn_down(exit: Exit, cancel: bool) -> Result<harmos::operations::Response<()>, Error> {
-    let (runtime, trace) = runtime(false).await;
-    let parent = runtime
-        .operations
-        .submit_as::<ParentContract>(exit)
-        .unwrap();
-    if cancel {
-        trace.parent_ready.notified().await;
-        parent.cancel();
-    }
-    let outcome = parent.await;
-    assert_eq!(
-        *trace.events.lock().unwrap(),
-        [
-            "parent-attempt",
-            "child-started",
-            "child-finalized",
-            "child-dropped"
-        ]
-    );
-    runtime.stop().await.unwrap();
-    outcome
-}
-
 /* === Tests === */
 
-#[tokio::test]
-async fn returning_parent_settles() {
-    torn_down(Exit::Return, false).await.unwrap();
-}
-
-#[tokio::test]
-async fn failed_parent_settles() {
-    let error = torn_down(Exit::Fail, false).await.unwrap_err();
-    let Error::OperationFailed { source, .. } = error else {
-        panic!("expected authored failure")
-    };
-    assert!(matches!(
-        source.downcast_ref::<Failed>(),
-        Some(Failed::Attempt)
-    ));
-}
-
 #[tokio::test(start_paused = true)]
-async fn expired_parent_settles() {
-    assert!(matches!(
-        torn_down(Exit::Wait, false).await,
-        Err(Error::OperationRefused(Refusal::TimedOut))
-    ));
-}
+async fn parent_joins_child() {
+    let exits = [
+        (Exit::Return, false),
+        (Exit::Fail, false),
+        (Exit::Wait, false),
+        (Exit::Wait, true),
+    ];
+    for (exit, cancel) in exits {
+        let (runtime, trace) = runtime(false).await;
+        let parent = runtime
+            .operations
+            .submit_as::<ParentContract>(exit)
+            .unwrap();
+        if cancel {
+            trace.parent_ready.notified().await;
+            parent.cancel();
+        }
+        let outcome = parent.await;
 
-#[tokio::test]
-async fn parent_settles_child() {
-    assert!(matches!(
-        torn_down(Exit::Wait, true).await,
-        Err(Error::OperationRefused(Refusal::Cancelled))
-    ));
+        // The child is finalized and dropped before the parent settles.
+        assert_eq!(
+            *trace.events.lock().unwrap(),
+            [
+                "parent-attempt",
+                "child-started",
+                "child-finalized",
+                "child-dropped"
+            ]
+        );
+        match outcome {
+            Ok(_) => {}
+            Err(Error::OperationFailed { source, .. }) => assert!(matches!(
+                source.downcast_ref::<Failed>(),
+                Some(Failed::Attempt)
+            )),
+            Err(Error::OperationRefused(Refusal::TimedOut)) => assert!(!cancel),
+            Err(Error::OperationRefused(Refusal::Cancelled)) => assert!(cancel),
+            Err(error) => panic!("unexpected parent outcome: {error}"),
+        }
+        runtime.stop().await.unwrap();
+    }
 }
 
 #[tokio::test(start_paused = true)]
@@ -329,7 +316,7 @@ async fn retry_waits_child() {
 }
 
 #[tokio::test]
-async fn result_remains_during() {
+async fn result_awaits_finalization() {
     for exit in [Exit::Return, Exit::Fail] {
         let succeeds = matches!(exit, Exit::Return);
         let (runtime, trace) = runtime(true).await;

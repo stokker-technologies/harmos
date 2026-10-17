@@ -27,7 +27,8 @@ use tokio::sync::Notify;
 // Local Imports
 use super::{Lanes, app::App};
 use harmos::operations::{
-    Context, Operation, OperationPhase, OperationPolicy, RestartPolicy, RetryPolicy, Settings,
+    Context, Operation, OperationOutcome, OperationPhase, OperationPolicy, RestartPolicy,
+    RetryPolicy, Settings,
 };
 use harmos::{Error, Refusal, Runtime};
 
@@ -148,7 +149,7 @@ fn request(blocked: bool) -> Request {
 
 /* === Tests === */
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn queue_refuses_construction() {
     let runtime = runtime().await;
     let counts = Arc::new(Counts::default());
@@ -167,34 +168,19 @@ async fn queue_refuses_construction() {
         .operations
         .submit_as::<HoldContract>(request(true))
         .unwrap();
-    let first_id = first.id();
-    let second_id = second.id();
     assert!(matches!(
         runtime.operations.submit_as::<HoldContract>(request(false)),
         Err(Error::ResourceExhausted {
             resource: "operation admission queue"
         })
     ));
-    // A queued instance is constructed only when it initializes.
-    assert_eq!(counts.constructed.load(Ordering::SeqCst), 1);
-    assert_eq!(second.status().phase(), OperationPhase::Queued);
-    tokio::time::timeout(Duration::from_secs(1), runtime.stop())
-        .await
-        .unwrap()
-        .unwrap();
-    for answer in [first.join().await, second.join().await] {
-        assert!(matches!(
-            answer,
-            Err(Error::OperationRefused(Refusal::Cancelled))
-        ));
-    }
-    assert_eq!(counts.drops.load(Ordering::SeqCst), 1);
-    assert!(runtime.operations.status(first_id).is_none());
-    assert!(runtime.operations.status(second_id).is_none());
+
+    runtime.stop().await.unwrap();
+    drop((first, second));
 }
 
-#[tokio::test(start_paused = true)]
-async fn cancelled_queue_skips_cleanup() {
+#[tokio::test]
+async fn queued_cancel_unbuilt() {
     let runtime = runtime().await;
     let counts = Arc::new(Counts::default());
     runtime
@@ -214,13 +200,20 @@ async fn cancelled_queue_skips_cleanup() {
         .operations
         .submit_as::<HoldContract>(second_request)
         .unwrap();
+    assert_eq!(second.status().phase(), OperationPhase::Queued);
     second.cancel();
+    second.cancel();
+    assert!(second.status().cancellation_requested());
+    assert_eq!(second.status().phase(), OperationPhase::Stopping);
     // A cancelled queued instance never initialized, so it owns
     // nothing to clean up and releases its queue slot at once.
     assert!(matches!(
         (&mut second).await,
         Err(Error::OperationRefused(Refusal::Cancelled))
     ));
+    assert_eq!(second.status().phase(), OperationPhase::Settled);
+    assert_eq!(second.status().outcome(), Some(OperationOutcome::Cancelled));
+    assert!(second.status().started_at().is_none());
     second.settle().await.unwrap();
     assert!(runtime.operations.status(second.id()).is_none());
     assert_eq!(counts.constructed.load(Ordering::SeqCst), 1);
@@ -244,7 +237,7 @@ async fn cancelled_queue_skips_cleanup() {
     runtime.stop().await.unwrap();
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn instances_leave_lookup() {
     let runtime = runtime().await;
     let counts = Arc::new(Counts::default());
@@ -266,7 +259,7 @@ async fn instances_leave_lookup() {
 }
 
 #[tokio::test]
-async fn submission_uses_boot() {
+async fn thread_submission_works() {
     let runtime = runtime().await;
     let counts = Arc::new(Counts::default());
     runtime

@@ -13,9 +13,8 @@
 
 /* === Imports === */
 // Standard Library Imports
-use std::sync::atomic::Ordering;
 // Third Party Imports
-use support::{Change, Copied, Ledger, Mirror, Noted, alice, booted, deposit, ledger, quietly};
+use support::{Change, Copied, Ledger, Noted, alice, booted, deposit, ledger, quietly};
 // Local Imports
 use crate::support;
 use harmos::{Error, state::Focus, state::Position};
@@ -39,38 +38,7 @@ use harmos::{Error, state::Focus, state::Position};
 /* === Private Functions === */
 
 #[tokio::test]
-async fn seals_lacks_entry() {
-    let (mirror, checkpoint) = Mirror::new();
-    let runtime = booted(Ledger::default(), |builder| builder.attach(mirror)).await;
-    let kept = runtime
-        .state
-        .commit(deposit(40))
-        .await
-        .expect("the change before the panic is ordinary");
-
-    let poisoned = quietly(runtime.state.commit(Change::Explode)).await;
-
-    assert!(matches!(poisoned, Err(Error::Unavailable)));
-    assert_eq!(
-        runtime.state.applied(),
-        kept.position,
-        "no entry was sealed for the change that panicked"
-    );
-
-    // Evacuation happens without being asked: the writer is gone, so the
-    // supervisor folds the intact tail out and stops rather than restarting.
-    let settled = runtime.stop().await.unwrap();
-
-    assert_eq!(settled, kept.position);
-    assert_eq!(
-        checkpoint.load(Ordering::Acquire),
-        kept.position.0,
-        "consumers drained until durability caught up with what was applied"
-    );
-}
-
-#[tokio::test]
-async fn verb_refuses_once() {
+async fn poison_refuses_verbs() {
     let runtime = booted(Ledger::default(), |builder| builder).await;
     runtime.state.commit(deposit(40)).await.expect("accepted");
     quietly(runtime.state.commit(Change::Explode))

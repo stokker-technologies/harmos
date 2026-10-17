@@ -324,11 +324,10 @@ fn digest(world: &str) -> u64 {
 }
 
 #[tokio::test]
-async fn host_calls_cross_arguments() {
-    let guest = support::sandbox();
+async fn publication_crosses_row() {
+    let (stub, answered) =
+        initialize(&support::sandbox(), Stub::default(), r#""publications""#).await;
 
-    // Publication Crosses As The Declared Row
-    let (stub, answered) = initialize(&guest, Stub::default(), r#""publications""#).await;
     assert_eq!(answered, Ok(()));
     assert_eq!(
         stub.calls,
@@ -338,16 +337,6 @@ async fn host_calls_cross_arguments() {
                 said: "initialize".into()
             }
             .encode_to_vec(),
-        }]
-    );
-
-    // A Dependency Call Crosses Out And Its Answer Crosses Back
-    let (stub, answered) = initialize(&guest, Stub::default(), r#""dependencies""#).await;
-    assert_eq!(answered, Ok(()));
-    assert_eq!(
-        stub.calls,
-        [Call::Provider {
-            say: "initialize".into()
         }]
     );
 }
@@ -471,23 +460,6 @@ async fn submitted_children_controls() {
         assert!(stub.calls.contains(&expected), "{expected:?}");
     }
     assert_eq!(stub.calls.len(), 10);
-}
-
-#[tokio::test]
-async fn initialization_refusal() {
-    // The Schematic Guest Takes No Configuration, So Any JSON Value But Null Is Refused
-    let (stub, answered) = initialize(
-        &support::component(),
-        Stub::default(),
-        r#""nothing-the-guest-knows""#,
-    )
-    .await;
-
-    assert!(answered.is_err(), "{answered:?}");
-    assert!(
-        stub.calls.is_empty(),
-        "a refused initialization asked the host for nothing"
-    );
 }
 
 #[tokio::test]

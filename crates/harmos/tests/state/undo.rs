@@ -39,7 +39,7 @@ use harmos::{Error, state::At, state::Focus, state::Position, state::Reversals};
 /* === Private Functions === */
 
 #[tokio::test]
-async fn journal_ac005_nothing() {
+async fn conflicting_undo_refused() {
     let runtime = runtime().await;
     let mine = runtime.state.as_principal(alice());
     let theirs = runtime.state.as_principal(bob());
@@ -73,7 +73,7 @@ async fn journal_ac005_nothing() {
 }
 
 #[tokio::test]
-async fn journal_ac005_undo() {
+async fn undo_redo_append() {
     let runtime = runtime().await;
     let mine = runtime.state.as_principal(alice());
 
@@ -174,7 +174,7 @@ async fn reversals_report_undo() {
 }
 
 #[tokio::test]
-async fn change_never_available() {
+async fn barrier_blocks_undo() {
     let runtime = runtime().await;
     let mine = runtime.state.as_principal(alice());
 
@@ -221,7 +221,7 @@ async fn availability_per_principal() {
 }
 
 #[tokio::test]
-async fn asking_what_nothing() {
+async fn availability_appends_nothing() {
     let runtime = runtime().await;
     let mine = runtime.state.as_principal(alice());
 

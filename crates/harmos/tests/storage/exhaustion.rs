@@ -34,7 +34,7 @@ use super::waveforms;
 /* === Private Functions === */
 /* === Tests === */
 #[tokio::test]
-async fn exhaustion() {
+async fn oversized_batch_refused() {
     let directory = tempfile::tempdir().unwrap();
     let mut settings = storage_settings();
     settings.request.max_pending_write_bytes = NonZeroUsize::new(8192).unwrap();

@@ -14,7 +14,6 @@
 /* === Imports === */
 // Standard Library Imports
 use std::sync::Arc;
-use std::time::Duration;
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 use tokio::sync::{Semaphore, mpsc};
@@ -160,10 +159,7 @@ async fn open(
 }
 
 async fn group(observed: &mut mpsc::UnboundedReceiver<Group>) -> Group {
-    tokio::time::timeout(Duration::from_secs(5), observed.recv())
-        .await
-        .unwrap()
-        .unwrap()
+    observed.recv().await.unwrap()
 }
 
 #[tokio::test]
@@ -178,16 +174,13 @@ async fn capture_preserves_evicted() {
     let (held, frontier) = group(&mut observed).await;
     assert_eq!(frontier, first.frontier);
     let journal = runtime.state.clone();
-    let mut second = tokio::spawn(async move {
+    let second = tokio::spawn(async move {
         harmos::records::RecordManager::new(journal.clone())
             .publish(Observed("y".repeat(600)))
             .await
     });
-    assert!(
-        tokio::time::timeout(Duration::from_millis(30), &mut second)
-            .await
-            .is_err()
-    );
+    tokio::task::yield_now().await;
+    assert!(!second.is_finished(), "admission waits for capture capacity");
     assert_eq!(runtime.state.applied(), Position(1));
     // Reads remain available while admission is awaiting capacity.
     assert_eq!(
@@ -229,7 +222,7 @@ async fn capture_preserves_evicted() {
 }
 
 #[tokio::test]
-async fn complete_order_shutdown() {
+async fn stop_awaits_groups() {
     let (runtime, mut observed, release) = open(32_000, 8000, false, 1).await;
     let principal = PrincipalId::new("capture");
     let journal = runtime.state.as_principal(principal.clone());
@@ -255,7 +248,7 @@ async fn complete_order_shutdown() {
     journal.redo(principal, Focus::all()).await.unwrap();
     drop(journal);
     let runtime = Arc::new(runtime);
-    let mut stopping = tokio::spawn({
+    let stopping = tokio::spawn({
         let runtime = Arc::clone(&runtime);
 
         async move { runtime.stop().await.unwrap() }
@@ -282,11 +275,7 @@ async fn complete_order_shutdown() {
             assert_eq!(fact.payload, vec![1, 2, 3]);
         }
         positions.extend(entries.iter().map(|entry| entry.position.0));
-        assert!(
-            tokio::time::timeout(Duration::from_millis(10), &mut stopping)
-                .await
-                .is_err()
-        );
+        assert!(!stopping.is_finished(), "stop waits for every group");
         release.add_permits(1);
     }
     assert_eq!(positions, vec![1, 2, 3, 4, 5, 6, 7, 8]);
@@ -303,16 +292,13 @@ async fn failure_wakes_waiters() {
         .unwrap();
     group(&mut observed).await;
     let journal = runtime.state.clone();
-    let mut pending = tokio::spawn(async move {
+    let pending = tokio::spawn(async move {
         harmos::records::RecordManager::new(journal.clone())
             .publish(Observed("y".repeat(600)))
             .await
     });
-    assert!(
-        tokio::time::timeout(Duration::from_millis(30), &mut pending)
-            .await
-            .is_err()
-    );
+    tokio::task::yield_now().await;
+    assert!(!pending.is_finished(), "admission waits for capture capacity");
     release.add_permits(1);
     assert!(matches!(pending.await.unwrap(), Err(Error::CaptureFailed)));
     assert_eq!(runtime.state.applied(), Position(1));
@@ -383,7 +369,7 @@ async fn queued_groups_outlive() {
 }
 
 #[tokio::test]
-async fn panic_capture_failure() {
+async fn panic_fails_capture() {
     let runtime = Runtime::<Model>::builder(0, ())
         .register(Facts::catalog())
         .require_capture(

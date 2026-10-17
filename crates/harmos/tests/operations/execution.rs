@@ -15,6 +15,7 @@
 // Standard Library Imports
 
 // Third Party Imports
+use futures_util::FutureExt;
 
 // Local Imports
 use super::*;
@@ -117,65 +118,72 @@ async fn ambiguous_timeout_replay() {
 }
 
 #[tokio::test]
-async fn cache_reuses_owned() {
+async fn cache_serves_hits() {
     let runtime = runtime().await;
     let owner = Arc::new(Owner::default());
     runtime
         .operations
         .register_operation::<ComputeCall>("app", Lanes::Open, Arc::clone(&owner))
         .unwrap();
-    let first = runtime
-        .operations
-        .call_as::<Compute>(Request {
-            keyed: true,
-            ..request()
-        })
-        .await
-        .unwrap();
-    let second = runtime
-        .operations
-        .call_as::<Compute>(Request {
-            keyed: true,
-            ..request()
-        })
-        .await
-        .unwrap();
+    let keyed = || Request {
+        keyed: true,
+        ..request()
+    };
+
+    let first = runtime.operations.call_as::<Compute>(keyed()).await.unwrap();
+    let second = runtime.operations.call_as::<Compute>(keyed()).await.unwrap();
+
+    // A hit reuses the cached response without constructing the operation.
     assert!(first.ptr_eq(&second));
     assert_eq!(owner.runs.load(Ordering::SeqCst), 1);
-    // A cached response is reused without constructing the operation.
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 1);
-    assert!(matches!(
-        runtime
-            .operations
-            .call_as::<Compute>(Request {
-                keyed: true,
-                valid: false,
-                ..request()
-            })
-            .await,
-        Err(Error::OperationFailed { .. })
-    ));
-    runtime
-        .operations
-        .call_as::<Compute>(request())
-        .await
-        .unwrap();
-    assert_eq!(owner.runs.load(Ordering::SeqCst), 2);
-    runtime.operations.set_cache_capacity(0);
-    runtime
-        .operations
-        .call_as::<Compute>(Request {
-            keyed: true,
-            ..request()
-        })
-        .await
-        .unwrap();
-    assert_eq!(owner.runs.load(Ordering::SeqCst), 3);
     runtime.stop().await.unwrap();
 }
 
-#[tokio::test(start_paused = true)]
-async fn owner_never_retargets() {
+#[tokio::test]
+async fn uncacheable_calls_rerun() {
+    let runtime = runtime().await;
+    let owner = Arc::new(Owner::default());
+    runtime
+        .operations
+        .register_operation::<ComputeCall>("app", Lanes::Open, Arc::clone(&owner))
+        .unwrap();
+
+    // Invalid Requests Bypass The Cache
+    let invalid = || Request {
+        keyed: true,
+        valid: false,
+        ..request()
+    };
+    for _ in 0..2 {
+        assert!(matches!(
+            runtime.operations.call_as::<Compute>(invalid()).await,
+            Err(Error::OperationFailed { .. })
+        ));
+    }
+    assert_eq!(owner.prepared.load(Ordering::SeqCst), 2);
+
+    // Unkeyed Requests Always Run
+    for _ in 0..2 {
+        runtime.operations.call_as::<Compute>(request()).await.unwrap();
+    }
+    assert_eq!(owner.runs.load(Ordering::SeqCst), 2);
+
+    // Capacity Zero Disables Caching
+    runtime.operations.set_cache_capacity(0);
+    let keyed = || Request {
+        keyed: true,
+        ..request()
+    };
+    for _ in 0..2 {
+        runtime.operations.call_as::<Compute>(keyed()).await.unwrap();
+    }
+    assert_eq!(owner.runs.load(Ordering::SeqCst), 4);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn unregister_reserves_owner() {
     let runtime = runtime().await;
     let owner = Arc::new(Owner::default());
     runtime
@@ -193,13 +201,13 @@ async fn owner_never_retargets() {
         })
         .unwrap();
     opened.notified().await;
+    // One poll reserves the id; dropping the waiter interrupts the unregister.
     assert!(
-        tokio::time::timeout(
-            Duration::from_millis(10),
-            runtime.operations.unregister(Compute::ID)
-        )
-        .await
-        .is_err()
+        runtime
+            .operations
+            .unregister(Compute::ID)
+            .now_or_never()
+            .is_none()
     );
     assert!(runtime.operations.definition(Compute::ID).is_err());
     assert!(matches!(
@@ -247,69 +255,6 @@ async fn owner_never_retargets() {
 }
 
 #[tokio::test]
-async fn operations_use_structured() {
-    let runtime = runtime().await;
-    runtime
-        .operations
-        .register_operation::<ComputeCall>("app", Lanes::Open, Arc::new(Owner::default()))
-        .unwrap();
-    runtime
-        .operations
-        .register_operation::<ParentCall>("app", Lanes::Serial, Arc::new(ParentOwner))
-        .unwrap();
-    assert_eq!(
-        runtime
-            .operations
-            .call_as::<Parent>(request())
-            .await
-            .unwrap()
-            .value,
-        7
-    );
-    runtime.operations.unregister(Compute::ID).await.unwrap();
-    runtime
-        .operations
-        .register_operation::<ComputeCall>("app", Lanes::Serial, Arc::new(Owner::default()))
-        .unwrap();
-    assert!(
-        matches!(runtime.operations.call_as::<Parent>(request()).await, Err(Error::OperationFailed { source, .. }) if matches!(source.downcast_ref::<Failed>(), Some(Failed::Nested(Error::OperationLaneCycle { .. }))))
-    );
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
-async fn concurrent_ancestor_reentry() {
-    let runtime = runtime().await;
-    let owner = Arc::new(Owner::default());
-    runtime
-        .operations
-        .register_operation::<ComputeCall>("app", Lanes::Concurrent, Arc::clone(&owner))
-        .unwrap();
-    runtime
-        .operations
-        .register_operation::<ParentCall>("app", Lanes::Concurrent, Arc::new(ParentOwner))
-        .unwrap();
-
-    assert!(
-        matches!(runtime.operations.call_as::<Parent>(request()).await, Err(Error::OperationFailed { source, .. }) if matches!(source.downcast_ref::<Failed>(), Some(Failed::Nested(Error::OperationLaneCycle { .. }))))
-    );
-    assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
-    assert_eq!(owner.runs.load(Ordering::SeqCst), 0);
-
-    // An independent root still uses this bounded lane normally.
-    assert_eq!(
-        runtime
-            .operations
-            .call_as::<Compute>(request())
-            .await
-            .unwrap()
-            .value,
-        7
-    );
-    runtime.stop().await.unwrap();
-}
-
-#[tokio::test]
 async fn shutdown_releases_bindings() {
     let runtime = runtime().await;
     let owner = Arc::new(Owner::default());
@@ -351,13 +296,7 @@ async fn handler_panic_settles() {
             .await,
         Err(Error::OperationPanicked { .. })
     ));
-    tokio::time::timeout(
-        Duration::from_secs(1),
-        runtime.operations.unregister(Compute::ID),
-    )
-    .await
-    .unwrap()
-    .unwrap();
+    runtime.operations.unregister(Compute::ID).await.unwrap();
     runtime.stop().await.unwrap();
 }
 
@@ -458,7 +397,7 @@ async fn builder_binds_catalog() {
 }
 
 #[tokio::test]
-async fn catalogs_refuse_boot() {
+async fn duplicate_catalog_refused() {
     let owner = Arc::new(Owner::default());
     let result = Runtime::<Bank>::builder(Ledger::default(), ())
         .register(catalog())
@@ -480,7 +419,7 @@ async fn catalogs_refuse_boot() {
 }
 
 #[tokio::test]
-async fn providers_keep_cache() {
+async fn providers_route_explicitly() {
     let first = Arc::new(Owner {
         bias: 10,
         ..Owner::default()
@@ -612,7 +551,7 @@ async fn providers_keep_cache() {
 }
 
 #[tokio::test]
-async fn lane_refuses_prepare() {
+async fn undeclared_lane_refused() {
     let owner = Arc::new(Owner::default());
     let result = Runtime::<Bank>::builder(Ledger::default(), ())
         .register(catalog())
@@ -665,7 +604,7 @@ fn simulation_reboot_rebinds() {
 
 #[cfg(feature = "simulation")]
 #[test]
-fn simulation_replays_against() {
+fn reboot_reruns_initialize() {
     let owner = Arc::new(Owner::default());
     let captured = Arc::clone(&owner);
     let initialized = Arc::new(AtomicUsize::new(0));

@@ -183,7 +183,7 @@ async fn host_submit_joins() {
 }
 
 #[tokio::test]
-async fn host_cancel_and_join() {
+async fn host_cancel_joins() {
     let (runtime, gate) = runtime().await;
     cancelled(&runtime.operations, &gate).await.unwrap();
     assert_eq!(gate.completed.load(Ordering::SeqCst), 0);
@@ -198,9 +198,8 @@ async fn host_drop_cancels() {
     gate.started.notified().await;
     let cleaned = gate.cleanup.notified();
     drop(instance);
-    tokio::time::timeout(Duration::from_secs(2), cleaned)
-        .await
-        .expect("dropping an unsettled instance cancels it");
+    // Dropping an unsettled instance cancels it.
+    cleaned.await;
     assert_eq!(gate.completed.load(Ordering::SeqCst), 0);
     runtime.stop().await.unwrap();
 }
@@ -215,15 +214,13 @@ async fn host_detach_continues() {
     assert_eq!(status.unwrap().phase, Phase::Running.as_str());
     let cleaned = gate.cleanup.notified();
     gate.release.add_permits(1);
-    tokio::time::timeout(Duration::from_secs(2), cleaned)
-        .await
-        .expect("a detached instance runs to completion");
+    cleaned.await;
     assert_eq!(gate.completed.load(Ordering::SeqCst), 1);
     runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
-async fn builtin_status_and_cancel() {
+async fn builtin_controls_instance() {
     let (runtime, gate) = runtime().await;
     let operations = &runtime.operations;
     let mut instance = operations.submit(Hold { value: 1 }).unwrap();
@@ -252,7 +249,7 @@ async fn builtin_status_and_cancel() {
 }
 
 #[tokio::test]
-async fn resident_lease_watch() {
+async fn resident_leases_watched() {
     let (runtime, gate) = runtime().await;
     let operations = &runtime.operations;
     operations

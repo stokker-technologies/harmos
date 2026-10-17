@@ -63,7 +63,6 @@ use std::fmt::Debug;
 // Third Party Imports
 
 // Local Imports
-use crate::scenario_runtime;
 use harmos_domain::config::SchemaSettings;
 use harmos_domain::schema::graph::Schema;
 use harmos_domain::schema::{Described, Kind};
@@ -109,9 +108,8 @@ impl From<heap::Choice> for plain::Choice {
 }
 
 /* === Public Functions === */
-pub fn check() {
-    {
-        scenario_runtime::check("boxed_descriptors_match", || {
+#[test]
+fn boxed_descriptors_match() {
             descriptors::<plain::Holder, heap::Holder>();
             descriptors::<plain::Choice, heap::Choice>();
             let row = heap::Holder::FIELDS
@@ -123,10 +121,10 @@ pub fn check() {
             };
             assert_eq!((definition.identity)(), std::any::TypeId::of::<Leaf>());
             assert_eq!((definition.fields)(), Leaf::FIELDS);
-        });
-    }
-    {
-        scenario_runtime::check("boxed_bytes_match", || {
+        }
+
+#[test]
+fn boxed_bytes_match() {
             let (plain, boxed) = holders();
             assert_eq!(
                 Protobuf::encode_to_vec(&boxed),
@@ -150,10 +148,10 @@ pub fn check() {
                 );
                 assert_eq!(Message::encoded_len(&boxed), Message::encoded_len(&plain));
             }
-        });
-    }
-    {
-        scenario_runtime::check("boxed_decoding_agrees", || {
+        }
+
+#[test]
+fn boxed_decoding_agrees() {
             let (plain, _) = holders();
             let encoded = Protobuf::encode_to_vec(&plain);
             let mut duplicate = encoded.clone();
@@ -190,10 +188,10 @@ pub fn check() {
                 let decoded = <heap::Choice as Message>::decode(&postcard).unwrap();
                 assert_eq!(plain::Choice::from(decoded), plain);
             }
-        });
-    }
-    {
-        scenario_runtime::check("boxed_refuses_malformed", || {
+        }
+
+#[test]
+fn boxed_refuses_malformed() {
             let mut truncated = Protobuf::encode_to_vec(&holders().0);
             truncated.pop();
             let wrong_wire = wrong_wire();
@@ -213,10 +211,10 @@ pub fn check() {
                 assert!(<heap::Holder as Message>::decode(bytes).is_err());
                 assert!(<heap::Holder as Message>::decoding_memory(bytes).is_err());
             }
-        });
-    }
-    {
-        scenario_runtime::check("boxed_portable_bound", || {
+        }
+
+#[test]
+fn boxed_portable_bound() {
             let (plain, boxed) = holders();
             let bytes = Message::encode_to_vec(&plain);
             let plain_bound = <plain::Holder as Message>::decoding_memory(&bytes).unwrap();
@@ -228,10 +226,10 @@ pub fn check() {
             let decoded = <heap::Holder as Message>::decode(&bytes).unwrap();
             assert_eq!(decoded, boxed);
             assert!(decoded.memory_size() <= boxed_bound);
-        });
-    }
-    {
-        scenario_runtime::check("boxed_sizes_saturate", || {
+        }
+
+#[test]
+fn boxed_sizes_saturate() {
             struct Overflow;
             impl MemorySize for Overflow {
                 fn memory_size(&self) -> usize {
@@ -246,9 +244,8 @@ pub fn check() {
                     + std::mem::size_of::<heap::Holder>()
                     + std::mem::size_of::<Leaf>()
             );
-        });
-    }
-}
+        }
+
 
 /* === Private Functions === */
 fn holders() -> (plain::Holder, heap::Holder) {

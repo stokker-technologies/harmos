@@ -40,7 +40,7 @@ use support::journal::{Journal, Store};
 /* === Private Functions === */
 
 #[tokio::test]
-async fn storage_ac005_pruned() {
+async fn pruned_copy_recovers() {
     let copy = Store::default();
     let runtime = booted(Ledger::default(), |builder| {
         builder.recover(Journal::<Bank>::open(&copy))

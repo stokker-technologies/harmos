@@ -20,7 +20,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 // Third Party Imports
 
 // Local Imports
-use super::wire::Text;
+use super::cases::Text;
 use harmos::operations::{
     Context, Operation, OperationDeclaration, OperationPolicy, PluginRegistration, Visibility,
     WireDeclaration, WireOperation,
@@ -121,7 +121,7 @@ impl OperationDeclaration for Control {
     type Request = Text;
     type Response = String;
     const ID: &'static str = "fixture.host_control";
-    const POLICY: OperationPolicy = super::wire::Echo::POLICY;
+    const POLICY: OperationPolicy = super::cases::Echo::POLICY;
     const VISIBILITY: Visibility = Visibility::Host;
 }
 
@@ -283,8 +283,9 @@ fn requiring(required: Vec<Required>) -> PluginDefinitions {
     PluginDefinitions::new(declared, []).unwrap()
 }
 
+/* === Tests === */
 #[tokio::test]
-async fn preflight_preserves_plugin() {
+async fn host_requirements_route() {
     use harmos::operations::streams::{Publication, Publish};
     let runtime = super::runtime_with_preparation(NonZeroUsize::new(4096).unwrap()).await;
     let owner = Arc::new(CoreOwner::default());
@@ -374,7 +375,7 @@ async fn preflight_preserves_plugin() {
 }
 
 #[tokio::test]
-async fn controls_retain_ready() {
+async fn host_visibility_enforced() {
     let runtime = super::runtime_with_preparation(NonZeroUsize::new(128).unwrap()).await;
     let mut host = Host {
         operations: runtime.operations.clone(),
@@ -471,5 +472,3 @@ async fn controls_retain_ready() {
     );
     runtime.stop().await.unwrap();
 }
-
-/* === Tests === */

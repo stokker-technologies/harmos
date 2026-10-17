@@ -367,7 +367,7 @@ fn executable_owned_registrations() {
 }
 
 #[test]
-fn archive_integrity() {
+fn tampered_archives_refused() {
     let bundle = asset();
     let manifest = serde_json::to_vec(bundle.manifest()).unwrap();
     let ordinary = [("files/data", b"abc".as_slice(), tar::EntryType::Regular)];
@@ -454,7 +454,7 @@ fn archive_integrity() {
 }
 
 #[test]
-fn portable_paths() {
+fn paths_stay_portable() {
     let bundle = asset();
     let manifest = serde_json::to_vec(bundle.manifest()).unwrap();
     for path in [
@@ -509,7 +509,7 @@ fn portable_paths() {
 }
 
 #[test]
-fn bounded_inputs() {
+fn inspection_bounds_inputs() {
     let bundle = asset();
     for limits in [
         Limits {

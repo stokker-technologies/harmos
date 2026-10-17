@@ -361,7 +361,7 @@ async fn range_beneath_window() {
 }
 
 #[tokio::test]
-async fn holds_never_reaches() {
+async fn retained_skips_tier() {
     let (tape, (rows, asked, _budgets)) = Tape::new();
     let runtime = served(tape).await;
 
@@ -633,7 +633,7 @@ async fn seal_reports_position() {
 }
 
 #[tokio::test]
-async fn absent_adapter_nothing() {
+async fn absent_adapter_refuses() {
     let runtime = support::streaming().await;
 
     assert_eq!(

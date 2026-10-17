@@ -8,8 +8,6 @@
  */
 
 /* === Modules === */
-#[path = "../support/scenarios.rs"]
-mod scenario_runtime;
 
 mod aggregate;
 mod allocation;
@@ -189,13 +187,7 @@ fn schema_descriptor(
 /* === Tests === */
 
 #[test]
-fn contract_scenario() {
-    graph::check();
-    boxed::check();
-    enums::check();
-    aggregate::check();
-    {
-        scenario_runtime::check("names_never_shadow", || {
+fn names_never_shadow() {
             let value = DecoderNames {
                 input: 7,
                 field: "named".into(),
@@ -212,10 +204,10 @@ fn contract_scenario() {
             let decoded = DecoderNames::decode(&encoded).unwrap();
             assert_eq!(decoded, value);
             assert!(decoded.memory_size() <= budget);
-        });
-    }
-    {
-        scenario_runtime::check("names_survive_reordering", || {
+        }
+
+#[test]
+fn names_survive_reordering() {
             let original = Original {
                 value: u64::MAX,
                 payload: vec![0, 128, 255],
@@ -241,10 +233,10 @@ fn contract_scenario() {
             let renamed = Renamed::decode(&bytes).unwrap();
             assert_eq!(renamed.renamed, 0, "a rename loses the old wire identity");
             assert_eq!(renamed.payload, original.payload);
-        });
-    }
-    {
-        scenario_runtime::check("nested_values_defaults", || {
+        }
+
+#[test]
+fn nested_values_defaults() {
             let empty = Nested::decode(&[]).unwrap();
             assert_eq!(empty.row.value, 0);
             assert_eq!(empty.optional, None);
@@ -273,10 +265,10 @@ fn contract_scenario() {
                 "hello"
             );
             <()>::decode(&[]).unwrap();
-        });
-    }
-    {
-        scenario_runtime::check("bytes_packed_numbers", || {
+        }
+
+#[test]
+fn bytes_packed_numbers() {
             #[message(harmos_path = ::harmos_domain)]
             struct Bytes {
                 payload: Vec<u8>,
@@ -302,10 +294,10 @@ fn contract_scenario() {
                 "five-byte tag, one-byte length, three raw bytes"
             );
             assert_eq!(&bytes[5..], &[3, 1, 2, 127]);
-        });
-    }
-    {
-        scenario_runtime::check("schemas_preserve_wire", || {
+        }
+
+#[test]
+fn schemas_preserve_wire() {
             use harmos_domain::schema::{Cardinality, Described, Kind};
             assert_ne!(Original::FIELDS, Reordered::FIELDS);
             let left = protobuf_fields(Original::DEFINITION);
@@ -355,10 +347,10 @@ fn contract_scenario() {
             let owned: harmos_domain::schema::graph::Schema =
                 serde_json::from_slice(&encoded).unwrap();
             assert_eq!(owned, graph);
-        });
-    }
-    {
-        scenario_runtime::check("fields_keep_binary", || {
+        }
+
+#[test]
+fn fields_keep_binary() {
             use harmos_domain::schema::{Described, Kind};
             assert_eq!(QualifiedBytes::FIELDS[0].kind, Kind::Bytes);
             let value = QualifiedBytes {
@@ -368,10 +360,10 @@ fn contract_scenario() {
                 QualifiedBytes::decode(&value.encode_to_vec()).unwrap(),
                 value
             );
-        });
-    }
-    {
-        scenario_runtime::check("sizes_count_capacity", || {
+        }
+
+#[test]
+fn sizes_count_capacity() {
             let mut payload = Vec::with_capacity(64);
             payload.extend_from_slice(&[1, 2, 3]);
             let row = Original { value: 7, payload };
@@ -406,10 +398,10 @@ fn contract_scenario() {
                 harmos_domain::Message::encode_to_vec(&value).len()
             );
             assert!(value.memory_size() > value.encoded_size());
-        });
-    }
-    {
-        scenario_runtime::check("allocation_never_small", || {
+        }
+
+#[test]
+fn allocation_never_small() {
             struct Overflow;
             impl MemorySize for Overflow {
                 fn memory_size(&self) -> usize {
@@ -422,10 +414,10 @@ fn contract_scenario() {
                 None::<Overflow>.memory_size(),
                 std::mem::size_of::<Option<Overflow>>()
             );
-        });
-    }
-    {
-        scenario_runtime::check("enum_shapes_sizes", || {
+        }
+
+#[test]
+fn enum_shapes_sizes() {
             use harmos_domain::schema::{Cardinality, Described};
             let choices = [
                 Choice::Empty,
@@ -490,18 +482,18 @@ fn contract_scenario() {
                 value.encoded_size(),
                 harmos_domain::Message::encode_to_vec(&value).len()
             );
-        });
-    }
-    {
-        scenario_runtime::check("wire_uses_last", || {
+        }
+
+#[test]
+fn wire_uses_last() {
             let mut bytes = Choice::Text("before".into()).encode_to_vec();
             bytes.extend(Choice::Empty.encode_to_vec());
             bytes.extend([8, 1]);
             assert_eq!(Choice::decode(&bytes).unwrap(), Choice::Empty);
-        });
-    }
-    {
-        scenario_runtime::check("variant_keeps_raw", || {
+        }
+
+#[test]
+fn variant_keeps_raw() {
             use harmos_domain::schema::{Described, Kind};
             let variant = Choice::FIELDS
                 .iter()
@@ -526,20 +518,20 @@ fn contract_scenario() {
             malformed.extend(Choice::Empty.encode_to_vec());
             assert!(Choice::decode(&malformed).is_err());
             assert!(Choice::decoding_memory(&malformed).is_err());
-        });
-    }
-    {
-        scenario_runtime::check("declared_unit_default", || {
+        }
+
+#[test]
+fn declared_unit_default() {
             let budget = ExplicitDefault::decoding_memory(&[]).unwrap();
             let value = ExplicitDefault::decode(&[]).unwrap();
             assert_eq!(value, ExplicitDefault::Selected);
             assert_eq!(budget, std::mem::size_of::<ExplicitDefault>());
             assert_eq!(value.memory_size(), budget);
-        });
-    }
-    #[cfg(feature = "reflection")]
-    {
-        scenario_runtime::check("enums_use_oneof", || {
+        }
+
+#[cfg(feature = "reflection")]
+#[test]
+fn enums_use_oneof() {
             use harmos_domain::schema::{Described, reflection::DynamicMessage};
             let schema = schema_descriptor(Choice::DEFINITION);
             assert_eq!(schema.oneofs().count(), 1);
@@ -548,11 +540,11 @@ fn contract_scenario() {
                 DynamicMessage::decode(schema, value.encode_to_vec().as_slice()).unwrap();
             let bytes = prost::Message::encode_to_vec(&reflected);
             assert_eq!(Choice::decode(&bytes).unwrap(), value);
-        });
-    }
-    #[cfg(feature = "reflection")]
-    {
-        scenario_runtime::check("composites_match_canonical", || {
+        }
+
+#[cfg(feature = "reflection")]
+#[test]
+fn composites_match_canonical() {
             use harmos_domain::schema::{Described, reflection::DynamicMessage};
             fn canonical<T: Protobuf + Described>(value: &T) {
                 let encoded = Protobuf::encode_to_vec(value);
@@ -586,10 +578,10 @@ fn contract_scenario() {
                     right: right.into(),
                 });
             }
-        });
-    }
-    {
-        scenario_runtime::check("variant_merge_payload", || {
+        }
+
+#[test]
+fn variant_merge_payload() {
             use harmos_domain::schema::{Described, Kind};
             let variant = MergedChoice::FIELDS
                 .iter()
@@ -613,10 +605,10 @@ fn contract_scenario() {
                     right: "second".into()
                 }
             );
-        });
-    }
-    {
-        scenario_runtime::check("variants_preserve_raw", || {
+        }
+
+#[test]
+fn variants_preserve_raw() {
             let value = SingleVariant::Named {
                 r#type: "raw".into(),
             };
@@ -630,10 +622,10 @@ fn contract_scenario() {
                     r#type: String::new()
                 }
             );
-        });
-    }
-    {
-        scenario_runtime::check("validation_accepts_generated", || {
+        }
+
+#[test]
+fn validation_accepts_generated() {
             use harmos_domain::schema::{Described, ProtobufValidator};
             let value = Choices {
                 selected: Choice::Text("checked".into()),
@@ -662,6 +654,5 @@ fn contract_scenario() {
             validator
                 .validate(&Choice::Text("checked".into()).encode_to_vec())
                 .unwrap();
-        });
-    }
-}
+        }
+

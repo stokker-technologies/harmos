@@ -20,9 +20,9 @@ use std::sync::{
 };
 use std::time::Duration;
 // Third Party Imports
-use tokio::sync::Semaphore;
+use tokio::sync::{Semaphore, watch};
 // Local Imports
-use super::{RUNNING, STOPPING, key, phase, runtime};
+use super::{RUNNING, STOPPING, key, pending, phase, runtime};
 use harmos::operations::OperationPhase;
 use harmos::sidecar::{Instance, Observer, ObserverContext, ObserverError};
 
@@ -44,6 +44,8 @@ struct Counts {
     finalizations: AtomicUsize,
     stop_attempts: AtomicUsize,
     dropped: AtomicUsize,
+    // Announces every observed tick.
+    progress: watch::Sender<()>,
 }
 
 struct Watch<const PANIC: bool>(Arc<Counts>);
@@ -66,6 +68,7 @@ impl Counts {
             finalizations: AtomicUsize::new(0),
             stop_attempts: AtomicUsize::new(0),
             dropped: AtomicUsize::new(0),
+            progress: watch::Sender::new(()),
         })
     }
 }
@@ -81,6 +84,7 @@ impl<const PANIC: bool> Observer<()> for Watch<PANIC> {
     }
     async fn observe(&mut self, _: &ObserverContext<'_, Arc<Counts>, ()>) -> Result<(), Error> {
         self.0.ticks.fetch_add(1, Ordering::SeqCst);
+        self.0.progress.send_replace(());
         assert!(!PANIC, "native callback panic");
         Ok(())
     }
@@ -139,13 +143,12 @@ async fn leases_share_existing() {
         .await
         .unwrap();
     phase(manager, &key(manager, &first), RUNNING).await;
-    tokio::time::timeout(Duration::from_secs(2), async {
-        while counts.ticks.load(Ordering::SeqCst) < 2 {
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .unwrap();
+    counts
+        .progress
+        .subscribe()
+        .wait_for(|_| counts.ticks.load(Ordering::SeqCst) >= 2)
+        .await
+        .unwrap();
     first.release().await.unwrap();
     assert_eq!(counts.initialized.load(Ordering::SeqCst), 1);
     assert_eq!(counts.stopped.load(Ordering::SeqCst), 0);
@@ -171,14 +174,7 @@ async fn native_panic_closes() {
         .await
         .unwrap();
     phase(manager, &key(manager, &lease), STOPPING).await;
-    assert!(
-        tokio::time::timeout(
-            Duration::from_millis(10),
-            manager.submit_with_resources_at("native", resources.clone())
-        )
-        .await
-        .is_err()
-    );
+    pending::parked(std::pin::pin!(manager.submit_with_resources_at("native", resources.clone()))).await;
     assert_eq!(counts.initialized.load(Ordering::SeqCst), 1);
     counts.cleanup.add_permits(1);
     let failure = lease.release().await.unwrap_err();
@@ -313,11 +309,7 @@ async fn cleanup_recovery(finalizing: bool) {
     assert_eq!(lease.status().phase(), expected);
     assert_eq!(counts.dropped.load(Ordering::SeqCst), 0);
     assert_eq!(counts.stop_attempts.load(Ordering::SeqCst), 1);
-    assert!(
-        tokio::time::timeout(Duration::from_millis(20), lease.settle())
-            .await
-            .is_err()
-    );
+    pending::parked(std::pin::pin!(lease.settle())).await;
     assert_eq!(
         counts.stop_attempts.load(Ordering::SeqCst),
         if finalizing { 1 } else { 2 }

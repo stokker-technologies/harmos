@@ -15,12 +15,12 @@
 // Standard Library Imports
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
 use super::contract;
-use contract::{Marks, POLICY, Read, Readings, Step};
+use crate::witness::Witness;
+use contract::{POLICY, Read, Readings, Step};
 use harmos::operations::{Operation, OperationPolicy, WireTable};
 use harmos::sidecar::{Refusal, Supervisor};
 
@@ -36,7 +36,7 @@ pub(crate) struct Provider {
 }
 
 pub(crate) struct Resources {
-    marks: Marks,
+    marks: Arc<Witness>,
     initialized: AtomicBool,
 }
 
@@ -62,18 +62,17 @@ impl harmos::Plugin for Provider {
     type Error = Refusal;
     type Resources = Resources;
 
-    fn prepare(root: String) -> Result<Self, Refusal> {
+    fn prepare(key: String) -> Result<Self, Refusal> {
         Ok(Self {
             resources: Arc::new(Resources {
-                marks: Marks { root: root.into() },
+                marks: Witness::find(&key).ok_or_else(|| Refusal::of("the story witness is gone"))?,
                 initialized: AtomicBool::new(false),
             }),
         })
     }
 
     async fn initialize(&mut self, _: &Supervisor) -> Result<(), Refusal> {
-        std::fs::create_dir_all(&self.resources.marks.root).map_err(Refusal::of)?;
-        self.resources.marks.mark("initialized")?;
+        self.resources.marks.mark("initialized");
         self.resources.initialized.store(true, Ordering::SeqCst);
         Ok(())
     }
@@ -91,11 +90,13 @@ impl harmos::Plugin for Provider {
 
     async fn stop(&mut self, _: &Supervisor) -> Result<(), Refusal> {
         self.resources.initialized.store(false, Ordering::SeqCst);
-        self.resources.marks.mark("shutdown")
+        self.resources.marks.mark("shutdown");
+        Ok(())
     }
 
     async fn cleanup(&mut self) -> Result<(), Refusal> {
-        self.resources.marks.mark("cleaned")
+        self.resources.marks.mark("cleaned");
+        Ok(())
     }
 }
 
@@ -120,7 +121,8 @@ impl Operation for Reading {
         let mut operation = constructed?;
         let started: Result<(), Refusal> = async {
             let operation = &mut operation;
-            operation.resources.marks.mark("read-initialized")
+            operation.resources.marks.mark("read-initialized");
+            Ok(())
         }
         .await;
         started?;
@@ -137,17 +139,15 @@ impl Operation for Reading {
             self.phase = Some(request.phase);
             self.resources
                 .marks
-                .mark(&format!("read-prepared-{}", request.phase))?;
+                .mark(&format!("read-prepared-{}", request.phase));
             if !self.resources.initialized.load(Ordering::SeqCst) {
                 return Err(Refusal::of("the original provider has retired"));
             }
             self.resources
                 .marks
-                .mark(&format!("read-started-{}", request.phase))?;
-            if request.phase == 2 && self.resources.marks.root.join("hold-read-2").exists() {
-                while !self.resources.marks.root.join("release-read-2").exists() {
-                    tokio::time::sleep(Duration::from_millis(5)).await;
-                }
+                .mark(&format!("read-started-{}", request.phase));
+            if request.phase == 2 && self.resources.marks.seen("hold-read-2") {
+                self.resources.marks.marked("release-read-2").await;
             }
             Ok(request.clone())
         }
@@ -168,6 +168,7 @@ impl Operation for Reading {
                 .mark(&format!("read-finalized-{phase}")),
             None => self.resources.marks.mark("read-finalized-unstarted"),
         }
+        Ok(())
     }
 }
 

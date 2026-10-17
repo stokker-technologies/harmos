@@ -14,7 +14,6 @@
 /* === Imports === */
 // Standard Library Imports
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 // Third Party Imports
 use support::{Bank, Ledger, Noted, alice, booted, deposit, ledger, withdraw};
 // Local Imports
@@ -45,7 +44,7 @@ struct Saved {
 /* === Private Functions === */
 
 #[tokio::test]
-async fn storage_ac001_recovered() {
+async fn restart_recovers_history() {
     let copy = Store::default();
 
     let live = booted(Ledger::default(), |builder| {
@@ -87,7 +86,7 @@ async fn storage_ac001_recovered() {
 }
 
 #[tokio::test]
-async fn unsynced_tail_thing() {
+async fn crash_loses_unsynced() {
     let copy = Store::default();
 
     // Three entries to a batch, so the fourth sits in the adapter's own risk
@@ -190,7 +189,7 @@ async fn redelivery_forwards_stored() {
 }
 
 #[tokio::test]
-async fn undecodable_history_beyond() {
+async fn undecodable_history_forwarded() {
     let copy = Store::default();
     let mirror = Store::default();
 
@@ -233,7 +232,7 @@ async fn undecodable_history_beyond() {
 }
 
 #[tokio::test]
-async fn ac002_clean_stop() {
+async fn stop_flushes_batch() {
     let copy = Store::default();
 
     // Three entries to a batch, so both commits sit in the adapter's own risk
@@ -277,24 +276,21 @@ async fn stored_resolves_sync() {
     .await;
 
     let first = runtime.state.commit(deposit(5)).await.expect("accepted");
-    let waiting = tokio::time::timeout(
-        Duration::from_millis(100),
-        runtime.state.wait_until_stored(first.position),
-    )
+    let mut waiting = Box::pin(runtime.state.wait_until_stored(first.position));
+    tokio::task::yield_now().await;
+    let parked = std::future::poll_fn(|context| {
+        std::task::Poll::Ready(waiting.as_mut().poll(context).is_pending())
+    })
     .await;
 
     assert!(
-        waiting.is_err(),
+        parked,
         "the entry is applied but not yet acknowledged by the copy"
     );
 
     runtime.state.commit(deposit(6)).await.expect("accepted");
-    tokio::time::timeout(
-        Duration::from_millis(500),
-        runtime.state.wait_until_stored(Position(2)),
-    )
-    .await
-    .expect("the batch was written and synced");
+    waiting.await;
+    runtime.state.wait_until_stored(Position(2)).await;
 
     assert_eq!(runtime.state.stored(), runtime.state.applied());
 }

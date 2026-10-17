@@ -193,7 +193,7 @@ async fn runtime() -> Runtime<Bank> {
 /* === Tests === */
 
 #[tokio::test]
-async fn scope_hands_cause() {
+async fn children_inherit_cause() {
     let runtime = runtime().await;
     let causing = runtime
         .state
@@ -251,7 +251,7 @@ async fn scope_hands_cause() {
 }
 
 #[tokio::test]
-async fn scoped_attempt_records() {
+async fn caused_submit_records() {
     let runtime = runtime().await;
     let receipt = runtime
         .state

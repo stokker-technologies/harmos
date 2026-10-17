@@ -110,7 +110,16 @@ async fn runtime_owns_storage() {
     assert_eq!(f.recovery.saved.load(Ordering::SeqCst), 1);
     assert_eq!(f.data.control.closes.load(Ordering::SeqCst), 1);
     assert_eq!(f.recovery.control.closes.load(Ordering::SeqCst), 1);
-    assert!(!f.storage.status().running);
+    let status = f.storage.status();
+    assert!(status.closed);
+    assert!(!status.running);
+    assert!(
+        f.runtime
+            .operations
+            .resident(&harmos::operations::resident::Key::root("harmos-storage"))
+            .and_then(|item| item.health)
+            .is_none()
+    );
 }
 
 #[tokio::test]
@@ -261,7 +270,7 @@ async fn failure_retains_acquisition() {
 }
 
 #[tokio::test]
-async fn managers_cannot_replaced() {
+async fn manager_replacement_refused() {
     let first = dormant().await;
     let second = dormant().await;
     first
@@ -311,7 +320,7 @@ async fn cancelled_acquisition_retried() {
 }
 
 #[tokio::test]
-async fn shutdown_keeps_worker() {
+async fn final_drain_saved() {
     let data = Arc::new(Data::new(history()));
     let recovery = Arc::new(Recovery::new(history()));
     let storage = StorageManager::new(
@@ -348,18 +357,13 @@ async fn stop_seals_registration() {
         }
         let stop = f.runtime.stop();
         tokio::pin!(stop);
-        let pending = std::future::poll_fn(|cx| {
-            std::task::Poll::Ready(std::future::Future::poll(stop.as_mut(), cx).is_pending())
-        })
-        .await;
         assert!(
-            pending,
+            crate::pending(stop.as_mut()).await,
             "shutdown retains the participant and startup owners"
         );
     }
-    tokio::time::timeout(std::time::Duration::from_secs(2), participant.stopping())
-        .await
-        .expect("the original shutdown driver advances without another waiter");
+    // The Original Shutdown Driver Advances Without Another Waiter.
+    participant.stopping().await;
     participant.finish();
     assert!(matches!(
         f.runtime.start_storage(f.storage.clone()).await,
@@ -371,24 +375,7 @@ async fn stop_seals_registration() {
 }
 
 #[tokio::test]
-async fn workers_not_started() {
-    let f = dormant().await;
-    f.runtime.start_storage(f.storage.clone()).await.unwrap();
-    f.runtime.stop().await.unwrap();
-    let status = f.storage.status();
-    assert!(status.closed);
-    assert!(!status.running);
-    assert!(
-        f.runtime
-            .operations
-            .resident(&harmos::operations::resident::Key::root("harmos-storage"))
-            .and_then(|item| item.health)
-            .is_none()
-    );
-}
-
-#[tokio::test]
-async fn batch_retries_producer() {
+async fn stop_retries_uncertain() {
     let f = dormant().await;
     f.runtime.start_storage(f.storage.clone()).await.unwrap();
     f.data.control.flush_failures.store(1, Ordering::SeqCst);

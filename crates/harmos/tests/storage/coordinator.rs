@@ -91,23 +91,6 @@ async fn admission_durability_distinct() {
     f.finish().await;
 }
 
-#[tokio::test]
-async fn admissions_never_extend() {
-    let f = Fixture::new(config()).await;
-    f.data.control.block_write.store(true, Ordering::SeqCst);
-    write(&f.storage, "first").await;
-    let storage = f.storage.clone();
-    let first = storage.flush();
-    tokio::pin!(first);
-    tokio::select! { biased; _ = &mut first => panic!("write is blocked"), _ = f.data.control.write_entered.notified() => {} }
-    write(&f.storage, "later").await;
-    f.data.control.block_write.store(false, Ordering::SeqCst);
-    f.data.control.write_release.notify_one();
-    assert_eq!(first.await.unwrap().sequence, 1);
-    assert_eq!(f.data.control.flushes.lock().unwrap().as_slice(), &[1]);
-    f.finish().await;
-}
-
 #[tokio::test(start_paused = true)]
 async fn recovery_share_backpressure() {
     let mut policy = config();
@@ -115,14 +98,11 @@ async fn recovery_share_backpressure() {
     let f = Fixture::new(policy).await;
     f.data.control.block_flush.store(true, Ordering::SeqCst);
     write(&f.storage, "one").await;
-    assert!(
-        tokio::time::timeout(
-            Duration::from_millis(1),
-            f.storage.write_recovery(&[b"state"])
-        )
-        .await
-        .is_err()
-    );
+    {
+        let blocked = f.storage.write_recovery(&[b"state"]);
+        tokio::pin!(blocked);
+        assert!(crate::pending(blocked.as_mut()).await);
+    }
     assert_eq!(f.storage.status().recovery_accepted.sequence, 0);
     assert_eq!(f.storage.status().pending_batches, 1);
     assert_eq!(f.data.control.flushes.lock().unwrap().as_slice(), &[1]);
@@ -187,16 +167,16 @@ async fn close_retains_writes() {
 async fn transient_retry_saves() {
     let f = Fixture::new(config()).await;
     f.data.control.failures.store(1, Ordering::SeqCst);
-    write(&f.storage, "one").await;
+    let cursor = write(&f.storage, "one").await;
     assert!(f.storage.flush().await.is_err());
+
+    // The Periodic Save Retries Without Another Explicit Flush.
+    f.data.control.block_write.store(true, Ordering::SeqCst);
     tokio::time::advance(Duration::from_millis(100)).await;
-    tokio::time::timeout(Duration::from_secs(1), async {
-        while f.storage.status().saved.sequence != 1 {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .unwrap();
+    f.data.control.write_entered.notified().await;
+    f.data.control.block_write.store(false, Ordering::SeqCst);
+    f.data.control.write_release.notify_one();
+    f.storage.await_durable(&cursor).await.unwrap();
     assert_eq!(f.data.control.writes.lock().unwrap().as_slice(), &[1, 1]);
     assert_eq!(f.storage.status().accepted.sequence, 1);
     f.finish().await;
@@ -262,7 +242,7 @@ async fn cancelled_close_retains() {
     let inputs = [record(&key, &item, &[1])];
     let producer = f.storage.write_records(&inputs);
     tokio::pin!(producer);
-    tokio::select! { biased; _ = &mut producer => panic!("queue is full"), _ = tokio::task::yield_now() => {} }
+    assert!(crate::pending(producer.as_mut()).await, "queue is full");
     {
         let close = f.storage.close();
         tokio::pin!(close);
@@ -325,7 +305,7 @@ async fn snapshots_require_flush() {
 }
 
 #[tokio::test]
-async fn cannot_release_capacity() {
+async fn wrong_receipt_retains() {
     let f = Fixture::new(config()).await;
     f.data.control.wrong_receipt.store(true, Ordering::SeqCst);
     write(&f.storage, "one").await;
@@ -352,25 +332,6 @@ async fn deadline_retains_admitted() {
 }
 
 #[tokio::test]
-async fn admission_never_advance() {
-    let mut policy = config();
-    policy.request.max_pending_write_bytes = NonZeroUsize::new(2048).unwrap();
-    let f = Fixture::new(policy).await;
-    let payload = vec![255; 4096];
-    let key = schema();
-    let item = Identifier::new("large").unwrap();
-    assert!(matches!(
-        f.storage
-            .write_records(&[record(&key, &item, &payload)])
-            .await,
-        Err(Error::ResourceExhausted { .. })
-    ));
-    assert_eq!(f.storage.status().accepted.sequence, 0);
-    assert_eq!(f.storage.status().pending_bytes, 0);
-    f.finish().await;
-}
-
-#[tokio::test]
 async fn close_seals_admission() {
     let f = Fixture::new(config()).await;
     f.recovery.control.block_read.store(true, Ordering::SeqCst);
@@ -385,11 +346,10 @@ async fn close_seals_admission() {
     let storage = f.storage.clone();
     let close = storage.close();
     tokio::pin!(close);
-    tokio::select! {
-        biased;
-        _ = &mut close => panic!("read holds the lifecycle lock"),
-        _ = tokio::task::yield_now() => {}
-    }
+    assert!(
+        crate::pending(close.as_mut()).await,
+        "read holds the lifecycle lock"
+    );
     assert!(f.storage.status().closing);
     assert!(matches!(
         f.storage.write_recovery(&[b"late"]).await,
@@ -402,23 +362,3 @@ async fn close_seals_admission() {
     f.finish().await;
 }
 
-#[tokio::test(start_paused = true)]
-async fn policy_saves_domains() {
-    let f = Fixture::new(config()).await;
-    write(&f.storage, "automatic").await;
-    f.storage.write_recovery(&[b"state"]).await.unwrap();
-
-    tokio::time::timeout(Duration::from_secs(1), async {
-        loop {
-            let status = f.storage.status();
-            if status.saved.sequence == 1 && status.recovery_saved.sequence == 1 {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(1)).await;
-        }
-    })
-    .await
-    .unwrap();
-    assert_eq!(f.storage.status().pending_bytes, 0);
-    f.finish().await;
-}

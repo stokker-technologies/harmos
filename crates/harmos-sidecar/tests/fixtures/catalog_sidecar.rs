@@ -103,16 +103,7 @@ impl lifecycle::Policy for Catalog {
 impl Plugin for Catalog {
     fn register(registrar: &mut Registrar) -> Result<(), RegistrationError> {
         registrar.register("zeta.catalog", 2, &serde_json::json!({"suite": "probe"}))?;
-        registrar.register("alpha.catalog", 1, &vec![1, 2])?;
-        match std::env::var("HARMOS_CATALOG_FIXTURE").as_deref() {
-            Ok("invalid") => registrar.register("alpha.catalog", 1, &()),
-            Ok("oversized") => registrar.register(
-                "large.catalog",
-                1,
-                &"x".repeat(harmos_sidecar::CATALOG_EXPORT_LIMIT),
-            ),
-            _ => Ok(()),
-        }
+        registrar.register("alpha.catalog", 1, &vec![1, 2])
     }
 
     type Config = ();

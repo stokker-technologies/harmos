@@ -125,7 +125,7 @@ const VARIANTS: [&str; 9] = [
 /* === Private Functions === */
 
 #[tokio::test]
-async fn s_own_shape() {
+async fn payload_own_shape() {
     let copy = Store::default();
 
     let runtime = booted(Ledger::default(), |builder| {
@@ -184,7 +184,7 @@ async fn s_own_shape() {
 }
 
 #[tokio::test]
-async fn another_build_s() {
+async fn another_build_reads() {
     let copy = Store::default();
 
     let runtime = booted(Ledger::default(), |builder| {

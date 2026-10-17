@@ -13,8 +13,6 @@
 
 /* === Imports === */
 // Standard Library Imports
-use std::io::Write;
-use std::path::PathBuf;
 use std::time::Duration;
 // Third Party Imports
 
@@ -22,7 +20,6 @@ use std::time::Duration;
 use harmos::operations::{
     OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireOperation,
 };
-use harmos::sidecar::Refusal;
 
 /* === Constants === */
 pub const POLICY: OperationPolicy = OperationPolicy {
@@ -46,10 +43,6 @@ pub struct Step {
 pub struct Read;
 
 pub struct Probe;
-
-pub struct Marks {
-    pub root: PathBuf,
-}
 
 /* === Enums === */
 #[harmos::catalog]
@@ -87,17 +80,6 @@ impl OperationDeclaration for Probe {
 
 impl WireOperation for Probe {
     const VERSION: u32 = 1;
-}
-
-impl Marks {
-    pub fn mark(&self, name: &str) -> Result<(), Refusal> {
-        let mut file = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(self.root.join(name))
-            .map_err(Refusal::of)?;
-        file.write_all(b"1\n").map_err(Refusal::of)
-    }
 }
 
 /* === Public Functions === */

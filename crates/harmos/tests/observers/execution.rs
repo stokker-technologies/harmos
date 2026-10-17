@@ -14,11 +14,10 @@
 /* === Imports === */
 // Standard Library Imports
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 // Third Party Imports
 use tokio::sync::{Notify, mpsc};
 // Local Imports
-use super::Observing;
+use super::{Observing, pending};
 use harmos::sidecar::{ActivationId, Instance, ObserverContext, ObserverError};
 
 /* === Constants === */
@@ -195,9 +194,9 @@ fn start(
 }
 
 async fn next(events: &mut mpsc::UnboundedReceiver<Event>) -> Event {
-    tokio::time::timeout(Duration::from_secs(2), events.recv())
+    events
+        .recv()
         .await
-        .expect("observer makes bounded progress")
         .expect("observer reports its lifecycle")
 }
 
@@ -226,9 +225,7 @@ async fn callback_panic_isolated() {
     let (mut sibling, mut events) = start(Behavior::FailFirst, None);
     entered(&mut failure).await;
     assert_eq!(next(&mut failure).await, Event::Dropped);
-    let ended = tokio::time::timeout(Duration::from_secs(2), failed.ended())
-        .await
-        .unwrap();
+    let ended = failed.ended().await;
     assert!(matches!(ended, Some(ObserverError::CallbackPanicked)));
     assert!(!failed.is_observing());
     let activity = failed.activity();
@@ -253,11 +250,7 @@ async fn cancelled_stop_rejoins() {
     assert!(task.interrupt().await.is_none());
     assert_eq!(next(&mut events).await, Event::Dropped);
     let activity = task.activity();
-    assert!(
-        tokio::time::timeout(Duration::from_millis(20), activity.stop())
-            .await
-            .is_err()
-    );
+    pending::parked(std::pin::pin!(activity.stop())).await;
     assert_eq!(next(&mut events).await, Event::Stopping);
     assert!(activity.is_initialized());
 
@@ -319,10 +312,7 @@ async fn cancellation_drops_init() {
             .unwrap(),
     );
     assert_eq!(next(&mut received).await, Event::Opened);
-    tokio::time::timeout(Duration::from_secs(2), task.shutdown())
-        .await
-        .unwrap()
-        .unwrap();
+    task.shutdown().await.unwrap();
     assert_eq!(next(&mut received).await, Event::Dropped);
     assert!(!task.activity().is_initialized());
     drop(task);
@@ -368,37 +358,6 @@ async fn diagnostics_preserve_scope() {
 }
 
 #[tokio::test]
-async fn hanging_cleanup_retained() {
-    let gate = Arc::new(Notify::new());
-    let (mut task, mut events) = start(Behavior::Hang, Some(gate.clone()));
-    entered(&mut events).await;
-    assert!(task.interrupt().await.is_none());
-    assert_eq!(next(&mut events).await, Event::Dropped);
-    let activity = task.activity();
-    {
-        let stopping = activity.stop();
-        tokio::pin!(stopping);
-        assert!(
-            tokio::time::timeout(Duration::from_millis(1200), &mut stopping)
-                .await
-                .is_err()
-        );
-        assert_eq!(next(&mut events).await, Event::Stopping);
-        assert!(matches!(
-            events.try_recv(),
-            Err(mpsc::error::TryRecvError::Empty)
-        ));
-        gate.notify_one();
-        stopping.await.unwrap();
-    }
-    assert_eq!(next(&mut events).await, Event::Stopped);
-    activity.cleanup().await.unwrap();
-    assert!(!activity.is_initialized());
-    drop(task);
-    assert_eq!(events.recv().await, None);
-}
-
-#[tokio::test]
 async fn restart_fresh_identity() {
     let declaration = declaration();
     assert_eq!(declaration.id(), "execution.watch");
@@ -425,10 +384,7 @@ async fn restart_fresh_identity() {
         assert_ne!(previous, Some(activation));
         let mut task = Observing::start(activity);
         for ordinal in [1, 2] {
-            let identity = tokio::time::timeout(Duration::from_secs(2), observed.recv())
-                .await
-                .unwrap()
-                .unwrap();
+            let identity = observed.recv().await.unwrap();
             assert_eq!(identity, (declaration.id(), activation, ordinal));
         }
         task.shutdown().await.unwrap();

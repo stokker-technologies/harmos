@@ -17,7 +17,7 @@
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 // Third Party Imports
 
@@ -38,7 +38,7 @@ struct Measure;
 /* === Enums === */
 #[harmos::operation(
         request = Duration,
-        response = (Duration, Duration),
+        response = Duration,
         id = "clock.measure",
         policy = OperationPolicy {
             timeout: Duration::from_secs(600),
@@ -76,13 +76,12 @@ impl Operation for Measure {
         context: Self::Context<'ctx>,
         wait: &mut Duration,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos::operations::Response<(Duration, Duration)>, Self::Error> {
-        let result: ::core::result::Result<(Duration, Duration), Self::Error> = async move {
+    ) -> Result<harmos::operations::Response<Duration>, Self::Error> {
+        let result: ::core::result::Result<Duration, Self::Error> = async move {
             let scope = context.scope();
             let scoped = scope.now();
-            let wall = Instant::now();
             tokio::time::sleep(*wait).await;
-            Ok((scope.now() - scoped, wall.elapsed()))
+            Ok(scope.now() - scoped)
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -120,7 +119,7 @@ fn bypasses(directory: &Path, found: &mut Vec<String>) {
 /* === Tests === */
 
 #[test]
-fn timers_use_runtime() {
+fn sources_avoid_tokio() {
     let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     assert!(
         !source.join("work").exists(),
@@ -157,7 +156,7 @@ async fn clock_measures_script() {
         .await
         .expect("the attempt measures its own wait");
 
-    let (scoped, _) = *answer;
+    let scoped = *answer;
     assert_eq!(
         scoped, scripted,
         "the scope's clock is the one the attempt's wait was taken on"
@@ -171,6 +170,6 @@ async fn clock_measures_script() {
         .unwrap()
         .await
         .expect("the second attempt measures its own wait");
-    assert_eq!(again.0, scoped);
+    assert_eq!(*again, scoped);
     runtime.stop().await.unwrap();
 }

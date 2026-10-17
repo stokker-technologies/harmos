@@ -94,7 +94,7 @@ pub(super) async fn seed(f: &Fixture) {
 }
 
 #[tokio::test]
-async fn typed_writer_batches() {
+async fn record_exchange_receipts() {
     let f = Fixture::new(config()).await;
     harmos::storage::operations::register(
         &f.runtime.operations,
@@ -133,6 +133,20 @@ async fn typed_writer_batches() {
     assert_eq!(completed.batches, 1);
     assert_eq!(completed.cursor, durable.unwrap().cursor);
     assert_eq!(f.data.records.lock().unwrap().len(), 2);
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn cancelled_exchange_retains() {
+    let f = Fixture::new(config()).await;
+    harmos::storage::operations::register(
+        &f.runtime.operations,
+        "storage",
+        Lanes::Open,
+        Arc::new(f.storage.clone()),
+    )
+    .unwrap();
+    seed(&f).await;
 
     // Cancelling Delivery Does Not Retract Storage-Owned Samples.
     let mut stream = f
@@ -152,7 +166,11 @@ async fn typed_writer_batches() {
     f.storage.flush_until(&accepted).await.unwrap();
     assert_eq!(f.data.rows.lock().unwrap().len(), 2);
     assert_eq!(f.storage.cursor_saved(), accepted);
+    f.finish().await;
+}
 
+#[test]
+fn batch_descriptor_roundtrips() {
     // Portable Batch Descriptors Preserve Identity And Native Arrow Values.
     let original = batch(42, "roundtrip");
     let encoded = original.encode_to_vec();
@@ -161,7 +179,6 @@ async fn typed_writer_batches() {
     assert_eq!(decoded.sequence, 42);
     assert_eq!(decoded.destination, original.destination);
     assert_eq!(decoded.data, original.data);
-    f.finish().await;
 }
 
 /* === Private Functions === */

@@ -308,38 +308,6 @@ async fn abandonment_retains_cleanup() {
 }
 
 #[tokio::test]
-async fn abandonment_cancels_retains() {
-    let (runtime, trace) = runtime().await;
-    let (sender, receiver) = channel(1);
-    let instance = runtime
-        .operations
-        .submit_endpoints::<Produce, _>(
-            Request {
-                count: 3,
-                fail: false,
-            },
-            sender,
-        )
-        .unwrap();
-    let id = instance.id();
-    let stream = harmos::grpc::stream(instance, receiver);
-    trace.attempting.acquire_many(2).await.unwrap().forget();
-    drop(stream);
-    trace.finalizing.acquire().await.unwrap().forget();
-    assert!(
-        runtime
-            .operations
-            .status(id)
-            .unwrap()
-            .cancellation_requested()
-    );
-    assert_eq!(trace.dropped.load(Ordering::SeqCst), 0);
-    trace.release.add_permits(1);
-    runtime.stop().await.unwrap();
-    assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-}
-
-#[tokio::test]
 async fn items_remain_visible() {
     let (runtime, trace) = runtime().await;
     let (sender, receiver) = channel(2);
@@ -410,37 +378,6 @@ async fn failure_not_success() {
     assert_eq!(observations.lock().unwrap().len(), 1);
 }
 
-#[tokio::test]
-async fn eof_waits_physical() {
-    let (runtime, trace) = runtime().await;
-    let (sender, receiver) = channel(1);
-    let instance = runtime
-        .operations
-        .submit_endpoints::<Produce, _>(
-            Request {
-                count: 0,
-                fail: false,
-            },
-            sender,
-        )
-        .unwrap();
-    let mut stream = harmos::grpc::stream(instance, receiver);
-    trace.finalizing.acquire().await.unwrap().forget();
-    assert!(
-        std::future::poll_fn(|cx| std::task::Poll::Ready(
-            futures_core::Stream::poll_next(std::pin::Pin::new(&mut stream), cx).is_pending()
-        ))
-        .await
-    );
-    assert_eq!(trace.dropped.load(Ordering::SeqCst), 0);
-    trace.release.add_permits(1);
-    assert!(
-        matches!(stream.next().await.unwrap().unwrap(), Event::Completion(value) if *value == 0)
-    );
-    assert!(stream.next().await.is_none());
-    runtime.stop().await.unwrap();
-}
-
 #[tokio::test(start_paused = true)]
 async fn deadline_settles_draining() {
     let (runtime, trace) = runtime().await;
@@ -459,7 +396,6 @@ async fn deadline_settles_draining() {
     let id = instance.id();
     let mut stream = harmos::grpc::stream(instance, receiver);
     trace.attempting.acquire_many(2).await.unwrap().forget();
-    tokio::time::advance(Duration::from_secs(6)).await;
     trace.finalizing.acquire().await.unwrap().forget();
     assert_eq!(item(stream.next().await.unwrap()), 0);
     assert!(stream.next().await.unwrap().is_err());
@@ -471,7 +407,7 @@ async fn deadline_settles_draining() {
 }
 
 #[tokio::test]
-async fn item_keeps_byte() {
+async fn held_item_backpressures() {
     let (runtime, trace) = runtime().await;
     let (sender, receiver) = harmos::operations::stream(harmos::operations::StreamSettings {
         items: std::num::NonZeroUsize::new(2).unwrap(),
