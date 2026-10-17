@@ -82,7 +82,8 @@ def main() -> None:
         producers.append(product)
         artifacts[package], builds[package] = _stage_build(built, collected, package, [capture, product], files)
     artifacts["schematic-cli"] = _keep(_executable(schematic, "schematic-cli"), "schematic-cli", [native], files)
-    libraries = _libraries([*workspace, *_messages(tooling)], [receipt, tooling], files)
+    # One Capture Supplies Every Library, So The Facade Links Exactly The Builds Beside It.
+    libraries = _libraries(_messages(tooling), [tooling], files)
     exported = _offline_inputs(profile)
     producers.append(exported)
     for name in exported["exports"]:
@@ -207,10 +208,9 @@ def _offline_inputs(profile: str) -> dict:
     if len(wheels) != 1:
         raise RuntimeError("the pinned Python must provide its bundled pip wheel to stage offline inputs")
     launch = "import runpy,sys; sys.path.insert(0,sys.argv.pop(1)); runpy.run_module('pip',run_name='__main__')"
+    # Each Project Locks Its Own Closure, So Each Downloads Separately Into The Shared Wheel Directory.
     download = [sys.executable, "-c", launch, str(wheels[0]), "download", "--dest", str(destination / "wheels"), "--require-hashes"]
-    for selected in requirements_files:
-        download += ["--requirement", str(selected)]
-    commands.append(download)
+    commands.extend([*download, "--requirement", str(selected)] for selected in requirements_files)
     locks = [manifest.parent / "Cargo.lock" for manifest in manifests] + [project / "uv.lock" for project in projects]
     inputs = [*manifests, *(project / "pyproject.toml" for project in projects), Path(str(wheels[0]))]
     if (ROOT / ".cargo").is_dir():
