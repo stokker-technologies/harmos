@@ -22,8 +22,8 @@ use tokio::task::JoinHandle;
 // Local Imports
 use harmos_domain::catalog::Node;
 use harmos_domain::inventory::{contracts, listeners, observers, publications};
-use harmos_domain::operations::{ServingError, WireDeclaration, lifecycle};
-use harmos_domain::plugin::{Declared, Plugin};
+use harmos_sdk::operations::{ServingError, WireDeclaration, lifecycle};
+use harmos_sdk::plugin::{Declared, Plugin};
 use harmos_sidecar::operations::{
     Operation, OperationPolicy, RestartPolicy, RetryPolicy, WireTable,
 };

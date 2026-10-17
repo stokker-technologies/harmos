@@ -258,7 +258,7 @@ impl<O: OperationDeclaration> Drop for OperationInstance<O> {
     }
 }
 
-impl<O> harmos_domain::operations::Instance<O> for OperationInstance<O>
+impl<O> harmos_sdk::operations::Instance<O> for OperationInstance<O>
 where
     O: OperationDeclaration,
 {

@@ -23,9 +23,9 @@ bench = false
 default = ["derive"]
 derive = ["harmos-domain/derive"]
 # Optional Payload Codec Only; No Host Networking Or gRPC Carrier
-grpc = ["harmos-domain/grpc"]
+grpc = ["harmos-sdk/grpc"]
 # Stream Traffic Wakes An Original Operation Waiting On A Rust Channel.
-streaming = ["harmos-domain/streaming", "wit-bindgen?/inter-task-wakeup"]
+streaming = ["harmos-sdk/streaming", "wit-bindgen?/inter-task-wakeup"]
 # The generated world bindings and the wrappers over them — everything a guest
 # author writes against. Optional because the other half of this crate is not
 # authoring at all: `Declaration::inspect` reads an already-built component's
@@ -37,6 +37,7 @@ componentize = ["dep:wit-component"]
 
 [dependencies]
 # Local
+harmos-sdk = { workspace = true }
 harmos-domain = { workspace = true }
 
 # Git

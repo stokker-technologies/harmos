@@ -10,8 +10,8 @@
 /* === Modules === */
 
 /* === Re-Exports === */
-pub(super) use harmos_domain::operations::streaming::RequestClaims;
-pub use harmos_domain::operations::streaming::{StreamInput, StreamItem, StreamSettings};
+pub(super) use harmos_sdk::operations::streaming::RequestClaims;
+pub use harmos_sdk::operations::streaming::{StreamInput, StreamItem, StreamSettings};
 
 /* === Imports === */
 // Standard Library Imports
@@ -19,7 +19,7 @@ use std::sync::Arc;
 // Third Party Imports
 // Local Imports
 use crate::{Error, Result};
-use harmos_domain::operations::streaming as portable;
+use harmos_sdk::operations::streaming as portable;
 
 /* === Constants === */
 /* === Macros === */

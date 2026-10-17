@@ -47,7 +47,7 @@ const DEFAULT_CACHE_CAPACITY: usize = 64;
 /* === Macros === */
 
 /* === Type Aliases === */
-type CachedResponse = harmos_domain::__private::ErasedResponse;
+type CachedResponse = harmos_sdk::__private::ErasedResponse;
 
 /* === Structs === */
 #[derive(Clone)]

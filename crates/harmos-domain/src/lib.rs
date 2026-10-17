@@ -36,7 +36,6 @@ mod value;
 pub mod __private {
     pub use crate::config::SchemaSettings;
     pub use crate::declare;
-    pub use crate::operations::response::ErasedResponse;
     pub use crate::plugin::schema_markers as PluginSchemaMarkers;
     pub extern crate serde;
     pub extern crate serde_json;
@@ -91,7 +90,6 @@ pub use identity::{
 pub use inventory::StreamDeclaration;
 pub use inventory::publications::StreamSpec;
 pub use metadata::{Identifier, IdentifierError, Metadata};
-pub use plugin::Plugin;
 pub use refusal::{FAILED, RESERVED, Refusal, UNKNOWN, UNREADABLE, reserved};
 pub use registration::{Registrar, Registration, RegistrationError};
 pub use value::{VALUE_DEPTH, Value, ValueError};

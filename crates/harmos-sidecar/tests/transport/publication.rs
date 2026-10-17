@@ -22,7 +22,7 @@ use std::time::Duration;
 use super::protocol::{Done, Sample, Start, TransportPlugin};
 use harmos_domain::operations::lifecycle::Initialize;
 use harmos_domain::operations::streams::Publish;
-use harmos_domain::operations::{CHILD_METHOD, WireChildCall};
+use harmos_sdk::operations::{CHILD_METHOD, WireChildCall};
 use harmos_sidecar::operations::{OperationDeclaration, WIRE_METHOD, WireAnswer, WireCommand};
 use harmos_sidecar::transport::{Connection, Receiver, Sender};
 use harmos_sidecar::{Attach, Frame, Message, PluginNative, StreamSpec};

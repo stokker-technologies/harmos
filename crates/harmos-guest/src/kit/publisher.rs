@@ -18,7 +18,7 @@ use std::marker::PhantomData;
 
 // Local Imports
 use super::Context;
-use harmos_domain::operations::Host;
+use harmos_sdk::operations::Host;
 use harmos_domain::{Message, StreamSpec, plugin::Declared};
 
 /* === Constants === */

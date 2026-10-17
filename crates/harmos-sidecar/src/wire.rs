@@ -18,7 +18,7 @@
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt};
 // Local Imports
 use harmos_domain::Message;
-use harmos_domain::operations::{
+use harmos_sdk::operations::{
     CHILD_METHOD, OperationDeclaration, WIRE_METHOD, WireAnswer, WireChildCall, WireCommand,
 };
 

@@ -28,7 +28,7 @@ pub mod __private {
     };
     pub use super::task::spawn as spawn_observer;
     pub use crate as sidecar;
-    pub use harmos_domain::__private::*;
+    pub use harmos_sdk::__private::*;
     pub use harmos_domain::{qualified, qualified_len, qualify};
 }
 
@@ -573,7 +573,7 @@ async fn answer(opening: &mut Opening, host: &Supervisor, frame: Frame) -> Answe
             }
             match answer.encode() {
                 Ok(result) => Frame::Answer { id, result },
-                Err(harmos_domain::operations::WireCodecError::Oversized) => oversized_reply(id),
+                Err(harmos_sdk::operations::WireCodecError::Oversized) => oversized_reply(id),
                 Err(error) => Frame::Refusal {
                     id,
                     refusal: Refusal::new(UNREADABLE, error.to_string()),

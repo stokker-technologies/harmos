@@ -280,16 +280,16 @@ impl<A: Application> Service<A> {
     }
 }
 
-impl<A: Application> harmos_domain::operations::Host for Service<A> {
+impl<A: Application> harmos_sdk::operations::Host for Service<A> {
     type Error = Error;
     type Instance<O: OperationDeclaration> = OperationInstance<O>;
 
     fn context(&self) -> &CallContext {
-        harmos_domain::operations::Host::context(&self.operations)
+        harmos_sdk::operations::Host::context(&self.operations)
     }
 
     fn with_value<T: ContextValue>(&self, value: T) -> std::result::Result<Self, ContextError> {
-        let operations = harmos_domain::operations::Host::with_value(&self.operations, value)?;
+        let operations = harmos_sdk::operations::Host::with_value(&self.operations, value)?;
         let mut child = self.clone_context();
         child.operations = operations;
         Ok(child)
@@ -299,14 +299,14 @@ impl<A: Application> harmos_domain::operations::Host for Service<A> {
         &self,
         request: O,
     ) -> impl Future<Output = Result<OperationInstance<O>>> + Send {
-        harmos_domain::operations::Host::submit(&self.operations, request)
+        harmos_sdk::operations::Host::submit(&self.operations, request)
     }
 
     fn call<O: OperationDeclaration>(
         &self,
         request: O,
     ) -> impl Future<Output = Result<Response<O::Response>>> + Send {
-        harmos_domain::operations::Host::call(&self.operations, request)
+        harmos_sdk::operations::Host::call(&self.operations, request)
     }
 
     fn submit_with_resources<O: OperationDeclaration<Response = ()>, R: Send + Sync + 'static>(
@@ -314,7 +314,7 @@ impl<A: Application> harmos_domain::operations::Host for Service<A> {
         request: O,
         resources: Arc<R>,
     ) -> impl Future<Output = Result<OperationInstance<O>>> + Send {
-        harmos_domain::operations::Host::submit_with_resources::<O, R>(
+        harmos_sdk::operations::Host::submit_with_resources::<O, R>(
             &self.operations,
             request,
             resources,

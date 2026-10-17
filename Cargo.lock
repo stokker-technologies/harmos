@@ -1052,6 +1052,7 @@ name = "harmos-guest"
 version = "0.2.0"
 dependencies = [
  "harmos-domain",
+ "harmos-sdk",
  "semver",
  "serde",
  "serde_json",
@@ -1118,6 +1119,7 @@ dependencies = [
  "harmos-guest",
  "harmos-macros",
  "harmos-packaging",
+ "harmos-sdk",
  "harmos-sidecar",
  "harmos-signal",
  "heck",
@@ -1149,6 +1151,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "harmos-sdk"
+version = "0.2.0"
+dependencies = [
+ "harmos-domain",
+ "postcard",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "harmos-sidecar"
 version = "0.2.0"
 dependencies = [
@@ -1157,6 +1171,7 @@ dependencies = [
  "getrandom 0.4.3",
  "harmos-domain",
  "harmos-macros",
+ "harmos-sdk",
  "libc",
  "postcard",
  "semver",

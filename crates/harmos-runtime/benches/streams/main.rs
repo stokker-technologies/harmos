@@ -71,7 +71,7 @@ fn benchmarks(c: &mut criterion::Criterion) {
                 bytes: (0..size).map(|index| (index % 251) as u8).collect(),
             };
             let payload = row.encode_to_vec();
-            let command = harmos_domain::operations::WireCommand::Prepare {
+            let command = harmos_sdk::operations::WireCommand::Prepare {
                 invocation: u64::MAX,
                 operation: "consumption.consume".to_owned(),
                 payload: payload.clone(),
@@ -109,7 +109,7 @@ fn benchmarks(c: &mut criterion::Criterion) {
                 &envelope,
                 |b, envelope| {
                     b.iter(|| {
-                        harmos_domain::operations::WireCommand::decode(std::hint::black_box(
+                        harmos_sdk::operations::WireCommand::decode(std::hint::black_box(
                             envelope,
                         ))
                         .unwrap()

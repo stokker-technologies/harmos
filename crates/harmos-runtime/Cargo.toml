@@ -88,6 +88,7 @@ plugin-guest = [
   "dep:wasmtime",
 ]
 grpc = [
+  "harmos-sdk/grpc",
   "bindings-proto",
   "dep:tonic-reflection",
   "dep:http-body",
@@ -111,8 +112,9 @@ simulation = ["tokio/test-util"]
 
 [dependencies]
 # Local
+harmos-sdk = { workspace = true, features = ["streaming"] }
 harmos-packaging = { workspace = true, optional = true }
-harmos-domain = { workspace = true, features = ["derive", "streaming"] }
+harmos-domain = { workspace = true, features = ["derive"] }
 harmos-guest = { workspace = true, optional = true }
 harmos-macros = { workspace = true, default-features = true }
 harmos-signal = { workspace = true, default-features = false }

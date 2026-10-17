@@ -41,7 +41,7 @@ pub struct Entry {
 
 pub struct Declarations;
 
-pub struct AuthoredDeclarations;
+
 
 /* === Enums === */
 
@@ -79,20 +79,6 @@ impl Visitor for Declarations {
 
 impl<M: Declares> Member<M> for Declarations {
     const ENTRY: Entry = Entry::of::<M::Declaration>();
-}
-
-impl Visitor for AuthoredDeclarations {
-    type Entry = Entry;
-}
-
-impl<T: super::Operation> Member<T> for AuthoredDeclarations {
-    const ENTRY: Entry = Entry::of::<T::Declaration>();
-}
-
-impl AuthoredDeclarations {
-    pub fn of<C: Catalog<Self>>() -> Result<Vec<Definition>> {
-        Declarations::from_projection(&C::ENTRIES)
-    }
 }
 
 impl Declarations {

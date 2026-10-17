@@ -30,8 +30,8 @@ use std::sync::{Arc, Mutex};
 
 // Local Imports
 use super::context::Context;
-use harmos_domain::operations::{Contracts, WireCommand, WireTable};
-use harmos_domain::plugin::{Declared, Owner, Plugin};
+use harmos_sdk::operations::{Contracts, WireCommand, WireTable};
+use harmos_sdk::plugin::{Declared, Owner, Plugin};
 
 /* === Constants === */
 
@@ -94,7 +94,7 @@ pub fn registrations<P: Plugin + Declared>()
     super::context::retain();
     std::hint::black_box(P::markers().map_err(|error| error.to_string())?);
     let mut registrar = harmos_domain::Registrar::new();
-    <P as harmos_domain::Plugin>::register(&mut registrar).map_err(|error| error.to_string())?;
+    <P as harmos_sdk::Plugin>::register(&mut registrar).map_err(|error| error.to_string())?;
     Ok(registrar
         .finish()
         .into_iter()

@@ -18,17 +18,19 @@ pub mod kit;
 
 /* === Re-Exports === */
 pub use error::{Error, Result};
-pub use harmos_domain::operations::Host;
-pub use harmos_domain::operations::{
+pub use harmos_sdk::Plugin;
+pub use harmos_sdk::operations::Host;
+pub use harmos_sdk::operations::{
     CacheKey, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy,
 };
-pub use harmos_domain::{catalog, listeners, operations};
+pub use harmos_domain::{catalog, listeners};
+pub use harmos_sdk::operations;
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "componentize"))]
 pub use component::componentize;
 pub use harmos_domain::inventory;
 pub use harmos_domain::{
-    ConfigError, Failure, Plugin, Refusal, Registrar, Registration, RegistrationError, StreamSpec,
+    ConfigError, Failure, Refusal, Registrar, Registration, RegistrationError, StreamSpec,
     encode_config, reserved, validate_config,
 };
 
@@ -37,9 +39,9 @@ pub use kit::{
     Context, OperationInstance, OperationRefusal, PublishError, Publisher, UNKNOWN, UNREADABLE, WIT,
 };
 
-pub use harmos_domain::__private;
+pub use harmos_sdk::__private;
 
-pub use harmos_domain::plugin;
+pub use harmos_sdk::plugin;
 pub use harmos_domain::schema;
 pub use harmos_domain::streams;
 pub use harmos_domain::{

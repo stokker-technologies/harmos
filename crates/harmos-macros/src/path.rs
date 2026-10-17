@@ -44,6 +44,7 @@ impl HarmosPath {
             "harmos-guest",
             "harmos-sidecar",
             "harmos-runtime",
+            "harmos-sdk",
             "harmos-domain",
         ] {
             if let Ok(found) = proc_macro_crate::crate_name(package) {

@@ -324,7 +324,7 @@ impl harmos_runtime::Plugin for Ticking {
     ) -> Result<(), harmos_runtime::operations::ServingError> {
         self.attachment.bind(table)
     }
-    fn attachment(&self) -> Option<Arc<dyn harmos_domain::plugin::Attachment<Self::Context>>> {
+    fn attachment(&self) -> Option<Arc<dyn harmos_sdk::plugin::Attachment<Self::Context>>> {
         Some(self.attachment.clone())
     }
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -671,7 +671,7 @@ impl harmos_runtime::Plugin for SampledTwins {
     ) -> Result<(), harmos_runtime::operations::ServingError> {
         self.attachment.bind(table)
     }
-    fn attachment(&self) -> Option<Arc<dyn harmos_domain::plugin::Attachment<Self::Context>>> {
+    fn attachment(&self) -> Option<Arc<dyn harmos_sdk::plugin::Attachment<Self::Context>>> {
         Some(self.attachment.clone())
     }
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -804,7 +804,7 @@ impl harmos_runtime::Plugin for MultiStream {
     ) -> Result<(), harmos_runtime::operations::ServingError> {
         self.attachment.bind(table)
     }
-    fn attachment(&self) -> Option<Arc<dyn harmos_domain::plugin::Attachment<Self::Context>>> {
+    fn attachment(&self) -> Option<Arc<dyn harmos_sdk::plugin::Attachment<Self::Context>>> {
         Some(self.attachment.clone())
     }
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -870,7 +870,7 @@ impl harmos_runtime::Plugin for Flood {
     ) -> Result<(), harmos_runtime::operations::ServingError> {
         self.attachment.bind(table)
     }
-    fn attachment(&self) -> Option<Arc<dyn harmos_domain::plugin::Attachment<Self::Context>>> {
+    fn attachment(&self) -> Option<Arc<dyn harmos_sdk::plugin::Attachment<Self::Context>>> {
         Some(self.attachment.clone())
     }
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
