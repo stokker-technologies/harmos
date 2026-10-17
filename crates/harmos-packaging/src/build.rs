@@ -204,16 +204,7 @@ impl Build {
                 return Err(Error::ArtifactChanged(artifact.path.clone()));
             }
         }
-        let build = finish_build(settings.backend, receipt.profile, receipt.target, artifacts, outputs, &BuildCancellation::default())?;
-        for schema in &build.schemas {
-            for (name, sha256) in &schema.files {
-                let path = schema.directory.join(name);
-                if receipt.generated.get(&path) != Some(sha256) {
-                    return Err(Error::ArtifactChanged(path));
-                }
-            }
-        }
-        Ok(build)
+        finish_build(settings.backend, receipt.profile, receipt.target, artifacts, outputs, &BuildCancellation::default(), Some(&receipt.generated))
     }
 
     // Relocation Changes Locations Only; It Never Replaces The Original Byte Stamps.
@@ -321,7 +312,7 @@ pub(super) fn build_resolved(
         return Err(Error::Cargo(status.to_string()));
     }
 
-    finish_build(settings.backend, settings.profile, target, artifacts, outputs, cancellation)
+    finish_build(settings.backend, settings.profile, target, artifacts, outputs, cancellation, None)
 }
 
 fn finish_build(
@@ -331,6 +322,7 @@ fn finish_build(
     mut artifacts: Vec<Artifact>,
     outputs: BTreeSet<(String, PathBuf)>,
     cancellation: &BuildCancellation,
+    generated: Option<&BTreeMap<PathBuf, String>>,
 ) -> Result<Build, Error> {
     artifacts.retain(|artifact| {
         (artifact
@@ -405,6 +397,14 @@ fn finish_build(
         }
     }
     let schemas: Vec<_> = schemas.into_values().collect();
+    if let Some(generated) = generated {
+        for schema in &schemas {
+            for (name, sha256) in &schema.files {
+                let path = schema.directory.join(name);
+                if generated.get(&path) != Some(sha256) { return Err(Error::ArtifactChanged(path)); }
+            }
+        }
+    }
     cancellation.check()?;
     for (path, bytes) in components {
         publish(&path, &bytes)?;
