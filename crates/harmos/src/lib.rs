@@ -14,8 +14,6 @@ pub mod config;
 mod error;
 #[cfg(feature = "grpc")]
 pub mod grpc;
-#[cfg(all(feature = "packaging", not(target_arch = "wasm32")))]
-pub mod packaging;
 pub mod prelude;
 pub mod storage;
 
@@ -105,8 +103,6 @@ pub mod __private {
 /* === Re-Exports === */
 pub use application::Application;
 pub use error::{BackendFailure, Error};
-#[cfg(feature = "bindings-python")]
-pub use harmos_domain::bindings;
 pub use harmos_domain::{DefinitionId, Identified};
 pub use operations::refusal::Refusal;
 pub use runtime::{Builder, Runtime};
@@ -119,10 +115,9 @@ pub use harmos_domain::{
     RowMetadata, Storable, StreamField, StreamSpec, Value, ValueError, btree_map_memory,
 };
 // Contract Namespaces The Host Does Not Extend, Re-Exported Whole.
-#[cfg(any(feature = "plugin", feature = "packaging"))]
-pub use harmos_bundle as bundle;
-#[cfg(all(feature = "reflection", not(feature = "grpc")))]
-pub use harmos_domain::grpc;
+#[cfg(feature = "plugin")]
+pub(crate) use harmos_packaging::bundle;
+
 // `message` Names Both The Contract Module And Its Same-Named Attribute.
 pub use harmos_domain::{artifacts, catalog, failure, listeners, message, schema};
 pub use harmos_macros::{

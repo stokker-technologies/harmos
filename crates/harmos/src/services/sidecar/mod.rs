@@ -68,7 +68,7 @@ pub struct DemandLease {
     count: tokio::sync::watch::Sender<usize>,
 }
 
-struct Ingress<A: Application> {
+struct Inbound<A: Application> {
     streams: BTreeMap<&'static str, Ingest<A>>,
     demands: BTreeMap<&'static str, fn(&StreamManager<A>) -> Demand>,
 }
@@ -265,7 +265,7 @@ impl Drop for DemandLease {
     }
 }
 
-impl<A: Application> Clone for Ingress<A> {
+impl<A: Application> Clone for Inbound<A> {
     fn clone(&self) -> Self {
         Self {
             streams: self.streams.clone(),
@@ -274,7 +274,7 @@ impl<A: Application> Clone for Ingress<A> {
     }
 }
 
-impl<A: Application> Default for Ingress<A> {
+impl<A: Application> Default for Inbound<A> {
     fn default() -> Self {
         Self {
             streams: BTreeMap::new(),

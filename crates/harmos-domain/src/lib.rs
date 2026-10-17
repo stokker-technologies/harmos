@@ -11,14 +11,10 @@
 mod aggregate;
 mod answer;
 pub mod artifacts;
-#[cfg(feature = "bindings-python")]
-pub mod bindings;
 pub mod catalog;
 pub mod config;
 mod error;
 pub mod failure;
-#[cfg(feature = "reflection")]
-pub mod grpc;
 mod identity;
 pub mod inventory;
 pub mod journal;

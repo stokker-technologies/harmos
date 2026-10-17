@@ -30,7 +30,8 @@ use prost_reflect::{
 use sha2::{Digest, Sha256};
 // Local Imports
 use super::{Error, Settings, identifier, python_version};
-use crate::{grpc::Artifacts, operations::Contract};
+use crate::proto::Artifacts;
+use harmos_domain::operations::Contract;
 
 /* === Constants === */
 const MAX_OUTPUT_BYTES: usize = 64 * 1024 * 1024;

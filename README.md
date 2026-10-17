@@ -153,41 +153,35 @@ are always available. Optional facilities are disabled by default.
 | `plugin-sidecar` | Native process hosting; includes `plugin`. |
 | `plugin-guest` | Sandboxed Wasmtime hosting; includes `plugin`. |
 | `grpc` | gRPC, reflection, TLS, and Web support; settings select their use. Includes `reflection`. |
-| `reflection` | Descriptor projection (`harmos::grpc::Artifacts`) for build scripts, without the gRPC server. |
+| `reflection` | Descriptor projection used by runtime transport. |
 | `signal` | Signal-processing kernels. |
 | `signal-fft` | FFT support; includes `signal`. |
 | `simulation` | Deterministic runtime simulation. |
-| `packaging` | Cargo build discovery, inert inspection, bundle construction, and Wasm componentization without hosting engines. |
-| `bindings-python` | Shared producer-owned Python binding generation (`harmos::bindings`). |
 
-Applications, native plugins, build scripts and tooling depend on `harmos` alone
-and reach every surface through its namespaces: `harmos::operations`,
-`harmos::message`, `harmos::schema`, `harmos::artifacts`, `harmos::catalog`,
-`harmos::plugin`, `harmos::sidecar`, `harmos::guest`, `harmos::bundle`,
-`harmos::builtin`, `harmos::signal` and `harmos::grpc`. A native plugin authors
-through `harmos::sidecar` with `plugin-sidecar`; its build script projects
-descriptors through `harmos::grpc` with `reflection`:
+Applications compose the runtime through `harmos`. Shared domain declarations,
+plugins and portable clients use `harmos-domain`; native plugins add
+`harmos-sidecar` and guests add `harmos-guest`. Build scripts and development tools
+use `harmos-packaging`, which depends on the domain without hosting engines.
 
 ```toml
-[dependencies]
-harmos = { git = "https://github.com/stokker-technologies/harmos", rev = "<tested-commit>", features = ["plugin-sidecar"] }
-
 [build-dependencies]
-harmos = { git = "https://github.com/stokker-technologies/harmos", rev = "<tested-commit>", features = ["reflection"] }
+harmos-domain = { git = "https://github.com/stokker-technologies/harmos", rev = "<tested-commit>" }
+harmos-packaging = { git = "https://github.com/stokker-technologies/harmos", rev = "<tested-commit>", features = ["bindings-proto"] }
 ```
 
-Crates compiled to WebAssembly, shared declaration crates and guest components,
-must build without the host runtime, so they still depend on `harmos-domain`
-and `harmos-guest` (`features = ["kit", "streaming"]`) directly.
-
-Tooling consumers use `harmos::packaging` with the `packaging` feature. It reuses
-`harmos::bundle` and guest componentization without enabling Wasmtime or native
-process hosting.
+Generators use one entry point per format: `harmos_packaging::proto::generate`,
+`python::generate` and `typescript::generate`, gated by `bindings-proto`,
+`bindings-python` and `bindings-typescript`. Protobuf output goes to the exact
+selected output directory. A producer's build script selects its current
+`OUT_DIR/grpc/<catalog>/`; packaging retains that producer/catalog identity.
+The same crate owns `bundle`, Cargo discovery, inert inspection, development
+launching and Wasm componentization.
 
 ```sh
 cargo run --locked -p cargo-harmos -- harmos sidecar build -p schematic-sidecar --json
+cargo run --locked -p cargo-harmos -- harmos sidecar package -p schematic-sidecar --json
 cargo run --locked -p cargo-harmos -- harmos guest build -p schematic-guest --json
-cargo run --locked -p cargo-harmos -- harmos inspect target/debug/schematic-sidecar --json
+cargo run --locked -p cargo-harmos -- harmos sidecar inspect target/debug/schematic-sidecar --json
 ```
 
 Install the native GitHub Release archive for your Rust target triple by
@@ -203,7 +197,7 @@ into inspected `.component.wasm` files beside the selected module, and reports
 exact artifact and schema paths. It keeps generated components separate from
 Cargo's original modules. Each backend's `dev` command watches sources and local
 Cargo dependencies, coalesces changes and rebuilds serially. Failed builds keep
-the last usable package until preparation succeeds. Generated output directories
+the last usable artifact until preparation succeeds. Generated output directories
 are excluded; Ctrl+C stops watching and settles the active Cargo process tree.
 `dev --json` emits `started`, `built` and `failed` records with attempt numbers.
 `inspect` reads metadata without executing the plugin;
@@ -214,8 +208,8 @@ those exact directories. Schematic bundles use package `schematic.v1` and servic
 and start their runtime transport separately; dynamic plugins appear in runtime
 reflection when their operations become ready.
 
-The `bindings-python` feature exposes the shared
-`harmos::bindings::python::export` generator. It emits a producer-owned `src/` Python
+The packaging crate's `bindings-python` feature exposes
+`harmos_packaging::python::generate`. It emits a producer-owned `src/` Python
 package with standard protobuf messages, `.pyi` stubs, `py.typed`, canonical
 contracts and descriptors. Producer build scripts export contracts normally;
 explicit binding generation needs `protoc`, while installing the resulting

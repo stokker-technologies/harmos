@@ -39,9 +39,9 @@
 
 /* === Private Functions === */
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let contracts = harmos::operations::Contracts::of::<schematic_domain::operations::Native>()?;
-    let artifacts = harmos::grpc::Artifacts::new(&contracts)?;
-    artifacts.export_build("operations")?;
+    let contracts = harmos_domain::operations::Contracts::of::<schematic_domain::operations::Native>()?;
+    let output = std::path::PathBuf::from(std::env::var_os("OUT_DIR").ok_or("missing OUT_DIR")?).join("grpc/operations");
+    harmos_packaging::proto::generate(&contracts, &output)?;
     Ok(())
 }
 

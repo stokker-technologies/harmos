@@ -11,8 +11,6 @@
 // Tool And The Generated Python Package.
 
 /* === Modules === */
-#[cfg(all(feature = "bindings-python", feature = "grpc"))]
-mod bindings;
 mod schematic;
 #[path = "../support/fixtures.rs"]
 mod fixtures;

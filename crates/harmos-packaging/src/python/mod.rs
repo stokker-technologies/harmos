@@ -23,7 +23,7 @@ use std::{
 // Third Party Imports
 use semver::Version;
 // Local Imports
-use crate::grpc::{Artifacts, ExportError};
+use crate::proto::{Artifacts, ExportError};
 
 /* === Constants === */
 
@@ -32,6 +32,12 @@ use crate::grpc::{Artifacts, ExportError};
 /* === Type Aliases === */
 
 /* === Structs === */
+pub struct Catalog<'a> {
+    pub contracts: &'a [harmos_domain::operations::Contract],
+    pub settings: &'a Settings,
+    pub protoc: &'a Path,
+}
+
 // Producer-Owned Distribution Metadata; No Transport Or Runtime Registration.
 #[derive(Clone, Debug)]
 pub struct Settings {
@@ -110,17 +116,14 @@ impl Settings {
 //
 // `protoc` Is An Explicit Maintainer Tool. Neither Importing Nor Building The Result
 // Requires Rust, Harmos, A Compiler, Or The Producer's Source Tree.
-pub fn export(
-    artifacts: &Artifacts,
-    settings: &Settings,
-    output: &Path,
-    protoc: &Path,
-) -> Result<PathBuf, Error> {
+pub fn generate(catalog: Catalog<'_>, output: &Path) -> Result<PathBuf, Error> {
+    let settings = catalog.settings;
+    let protoc = catalog.protoc;
     settings.validate()?;
     if output.symlink_metadata().is_ok() {
         return Err(Error::Exists(output.to_owned()));
     }
-    let contracts = artifacts.operation_contracts()?;
+    let contracts = catalog.contracts;
     let mut requested = BTreeSet::new();
     for id in &settings.operations {
         if !requested.insert(id.as_str()) {
@@ -137,7 +140,7 @@ pub fn export(
                     contract.operation().id
                 )));
             }
-            selected.push(contract);
+            selected.push(contract.clone());
         }
     }
     if let Some(id) = requested.first() {

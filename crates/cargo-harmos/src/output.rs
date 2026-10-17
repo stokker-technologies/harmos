@@ -36,7 +36,7 @@
 /* === Implementations === */
 
 /* === Public Functions === */
-pub fn build(build: &harmos::packaging::Build, json: bool) -> Result<(), harmos::packaging::Error> {
+pub fn build(build: &harmos_packaging::Build, json: bool) -> Result<(), harmos_packaging::Error> {
     if json {
         println!("{}", serde_json::to_string_pretty(build)?);
     } else {
@@ -58,8 +58,8 @@ pub fn build(build: &harmos::packaging::Build, json: bool) -> Result<(), harmos:
     Ok(())
 }
 
-pub fn dev(event: harmos::packaging::DevEvent, json: bool) -> Result<(), harmos::packaging::Error> {
-    use harmos::packaging::DevEvent;
+pub fn dev(event: harmos_packaging::DevEvent, json: bool) -> Result<(), harmos_packaging::Error> {
+    use harmos_packaging::DevEvent;
     let record = match event {
         DevEvent::Started { attempt } => {
             if !json {

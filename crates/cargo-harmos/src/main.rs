@@ -64,15 +64,15 @@ fn main() -> std::process::ExitCode {
         arguments.remove(1);
     }
     let arguments = Arguments::parse_from(arguments);
-    let cancellation = harmos::packaging::BuildCancellation::default();
+    let cancellation = harmos_packaging::BuildCancellation::default();
     #[cfg(any(feature = "sidecar", feature = "guest"))]
     let startup = {
         let stopping = cancellation.clone();
         ctrlc::try_set_handler(move || stopping.cancel())
-            .map_err(|error| harmos::packaging::Error::Io(std::io::Error::other(error.to_string())))
+            .map_err(|error| harmos_packaging::Error::Io(std::io::Error::other(error.to_string())))
     };
     #[cfg(not(any(feature = "sidecar", feature = "guest")))]
-    let startup: Result<(), harmos::packaging::Error> = Ok(());
+    let startup: Result<(), harmos_packaging::Error> = Ok(());
     let result = startup
         .map_err(error::Error::from)
         .and_then(|()| arguments.command.run(&cancellation));

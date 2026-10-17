@@ -69,7 +69,7 @@ pub enum Authority {
 /* === Implementations === */
 impl Authority {
     fn contextual<T>(&self, request: &Request<T>) -> Self {
-        let Some(context) = request.extensions().get::<super::ingress::TrustedContext>() else {
+        let Some(context) = request.extensions().get::<super::inbound::TrustedContext>() else {
             return self.clone();
         };
         match self {

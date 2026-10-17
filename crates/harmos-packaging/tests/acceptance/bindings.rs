@@ -27,19 +27,16 @@ use std::process::{Command, Stdio};
 // Third Party Imports
 
 // Local Imports
-use harmos::bindings::{
-    Artifacts,
-    python::{self, Settings},
-};
-use harmos::operations::{
+use harmos_packaging::{proto::Artifacts, python::{self, Settings}};
+use harmos_domain::operations::{
     Codec, Contract, Contracts, Grpc, OperationPolicy, RestartPolicy, RetryPolicy,
 };
-use harmos::schema::{
+use harmos_domain::schema::{
     Cardinality, Described,
     graph::{Field, Kind, Schema},
 };
-use harmos::config::SchemaSettings;
-use harmos::{Aggregate, Identifier, Protobuf};
+use harmos_domain::config::SchemaSettings;
+use harmos_domain::{Aggregate, Identifier, Protobuf};
 
 /* === Constants === */
 const POLICY: OperationPolicy = OperationPolicy {
@@ -63,26 +60,30 @@ const CHECKPOINT: &str = include_str!("../../../harmos-domain/tests/fixtures/che
 /* === Type Aliases === */
 
 /* === Structs === */
-#[harmos::message]
+#[harmos_domain::message]
 struct Payload {
     text: String,
     optional: Option<u32>,
     values: Vec<i64>,
 }
 
-#[harmos::operation(request = Payload, response = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Read"))]
-struct Read;
+#[harmos_domain::message]
+#[harmos_domain::operation(response = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Read"))]
+struct Read { text: String, optional: Option<u32>, values: Vec<i64> }
 
-#[harmos::operation(request = Payload, response = Payload, input = Payload, output = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Exchange"))]
-struct Exchange;
+#[harmos_domain::message]
+#[harmos_domain::operation(response = Payload, input = Payload, output = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Exchange"))]
+struct Exchange { text: String, optional: Option<u32>, values: Vec<i64> }
 
-#[harmos::operation(request = Payload, response = Payload, input = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Upload"))]
-struct Upload;
+#[harmos_domain::message]
+#[harmos_domain::operation(response = Payload, input = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Upload"))]
+struct Upload { text: String, optional: Option<u32>, values: Vec<i64> }
 
-#[harmos::operation(request = Payload, response = Payload, output = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Download"))]
-struct Download;
+#[harmos_domain::message]
+#[harmos_domain::operation(response = Payload, output = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Download"))]
+struct Download { text: String, optional: Option<u32>, values: Vec<i64> }
 
-#[harmos::message]
+#[harmos_domain::message]
 #[derive(PartialEq)]
 struct Summary {
     aggregate: Aggregate,
@@ -97,7 +98,7 @@ struct Exported {
 }
 
 /* === Enums === */
-#[harmos::catalog]
+#[harmos_domain::catalog]
 enum Routes {
     Read(Read),
     Exchange(Exchange),
@@ -139,8 +140,8 @@ fn export() -> Exported {
     let target = tempfile::tempdir().unwrap();
     let alpha = target.path().join("alpha");
     let beta = target.path().join("beta");
-    python::export(&artifacts, &settings("bindings_alpha"), &alpha, &protoc()).unwrap();
-    python::export(&artifacts, &settings("bindings_beta"), &beta, &protoc()).unwrap();
+    python::generate(python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings: &settings("bindings_alpha"), protoc: &protoc() }, &alpha).unwrap();
+    python::generate(python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings: &settings("bindings_beta"), protoc: &protoc() }, &beta).unwrap();
 
     Exported {
         target,
@@ -278,7 +279,7 @@ fn export_refuses_invalid() {
     let artifacts = Artifacts::new(&contracts).unwrap();
     let target = tempfile::tempdir().unwrap();
     let output = target.path().join("package");
-    let refused = |settings: &Settings| python::export(&artifacts, settings, &output, &protoc());
+    let refused = |settings: &Settings| python::generate(python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings: settings, protoc: &protoc() }, &output);
 
     // Selections, Module Names And Versions Python Cannot Carry
     let mut settings = settings("bindings_alpha");
@@ -298,7 +299,7 @@ fn export_refuses_invalid() {
     let unsupported = contracts[0].clone().with_grpc(None).unwrap();
     let unsupported = Artifacts::new([&unsupported]).unwrap();
     assert!(matches!(
-        python::export(&unsupported, &settings, &output, &protoc()),
+        python::generate(python::Catalog { contracts: &unsupported.operation_contracts().unwrap(), settings: &settings, protoc: &protoc() }, &output),
         Err(python::Error::Unsupported(_))
     ));
     let mut collision = reserved();
@@ -325,8 +326,8 @@ fn export_is_deterministic() {
     let target = tempfile::tempdir().unwrap();
     let first = target.path().join("first");
     let repeat = target.path().join("repeat");
-    python::export(&artifacts, &settings("bindings_alpha"), &first, &protoc()).unwrap();
-    python::export(&artifacts, &settings("bindings_alpha"), &repeat, &protoc()).unwrap();
+    python::generate(python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings: &settings("bindings_alpha"), protoc: &protoc() }, &first).unwrap();
+    python::generate(python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings: &settings("bindings_alpha"), protoc: &protoc() }, &repeat).unwrap();
 
     assert_eq!(files(&first), files(&repeat));
 }
@@ -405,7 +406,7 @@ fn aggregate_members_typed() {
     let artifacts = Artifacts::new([&summary]).unwrap();
     let target = tempfile::tempdir().unwrap();
     let package = target.path().join("package");
-    python::export(&artifacts, &settings("bindings_aggregate"), &package, &protoc()).unwrap();
+    python::generate(python::Catalog { contracts: &artifacts.operation_contracts().unwrap(), settings: &settings("bindings_aggregate"), protoc: &protoc() }, &package).unwrap();
     let module = package.join("src/bindings_aggregate");
     let messages = module.join("_wire/test/v1/ShapesMessages/Aggregate/messages_pb2.pyi");
     let generated = format!(

@@ -19,7 +19,7 @@
 use prost_reflect::DescriptorPool;
 
 // Local Imports
-use harmos_domain::grpc::Artifacts;
+use harmos_packaging::proto::{self, Artifacts};
 use harmos_domain::operations::{Contracts, OperationPolicy, RestartPolicy, RetryPolicy};
 
 /* === Constants === */
@@ -55,7 +55,7 @@ struct Payload {
     values: Vec<i64>,
 }
 #[harmos_domain::message(harmos_path = ::harmos_domain)]
-#[harmos_macros::operation(harmos_path = ::harmos_domain, response = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Read"))]
+#[harmos_domain::operation(harmos_path = ::harmos_domain, response = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Read"))]
 struct Read {
     text: String,
     optional: Option<u32>,
@@ -63,7 +63,7 @@ struct Read {
 }
 
 #[harmos_domain::message(harmos_path = ::harmos_domain)]
-#[harmos_macros::operation(harmos_path = ::harmos_domain, response = Payload, input = Payload, output = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Exchange"))]
+#[harmos_domain::operation(harmos_path = ::harmos_domain, response = Payload, input = Payload, output = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Exchange"))]
 struct Exchange {
     text: String,
     optional: Option<u32>,
@@ -71,7 +71,7 @@ struct Exchange {
 }
 
 #[harmos_domain::message(harmos_path = ::harmos_domain)]
-#[harmos_macros::operation(harmos_path = ::harmos_domain, response = Payload, input = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Upload"))]
+#[harmos_domain::operation(harmos_path = ::harmos_domain, response = Payload, input = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Upload"))]
 struct Upload {
     text: String,
     optional: Option<u32>,
@@ -79,14 +79,14 @@ struct Upload {
 }
 
 #[harmos_domain::message(harmos_path = ::harmos_domain)]
-#[harmos_macros::operation(harmos_path = ::harmos_domain, response = Payload, output = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Download"))]
+#[harmos_domain::operation(harmos_path = ::harmos_domain, response = Payload, output = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Download"))]
 struct Download {
     text: String,
     optional: Option<u32>,
     values: Vec<i64>,
 }
 
-#[harmos_macros::catalog(harmos_path = ::harmos_domain)]
+#[harmos_domain::catalog(harmos_path = ::harmos_domain)]
 enum Routes {
     Read(Read),
     Exchange(Exchange),
@@ -94,7 +94,7 @@ enum Routes {
     Download(Download),
 }
 #[harmos_domain::message(harmos_path = ::harmos_domain)]
-#[harmos_macros::operation(harmos_path = ::harmos_domain, id = "annotate", response = Annotated, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Portable", method = "Annotate"))]
+#[harmos_domain::operation(harmos_path = ::harmos_domain, id = "annotate", response = Annotated, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Portable", method = "Annotate"))]
 #[derive(Clone, PartialEq)]
 struct Annotated {
     identifier: harmos_domain::Identifier,
@@ -104,13 +104,13 @@ struct Annotated {
     values: Vec<harmos_domain::Value>,
 }
 
-#[harmos_macros::catalog(harmos_path = ::harmos_domain)]
+#[harmos_domain::catalog(harmos_path = ::harmos_domain)]
 enum Portable {
     Annotate(Annotated),
 }
 
 #[harmos_domain::message(harmos_path = ::harmos_domain)]
-#[harmos_macros::operation(harmos_path = ::harmos_domain, id = "wrap", response = Delivered, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Boxed", method = "Wrap"))]
+#[harmos_domain::operation(harmos_path = ::harmos_domain, id = "wrap", response = Delivered, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Boxed", method = "Wrap"))]
 #[derive(Clone, PartialEq)]
 struct Envelope {
     inner: Box<Annotated>,
@@ -124,7 +124,7 @@ enum Delivered {
     Boxed(Box<Annotated>),
 }
 
-#[harmos_macros::catalog(harmos_path = ::harmos_domain)]
+#[harmos_domain::catalog(harmos_path = ::harmos_domain)]
 enum Boxed {
     Wrap(Envelope),
 }
@@ -161,7 +161,7 @@ fn portable_messages_cross() {
             let contracts = Contracts::of::<Portable>().unwrap();
             let artifacts = Artifacts::new(&contracts).unwrap();
             let target = tempfile::tempdir().unwrap();
-            let root = artifacts.export(target.path(), "portable").unwrap();
+            let root = proto::generate(&artifacts.operation_contracts().unwrap(), &target.path().join("grpc/portable")).unwrap();
             let output =
                 std::process::Command::new(protoc_bin_vendored::protoc_bin_path().unwrap())
                     .current_dir(&root)
@@ -195,7 +195,7 @@ fn boxed_messages_cross() {
             let contracts = Contracts::of::<Boxed>().unwrap();
             let artifacts = Artifacts::new(&contracts).unwrap();
             let target = tempfile::tempdir().unwrap();
-            let root = artifacts.export(target.path(), "boxed").unwrap();
+            let root = proto::generate(&artifacts.operation_contracts().unwrap(), &target.path().join("grpc/boxed")).unwrap();
             let compiled = target.path().join("compiled.bin");
             let output =
                 std::process::Command::new(protoc_bin_vendored::protoc_bin_path().unwrap())
@@ -243,7 +243,7 @@ fn export_removes_retired() {
             let target = tempfile::tempdir().unwrap();
             let contracts = Contracts::of::<Routes>().unwrap();
             let artifacts = Artifacts::new(&contracts).unwrap();
-            let root = artifacts.export(target.path(), "application").unwrap();
+            let root = proto::generate(&artifacts.operation_contracts().unwrap(), &target.path().join("grpc/application")).unwrap();
             assert_eq!(root, target.path().join("grpc/application"));
             let paths: Vec<_> = artifacts
                 .files()
@@ -253,7 +253,7 @@ fn export_removes_retired() {
             assert!(paths.iter().all(|path| path.is_file()));
             std::fs::write(root.join("consumer.txt"), "retained").unwrap();
             let empty = Artifacts::new(std::iter::empty()).unwrap();
-            empty.export(target.path(), "application").unwrap();
+            proto::generate(&empty.operation_contracts().unwrap(), &target.path().join("grpc/application")).unwrap();
             assert!(paths.iter().all(|path| !path.exists()));
             assert!(root.join("consumer.txt").is_file());
             assert!(
@@ -267,7 +267,6 @@ fn export_removes_retired() {
                 .next()
                 .is_none()
             );
-            assert!(artifacts.export(target.path(), "../escape").is_err());
         }
 
 #[test]
@@ -277,9 +276,9 @@ fn independent_schema_catalogs() {
             let second = target.path().join("producer-b");
             let routes = Artifacts::new(&Contracts::of::<Routes>().unwrap()).unwrap();
             let portable = Artifacts::new(&Contracts::of::<Portable>().unwrap()).unwrap();
-            let native = routes.export(&first, "native").unwrap();
-            let guest = portable.export(&first, "portable").unwrap();
-            let peer = portable.export(&second, "portable").unwrap();
+            let native = proto::generate(&routes.operation_contracts().unwrap(), &first.join("grpc/native")).unwrap();
+            let guest = proto::generate(&portable.operation_contracts().unwrap(), &first.join("grpc/portable")).unwrap();
+            let peer = proto::generate(&portable.operation_contracts().unwrap(), &second.join("grpc/portable")).unwrap();
             let snapshot = std::fs::read(guest.join("descriptors.bin")).unwrap();
             assert_eq!(
                 snapshot,
@@ -292,14 +291,12 @@ fn independent_schema_catalogs() {
                 );
             }
             // Repeated And Reduced Exports Affect Only Their Selected Producer And Catalog.
-            let repeated = portable.export(&first, "portable").unwrap();
+            let repeated = proto::generate(&portable.operation_contracts().unwrap(), &first.join("grpc/portable")).unwrap();
             assert_eq!(
                 std::fs::read(repeated.join("descriptors.bin")).unwrap(),
                 snapshot
             );
-            Artifacts::new(std::iter::empty())
-                .unwrap()
-                .export(&first, "native")
+            proto::generate(std::iter::empty(), &first.join("grpc/native"))
                 .unwrap();
             assert_eq!(
                 std::fs::read(guest.join("descriptors.bin")).unwrap(),
@@ -335,7 +332,7 @@ fn exported_sources_compile() {
             let target = tempfile::tempdir().unwrap();
             let contracts = Contracts::of::<Routes>().unwrap();
             let artifacts = Artifacts::new(&contracts).unwrap();
-            let root = artifacts.export(target.path(), "application").unwrap();
+            let root = proto::generate(&artifacts.operation_contracts().unwrap(), &target.path().join("grpc/application")).unwrap();
             let compiled = target.path().join("compiled.bin");
             let output =
                 std::process::Command::new(protoc_bin_vendored::protoc_bin_path().unwrap())

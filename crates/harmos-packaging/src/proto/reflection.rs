@@ -28,8 +28,8 @@ use prost_reflect::{
     },
 };
 // Local Imports
-use super::{Cardinality, graph};
-use crate::config::SchemaSettings;
+use harmos_domain::schema::{Cardinality, graph};
+use harmos_domain::config::SchemaSettings;
 
 /* === Constants === */
 const RESERVED_FIELDS: &[&str] = &[
@@ -69,7 +69,7 @@ pub enum Error {
     #[error("invalid protobuf package name")]
     Package,
     #[error(transparent)]
-    Schema(#[from] super::Error),
+    Schema(#[from] harmos_domain::schema::Error),
     #[error(transparent)]
     Descriptor(#[from] prost_reflect::DescriptorError),
 }
@@ -95,10 +95,10 @@ pub fn descriptor_root(
     settings: &SchemaSettings,
 ) -> Result<MessageDescriptor, Error> {
     if root >= schema.definitions.len() {
-        return Err(super::Error::Graph(graph::Error::Reference { definition: root }).into());
+        return Err(harmos_domain::schema::Error::Graph(graph::Error::Reference { definition: root }).into());
     }
     if package.len() > settings.preparation_work.get() {
-        return Err(super::Error::Graph(graph::Error::Budget).into());
+        return Err(harmos_domain::schema::Error::Graph(graph::Error::Budget).into());
     }
     if !package.split('.').all(|part| {
         let mut bytes = part.bytes();
@@ -109,14 +109,14 @@ pub fn descriptor_root(
     }) {
         return Err(Error::Package);
     }
-    let preparation = schema.prepare(settings).map_err(super::Error::Graph)?;
-    let retained = descriptor_memory_bytes(schema, package).map_err(super::Error::Graph)?;
+    let preparation = schema.prepare(settings).map_err(harmos_domain::schema::Error::Graph)?;
+    let retained = descriptor_memory_bytes(schema, package).map_err(harmos_domain::schema::Error::Graph)?;
     if preparation
         .bytes
         .checked_add(retained)
         .is_none_or(|bytes| bytes > settings.preparation_bytes.get())
     {
-        return Err(super::Error::Graph(graph::Error::Budget).into());
+        return Err(harmos_domain::schema::Error::Graph(graph::Error::Budget).into());
     }
     let work = schema
         .definitions
@@ -137,13 +137,13 @@ pub fn descriptor_root(
                     .ok_or(graph::Error::Budget)
             })
         })
-        .map_err(super::Error::Graph)?;
+        .map_err(harmos_domain::schema::Error::Graph)?;
     if preparation
         .work
         .checked_add(work)
         .is_none_or(|work| work > settings.preparation_work.get())
     {
-        return Err(super::Error::Graph(graph::Error::Budget).into());
+        return Err(harmos_domain::schema::Error::Graph(graph::Error::Budget).into());
     }
     let messages = schema
         .definitions
@@ -210,7 +210,7 @@ fn describe(
     let mut names = HashSet::new();
     for field in fields {
         if !names.insert(field_name(&field.name)) {
-            return Err(super::Error::Graph(graph::Error::Field {
+            return Err(harmos_domain::schema::Error::Graph(graph::Error::Field {
                 field: field.name.to_string(),
                 reason: "protobuf field names collide after reserved-member escaping",
             })

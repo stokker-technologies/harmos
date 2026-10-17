@@ -30,9 +30,9 @@
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
-    Packaging(#[from] harmos::packaging::Error),
+    Packaging(#[from] harmos_packaging::Error),
     #[error(transparent)]
-    Bindings(#[from] harmos::bindings::python::Error),
+    Bindings(#[from] harmos_packaging::python::Error),
 }
 
 /* === Traits === */
@@ -40,12 +40,12 @@ pub enum Error {
 /* === Implementations === */
 impl Error {
     pub fn exit_code(&self) -> u8 {
-        use harmos::bindings::python::Error as Bindings;
-        use harmos::packaging::Error as Packaging;
+        use harmos_packaging::python::Error as Bindings;
+        use harmos_packaging::Error as Packaging;
         match self {
             Self::Packaging(
-                Packaging::Declaration(harmos::packaging::DeclarationError::OversizedFragment)
-                | Packaging::Bundle(harmos::bundle::Error::Limit(_)),
+                Packaging::Declaration(harmos_packaging::DeclarationError::OversizedFragment)
+                | Packaging::Bundle(harmos_packaging::bundle::Error::Limit(_)),
             )
             | Self::Bindings(Bindings::Limit) => 4,
             Self::Packaging(

@@ -103,13 +103,23 @@ pub fn build_with_cancellation(
 ) -> Result<Build, Error> {
     validate_backend(settings)?;
     let metadata = Metadata::read(settings, cancellation)?;
-    build_resolved(settings, cancellation, metadata)
+    build_resolved(settings, cancellation, metadata, false)
+}
+
+pub fn package_with_cancellation(
+    settings: &BuildSettings,
+    cancellation: &BuildCancellation,
+) -> Result<Build, Error> {
+    validate_backend(settings)?;
+    let metadata = Metadata::read(settings, cancellation)?;
+    build_resolved(settings, cancellation, metadata, true)
 }
 
 pub(super) fn build_resolved(
     settings: &BuildSettings,
     cancellation: &BuildCancellation,
     metadata: Metadata,
+    packaged: bool,
 ) -> Result<Build, Error> {
     let manifest = settings.manifest.canonicalize()?;
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
@@ -197,12 +207,12 @@ pub(super) fn build_resolved(
             "selected packages contain no artifact for this backend".into(),
         ));
     }
-    #[cfg(feature = "packaging-guest")]
+    #[cfg(feature = "guest")]
     let mut components = BTreeMap::new();
-    #[cfg(not(feature = "packaging-guest"))]
+    #[cfg(not(feature = "guest"))]
     let components = BTreeMap::new();
     // Cargo Emits Core Modules; Consumers Receive Ready-To-Load Components.
-    #[cfg(feature = "packaging-guest")]
+    #[cfg(feature = "guest")]
     for artifact in &mut artifacts {
         if artifact
             .path
@@ -259,7 +269,8 @@ pub(super) fn build_resolved(
         .output_directory(settings)?
         .join("harmos")
         .join(&target);
-    let packages = package(
+    let packages = if packaged {
+        package(
         &artifacts,
         &schemas,
         settings.backend,
@@ -267,7 +278,13 @@ pub(super) fn build_resolved(
         &output,
         components,
         cancellation,
-    )?;
+        )?
+    } else {
+        for (path, bytes) in components {
+            publish(&path, &bytes)?;
+        }
+        Vec::new()
+    };
     Ok(Build {
         artifacts,
         schemas,
@@ -278,8 +295,8 @@ pub(super) fn build_resolved(
 /* === Private Functions === */
 pub(super) fn validate_backend(settings: &BuildSettings) -> Result<(), Error> {
     let enabled = match settings.backend {
-        BuildBackend::Sidecar => cfg!(feature = "packaging-sidecar"),
-        BuildBackend::Guest => cfg!(feature = "packaging-guest"),
+        BuildBackend::Sidecar => cfg!(feature = "sidecar"),
+        BuildBackend::Guest => cfg!(feature = "guest"),
     };
     if !enabled {
         return Err(Error::Settings(
