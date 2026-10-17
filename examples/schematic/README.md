@@ -29,7 +29,7 @@ Reopened: 2 symbols, 1 net, 3 route points
 | [app](app/src/app.rs) | Document state, transactions, persistence, runtime composition, and plugin lifecycle. |
 | [cli](cli/src/walkthrough.rs) | The readable teaching sequence and terminal output. |
 | [guest](guest/src/operations/mod.rs) | Validation, routing, and streamed analysis in a sandboxed Wasm component. |
-| [sidecar](sidecar/src/operations/mod.rs) | The same operations in a native child process, plus directory access. |
+| [sidecar](sidecar/src/operations/mod.rs) | The shared operations in a native child process, directory access, and upload/exchange analysis. |
 
 The plugins return advice. The host applies it through `ApplyRoute`, preserving
 one owner for edits, undo/redo, and recovery. Neither plugin imports the app.
@@ -46,6 +46,15 @@ cargo run -p schematic-cli -- --guest target/artifacts/schematic-tools.wasm --ad
 
 [advanced.rs](cli/src/advanced.rs) drains three analysis findings, joins the
 response, then starts another analysis and cancels it with settlement.
+
+The native catalog also exposes `AnalyzeUpload { title }` (client stream of
+snapshots) and `AnalyzeExchange { title }` (snapshot input and finding output).
+Both retain one shared analysis permit until input EOF or cancellation. Blank or
+oversized titles and invalid snapshots return an invalid-input failure. Each
+accepted snapshot publishes `AnalysisProgress { title, checked }` on the
+sidecar-declared stream `schematic.analysis_progress`. The domain's
+`ValidatedSchematic` object rejects missing identities and invalid connections
+at storage encode and decode boundaries.
 
 Only the sidecar exposes `ListDirectories`. Its empty request returns sorted
 names of immediate subdirectories in the caller's current working directory,

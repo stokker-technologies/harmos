@@ -48,20 +48,7 @@ impl Validating {
         _context: &harmos_guest::Context,
         request: &mut ValidateSchematic,
     ) -> Result<Validation, Error> {
-        let symbols: std::collections::BTreeSet<_> =
-            request.schematic.symbols.iter().copied().collect();
-        let mut diagnostics = Vec::new();
-        if symbols.len() != request.schematic.symbols.len() {
-            diagnostics.push("Duplicate symbol IDs".to_owned());
-        }
-        for connection in &request.schematic.connections {
-            if !symbols.contains(&connection.from) || !symbols.contains(&connection.to) {
-                diagnostics.push(format!(
-                    "Connection {} to {} references a missing symbol",
-                    connection.from, connection.to
-                ));
-            }
-        }
+        let diagnostics = request.schematic.diagnostics();
         Ok(Validation { diagnostics })
     }
 }

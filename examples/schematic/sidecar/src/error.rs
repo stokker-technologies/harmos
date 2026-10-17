@@ -32,8 +32,14 @@
 /* === Enums === */
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("invalid analysis input")]
+    InvalidInput,
+    #[error("analysis resources are unavailable")]
+    Unavailable,
     #[error(transparent)]
-    Output(#[from] harmos::sidecar::operations::streaming::Error),
+    Host(#[from] harmos_sidecar::CallError),
+    #[error(transparent)]
+    Output(#[from] harmos_sidecar::operations::streaming::Error),
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error("Directory name is not UTF-8: {0:?}")]
@@ -43,6 +49,15 @@ pub enum Error {
 /* === Traits === */
 
 /* === Implementations === */
+impl Error {
+    pub fn kind(&self) -> harmos_sidecar::operations::FailureKind {
+        match self {
+            Self::InvalidInput => harmos_sidecar::operations::FailureKind::Invalid,
+            _ => harmos_sidecar::operations::FailureKind::Permanent,
+        }
+    }
+}
+
 
 /* === Public Functions === */
 

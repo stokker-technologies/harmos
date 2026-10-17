@@ -19,9 +19,9 @@ mod scenario_runtime;
 // Third Party Imports
 
 // Local Imports
-use harmos::plugin::Declared;
-use harmos::sidecar::inventory::{Declaration, Facility};
-use harmos::sidecar::operations::{Declarations, OperationDeclaration};
+use harmos_domain::plugin::Declared;
+use harmos_sidecar::inventory::{Declaration, Facility};
+use harmos_sidecar::operations::{Declarations, OperationDeclaration};
 use schematic_domain::operations::{ListDirectories, Operations};
 
 /* === Constants === */
@@ -52,7 +52,7 @@ fn contract_scenario() {
         assert_eq!(declaration.version.to_string(), env!("CARGO_PKG_VERSION"));
         let expected = Declarations::of::<schematic_domain::operations::Native>().unwrap();
         assert_eq!(declaration.operations, expected);
-        assert!(declaration.streams.is_empty());
+        assert_eq!(declaration.streams.len(), 1);
     });
     scenario_runtime::check("guest_omits_native_filesystem", || {
         let shared = Declarations::of::<Operations>().unwrap();
@@ -63,12 +63,12 @@ fn contract_scenario() {
                 .all(|operation| operation.id.as_str() != ListDirectories::ID)
         );
         assert_eq!(
-            harmos::catalog::count(<schematic_guest::Plugin as Declared>::PROVIDES),
+            harmos_domain::catalog::count(<schematic_guest::Plugin as Declared>::PROVIDES),
             3
         );
         assert_eq!(
-            harmos::catalog::count(<schematic_sidecar::Plugin as Declared>::PROVIDES),
-            4
+            harmos_domain::catalog::count(<schematic_sidecar::Plugin as Declared>::PROVIDES),
+            6
         );
     });
 }

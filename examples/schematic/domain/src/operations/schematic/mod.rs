@@ -12,6 +12,7 @@
 /* === Modules === */
 pub mod analyze;
 pub mod propose;
+pub mod streaming;
 pub mod validate;
 
 /* === Re-Exports === */

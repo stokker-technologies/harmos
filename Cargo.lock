@@ -1090,27 +1090,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "harmos-grpc-fixture"
-version = "0.2.0"
-dependencies = [
- "arrow-array",
- "arrow-schema",
- "futures-util",
- "harmos",
- "prost",
- "prost-reflect",
- "serde",
- "serde_json",
- "sha2 0.11.0",
- "thiserror",
- "tokio",
- "tonic",
- "tonic-prost",
- "tonic-prost-build",
- "tracing",
-]
-
-[[package]]
 name = "harmos-guest"
 version = "0.2.0"
 dependencies = [
@@ -1124,23 +1103,6 @@ dependencies = [
  "wasmtime",
  "wit-bindgen 0.62.0",
  "wit-component 0.261.0",
-]
-
-[[package]]
-name = "harmos-lifecycle-fixture"
-version = "0.2.0"
-dependencies = [
- "clap",
- "futures-core",
- "harmos",
- "schematic-app",
- "serde_json",
- "sha2 0.11.0",
- "tempfile",
- "thiserror",
- "tokio",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -2300,7 +2262,8 @@ dependencies = [
 name = "schematic-sidecar"
 version = "0.2.0"
 dependencies = [
- "harmos",
+ "harmos-domain",
+ "harmos-sidecar",
  "harmos-domain",
  "harmos-packaging",
  "schematic-domain",

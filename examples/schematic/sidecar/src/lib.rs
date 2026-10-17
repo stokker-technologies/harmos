@@ -22,8 +22,8 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use harmos::sidecar::Supervisor;
-use harmos::sidecar::operations::{
+use harmos_sidecar::Supervisor;
+use harmos_sidecar::operations::{
     OperationPolicy, ServingError, StreamSettings, WireStreamLimits, WireTable,
 };
 
@@ -34,8 +34,12 @@ use harmos::sidecar::operations::{
 /* === Type Aliases === */
 
 /* === Structs === */
+pub struct Resources {
+    analysis: tokio::sync::Semaphore,
+}
+
 pub struct Plugin {
-    resources: Arc<()>,
+    resources: Arc<Resources>,
 }
 
 /* === Enums === */
@@ -43,25 +47,25 @@ pub struct Plugin {
 /* === Traits === */
 
 /* === Implementations === */
-impl harmos::sidecar::operations::lifecycle::Policy for Plugin {
+impl harmos_sidecar::operations::lifecycle::Policy for Plugin {
     const INITIALIZATION_POLICY: OperationPolicy = schematic_domain::operations::POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos::plugin(id = "schematic-tools", provides = schematic_domain::operations::Native, requires = ())]
-impl harmos::sidecar::Plugin for Plugin {
+#[harmos_sidecar::plugin(id = "schematic-tools", provides = schematic_domain::operations::Native, requires = schematic_domain::operations::Requires, streams = schematic_domain::model::schematic::progress::Streams)]
+impl harmos_sidecar::Plugin for Plugin {
     type Config = ();
     type Error = Error;
     type Context = Supervisor;
-    type Resources = ();
+    type Resources = Resources;
 
     fn prepare(_: ()) -> Result<Self, Error> {
         Ok(Self {
-            resources: Arc::new(()),
+            resources: Arc::new(Resources { analysis: tokio::sync::Semaphore::new(1) }),
         })
     }
 
-    fn resources(&self) -> Arc<()> {
+    fn resources(&self) -> Arc<Resources> {
         Arc::clone(&self.resources)
     }
 
@@ -74,7 +78,7 @@ impl harmos::sidecar::Plugin for Plugin {
             input: direction,
             output: direction,
         };
-        table.bind_streaming_operations::<operations::Operations, ()>(self.resources(), limits)
+        table.bind_streaming_operations::<operations::Operations, Resources>(self.resources(), limits)
     }
 
     async fn initialize(&mut self, _: &Supervisor) -> Result<(), Error> {

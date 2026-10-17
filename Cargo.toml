@@ -4,8 +4,6 @@
 resolver = "3"
 members = [
   "crates/*",
-  "tests/fixtures/grpc",
-  "tests/fixtures/lifecycle",
   "examples/schematic/*",
 ]
 

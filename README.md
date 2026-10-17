@@ -381,6 +381,9 @@ let records = storage
 `harmos::filesystem::publication` owns staged atomic installation, replacement,
 removal and explicit durability confirmation across Unix and Windows.
 
+Stored objects can enforce domain invariants through `StoredObject::validate`;
+object encoding, decoding and catalog validation apply the same check.
+
 `storage::query::Accumulator` folds scalars over rows a caller already holds
 with the same semantics as query aggregates: exact rational `Sum`, `Mean` and
 `Median`, ordering for `Min`, `Max` and `Last`, and signal kernels for floating

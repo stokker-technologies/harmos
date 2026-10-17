@@ -8,6 +8,8 @@
  */
 
 /* === Modules === */
+pub mod progress;
+pub mod validated;
 
 /* === Re-Exports === */
 
@@ -51,6 +53,30 @@ pub struct Snapshot {
 /* === Traits === */
 
 /* === Implementations === */
+impl Snapshot {
+    pub fn diagnostics(&self) -> Vec<String> {
+        let symbols: std::collections::BTreeSet<_> = self.symbols.iter().copied().collect();
+        let mut diagnostics = Vec::new();
+        if symbols.len() != self.symbols.len() {
+            diagnostics.push("Duplicate Symbol IDs".to_owned());
+        }
+        for connection in &self.connections {
+            if !symbols.contains(&connection.from) || !symbols.contains(&connection.to) {
+                diagnostics.push(format!("Connection {} To {} References A Missing Symbol", connection.from, connection.to));
+            }
+        }
+        diagnostics
+    }
+
+    pub fn validate(&self) -> crate::Result<()> {
+        if self.diagnostics().is_empty() {
+            Ok(())
+        } else {
+            Err(crate::Error::InvalidSchematic)
+        }
+    }
+}
+
 
 /* === Public Functions === */
 

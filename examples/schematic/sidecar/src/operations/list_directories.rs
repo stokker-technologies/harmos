@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 // Local Imports
 use crate::Error;
-use harmos::sidecar::Supervisor;
+use harmos_sidecar::Supervisor;
 use schematic_domain::operations::ListDirectories;
 use schematic_domain::operations::directories::list_directories::Directories;
 
@@ -37,9 +37,9 @@ pub(crate) struct Listing;
 /* === Traits === */
 
 /* === Implementations === */
-#[harmos::operation]
+#[harmos_sidecar::operation]
 impl Listing {
-    async fn initialize(_: Arc<()>, _: &Supervisor) -> Self {
+    async fn initialize(_: Arc<crate::Resources>, _: &Supervisor) -> Self {
         Self
     }
 
