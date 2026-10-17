@@ -9,6 +9,7 @@
 # === Package ===
 
 [package]
+publish = false
 name = "schematic-sidecar"
 description = "Portable schematic analysis and routing"
 edition.workspace = true

@@ -1023,51 +1023,8 @@ dependencies = [
 name = "harmos"
 version = "0.2.0"
 dependencies = [
- "arrow-array",
- "arrow-buffer",
- "arrow-data",
- "arrow-ipc",
- "arrow-schema",
- "arrow-select",
- "base64",
- "bytes",
- "criterion",
- "flatbuffers",
- "futures-core",
- "futures-util",
- "getrandom 0.4.3",
  "harmos-domain",
- "harmos-guest",
- "harmos-macros",
- "harmos-packaging",
- "harmos-sidecar",
- "harmos-signal",
- "heck",
- "http-body",
- "http-body-util",
- "petgraph",
- "postcard",
- "prost-reflect",
- "protoc-bin-vendored",
- "schematic-storage",
- "semver",
- "serde",
- "serde_json",
- "sha2 0.11.0",
- "syn 3.0.9",
- "tar",
- "tempfile",
- "thiserror",
- "tokio",
- "tonic",
- "tonic-reflection",
- "tonic-web",
- "tower",
- "tower-http",
- "tracing",
- "tracing-subscriber",
- "wasmtime",
- "windows-sys 0.61.2",
+ "harmos-runtime",
 ]
 
 [[package]]
@@ -1137,6 +1094,57 @@ dependencies = [
  "thiserror",
  "tracing",
  "wit-component 0.261.0",
+]
+
+[[package]]
+name = "harmos-runtime"
+version = "0.2.0"
+dependencies = [
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-data",
+ "arrow-ipc",
+ "arrow-schema",
+ "arrow-select",
+ "base64",
+ "bytes",
+ "criterion",
+ "flatbuffers",
+ "futures-core",
+ "futures-util",
+ "getrandom 0.4.3",
+ "harmos-domain",
+ "harmos-guest",
+ "harmos-macros",
+ "harmos-packaging",
+ "harmos-sidecar",
+ "harmos-signal",
+ "heck",
+ "http-body",
+ "http-body-util",
+ "petgraph",
+ "postcard",
+ "prost-reflect",
+ "protoc-bin-vendored",
+ "schematic-storage",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "syn 3.0.9",
+ "tar",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tonic",
+ "tonic-reflection",
+ "tonic-web",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "wasmtime",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1483,15 +1491,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "matchers"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d1525a2a28c7f4fa0fc98bb91ae755d1e2d1505079e05539e35bc876b5d65ae9"
-dependencies = [
- "regex-automata",
-]
-
-[[package]]
 name = "matchit"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1529,12 +1528,6 @@ dependencies = [
  "wasi",
  "windows-sys 0.61.2",
 ]
-
-[[package]]
-name = "multimap"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d87ecb2933e8aeadb3e3a02b828fed80a7528047e68b4f424523a0981a3a084"
 
 [[package]]
 name = "multiversion_no_op"
@@ -1774,16 +1767,6 @@ checksum = "4a6394b9e965e73d0a289ee54f589087e2c676aedf60885baf52c76b771e4958"
 
 [[package]]
 name = "prettyplease"
-version = "0.2.37"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "479ca8adacdd7ce8f1fb39ce9ecccbfe93a3f1344b3d0d97f20bc0196208f62b"
-dependencies = [
- "proc-macro2",
- "syn 2.0.119",
-]
-
-[[package]]
-name = "prettyplease"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2bfe0f4c752e450fc2faf62654f1c134747922825d5b04ca717b8874f41a40c0"
@@ -1838,27 +1821,6 @@ checksum = "528ac67416ff8646872a3c02cad9cc4ee5dc9f9540c9b10771855c95cb2e5ae1"
 dependencies = [
  "bytes",
  "prost-derive",
-]
-
-[[package]]
-name = "prost-build"
-version = "0.14.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "03da047801ff44bb6a4d407d4860c05fd70bb81714e6b2f3812603d5b145b042"
-dependencies = [
- "heck",
- "itertools 0.14.0",
- "log",
- "multimap",
- "petgraph",
- "prettyplease 0.2.37",
- "prost",
- "prost-types",
- "pulldown-cmark",
- "pulldown-cmark-to-cmark",
- "regex",
- "syn 2.0.119",
- "tempfile",
 ]
 
 [[package]]
@@ -1959,26 +1921,6 @@ name = "protoc-bin-vendored-win32"
 version = "3.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "263a3f48f01e7309e857138bd47f785585b4a005e8e56c6d2824ce91195999c3"
-
-[[package]]
-name = "pulldown-cmark"
-version = "0.13.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9f068eba8e7071c5f9511831b44f32c740d5adf574e990f946ddb53db2f314e"
-dependencies = [
- "bitflags",
- "memchr",
- "unicase",
-]
-
-[[package]]
-name = "pulldown-cmark-to-cmark"
-version = "22.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "84bbb29c624230c4bd1047bbdb2aa47e41c860e9665ce62ba9504eebe91bf867"
-dependencies = [
- "pulldown-cmark",
-]
 
 [[package]]
 name = "pulley-interpreter"
@@ -2263,9 +2205,8 @@ name = "schematic-sidecar"
 version = "0.2.0"
 dependencies = [
  "harmos-domain",
- "harmos-sidecar",
- "harmos-domain",
  "harmos-packaging",
+ "harmos-sidecar",
  "schematic-domain",
  "schematic-guest",
  "thiserror",
@@ -2718,18 +2659,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tonic-build"
-version = "0.14.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c68f61875ac5293cf72e6c8cf0158086428c82c37229e98c840878f1706b0322"
-dependencies = [
- "prettyplease 0.2.37",
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
 name = "tonic-prost"
 version = "0.14.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2738,22 +2667,6 @@ dependencies = [
  "bytes",
  "prost",
  "tonic",
-]
-
-[[package]]
-name = "tonic-prost-build"
-version = "0.14.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "654e5643eff75d7f8c99197ce1440ed19a3474eada74c12bbac488b2cafdae27"
-dependencies = [
- "prettyplease 0.2.37",
- "proc-macro2",
- "prost-build",
- "prost-types",
- "quote",
- "syn 2.0.119",
- "tempfile",
- "tonic-build",
 ]
 
 [[package]]
@@ -2871,12 +2784,8 @@ version = "0.3.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb7f578e5945fb242538965c2d0b04418d38ec25c79d160cd279bf0731c8d319"
 dependencies = [
- "matchers",
- "once_cell",
- "regex-automata",
  "sharded-slab",
  "thread_local",
- "tracing",
  "tracing-core",
 ]
 
@@ -2901,12 +2810,6 @@ name = "typenum"
 version = "1.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
-
-[[package]]
-name = "unicase"
-version = "2.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "357cc3acc6a036009fd6c973ed009037c732d60d0b4f6c673e9041497482a28f"
 
 [[package]]
 name = "unicode-ident"
@@ -3674,7 +3577,7 @@ dependencies = [
  "anyhow",
  "heck",
  "indexmap",
- "prettyplease 0.3.0",
+ "prettyplease",
  "syn 3.0.9",
  "wasm-metadata 0.259.0",
  "wit-bindgen-core",
@@ -3689,7 +3592,7 @@ checksum = "8f19d63da8e478a370ef8192d90ccb517965b7747d6b46cd2d831dd0ef4d2541"
 dependencies = [
  "anyhow",
  "macro-string",
- "prettyplease 0.3.0",
+ "prettyplease",
  "proc-macro2",
  "quote",
  "syn 3.0.9",

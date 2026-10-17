@@ -9,6 +9,7 @@
 # === Package ===
 
 [package]
+publish = false
 name = "schematic-cli"
 edition.workspace = true
 rust-version.workspace = true

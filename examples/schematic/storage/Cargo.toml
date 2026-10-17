@@ -1,11 +1,11 @@
 # === Package ===
 
 [package]
+publish = false
 name = "schematic-storage"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-publish.workspace = true
 version = { workspace = true }
 
 # === Package Targets ===

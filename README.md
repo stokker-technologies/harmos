@@ -151,12 +151,13 @@ are always available. Optional facilities are disabled by default.
 | `plugin` | Shared plugin management, activation, routing, and reload. |
 | `plugin-sidecar` | Native process hosting; includes `plugin`. |
 | `plugin-guest` | Sandboxed Wasmtime hosting; includes `plugin`. |
-| `grpc` | gRPC, reflection, TLS, and Web support; settings select their use. Includes `reflection`. |
-| `reflection` | Descriptor projection used by runtime transport. |
+| `grpc` | gRPC, reflection, TLS, and Web support; settings select their use. Includes `bindings-proto`. |
+| `bindings-proto` | Protobuf descriptor projection used by runtime transport. |
 | `signal` | Signal-processing kernels. |
 | `signal-fft` | FFT support; includes `signal`. |
 | `simulation` | Deterministic runtime simulation. |
 
+The `harmos` facade composes `harmos-domain` and `harmos-runtime`.
 Applications compose the runtime through `harmos`. Shared domain declarations,
 plugins and portable clients use `harmos-domain`; native plugins add
 `harmos-sidecar` and guests add `harmos-guest`. Build scripts and development tools

@@ -1,0 +1,344 @@
+/* ***
+ *
+ * Harmos
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * ***
+ */
+
+/* === Modules === */
+use crate::scenario_runtime;
+
+/* === Re-Exports === */
+
+/* === Imports === */
+
+// Standard Library Imports
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, AtomicUsize, Ordering},
+};
+use std::time::Duration;
+
+// Third Party Imports
+use tokio::sync::Notify;
+
+// Local Imports
+use super::{Lanes, app::App};
+use harmos_runtime::operations::{Context, Operation, OperationPolicy, RestartPolicy, RetryPolicy};
+use harmos_runtime::{Error, Runtime, operations::Lane};
+
+/* === Constants === */
+const POLICY: OperationPolicy = OperationPolicy {
+    timeout: Duration::from_secs(2),
+    attempt_timeout: Duration::from_secs(1),
+    retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
+};
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+struct Trace {
+    lane: &'static str,
+    parent_constructions: AtomicUsize,
+    queued_runs: AtomicUsize,
+    free_dropped: AtomicBool,
+    bound_started: Notify,
+    release: Notify,
+    free_started: Notify,
+}
+
+struct Parent {
+    trace: Arc<Trace>,
+}
+
+struct Bound {
+    trace: Arc<Trace>,
+}
+
+struct Free {
+    trace: Arc<Trace>,
+}
+
+/* === Enums === */
+#[harmos_runtime::message]
+enum Mode {
+    Leaf,
+    HandleCycle,
+    PropagateCycle,
+    FullLane,
+}
+
+#[harmos_runtime::message]
+#[harmos_runtime::operation(response = u64, id = "scoped.parent", version = 1, policy = POLICY)]
+struct ParentContract {
+    mode: Mode,
+}
+
+#[harmos_runtime::message]
+#[harmos_runtime::operation(response = u64, id = "scoped.bound", version = 1, policy = POLICY)]
+struct BoundContract {
+    hold: bool,
+}
+
+#[harmos_runtime::message]
+#[harmos_runtime::operation(response = u64, id = "scoped.free", version = 1, policy = POLICY)]
+struct FreeContract {
+    wait: bool,
+}
+
+#[harmos_runtime::catalog]
+enum Operations {
+    ParentContract(ParentContract),
+    BoundContract(BoundContract),
+    FreeContract(FreeContract),
+}
+
+/* === Traits === */
+
+/* === Implementations === */
+impl Operation for Parent {
+    type Declaration = ParentContract;
+    type Resources = Trace;
+    type Error = Error;
+    type Endpoints = ();
+    type Context<'a> = Context<'a>;
+
+    async fn initialize<'ctx>(trace: Arc<Trace>, _: Self::Context<'ctx>) -> Result<Self, Error> {
+        trace.parent_constructions.fetch_add(1, Ordering::SeqCst);
+        Ok(Self { trace })
+    }
+
+    async fn run<'ctx>(
+        &mut self,
+        context: Self::Context<'ctx>,
+        request: &mut ParentContract,
+        _endpoints: &mut Self::Endpoints,
+    ) -> Result<harmos_runtime::operations::Response<u64>, Error> {
+        let result: ::core::result::Result<u64, Self::Error> = async move {
+        match request.mode {
+            Mode::Leaf => Ok(7),
+            Mode::HandleCycle => {
+                assert!(matches!(context.submit(ParentContract { mode: Mode::Leaf }),
+                    Err(Error::OperationLaneCycle { parent, child }) if parent == self.trace.lane && child == self.trace.lane));
+                let free = context.submit(FreeContract { wait: false })?.await?;
+                assert_eq!(*free, 1);
+                Ok(7)
+            }
+            Mode::PropagateCycle => {
+                let answer = context.submit(ParentContract { mode: Mode::Leaf })?.await?;
+                Ok(*answer)
+            }
+            Mode::FullLane => {
+                let _queued = context.submit(BoundContract { hold: false })?;
+                let _free = context.submit(FreeContract { wait: true })?;
+                self.trace.free_started.notified().await;
+                Ok(u64::try_from(self.trace.queued_runs.load(Ordering::SeqCst))
+                    .expect("run counts fit in u64"))
+            }
+        }
+            }.await;
+        result.map(::core::convert::Into::into)
+    }
+}
+
+impl Operation for Bound {
+    type Declaration = BoundContract;
+    type Resources = Trace;
+    type Error = std::convert::Infallible;
+    type Endpoints = ();
+    type Context<'a> = Context<'a>;
+
+    async fn initialize<'ctx>(
+        trace: Arc<Trace>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self { trace })
+    }
+
+    async fn run<'ctx>(
+        &mut self,
+        _context: Self::Context<'ctx>,
+        request: &mut BoundContract,
+        _endpoints: &mut Self::Endpoints,
+    ) -> Result<harmos_runtime::operations::Response<u64>, Self::Error> {
+        let result: ::core::result::Result<u64, Self::Error> = async move {
+            if request.hold {
+                self.trace.bound_started.notify_one();
+                self.trace.release.notified().await;
+            } else {
+                self.trace.queued_runs.fetch_add(1, Ordering::SeqCst);
+            }
+            Ok(7)
+        }
+        .await;
+        result.map(::core::convert::Into::into)
+    }
+}
+
+impl Operation for Free {
+    type Declaration = FreeContract;
+    type Resources = Trace;
+    type Error = std::convert::Infallible;
+    type Endpoints = ();
+    type Context<'a> = Context<'a>;
+
+    async fn initialize<'ctx>(
+        trace: Arc<Trace>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self { trace })
+    }
+
+    async fn run<'ctx>(
+        &mut self,
+        _context: Self::Context<'ctx>,
+        request: &mut FreeContract,
+        _endpoints: &mut Self::Endpoints,
+    ) -> Result<harmos_runtime::operations::Response<u64>, Self::Error> {
+        let result: ::core::result::Result<u64, Self::Error> = async move {
+            self.trace.free_started.notify_one();
+            if request.wait {
+                std::future::pending::<()>().await;
+            }
+            Ok(1)
+        }
+        .await;
+        result.map(::core::convert::Into::into)
+    }
+}
+
+impl Drop for Free {
+    fn drop(&mut self) {
+        self.trace.free_dropped.store(true, Ordering::SeqCst);
+    }
+}
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+async fn runtime(parent_lane: Lanes) -> (Runtime<App>, Arc<Trace>) {
+    let trace = Arc::new(Trace {
+        lane: parent_lane.name(),
+        parent_constructions: AtomicUsize::new(0),
+        queued_runs: AtomicUsize::new(0),
+        free_dropped: AtomicBool::new(false),
+        bound_started: Notify::new(),
+        release: Notify::new(),
+        free_started: Notify::new(),
+    });
+    let runtime = Runtime::<App>::builder((), ())
+        .register(Lanes::catalog())
+        .runtime()
+        .await
+        .unwrap();
+    runtime
+        .operations
+        .register_operation::<Parent>("app", parent_lane, trace.clone())
+        .unwrap();
+    runtime
+        .operations
+        .register_operation::<Bound>("app", Lanes::Serial, trace.clone())
+        .unwrap();
+    runtime
+        .operations
+        .register_operation::<Free>("app", Lanes::Open, trace.clone())
+        .unwrap();
+    (runtime, trace)
+}
+
+/* === Tests === */
+
+pub(super) fn contract_scenario() {
+    {
+        scenario_runtime::check("ancestor_cycles_rejected", || {
+            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
+            scenario_executor
+                .enable_all()
+                .build()
+                .expect("scenario runtime is valid")
+                .block_on(async {
+                    for lane in [Lanes::Serial, Lanes::Concurrent] {
+                        let (runtime, trace) = runtime(lane).await;
+                        let answer = runtime
+                            .operations
+                            .submit(ParentContract {
+                                mode: Mode::HandleCycle,
+                            })
+                            .unwrap()
+                            .await
+                            .unwrap();
+                        assert_eq!(*answer, 7);
+                        assert_eq!(trace.parent_constructions.load(Ordering::SeqCst), 1);
+                        assert!(trace.free_dropped.load(Ordering::SeqCst));
+                        runtime.stop().await.unwrap();
+                    }
+                });
+        });
+    }
+    {
+        scenario_runtime::check("refusal_survives_parent", || {
+            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
+            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
+
+    let (runtime, trace) = runtime(Lanes::Serial).await;
+    let error = runtime
+        .operations
+        .submit(ParentContract { mode: Mode::PropagateCycle })
+        .unwrap()
+        .await
+        .unwrap_err();
+    let Error::OperationFailed { source, .. } = error else {
+        panic!("expected parent failure")
+    };
+    assert!(
+        matches!(source.downcast_ref::<Error>(), Some(Error::OperationLaneCycle { parent, child }) if *parent == "Serial" && *child == "Serial")
+    );
+    assert_eq!(trace.parent_constructions.load(Ordering::SeqCst), 1);
+    runtime.stop().await.unwrap();
+
+});
+        });
+    }
+    {
+        scenario_runtime::check("child_settles_another", || {
+            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
+            scenario_executor
+                .enable_all()
+                .build()
+                .expect("scenario runtime is valid")
+                .block_on(async {
+                    let (runtime, trace) = runtime(Lanes::Concurrent).await;
+                    let blocker = runtime
+                        .operations
+                        .submit(BoundContract { hold: true })
+                        .unwrap();
+                    trace.bound_started.notified().await;
+                    let answer = runtime
+                        .operations
+                        .submit(ParentContract {
+                            mode: Mode::FullLane,
+                        })
+                        .unwrap()
+                        .await
+                        .unwrap();
+                    assert_eq!(*answer, 0);
+                    assert!(trace.free_dropped.load(Ordering::SeqCst));
+                    assert_eq!(trace.queued_runs.load(Ordering::SeqCst), 0);
+
+                    trace.release.notify_one();
+                    assert_eq!(*blocker.await.unwrap(), 7);
+                    runtime.stop().await.unwrap();
+                    assert_eq!(
+                        trace.queued_runs.load(Ordering::SeqCst),
+                        0,
+                        "the cancelled child never runs after capacity returns"
+                    );
+                });
+        });
+    }
+}
