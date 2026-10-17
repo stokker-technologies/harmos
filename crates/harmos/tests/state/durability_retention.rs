@@ -20,7 +20,7 @@ use support::{Bank, Change, Ledger, booted, deposit, ledger, scratch};
 // Local Imports
 use super::support;
 use harmos::{Error, state::Origin, state::Position, storage::Source};
-use jsonl_adapter::Jsonl;
+use schematic_storage::Jsonl;
 
 /* === Constants === */
 

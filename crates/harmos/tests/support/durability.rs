@@ -27,7 +27,7 @@ use harmos::{
     state::Position, state::PrincipalId, state::Recorded, state::Transaction,
     storage::JournalConsumer, storage::Payload,
 };
-use jsonl_adapter::Wire;
+use schematic_storage::Wire;
 
 /* === Constants === */
 

@@ -23,7 +23,7 @@ use crate::app::SchematicEditor;
 use crate::records::Records;
 use crate::transactions::Transactions;
 use harmos::{DefinitionId, state::Kind, state::Recorded, storage::Payload};
-use jsonl_adapter::Wire;
+use schematic_storage::Wire;
 
 /* === Constants === */
 

@@ -84,7 +84,7 @@ simulation. Acceptance compares both backends and checks native directory access
 against a temporary directory. Detailed shutdown, backlog-flush, and process
 settlement stress belongs in the [lifecycle fixture](../../tests/fixtures/lifecycle/).
 
-The [JSONL adapter](../../tests/support/jsonl-adapter/) is test infrastructure
+The [JSONL adapter](storage/) is test infrastructure
 shared with this example. A document's recovery journal is distinct from a native
 plugin sidecar. Saving uses the adapter's checkpoint protocol after runtime
 settlement and publishes the document through an atomic file replacement.

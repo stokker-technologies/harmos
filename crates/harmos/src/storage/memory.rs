@@ -151,7 +151,9 @@ impl BankState {
                 self.refusal = Some(match refusal {
                     Refusal::Busy => Shortfall::Busy,
                     Refusal::Exceeded(_) => Shortfall::Exceeded,
-                    Refusal::Elapsed | Refusal::Failed(_) => return Err(refusal.into_error()),
+                    Refusal::Cycle | Refusal::Elapsed | Refusal::Failed(_) => {
+                        return Err(refusal.into_error());
+                    }
                 });
                 Err(Refusal::Busy.into_error())
             }

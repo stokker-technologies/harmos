@@ -6,7 +6,6 @@ members = [
   "crates/*",
   "tests/fixtures/grpc",
   "tests/fixtures/lifecycle",
-  "tests/support/jsonl-adapter",
   "examples/schematic/*",
 ]
 

@@ -25,7 +25,7 @@ use harmos::{
     Error, Runtime, runtime::Incompatible, state::Entry, state::Position, state::Recorded,
     storage::Horizon, storage::JournalConsumer, storage::Recovery, storage::Source,
 };
-use jsonl_adapter::Snapshot;
+use schematic_storage::Snapshot;
 
 /* === Constants === */
 

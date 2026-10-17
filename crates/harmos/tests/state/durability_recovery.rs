@@ -24,7 +24,7 @@ use support::{Bank, Ledger, Noted, alice, booted, deposit, ledger, opened, scrat
 // Local Imports
 use super::support;
 use harmos::state::Position;
-use jsonl_adapter::{Jsonl, Snapshot};
+use schematic_storage::{Jsonl, Snapshot};
 
 /* === Constants === */
 

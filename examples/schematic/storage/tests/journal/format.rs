@@ -29,7 +29,7 @@ use harmos::{
     state::Recorded, state::RequestKey, state::SystemFact, state::Timestamp,
     storage::JournalConsumer,
 };
-use jsonl_adapter::Jsonl;
+use schematic_storage::Jsonl;
 use support::{Bank, Ledger, Noted, alice, booted, deposit, ledger, scratch, withdraw};
 
 /* === Constants === */

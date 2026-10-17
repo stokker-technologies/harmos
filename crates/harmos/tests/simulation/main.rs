@@ -897,13 +897,13 @@ fn entropy_run(seed: u64) -> (SimulatedRuntime<Bank>, Vec<u64>) {
     (sim, values)
 }
 
-fn vault(name: &str) -> jsonl_adapter::EvidenceDirectory {
+fn vault(name: &str) -> schematic_storage::EvidenceDirectory {
     let directory = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
         .join("sim-evidence")
         .join(name);
     std::fs::remove_dir_all(&directory).ok();
 
-    jsonl_adapter::EvidenceDirectory::at(directory).expect("a fresh directory")
+    schematic_storage::EvidenceDirectory::at(directory).expect("a fresh directory")
 }
 
 fn capturing(seed: u64, name: &str) -> SimulatedRuntime<Bank> {

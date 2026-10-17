@@ -25,7 +25,7 @@ use super::support;
 use harmos::{
     state::Entry, state::Origin, state::Position, state::Recorded, storage::JournalConsumer,
 };
-use jsonl_adapter::Jsonl;
+use schematic_storage::Jsonl;
 
 /* === Constants === */
 

@@ -27,7 +27,7 @@ harmos = { workspace = true, default-features = true, features = [
   "plugin-guest",
   "plugin-sidecar",
 ] }
-jsonl-adapter = { path = "../../../tests/support/jsonl-adapter" }
+schematic-storage = { path = "../storage" }
 schematic-domain = { path = "../domain" }
 
 # Git

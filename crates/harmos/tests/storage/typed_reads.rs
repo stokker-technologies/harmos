@@ -32,8 +32,6 @@ use crate::support::{Bank, Ledger, catalog};
 use crate::waveforms::{self, Experiment, Objects, Sample};
 use harmos::storage::operations::Query;
 use harmos::storage::query::scalar::{Agg, ExactNumber, ScalarValue};
-use harmos::storage::query::transform::FieldPath;
-use harmos::storage::query::transform::filter::{Clause, Compare, Condition, Filter, Term};
 use harmos::storage::query::{
     Accumulator, ObjectVersions, RecordSelection, RowSlice, Scratch, Source,
 };
@@ -108,21 +106,6 @@ async fn write(storage: &StorageManager<Objects>, id: &str, label: &str) -> Obje
     receipt
 }
 
-fn equal(field: &str, value: ScalarValue) -> Filter {
-    Filter {
-        clauses: vec![Clause {
-            terms: vec![Term {
-                field: FieldPath::from(field),
-                condition: Condition::Compare {
-                    op: Compare::Eq,
-                    value,
-                },
-                negate: false,
-            }],
-        }],
-    }
-}
-
 fn samples() -> RecordSelection {
     RecordSelection {
         schema: waveforms::schema(),
@@ -194,16 +177,15 @@ fn own_contract() {
         let second = write(&storage, "a", "two").await;
         let third = write(&storage, "b", "three").await;
         let at = storage.cursor_saved();
-        let read = |key, versions, filters| ObjectRead::<Experiment> {
+        let read = |key, versions| ObjectRead::<Experiment> {
             at: at.clone(),
             key,
             versions,
-            filters,
         };
 
         // Pages Follow The Response Row Bound In Storage Order.
         let mut reader = storage
-            .read_objects(read(None, ObjectVersions::Revisions, Vec::new()))
+            .read_objects(read(None, ObjectVersions::Revisions))
             .await
             .unwrap();
         let mut pages = Vec::new();
@@ -222,7 +204,7 @@ fn own_contract() {
             ]
         );
         assert!(reader.next().await.unwrap().is_none());
-        let latest = labels(&storage, read(None, ObjectVersions::Latest, Vec::new())).await;
+        let latest = labels(&storage, read(None, ObjectVersions::Latest)).await;
         assert_eq!(
             latest,
             [("two".into(), second.clone()), ("three".into(), third)]
@@ -230,7 +212,7 @@ fn own_contract() {
         let key = "a".to_owned();
         let keyed = labels(
             &storage,
-            read(Some(&key), ObjectVersions::Revisions, Vec::new()),
+            read(Some(&key), ObjectVersions::Revisions),
         )
         .await;
         assert_eq!(
@@ -248,25 +230,20 @@ fn own_contract() {
                 at: first.position.clone(),
                 key: None,
                 versions: ObjectVersions::Revisions,
-                filters: Vec::new(),
             },
         )
         .await;
         assert_eq!(earlier, [("one".into(), first)]);
 
-        // Filters Evaluate Payload Columns And Keep Exact Stored Revisions.
-        let label = |value: &str| equal("payload.label", ScalarValue::Text(value.into()));
-        let filtered = labels(
-            &storage,
-            read(None, ObjectVersions::Revisions, vec![label("two")]),
-        )
-        .await;
+        // Residual Conditions Belong To The Consumer Over Decoded Values.
+        let filtered = labels(&storage, read(None, ObjectVersions::Revisions))
+            .await
+            .into_iter()
+            .filter(|(label, _)| label == "two")
+            .collect::<Vec<_>>();
         assert_eq!(filtered, [("two".into(), second)]);
-        let superseded = labels(
-            &storage,
-            read(None, ObjectVersions::Latest, vec![label("one")]),
-        );
-        assert!(superseded.await.is_empty());
+        let superseded = labels(&storage, read(None, ObjectVersions::Latest)).await;
+        assert!(superseded.into_iter().all(|(label, _)| label != "one"));
         runtime.stop().await.unwrap();
     });
     story("typed_records_pages", || async {
@@ -287,15 +264,14 @@ fn own_contract() {
             .into_iter()
             .take(9)
             .collect::<Vec<_>>();
-        let read = |after, filters| RecordRead {
+        let read = |after| RecordRead {
             at: storage.cursor_saved(),
             selection: samples(),
             after,
-            filters,
         };
 
         let mut reader = storage
-            .read_records::<Sample>(read(0, Vec::new()))
+            .read_records::<Sample>(read(0))
             .await
             .unwrap();
         let mut pages = Vec::new();
@@ -320,7 +296,7 @@ fn own_contract() {
 
         // Resuming After A Position Skips Everything Already Read.
         let resumed = storage
-            .read_records::<Sample>(read(stored[3].position.sequence, Vec::new()))
+            .read_records::<Sample>(read(stored[3].position.sequence))
             .await
             .unwrap()
             .collect()
@@ -334,15 +310,15 @@ fn own_contract() {
             expected[4..]
         );
         let phase = storage
-            .read_records::<Sample>(read(
-                0,
-                vec![equal("payload.phase", ScalarValue::Unsigned(1))],
-            ))
+            .read_records::<Sample>(read(0))
             .await
             .unwrap()
             .collect()
             .await
-            .unwrap();
+            .unwrap()
+            .into_iter()
+            .filter(|record| record.payload.phase == 1)
+            .collect::<Vec<_>>();
         assert_eq!(phase.len(), 3);
         assert!(phase.iter().all(|record| record.payload.phase == 1));
         runtime.stop().await.unwrap();
@@ -351,19 +327,16 @@ fn own_contract() {
         let (runtime, storage, _) = manager(paged()).await;
         write(&storage, "a", "one").await;
         let at = storage.cursor_saved();
-        let phase = || vec![equal("payload.phase", ScalarValue::Unsigned(1))];
-        for filters in [Vec::new(), phase()] {
-            let mut reader = storage
-                .read_records::<Sample>(RecordRead {
-                    at: at.clone(),
-                    selection: samples(),
-                    after: 0,
-                    filters,
-                })
-                .await
-                .unwrap();
-            assert!(reader.next().await.unwrap().is_none());
-        }
+        let mut reader = storage
+            .read_records::<Sample>(RecordRead {
+                at: at.clone(),
+                selection: samples(),
+                after: 0,
+            })
+            .await
+            .unwrap();
+        assert!(reader.next().await.unwrap().is_none());
+        drop(reader);
 
         // The Arrow Query Has No Schema To Answer, So It Still Refuses.
         let mut query = storage
@@ -385,23 +358,20 @@ fn own_contract() {
             .await
             .unwrap();
         storage.flush().await.unwrap();
-        let label = || vec![equal("payload.label", ScalarValue::Text("one".into()))];
-        for filters in [Vec::new(), label()] {
-            let read = ObjectRead::<Experiment> {
-                at: storage.cursor_saved(),
-                key: None,
-                versions: ObjectVersions::Revisions,
-                filters,
-            };
-            let mut reader = storage.read_objects(read).await.unwrap();
-            assert!(reader.next().await.unwrap().is_none());
-        }
+        let read = ObjectRead::<Experiment> {
+            at: storage.cursor_saved(),
+            key: None,
+            versions: ObjectVersions::Revisions,
+        };
+        let mut reader = storage.read_objects(read).await.unwrap();
+        assert!(reader.next().await.unwrap().is_none());
+        drop(reader);
         runtime.stop().await.unwrap();
     });
     story("typed_read_budget_refusal", || async {
         let mut settings = paged();
         settings.budget.read_memory_bytes = NonZeroUsize::new(128).unwrap();
-        settings.response.batch_bytes = settings.budget.read_memory_bytes;
+        settings.response.batch_bytes = NonZeroUsize::new(settings.budget.read_memory_bytes.get() / 2).unwrap();
         let (runtime, storage, _) = manager(settings).await;
         write(&storage, "a", "one").await;
         let objects = async {
@@ -410,7 +380,6 @@ fn own_contract() {
                     at: storage.cursor_saved(),
                     key: None,
                     versions: ObjectVersions::Latest,
-                    filters: Vec::new(),
                 })
                 .await?
                 .collect()
@@ -426,7 +395,6 @@ fn own_contract() {
                     at: storage.cursor_saved(),
                     selection: samples(),
                     after: 0,
-                    filters: Vec::new(),
                 })
                 .await?
                 .collect()
@@ -442,7 +410,7 @@ fn own_contract() {
         // An Admitted Reader Refuses A Page No Budget Split Can Hold.
         let mut settings = paged();
         settings.budget.read_memory_bytes = NonZeroUsize::new(8 * 1024).unwrap();
-        settings.response.batch_bytes = settings.budget.read_memory_bytes;
+        settings.response.batch_bytes = NonZeroUsize::new(settings.budget.read_memory_bytes.get() / 2).unwrap();
         let (runtime, storage, _) = manager(settings).await;
         write(&storage, "large", &"x".repeat(16 * 1024)).await;
         let mut reader = storage
@@ -450,7 +418,6 @@ fn own_contract() {
                 at: storage.cursor_saved(),
                 key: None,
                 versions: ObjectVersions::Latest,
-                filters: Vec::new(),
             })
             .await
             .unwrap();

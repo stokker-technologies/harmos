@@ -1045,7 +1045,7 @@ dependencies = [
  "heck",
  "http-body",
  "http-body-util",
- "jsonl-adapter",
+ "schematic-storage",
  "notify",
  "petgraph",
  "postcard",
@@ -1445,7 +1445,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "jsonl-adapter"
+name = "schematic-storage"
 version = "0.2.0"
 dependencies = [
  "harmos",
@@ -2255,7 +2255,7 @@ dependencies = [
  "criterion",
  "futures-core",
  "harmos",
- "jsonl-adapter",
+ "schematic-storage",
  "schematic-domain",
  "serde",
  "serde_json",

@@ -775,7 +775,7 @@ const ALLOWANCE: [(&str, &[&str]); 17] = [
             "heck",
             "http-body",
             "http-body-util",
-            "jsonl-adapter",
+            "schematic-storage",
             "notify",
             "petgraph",
             "process-wrap",
@@ -925,7 +925,7 @@ const ALLOWANCE: [(&str, &[&str]); 17] = [
     ),
     ("harmos-signal", &["rustfft", "thiserror", "tracing"]),
     (
-        "jsonl-adapter",
+        "schematic-storage",
         &[
             "harmos",
             "serde",
@@ -943,7 +943,7 @@ const ALLOWANCE: [(&str, &[&str]); 17] = [
             "futures-core",
             "harmos",
             "harmos-guest",
-            "jsonl-adapter",
+            "schematic-storage",
             "schematic-contract",
             "serde",
             "serde_json",
@@ -1035,7 +1035,7 @@ fn sources() -> Vec<(String, String)> {
     collect(&workspace().join("examples"), &mut found);
     collect(&workspace().join("tests/fixtures"), &mut found);
     collect(
-        &workspace().join("tests/support/jsonl-adapter/src"),
+        &workspace().join("examples/schematic/storage/src"),
         &mut found,
     );
     found.sort();
@@ -1890,7 +1890,7 @@ fn contract_scenario() {
             // contracts. New aliases or placement elsewhere fail this audit.
             let saved: Vec<String> = declarations()
                 .into_iter()
-                .filter(|(path, _)| !path.contains("/tests/support/jsonl-adapter/"))
+                .filter(|(path, _)| !path.contains("/examples/schematic/storage/"))
                 .filter(|(_, declared)| declared.public && declared.keyword == "fn")
                 .filter(|(path, declared)| {
                     !(declared.name == "seal" && path.contains("/crates/harmos/src/streams/"))

@@ -20,7 +20,7 @@ use crate::scenario_runtime;
 // Local Imports
 use super::Model;
 use harmos::{state::Position, storage::JournalConsumer, storage::Source};
-use jsonl_adapter::Jsonl;
+use schematic_storage::Jsonl;
 
 /* === Constants === */
 

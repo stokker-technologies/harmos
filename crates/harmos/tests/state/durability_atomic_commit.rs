@@ -26,7 +26,7 @@ use harmos::{
     Application, Error, Runtime, state::Focus, state::Origin, state::Position, state::PrincipalId,
     state::Recorded, state::Records, state::RequestKey, state::Transaction,
 };
-use jsonl_adapter::{Jsonl, Wire};
+use schematic_storage::{Jsonl, Wire};
 
 /* === Constants === */
 
@@ -532,7 +532,7 @@ pub(super) fn contract_scenario() {
                     std::fs::write(&path, format!("{header}\n{group}\n")).unwrap();
                     let snapshots = Arc::new(std::sync::Mutex::new(Vec::new()));
                     let observed = Arc::clone(&snapshots);
-                    let snapshot = jsonl_adapter::Snapshot::<Model>::folding(
+                    let snapshot = schematic_storage::Snapshot::<Model>::folding(
                         State::default(),
                         Position::ORIGIN,
                         move |state, position| {
@@ -622,7 +622,7 @@ pub(super) fn contract_scenario() {
                     std::fs::write(&path, &original).unwrap();
                     let snapshots = Arc::new(std::sync::Mutex::new(Vec::new()));
                     let observed = Arc::clone(&snapshots);
-                    let snapshot = jsonl_adapter::Snapshot::<Model>::folding(
+                    let snapshot = schematic_storage::Snapshot::<Model>::folding(
                         State::default(),
                         Position::ORIGIN,
                         move |state, position| {

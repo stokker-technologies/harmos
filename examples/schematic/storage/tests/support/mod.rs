@@ -25,7 +25,7 @@ use harmos::{
     runtime::Registration, state::DecodeError, state::Invert, state::Kind, state::PrincipalId,
     state::Recorded, state::Transaction, storage::Payload,
 };
-use jsonl_adapter::Wire;
+use schematic_storage::Wire;
 
 /* === Constants === */
 

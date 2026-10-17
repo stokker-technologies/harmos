@@ -30,7 +30,7 @@ use harmos::{
     evidence::Vault, runtime::Incompatible, services::Fault, services::Resident, services::Service,
     state::Position,
 };
-use jsonl_adapter::EvidenceDirectory;
+use schematic_storage::EvidenceDirectory;
 use support::{Bank, Copied, Ledger, Stored, catalog};
 
 /* === Constants === */

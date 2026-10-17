@@ -1,7 +1,7 @@
 # === Package ===
 
 [package]
-name = "jsonl-adapter"
+name = "schematic-storage"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

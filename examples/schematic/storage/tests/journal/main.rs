@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 use harmos::{
     Application, Runtime, state::Position, state::Recorded, state::Records, state::Transaction,
 };
-use jsonl_adapter::{Jsonl, Wire};
+use schematic_storage::{Jsonl, Wire};
 use support::scratch;
 
 /* === Constants === */

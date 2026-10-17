@@ -23,7 +23,7 @@ use std::io::Write;
 
 // Local Imports
 use harmos::storage::StreamConsumer;
-use jsonl_adapter::streams::{JsonlStreams, read_rows};
+use schematic_storage::streams::{JsonlStreams, read_rows};
 
 /* === Constants === */
 

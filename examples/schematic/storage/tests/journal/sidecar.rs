@@ -25,7 +25,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 // Local Imports
 use harmos::state::Position;
-use jsonl_adapter::Jsonl;
+use schematic_storage::Jsonl;
 use support::{Bank, Ledger, booted, deposit, ledger, scratch};
 
 /* === Constants === */

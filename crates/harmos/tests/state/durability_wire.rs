@@ -14,7 +14,7 @@ mod other {
     use std::sync::Arc;
 
     use harmos::{Application, DefinitionId, state::Kind, state::Recorded, storage::Payload};
-    use jsonl_adapter::Wire;
+    use schematic_storage::Wire;
     use serde::{Deserializer, Serializer};
 
     use super::super::support::{Deposit, Explode, Ledger, Noted, Pay, Refusal, Withdraw};
@@ -102,7 +102,7 @@ use super::support;
 use harmos::{
     DefinitionId, Runtime, state::Kind, state::Position, state::Recorded, state::Transaction,
 };
-use jsonl_adapter::{Jsonl, Wire};
+use schematic_storage::{Jsonl, Wire};
 
 /* === Constants === */
 const VARIANTS: [&str; 9] = [

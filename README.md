@@ -137,7 +137,7 @@ directory. The guest has no filesystem access and omits that operation.
 The [advanced follow-on](examples/schematic/cli/src/advanced.rs) demonstrates
 bounded streaming, cancellation with settlement, and native directory access.
 The [simulation test](examples/schematic/app/tests/app/simulation.rs) checks
-repeatability, replay, and inverses. Reusable [JSONL test support](tests/support/jsonl-adapter/)
+repeatability, replay, and inverses. Reusable [schematic storage example](examples/schematic/storage/)
 provides the example's persistence adapter; shutdown stress scenarios live in
 [test fixtures](tests/fixtures/lifecycle/).
 
@@ -341,13 +341,16 @@ while let Some(output) = reader.next().await? {
 let completion = reader.completion()?;
 ```
 
+Response batches are bounded to half the shared read budget, leaving room for
+read descriptions and encoding work. Waiting for a query slot holds no read bytes.
+
 Every read shares the one read budget. Work that cannot fit while other queries
 hold memory waits for released capacity; work that can never fit the budget, even
 after splitting source pages down to one row, fails with `ResourceExhausted`
 instead of waiting on itself. A reader that already holds memory, including
-batches its consumer retains, waits to grow only while no other such reader is
-waiting; otherwise it fails with `ResourceExhausted` so two readers never wait on
-each other's retained batches. Dropping a reader or an in-progress `next` cancels
+batches its consumer retains, waits to grow unless no waiting reader could grow
+even after every other owner released everything; only that certain cycle fails
+with `ResourceExhausted`. Dropping a reader or an in-progress `next` cancels
 it and releases its query slot; batches already returned stay charged until
 they are dropped.
 
@@ -356,8 +359,9 @@ does: only rows stored after it are read, in position order.
 
 Typed historical reads decode saved objects and records from their exact stored
 bytes in pages bounded by the response settings, so payloads never expand to
-Arrow and object size is not limited by the Arrow field bound. Optional filters
-use the query source columns (`_storage.*`, `payload.*`). A schema that was never
+Arrow and object size is not limited by the Arrow field bound. Narrow envelope
+fields through backend selections; apply residual conditions to decoded values
+in the consumer. Use `Query` for derived columns. A schema that was never
 written reads as no rows, whereas a `Query` over it is refused because it has no
 schema to emit.
 
@@ -367,14 +371,13 @@ let mut reader = storage
         at: at.clone(),
         key: None,
         versions: ObjectVersions::Latest,
-        filters,
     })
     .await?;
 while let Some(page) = reader.next().await? {
     // Vec<ObjectRevision<Experiment>>
 }
 let records = storage
-    .read_records::<Reading>(RecordRead { at, selection, after: 0, filters: Vec::new() })
+    .read_records::<Reading>(RecordRead { at, selection, after: 0 })
     .await?
     .collect()
     .await?; // Vec<StoredRecord<Reading>>
@@ -634,7 +637,7 @@ these native benchmarks do not establish Wasm guest performance.
 - [Runnable Examples](examples/) — application composition and plugin integration.
 - [Public Rust API](crates/harmos/src/lib.rs) — the SDK facade and module documentation.
 - [Cargo Features](crates/harmos/Cargo.toml) — select the facilities your application needs.
-- [Storage Adapter](tests/support/jsonl-adapter/) — own your persistence format.
+- [Storage Adapter](examples/schematic/storage/) — own your persistence format.
 
 ## Project Status & Roadmap
 

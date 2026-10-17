@@ -19,7 +19,7 @@ use std::path::PathBuf;
 
 // Local Imports
 use harmos::evidence::Vault;
-use jsonl_adapter::EvidenceDirectory;
+use schematic_storage::EvidenceDirectory;
 
 /* === Constants === */
 
