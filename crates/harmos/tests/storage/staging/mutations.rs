@@ -309,4 +309,51 @@ pub(super) fn contract_scenario() {
                 });
         });
     }
+    {
+        scenario_runtime::check("thousands_mutations_accepted", || {
+            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
+            scenario_executor
+                .enable_all()
+                .build()
+                .expect("scenario runtime is valid")
+                .block_on(async {
+                    // A Small Budget Makes The Ledger Evict Completed Receipts Long Before The Window Ends.
+                    let mut settings = config();
+                    settings.budget.read_memory_bytes =
+                        std::num::NonZeroUsize::new(1024 * 1024).unwrap();
+                    settings.response.batch_bytes = std::num::NonZeroUsize::new(64 * 1024).unwrap();
+                    let budget = settings.budget.read_memory_bytes.get();
+                    let f = Fixture::new(settings).await;
+                    let window = f.storage.mutation_window().unwrap();
+                    let mut last = None;
+                    for index in 0..2048 {
+                        let name = format!("small-{index}");
+                        let create = identity(&f.storage, &format!("create-{index}"));
+                        let producer = f
+                            .storage
+                            .create_file_once(&create, &metadata(&name))
+                            .await
+                            .unwrap();
+                        let finish = identity(&f.storage, &format!("finish-{index}"));
+                        let reference = f
+                            .storage
+                            .finish_file_once(&finish, &producer.session)
+                            .await
+                            .unwrap();
+                        assert_eq!(reference.length, 0);
+                        last = Some((finish, producer.session, reference));
+                    }
+                    assert_eq!(f.storage.mutation_window().unwrap().id, window.id);
+                    assert!(f.storage.status().mutation_bytes < budget);
+
+                    // The Newest Receipt Still Answers Its Retry With The Original Outcome.
+                    let (finish, session, reference) = last.unwrap();
+                    assert_eq!(
+                        f.storage.finish_file_once(&finish, &session).await.unwrap(),
+                        reference
+                    );
+                    f.finish().await;
+                });
+        });
+    }
 }

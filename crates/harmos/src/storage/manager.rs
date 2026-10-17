@@ -138,6 +138,8 @@ pub(super) struct State {
     pub(super) queue: PendingQueue,
     pub(super) scratch_bytes: usize,
     pub(super) read_bytes: usize,
+    /// Per pool: whether an owner that already holds bytes is waiting to grow.
+    pub(super) growth_waiting: [bool; 2],
     pub(super) data_attempted: u64,
     pub(super) objects_pruned: u64,
     pub(super) objects_prune_owed: bool,
@@ -255,7 +257,8 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
             history,
             sequence: 0,
         };
-        let receipts = super::receipts::Receipts::new(MUTATION_RETENTION)?;
+        let receipts =
+            super::receipts::Receipts::new(MUTATION_RETENTION, settings.mutation_bytes())?;
         Ok(Self {
             catalog: PhantomData,
             inner: Arc::new(Inner {
@@ -301,6 +304,7 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
                     next: 0,
                     queue: PendingQueue::default(),
                     scratch_bytes: 0,
+                    growth_waiting: [false; 2],
                     read_bytes: 0,
                     data_attempted: 0,
                     objects_pruned: 0,

@@ -59,6 +59,7 @@ pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
                                         stream: None,
                                         source_start: None,
                                         source_end: None,
+                                        after: 0,
                                     }),
                                     transforms: vec![],
                                     slice: RowSlice {

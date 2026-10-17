@@ -220,6 +220,8 @@ pub trait StorageBackend: Send + Sync + 'static {
     fn save_mutations<'a>(&'a self, _receipts: &'a [MutationReceipt]) -> StorageFuture<'a, ()> {
         unsupported("storage mutations")
     }
+    /// The unexpired receipts with the latest expiry that fit `limits`; older
+    /// receipts beyond the bound are omitted, as the in-memory ledger evicts them.
     fn recover_mutations(&self, _limits: ReadLimits) -> StorageFuture<'_, Vec<MutationReceipt>> {
         unsupported("storage mutations")
     }

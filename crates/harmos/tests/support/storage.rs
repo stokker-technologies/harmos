@@ -901,14 +901,18 @@ impl<C: ObjectCatalog> StorageBackend for Data<C> {
         Box::pin(async move {
             let mut saved = self.mutation_receipts.lock().unwrap();
             saved.retain(|_, receipt| receipt.expires_at > std::time::SystemTime::now());
-            let bytes = saved.values().fold(
-                std::mem::size_of::<Vec<MutationReceipt>>(),
-                |bytes, receipt| bytes.saturating_add(receipt.memory_size()),
-            );
-            if saved.len() > limits.rows.get() || bytes > limits.bytes.get() {
-                return Err(failure(BackendFailure::Permanent));
+            let mut newest: Vec<_> = saved.values().collect();
+            newest.sort_by_key(|receipt| std::cmp::Reverse(receipt.expires_at));
+            let mut bytes = std::mem::size_of::<Vec<MutationReceipt>>();
+            let mut receipts = Vec::new();
+            for receipt in newest.into_iter().take(limits.rows.get()) {
+                bytes = bytes.saturating_add(receipt.memory_size());
+                if bytes > limits.bytes.get() {
+                    break;
+                }
+                receipts.push(receipt.clone());
             }
-            Ok(saved.values().cloned().collect())
+            Ok(receipts)
         })
     }
     fn create_production<'a>(

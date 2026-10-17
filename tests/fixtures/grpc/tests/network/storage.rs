@@ -406,6 +406,7 @@ async fn storage_uses_data() {
             stream: None,
             source_start: Some(std::time::UNIX_EPOCH - Duration::from_secs(1)),
             source_end: Some(std::time::UNIX_EPOCH),
+            after: 0,
         };
         // Finished File Bytes Use The Same Operation Until Explicit Completion.
         let request = harmos::storage::files::ReadFile {
@@ -532,6 +533,7 @@ async fn storage_uses_data() {
                     stream: Some(source.clone()),
                     source_start: selection.source_start,
                     source_end: selection.source_end,
+                    after: 0,
                 }),
                 transforms: vec![],
                 slice: RowSlice::default(),

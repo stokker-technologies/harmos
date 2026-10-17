@@ -47,6 +47,14 @@ pub(super) struct Reservation {
     held: Held,
 }
 
+/// A holding owner's exclusive right to wait for growth in one pool. At most one
+/// owner that retains bytes waits per pool, so waiting holders never form a
+/// cycle; dropping the turn, including by cancelling the wait, frees it.
+struct Turn {
+    inner: Arc<Inner>,
+    pool: Pool,
+}
+
 /* === Enums === */
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Pool {
@@ -61,7 +69,9 @@ pub(super) enum Pool {
 pub(super) enum Refusal {
     /// The owner's held bytes plus the request can never fit the configured pool.
     Exceeded(Pool),
-    /// Other owners currently hold the capacity; waiting may succeed.
+    /// Other owners currently hold the capacity. Without held bytes, or as the
+    /// pool's one waiting holder, the owner waits; otherwise it is refused so it
+    /// can release what it holds before waiting again for the full amount.
     Busy,
     /// The caller's deadline elapsed while waiting.
     Elapsed,
@@ -132,6 +142,13 @@ impl Pool {
         }
         state.collect();
         true
+    }
+
+    fn index(self) -> usize {
+        match self {
+            Self::Read => 0,
+            Self::Write => 1,
+        }
     }
 
     fn release(self, state: &mut State, bytes: usize) {
@@ -250,6 +267,9 @@ impl Reservation {
         }
     }
 
+    /// Grow, waiting for other owners to release capacity. An owner that already
+    /// holds bytes waits only while it has the pool's growth turn; when another
+    /// holder has it, growth is refused with `Busy` instead of waiting.
     pub(super) async fn grow(
         &mut self,
         additional: usize,
@@ -259,9 +279,23 @@ impl Reservation {
             return Ok(());
         }
         let inner = Arc::clone(&self.inner);
-        inner
-            .wait(deadline, |state| self.attempt(state, additional))
-            .await
+        let mut turn = None;
+        let result = inner
+            .wait(deadline, |state| match self.attempt(state, additional) {
+                Attempt::Wait if turn.is_none() && self.held.bytes() != 0 => {
+                    match Turn::take(&self.inner, state, self.pool) {
+                        Some(taken) => {
+                            turn = Some(taken);
+                            Attempt::Wait
+                        }
+                        None => Attempt::Refuse(Refusal::Busy),
+                    }
+                }
+                attempt => attempt,
+            })
+            .await;
+        drop(turn);
+        result
     }
 
     pub(super) fn shrink_to(&mut self, bytes: usize) {
@@ -326,6 +360,26 @@ impl Reservation {
     }
 }
 
+impl Turn {
+    fn take(inner: &Arc<Inner>, state: &mut State, pool: Pool) -> Option<Self> {
+        let waiting = &mut state.growth_waiting[pool.index()];
+        if *waiting {
+            return None;
+        }
+        *waiting = true;
+        Some(Self {
+            inner: Arc::clone(inner),
+            pool,
+        })
+    }
+}
+
+impl Drop for Turn {
+    fn drop(&mut self) {
+        self.inner.state.lock().unwrap().growth_waiting[self.pool.index()] = false;
+    }
+}
+
 impl Drop for Reservation {
     fn drop(&mut self) {
         if self.bytes == 0 {
@@ -342,8 +396,9 @@ impl Drop for Reservation {
 impl Inner {
     /// The one capacity wait. Notification is armed before each check, so a
     /// release between check and await is never lost; a refused check changes
-    /// nothing and wakes no one; nothing is held across the await, so dropping
-    /// the future cancels cleanly; an optional deadline bounds the wait.
+    /// nothing and wakes no one; only the caller's growth turn is held across
+    /// the await, so dropping the future cancels cleanly; an optional deadline
+    /// bounds the wait.
     pub(super) async fn wait<T>(
         &self,
         deadline: Option<Instant>,

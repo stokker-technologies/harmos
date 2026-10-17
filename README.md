@@ -340,9 +340,15 @@ let completion = reader.completion()?;
 Every read shares the one read budget. Work that cannot fit while other queries
 hold memory waits for released capacity; work that can never fit the budget, even
 after splitting source pages down to one row, fails with `ResourceExhausted`
-instead of waiting on itself. Dropping a reader or an in-progress `next` cancels
+instead of waiting on itself. A reader that already holds memory, including
+batches its consumer retains, waits to grow only while no other such reader is
+waiting; otherwise it fails with `ResourceExhausted` so two readers never wait on
+each other's retained batches. Dropping a reader or an in-progress `next` cancels
 it and releases its query slot; batches already returned stay charged until
 they are dropped.
+
+A stream selection's `after` resumes at a stored position, as `RecordRead::after`
+does: only rows stored after it are read, in position order.
 
 Typed historical reads decode saved objects and records from their exact stored
 bytes in pages bounded by the response settings, so payloads never expand to
@@ -380,6 +386,11 @@ flight.
 finished, immutable file in response-sized batches. `Follow`, `FollowStream`,
 `FollowObjects` and `FollowFile` are the live subscriptions: each delivers saved
 history after its `after` cursor, then newly accepted entries.
+
+Mutation receipts make retried file, save and delete mutations idempotent within
+the retry window. The receipt ledger takes a fixed share of the read budget;
+when it is full, completed receipts are evicted oldest first, and a retry of an
+evicted receipt runs as a new mutation.
 
 Typed stream, record and object writers acknowledge acceptance and durability
 separately for each atomic logical batch. A disconnected invocation may have

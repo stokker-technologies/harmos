@@ -14,7 +14,8 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
@@ -23,12 +24,22 @@ use serde::{Deserialize, Serialize};
 use tokio::time::Instant;
 
 // Local Imports
-use super::config::{MAX_MUTATIONS, MUTATION_MEMORY_BYTES, MUTATION_RETENTION};
+use super::config::MUTATION_RETENTION;
 use super::{FileProducer, MutationId, MutationWindow, StorageManager, StoreHistory};
 use crate::supervision::executor;
 use crate::{Error, Identifier, MemorySize, Result};
 
 /* === Constants === */
+const ID_COPIES: usize = 5;
+const NODE_SHARE: usize = node_bytes().div_ceil(4);
+// The Map And Order Headers Plus The Root Node, Charged While Any Receipt Is Held.
+const LEDGER_BASE: usize = std::mem::size_of::<BTreeMap<MutationId, Entry>>()
+    + std::mem::size_of::<VecDeque<MutationId>>()
+    + node_bytes();
+// Smallest Possible Receipt Charge, Bounding Recovered Row Counts.
+const ENTRY_MINIMUM: usize = ID_COPIES * std::mem::size_of::<MutationId>()
+    + std::mem::size_of::<MutationValue>()
+    + NODE_SHARE;
 
 /* === Macros === */
 
@@ -44,12 +55,19 @@ pub struct MutationReceipt {
     pub value: MutationValue,
 }
 
+/// Idempotent mutation receipts within the retry window, bounded by a share of
+/// the read budget. When admitting a receipt would exceed the bound, completed
+/// receipts are evicted oldest admission first; a retry of an evicted receipt
+/// then runs as a new mutation. Pending receipts are never evicted.
 pub(super) struct Receipts {
     window: Identifier,
     deadline: Instant,
     expires_at: SystemTime,
     entries: BTreeMap<MutationId, Entry>,
+    // Admission Order, Oldest First, For Expiry And Eviction.
+    order: VecDeque<MutationId>,
     bytes: usize,
+    bound: NonZeroUsize,
 }
 
 struct Entry {
@@ -87,7 +105,7 @@ pub(super) enum ReceiptState {
 
 /* === Implementations === */
 impl Receipts {
-    pub(super) fn new(retention: Duration) -> Result<Self> {
+    pub(super) fn new(retention: Duration, bound: NonZeroUsize) -> Result<Self> {
         let now = executor::now();
         let wall = SystemTime::now();
         Ok(Self {
@@ -95,8 +113,21 @@ impl Receipts {
             deadline: now + retention,
             expires_at: wall + retention,
             entries: BTreeMap::new(),
+            order: VecDeque::new(),
             bytes: 0,
+            bound,
         })
+    }
+
+    /// Recovery reads at most the receipts the ledger can hold, plus the
+    /// response vector itself.
+    pub(super) fn recovery_limits(&self) -> super::ReadLimits {
+        super::ReadLimits {
+            rows: NonZeroUsize::new(self.bound.get() / ENTRY_MINIMUM).unwrap_or(NonZeroUsize::MIN),
+            bytes: self
+                .bound
+                .saturating_add(std::mem::size_of::<Vec<MutationReceipt>>()),
+        }
     }
 
     pub(super) fn window(
@@ -160,13 +191,10 @@ impl Receipts {
             });
         }
         let bytes = charge(id, outcome_bytes)?;
-        if self.entries.len() >= MAX_MUTATIONS.get()
-            || bytes > MUTATION_MEMORY_BYTES.get().saturating_sub(self.bytes)
-        {
-            return Err(Error::ResourceExhausted {
-                resource: "storage mutation receipts",
-            });
+        while self.bytes.saturating_add(LEDGER_BASE).saturating_add(bytes) > self.bound.get() {
+            self.evict_oldest()?;
         }
+        self.order.push_back(id.clone());
         self.entries.insert(
             id.clone(),
             Entry {
@@ -204,12 +232,34 @@ impl Receipts {
     }
 
     pub(super) fn snapshot_bytes(&self) -> usize {
-        self.bytes
+        if self.entries.is_empty() {
+            0
+        } else {
+            self.bytes + LEDGER_BASE
+        }
     }
 
     pub(super) fn clear(&mut self) {
         self.entries = BTreeMap::new();
+        self.order = VecDeque::new();
         self.bytes = 0;
+    }
+
+    // Drop The Oldest Completed Receipt; Pending Receipts Still Await Their Outcome.
+    fn evict_oldest(&mut self) -> Result<()> {
+        let index = self
+            .order
+            .iter()
+            .position(|id| {
+                self.entries
+                    .get(id)
+                    .is_some_and(|entry| entry.value.is_some())
+            })
+            .ok_or_else(exhausted)?;
+        let id = self.order.remove(index).expect("ordered receipt");
+        let entry = self.entries.remove(&id).expect("ordered receipt");
+        self.bytes -= entry.bytes;
+        Ok(())
     }
 
     pub(super) fn snapshot(&self, through: Option<&super::StorageCursor>) -> Vec<MutationReceipt> {
@@ -243,10 +293,14 @@ impl Receipts {
         receipts
     }
 
-    pub(super) fn restore(&mut self, receipts: Vec<MutationReceipt>) -> Result<()> {
+    /// Replace the ledger with recovered receipts, oldest expiry first; when they
+    /// exceed the bound, the oldest are evicted as during normal admission.
+    pub(super) fn restore(&mut self, mut receipts: Vec<MutationReceipt>) -> Result<()> {
         let now = executor::now();
         let wall = SystemTime::now();
+        receipts.sort_by_key(|receipt| receipt.expires_at);
         let mut restored = BTreeMap::new();
+        let mut order = VecDeque::with_capacity(receipts.len());
         let mut total = 0usize;
         for receipt in receipts {
             let Ok(remaining) = receipt.expires_at.duration_since(wall) else {
@@ -258,9 +312,6 @@ impl Receipts {
             }
             let bytes = charge(&receipt.mutation, receipt.value.memory_size())?;
             total = total.checked_add(bytes).ok_or_else(exhausted)?;
-            if total > MUTATION_MEMORY_BYTES.get() || restored.len() >= MAX_MUTATIONS.get() {
-                return Err(exhausted());
-            }
             let entry = Entry {
                 fingerprint: receipt.fingerprint,
                 deadline: now + remaining,
@@ -268,6 +319,7 @@ impl Receipts {
                 value: Some(receipt.value),
                 bytes,
             };
+            order.push_back(receipt.mutation.clone());
             if restored.insert(receipt.mutation, entry).is_some() {
                 return Err(Error::InvalidInput {
                     field: "mutation recovery",
@@ -276,21 +328,31 @@ impl Receipts {
             }
         }
         self.entries = restored;
+        self.order = order;
         self.bytes = total;
+        while self.snapshot_bytes() > self.bound.get() {
+            self.evict_oldest()?;
+        }
         Ok(())
     }
 
+    // Expire From The Oldest Admission; Retained Entries Still Check Their Own Deadline.
     pub(super) fn purge(&mut self, now: Instant) {
-        self.entries.retain(|_, entry| {
-            if now < entry.deadline {
-                true
-            } else {
-                self.bytes -= entry.bytes;
-                false
+        while let Some(id) = self.order.front() {
+            if self
+                .entries
+                .get(id)
+                .is_some_and(|entry| now < entry.deadline)
+            {
+                break;
             }
-        });
+            let id = self.order.pop_front().expect("ordered receipt");
+            if let Some(entry) = self.entries.remove(&id) {
+                self.bytes -= entry.bytes;
+            }
+        }
         if self.entries.is_empty() {
-            self.entries = BTreeMap::new();
+            self.clear();
         }
     }
 }
@@ -300,12 +362,8 @@ impl<C> StorageManager<C> {
         if !self.inner.primary.supports_mutation_receipts() {
             return Ok(());
         }
-        let bytes = (self.inner.settings.budget.read_memory_bytes.get() / 2)
-            .min(MUTATION_MEMORY_BYTES.get());
-        let limits = super::ReadLimits {
-            rows: MAX_MUTATIONS,
-            bytes: std::num::NonZeroUsize::new(bytes).ok_or_else(exhausted)?,
-        };
+        let limits = self.inner.state.lock().unwrap().receipts.recovery_limits();
+        let bytes = limits.bytes.get();
         let _reservation = super::capacity::Reservation::lifecycle(
             &self.inner,
             super::capacity::Pool::Read,
@@ -489,14 +547,34 @@ fn epoch() -> Result<Identifier> {
     })
 }
 
+// One Entry's Amortized Share: Std B-Tree Nodes Below The Root Hold At Least Five
+// Entries And Internal Nodes Add At Most A Quarter More, So A Quarter Node Per
+// Entry Covers Every Node But The Root, Which `LEDGER_BASE` Charges Once. The
+// Identity Is Copied Into The Map Key, The Admission Order, Snapshots And Saves.
 fn charge(id: &MutationId, outcome_bytes: usize) -> Result<usize> {
-    // Reuse The Native Map Policy, Including An Empty Root And The File's ID Copy.
-    let tree = crate::btree_map_memory::<MutationId, Entry>(1);
     id.memory_size()
-        .checked_mul(4)
+        .checked_mul(ID_COPIES)
         .and_then(|bytes| bytes.checked_add(outcome_bytes))
-        .and_then(|bytes| bytes.checked_add(tree))
+        .and_then(|bytes| bytes.checked_add(NODE_SHARE))
         .ok_or_else(exhausted)
+}
+
+const fn node_bytes() -> usize {
+    let alignment = max(
+        max(
+            std::mem::align_of::<MutationId>(),
+            std::mem::align_of::<Entry>(),
+        ),
+        std::mem::align_of::<usize>(),
+    );
+    (std::mem::size_of::<MutationId>() + std::mem::size_of::<Entry>()) * 11
+        + 13 * std::mem::size_of::<usize>()
+        + 2 * std::mem::size_of::<u16>()
+        + 5 * alignment
+}
+
+const fn max(left: usize, right: usize) -> usize {
+    if left > right { left } else { right }
 }
 
 fn rejected() -> Error {

@@ -250,31 +250,36 @@ impl<C: ObjectCatalog> StorageManager<C> {
             }
         }
 
-        // Charge The Bounded Raw Read, Then Its Decoded Value.
-        let held = Held::default();
-        let mut charge = Reservation::wait(
-            &self.inner,
-            Pool::Read,
-            &held,
-            budget.get().saturating_add(ENTRY_OVERHEAD),
-            None,
-        )
-        .await
-        .map_err(Refusal::into_error)?;
-        let snapshot = self.snapshot(&saved).await?;
-        let Some(object) = snapshot.read_object(&point).await? else {
-            return Ok(None);
+        // Charge The Bounded Raw Read, Then Its Decoded Value. Growth Refused
+        // While Another Holder Waits Releases The Read And Waits For Both.
+        let raw = budget.get().saturating_add(ENTRY_OVERHEAD);
+        let mut credit = raw;
+        let (object, _charge) = loop {
+            let held = Held::default();
+            let mut charge = Reservation::wait(&self.inner, Pool::Read, &held, credit, None)
+                .await
+                .map_err(Refusal::into_error)?;
+            let snapshot = self.snapshot(&saved).await?;
+            let Some(object) = snapshot.read_object(&point).await? else {
+                return Ok(None);
+            };
+            if matches!(&point.version, ObjectVersion::Exact(version) if version != &object.version)
+            {
+                return Err(invalid("backend returned a different object revision"));
+            }
+            let decoded = T::decoding_memory(&object.value.payload).map_err(|error| {
+                Error::backend("preflight object", crate::BackendFailure::Corrupt, error)
+            })?;
+            let total = raw.saturating_add(decoded);
+            match charge
+                .grow(total.saturating_sub(charge.bytes()), None)
+                .await
+            {
+                Ok(()) => break (object, charge),
+                Err(Refusal::Busy) => credit = total,
+                Err(refusal) => return Err(refusal.into_error()),
+            }
         };
-        if matches!(&point.version, ObjectVersion::Exact(version) if version != &object.version) {
-            return Err(invalid("backend returned a different object revision"));
-        }
-        let decoded = T::decoding_memory(&object.value.payload).map_err(|error| {
-            Error::backend("preflight object", crate::BackendFailure::Corrupt, error)
-        })?;
-        charge
-            .grow(decoded, None)
-            .await
-            .map_err(Refusal::into_error)?;
         let value = decode_admitted::<T>(&object.value, &schema)?;
         Ok(Some(ObjectRevision {
             value,

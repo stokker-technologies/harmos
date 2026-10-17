@@ -51,6 +51,10 @@ pub(super) trait Entry: Clone + Serialize + Send + Sync + 'static {
 
     fn position(&self) -> &StorageCursor;
     fn matches(&self, selection: &Self::Selection) -> bool;
+    /// The storage position a selection starts after; scans begin there.
+    fn start(_selection: &Self::Selection) -> u64 {
+        0
+    }
     fn pending(operation: &Operation) -> &[Self];
     fn scan<'a>(
         backend: &'a dyn StorageBackend,
@@ -143,6 +147,7 @@ impl Entry for StoredRow {
     fn matches(&self, selection: &StreamSelection) -> bool {
         let record = &self.record;
         record.schema == selection.schema
+            && record.position.sequence > selection.after
             && optional(&selection.scope, record.scope.as_ref())
             && optional(&selection.item, Some(&record.item))
             && optional(&selection.stream, Some(&self.stream))
@@ -151,6 +156,10 @@ impl Entry for StoredRow {
                 selection.source_end,
                 record.source_time,
             )
+    }
+
+    fn start(selection: &StreamSelection) -> u64 {
+        selection.after
     }
 
     fn pending(operation: &Operation) -> &[Self] {

@@ -105,6 +105,10 @@ impl<C> StorageManager<C> {
 
         // Pin The Requested Image For The Whole Invocation.
         let snapshot = self.snapshot(&query.at).await?;
+        let after = match &query.source {
+            Source::Stream(selection) => selection.after,
+            _ => 0,
+        };
         Ok(QueryReader {
             inner: Arc::clone(&self.inner),
             held,
@@ -115,7 +119,7 @@ impl<C> StorageManager<C> {
             schema: None,
             objects: None,
             plan: None,
-            after: 0,
+            after,
             rows: SCAN_ROWS,
             source_done: false,
             pending: None,

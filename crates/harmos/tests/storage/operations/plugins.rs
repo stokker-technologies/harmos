@@ -377,6 +377,7 @@ pub(super) fn contract_scenario() {
                         stream: None,
                         source_start: None,
                         source_end: None,
+                        after: 0,
                     });
                     assert!(matches!(
                         reducer.download::<Query>(cross_kind, super::writes::settings()),

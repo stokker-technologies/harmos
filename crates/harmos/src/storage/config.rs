@@ -42,8 +42,9 @@ pub(super) const RETRY_CAP: Duration = Duration::from_secs(1);
 pub(super) const MAX_FILES: NonZeroUsize = NonZeroUsize::new(256).unwrap();
 pub(super) const FILE_SESSION_TIMEOUT: Duration = Duration::from_secs(60);
 pub(super) const MAX_MUTATIONS: NonZeroUsize = NonZeroUsize::new(1024).unwrap();
-pub(super) const MUTATION_MEMORY_BYTES: NonZeroUsize = NonZeroUsize::new(1024 * 1024).unwrap();
 pub(super) const MUTATION_RETENTION: Duration = Duration::from_secs(300);
+// The Receipt Ledger Takes This Share Of The Read Budget That Checkpoints Copy It Into.
+const MUTATION_BUDGET_SHARE: usize = 8;
 
 // Internal Scan Pages; Response Sizing Belongs To StorageResponseSettings.
 pub(super) const SCAN_ROWS: NonZeroUsize = NonZeroUsize::new(1024).unwrap();
@@ -117,6 +118,12 @@ impl StorageSettings {
 
     pub(super) fn target_batch_bytes(&self) -> usize {
         TARGET_BATCH_BYTES.min(self.max_batch_bytes().get())
+    }
+
+    // Receipt Ledger Bound: A Fixed Share Of The Shared Read Budget.
+    pub(super) fn mutation_bytes(&self) -> NonZeroUsize {
+        NonZeroUsize::new(self.budget.read_memory_bytes.get() / MUTATION_BUDGET_SHARE)
+            .unwrap_or(NonZeroUsize::MIN)
     }
 
     // Scan Page Bytes, Small Enough That Several Active Queries Share The Budget.

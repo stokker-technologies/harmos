@@ -71,6 +71,8 @@ pub struct StreamSelection {
     pub stream: Option<Identifier>,
     pub source_start: Option<SystemTime>,
     pub source_end: Option<SystemTime>,
+    /// Only rows stored after this storage position, as `RecordRead::after`.
+    pub after: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -187,6 +189,7 @@ product!(StreamSelection {
     stream: Optional<Id> => 4,
     source_start: Optional<Time> => 5,
     source_end: Optional<Time> => 6,
+    after: Unsigned => 7,
 });
 product!(SchemaSelection { schema: Optional<Nested<SchemaKey>> => 1 });
 product!(FileSelection { scope: Optional<Id> => 1, item: Optional<Id> => 2 });

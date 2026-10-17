@@ -71,6 +71,7 @@ pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
                                                             as u64,
                                                     ),
                                             ),
+                                            after: 0,
                                         }),
                                         transforms: vec![Transform::Project(Project {
                                             fields: vec![Projection {

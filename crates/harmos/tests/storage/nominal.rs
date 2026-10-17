@@ -36,6 +36,24 @@ use std::time::{Duration, UNIX_EPOCH};
 /* === Implementations === */
 /* === Public Functions === */
 /* === Private Functions === */
+// Stored Position And Ordinal Of Every Projected Row, In Delivery Order.
+async fn positions<C>(storage: &StorageManager<C>, query: Query) -> Vec<(u64, u64)> {
+    let mut reader = storage.query(query).await.unwrap();
+    let mut rows = Vec::new();
+    while let Some(output) = reader.next().await.unwrap() {
+        let QueryOutput::Batch(batch) = output else {
+            continue;
+        };
+        let batch = batch.as_record_batch();
+        let position = column::<arrow_array::UInt64Array>(batch, "position");
+        let ordinal = column::<arrow_array::UInt64Array>(batch, "ordinal");
+        for row in 0..batch.num_rows() {
+            rows.push((position.value(row), ordinal.value(row)));
+        }
+    }
+    rows
+}
+
 async fn read_range<C>(
     storage: &StorageManager<C>,
     file: &FileReference,
@@ -207,6 +225,7 @@ async fn nominal() {
                 stream: None,
                 source_start: None,
                 source_end: None,
+                after: 0,
             }),
             transforms: vec![Transform::Project(Project {
                 fields: vec![
@@ -260,6 +279,39 @@ async fn nominal() {
     }
     drop(reader);
 
+    // Resuming After A Stored Position Yields Exactly The Later Rows, In Order.
+    let positioned = |after: u64| Query {
+        at: durable.clone(),
+        source: Source::Stream(StreamSelection {
+            schema: schema.clone(),
+            scope: None,
+            item: None,
+            stream: None,
+            source_start: None,
+            source_end: None,
+            after,
+        }),
+        transforms: vec![Transform::Project(Project {
+            fields: vec![
+                Projection {
+                    field: "_storage.position".into(),
+                    name: "position".into(),
+                },
+                Projection {
+                    field: "payload.ordinal".into(),
+                    name: "ordinal".into(),
+                },
+            ],
+        })],
+        slice: RowSlice::default(),
+    };
+    let all = positions(&storage, positioned(0)).await;
+    assert_eq!(all.len(), samples.len());
+    let middle = all[all.len() / 2].0;
+    let resumed = positions(&storage, positioned(middle)).await;
+    assert_eq!(resumed, all[all.len() / 2 + 1..]);
+    assert!(resumed.windows(2).all(|pair| pair[0].0 < pair[1].0));
+
     // Query One Half-Open Period And Aggregate Every Selected Sample.
     let selection = StreamSelection {
         schema: schema.clone(),
@@ -268,6 +320,7 @@ async fn nominal() {
         stream: None,
         source_start: Some(UNIX_EPOCH + Duration::from_millis(64)),
         source_end: Some(UNIX_EPOCH + Duration::from_millis(128)),
+        after: 0,
     };
     let mut reader = storage
         .query(Query {

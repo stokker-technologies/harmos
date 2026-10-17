@@ -444,6 +444,7 @@ fn own_contract() {
                                 stream: Some(stream.clone()),
                                 source_start: None,
                                 source_end: None,
+                                after: 0,
                             },
                         };
                         let limits = harmos::operations::StreamSettings {

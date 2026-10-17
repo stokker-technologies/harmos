@@ -64,7 +64,8 @@ pub struct Records {
     pub selection: RecordSelection,
 }
 
-/// Follow stream rows accepted after `after` (from the start when absent).
+/// Follow stream rows accepted after both `after` (from the start when absent)
+/// and `selection.after`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Stream {
     pub after: Option<StorageCursor>,
@@ -128,7 +129,8 @@ impl<C> StorageManager<C> {
         if let Some(after) = after {
             self.inner.primary.history().check(&after.history)?;
         }
-        let after = after.map_or(0, |after| after.sequence);
+        let requested = after.map_or(0, |after| after.sequence);
+        let after = requested.max(T::start(&selection));
         let id = NEXT_FOLLOWER.fetch_add(1, Ordering::Relaxed);
 
         // Register Queue Retention From The Saved Frontier Atomically.
@@ -137,7 +139,7 @@ impl<C> StorageManager<C> {
             super::capacity::admitting(&state, Pool::Read)?;
             let saved = state.status.saved.clone();
             let accepted = state.status.accepted.clone();
-            if after > accepted.sequence {
+            if requested > accepted.sequence {
                 return Err(Error::InvalidInput {
                     field: "storage follow",
                     reason: "start exceeds accepted boundary",
