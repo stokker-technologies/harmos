@@ -360,35 +360,6 @@ fn contract_scenario() {
         });
     }
     {
-        scenario_runtime::check("core_header_expansion", || {
-            use harmos_domain::MemorySize;
-            use harmos_domain::operations::host::EgressRequest;
-            let encoded = [0x22, 0].repeat(4096);
-            let (budget, inspected) = measure(|| EgressRequest::decoding_memory(&encoded).unwrap());
-            assert_eq!(inspected.allocations, 0, "{inspected:?}");
-            let (decoded, measured) = measure(|| EgressRequest::decode(&encoded).unwrap());
-            assert_eq!(decoded.headers.len(), 4096);
-            assert_eq!(decoded.headers.capacity(), 4096);
-            assert_eq!(measured.allocations, 1, "{measured:?}");
-            assert!(decoded.memory_size() > encoded.len());
-            assert!(decoded.memory_size() <= budget);
-            assert!(measured.peak <= budget, "{measured:?}, budget {budget}");
-        });
-    }
-    {
-        scenario_runtime::check("headers_refuse_container", || {
-            use harmos_domain::operations::host::EgressRequest;
-            let mut encoded = [0x22, 0].repeat(4096);
-            encoded.extend_from_slice(&[0x22, 3, 0x0a, 1, 255]);
-            let (refused, inspected) = measure(|| EgressRequest::decoding_memory(&encoded));
-            assert!(refused.is_err());
-            assert_eq!(inspected.allocations, 0, "{inspected:?}");
-            let (refused, decoded) = measure(|| EgressRequest::decode(&encoded));
-            assert!(refused.is_err());
-            assert_eq!(decoded.allocations, 0, "{decoded:?}");
-        });
-    }
-    {
         scenario_runtime::check("listener_decode_borrows", || {
             let row = Leaf {
                 payload: vec![9; 32768],

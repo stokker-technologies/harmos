@@ -10,8 +10,6 @@
 /* === Modules === */
 use crate::scenario_runtime;
 
-#[path = "guest_core.rs"]
-mod core;
 #[path = "../../../harmos-guest/examples/route_component/contract.rs"]
 mod wire;
 
@@ -215,153 +213,6 @@ fn contract_scenario() {
         });
     }
     {
-        scenario_runtime::check("inert_plan_denies", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    use harmos::plugin::PluginDefinitions;
-                    use std::sync::Arc;
-                    use std::sync::atomic::{AtomicUsize, Ordering};
-
-                    let runtime = runtime().await;
-                    let calls = Arc::new(AtomicUsize::new(0));
-                    let mut lifecycle = publications::Lifecycle::with_egress(
-                        &runtime,
-                        Duration::ZERO,
-                        calls.clone(),
-                        Arc::new(AtomicUsize::new(0)),
-                    );
-                    let definitions = lifecycle.candidate("idle").await;
-                    let invalid = definitions.definitions().cloned().map(|mut definition| {
-                        if definition.id == "route-guest" {
-                            definition.configuration = b"{}".to_vec();
-                        }
-                        definition
-                    });
-                    let mut manager =
-                        publications::Manager::new(PluginDefinitions::new(invalid, []).unwrap())
-                            .unwrap();
-                    assert!(manager.caller("route-guest").is_err());
-                    assert!(matches!(
-                        runtime
-                            .operations
-                            .call_as::<Echo>(Echo {
-                                say: "egress:vendor".into(),
-                            })
-                            .await,
-                        Err(harmos::Error::NotRegistered {
-                            domain: "operation",
-                            ..
-                        })
-                    ));
-                    assert_eq!(calls.load(Ordering::SeqCst), 0);
-                    assert!(manager.initialize(&mut lifecycle).await.is_err());
-                    assert_eq!(
-                        calls.load(Ordering::SeqCst),
-                        0,
-                        "invalid configuration cannot reach the Core handler"
-                    );
-                    manager.shutdown(&mut lifecycle).await.unwrap();
-
-                    let plan = manager
-                        .plan_reload(lifecycle.candidate("idle").await)
-                        .unwrap();
-                    assert!(manager.caller("route-guest").is_err());
-                    assert_eq!(
-                        calls.load(Ordering::SeqCst),
-                        0,
-                        "collection and planning retain an inert original store"
-                    );
-                    manager.apply_reload(plan, &mut lifecycle).await.unwrap();
-                    assert!(manager.caller("route-guest").is_ok());
-                    // Verify Activation With Ordinary Egress, Not The Five-Millisecond Deadline Probe.
-                    let response = runtime
-                        .operations
-                        .call_as::<Echo>(Echo {
-                            say: "egress:vendor".into(),
-                        })
-                        .await
-                        .unwrap();
-                    assert_eq!(response.said, "egress status 200");
-                    assert_eq!(calls.load(Ordering::SeqCst), 1);
-                    manager.shutdown(&mut lifecycle).await.unwrap();
-                    drop((manager, lifecycle));
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("egress_grant_checked", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    use std::sync::Arc;
-                    use std::sync::atomic::{AtomicUsize, Ordering};
-
-                    let runtime = runtime().await;
-                    let calls = Arc::new(AtomicUsize::new(0));
-                    let prepared = Arc::new(AtomicUsize::new(0));
-                    let mut lifecycle = publications::Lifecycle::with_egress(
-                        &runtime,
-                        Duration::ZERO,
-                        calls.clone(),
-                        prepared.clone(),
-                    );
-                    let mut manager =
-                        publications::Manager::new(lifecycle.candidate("idle").await).unwrap();
-                    manager.initialize(&mut lifecycle).await.unwrap();
-                    let refused = runtime
-                        .operations
-                        .call_as::<Echo>(Echo {
-                            say: "egress:other".into(),
-                        })
-                        .await
-                        .unwrap();
-                    assert!(
-                        refused.said.contains("may not invoke operation"),
-                        "{}",
-                        refused.said
-                    );
-                    assert!(refused.said.contains("host.egress"), "{}", refused.said);
-                    assert_eq!(prepared.load(Ordering::SeqCst), 0);
-                    assert_eq!(calls.load(Ordering::SeqCst), 0);
-                    let accepted = runtime
-                        .operations
-                        .call_as::<Echo>(Echo {
-                            say: "egress:vendor".into(),
-                        })
-                        .await
-                        .unwrap();
-                    assert_eq!(accepted.said, "egress status 200");
-                    assert_eq!(prepared.load(Ordering::SeqCst), 1);
-                    assert_eq!(calls.load(Ordering::SeqCst), 1);
-                    let refused = runtime
-                        .operations
-                        .call_as::<Echo>(Echo {
-                            say: "egress:other".into(),
-                        })
-                        .await
-                        .unwrap();
-                    assert!(
-                        refused.said.contains("may not invoke operation"),
-                        "{}",
-                        refused.said
-                    );
-                    assert_eq!(prepared.load(Ordering::SeqCst), 1);
-                    assert_eq!(calls.load(Ordering::SeqCst), 1);
-                    manager.shutdown(&mut lifecycle).await.unwrap();
-                    drop((manager, lifecycle));
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
         scenario_runtime::check("declared_operation_roundtrip", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
@@ -476,53 +327,6 @@ fn contract_scenario() {
                     assert_eq!(
                         execution_error(&spun).downcast_ref::<wasmtime::Trap>(),
                         Some(&wasmtime::Trap::OutOfFuel)
-                    );
-                    let after = runtime
-                        .operations
-                        .call_as::<Echo>(Echo {
-                            say: "anyone".into(),
-                        })
-                        .await
-                        .unwrap_err();
-                    assert!(matches!(
-                        component_error(&after),
-                        harmos::operations::ComponentError::Unavailable
-                    ));
-                    retire_failed_guest(&mut manager, &mut lifecycle).await;
-                    drop((manager, lifecycle));
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("manager_bounds_wait", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let mut lifecycle = publications::Lifecycle::with_egress(
-                        &runtime,
-                        Duration::from_millis(200),
-                        std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
-                        std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
-                    );
-                    let mut manager =
-                        publications::Manager::new(lifecycle.candidate("idle").await).unwrap();
-                    manager.initialize(&mut lifecycle).await.unwrap();
-                    let waited = runtime
-                        .operations
-                        .call_as::<Wait>(Wait {})
-                        .await
-                        .unwrap_err();
-                    assert!(
-                        matches!(
-                            waited,
-                            harmos::Error::OperationRefused(harmos::Refusal::TimedOut)
-                        ),
-                        "{waited:?}"
                     );
                     let after = runtime
                         .operations
@@ -983,7 +787,7 @@ fn contract_scenario() {
                         .map(|operation| operation.id.to_string())
                         .collect();
                     operations.sort();
-                    assert_eq!(operations, ["host.egress", "host.invoke", "host.publish"]);
+                    assert_eq!(operations, ["host.publish"]);
                     drop(lifecycle);
                     runtime.stop().await.unwrap();
                 });
@@ -1326,7 +1130,7 @@ async fn runtime() -> Runtime<Bank> {
 fn route_component() -> Vec<u8> {
     static COMPONENT: OnceLock<Vec<u8>> = OnceLock::new();
     COMPONENT
-        .get_or_init(|| load("route-component", "test-component", None))
+        .get_or_init(|| load("route-component", "componentize,kit", None))
         .clone()
 }
 

@@ -15,7 +15,6 @@ mod contract;
 
 /* === Imports === */
 // Standard Library Imports
-use std::borrow::Cow;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 // Third Party Imports
@@ -26,10 +25,10 @@ use harmos_domain::StreamSpec;
 use harmos_domain::catalog::Node;
 use harmos_domain::inventory::{contracts, listeners, observers, publications};
 use harmos_domain::operations::{
-    Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, ServingError,
-    WireDeclaration, WireTable, host, lifecycle,
+    Operation, OperationPolicy, RestartPolicy, RetryPolicy, ServingError, WireDeclaration,
+    WireTable, lifecycle,
 };
-use harmos_domain::plugin::{Declared, Grant, Plugin, Requirement};
+use harmos_domain::plugin::{Declared, Plugin, Requirement};
 use harmos_domain::schema::Described;
 use harmos_guest::Host;
 use harmos_guest::{Context, Message, OperationRefusal, PublishError};
@@ -50,12 +49,7 @@ const PROVIDED: &[Node<WireDeclaration>] = &[
 ];
 const REQUIRED: &[Node<Requirement>] = &[
     Node::Leaf(Requirement::of::<ProviderEcho>(&[])),
-    Node::Leaf(Requirement::of::<host::Invoke>(&[])),
     Node::Leaf(Requirement::of::<harmos_domain::operations::streams::Publish>(&[])),
-    Node::Leaf(Requirement::of::<host::Egress>(&[Grant {
-        operation: Cow::Borrowed(host::Egress::ID),
-        scope: Some(Cow::Borrowed("vendor")),
-    }])),
 ];
 const STREAMS: &[publications::Entry] = &[publications::Entry {
     id: Echoed::ID,
@@ -337,46 +331,6 @@ impl Operation for Echoing {
                     .map(harmos_guest::operations::Response::into_owned);
             }
 
-            if let Some(value) = request.say.strip_prefix("invoke:") {
-                let mut fields = value.splitn(3, ':');
-                let grant = fields.next().unwrap_or_default();
-                let key = fields.next().unwrap_or_default();
-                let payload = fields.next().unwrap_or_default();
-                let answered = context
-                    .call_as::<host::Invoke>(host::InvokeRequest {
-                        grant: grant.into(),
-                        key: key.into(),
-                        payload: payload.as_bytes().to_vec(),
-                    })
-                    .await;
-                return Ok(Echoed {
-                    said: match answered {
-                        Ok(receipt) => {
-                            format!("receipt:{}:{}", receipt.position, receipt.correlation)
-                        }
-                        Err(error) => error.to_string(),
-                    },
-                });
-            }
-
-            if let Some(name) = request.say.strip_prefix("egress:") {
-                let answered = context
-                    .call_as::<host::Egress>(host::EgressRequest {
-                        name: name.into(),
-                        method: "get".into(),
-                        path: "/reading".into(),
-                        headers: vec![],
-                        body: vec![],
-                    })
-                    .await;
-                return Ok(Echoed {
-                    said: match answered {
-                        Ok(response) => format!("egress status {}", response.status),
-                        Err(error) => error.to_string(),
-                    },
-                });
-            }
-
             if let Some(value) = request.say.strip_prefix("publish:") {
                 progress(context, value)
                     .await
@@ -511,16 +465,10 @@ impl Operation for Waiting {
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_guest::operations::Response<Echoed>, OperationRefusal> {
         let result: ::core::result::Result<Echoed, Self::Error> = async move {
-            // The host answers this slowly. Nothing here burns fuel while
-            // it waits, so the bound this call blew is wall-clock alone.
+            // The host may answer this slowly. Nothing here burns fuel while
+            // it waits, so a bound this call blows is wall-clock alone.
             let _ = context
-                .call_as::<host::Egress>(host::EgressRequest {
-                    name: "vendor".into(),
-                    method: "get".into(),
-                    path: "/slow".into(),
-                    headers: vec![],
-                    body: vec![],
-                })
+                .call_as::<ProviderEcho>(Echo { say: "wait".into() })
                 .await;
             // Resuming is where the epoch check the guest ran past is
             // reached: a suspended guest executes no instrumented code.

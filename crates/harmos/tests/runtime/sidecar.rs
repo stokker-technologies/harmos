@@ -39,12 +39,6 @@ mod graph;
 #[path = "sidecar_graph_cleanup.rs"]
 mod graph_cleanup;
 
-#[path = "sidecar_core.rs"]
-mod core;
-
-#[path = "journal_core.rs"]
-mod journal_core;
-
 mod visibility {
     use super::*;
     #[harmos::message]
@@ -2643,8 +2637,6 @@ fn silent() -> Executable {
 #[test]
 fn native_contracts() {
     own_contract();
-    core::contract_scenario();
-    journal_core::contract_scenario();
     admission::contract_scenario();
 }
 

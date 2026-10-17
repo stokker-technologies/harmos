@@ -8,9 +8,6 @@
  */
 
 /* === Modules === */
-#[path = "../support/core_egress.rs"]
-#[cfg(all(feature = "plugin-sidecar", feature = "plugin-guest"))]
-mod core_egress;
 #[path = "../../../harmos-guest/examples/operation_component/contract.rs"]
 #[cfg(all(feature = "plugin-sidecar", feature = "plugin-guest"))]
 mod operation_component_contract;
@@ -19,10 +16,6 @@ mod operation_component_contract;
 mod process_core_contract;
 #[path = "../../../../tests/support/scenarios.rs"]
 mod scenario_runtime;
-
-#[path = "../support/core_journal.rs"]
-#[cfg(all(feature = "plugin-sidecar", feature = "plugin-guest"))]
-mod core_journal;
 
 #[path = "../support/mod.rs"]
 mod support;

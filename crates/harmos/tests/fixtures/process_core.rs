@@ -23,8 +23,7 @@ use std::sync::Arc;
 
 // Local Imports
 use contract::{Inspect, POLICY, Queries};
-use harmos::operations::Host as _;
-use harmos::operations::{Operation, OperationPolicy, WireTable, host};
+use harmos::operations::{Operation, OperationPolicy, WireTable};
 use harmos::sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
@@ -70,7 +69,7 @@ impl harmos::operations::lifecycle::Policy for Process {
 #[harmos::plugin(
     id = "process-core",
     provides = Queries,
-    requires(host::Egress: scope("vendor"))
+    requires = ()
 )]
 impl harmos::Plugin for Process {
     type Context = Supervisor;
@@ -141,7 +140,7 @@ impl Operation for Inspecting {
     }
     async fn run<'ctx>(
         &mut self,
-        context: Self::Context<'ctx>,
+        _context: Self::Context<'ctx>,
         name: &mut String,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<String>, Refusal> {
@@ -149,61 +148,7 @@ impl Operation for Inspecting {
             if name == "crash" {
                 std::process::exit(75);
             }
-            let selected = if name.starts_with("context") {
-                let parent = context
-                    .context()
-                    .value::<contract::Stage>()
-                    .map_err(Refusal::of)?
-                    .unwrap();
-                assert_eq!(parent.id, "parent");
-                context
-                    .with_value(contract::Stage { id: "child".into() })
-                    .map_err(Refusal::of)?
-            } else {
-                context.clone()
-            };
-            let answered = selected
-                .call_as::<host::Egress>(host::EgressRequest {
-                    name: if name == "context-denied" {
-                        "other".into()
-                    } else if name.starts_with("context") {
-                        "vendor".into()
-                    } else {
-                        name.clone()
-                    },
-                    method: "get".into(),
-                    path: if name == "context-wait" {
-                        "/context-wait".into()
-                    } else if name.starts_with("context") {
-                        "/context".into()
-                    } else {
-                        "/reading".into()
-                    },
-                    headers: vec![],
-                    body: vec![],
-                })
-                .await;
-            Ok(match answered {
-                Ok(response) if name == "context" => {
-                    let parent = context
-                        .context()
-                        .value::<contract::Stage>()
-                        .map_err(Refusal::of)?
-                        .unwrap();
-                    let child =
-                        String::from_utf8(response.into_owned().body).map_err(Refusal::of)?;
-                    format!("{}:{child}", parent.id)
-                }
-                Ok(response) => format!("egress status {}", response.status),
-                // Each Layer Prints Its Own Line; The Cause Is Its Source
-                Err(error) => std::iter::successors(
-                    Some(&error as &(dyn std::error::Error + 'static)),
-                    |error| error.source(),
-                )
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-                .join(": "),
-            })
+            Ok(name.clone())
         }
         .await;
         result.map(::core::convert::Into::into)

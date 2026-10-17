@@ -51,8 +51,7 @@ CATALOG_CASES = (
     "duplicate",
 )
 GUESTS = (
-    ("test-component", "test-component", None),
-    ("route-component", "test-component", None),
+    ("route-component", "componentize,kit", None),
     ("legacy-component", "componentize,kit", None),
     ("plugin-component", "componentize,kit", None),
     ("operation-component", "componentize,kit,streaming", None),

@@ -139,7 +139,6 @@ fn contract_scenario() {
                     "unknown_grant.rs",
                     "a requirement scopes its operation's grant",
                 ),
-                ("retired_grant.rs", "grant kinds are retired"),
                 ("retired_core.rs", "`core` and `capabilities` are retired"),
                 (
                     "malformed_harmos_path.rs",

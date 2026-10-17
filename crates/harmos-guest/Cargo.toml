@@ -13,7 +13,7 @@ version = { workspace = true }
 [[bin]]
 name = "harmos-component-fixture"
 path = "tests/fixtures/componentizer.rs"
-required-features = ["test-component"]
+required-features = ["componentize"]
 test = false
 bench = false
 
@@ -32,7 +32,6 @@ streaming = ["harmos-domain/streaming", "wit-bindgen?/inter-task-wakeup"]
 # custom sections, and a native host that only does that has no world to bind.
 kit = ["dep:wit-bindgen"]
 componentize = ["dep:wit-component"]
-test-component = ["componentize", "kit"]
 
 # === Dependencies ===
 
@@ -158,12 +157,6 @@ required-features = ["componentize"]
 
 # === Example Targets ===
 
-[[example]]
-name = "test-component"
-path = "examples/test_component.rs"
-crate-type = ["cdylib"]
-required-features = ["test-component"]
-
 # The routed guest the host harness drives. A second binary rather than a mode
 # of the routeless one, so that "a guest serving routes presents the same world
 # as one serving none" is a claim about two components.
@@ -171,7 +164,7 @@ required-features = ["test-component"]
 name = "route-component"
 path = "examples/route_component.rs"
 crate-type = ["cdylib"]
-required-features = ["test-component"]
+required-features = ["componentize", "kit"]
 
 [[example]]
 name = "catalog-component"

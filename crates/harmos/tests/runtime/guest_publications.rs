@@ -18,12 +18,10 @@ use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::atomic::AtomicUsize;
 // Third Party Imports
 use futures_core::Stream;
 // Local Imports
 use super::{Bank, Duration, Host, Message, Runtime, route_component, runtime, wire};
-use crate::core_journal::OriginalJournal;
 use harmos::operations::{
     Context, EncodedInvocation, Operation, OperationDeclaration, PluginRegistration,
     PluginSdkRegistration, WireDeclaration,
@@ -68,7 +66,6 @@ pub(super) struct Resources {
 }
 
 pub(super) struct Lifecycle<C = GuestOperations, L = super::GuestLanes> {
-    pub(super) state: Option<Arc<OriginalJournal>>,
     loader: Host<Bank>,
     operations: harmos::operations::OperationManager,
     prepared: Option<harmos::guest::Registered<Bank>>,
@@ -354,25 +351,7 @@ impl Resources {
 
 impl Lifecycle {
     pub(super) fn new(runtime: &Runtime<Bank>) -> Self {
-        Self::with_egress(
-            runtime,
-            Duration::ZERO,
-            Arc::new(AtomicUsize::new(0)),
-            Arc::new(AtomicUsize::new(0)),
-        )
-    }
-    pub(super) fn with_egress(
-        runtime: &Runtime<Bank>,
-        answering: Duration,
-        egress_calls: Arc<AtomicUsize>,
-        egress_prepared: Arc<AtomicUsize>,
-    ) -> Self {
         let domain = Arc::new(Domain);
-        let egress = Arc::new(crate::core_egress::Endpoint {
-            answering,
-            calls: egress_calls,
-            prepared: egress_prepared,
-        });
         runtime
             .operations
             .register_wire_operation::<Publish>(
@@ -381,26 +360,8 @@ impl Lifecycle {
                 domain.clone(),
             )
             .unwrap();
-        runtime
-            .operations
-            .register_wire_operation::<crate::core_egress::Egress>(
-                "publication-core",
-                super::GuestLanes::Open,
-                egress,
-            )
-            .unwrap();
-        let journal = Arc::new(OriginalJournal::new(runtime.state.clone()));
-        runtime
-            .operations
-            .register_wire_operation::<crate::core_journal::Invoke>(
-                "bank-journal",
-                super::GuestLanes::Open,
-                journal.clone(),
-            )
-            .unwrap();
         let mut lifecycle =
             Self::for_component(runtime, route_component(), super::GuestLanes::Open);
-        lifecycle.state = Some(journal);
         let contract = WireDeclaration::of::<wire::ProviderEcho>()
             .contract()
             .unwrap();
@@ -426,7 +387,6 @@ impl Lifecycle {
 impl<C, L> Lifecycle<C, L> {
     pub(super) fn for_component(runtime: &Runtime<Bank>, bytes: Vec<u8>, lane: L) -> Self {
         Self {
-            state: None,
             loader: Host::new(runtime).unwrap(),
             operations: runtime.operations.clone(),
             prepared: None,
