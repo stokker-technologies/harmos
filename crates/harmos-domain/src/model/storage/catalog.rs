@@ -18,14 +18,16 @@ use std::num::{NonZeroU32, NonZeroUsize};
 // Third Party Imports
 // Local Imports
 use crate::catalog::{Catalog, Contains, Member, Projection, Visitor};
-use crate::{BackendFailure, Error, Identified, Identifier, MemorySize, Result, schema};
-use harmos_domain::model::storage::{ObjectKey, ObjectRetention, ObjectValue, SchemaKey};
+use crate::model::storage::{
+    ObjectRetention, ObjectValue, SchemaKey, check_length, invalid, object_key,
+};
+use crate::{Error, Identified, Identifier, MemorySize, Result, schema};
 
 /* === Constants === */
 const MAX_DEFINITIONS: usize = 4096;
 const MAX_IDENTITY_BYTES: usize = 1024;
 
-pub(crate) const LOOKUP_MEMORY_BYTES: usize = MAX_IDENTITY_BYTES * 2;
+pub const LOOKUP_MEMORY_BYTES: usize = MAX_IDENTITY_BYTES * 2;
 const VALIDATION_BYTES: usize = 8 * 1024 * 1024;
 
 /* === Macros === */
@@ -110,7 +112,7 @@ pub trait ObjectCatalog: Catalog<ObjectDefinitions> + Send + Sync + 'static {
             if key.id.as_str().len() > MAX_IDENTITY_BYTES {
                 return Err(invalid("object schema identity exceeds its byte limit"));
             }
-            let mut settings = harmos_domain::config::SchemaSettings::default();
+            let mut settings = crate::config::SchemaSettings::default();
             settings.preparation_bytes = NonZeroUsize::new(
                 settings
                     .preparation_bytes
@@ -201,15 +203,12 @@ impl ObjectDefinition {
         self.declaration
     }
 
-    pub fn graph(
-        &self,
-        settings: &harmos_domain::config::SchemaSettings,
-    ) -> Result<schema::graph::Schema> {
+    pub fn graph(&self, settings: &crate::config::SchemaSettings) -> Result<schema::graph::Schema> {
         schema::graph::Schema::from_declaration(self.declaration, settings)
             .map_err(|_| invalid("invalid object schema or preparation allowance"))
     }
 
-    pub(crate) fn validate_admitted(
+    pub fn validate_admitted(
         &self,
         value: &ObjectValue,
         payload: NonZeroUsize,
@@ -250,25 +249,8 @@ impl fmt::Write for KeyMatch<'_> {
 }
 
 /* === Public Functions === */
-pub(crate) fn invalid(reason: &'static str) -> Error {
-    harmos_domain::model::storage::invalid(reason).into()
-}
 
-pub(crate) fn check_length(length: usize, max_payload_bytes: NonZeroUsize) -> Result<()> {
-    Ok(harmos_domain::model::storage::check_length(
-        length,
-        max_payload_bytes,
-    )?)
-}
-
-pub(crate) fn object_key<K: fmt::Display + ?Sized>(
-    key: &K,
-    limit: NonZeroUsize,
-) -> Result<ObjectKey> {
-    Ok(harmos_domain::model::storage::object_key(key, limit)?)
-}
-
-pub(crate) fn definition<C: ObjectCatalog>(key: &SchemaKey) -> Result<ObjectDefinition> {
+pub fn definition<C: ObjectCatalog>(key: &SchemaKey) -> Result<ObjectDefinition> {
     let mut found = None;
     C::definitions().try_for_each(|entry| {
         if found.is_none() && entry.schema()? == *key {
@@ -279,27 +261,26 @@ pub(crate) fn definition<C: ObjectCatalog>(key: &SchemaKey) -> Result<ObjectDefi
     found.ok_or_else(|| invalid("object schema is absent from the catalog"))
 }
 
-pub(crate) fn object_schema<T: StoredObject>() -> Result<SchemaKey> {
+pub fn object_schema<T: StoredObject>() -> Result<SchemaKey> {
     let (id, version) = T::definition();
     if id.as_str().len() > MAX_IDENTITY_BYTES {
         return Err(invalid("object schema identity exceeds its byte limit"));
     }
     Ok(SchemaKey {
-        payload_encoding: crate::storage::PayloadEncoding::PostcardV1,
+        payload_encoding: crate::model::storage::PayloadEncoding::PostcardV1,
         id: Identifier::new(id.as_str()).map_err(|_| invalid("invalid object schema identity"))?,
         version: NonZeroU32::new(version).ok_or_else(|| invalid("zero object schema version"))?,
     })
 }
 
-pub(crate) fn decode_admitted<T: StoredObject>(
-    value: &ObjectValue,
-    schema: &SchemaKey,
-) -> Result<T> {
+pub fn decode_admitted<T: StoredObject>(value: &ObjectValue, schema: &SchemaKey) -> Result<T> {
     if &value.schema != schema {
         return Err(invalid("object schema does not match the requested type"));
     }
-    let decoded = T::decode(&value.payload)
-        .map_err(|error| Error::backend("decode object", BackendFailure::Corrupt, error))?;
+    let decoded = T::decode(&value.payload).map_err(|error| Error::Corrupt {
+        operation: "decode object",
+        source: error,
+    })?;
     let mut key = KeyMatch {
         expected: value.item.as_str(),
         offset: 0,
@@ -335,8 +316,10 @@ fn verify_admitted<T: StoredObject>(
     if std::mem::size_of::<T>() > native {
         return Err(verification_limit());
     }
-    let required = T::decoding_memory(&value.payload)
-        .map_err(|error| Error::backend("preflight object", BackendFailure::Corrupt, error))?;
+    let required = T::decoding_memory(&value.payload).map_err(|error| Error::Corrupt {
+        operation: "preflight object",
+        source: error,
+    })?;
     if required > native {
         return Err(verification_limit());
     }

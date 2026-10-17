@@ -87,7 +87,8 @@ pub use config::{ConfigError, decode_config, encode_config, validate_config};
 pub use error::{Error, Result};
 pub use failure::Failure;
 pub use identity::{
-    Requirement, artifact_subset, qualified, qualified_len, qualify, stream_subset,
+    DefinitionId, Identified, Requirement, artifact_subset, qualified, qualified_len, qualify,
+    stream_subset,
 };
 pub use inventory::StreamDeclaration;
 pub use inventory::publications::StreamSpec;

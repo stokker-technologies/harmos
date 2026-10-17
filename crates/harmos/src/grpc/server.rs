@@ -27,7 +27,7 @@ use tonic::{Request, Response, Status, Streaming, body::Body, codegen::http};
 // Local Imports
 use super::{Codec, Event, InputEnvelope, InputError};
 use crate::operations::{OperationDeclaration, OperationInstance, StreamItem};
-use crate::{Error, Protobuf, Refusal, operations::OperationManager};
+use crate::{Error, Refusal, operations::OperationManager};
 
 /* === Constants === */
 

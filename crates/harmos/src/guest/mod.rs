@@ -29,7 +29,7 @@ pub use harmos_guest::{
     Context, OperationRefusal, PublishError, Publisher, UNKNOWN, UNREADABLE, WIT, export_plugin,
 };
 
-pub use collection::registrations;
+pub use collection::{registrations, validate};
 
 pub use host::{Error, Host, Loaded, Registered, Serving};
 

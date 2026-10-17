@@ -51,7 +51,7 @@ pub(super) const ENTRY_OVERHEAD: usize = 1024;
 
 /* === Structs === */
 #[derive(Clone, Debug)]
-pub struct StorageStatus {
+pub struct StorageMetrics {
     pub accepted: StorageCursor,
     pub saved: StorageCursor,
     pub recovery_accepted: RecoveryPosition,
@@ -83,8 +83,11 @@ pub(super) struct Inner {
     pub(super) primary: Arc<dyn StorageBackend>,
     pub(super) recovery: Arc<dyn StateBackend>,
     pub(super) has_objects: bool,
-    pub(super) object_definition:
-        fn(&SchemaKey) -> Result<crate::storage::catalog::ObjectDefinition>,
+    pub(super) object_definition: fn(
+        &SchemaKey,
+    ) -> harmos_domain::Result<
+        harmos_domain::model::storage::catalog::ObjectDefinition,
+    >,
     pub(super) state: Mutex<State>,
     pub(super) changed: watch::Sender<u64>,
     pub(super) lifecycle: tokio::sync::RwLock<Lifecycle>,
@@ -115,7 +118,7 @@ pub(super) struct State {
     pub(super) reserved_batches: usize,
     pub(super) journal_limit: usize,
     pub(super) journal_saved: Option<watch::Sender<crate::state::Position>>,
-    pub(super) status: StorageStatus,
+    pub(super) status: StorageMetrics,
     pub(super) ready: bool,
     service_owner: Option<Arc<()>>,
     pub(super) next: u64,
@@ -263,7 +266,7 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
                 primary,
                 recovery: state_backend,
                 has_objects: C::definition_count() != 0,
-                object_definition: crate::storage::catalog::definition::<C>,
+                object_definition: harmos_domain::model::storage::catalog::definition::<C>,
                 state: Mutex::new(State {
                     prefer_measurement: false,
                     journal_required_data: position.clone(),
@@ -271,7 +274,7 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
                     reserved_batches: 0,
                     journal_limit: 0,
                     journal_saved: None,
-                    status: StorageStatus {
+                    status: StorageMetrics {
                         accepted: position.clone(),
                         saved: position,
                         recovery_accepted: recovery_position.clone(),
@@ -443,7 +446,7 @@ impl<C> StorageManager<C> {
         self.inner.state.lock().unwrap().status.saved.clone()
     }
 
-    pub fn status(&self) -> StorageStatus {
+    pub fn status(&self) -> StorageMetrics {
         self.inner.state.lock().unwrap().status.clone()
     }
 

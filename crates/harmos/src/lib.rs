@@ -14,7 +14,6 @@ pub mod config;
 mod error;
 #[cfg(feature = "grpc")]
 pub mod grpc;
-mod identity;
 #[cfg(all(feature = "packaging", not(target_arch = "wasm32")))]
 pub mod packaging;
 pub mod prelude;
@@ -108,7 +107,7 @@ pub use application::Application;
 pub use error::{BackendFailure, Error};
 #[cfg(feature = "bindings-python")]
 pub use harmos_domain::bindings;
-pub use identity::{DefinitionId, Identified};
+pub use harmos_domain::{DefinitionId, Identified};
 pub use operations::refusal::Refusal;
 pub use runtime::{Builder, Runtime};
 

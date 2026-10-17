@@ -103,16 +103,6 @@ impl<T: Record + DeserializeOwned> RecordCatalog for T {
     }
 }
 
-impl CatalogCodec for () {
-    fn identify(&self) -> (DefinitionId, u32) {
-        (DefinitionId::new("harmos:unit"), 1)
-    }
-
-    fn encode<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        self.serialize(serializer)
-    }
-}
-
 impl RecordCatalog for () {
     fn restore(
         _: &DefinitionId,

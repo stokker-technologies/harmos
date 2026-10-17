@@ -233,6 +233,9 @@ impl<E> From<harmos_domain::Error> for Error<E> {
                 Self::ResourceExhausted { resource }
             }
             harmos_domain::Error::DifferentHistory => Self::DifferentHistory,
+            harmos_domain::Error::Corrupt { operation, source } => {
+                Self::backend(operation, BackendFailure::Corrupt, source)
+            }
             source => Self::OperationDeclaration { source },
         }
     }

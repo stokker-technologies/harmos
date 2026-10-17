@@ -21,10 +21,10 @@ use sha2::{Digest, Sha256};
 
 // Local Imports
 use super::admissions::Mutation;
+use super::objects::invalid;
 use super::{ObjectReceipt, ObjectValue, StorageManager};
 use crate::Result;
 use crate::storage::MutationId;
-use crate::storage::catalog::invalid;
 
 /* === Constants === */
 

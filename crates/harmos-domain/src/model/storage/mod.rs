@@ -12,6 +12,7 @@
 
 /* === Modules === */
 pub mod arrow;
+pub mod catalog;
 pub mod codec;
 pub mod data;
 pub mod files;
@@ -26,6 +27,7 @@ pub mod writes;
 
 /* === Re-Exports === */
 pub use arrow::ArrowIpc;
+pub use catalog::{ObjectCatalog, ObjectDefinition, ObjectDefinitions, StoredObject};
 pub use data::{RecordInput, RecordWrite, StoredRecord, StoredRow, StreamInput, StreamWrite};
 pub use files::{
     ByteRange, FileBatch, FileCompletion, FileMetadata, FilePhase, FileProgress, FileReference,
