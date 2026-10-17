@@ -326,62 +326,6 @@ pub(super) fn contract_scenario() {
         });
     }
     {
-        scenario_runtime::check("operation_retries_file", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    use harmos::storage::operations::Save;
-                    let f = Fixture::new(config()).await;
-                    harmos::storage::operations::register(
-                        &f.runtime.operations,
-                        "storage",
-                        operations::Lanes::Open,
-                        Arc::new(f.storage.clone()),
-                    )
-                    .unwrap();
-                    let mut producer = f
-                        .storage
-                        .produce_file(metadata("save-retry"))
-                        .await
-                        .unwrap();
-                    producer.write_all(b"prefix").await.unwrap();
-                    f.data
-                        .control
-                        .block_checkpoint
-                        .store(true, Ordering::SeqCst);
-                    f.data
-                        .control
-                        .checkpoint_failures
-                        .store(3, Ordering::SeqCst);
-                    let request =
-                        super::super::operations::save_request(&f, f.storage.cursor_accepted());
-                    let save = f.runtime.operations.call_as::<Save>(request.clone());
-                    let append = async {
-                        f.data.control.checkpoint_entered.notified().await;
-                        f.data
-                            .control
-                            .block_checkpoint
-                            .store(false, Ordering::SeqCst);
-                        f.data.control.checkpoint_release.notify_one();
-                    };
-                    let (result, ()) = tokio::join!(save, append);
-                    result.unwrap();
-                    producer.write_all(b"later").await.unwrap();
-                    f.runtime.operations.call_as::<Save>(request).await.unwrap();
-                    assert_eq!(f.data.control.checkpoint_failures.load(Ordering::SeqCst), 0);
-                    assert_eq!(
-                        f.data.saved_productions.lock().unwrap()["save-retry"].1,
-                        b"prefix"
-                    );
-                    f.finish().await;
-                });
-        });
-    }
-    {
         scenario_runtime::check("recovery_releases_read", || {
             let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
             scenario_executor
@@ -505,52 +449,6 @@ pub(super) fn contract_scenario() {
                             .is_err()
                     );
                     assert!(!restored.data.records.lock().unwrap().is_empty());
-                    restored.finish().await;
-                    f.finish().await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("save_replays_restart", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let f = Fixture::new(config()).await;
-                    let mut producer = f.storage.produce_file(metadata("lost-save")).await.unwrap();
-                    producer.write_all(b"saved-prefix").await.unwrap();
-                    let request =
-                        super::super::operations::save_request(&f, f.storage.cursor_accepted());
-                    f.data.control.receipt_failures.store(1, Ordering::SeqCst);
-                    assert!(
-                        f.storage
-                            .save_once(&request.mutation, &request.at)
-                            .await
-                            .is_err()
-                    );
-                    assert!(
-                        f.data
-                            .mutation_receipts
-                            .lock()
-                            .unwrap()
-                            .contains_key(&request.mutation)
-                    );
-                    let restored = restart(&f).await;
-                    assert_eq!(
-                        restored
-                            .storage
-                            .save_once(&request.mutation, &request.at)
-                            .await
-                            .unwrap(),
-                        request.at
-                    );
-                    assert_eq!(
-                        restored.data.saved_productions.lock().unwrap()["lost-save"].1,
-                        b"saved-prefix"
-                    );
-                    assert_eq!(restored.storage.status().read_bytes, 0);
                     restored.finish().await;
                     f.finish().await;
                 });

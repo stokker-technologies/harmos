@@ -33,7 +33,7 @@ use harmos::storage::query::{
 use prost::Message as _;
 
 // Local Imports
-use harmos::storage::operations::{Followed, Save, SaveRequest};
+use harmos::storage::operations::Followed;
 use harmos::storage::{
     FileMetadata, FileReference, StorageBackends, StorageCursor, StorageManager,
 };
@@ -348,25 +348,8 @@ async fn storage_uses_data() {
         let mut client = StorageClient::connect(format!("http://{address}"))
             .await
             .unwrap();
-        let save = SaveRequest {
-            mutation: harmos::storage::MutationId {
-                window: storage.mutation_window().unwrap().id,
-                key: Identifier::new("initial-save").unwrap(),
-            },
-            at: through.clone(),
-        };
-        let encoded = harmos::Protobuf::encode_to_vec(&save);
-        let request = storage_messages::save::Row1::decode(encoded.as_slice()).unwrap();
-        let saved = client
-            .save(request)
-            .await
-            .unwrap()
-            .into_inner()
-            .encode_to_vec();
-        let saved = <StorageCursor as harmos::Protobuf>::decode(&saved).unwrap();
+        let saved = storage.flush_until(&through).await.unwrap();
         assert_eq!(saved, storage.cursor_saved());
-        let local = runtime.operations.call_as::<Save>(save).await.unwrap();
-        assert_eq!(*local, saved);
         let files = query_batches(
             &mut client,
             Query {

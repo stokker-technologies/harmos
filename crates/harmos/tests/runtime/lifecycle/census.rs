@@ -1908,15 +1908,10 @@ fn contract_scenario() {
 
             let manager =
                 format!("{}/src/storage/manager.rs", env!("CARGO_MANIFEST_DIR")).replace('\\', "/");
-            // Retry-Protected Save Is Another Method On The Same StorageManager,
-            // Keeping Its Snapshot And Durable Outcome In The Original Worker.
-            let saving =
-                format!("{}/src/storage/saving.rs", env!("CARGO_MANIFEST_DIR")).replace('\\', "/");
             let expected = vec![
                 format!("{manager}: flush"),
                 format!("{manager}: flush_until"),
                 format!("{manager}: flush_recovery"),
-                format!("{saving}: save_once"),
                 // Application Document Serialization Uses The Original Adapter Checkpoint.
                 format!(
                     "{}/examples/schematic/app/src/document.rs: save",

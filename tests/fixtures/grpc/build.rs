@@ -122,13 +122,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 declaration: "::harmos::storage::operations::ReadFile",
             },
             harmos::grpc::Method {
-                name: "Save",
-                contract: storage_contracts.iter().find(|contract| contract.operation().id.as_str()
-                    == <harmos::storage::operations::Save as harmos::operations::OperationDeclaration>::ID)
-                    .ok_or("missing Save storage contract")?,
-                declaration: "::harmos::storage::operations::Save",
-            },
-            harmos::grpc::Method {
                 name: "Follow",
                 contract: storage_contracts.iter().find(|contract| contract.operation().id.as_str()
                     == <harmos::storage::operations::Follow as harmos::operations::OperationDeclaration>::ID)

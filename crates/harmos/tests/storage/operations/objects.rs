@@ -292,14 +292,7 @@ fn contract_scenario() {
                     };
                     let objects = vec![value("first", "saved"), value("second", "saved")];
                     let receipts = storage.write_objects_once(&saved, &objects).await.unwrap();
-                    let save = MutationId {
-                        key: Identifier::new("save").unwrap(),
-                        ..saved.clone()
-                    };
-                    storage
-                        .save_once(&save, &receipts[1].position)
-                        .await
-                        .unwrap();
+                    storage.flush_until(&receipts[1].position).await.unwrap();
                     storage
                         .write_objects_once(&lost, &[value("third", "lost")])
                         .await

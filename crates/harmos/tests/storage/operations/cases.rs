@@ -21,8 +21,6 @@ mod objects;
 mod plugins;
 #[path = "queries.rs"]
 mod queries;
-#[path = "saves.rs"]
-mod saves;
 #[path = "schemas.rs"]
 mod schemas;
 #[path = "writes.rs"]
@@ -41,7 +39,7 @@ use std::sync::Arc;
 // Local Imports
 use super::{Fixture, config, write};
 use harmos::operations::Contracts;
-use harmos::storage::operations::{Operations, Save, SaveRequest};
+use harmos::storage::operations::Operations;
 
 /* === Constants === */
 
@@ -86,102 +84,9 @@ fn records() -> harmos::storage::query::RecordSelection {
     }
 }
 
-pub(super) fn save_request(
-    fixture: &Fixture,
-    through: harmos::storage::StorageCursor,
-) -> SaveRequest {
-    SaveRequest {
-        mutation: harmos::storage::MutationId {
-            window: fixture.storage.mutation_window().unwrap().id,
-            key: harmos::Identifier::new("save").unwrap(),
-        },
-        at: through,
-    }
-}
-
 /* === Tests === */
 
 fn own_contract() {
-    {
-        scenario_runtime::check("operation_preserves_storage", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let fixture = Fixture::new(config()).await;
-                    harmos::storage::operations::register(
-                        &fixture.runtime.operations,
-                        "storage",
-                        Lanes::Open,
-                        Arc::new(fixture.storage.clone()),
-                    )
-                    .unwrap();
-                    write(&fixture.storage, "accepted").await;
-                    let through = fixture.storage.cursor_accepted();
-                    assert!(fixture.storage.cursor_saved().sequence < through.sequence);
-                    let saved = fixture
-                        .runtime
-                        .operations
-                        .call_as::<Save>(save_request(&fixture, through.clone()))
-                        .await
-                        .unwrap();
-                    assert!(saved.covers(&through).unwrap());
-                    assert_eq!(*saved, fixture.storage.cursor_saved());
-                    let repeated = fixture
-                        .runtime
-                        .operations
-                        .call_as::<Save>(save_request(&fixture, through.clone()))
-                        .await
-                        .unwrap();
-                    assert_eq!(*repeated, *saved);
-                    assert_eq!(fixture.storage.cursor_accepted(), through);
-                    fixture.finish().await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("operation_rejects_future", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let fixture = Fixture::new(config()).await;
-                    harmos::storage::operations::register(
-                        &fixture.runtime.operations,
-                        "storage",
-                        Lanes::Open,
-                        Arc::new(fixture.storage.clone()),
-                    )
-                    .unwrap();
-                    let mut foreign = fixture.storage.cursor_accepted();
-                    foreign.history.epoch = harmos::Identifier::new("different").unwrap();
-                    assert!(
-                        fixture
-                            .runtime
-                            .operations
-                            .call_as::<Save>(save_request(&fixture, foreign))
-                            .await
-                            .is_err()
-                    );
-                    let mut future = fixture.storage.cursor_accepted();
-                    future.sequence += 1;
-                    assert!(
-                        fixture
-                            .runtime
-                            .operations
-                            .call_as::<Save>(save_request(&fixture, future))
-                            .await
-                            .is_err()
-                    );
-                    assert_eq!(fixture.storage.cursor_saved().sequence, 0);
-                    fixture.finish().await;
-                });
-        });
-    }
     {
         scenario_runtime::check("catalog_exposes_save", || {
             let contracts = Contracts::of::<Operations>().unwrap();
@@ -238,104 +143,6 @@ fn own_contract() {
                 "{}",
                 String::from_utf8_lossy(&output.stderr)
             );
-        });
-    }
-    {
-        scenario_runtime::check("save_retries_three", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let fixture = Fixture::new(config()).await;
-                    harmos::storage::operations::register(
-                        &fixture.runtime.operations,
-                        "storage",
-                        Lanes::Open,
-                        Arc::new(fixture.storage.clone()),
-                    )
-                    .unwrap();
-                    let through = write(&fixture.storage, "retry").await;
-                    fixture
-                        .data
-                        .control
-                        .failures
-                        .store(3, std::sync::atomic::Ordering::SeqCst);
-                    let saved = fixture
-                        .runtime
-                        .operations
-                        .call_as::<Save>(save_request(&fixture, through.clone()))
-                        .await
-                        .unwrap();
-                    assert_eq!(*saved, through);
-                    assert_eq!(fixture.storage.cursor_accepted(), through);
-                    assert_eq!(
-                        fixture
-                            .data
-                            .control
-                            .failures
-                            .load(std::sync::atomic::Ordering::SeqCst),
-                        0
-                    );
-                    fixture.finish().await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("save_retry_budget", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let fixture = Fixture::new(config()).await;
-                    harmos::storage::operations::register(
-                        &fixture.runtime.operations,
-                        "storage",
-                        Lanes::Open,
-                        Arc::new(fixture.storage.clone()),
-                    )
-                    .unwrap();
-                    let through = write(&fixture.storage, "retry-budget").await;
-                    fixture
-                        .data
-                        .control
-                        .failures
-                        .store(5, std::sync::atomic::Ordering::SeqCst);
-                    assert!(
-                        fixture
-                            .runtime
-                            .operations
-                            .call_as::<Save>(save_request(&fixture, through.clone()))
-                            .await
-                            .is_err()
-                    );
-                    assert_eq!(
-                        fixture
-                            .data
-                            .control
-                            .failures
-                            .load(std::sync::atomic::Ordering::SeqCst),
-                        1
-                    );
-                    assert_eq!(fixture.storage.cursor_saved().sequence, 0);
-                    fixture
-                        .data
-                        .control
-                        .failures
-                        .store(0, std::sync::atomic::Ordering::SeqCst);
-                    fixture
-                        .runtime
-                        .operations
-                        .call_as::<Save>(save_request(&fixture, through))
-                        .await
-                        .unwrap();
-                    fixture.finish().await;
-                });
         });
     }
     {
@@ -548,7 +355,6 @@ fn own_contract() {
 fn maintenance_writes() {
     queries::contract_scenario();
     own_contract();
-    saves::contract_scenario();
     deletion::contract_scenario();
 }
 

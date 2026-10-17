@@ -25,7 +25,6 @@ mod query;
 mod query_storage;
 mod read_file;
 mod resume_file;
-mod save;
 mod write_file;
 mod write_objects;
 mod write_records;
@@ -47,7 +46,6 @@ pub use query::Query;
 pub use query_storage::{QueryStorage, QueryStorageRequest};
 pub use read_file::ReadFile;
 pub use resume_file::ResumeFile;
-pub use save::{Save, SaveRequest};
 pub use write_file::WriteFile;
 pub use write_objects::WriteObjects;
 pub use write_records::WriteRecords;
@@ -108,7 +106,6 @@ macro_rules! catalog {
 catalog! {
     Query,
     ReadFile,
-    Save,
     Follow,
     FollowStream,
     FollowFile,

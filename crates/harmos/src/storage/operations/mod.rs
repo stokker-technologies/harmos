@@ -21,7 +21,6 @@ mod query;
 mod query_storage;
 mod read_file;
 mod resume_file;
-mod save;
 mod write_file;
 mod write_objects;
 mod write_records;
@@ -65,7 +64,6 @@ macro_rules! provider {
 provider! {
     query,
     read_file,
-    save,
     follow,
     follow_stream,
     follow_file,

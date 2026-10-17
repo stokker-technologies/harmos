@@ -140,7 +140,6 @@ pub(super) struct State {
     pub(super) followers: BTreeMap<u64, super::follow::Following>,
     pub(super) files: BTreeMap<u64, super::staging::FileState>,
     pub(super) receipts: super::receipts::Receipts,
-    pub(super) saves: BTreeMap<super::MutationId, super::saving::SaveState>,
     pub(super) deletions: BTreeMap<super::MutationId, super::deletion::Deletion>,
     pub(super) file_cursor: u64,
     pub(super) finishing: Option<u64>,
@@ -308,7 +307,6 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
                     snapshots: BTreeMap::new(),
                     followers: BTreeMap::new(),
                     files: BTreeMap::new(),
-                    saves: BTreeMap::new(),
                     deletions: BTreeMap::new(),
                     receipts,
                     file_cursor: 0,
@@ -830,7 +828,6 @@ impl<C> StorageManager<C> {
         if ready {
             self.settle_transition().await;
             self.settle_files().await?;
-            self.settle_saves().await?;
             self.settle_deletions().await?;
             let files = self.capture_files(None)?;
             self.flush_domain(Domain::Data, None).await?;
@@ -1506,6 +1503,36 @@ impl<C> StorageManager<C> {
 }
 
 impl State {
+    pub(super) fn data_target(&self, through: &StorageCursor) -> Result<Target> {
+        if !self.status.accepted.covers(through)? {
+            return Err(Error::InvalidInput {
+                field: "storage cursor",
+                reason: "cursor is ahead of admission",
+            });
+        }
+        if self.status.saved.covers(through)? {
+            return Ok(Target {
+                index: self.data_flushed,
+                sequence: self.status.saved.sequence,
+            });
+        }
+        let entry = self
+            .queue
+            .iter()
+            .find(|entry| {
+                entry.operation.domain() == Domain::Data
+                    && entry.operation.sequence() >= through.sequence
+            })
+            .ok_or(Error::InvalidInput {
+                field: "storage cursor",
+                reason: "admitted cursor has no pending owner",
+            })?;
+        Ok(Target {
+            index: entry.index,
+            sequence: entry.operation.sequence(),
+        })
+    }
+
     /// Recompute the published pending and read totals from their owners.
     pub(super) fn collect(&mut self) {
         let now = executor::now();
@@ -1527,8 +1554,7 @@ impl State {
                 .deletions
                 .values()
                 .map(|deletion| deletion.bytes)
-                .sum::<usize>()
-            + self.saves.values().map(|save| save.bytes).sum::<usize>();
+                .sum::<usize>();
     }
 
     pub(super) fn needs_write(&self, entry: &Pending) -> bool {
