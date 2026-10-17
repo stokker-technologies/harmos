@@ -9,7 +9,10 @@ github_attestations = false
 [tools]
 # Languages And Runtimes
 python = "3.15.0"
-rust = { version = "1.99.0", profile = "minimal", components = "clippy,rustfmt,llvm-tools-preview,rust-analyzer", targets = ["wasm32-unknown-unknown", "wasm32-wasip2"] }
+rust = { version = "1.99.0", profile = "minimal", components = "clippy,rustfmt,llvm-tools-preview,rust-analyzer", targets = [
+  "wasm32-unknown-unknown",
+  "wasm32-wasip2",
+] }
 
 # Package Managers
 uv = "0.13.0"
@@ -53,7 +56,11 @@ run = [
 [tasks.format]
 description = "Format Every Language"
 usage = 'flag "--check"'
-depends = ["format:rust{% if usage.check %} --check{% endif %}", "format:python{% if usage.check %} --check{% endif %}", "format:toml{% if usage.check %} --check{% endif %}"]
+depends = [
+  "format:rust{% if usage.check %} --check{% endif %}",
+  "format:python{% if usage.check %} --check{% endif %}",
+  "format:toml{% if usage.check %} --check{% endif %}",
+]
 
 [tasks."format:python"]
 description = "Format Python"
@@ -127,7 +134,12 @@ run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.b
 [tasks.test]
 description = "Test Every Layer"
 usage = 'flag "--profile <profile>" default="dev"'
-depends = ["test:unit --profile {{usage.profile}}", "test:integration --profile {{usage.profile}}", "test:acceptance --profile {{usage.profile}}", "test:system --profile {{usage.profile}}"]
+depends = [
+  "test:unit --profile {{usage.profile}}",
+  "test:integration --profile {{usage.profile}}",
+  "test:acceptance --profile {{usage.profile}}",
+  "test:system --profile {{usage.profile}}",
+]
 
 [tasks."test:unit"]
 description = "Test Unit Layer"
@@ -194,7 +206,11 @@ run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.t
 [tasks.bench]
 description = "Bench Every Layer"
 usage = 'flag "--refresh-baseline"'
-depends = ["bench:unit{% if usage.refresh_baseline %} --refresh-baseline{% endif %}", "bench:integration{% if usage.refresh_baseline %} --refresh-baseline{% endif %}", "bench:system{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"]
+depends = [
+  "bench:unit{% if usage.refresh_baseline %} --refresh-baseline{% endif %}",
+  "bench:integration{% if usage.refresh_baseline %} --refresh-baseline{% endif %}",
+  "bench:system{% if usage.refresh_baseline %} --refresh-baseline{% endif %}",
+]
 
 [tasks."bench:unit"]
 description = "Bench Unit Layer"
@@ -258,7 +274,14 @@ run = [
 
 [tasks."ci:nightly"]
 description = "Run Nightly Coverage And Benchmarks"
-run = [{ task = "build" }, { task = "coverage" }, { task = "build --profile bench" }, { task = "bench:unit --refresh-baseline" }, { task = "bench:integration --refresh-baseline" }, { task = "bench:system --refresh-baseline" }]
+run = [
+  { task = "build" },
+  { task = "coverage" },
+  { task = "build --profile bench" },
+  { task = "bench:unit --refresh-baseline" },
+  { task = "bench:integration --refresh-baseline" },
+  { task = "bench:system --refresh-baseline" },
+]
 
 # === Release === #
 
