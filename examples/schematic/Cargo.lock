@@ -892,6 +892,7 @@ version = "0.2.0"
 dependencies = [
  "harmos-domain",
  "postcard",
+ "prost",
  "serde",
  "serde_json",
  "thiserror",

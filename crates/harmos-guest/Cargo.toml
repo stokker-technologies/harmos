@@ -16,6 +16,8 @@ version = { workspace = true }
 [features]
 default = ["derive"]
 derive = ["harmos-domain/derive"]
+# Provider Protobuf Decoding For Contracts That Bind A gRPC Method; No Host Networking.
+grpc = ["harmos-sdk/grpc"]
 # Stream Endpoints Add Rust Channel Traffic.
 streaming = ["harmos-sdk/streaming"]
 # The generated world bindings and the wrappers over them — everything a guest
