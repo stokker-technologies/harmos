@@ -65,6 +65,7 @@ struct Waiting {
     inner: Arc<Inner>,
     pool: Pool,
     id: u64,
+    active: bool,
 }
 
 /* === Enums === */
@@ -296,7 +297,7 @@ impl Reservation {
             return Ok(());
         }
         let inner = Arc::clone(&self.inner);
-        let mut waiting = None;
+        let mut waiting: Option<Waiting> = None;
         let result = inner
             .wait(deadline, |state| match self.attempt(state, additional) {
                 Attempt::Wait if waiting.is_none() && self.held.bytes() != 0 => {
@@ -308,7 +309,14 @@ impl Reservation {
                         None => Attempt::Refuse(Refusal::Cycle),
                     }
                 }
-                attempt => attempt,
+                attempt => {
+                    if !matches!(&attempt, Attempt::Wait) {
+                        if let Some(waiting) = &mut waiting {
+                            waiting.leave(state);
+                        }
+                    }
+                    attempt
+                }
             })
             .await;
         drop(waiting);
@@ -414,12 +422,23 @@ impl Waiting {
             inner: Arc::clone(inner),
             pool,
             id,
+            active: true,
         })
+    }
+
+    // Admission And Departure Share The State Lock: A Running Owner Must Never
+    // Be Counted As A Waiting Holder By Another Admission.
+    fn leave(&mut self, state: &mut State) {
+        state.growers[self.pool.index()].waiting.remove(&self.id);
+        self.active = false;
     }
 }
 
 impl Drop for Waiting {
     fn drop(&mut self) {
+        if !self.active {
+            return;
+        }
         self.inner.state.lock().unwrap().growers[self.pool.index()]
             .waiting
             .remove(&self.id);
