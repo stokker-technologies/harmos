@@ -24,7 +24,8 @@ use std::time::Duration;
 
 // Local Imports
 use contract::{Counts, Decline, Echo, Echoed, Fail, ProviderEcho, Read, Spin, Stage, Value, Wait};
-use harmos_domain::operations::{FailureKind, OperationPolicy, RestartPolicy, RetryPolicy, ServingError, WireTable, lifecycle, streams};
+use harmos_domain::operations::{FailureKind, OperationPolicy, RestartPolicy, RetryPolicy, lifecycle, streams};
+use harmos_guest::operations::{ServingError, WireTable};
 use harmos_guest::{Context, Host, OperationRefusal, PublishError};
 
 /* === Constants === */
@@ -195,7 +196,7 @@ impl harmos_guest::Plugin for Sandbox {
     }
 }
 
-#[harmos_guest::operation(declaration = Echo)]
+#[harmos_guest::operation]
 impl Echoing {
     async fn initialize(owner: Arc<Owner>, _: &Context) -> Self {
         Self { owner }
@@ -245,7 +246,7 @@ impl Echoing {
     }
 }
 
-#[harmos_guest::operation(declaration = Decline)]
+#[harmos_guest::operation]
 impl Declining {
     async fn initialize(_: Arc<Owner>, _: &Context) -> Self {
         Self
@@ -256,7 +257,7 @@ impl Declining {
     }
 }
 
-#[harmos_guest::operation(declaration = Spin)]
+#[harmos_guest::operation]
 impl Spinning {
     async fn initialize(_: Arc<Owner>, _: &Context) -> Self {
         Self
@@ -271,7 +272,7 @@ impl Spinning {
     }
 }
 
-#[harmos_guest::operation(declaration = Wait)]
+#[harmos_guest::operation]
 impl Waiting {
     async fn initialize(_: Arc<Owner>, _: &Context) -> Self {
         Self
@@ -288,7 +289,7 @@ impl Waiting {
     }
 }
 
-#[harmos_guest::operation(declaration = Fail)]
+#[harmos_guest::operation]
 impl Failing {
     async fn initialize(_: Arc<Owner>, _: &Context) -> Self {
         Self
@@ -299,7 +300,7 @@ impl Failing {
     }
 }
 
-#[harmos_guest::operation(declaration = Read)]
+#[harmos_guest::operation]
 impl Reading {
     async fn initialize(owner: Arc<Owner>, context: &Context) -> Result<Self, std::io::Error> {
         owner.initialized.fetch_add(1, Ordering::SeqCst);
@@ -385,7 +386,7 @@ impl Reading {
     }
 }
 
-#[harmos_guest::operation(declaration = Counts)]
+#[harmos_guest::operation]
 impl Counting {
     async fn initialize(owner: Arc<Owner>, _: &Context) -> Self {
         Self { owner }
