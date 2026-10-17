@@ -73,6 +73,8 @@ impl Project {
         project.run("mise", &["trust", "mise.toml"]);
         project.run("cargo", &["generate-lockfile", "--offline"]);
         project.run("uv", &["sync", "--locked", "--offline", "--all-groups", "--project", "tools/python"]);
+        project.run("git", &["add", "."]);
+        project.run("git", &["-c", "user.name=Harmos Fixture", "-c", "user.email=fixture@harmos.invalid", "commit", "-m", "feat: create authored plugin"]);
         project
     }
 
@@ -103,7 +105,7 @@ impl Project {
 
 impl Watching {
     fn start(project: &Project, kind: &str) -> Self {
-        let log = project.root.join("watch.log");
+        let log = project.directory.path().join("watch.log");
         let mut command = project.command(fixtures::artifact("cargo-harmos"));
         command.args(["harmos", kind, "dev", "--json", "--debounce-ms", "1000"])
             .stdin(Stdio::null()).stdout(Stdio::piped())
