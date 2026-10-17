@@ -805,7 +805,6 @@ dependencies = [
  "harmos-macros",
  "memchr",
  "postcard",
- "prost",
  "semver",
  "serde",
  "serde_json",
