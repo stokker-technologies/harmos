@@ -97,6 +97,12 @@ impl Project {
 
     fn command(&self, program: impl AsRef<std::ffi::OsStr>) -> Command {
         let mut command = Command::new(program);
+        // The Starter Runs As Its Author Would, Outside The Lane That Runs This Story
+        for (name, _) in std::env::vars_os() {
+            if name.to_str().is_some_and(|name| name.starts_with("NEXTEST") || name == "VIRTUAL_ENV") {
+                command.env_remove(name);
+            }
+        }
         command
             .current_dir(&self.root)
             .env("CARGO_TARGET_DIR", self.root.join("target"))

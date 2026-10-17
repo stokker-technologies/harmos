@@ -597,7 +597,7 @@ impl LeftObserver {
     async fn observe(
         &mut self, ctx: &ObserverContext<'_, ObserverResources, harmos_sidecar::Publisher<SampledTwins>>,
     ) -> Result<(), Infallible> {
-        ctx.publish_on::<Left>(&support::pulse(101)).await.unwrap();
+        published(ctx.publish_on::<Left>(&support::pulse(101)).await);
         Ok(())
     }
     async fn stop(&mut self) -> Result<(), Infallible> {
@@ -623,7 +623,7 @@ impl RightObserver {
     async fn observe(
         &mut self, ctx: &ObserverContext<'_, ObserverResources, harmos_sidecar::Publisher<SampledTwins>>,
     ) -> Result<(), Infallible> {
-        ctx.publish_on::<Right>(&support::pulse(201)).await.unwrap();
+        published(ctx.publish_on::<Right>(&support::pulse(201)).await);
         Ok(())
     }
     async fn stop(&mut self) -> Result<(), Infallible> {
@@ -762,6 +762,12 @@ pub(super) async fn ready(mut ready: tokio::sync::watch::Receiver<bool>) {
 }
 
 /* === Private Functions === */
+// A Pass Racing Shutdown Meets The Closed Carrier; Any Other Refusal Fails The Story
+fn published<E: std::fmt::Debug>(result: Result<(), E>) {
+    if let Err(error) = result {
+        assert!(format!("{error:?}").contains("carrier attempt admission is closed"), "{error:?}");
+    }
+}
 fn observers(
     runtime: &harmos_runtime::Runtime<crate::sidecar::support::Bank>,
 ) -> std::collections::BTreeMap<harmos_runtime::operations::resident::Key, harmos_runtime::operations::resident::Snapshot> {

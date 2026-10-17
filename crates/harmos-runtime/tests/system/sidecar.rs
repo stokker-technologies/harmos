@@ -112,7 +112,13 @@ async fn sidecar_composition_walks() {
     std::fs::write(directory.path().join("notes.txt"), b"not a directory").unwrap();
     let executable = Executable::at(support::fixtures::artifact("schematic-sidecar")).unwrap().directory(directory.path());
     assert_eq!(executable.declaration().id, PLUGIN);
-    let runtime = Runtime::<Host>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
+    // Typed Native Calls Prepare Their Encoded Requests Within An Explicit Host Budget
+    let runtime = Runtime::<Host>::builder((), ())
+        .register(Lanes::catalog())
+        .operation_settings(harmos_runtime::operations::Settings { preparation_bytes: Some(NonZeroUsize::new(64 * 1024).unwrap()), ..Default::default() })
+        .runtime()
+        .await
+        .unwrap();
     // Scene 2: Locked Tokio Rejects Zero Workers Before The Native Plugin Is Ready.
     // This Exercises A Real Startup Crash Through An Existing Environment Option.
     let crashing = executable.clone().variable("TOKIO_WORKER_THREADS", "0");
