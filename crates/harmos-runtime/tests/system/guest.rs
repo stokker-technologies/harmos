@@ -131,8 +131,8 @@ async fn guest_composition_walks() {
     assert_eq!(
         validated.diagnostics,
         [
-            "Duplicate symbol IDs",
-            "Connection 1 to 2 references a missing symbol"
+            "Duplicate Symbol IDs",
+            "Connection 1 To 2 References A Missing Symbol"
         ]
     );
 
