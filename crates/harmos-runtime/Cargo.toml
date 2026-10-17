@@ -219,17 +219,14 @@ tokio = { workspace = true, default-features = true, features = ["rt-multi-threa
 [[test]]
 name = "integration"
 path = "tests/integration/main.rs"
-required-features = ["grpc"]
 
 [[test]]
 name = "acceptance"
 path = "tests/acceptance/main.rs"
-required-features = ["grpc"]
 
 [[test]]
 name = "system"
 path = "tests/system/main.rs"
-required-features = ["grpc"]
 
 # === Bench Targets ===
 
@@ -241,49 +238,45 @@ required-features = ["grpc"]
 name = "integration-runtime"
 path = "benches/runtime/main.rs"
 harness = false
-required-features = ["grpc"]
 
 [[bench]]
 name = "integration-operations"
 path = "benches/operations/main.rs"
 harness = false
-required-features = ["grpc"]
 
 [[bench]]
 name = "integration-storage"
 path = "benches/storage/main.rs"
 harness = false
-required-features = ["grpc"]
 
 [[bench]]
 name = "integration-streams"
 path = "benches/streams/main.rs"
 harness = false
-required-features = ["grpc"]
 
 [[bench]]
 name = "integration-sidecar"
 path = "benches/sidecar/main.rs"
 harness = false
-required-features = ["plugin-sidecar", "grpc"]
+required-features = ["plugin-sidecar"]
 
 [[bench]]
 name = "unit-codecs"
 path = "benches/codecs/main.rs"
 harness = false
-required-features = ["plugin-sidecar", "grpc"]
+required-features = ["plugin-sidecar"]
 
 [[bench]]
 name = "system-transport"
 path = "benches/transport/main.rs"
 harness = false
-required-features = ["plugin-sidecar", "grpc"]
+required-features = ["plugin-sidecar"]
 
 [[bench]]
 name = "integration-simulation"
 path = "benches/simulation/main.rs"
 harness = false
-required-features = ["simulation", "grpc"]
+required-features = ["simulation"]
 
 # === Example Targets ===
 
