@@ -233,15 +233,27 @@ impl Bindings<'_> {
         if self.entries.iter().any(|entry| entry.id() == id) {
             return Err(Error::AlreadyRegistered { domain: "operation", name: id.to_owned() });
         }
-        let projected = Some(project::<T::Declaration>()?);
-        if let Some(projected) = &projected
-            && (projected.declaration != std::any::TypeId::of::<T::Declaration>() || projected.contract.operation() != &definition)
-        {
+        let mut projected = project::<T::Declaration>()?;
+        if projected.declaration != std::any::TypeId::of::<T::Declaration>() {
             return Err(Error::InvalidInput {
                 field: "operation wire declaration",
-                reason: "wire projection must match the original typed declaration and identity",
+                reason: "wire projection must match the original typed declaration",
             });
         }
+        // An id override keeps the declared contract under the new identity; a gRPC method keeps its declared identity.
+        if projected.contract.operation() != &definition {
+            let original = &projected.contract;
+            if original.grpc().is_some() {
+                return Err(Error::InvalidInput {
+                    field: "operation wire declaration",
+                    reason: "an operation that binds a gRPC method keeps its declared identity",
+                });
+            }
+            projected.contract =
+                crate::operations::Contract::new(definition.clone(), original.version(), original.codec(), original.schema().clone())
+                    .map_err(|source| Error::OperationFailed { operation: definition.id.to_string(), source: Arc::new(source) })?;
+        }
+        let projected = Some(projected);
         let mut entry = self.operations.binding_owned_definition::<T>(
             self.owner,
             lane,
