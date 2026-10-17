@@ -39,7 +39,7 @@ STAMP = FIXTURES / "stamp.json"
 SCHEMATIC = ROOT / "examples/schematic/Cargo.toml"
 GUESTS = {"schematic-guest": SCHEMATIC, "harmos-sandbox-guest": ROOT / "crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml"}
 LIBRARIES = ("harmos", "harmos_sidecar", "harmos_macros", "serde")
-EDITABLES = "editables==0.5"
+EDITABLES = "editables==0.5 --hash=sha256:61e5ffa82629e0d8bfe09bc44a07db3c1ab8ed1ce78a6980732870f19b5e7d4c"
 
 # === Types === #
 
@@ -213,7 +213,10 @@ def _offline_inputs(profile: str) -> dict:
     download = [sys.executable, "-c", launch, str(wheels[0]), "download", "--dest", str(destination / "wheels"), "--require-hashes"]
     commands.extend([*download, "--requirement", str(selected)] for selected in requirements_files)
     # Hatchling Requests `editables` Only For Editable Installs, So No Project Lock Names It.
-    commands.append([*download[:-1], "--no-deps", EDITABLES])
+    destination.mkdir(parents=True, exist_ok=True)
+    editables = destination / "editables.txt"
+    editables.write_text(f"{EDITABLES}\n", encoding="utf-8")
+    commands.append([*download, "--no-deps", "--requirement", str(editables)])
     locks = [manifest.parent / "Cargo.lock" for manifest in manifests] + [project / "uv.lock" for project in projects]
     inputs = [*manifests, *(project / "pyproject.toml" for project in projects), Path(str(wheels[0]))]
     if (ROOT / ".cargo").is_dir():
