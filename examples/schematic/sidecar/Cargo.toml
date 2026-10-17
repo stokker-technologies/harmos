@@ -26,7 +26,7 @@ version.workspace = true
 [dependencies]
 # Local
 harmos-domain = { workspace = true, features = ["derive"] }
-harmos-sidecar = { workspace = true, features = ["derive", "kit", "streaming"] }
+harmos-sidecar = { workspace = true, features = ["derive", "grpc", "kit", "streaming"] }
 schematic-domain = { path = "../domain" }
 
 # Git
