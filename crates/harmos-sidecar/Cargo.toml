@@ -166,7 +166,7 @@ tokio = { workspace = true, default-features = true, features = ["time", "test-u
 # UI
 
 # Testing
-criterion = { workspace = true, default-features = true }
+criterion = { workspace = true, default-features = false }
 
 # === Target Dependencies ===
 
@@ -254,7 +254,7 @@ required-features = ["kit"]
 # === Bench Targets ===
 
 [[bench]]
-name = "transport"
+name = "system-transport"
 path = "benches/transport/main.rs"
 required-features = ["kit"]
 harness = false

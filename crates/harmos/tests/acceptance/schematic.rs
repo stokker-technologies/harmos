@@ -61,10 +61,7 @@ fn schematic(directory: &Path, backend: &str, plugin: &Path, advanced: bool) -> 
 
 // Cargo Invokes Its Subcommand With The Subcommand Name First
 fn cargo_harmos(directory: &Path, arguments: &[&std::ffi::OsStr]) -> Output {
-    let tool = fixtures::dependencies()
-        .parent()
-        .expect("the dependency directory sits inside the build profile")
-        .join(format!("cargo-harmos{}", std::env::consts::EXE_SUFFIX));
+    let tool = fixtures::artifact("cargo-harmos");
 
     Command::new(tool)
         .current_dir(directory)

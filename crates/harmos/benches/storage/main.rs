@@ -175,8 +175,6 @@ fn main() {
     let mut criterion = Criterion::default().configure_from_args();
     let mut group = criterion.benchmark_group("storage");
     group.sample_size(10);
-    group.warm_up_time(Duration::from_millis(100));
-    group.measurement_time(Duration::from_millis(500));
     for count in [500, 1_000, 2_000] {
         for mode in [
             "direct",

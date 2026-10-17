@@ -195,7 +195,7 @@ http-body-util = { workspace = true }
 # UI
 
 # Testing
-criterion = { workspace = true, default-features = true }
+criterion = { workspace = true, default-features = false }
 
 # === Target Dependencies ===
 
@@ -309,28 +309,40 @@ path = "tests/acceptance/main.rs"
 # can carry two declarations. Declaring only `sidecar` left it built against a
 # `harmos::guest` that the selected features had not opened.
 [[bench]]
-name = "runtime"
+name = "integration-runtime"
 path = "benches/runtime/main.rs"
 harness = false
 
 [[bench]]
-name = "operations"
+name = "integration-operations"
 path = "benches/operations/main.rs"
 harness = false
 
 [[bench]]
-name = "storage"
+name = "integration-storage"
 path = "benches/storage/main.rs"
 harness = false
 
 [[bench]]
-name = "streams"
+name = "integration-streams"
 path = "benches/streams/main.rs"
 harness = false
 
 [[bench]]
-name = "sidecar"
+name = "integration-sidecar"
 path = "benches/sidecar/main.rs"
+harness = false
+required-features = ["plugin-sidecar"]
+
+[[bench]]
+name = "unit-codecs"
+path = "benches/codecs/main.rs"
+harness = false
+required-features = ["plugin-sidecar"]
+
+[[bench]]
+name = "system-transport"
+path = "benches/transport/main.rs"
 harness = false
 required-features = ["plugin-sidecar"]
 

@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:762b55faf0d8b94f6f07eb86fdeae742f3feeccb286da5e9583b16692a82753b
+# Rendered by stkr project update from templates/ci/.github/workflows/ci.yml; sha256:10de1f6978273ea82454bab5e98204b749b9c991cfe5e83cefe94ff39e817474
 name: CI
 "on":
   push:
@@ -36,20 +36,13 @@ jobs:
         install: true
         cache: false
         mise_dir: ${{ github.workspace }}/.cache/mise
-    - run: mise run format:check --check
     - run: mise run format:python --check
     - run: mise run format:rust --check
     - run: mise run format:toml --check
-    - run: mise run check:authoring
-    - run: mise run check:compiled
-    - run: mise run check:fast
-    - run: mise run check:features
-    - run: mise run check:plugin
-    - run: mise run check:types
-    - run: mise run check:wasm
-    - run: mise run lint:authoring
-    - run: mise run lint:fix
+    - run: mise run check:python
     - run: mise run lint:python
+    env:
+      MISE_ENABLE_TOOLS: python,rust,uv,aqua:rhysd/actionlint,taplo
   build:
     name: Build
     runs-on:
@@ -70,6 +63,7 @@ jobs:
         cache: false
         mise_dir: ${{ github.workspace }}/.cache/mise
     - run: mise run build
+    - run: mise run test:unit
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       if: always()
       with:
@@ -91,45 +85,15 @@ jobs:
         include-hidden-files: true
     - run: mise run check
     - run: mise run lint:rust
+    - run: mise run package:rust
     - if: steps.tools.outputs.cache-hit != 'true'
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       with:
         path: .cache/mise/
         key: ${{ steps.tools.outputs.cache-primary-key }}
-  test_integration_python:
-    name: Test / Integration / Python
-    runs-on:
-    - ubuntu-latest
-    timeout-minutes: 10
-    needs:
-    - build
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      id: tools
-      with:
-        path: .cache/mise/
-        key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
-    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
-      with:
-        install: true
-        cache: false
-        mise_dir: ${{ github.workspace }}/.cache/mise
-    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-      with:
-        pattern: build-${{ github.sha }}
-        merge-multiple: true
-    - run: mise run test:integration:python
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-      if: always()
-      with:
-        name: evidence-test_integration_python-${{ github.sha }}
-        path: .stkr/tests/
-        if-no-files-found: ignore
-        retention-days: 7
-        include-hidden-files: true
+    env:
+      MISE_ENABLE_TOOLS: >-
+        python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,sccache,aqua:rhysd/actionlint,taplo
   test_integration_rust:
     name: Test / Integration / Rust
     runs-on:
@@ -164,14 +128,15 @@ jobs:
         if-no-files-found: ignore
         retention-days: 7
         include-hidden-files: true
-  test_acceptance_python:
-    name: Test / Acceptance / Python
+    env:
+      MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
+  test_acceptance_rust:
+    name: Test / Acceptance / Rust
     runs-on:
     - ubuntu-latest
     timeout-minutes: 10
     needs:
     - build
-    - test_integration_python
     - test_integration_rust
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -191,15 +156,54 @@ jobs:
       with:
         pattern: build-${{ github.sha }}
         merge-multiple: true
-    - run: mise run test:acceptance:python
+    - run: mise run test:acceptance:rust
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       if: always()
       with:
-        name: evidence-test_acceptance_python-${{ github.sha }}
+        name: evidence-test_acceptance_rust-${{ github.sha }}
         path: .stkr/tests/
         if-no-files-found: ignore
         retention-days: 7
         include-hidden-files: true
+    env:
+      MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
+  test_system_rust:
+    name: Test / System / Rust
+    runs-on:
+    - ubuntu-latest
+    timeout-minutes: 10
+    needs:
+    - build
+    - test_integration_rust
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      id: tools
+      with:
+        path: .cache/mise/
+        key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      with:
+        install: true
+        cache: false
+        mise_dir: ${{ github.workspace }}/.cache/mise
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        pattern: build-${{ github.sha }}
+        merge-multiple: true
+    - run: mise run test:system:rust
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: evidence-test_system_rust-${{ github.sha }}
+        path: .stkr/tests/
+        if-no-files-found: ignore
+        retention-days: 7
+        include-hidden-files: true
+    env:
+      MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
   gate:
     name: Gate
     runs-on:
@@ -208,9 +212,9 @@ jobs:
     needs:
     - source
     - build
-    - test_integration_python
     - test_integration_rust
-    - test_acceptance_python
+    - test_acceptance_rust
+    - test_system_rust
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
@@ -249,3 +253,33 @@ jobs:
         retention-days: 7
         include-hidden-files: true
     if: always()
+    env:
+      MISE_ENABLE_TOOLS: python,uv
+  release_publish_dry:
+    name: Release / Publish / Dry
+    runs-on:
+    - self-hosted
+    - linux
+    timeout-minutes: 60
+    needs:
+    - gate
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      id: tools
+      with:
+        path: .cache/mise/
+        key: ${{ runner.os }}-${{ runner.arch }}-mise-${{ hashFiles('mise.lock') }}
+    - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
+      with:
+        install: true
+        cache: false
+        mise_dir: ${{ github.workspace }}/.cache/mise
+    - run: mise run package:rust --profile release
+    - run: mise run release:publish:dry
+    - run: mise run test:system
+    if: >-
+      github.event_name == 'push' && (github.ref == 'refs/heads/dev' ||
+      startsWith(github.ref, 'refs/heads/release/v'))
