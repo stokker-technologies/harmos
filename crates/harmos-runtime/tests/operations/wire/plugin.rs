@@ -541,31 +541,5 @@ fn candidate_with_cleanup() -> PluginDefinitions {
     PluginDefinitions::new([definition], []).unwrap()
 }
 
-#[cfg(feature = "grpc")]
-async fn grpc_call<O>(authority: harmos_runtime::grpc::server::Authority) -> tonic::codegen::http::Response<tonic::body::Body>
-where
-    O: OperationDeclaration<Response = String>,
-{
-    use tonic::codec::Codec as _;
-    let capacity = NonZeroUsize::new(4096).unwrap();
-    let decode = harmos_runtime::grpc::DecodeSettings { message_bytes: capacity, retained_bytes: capacity };
-    let encode = harmos_runtime::grpc::EncodeSettings { message_bytes: capacity, buffer_bytes: capacity };
-    let channel = harmos_runtime::operations::StreamSettings { items: NonZeroUsize::new(1).unwrap(), bytes: capacity };
-    let settings = harmos_runtime::grpc::server::Settings {
-        calls: NonZeroUsize::new(8).unwrap(),
-        decode,
-        encode,
-        input: channel,
-        output: channel,
-        opening_timeout: std::time::Duration::from_secs(1),
-    };
-    let mut codec = harmos_runtime::grpc::Codec::<Text, harmos_runtime::operations::Response<Text>>::new(decode, encode).unwrap();
-    let message = futures_util::stream::iter([Ok(harmos_runtime::operations::Response::new(Text::from("grpc")))]);
-    let body = tonic::codec::EncodeBody::new_client(codec.encoder(), message, None, Some(4096));
-    let request =
-        tonic::codegen::http::Request::builder().header("content-type", "application/grpc").body(tonic::body::Body::new(body)).unwrap();
-    harmos_runtime::grpc::server::unary::<O>(authority, settings, request).await
-}
-
 /* === Tests === */
 

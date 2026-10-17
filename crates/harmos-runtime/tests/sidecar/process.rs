@@ -28,7 +28,7 @@ use super::{HostLanes, assembly, operations, service_status};
 use crate::sidecar::support::Bank;
 use crate::sidecar::witness::Witness;
 use harmos_runtime::operations::{
-    Context, Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireTable,
+    Context, Operation, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireTable,
 };
 use harmos_runtime::sidecar::{Notice, Refusal, Supervised, Supervisor};
 use harmos_runtime::{Runtime, services::Service, services::ServiceStatus};

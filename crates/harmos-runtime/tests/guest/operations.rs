@@ -18,7 +18,7 @@
 
 // Local Imports
 use super::lifecycle::{GuestOperations, Lifecycle, Manager, serve_host};
-use super::sandbox::{Counts, Read, Stage, Value};
+use super::sandbox::{Counts, Read, Stage};
 use super::schematic::model::{Connection, Point, Snapshot};
 use super::schematic::operations::schematic::{analyze, propose, validate};
 use super::{GuestLanes, corner, route, runtime, sandbox};

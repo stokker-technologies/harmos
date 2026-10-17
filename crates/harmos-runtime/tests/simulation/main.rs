@@ -116,7 +116,7 @@ use harmos_runtime::{
     services::Fault, simulation::SimulatedRuntime, state::Focus, state::Kind, state::Transaction,
 };
 use harmos_sidecar::{Attach, PluginNative, Supervisor};
-use support::{Bank, DEPOSIT, Deposit, Ledger, NOTED, Noted, alice, catalog, pulse, streams};
+use support::{Bank, Deposit, Ledger, Noted, alice, catalog, pulse, streams};
 
 /* === Constants === */
 static DIVERGENCE: AtomicUsize = AtomicUsize::new(0);

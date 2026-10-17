@@ -54,15 +54,13 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 // Third Party Imports
-use sha2::{Digest, Sha256};
 use support::{Bank, Ledger, catalog, streams};
 // Local Imports
 use harmos_runtime::Message;
 use harmos_runtime::operations::{
     OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireTable,
 };
-use harmos_runtime::sidecar::inventory::{Declaration, Facility};
-use harmos_runtime::sidecar::{Executable, Frame, Notice, SidecarError, Supervised};
+use harmos_runtime::sidecar::{Frame, Notice, SidecarError, Supervised};
 use harmos_runtime::{
     Runtime, services::Service, services::ServiceExit, services::ServiceStatus, state::FactSource,
     state::Position, state::SystemFact,
@@ -197,22 +195,6 @@ struct Finish {
 
 #[harmos_runtime::message]
 #[harmos_runtime::operation(
-    id = "meter.ask",
-    version = 1,
-    policy = OperationPolicy {
-        timeout: Duration::from_millis(25),
-        attempt_timeout: Duration::from_millis(25),
-        retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
-    },
-    response = (),
-    description = "An operation that never answers, so the host's deadline ends the call.",
-)]
-#[derive(Clone, PartialEq)]
-struct Ask {}
-
-#[harmos_runtime::message]
-#[harmos_runtime::operation(
     id = "meter.budgeted",
     version = 1,
     policy = OperationPolicy {
@@ -300,23 +282,6 @@ pub(crate) struct StopSamplingResponse {}
 #[harmos_runtime::operation(id = "gauge.get-factor", version = 1, policy = GAUGE_POLICY, response = Measured)]
 #[derive(Clone, PartialEq)]
 pub(crate) struct GetFactor {}
-
-#[harmos_runtime::message]
-#[harmos_runtime::operation(
-    id = "meter.echo",
-    version = 1,
-    policy = OperationPolicy {
-        timeout: Duration::from_millis(80),
-        attempt_timeout: Duration::from_millis(80),
-        retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
-    },
-    response = String,
-    description = "Answers with what it was handed, publishing first when asked to.",
-)]
-struct MeterEcho {
-    text: String,
-}
 
 #[harmos_runtime::message]
 #[harmos_runtime::operation(id = "gauge.run-echo", version = 1, policy = GAUGE_POLICY, response = String)]

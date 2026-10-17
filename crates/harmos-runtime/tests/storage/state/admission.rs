@@ -27,7 +27,7 @@ use std::task::Poll;
 use crate::storage::fixture::*;
 use crate::storage::waveforms;
 use harmos_runtime::state::Envelope;
-use harmos_runtime::{Application, Message};
+use harmos_runtime::Application;
 
 /* === Constants === */
 

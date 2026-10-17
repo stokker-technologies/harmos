@@ -18,7 +18,6 @@ use std::time::Duration;
 
 // Local Imports
 use harmos_runtime::operations::{OperationPolicy, RestartPolicy, RetryPolicy, Visibility};
-use harmos_runtime::sidecar::Refusal;
 
 /* === Constants === */
 pub const POLICY: OperationPolicy = OperationPolicy {

@@ -22,7 +22,7 @@ use std::time::Duration;
 // Local Imports
 use harmos_domain::StreamSpec;
 use harmos_domain::operations::{
-    Backoff, Jitter, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility,
+    Backoff, Jitter, OperationPolicy, RestartPolicy, RetryPolicy, Visibility,
 };
 
 /* === Constants === */

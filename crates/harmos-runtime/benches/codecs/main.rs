@@ -8,6 +8,7 @@
  */
 
 /* === Modules === */
+#[allow(dead_code, reason = "the codec bench uses only the shared payload declarations")]
 #[path = "../../tests/support/native_streams.rs"]
 mod native;
 

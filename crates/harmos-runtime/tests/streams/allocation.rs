@@ -10,6 +10,7 @@
 /* === Modules === */
 
 #[path = "../support/allocation.rs"]
+#[allow(dead_code, reason = "shared with the benchmark of the same domain")]
 pub mod allocation;
 
 /* === Re-Exports === */

@@ -25,6 +25,7 @@ mod state;
 #[path = "../support/mod.rs"]
 mod support;
 #[path = "../../../harmos-storage/tests/support/waveforms.rs"]
+#[allow(dead_code, reason = "shared with the benchmark of the same domain")]
 mod waveforms;
 use fixture::*;
 

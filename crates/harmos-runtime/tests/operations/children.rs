@@ -210,22 +210,6 @@ async fn runtime(block_cleanup: bool) -> (Runtime<App>, Arc<Trace>) {
     (runtime, trace)
 }
 
-async fn torn_down(
-    exit: Exit,
-    cancel: bool,
-) -> Result<harmos_runtime::operations::Response<()>, Error> {
-    let (runtime, trace) = runtime(false).await;
-    let parent = runtime.operations.submit(ParentContract { exit }).unwrap();
-    if cancel {
-        trace.parent_ready.notified().await;
-        parent.cancel();
-    }
-    let outcome = parent.await;
-    assert_eq!(*trace.events.lock().unwrap(), ["parent-attempt", "child-started", "child-finalized", "child-dropped"]);
-    runtime.stop().await.unwrap();
-    outcome
-}
-
 /* === Tests === */
 
 #[tokio::test(start_paused = true)]

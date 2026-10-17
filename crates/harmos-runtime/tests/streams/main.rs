@@ -13,6 +13,7 @@
 mod support;
 
 #[path = "../streams/allocation.rs"]
+#[allow(dead_code, reason = "shared with the benchmark of the same domain")]
 pub mod allocation;
 
 #[cfg(feature = "signal")]
@@ -34,6 +35,7 @@ mod listeners;
 mod series;
 
 #[path = "stream_batches.rs"]
+#[allow(dead_code, reason = "shared with the benchmark of the same domain")]
 pub mod stream_batches;
 
 #[path = "streams_macros.rs"]

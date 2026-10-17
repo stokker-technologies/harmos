@@ -162,7 +162,7 @@ async fn sidecar_composition_walks() {
 
     // Scene 4: Upload Progress Proves The Child Holds Its Shared Analysis Permit
     let mut progress = runtime.streams.watch::<AnalysisProgress>();
-    let mut upload = runtime.operations.upload(AnalyzeUpload { title: "Held Upload".into() }, stream_settings()).unwrap();
+    let upload = runtime.operations.upload(AnalyzeUpload { title: "Held Upload".into() }, stream_settings()).unwrap();
     upload.send(snapshot()).await.unwrap();
     let Item::Row(row) = progress.next().await.unwrap() else { panic!("the progress window lost a row") };
     assert_eq!((row.value.title.as_str(), row.value.checked), ("Held Upload", 1));

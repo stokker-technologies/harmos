@@ -22,7 +22,6 @@
 
 // Local Imports
 use super::*;
-use harmos_runtime::operations::Host as _;
 
 
 /* === Constants === */

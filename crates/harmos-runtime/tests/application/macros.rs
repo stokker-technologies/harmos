@@ -209,7 +209,7 @@ mod unified_plugins {
     use std::time::Duration;
 
     use harmos_runtime::__private::{PluginDeclared, PluginInventory};
-    use harmos_runtime::operations::{Contracts, OperationPolicy, RestartPolicy, RetryPolicy, ServingError, WireDeclaration, WireTable, lifecycle};
+    use harmos_runtime::operations::{Contracts, OperationPolicy, RestartPolicy, RetryPolicy, ServingError, WireTable, lifecycle};
 
     #[harmos_runtime::message]
     #[harmos_runtime::operation(id = "fixture.unified.echo", version = 3, response = (), policy = POLICY)]
