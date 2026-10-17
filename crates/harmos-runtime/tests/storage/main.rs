@@ -20,7 +20,6 @@ mod mapping;
 mod nominal;
 mod objects;
 mod operations;
-mod policy;
 mod query_pressure;
 mod retention;
 mod runtime;

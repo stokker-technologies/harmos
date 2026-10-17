@@ -10,6 +10,8 @@
 /* === Modules === */
 #[cfg(test)]
 mod arrow_tests;
+#[cfg(test)]
+mod policy_tests;
 mod admissions;
 pub mod arrow;
 mod backend;

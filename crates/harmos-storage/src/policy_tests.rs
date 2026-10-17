@@ -8,11 +8,16 @@
  */
 
 /* === Modules === */
+#[allow(dead_code)]
+#[path = "../tests/support/storage.rs"]
+mod backend;
 
 /* === Re-Exports === */
 
 /* === Imports === */
-use crate::backend::storage_settings;
+use backend::{Data, Recovery, history, storage_settings};
+use std::num::NonZeroUsize;
+use std::sync::Arc;
 
 // Standard Library Imports
 
@@ -40,12 +45,12 @@ use crate::backend::storage_settings;
 
 /* === Tests === */
 
-fn construct(settings: StorageSettings) -> harmos_runtime::Result<StorageManager> {
+fn construct(settings: StorageSettings) -> crate::Result<StorageManager> {
     let backends = StorageBackends { primary: Arc::new(Data::new(history())), state: Arc::new(Recovery::new(history())) };
     StorageManager::new(backends, settings)
 }
 
-use super::*;
+use crate::*;
 
 #[test]
 fn response_fits_read_budget() {
