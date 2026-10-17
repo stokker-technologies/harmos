@@ -32,6 +32,7 @@ use schematic_domain::operations::{AnalyzeExchange, AnalyzeUpload, ListDirectori
 
 /* === Constants === */
 const PLUGIN: &str = "schematic-tools";
+const ENV_SCENE: &str = "HARMOS_SIDECAR_ENV_SCENE";
 
 /* === Macros === */
 
@@ -83,6 +84,23 @@ fn plugin_settings() -> PluginSidecarSettings {
 
 #[tokio::test]
 async fn sidecar_composition_walks() {
+    if std::env::var(ENV_SCENE).as_deref() != Ok("1") {
+        // The Current-Thread Test Host Tolerates This Ambient Setting; A Native
+        // Multithread Sidecar Must Clear It Before A Fresh Valid Generation Starts.
+        let output = tokio::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "sidecar::sidecar_composition_walks", "--nocapture"])
+            .env(ENV_SCENE, "1")
+            .env("TOKIO_WORKER_THREADS", "0")
+            .kill_on_drop(true)
+            .output().await.unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(output.status.success(), "owned environment scene failed:\n{stdout}\n{stderr}");
+        assert!(stdout.contains("test result: ok. 1 passed; 0 failed;"), "the exact child story must run once:\n{stdout}\n{stderr}");
+        return;
+    }
+    assert_eq!(std::env::var("TOKIO_WORKER_THREADS").unwrap(), "0");
+
     // Scene 1: The Host Owns An Explicit Working Directory And Stamped Child
     let directory = tempfile::tempdir().unwrap();
     std::fs::create_dir(directory.path().join("boards")).unwrap();
