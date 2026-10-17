@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/ci/.github/workflows/ci-windows.yml; sha256:56e5d72f9a9ac7e9c09bb0a10c27c6c9cc58893410f7e05f8dc1dfefee9e7cc4
+# Rendered by stkr project update from templates/ci/.github/workflows/ci-windows.yml; sha256:2b885db9428bff04c0831ff50f5400b8613dae224e82112aeaa93d1497b84c74
 name: CI / Windows
 "on":
   push:
@@ -152,7 +152,7 @@ jobs:
     name: Test / Acceptance / Rust
     runs-on:
     - windows-2022
-    timeout-minutes: 10
+    timeout-minutes: 13
     needs:
     - build
     - test_integration_rust
@@ -195,7 +195,7 @@ jobs:
     name: Test / System / Rust
     runs-on:
     - windows-2022
-    timeout-minutes: 10
+    timeout-minutes: 24
     needs:
     - build
     - test_integration_rust

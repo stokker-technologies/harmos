@@ -1,4 +1,4 @@
-# Rendered by stkr project update from templates/profiles/mise.toml; sha256:e5c7851f764643ac48a4a54594f16af8bb1b32c0e3652a1fb6d78076245eb4ee
+# Rendered by stkr project update from templates/profiles/mise.toml; sha256:209ff3b83a3c385097b1db9c66c2e08b706e5aaf5040bfaf749f8000c8ff6bb1
 # === Settings === #
 
 [settings]
@@ -31,6 +31,7 @@ git-cliff = "2.14.2"
 
 [env]
 UV_PROJECT_ENVIRONMENT = "{{config_root}}/.venv"
+SCCACHE_STARTUP_DIR = "{{env.XDG_RUNTIME_DIR | default(value='/tmp')}}"
 
 # === Variables === #
 
@@ -76,7 +77,7 @@ run = "uv run --locked --project tools/python ruff check"
 
 [tasks."lint:rust"]
 description = "Lint Rust"
-run = "cargo clippy --workspace --all-targets --all-features -- -D warnings"
+run = "uv run --locked --project tools/python python -m project_tools.test.cache -- cargo clippy --workspace --all-targets --all-features -- -D warnings"
 
 # === Check === #
 
@@ -91,8 +92,8 @@ run = "uv run --locked --project tools/python ty check"
 [tasks."check:rust"]
 description = "Check Rust"
 run = [
-  "cargo check --workspace --all-targets --all-features",
-  "cargo check --workspace --all-targets --no-default-features",
+  "uv run --locked --project tools/python python -m project_tools.test.cache -- cargo check --workspace --all-targets --all-features",
+  "uv run --locked --project tools/python python -m project_tools.test.cache -- cargo check --workspace --all-targets --no-default-features",
 ]
 
 # === Build === #
