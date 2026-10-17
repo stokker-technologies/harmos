@@ -8,9 +8,6 @@
  */
 
 /* === Modules === */
-#[path = "../../../../../tests/support/scenarios.rs"]
-mod scenario_runtime;
-
 mod source_scenarios;
 
 #[path = "../support/mod.rs"]
@@ -329,7 +326,7 @@ async fn boot(path: &std::path::Path, tail: usize) -> Runtime<Model> {
 #[test]
 fn contract_scenario() {
     {
-        scenario_runtime::check("group_truncation_recovers", || {
+        {
             let mut builder = tokio::runtime::Builder::new_current_thread();
             builder
                 .enable_all()
@@ -379,10 +376,10 @@ fn contract_scenario() {
                         "terminated corruption is loud"
                     );
                 });
-        });
+        }
     }
     {
-        scenario_runtime::check("reads_stay_verbatim", || {
+        {
             let mut builder = tokio::runtime::Builder::new_current_thread();
             builder.enable_all().build().expect("scenario runtime is valid").block_on(async {
 
@@ -419,10 +416,10 @@ fn contract_scenario() {
     restarted.stop().await.unwrap();
 
 });
-        });
+        }
     }
     {
-        scenario_runtime::check("partial_tail_replaced", || {
+        {
             let mut builder = tokio::runtime::Builder::new_current_thread();
             builder
                 .enable_all()
@@ -460,7 +457,7 @@ fn contract_scenario() {
                     );
                     runtime.stop().await.unwrap();
                 });
-        });
+        }
     }
 }
 

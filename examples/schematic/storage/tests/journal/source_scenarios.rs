@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -43,7 +42,7 @@ use schematic_storage::Jsonl;
 #[test]
 fn contract_scenario() {
     {
-        scenario_runtime::check("header_open_scan", || {
+        {
             let mut builder = tokio::runtime::Builder::new_current_thread();
             builder
                 .enable_all()
@@ -59,10 +58,10 @@ fn contract_scenario() {
                     assert!(Jsonl::<Model>::open(&path).is_err());
                     assert!(log.load().await.is_err());
                 });
-        });
+        }
     }
     {
-        scenario_runtime::check("failure_keeps_copy", || {
+        {
             let mut builder = tokio::runtime::Builder::new_current_thread();
             builder.enable_all().build().expect("scenario runtime is valid").block_on(async {
 
@@ -98,7 +97,7 @@ fn contract_scenario() {
     );
 
 });
-        });
+        }
     }
 }
 

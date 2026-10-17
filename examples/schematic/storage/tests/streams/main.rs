@@ -8,9 +8,6 @@
  */
 
 /* === Modules === */
-#[path = "../../../../../tests/support/scenarios.rs"]
-mod scenario_runtime;
-
 #[path = "../support/mod.rs"]
 mod support;
 
@@ -70,7 +67,7 @@ impl harmos::Application for Model {
 #[test]
 fn contract_scenario() {
     {
-        scenario_runtime::check("missing_checkpoint_origin", || {
+        {
             let mut builder = tokio::runtime::Builder::new_current_thread();
             builder
                 .enable_all()
@@ -106,10 +103,10 @@ fn contract_scenario() {
                         "healing repairs captures and never touches the checkpoint beside them"
                     );
                 });
-        });
+        }
     }
     {
-        scenario_runtime::check("torn_final_line", || {
+        {
             let temporary = tempfile::tempdir().unwrap();
             let directory = temporary.path();
             std::fs::create_dir_all(directory).unwrap();
@@ -130,10 +127,10 @@ fn contract_scenario() {
                 "{\"position\":1}\n",
                 "and a capture that ended on a newline is untouched"
             );
-        });
+        }
     }
     {
-        scenario_runtime::check("file_complete_line", || {
+        {
             let temporary = tempfile::tempdir().unwrap();
             let directory = temporary.path();
             std::fs::create_dir_all(directory).unwrap();
@@ -150,10 +147,10 @@ fn contract_scenario() {
                 0,
                 "nothing in it was ever a readable row"
             );
-        });
+        }
     }
     {
-        scenario_runtime::check("technical_members_read", || {
+        {
             let temporary = tempfile::tempdir().unwrap();
             let directory = temporary.path();
             std::fs::create_dir_all(directory).unwrap();
@@ -179,7 +176,7 @@ fn contract_scenario() {
                 ],
                 "a struct naming only the technical members reads the whole capture"
             );
-        });
+        }
     }
 }
 

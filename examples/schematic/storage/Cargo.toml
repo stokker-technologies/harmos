@@ -54,6 +54,13 @@ serde_json = { workspace = true, default-features = true, features = ["raw_value
 
 # === Dev Dependencies ===
 
+[dev-dependencies]
+# Filesystem
+tempfile = { workspace = true, default-features = true }
+
+# Async
+tokio = { workspace = true, default-features = true, features = ["macros", "rt", "rt-multi-thread", "time"] }
+
 # === Target Dependencies ===
 
 # === Test Targets ===

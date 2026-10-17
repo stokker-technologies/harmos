@@ -8,9 +8,6 @@
  */
 
 /* === Modules === */
-#[path = "../../../../../tests/support/scenarios.rs"]
-mod scenario_runtime;
-
 #[path = "../support/mod.rs"]
 mod support;
 
@@ -82,7 +79,7 @@ impl JournalConsumer<Bank> for Witnesses {
 #[test]
 fn contract_scenario() {
     {
-        scenario_runtime::check("storage_ac001_writer", || {
+        {
             let mut builder = tokio::runtime::Builder::new_current_thread();
             builder.enable_all().build().expect("scenario runtime is valid").block_on(async {
 
@@ -182,10 +179,10 @@ fn contract_scenario() {
     assert_eq!(lines.len(), 5, "nothing else reaches the file");
 
 });
-        });
+        }
     }
     {
-        scenario_runtime::check("storage_ac001_golden", || {
+        {
             let mut builder = tokio::runtime::Builder::new_current_thread();
             builder
                 .enable_all()
@@ -263,10 +260,10 @@ fn contract_scenario() {
                         "a negative at_us decodes as the exact pre-epoch microsecond instant"
                     );
                 });
-        });
+        }
     }
     {
-        scenario_runtime::check("facts_roundtrip_frame", || {
+        {
             let mut builder = tokio::runtime::Builder::new_current_thread();
             builder
                 .enable_all()
@@ -323,10 +320,10 @@ fn contract_scenario() {
                         "every admitted work frame forwards byte-identically"
                     );
                 });
-        });
+        }
     }
     {
-        scenario_runtime::check("systemtime_witness_under", || {
+        {
             let mut builder = tokio::runtime::Builder::new_current_thread();
             builder.enable_all().build().expect("scenario runtime is valid").block_on(async {
 
@@ -351,10 +348,10 @@ fn contract_scenario() {
     );
 
 });
-        });
+        }
     }
     {
-        scenario_runtime::check("storage_r006_line", || {
+        {
             let mut builder = tokio::runtime::Builder::new_current_thread();
             builder.enable_all().build().expect("scenario runtime is valid").block_on(async {
 
@@ -379,10 +376,10 @@ fn contract_scenario() {
     );
 
 });
-        });
+        }
     }
     {
-        scenario_runtime::check("storage_r006_retired", || {
+        {
             let directory = scratch("retired-wire");
             let copy = directory.join("journal.jsonl");
             std::fs::write(&copy, include_str!("../fixtures/journal.v1.retired.jsonl"))
@@ -408,10 +405,10 @@ fn contract_scenario() {
                 refused.to_string().contains("schema 1"),
                 "the refusal does not depend on any entry being present: {refused}"
             );
-        });
+        }
     }
     {
-        scenario_runtime::check("refused_not_normalized", || {
+        {
             let directory = scratch("crlf-wire");
             let copy = directory.join("journal.jsonl");
             std::fs::write(&copy, GOLDEN.replace('\n', "\r\n")).expect("the copy is writable");
@@ -439,7 +436,7 @@ fn contract_scenario() {
                 refused.to_string().contains("carriage return"),
                 "the refusal names the stray byte: {refused}"
             );
-        });
+        }
     }
 }
 

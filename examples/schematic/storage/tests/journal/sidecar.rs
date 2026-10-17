@@ -8,9 +8,6 @@
  */
 
 /* === Modules === */
-#[path = "../../../../../tests/support/scenarios.rs"]
-mod scenario_runtime;
-
 #[path = "../support/mod.rs"]
 mod support;
 
@@ -55,7 +52,7 @@ struct Artifact {
 #[test]
 fn contract_scenario() {
     {
-        scenario_runtime::check("sidecar_restores_unsaved", || {
+        {
             let mut builder = tokio::runtime::Builder::new_current_thread();
             builder
                 .enable_all()
@@ -93,10 +90,10 @@ fn contract_scenario() {
                     assert_eq!(ledger(&recovered).await, unsaved, "no work was lost");
                     assert_eq!(recovered.state.applied(), Position(2));
                 });
-        });
+        }
     }
     {
-        scenario_runtime::check("save_not_applied", || {
+        {
             let mut builder = tokio::runtime::Builder::new_current_thread();
             builder
                 .enable_all()
@@ -148,10 +145,10 @@ fn contract_scenario() {
                         "the runtime stands where the artifact says it does"
                     );
                 });
-        });
+        }
     }
     {
-        scenario_runtime::check("save_exports_artifact", || {
+        {
             let mut builder = tokio::runtime::Builder::new_current_thread();
             builder
                 .enable_all()
@@ -212,7 +209,7 @@ fn contract_scenario() {
                     );
                     assert_eq!(recovered.state.applied(), Position(2));
                 });
-        });
+        }
     }
 }
 
