@@ -69,6 +69,7 @@ pub struct Build {
 pub struct PackageOutput {
     pub producer: String,
     pub path: PathBuf,
+    pub sha256: String,
 }
 
 // A Narrow Projection Of The Generic Archive Owner's Versioned Receipt.
@@ -528,8 +529,9 @@ pub fn package_with_cancellation(
     // Publish Only After Every Artifact And Schema Has Passed Preparation.
     let mut packages = Vec::new();
     for (path, (producer, bundle)) in prepared {
+        let sha256 = digest(bundle.bytes());
         publish(&path, bundle.bytes())?;
-        packages.push(PackageOutput { producer, path });
+        packages.push(PackageOutput { producer, path, sha256 });
     }
     Ok(packages)
 }

@@ -73,6 +73,7 @@ pub use writes::StorageSchema;
 
 // Internal Paths Refer To This Crate's One Canonical Engine Namespace.
 use crate as storage;
+extern crate self as harmos_storage;
 pub use harmos_domain::{Aggregate, Identifier, MemorySize, Message, btree_map_memory, schema};
 #[cfg(feature = "grpc")]
 pub use harmos_domain::Protobuf;
