@@ -189,7 +189,7 @@ impl OperationManager {
         contract: &crate::operations::Contract,
     ) -> Result<PluginControl> {
         if contract.operation().visibility != crate::operations::Visibility::Host
-            || scope.wire_contract(&contract.operation().id) != Some(contract)
+            || scope.observe_contract() != Some(contract)
         {
             return Err(Error::InvalidInput {
                 field: "observer control",

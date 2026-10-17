@@ -234,14 +234,6 @@ impl PluginScope {
         self
     }
 
-    #[cfg(feature = "plugin-sidecar")]
-    pub(crate) fn wire_contract(
-        &self,
-        id: &crate::Identifier,
-    ) -> Option<&crate::operations::Contract> {
-        self.wire_contracts.get(id)
-    }
-
     pub(super) fn with_requirements(
         mut self,
         contracts: Option<&Vec<harmos_domain::inventory::contracts::Required>>,
