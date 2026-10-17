@@ -112,7 +112,7 @@ fn inventory(bytes: &[u8], facility: &str, expected: &BTreeSet<&str>) {
 
 #[test]
 fn artifacts_embed_metadata() {
-    let native = SHARED.into_iter().chain(["schematic.list_directories"]).collect::<BTreeSet<_>>();
+    let native = SHARED.into_iter().chain(["schematic.analyze_exchange", "schematic.analyze_upload", "schematic.list_directories"]).collect::<BTreeSet<_>>();
     let portable = SHARED.into_iter().collect::<BTreeSet<_>>();
 
     // Read The Built Artifacts
