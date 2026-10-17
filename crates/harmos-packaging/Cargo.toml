@@ -94,6 +94,7 @@ protoc-bin-vendored = { workspace = true }
 [[test]]
 name = "build"
 path = "tests/build/main.rs"
+required-features = ["sidecar"]
 
 [[test]]
 name = "grpc"
