@@ -115,7 +115,10 @@ async fn sidecar_composition_walks() {
     // Typed Native Calls Prepare Their Encoded Requests Within An Explicit Host Budget
     let runtime = Runtime::<Host>::builder((), ())
         .register(Lanes::catalog())
-        .operation_settings(harmos_runtime::operations::Settings { preparation_bytes: Some(NonZeroUsize::new(64 * 1024).unwrap()), ..Default::default() })
+        .operation_settings(harmos_runtime::operations::Settings {
+            preparation_bytes: Some(NonZeroUsize::new(64 * 1024).unwrap()),
+            ..Default::default()
+        })
         .runtime()
         .await
         .unwrap();

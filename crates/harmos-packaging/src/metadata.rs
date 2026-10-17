@@ -202,9 +202,11 @@ fn staging_sibling(root: &Path, path: &Path) -> bool {
     let Some(first) = path.strip_prefix(parent).ok().and_then(|relative| relative.components().next()) else {
         return false;
     };
-    first.as_os_str().to_str().and_then(|first| first.strip_prefix(name)).is_some_and(|suffix| {
-        suffix.len() == 6 && suffix.bytes().all(|byte| byte.is_ascii_alphanumeric())
-    })
+    first
+        .as_os_str()
+        .to_str()
+        .and_then(|first| first.strip_prefix(name))
+        .is_some_and(|suffix| suffix.len() == 6 && suffix.bytes().all(|byte| byte.is_ascii_alphanumeric()))
 }
 
 /* === Tests === */
