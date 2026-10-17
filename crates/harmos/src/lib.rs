@@ -12,6 +12,7 @@ mod aggregate;
 pub mod builtin;
 pub mod config;
 mod error;
+pub mod filesystem;
 #[cfg(feature = "grpc")]
 pub mod grpc;
 pub mod prelude;

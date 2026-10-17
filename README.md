@@ -377,6 +377,10 @@ let records = storage
     .await?; // Vec<StoredRecord<Reading>>
 ```
 
+`harmos::filesystem::input::read(path, limit)` bounds regular-file reads.
+`harmos::filesystem::publication` owns staged atomic installation, replacement,
+removal and explicit durability confirmation across Unix and Windows.
+
 `storage::query::Accumulator` folds scalars over rows a caller already holds
 with the same semantics as query aggregates: exact rational `Sum`, `Mean` and
 `Median`, ordering for `Min`, `Max` and `Last`, and signal kernels for floating

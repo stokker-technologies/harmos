@@ -151,6 +151,7 @@ serde_json = { workspace = true, default-features = true, features = ["raw_value
 # Configuration
 
 # Filesystem
+tempfile = { workspace = true, default-features = true }
 
 # Parsing
 
@@ -235,6 +236,10 @@ http-body-util = { workspace = true }
 criterion = { workspace = true, default-features = true }
 
 # === Target Dependencies ===
+
+[target.'cfg(windows)'.dependencies]
+# Utilities
+windows-sys = { workspace = true, features = ["Win32_Storage_FileSystem", "Win32_System_WindowsProgramming"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # Local
