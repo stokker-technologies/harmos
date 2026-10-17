@@ -197,7 +197,7 @@ impl harmos_runtime::operations::Operation for NativeForwarding {
         &mut self, host: Self::Context<'ctx>, request: &mut Forward, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos_runtime::operations::Response<Echoed>, Self::Error> {
         let result: ::core::result::Result<Echoed, Self::Error> = async move {
-            host.call(ProviderEcho { say: request.say.clone() })
+            host.call(Echo { say: request.say.clone() })
                 .await
                 .map(harmos_runtime::operations::Response::into_owned)
                 .map_err(Self::Error::of)

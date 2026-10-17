@@ -324,7 +324,7 @@ async fn wire_alias_refused() {
     let mut manager = Manager::new(lifecycle.candidate(()).await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
 
-    // A Wire Declaration Keeps Its Original Identity Under Any Other Operation Id
+    // A Declaration That Binds A gRPC Method Keeps Its Original Identity Under Any Other Operation Id
     let refused = runtime
         .operations
         .register_operation_id::<ComponentOperation<propose::ProposeRoute>>(
@@ -339,7 +339,7 @@ async fn wire_alias_refused() {
             refused,
             harmos_runtime::Error::InvalidInput {
                 field: "operation wire declaration",
-                reason: "wire projection must match the original typed declaration and identity",
+                reason: "an operation that binds a gRPC method keeps its declared identity",
             }
         ),
         "{refused:?}"

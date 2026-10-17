@@ -132,7 +132,7 @@ async fn refusal_keeps_classification() {
     };
     assert_eq!(failure.cause(), "the probe declines");
     let answered = runtime.operations.call(Echo { say: "two".into() }).await.unwrap();
-    assert_eq!(answered.said, "two", "a declined call keeps the instance");
+    assert_eq!(answered.said, "heard two", "a declined call keeps the instance");
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
     runtime.stop().await.unwrap();

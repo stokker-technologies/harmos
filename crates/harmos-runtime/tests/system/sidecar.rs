@@ -39,14 +39,10 @@ const ENV_SCENE: &str = "HARMOS_SIDECAR_ENV_SCENE";
 /* === Type Aliases === */
 
 /* === Structs === */
-// The Host Application Serves Only The Sidecar's Declared Progress Stream
+// The Host Declares No Stream: The Sidecar Owns Its Progress Stream And The Host Only Watches It.
 struct Host;
 
 /* === Enums === */
-#[harmos_runtime::streams]
-enum Streams {
-    Progress(AnalysisProgress),
-}
 
 #[harmos_runtime::lanes]
 enum Lanes {
@@ -61,7 +57,7 @@ impl harmos_runtime::Application for Host {
     type State = ();
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
-    type Streams = Streams;
+    type Streams = ();
     type Resources = ();
 }
 
@@ -116,7 +112,7 @@ async fn sidecar_composition_walks() {
     std::fs::write(directory.path().join("notes.txt"), b"not a directory").unwrap();
     let executable = Executable::at(support::fixtures::artifact("schematic-sidecar")).unwrap().directory(directory.path());
     assert_eq!(executable.declaration().id, PLUGIN);
-    let runtime = Runtime::<Host>::builder((), ()).register(Lanes::catalog()).register(Streams::catalog()).runtime().await.unwrap();
+    let runtime = Runtime::<Host>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
     // Scene 2: Locked Tokio Rejects Zero Workers Before The Native Plugin Is Ready.
     // This Exercises A Real Startup Crash Through An Existing Environment Option.
     let crashing = executable.clone().variable("TOKIO_WORKER_THREADS", "0");
@@ -147,11 +143,14 @@ async fn sidecar_composition_walks() {
     assert_eq!(routed.points, [Point { x: 0, y: 0 }, Point { x: 3, y: 0 }, Point { x: 3, y: 4 }]);
 
     // Scene 4: Upload Progress Proves The Child Holds Its Shared Analysis Permit
-    let mut progress = runtime.streams.watch::<AnalysisProgress>();
+    let published = runtime.streams.publication("schematic.analysis_progress", 1).expect("the ready sidecar owns its progress stream");
+    assert_eq!(published.definition().owner(), Some(PLUGIN));
+    let mut progress = published.watch();
     let upload = runtime.operations.upload(AnalyzeUpload { title: "Held Upload".into() }, stream_settings()).unwrap();
     upload.send(snapshot()).await.unwrap();
     let Item::Row(row) = progress.next().await.unwrap() else { panic!("the progress window lost a row") };
-    assert_eq!((row.value.title.as_str(), row.value.checked), ("Held Upload", 1));
+    let row = <AnalysisProgress as harmos_runtime::Message>::decode(&row.value.payload).unwrap();
+    assert_eq!((row.title.as_str(), row.checked), ("Held Upload", 1));
 
     // Scene 5: A Bidirectional Call Waits For That Permit Until Cancellation Settles
     let mut exchange =
@@ -168,7 +167,8 @@ async fn sidecar_composition_walks() {
     assert!(exchange.next().await.unwrap().is_none());
     assert_eq!(exchange.join().await.unwrap().checked, 1);
     let Item::Row(row) = progress.next().await.unwrap() else { panic!("the progress window lost a row") };
-    assert_eq!((row.value.title.as_str(), row.value.checked), ("Waiting Exchange", 1));
+    let row = <AnalysisProgress as harmos_runtime::Message>::decode(&row.value.payload).unwrap();
+    assert_eq!((row.title.as_str(), row.checked), ("Waiting Exchange", 1));
 
     // Scene 6: Upload EOF Returns Its Final Count And Invalid Input Stays Typed
     let mut completed = runtime.operations.upload(AnalyzeUpload { title: "Completed Upload".into() }, stream_settings()).unwrap();

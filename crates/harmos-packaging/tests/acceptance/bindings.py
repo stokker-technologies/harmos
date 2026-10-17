@@ -76,12 +76,20 @@ def descriptors(target: Path, alpha: Path, beta: Path) -> None:
     }
     for operation in operations:
         assert issubclass(operation.request, Message)
-        assert operation.request is operation.response
+        if operation.id.startswith("fixture."):
+            assert operation.request is operation.response
+        else:
+            # The Operation Is Its Own Request; Its Payload Response Is A Distinct
+            # Message Of The Same Shape
+            assert operation.request is not operation.response
+            request = [field.name for field in operation.request.DESCRIPTOR.fields]
+            response = [field.name for field in operation.response.DESCRIPTOR.fields]
+            assert request == response
         assert operation.codec == "protobuf"
         digest = hashlib.sha256(operation.contract.encode()).hexdigest()
         assert digest == operation.fingerprint
         if operation.input is not None:
-            assert operation.input is operation.request
+            assert operation.input is operation.response
             assert operation.rpc_request.DESCRIPTOR.oneofs_by_name["value"]
         if operation.output is not None:
             assert operation.output is operation.response
@@ -271,7 +279,7 @@ assert Path(pkg.__file__).is_relative_to(Path(sys.argv[1]))
 ops = [value for value in vars(pkg).values() if isinstance(value, pkg.Operation)]
 assert len(ops) == 7
 for operation in ops:
-    assert operation.request is operation.response
+    assert (operation.request is operation.response) == operation.id.startswith('fixture.')
     assert json.loads(operation.contract)['version'] == operation.version
     operation.request.FromString(operation.request().SerializeToString())
 import bindings_beta

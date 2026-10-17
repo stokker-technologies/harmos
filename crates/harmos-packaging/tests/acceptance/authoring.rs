@@ -80,6 +80,11 @@ impl Project {
         project.run("git", &["init", "--initial-branch=feat/starter"]);
         project.run("mise", &["trust", "mise.toml"]);
         project.run("cargo", &["generate-lockfile", "--offline"]);
+        // The Staged Wheels Replace The Public Index: Rebind The Shipped Lock To Them Without Moving A Pin
+        let lock = project.root.join("tools/python/uv.lock");
+        let shipped = pins(&std::fs::read_to_string(&lock).unwrap());
+        project.run("uv", &["lock", "--offline", "--project", "tools/python"]);
+        assert_eq!(pins(&std::fs::read_to_string(&lock).unwrap()), shipped, "the staged wheels satisfy the shipped Python pins");
         project.run("uv", &["sync", "--locked", "--offline", "--all-groups", "--project", "tools/python"]);
         project.run("git", &["add", "."]);
         project.run(
@@ -208,6 +213,14 @@ fn interrupt(pid: u32) {
 fn digest(path: &Path) -> String {
     use sha2::{Digest, Sha256};
     Sha256::digest(std::fs::read(path).unwrap()).iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn pins(lock: &str) -> Vec<(String, String)> {
+    let field = |block: &str, key: &str| {
+        let prefix = format!("{key} = \"");
+        block.lines().find_map(|line| line.strip_prefix(&prefix)?.strip_suffix('"')).unwrap().to_owned()
+    };
+    lock.split("[[package]]").skip(1).map(|block| (field(block, "name"), field(block, "version"))).collect()
 }
 
 fn dev_rebuilds(kind: &str) {

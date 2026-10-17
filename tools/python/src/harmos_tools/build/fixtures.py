@@ -39,6 +39,7 @@ STAMP = FIXTURES / "stamp.json"
 SCHEMATIC = ROOT / "examples/schematic/Cargo.toml"
 GUESTS = {"schematic-guest": SCHEMATIC, "harmos-sandbox-guest": ROOT / "crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml"}
 LIBRARIES = ("harmos", "harmos_sidecar", "harmos_macros", "serde")
+EDITABLES = "editables==0.5"
 
 # === Types === #
 
@@ -211,6 +212,8 @@ def _offline_inputs(profile: str) -> dict:
     # Each Project Locks Its Own Closure, So Each Downloads Separately Into The Shared Wheel Directory.
     download = [sys.executable, "-c", launch, str(wheels[0]), "download", "--dest", str(destination / "wheels"), "--require-hashes"]
     commands.extend([*download, "--requirement", str(selected)] for selected in requirements_files)
+    # Hatchling Requests `editables` Only For Editable Installs, So No Project Lock Names It.
+    commands.append([*download[:-1], "--no-deps", EDITABLES])
     locks = [manifest.parent / "Cargo.lock" for manifest in manifests] + [project / "uv.lock" for project in projects]
     inputs = [*manifests, *(project / "pyproject.toml" for project in projects), Path(str(wheels[0]))]
     if (ROOT / ".cargo").is_dir():
