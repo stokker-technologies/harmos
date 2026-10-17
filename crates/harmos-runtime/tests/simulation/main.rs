@@ -11,6 +11,8 @@
 /* === Modules === */
 
 mod inverses;
+#[path = "../support/simulation.rs"]
+mod oracle;
 #[path = "../support/mod.rs"]
 mod support;
 #[path = "../support/vault.rs"]
@@ -578,13 +580,7 @@ async fn resident(mut context: harmos_runtime::services::Service<Bank>) -> Resul
 }
 
 fn scripted(seed: u64) -> SimulatedRuntime<Bank> {
-    let mut sim = bank(seed).simulated_service("adapter", resident).simulate().expect("the simulation boots");
-    sim.commit(alice(), Deposit { account: support::HOUSE, amount: 7 }).expect("the scripted commit lands");
-    sim.record(alice(), Noted("seeded".to_owned())).expect("the scripted record lands");
-    sim.publish(pulse(4)).expect("the row catalog is frozen");
-    sim.fault("adapter", Fault::Environmental("bus reset")).expect("the running service receives its exit");
-    sim.advance_ms(12);
-    sim
+    oracle::scripted(bank(seed))
 }
 
 fn scripted_wait(seed: u64) -> Duration {

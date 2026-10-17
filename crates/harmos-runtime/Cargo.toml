@@ -343,6 +343,12 @@ path = "benches/transport/main.rs"
 harness = false
 required-features = ["plugin-sidecar"]
 
+[[bench]]
+name = "integration-simulation"
+path = "benches/simulation/main.rs"
+harness = false
+required-features = ["simulation"]
+
 # === Example Targets ===
 
 # === Workspace Lints ===
