@@ -198,7 +198,7 @@ async fn wrong_catalog_refused() {
     runtime.stop().await.unwrap();
 }
 
-// Red Until The SDK Stops Abandoning A Timed-Out Shutdown With A Guest Panic
+// A Pending Guest Stop Retains Cleanup After Its Deadline
 #[tokio::test]
 async fn shutdown_retains_cleanup() {
     let runtime = runtime().await;
