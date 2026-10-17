@@ -317,8 +317,6 @@ fn wire_round_trip(schema: &Schema) {
     assert!(<Schema as harmos_domain::Message>::decoding_memory(&postcard).unwrap() >= std::mem::size_of::<Schema>());
     assert_eq!(&<Schema as harmos_domain::Message>::decode(&postcard).unwrap(), schema);
     let protobuf = crate::encode(schema);
-    // CODEX-BLOCKED: The adapter has no independent encoded-length preflight; this retains only the encoded byte length comparison.
-    assert_eq!(protobuf.len(), crate::encode(schema).len());
     assert!(grpc::decoding_memory::<Schema>(DecodeInput::new(&protobuf)).unwrap() >= std::mem::size_of::<Schema>());
     assert_eq!(&grpc::decode::<Schema>(DecodeInput::new(&protobuf)).unwrap(), schema);
 }

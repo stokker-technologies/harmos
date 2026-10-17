@@ -82,8 +82,6 @@ struct BatchedRow {
 /* === Private Functions === */
 fn roundtrip<T: harmos_domain::Message + harmos_domain::schema::Described + MemorySize + std::fmt::Debug + PartialEq>(value: T) {
     let encoded = crate::encode(&value);
-    // CODEX-BLOCKED: The adapter has no independent encoded-length preflight; this retains only the encoded byte length comparison.
-    assert_eq!(encoded.len(), crate::encode(&value).len());
     let bound = grpc::decoding_memory::<T>(DecodeInput::new(&encoded)).unwrap();
     let decoded = grpc::decode::<T>(DecodeInput::new(&encoded)).unwrap();
     assert_eq!(decoded, value);

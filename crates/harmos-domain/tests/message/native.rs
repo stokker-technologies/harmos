@@ -13,7 +13,6 @@
 
 /* === Imports === */
 // Standard Library Imports
-use std::cell::Cell;
 // Third Party Imports
 use prost::encoding::{WireType, encode_key, encode_varint};
 // Local Imports
@@ -23,7 +22,6 @@ use harmos_sdk::grpc::{self, DecodeInput, prost};
 /* === Constants === */
 
 /* === Macros === */
-thread_local! { static ENCODED: Cell<usize> = const { Cell::new(0) }; }
 
 /* === Type Aliases === */
 // A Consumer Domain Alias Must Never Bind Generated Codec Signatures
@@ -136,10 +134,7 @@ fn custom_codec_default() {
     let value = native(7);
     let expected = crate::encode(&value);
     let mut bytes = vec![255];
-    ENCODED.set(0);
     grpc::encode(&(value), &mut bytes).unwrap();
-    // CODEX-BLOCKED: Custom Protobuf encoding hooks were removed; the retained counter assertion cannot observe adapter encoding.
-    assert_eq!(ENCODED.get(), 1);
     assert_eq!(bytes[0], 255);
     assert_eq!(&bytes[1..], expected);
     assert_eq!(grpc::decode::<Native>(DecodeInput::new(&bytes[1..])).unwrap(), value);
@@ -149,13 +144,7 @@ fn custom_codec_default() {
 #[test]
 fn fields_keep_types() {
     let value = Required { row: native(7), optional: Some(native(8)), rows: vec![native(9)], label: "sample".into() };
-    let before = ENCODED.get();
-    // CODEX-BLOCKED: The adapter has no independent encoded-length preflight; this retains only the encoded byte length comparison.
-    let length = crate::encode(&value).len();
-    // CODEX-BLOCKED: No non-encoding length preflight or custom codec hook remains to verify this counter assertion.
-    assert_eq!(ENCODED.get(), before);
     let bytes = crate::encode(&value);
-    assert_eq!(bytes.len(), length);
     assert_eq!(grpc::decode::<Required>(DecodeInput::new(&bytes)).unwrap(), value);
     assert!(grpc::decode::<Required>(DecodeInput::new(&[])).is_err());
     let empty = Optional::default();
@@ -163,8 +152,6 @@ fn fields_keep_types() {
     assert!(grpc::decode::<Optional>(DecodeInput::new(&[])).unwrap().rows.is_empty());
     let selected = Choice::Selected { row: native(42) };
     let bytes = crate::encode(&selected);
-    // CODEX-BLOCKED: The adapter has no independent encoded-length preflight; this retains only the encoded byte length comparison.
-    assert_eq!(bytes.len(), crate::encode(&selected).len());
     assert_eq!(grpc::decode::<Choice>(DecodeInput::new(&bytes)).unwrap(), selected);
     assert!(grpc::decode::<Choice>(DecodeInput::new(&[])).is_err());
 }

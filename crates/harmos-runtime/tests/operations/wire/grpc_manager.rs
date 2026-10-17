@@ -216,7 +216,7 @@ impl harmos_runtime::operations::authorization::Authorizer for ExternalAccess {
         };
         let mut grants = Vec::new();
         match provider.definition.id.as_str() {
-            "host.operations" | "grpc.descendant" => (),
+            "host.catalog" | "grpc.descendant" => (),
             "grpc.guarded" => {
                 match self.mode.load(std::sync::atomic::Ordering::Acquire) {
                     1 => {
@@ -667,26 +667,31 @@ async fn external_catalog(
 ) -> Result<Vec<harmos_runtime::operations::host::DiscoveredOperation>, tonic::Status> {
     use harmos_runtime::operations::host::{Catalog, CatalogKind, CatalogPage};
     let mut client = tonic::client::Grpc::new(channel);
-    client.ready().await.map_err(|_| tonic::Status::unavailable("channel"))?;
-    let mut request = tonic::Request::new(harmos_runtime::operations::Response::new(Catalog {
-        kind: CatalogKind::Operations,
-        schema: None,
-        after: None,
-        rows: None,
-        bytes: None,
-    }));
-    if let Some(token) = token {
-        request.metadata_mut().insert("authorization", token.parse().unwrap());
+    let mut entries = Vec::new();
+    let mut after = None;
+    // Bounded Pages Fit The Client's Decode Ceiling; The Catalog Ends With An Empty Cursor.
+    loop {
+        client.ready().await.map_err(|_| tonic::Status::unavailable("channel"))?;
+        let page = Catalog { kind: CatalogKind::Operations, schema: None, after: after.take(), rows: None, bytes: Some(2048) };
+        let mut request = tonic::Request::new(harmos_runtime::operations::Response::new(page));
+        if let Some(token) = token {
+            request.metadata_mut().insert("authorization", token.parse().unwrap());
+        }
+        let (decode, encode) = limits();
+        let response: tonic::Response<harmos_runtime::operations::StreamItem<CatalogPage>> = client
+            .unary(
+                request,
+                http::uri::PathAndQuery::from_static("/harmos.host.v1.Host/Catalog"),
+                Codec::<harmos_runtime::grpc::Transcoded, CatalogPage, harmos_runtime::operations::Response<Catalog>>::new(decode, encode)?,
+            )
+            .await?;
+        let page = response.into_inner();
+        entries.extend(serde_json::from_slice::<Vec<harmos_runtime::operations::host::DiscoveredOperation>>(&page.entries).unwrap());
+        match page.next.clone() {
+            Some(next) => after = Some(next),
+            None => return Ok(entries),
+        }
     }
-    let (decode, encode) = limits();
-    let response: tonic::Response<harmos_runtime::operations::StreamItem<CatalogPage>> = client
-        .unary(
-            request,
-            http::uri::PathAndQuery::from_static("/harmos.host.v1.Host/Catalog"),
-            Codec::<harmos_runtime::grpc::Transcoded, CatalogPage, harmos_runtime::operations::Response<Catalog>>::new(decode, encode)?,
-        )
-        .await?;
-    Ok(serde_json::from_slice(&response.into_inner().entries).unwrap())
 }
 
 async fn web(address: std::net::SocketAddr, method: &str, path: &str, headers: &[(&str, &str)]) -> String {

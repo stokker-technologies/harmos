@@ -117,13 +117,11 @@ fn boxed_descriptors_match() {
 fn boxed_bytes_match() {
     let (plain, boxed) = holders();
     assert_eq!(crate::encode(&boxed), crate::encode(&plain));
-    // CODEX-BLOCKED: The adapter has no independent encoded-length preflight; this retains only the encoded byte length comparison.
     assert_eq!(crate::encode(&boxed).len(), crate::encode(&plain).len());
     assert_eq!(Message::encode_to_vec(&boxed), Message::encode_to_vec(&plain));
     assert_eq!(Message::encoded_len(&boxed), Message::encoded_len(&plain));
     for (plain, boxed) in choices() {
         assert_eq!(crate::encode(&boxed), crate::encode(&plain));
-        // CODEX-BLOCKED: The adapter has no independent encoded-length preflight; this retains only the encoded byte length comparison.
         assert_eq!(crate::encode(&boxed).len(), crate::encode(&plain).len());
         assert_eq!(Message::encode_to_vec(&boxed), Message::encode_to_vec(&plain));
         assert_eq!(Message::encoded_len(&boxed), Message::encoded_len(&plain));
