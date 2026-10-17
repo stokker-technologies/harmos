@@ -38,9 +38,12 @@ inject a test fault.
 
 The dedicated sandbox guest retains guest-specific policy and cleanup behavior
 that schematic does not declare. Loading that component inside Wasmtime is an
-in-process integration boundary. Native attachment environment, process exit and
-physical cleanup belong to the sidecar owner; host reload and withdrawal belong
-to the public system scene.
+in-process integration boundary. Keep pure native command construction beside
+the sidecar owner. The schematic sidecar system scene owns effective environment
+clearing, pre-readiness process failure, cleanup, withdrawal and fresh-generation
+recovery. Its host runs with a poisoned worker-count variable; a valid multithread
+sidecar can recover only when the actual attachment clears that ambient value.
+Do not claim this startup failure proves a crash after readiness.
 
 ## Fixture Inputs
 

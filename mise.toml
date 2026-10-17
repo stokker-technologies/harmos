@@ -126,50 +126,59 @@ run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.b
 
 [tasks.test]
 description = "Test Every Layer"
-depends = ["test:unit", "test:integration", "test:acceptance", "test:system"]
+usage = 'flag "--profile <profile>" default="dev"'
+depends = ["test:unit --profile {{usage.profile}}", "test:integration --profile {{usage.profile}}", "test:acceptance --profile {{usage.profile}}", "test:system --profile {{usage.profile}}"]
 
 [tasks."test:unit"]
 description = "Test Unit Layer"
-depends = ["test:unit:rust"]
+usage = 'flag "--profile <profile>" default="dev"'
+depends = ["test:unit:rust --profile {{usage.profile}}"]
 
 [tasks."test:unit:rust"]
 description = "Test Unit Rust"
+usage = 'flag "--profile <profile>" default="dev"'
 run = [
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category unit --language rust",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --profile {{usage.profile}}",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category unit --language rust --profile {{usage.profile}} --archive-argument=--all-features",
 ]
 
 [tasks."test:integration"]
 description = "Test Integration Layer"
-depends = ["test:integration:rust"]
+usage = 'flag "--profile <profile>" default="dev"'
+depends = ["test:integration:rust --profile {{usage.profile}}"]
 
 [tasks."test:integration:rust"]
 description = "Test Integration Rust"
+usage = 'flag "--profile <profile>" default="dev"'
 run = [
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category integration --language rust",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --profile {{usage.profile}}",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category integration --language rust --profile {{usage.profile}} --archive-argument=--all-features",
 ]
 
 [tasks."test:acceptance"]
 description = "Test Acceptance Layer"
-depends = ["test:acceptance:rust"]
+usage = 'flag "--profile <profile>" default="dev"'
+depends = ["test:acceptance:rust --profile {{usage.profile}}"]
 
 [tasks."test:acceptance:rust"]
 description = "Test Acceptance Rust"
+usage = 'flag "--profile <profile>" default="dev"'
 run = [
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category acceptance --language rust",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --profile {{usage.profile}}",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category acceptance --language rust --profile {{usage.profile}} --archive-argument=--all-features",
 ]
 
 [tasks."test:system"]
 description = "Test System Layer"
-depends = ["test:system:rust"]
+usage = 'flag "--profile <profile>" default="dev"'
+depends = ["test:system:rust --profile {{usage.profile}}"]
 
 [tasks."test:system:rust"]
 description = "Test System Rust"
+usage = 'flag "--profile <profile>" default="dev"'
 run = [
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category system --language rust",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --profile {{usage.profile}}",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category system --language rust --profile {{usage.profile}} --archive-argument=--all-features",
 ]
 
 [tasks."test:verify"]
@@ -184,31 +193,38 @@ run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.t
 
 [tasks.bench]
 description = "Bench Every Layer"
-depends = ["bench:unit", "bench:integration", "bench:system"]
+usage = 'flag "--refresh-baseline"'
+depends = ["bench:unit{% if usage.refresh_baseline %} --refresh-baseline{% endif %}", "bench:integration{% if usage.refresh_baseline %} --refresh-baseline{% endif %}", "bench:system{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"]
 
 [tasks."bench:unit"]
 description = "Bench Unit Layer"
-depends = ["bench:unit:rust"]
+usage = 'flag "--refresh-baseline"'
+depends = ["bench:unit:rust{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"]
 
 [tasks."bench:unit:rust"]
 description = "Bench Unit Rust"
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run bench --category unit --language rust"
+usage = 'flag "--refresh-baseline"'
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run bench --category unit --language rust --archive-argument=--all-features{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"
 
 [tasks."bench:integration"]
 description = "Bench Integration Layer"
-depends = ["bench:integration:rust"]
+usage = 'flag "--refresh-baseline"'
+depends = ["bench:integration:rust{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"]
 
 [tasks."bench:integration:rust"]
 description = "Bench Integration Rust"
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run bench --category integration --language rust"
+usage = 'flag "--refresh-baseline"'
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run bench --category integration --language rust --archive-argument=--all-features{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"
 
 [tasks."bench:system"]
 description = "Bench System Layer"
-depends = ["bench:system:rust"]
+usage = 'flag "--refresh-baseline"'
+depends = ["bench:system:rust{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"]
 
 [tasks."bench:system:rust"]
 description = "Bench System Rust"
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run bench --category system --language rust"
+usage = 'flag "--refresh-baseline"'
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run bench --category system --language rust --archive-argument=--all-features{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"
 
 # === Package === #
 
@@ -226,28 +242,29 @@ run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.p
 
 [tasks.ci]
 description = "Run The CI Flow Locally"
+usage = 'flag "--profile <profile>" default="dev"'
 run = [
   { task = "format --check" },
   { task = "lint" },
   { task = "check" },
-  { task = "build" },
-  { task = "test:unit" },
-  { task = "test:integration" },
-  { task = "test:acceptance" },
-  { task = "test:system" },
-  { task = "package" },
+  { task = "build --profile {{usage.profile}}" },
+  { task = "test:unit --profile {{usage.profile}}" },
+  { task = "test:integration --profile {{usage.profile}}" },
+  { task = "test:acceptance --profile {{usage.profile}}" },
+  { task = "test:system --profile {{usage.profile}}" },
+  { task = "package --profile {{usage.profile}}" },
   { task = "test:verify" },
 ]
 
 [tasks."ci:nightly"]
 description = "Run Nightly Coverage And Benchmarks"
-run = [{ task = "build" }, { task = "coverage" }, { task = "bench:unit" }, { task = "bench:integration" }, { task = "bench:system" }]
+run = [{ task = "build" }, { task = "coverage" }, { task = "build --profile bench" }, { task = "bench:unit --refresh-baseline" }, { task = "bench:integration --refresh-baseline" }, { task = "bench:system --refresh-baseline" }]
 
 # === Release === #
 
 [tasks.release]
-description = "Prepare And Validate A Release"
-run = [{ task = "release:prepare" }, { task = "ci" }, { task = "package --profile release" }]
+description = "Prepare And Validate A Release Branch"
+run = [{ task = "release:prepare" }, { task = "ci" }]
 
 [tasks."release:prepare"]
 description = "Prepare The Release Branch"

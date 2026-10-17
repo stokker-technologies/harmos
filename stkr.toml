@@ -17,6 +17,24 @@ exclude = ["main", "master", "dev", "develop", "release/**"]
 
 # === CI === #
 
+[ci]
+dev_advisory = ["windows"]
+
+[ci.runners]
+linux = ["ubuntu-24.04"]
+windows = ["windows-2022"]
+nightly = ["stokker-local-linux-x64"]
+
+[ci.setup]
+linux = ["command -v cc", "command -v pkg-config"]
+windows = ['''
+$before = @{}
+Get-ChildItem Env: | ForEach-Object { $before[$_.Name] = $_.Value }
+. ./tools/ci/bootstrap.ps1
+Get-ChildItem Env: | Where-Object { $_.Name -notmatch '^(GITHUB_|RUNNER_|PATH$)' -and $before[$_.Name] -ne $_.Value } | ForEach-Object { "$($_.Name)=$($_.Value)" } | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+$env:PATH.Substring(0, $env:PATH.Length - $before['PATH'].Length).TrimEnd(';') -split ';' | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+''']
+
 
 # === Agents === #
 
@@ -38,10 +56,6 @@ unit = 512
 integration = 960
 acceptance = 128
 system = 64
-
-[conventions.ci.multitask]
-"test_linux" = ["packages:restore", "test", "packages:validate", "packages:export"]
-"test_windows" = ["packages:restore", "test", "packages:validate", "packages:export"]
 
 
 [barrels]
