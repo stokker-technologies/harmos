@@ -71,6 +71,24 @@ pub struct PackageOutput {
     pub path: PathBuf,
 }
 
+// A Narrow Projection Of The Generic Archive Owner's Versioned Receipt.
+#[derive(Deserialize)]
+struct Capture {
+    schema: u32,
+    profile: BuildProfile,
+    target: String,
+    command: Vec<String>,
+    inputs: CaptureInputs,
+    messages: CaptureFile,
+    metadata: CaptureFile,
+}
+
+#[derive(Deserialize)]
+struct CaptureInputs { rustc: String }
+
+#[derive(Deserialize)]
+struct CaptureFile { sha256: String }
+
 #[derive(Deserialize)]
 struct Message {
     reason: String,
@@ -126,47 +144,60 @@ impl Schema {
 }
 
 impl Build {
-    // The Caller Supplies Package Identities From The Same Captured Cargo Metadata.
-    // Collection Reads One Existing Build Stream; It Never Invokes Cargo Or Metadata.
-    pub fn from_cargo_messages(
-        input: impl BufRead,
-        backend: BuildBackend,
-        profile: BuildProfile,
-        target: String,
-        packages: &BTreeMap<String, String>,
-    ) -> Result<Self, Error> {
-        if packages.is_empty() || target.is_empty() || packages.values().collect::<BTreeSet<_>>().len() != packages.len() {
-            return Err(Error::Settings("collection needs unambiguous selected Cargo packages and a target".into()));
-        }
-        if (backend == BuildBackend::Guest) != target.starts_with("wasm32-") {
-            return Err(Error::Settings("backend and selected target disagree".into()));
-        }
-        let (artifacts, outputs) = read_messages(input, packages)?;
-        let build = finish_build(backend, profile, target, artifacts, outputs, &BuildCancellation::default())?;
-        let provided = build.artifacts.iter().map(|artifact| artifact.producer.as_str()).collect::<BTreeSet<_>>();
-        if packages.values().any(|name| !provided.contains(name.as_str())) {
-            return Err(Error::Settings("captured build is missing a selected package artifact".into()));
-        }
-        let identities = build.artifacts.iter().map(|artifact| (&artifact.producer, &artifact.name)).collect::<BTreeSet<_>>();
-        if identities.len() != build.artifacts.len() {
-            return Err(Error::Settings("captured build contains ambiguous package artifacts".into()));
-        }
-        Ok(build)
-    }
-
-    // Select Opaque Package Ids From Captured Metadata Without Running Cargo.
+    // The Archive Producer Owns Invocation Identity; This Collector Binds Its
+    // Captured Streams And Checks Output Locations Without Running A Compiler.
     pub fn from_cargo_outputs(
-        messages: impl BufRead,
-        metadata: impl std::io::Read,
+        mut messages: impl BufRead,
+        mut metadata: impl std::io::Read,
+        receipt: impl std::io::Read,
         settings: &BuildSettings,
     ) -> Result<Self, Error> {
         validate_backend(settings)?;
-        let metadata: Metadata = serde_json::from_reader(metadata)?;
+        let receipt: Capture = serde_json::from_reader(receipt)?;
+        if receipt.schema != 1 || receipt.command.is_empty() || receipt.target.is_empty() {
+            return Err(Error::Settings("unsupported or incomplete archive producer receipt".into()));
+        }
+        if receipt.profile != settings.profile || settings.target.as_ref().is_some_and(|target| target != &receipt.target) {
+            return Err(Error::Settings("requested profile or target disagrees with archive producer receipt".into()));
+        }
+        let mut message_bytes = Vec::new();
+        messages.read_to_end(&mut message_bytes)?;
+        let mut metadata_bytes = Vec::new();
+        metadata.read_to_end(&mut metadata_bytes)?;
+        if digest(&message_bytes) != receipt.messages.sha256 || digest(&metadata_bytes) != receipt.metadata.sha256 {
+            return Err(Error::Settings("captured Cargo streams disagree with archive producer byte stamps".into()));
+        }
+        let metadata: Metadata = serde_json::from_slice(&metadata_bytes)?;
         let packages = metadata.select(settings)?;
-        let target = settings.target.clone().ok_or_else(|| Error::Settings(
-            "collection requires the target used by the captured build".into(),
-        ))?;
-        Self::from_cargo_messages(messages, settings.backend, settings.profile, target, &packages)
+        if packages.is_empty() || packages.values().collect::<BTreeSet<_>>().len() != packages.len() {
+            return Err(Error::Settings("collection needs unambiguous selected Cargo packages".into()));
+        }
+        if (settings.backend == BuildBackend::Guest) != receipt.target.starts_with("wasm32-") {
+            return Err(Error::Settings("backend and producer target disagree".into()));
+        }
+        let (artifacts, outputs) = read_messages(std::io::Cursor::new(message_bytes), &packages)?;
+        let profile_directory = match receipt.profile {
+            BuildProfile::Dev => "debug",
+            BuildProfile::Release | BuildProfile::Bench => "release",
+        };
+        let native = receipt.inputs.rustc.lines().find_map(|line| line.strip_prefix("host: "));
+        let expected = metadata.target_directory.join(&receipt.target).join(profile_directory);
+        let host = metadata.target_directory.join(profile_directory);
+        let matches = |path: &Path| path.starts_with(&expected)
+            || (native == Some(receipt.target.as_str()) && path.starts_with(&host));
+        if artifacts.iter().any(|artifact| !matches(&artifact.path))
+            || outputs.iter().any(|(_, directory)| !matches(directory))
+        {
+            return Err(Error::Settings("captured artifacts do not match the producer target/profile output directories".into()));
+        }
+        let provided = artifacts.iter().map(|artifact| artifact.producer.as_str()).collect::<BTreeSet<_>>();
+        if packages.values().any(|name| !provided.contains(name.as_str())) {
+            return Err(Error::Settings("captured build is missing a selected package artifact".into()));
+        }
+        if provided.len() != artifacts.len() {
+            return Err(Error::Settings("captured build contains ambiguous package artifacts".into()));
+        }
+        finish_build(settings.backend, receipt.profile, receipt.target, artifacts, outputs, &BuildCancellation::default())
     }
 
     // Relocation Changes Locations Only; It Never Replaces The Original Byte Stamps.

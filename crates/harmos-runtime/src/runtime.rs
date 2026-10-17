@@ -213,6 +213,33 @@ pub trait Registration<A: Application>: Clone + Send {
 }
 
 /* === Implementations === */
+impl<A, S, T> Registration<A> for harmos_domain::state::TransactionDefinitions<S, T>
+where
+    A: Application<State = S, Transaction = T>,
+{
+    fn register(self) -> Catalog<A> {
+        Catalog::Transactions {
+            definitions: self.definitions,
+            decode: self.decode,
+            inverses: Some(self.inverses),
+        }
+    }
+}
+
+impl<A, R> Registration<A> for harmos_domain::state::RecordDefinitions<R>
+where
+    A: Application<Record = R>,
+{
+    fn register(self) -> Catalog<A> {
+        Catalog::Transactions {
+            definitions: self.definitions,
+            decode: |_, _, _| Ok(None),
+            inverses: None,
+        }
+    }
+}
+
+
 impl<A: Application> Inspection<A> {
     pub async fn read<R>(&self, read: impl FnOnce(&A::State) -> R) -> Result<At<R>, Error> {
         Ok(At {

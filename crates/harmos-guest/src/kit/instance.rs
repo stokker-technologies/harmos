@@ -30,7 +30,7 @@ use crate::OperationRefusal;
 use harmos_domain::Message;
 use harmos_domain::operations::instance::{Id, Status};
 use harmos_domain::operations::lifecycle::InstanceState;
-use harmos_domain::operations::{
+use harmos_sdk::operations::{
     CallContext, ContextError, ContextValue, Host, Instance, OperationDeclaration, Response,
     WireChildAction, WireChildCall, WireChildControl,
 };

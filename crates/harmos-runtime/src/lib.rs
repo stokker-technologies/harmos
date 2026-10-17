@@ -68,7 +68,7 @@ pub mod __private {
     #[cfg(feature = "grpc")]
     pub use harmos_domain::__private::{Protobuf, prost};
     pub use harmos_domain::inventory as PluginInventory;
-    pub use harmos_domain::plugin::{
+    pub use harmos_sdk::plugin::{
         Contribution as PluginContribution, Declared as PluginDeclared, Grant as PluginGrant,
         Requirement as PluginRequirement, Requirements as PluginRequirements,
     };
@@ -110,7 +110,7 @@ pub use runtime::{Builder, Runtime};
 
 #[cfg(feature = "grpc")]
 pub use harmos_domain::Protobuf;
-pub use harmos_domain::plugin::Plugin;
+pub use harmos_sdk::plugin::Plugin;
 pub use harmos_domain::{
     Aggregate, Failure, Identifier, IdentifierError, MemorySize, Message, MessageError, Metadata,
     RowMetadata, Storable, StreamField, StreamSpec, Value, ValueError, btree_map_memory,

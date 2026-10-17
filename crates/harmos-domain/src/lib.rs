@@ -30,12 +30,12 @@ mod refusal;
 mod registration;
 pub mod schema;
 pub mod streams;
+pub mod state;
 mod value;
 
 pub mod __private {
     pub use crate::config::SchemaSettings;
     pub use crate::declare;
-    pub use crate::operations::response::ErasedResponse;
     pub use crate::plugin::schema_markers as PluginSchemaMarkers;
     pub extern crate serde;
     pub extern crate serde_json;
@@ -62,6 +62,7 @@ pub mod __private {
         const FACILITY: &'static str;
     }
 
+    pub use crate::state::{Catalogued, Mutual};
     pub use crate::answer::Answer;
     pub use crate::message::MessageError;
     #[cfg(feature = "grpc")]
@@ -89,13 +90,12 @@ pub use identity::{
 pub use inventory::StreamDeclaration;
 pub use inventory::publications::StreamSpec;
 pub use metadata::{Identifier, IdentifierError, Metadata};
-pub use plugin::Plugin;
 pub use refusal::{FAILED, RESERVED, Refusal, UNKNOWN, UNREADABLE, reserved};
 pub use registration::{Registrar, Registration, RegistrationError};
 pub use value::{VALUE_DEPTH, Value, ValueError};
 
 #[cfg(feature = "derive")]
-pub use harmos_macros::{catalog, listener, message, observer, operation, plugin, stream};
+pub use harmos_macros::{catalog, listener, message, observer, operation, plugin, stream, transaction, transactions, record, records, streams};
 #[cfg(feature = "grpc")]
 pub use message::Protobuf;
 pub use message::{MemorySize, Message, MessageError, Portable, Storable, btree_map_memory};

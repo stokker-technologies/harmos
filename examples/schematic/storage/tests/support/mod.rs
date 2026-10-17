@@ -332,9 +332,9 @@ impl Registration<Bank> for Definitions {
 /* === Public Functions === */
 pub fn catalog() -> impl Registration<Bank> {
     Definitions(
-        definitions_of(Change::catalog::<Bank>())
+        definitions_of::<Bank>(Change::catalog())
             .into_iter()
-            .chain(definitions_of(Fact::catalog::<Bank>()))
+            .chain(definitions_of::<Bank>(Fact::catalog()))
             .collect(),
     )
 }

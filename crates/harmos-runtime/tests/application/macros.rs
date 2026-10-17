@@ -781,9 +781,9 @@ async fn product_commits_refuses() {
 
 #[tokio::test]
 async fn macro_authored_catalog() {
-    let registered: BTreeMap<(String, u32), Kind> = definitions_of(Change::catalog::<Studio>())
+    let registered: BTreeMap<(String, u32), Kind> = definitions_of::<Studio>(Change::catalog())
         .into_iter()
-        .chain(definitions_of(Fact::catalog::<Studio>()))
+        .chain(definitions_of::<Studio>(Fact::catalog()))
         .map(|(kind, id, version)| ((id.as_str().to_owned(), version), kind))
         .collect();
 

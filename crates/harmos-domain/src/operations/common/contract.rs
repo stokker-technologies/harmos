@@ -66,7 +66,7 @@ pub struct WireDeclaration {
 pub struct Contracts;
 
 // Wire Contracts Projected From Resource-Bound Operation Handlers.
-pub struct AuthoredContracts;
+
 
 /* === Enums === */
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -338,20 +338,6 @@ impl Visitor for Contracts {
 
 impl<M: super::Declares> Member<M> for Contracts {
     const ENTRY: WireDeclaration = WireDeclaration::of::<M::Declaration>();
-}
-
-impl Visitor for AuthoredContracts {
-    type Entry = WireDeclaration;
-}
-
-impl<T: super::Operation> Member<T> for AuthoredContracts {
-    const ENTRY: WireDeclaration = WireDeclaration::of::<T::Declaration>();
-}
-
-impl AuthoredContracts {
-    pub fn of<C: Catalog<Self>>() -> Result<Vec<Contract>, ContractError> {
-        Contracts::from_projection(&C::ENTRIES)
-    }
 }
 
 impl Contracts {

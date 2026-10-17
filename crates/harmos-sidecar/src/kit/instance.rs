@@ -27,7 +27,7 @@ use std::marker::PhantomData;
 use super::{CallError, Supervisor};
 use harmos_domain::operations::instance::{Id, Status};
 use harmos_domain::operations::lifecycle::InstanceState;
-use harmos_domain::operations::{
+use harmos_sdk::operations::{
     CallContext, ContextError, ContextValue, Host, Instance, OperationDeclaration, Response,
     WireChildAction,
 };
@@ -209,7 +209,7 @@ fn decode_response<O: OperationDeclaration>(
 
 fn decode_status(bytes: &[u8]) -> Result<Status, CallError> {
     let malformed = |message: String| CallError::Malformed {
-        method: harmos_domain::operations::CHILD_METHOD,
+        method: harmos_sdk::operations::CHILD_METHOD,
         message,
     };
     let state = InstanceState::decode(bytes).map_err(|error| malformed(error.to_string()))?;

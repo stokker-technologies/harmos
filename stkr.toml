@@ -63,3 +63,25 @@ exclude = ["crates/harmos-runtime/src/prelude.rs"]
 
 
 # === PyO3 === #
+
+[[templates.scaffolds]]
+path = "crates/cargo-harmos/templates/sidecar"
+profile = "sidecar"
+suffix = ""
+tasks = "crates/cargo-harmos/scaffold-sidecar.tasks.toml"
+
+[templates.scaffolds.placeholders]
+package = "__PACKAGE_NAME__"
+module = "__RUST_MODULE__"
+product = "__PRODUCT_NAME__"
+
+[[templates.scaffolds]]
+path = "crates/cargo-harmos/templates/guest"
+profile = "guest"
+suffix = ""
+tasks = "crates/cargo-harmos/scaffold-guest.tasks.toml"
+
+[templates.scaffolds.placeholders]
+package = "__PACKAGE_NAME__"
+module = "__RUST_MODULE__"
+product = "__PRODUCT_NAME__"

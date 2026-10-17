@@ -43,7 +43,7 @@ use crate::{Error, Result};
 /* === Traits === */
 
 /* === Implementations === */
-impl harmos_domain::operations::Host for OperationManager {
+impl harmos_sdk::operations::Host for OperationManager {
     type Error = Error;
     type Instance<O: OperationDeclaration> = OperationInstance<O>;
 
@@ -80,7 +80,7 @@ impl harmos_domain::operations::Host for OperationManager {
     }
 }
 
-impl harmos_domain::operations::Host for Context<'_> {
+impl harmos_sdk::operations::Host for Context<'_> {
     type Error = Error;
     type Instance<O: OperationDeclaration> = OperationInstance<O>;
 

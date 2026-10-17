@@ -39,6 +39,7 @@ thiserror = { workspace = true, default-features = true }
 # Logging
 
 # Utilities
+sha2 = { workspace = true }
 semver = { workspace = true, default-features = true }
 
 # Serialization

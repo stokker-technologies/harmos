@@ -30,7 +30,7 @@ pub use events::{PluginEvent, PluginEventKind, PluginEvents};
 // Explicit Items Shadow The Contract's Same-Named Ones: `Error` Is The Host's,
 // `Requirement` The Plugin Dependency; Grant Requirements Are
 // `catalog::RequirementEntry`.
-pub use harmos_domain::plugin::*;
+pub use harmos_sdk::plugin::*;
 pub use harmos_domain::{
     Refusal, Registrar, Registration, RegistrationError, Requirement, StreamDeclaration, inventory,
 };

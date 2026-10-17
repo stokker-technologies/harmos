@@ -24,6 +24,7 @@ harmos-guest = { path = "crates/harmos-guest", version = "0.2.0", default-featur
 harmos-macros = { path = "crates/harmos-macros", version = "0.2.0" }
 harmos-packaging = { path = "crates/harmos-packaging", version = "0.2.0", default-features = false }
 harmos-runtime = { path = "crates/harmos-runtime", version = "0.2.0", default-features = false }
+harmos-sdk = { path = "crates/harmos-sdk", version = "0.2.0", default-features = false }
 harmos-sidecar = { path = "crates/harmos-sidecar", version = "0.2.0", default-features = false }
 harmos-signal = { path = "crates/harmos-signal", version = "0.2.0", default-features = false }
 

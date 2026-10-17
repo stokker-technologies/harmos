@@ -580,7 +580,7 @@ impl Native {
             // The provider decoded the request; refuse it before any attempt runs.
             let payload = ready(answer)?;
             let grant =
-                harmos_domain::operations::decode_prepared_grant(&payload).map_err(|error| {
+                harmos_sdk::operations::decode_prepared_grant(&payload).map_err(|error| {
                     SidecarError::Malformed(format!("prepared grant is malformed: {error}"))
                 })?;
             context

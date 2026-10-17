@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-mod authored;
 mod catalog;
 mod context;
 mod contract;
@@ -18,39 +17,16 @@ pub mod instance;
 mod key;
 pub(crate) mod payload;
 mod policy;
-pub(crate) mod response;
-mod serving;
-#[cfg(feature = "streaming")]
-pub mod streaming;
-mod surface;
 
 /* === Re-Exports === */
 pub use crate::observers;
-pub use authored::{EndpointSet, InputEndpoint, Operation, OutputEndpoint};
-pub use catalog::{AuthoredDeclarations, Declarations, Entry};
-pub use context::{
-    CallContext, CallValue, ContextError, ContextValue, PORTABLE_BYTES, PORTABLE_VALUES,
-};
-pub use contract::{AuthoredContracts, Codec, Contract, ContractError, Contracts, WireDeclaration};
+pub use catalog::{Declarations, Entry};
+pub use context::{CallContext, CallValue, ContextError, ContextValue, PORTABLE_BYTES, PORTABLE_VALUES};
+pub use contract::{Codec, Contract, ContractError, Contracts, WireDeclaration};
 pub use direction::{Direction, NoStream, Stream, item_types};
 pub use grpc::Grpc;
-pub use instance::Instance;
 pub use key::{CacheKey, CacheKeyError, MAX_CACHE_KEY_BYTES};
-pub use policy::{
-    Backoff, FailureKind, Jitter, OperationPolicy, PolicyError, ReplaySafety, RestartPolicy,
-    RetryPolicy,
-};
-pub use response::Response;
-pub use serving::{
-    CHILD_METHOD, Serves, ServingError, WIRE_METHOD, WireAnswer, WireBinding, WireChild,
-    WireChildAction, WireChildCall, WireChildControl, WireCodecError, WireCommand, WireTable,
-    decode_prepared_grant, encode_prepared_grant,
-};
-#[cfg(feature = "streaming")]
-pub use serving::{WireEndpoints, WireStreamLimits, WireStreams};
-#[cfg(feature = "streaming")]
-pub use streaming::{StreamInput, StreamItem, StreamOutput, StreamPermit, StreamSettings, stream};
-pub use surface::Host;
+pub use policy::{Backoff, FailureKind, Jitter, OperationPolicy, PolicyError, ReplaySafety, RestartPolicy, RetryPolicy};
 
 /* === Imports === */
 // Standard Library Imports

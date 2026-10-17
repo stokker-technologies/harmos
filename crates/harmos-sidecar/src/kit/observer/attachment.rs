@@ -30,8 +30,8 @@ use tokio::sync::oneshot;
 use super::{Activity, Instance, ObserverError, ObserverHost};
 use crate::{Refusal, Supervisor};
 use harmos_domain::observers::Control;
-use harmos_domain::operations::{Operation, ServingError, WireTable};
-use harmos_domain::plugin::Attachment;
+use harmos_sdk::operations::{Operation, ServingError, WireTable};
+use harmos_sdk::plugin::Attachment;
 
 /* === Constants === */
 

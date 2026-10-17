@@ -453,10 +453,10 @@ async fn throughput_case(
     while done.is_none() || !answered || samples < case.samples as usize {
         match receive(incoming).await {
             Frame::Call { id, method, params }
-                if method == harmos_domain::operations::CHILD_METHOD =>
+                if method == harmos_sdk::operations::CHILD_METHOD =>
             {
-                let call: harmos_domain::operations::WireChildCall =
-                    harmos_domain::operations::WireChildCall::decode(&params)
+                let call: harmos_sdk::operations::WireChildCall =
+                    harmos_sdk::operations::WireChildCall::decode(&params)
                         .expect("typed child envelope");
                 assert_eq!(call.operation, "host.publish");
                 assert_eq!(call.generation_context, Some([2; 32]));

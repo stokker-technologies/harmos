@@ -21,7 +21,7 @@ use tokio::sync::{Semaphore, SemaphorePermit, mpsc, oneshot};
 use crate::Frame;
 use harmos_domain::Message;
 use harmos_domain::operations::instance::Id;
-use harmos_domain::operations::{
+use harmos_sdk::operations::{
     CHILD_METHOD, OperationDeclaration, WireChildAction, WireChildControl,
 };
 
@@ -126,7 +126,7 @@ impl From<CallError> for harmos_domain::Refusal {
     }
 }
 
-impl harmos_domain::plugin::Context for Supervisor {
+impl harmos_sdk::plugin::Context for Supervisor {
     fn with_generation(&self, token: [u8; 32]) -> Self {
         let mut host = self.clone();
         host.generation_context = Some(token);
@@ -342,7 +342,7 @@ impl Supervisor {
             });
         }
         let payload = harmos_domain::Message::encode_to_vec(request);
-        let command = harmos_domain::operations::WireChildCall {
+        let command = harmos_sdk::operations::WireChildCall {
             context,
             generation_context: self.generation_context,
             values: self.call.portable(),

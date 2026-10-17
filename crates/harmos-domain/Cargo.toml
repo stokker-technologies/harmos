@@ -20,7 +20,6 @@ version = { workspace = true }
 default = ["derive"]
 derive = ["dep:harmos-macros"]
 grpc = ["dep:prost"]
-streaming = ["dep:tokio"]
 
 # === Dependencies ===
 
@@ -55,7 +54,6 @@ memchr = { workspace = true, default-features = true }
 # Concurrency
 
 # Async
-tokio = { workspace = true, optional = true }
 
 # Networking
 

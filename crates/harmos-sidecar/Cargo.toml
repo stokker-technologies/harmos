@@ -42,13 +42,14 @@ transport = [
 
 derive = ["harmos-domain/derive"]
 # Optional Payload Codec Only; No Host Networking Or gRPC Carrier
-grpc = ["harmos-domain/grpc"]
-streaming = ["harmos-domain/streaming"]
+grpc = ["harmos-sdk/grpc"]
+streaming = ["harmos-sdk/streaming"]
 
 # === Dependencies ===
 
 [dependencies]
 # Local
+harmos-sdk = { workspace = true }
 harmos-domain = { workspace = true }
 
 # Git

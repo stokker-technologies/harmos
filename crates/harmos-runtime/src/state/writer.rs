@@ -27,7 +27,7 @@ use super::entry::{
 };
 use super::envelope::Recorded;
 use super::history::{Focus, Reversals, Undos};
-use super::record::{PreparationError, Prepared, PreparedCommit, Records};
+use super::record::{PreparationError, Prepared, PreparedCommit};
 use super::transaction::Inverting;
 use super::transaction::{Transaction, TransactionError};
 use super::{Context, TrackedState};
@@ -211,7 +211,7 @@ async fn run_admissions<A: Application>(
                         continue;
                     }
                     let prepared =
-                        match Records::prepare::<A>(&transaction, &state.value, &tracked.catalog) {
+                        match super::record::prepare::<A>(&transaction, &state.value, &tracked.catalog) {
                             Ok(prepared) => prepared,
                             Err(refusal) => {
                                 let _ = reply.send(Err(Admission::Preparation(refusal)));
@@ -338,7 +338,7 @@ async fn run_admissions<A: Application>(
                         continue;
                     }
                     let prepared =
-                        match Records::prepare::<A>(&answer, &state.value, &tracked.catalog) {
+                        match super::record::prepare::<A>(&answer, &state.value, &tracked.catalog) {
                             Ok(prepared) => prepared,
                             Err(refusal) => {
                                 let _ = reply.send(Err(Refusal::Preparation(refusal)));
