@@ -18,8 +18,8 @@ use std::sync::atomic::Ordering;
 
 // Local Imports
 use super::{Fixture, config, record, schema, write};
-use harmos_runtime::storage::StorageCursor;
-use harmos_runtime::{Error, Identifier};
+use harmos_storage::StorageCursor;
+use harmos_storage::{Error, Identifier};
 
 /* === Constants === */
 
@@ -47,13 +47,13 @@ async fn foreign_cursor_refused() {
     foreign.history.store = Identifier::new("other-store").unwrap();
     assert!(matches!(
         f.storage.flush_until(&foreign).await,
-        Err(Error::DifferentHistory)
+        Err(Error::Domain(harmos_domain::Error::DifferentHistory))
     ));
     foreign = first.clone();
     foreign.history.epoch = Identifier::new("other-epoch").unwrap();
     assert!(matches!(
         f.storage.flush_until(&foreign).await,
-        Err(Error::DifferentHistory)
+        Err(Error::Domain(harmos_domain::Error::DifferentHistory))
     ));
     let future = StorageCursor {
         sequence: first.sequence + 1,

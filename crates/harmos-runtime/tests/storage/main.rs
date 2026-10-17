@@ -10,10 +10,8 @@
 /* === Modules === */
 #[path = "../../../harmos-storage/tests/support/storage.rs"]
 mod backend;
-mod batching;
 mod cancellation;
 mod coordinator;
-mod cursors;
 mod exhaustion;
 mod files;
 #[path = "../support/storage_fixture.rs"]

@@ -61,10 +61,15 @@ tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
 # === Dev Dependencies ===
 
 [dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "test-util"] }
 
 # === Target Dependencies ===
 
 # === Test Targets ===
+
+[[test]]
+name = "integration-engine"
+path = "tests/engine/main.rs"
 
 
 # === Bench Targets ===

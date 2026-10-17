@@ -21,10 +21,10 @@ use std::time::Duration;
 
 // Local Imports
 use super::{Fixture, config, record, schema, write};
-use harmos_runtime::Identifier;
-use harmos_runtime::schema::Cardinality;
-use harmos_runtime::schema::graph::{Field, Kind};
-use harmos_runtime::storage::StreamWrite;
+use harmos_storage::Identifier;
+use harmos_storage::schema::Cardinality;
+use harmos_storage::schema::graph::{Field, Kind};
+use harmos_storage::StreamWrite;
 
 /* === Constants === */
 
@@ -50,7 +50,7 @@ async fn append_kinds_coalesce() {
     f.storage
         .write_schema(
             &schema(),
-            &harmos_runtime::schema::graph::Schema {
+            &harmos_storage::schema::graph::Schema {
                 root: 0,
                 definitions: vec![vec![]],
             },
@@ -76,7 +76,7 @@ async fn append_kinds_coalesce() {
     f.storage
         .write_schema(
             &schema(),
-            &harmos_runtime::schema::graph::Schema {
+            &harmos_storage::schema::graph::Schema {
                 root: 0,
                 definitions: vec![vec![]],
             },
@@ -186,7 +186,7 @@ async fn failure_retains_work() {
     let item = Identifier::new("not-admitted").unwrap();
     let inputs = [record(&key, &item, &[1])];
     let failure = f.storage.write_records(&inputs).await.unwrap_err();
-    assert!(matches!(failure, harmos_runtime::Error::Persistence { .. }));
+    assert!(matches!(failure, harmos_storage::Error::Persistence { .. }));
     assert_eq!(f.storage.status().accepted.sequence, 1);
     assert_eq!(f.storage.status().saved.sequence, 0);
     assert_eq!(f.storage.status().pending_batches, 1);
@@ -298,7 +298,7 @@ async fn barrier_never_write() {
 async fn progress_preserves_cursor() {
     let f = Fixture::new(config()).await;
     write(&f.storage, "before").await;
-    let snapshot = harmos_runtime::storage::state::RecoverySnapshot {
+    let snapshot = harmos_storage::state::RecoverySnapshot {
         required_data: f.storage.cursor_saved(),
         through: f.storage.status().recovery_accepted,
         payload: vec![7],
@@ -352,7 +352,7 @@ async fn item_refuses_whole() {
     let inputs = [record(&key, &item, b"small"), record(&key, &item, &large)];
     assert!(matches!(
         f.storage.write_records(&inputs).await,
-        Err(harmos_runtime::Error::ResourceExhausted { .. })
+        Err(harmos_storage::Error::ResourceExhausted { .. })
     ));
     assert_eq!(f.storage.cursor_accepted().sequence, 0);
     assert_eq!(f.storage.status().pending_bytes, 0);
@@ -397,7 +397,7 @@ async fn schema_decoding_bounded() {
             cardinality: Cardinality::Required,
         })
         .collect();
-    let graph = harmos_runtime::schema::graph::Schema {
+    let graph = harmos_storage::schema::graph::Schema {
         root: 0,
         definitions: vec![fields],
     };
@@ -427,16 +427,16 @@ async fn schema_decoding_bounded() {
             metadata.schema.definitions[0] = fields;
             let encoded = serde_json::to_vec(&metadata).unwrap();
             let admitted =
-                harmos_runtime::storage::StorageSchema::decoding_memory_bytes(encoded.len()).unwrap();
-            let decoded: harmos_runtime::storage::StorageSchema = serde_json::from_slice(&encoded).unwrap();
+                harmos_storage::StorageSchema::decoding_memory_bytes(encoded.len()).unwrap();
+            let decoded: harmos_storage::StorageSchema = serde_json::from_slice(&encoded).unwrap();
             assert_eq!(decoded, metadata);
             assert!(
-                harmos_runtime::MemorySize::memory_size(&decoded)
-                    <= admitted + std::mem::size_of::<harmos_runtime::storage::StorageSchema>()
+                harmos_storage::MemorySize::memory_size(&decoded)
+                    <= admitted + std::mem::size_of::<harmos_storage::StorageSchema>()
             );
         }
-        assert!(harmos_runtime::storage::StorageSchema::decoding_memory_bytes(usize::MAX).is_none());
-        assert!(harmos_runtime::storage::StorageSchema::decoding_memory_bytes(usize::MAX / 36).is_none());
+        assert!(harmos_storage::StorageSchema::decoding_memory_bytes(usize::MAX).is_none());
+        assert!(harmos_storage::StorageSchema::decoding_memory_bytes(usize::MAX / 36).is_none());
     }
     f.finish().await;
 }
@@ -459,7 +459,7 @@ async fn schema_validation_reserves() {
         kind: Kind::Message { definition: 1 },
         cardinality: Cardinality::Required,
     }];
-    let graph = harmos_runtime::schema::graph::Schema {
+    let graph = harmos_storage::schema::graph::Schema {
         root: 0,
         definitions: vec![fields.to_vec(), CHILDREN.to_vec()],
     };
@@ -468,7 +468,7 @@ async fn schema_validation_reserves() {
     let f = Fixture::new(policy.clone()).await;
     assert!(matches!(
         f.storage.write_schema(&schema(), &graph).await,
-        Err(harmos_runtime::Error::ResourceExhausted {
+        Err(harmos_storage::Error::ResourceExhausted {
             resource: "storage write memory"
         })
     ));
