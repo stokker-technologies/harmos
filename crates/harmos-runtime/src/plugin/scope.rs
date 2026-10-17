@@ -642,8 +642,15 @@ impl PluginScope {
         &self,
         operations: impl IntoIterator<Item = &'a crate::operations::Definition>,
     ) -> Result<()> {
+        // The built-in observe control is served beside the admitted inventory, never inside it.
+        let observe = self
+            .observe_contract
+            .as_ref()
+            .as_ref()
+            .map(|contract| contract.operation());
         let actual: BTreeMap<_, _> = operations
             .into_iter()
+            .filter(|operation| Some(*operation) != observe)
             .map(|operation| (&operation.id, operation))
             .collect();
         if actual.len() != self.operations.len()
