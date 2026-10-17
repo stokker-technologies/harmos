@@ -96,6 +96,13 @@ pub(super) struct Download {
     pub(super) value: u32,
 }
 
+// Field tags derive from field names, so this carries a string on `Download`'s `value` tag.
+#[cfg(feature = "grpc")]
+#[harmos_runtime::message]
+struct WrongShape {
+    value: String,
+}
+
 #[harmos_runtime::message]
 #[harmos_runtime::operation(
     version = 1,
@@ -293,12 +300,12 @@ async fn grpc_shape_refusal() {
     let mut client = tonic::client::Grpc::new(channel);
     client.ready().await.unwrap();
 
-    // Field 1 Carries A String Where The Declaration Expects A u32.
+    // The Declared `value` Field Carries A String Where The Declaration Expects A u32.
     let refused = client
         .server_streaming(
-            tonic::Request::new(harmos_runtime::operations::Response::new("not a number".to_owned())),
+            tonic::Request::new(harmos_runtime::operations::Response::new(WrongShape { value: "not a number".to_owned() })),
             tonic::codegen::http::uri::PathAndQuery::from_static("/fixture.v1.Native/Download"),
-            Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<u32, u32>, harmos_runtime::operations::Response<String>>::new(
+            Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<u32, u32>, harmos_runtime::operations::Response<WrongShape>>::new(
                 operations.decode,
                 operations.encode,
             )
