@@ -208,7 +208,7 @@ enum Turn<A: Application> {
 }
 
 /* === Traits === */
-pub trait Registration<A: Application>: Clone {
+pub trait Registration<A: Application>: Clone + Send {
     fn register(self) -> Catalog<A>;
 }
 

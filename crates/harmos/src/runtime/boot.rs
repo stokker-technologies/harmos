@@ -30,13 +30,8 @@ use crate::{Application, Result};
 /* === Macros === */
 
 /* === Type Aliases === */
-#[cfg(not(feature = "simulation"))]
 type StartupFuture<A> =
     Pin<Box<dyn Future<Output = std::result::Result<Runtime<A>, super::Incompatible>> + Send>>;
-
-#[cfg(feature = "simulation")]
-type StartupFuture<A> =
-    Pin<Box<dyn Future<Output = std::result::Result<Runtime<A>, super::Incompatible>>>>;
 type CleanupFuture = Pin<Box<dyn Future<Output = Result<()>> + Send>>;
 type InitializeFuture = Pin<
     Box<

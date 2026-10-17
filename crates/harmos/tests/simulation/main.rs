@@ -879,6 +879,22 @@ fn capturing(seed: u64, name: &str) -> SimulatedRuntime<Bank> {
 #[test]
 fn contract_scenario() {
     {
+        // The Feature Only Adds: A Spawned Start Stays Send Under Simulation.
+        scenario_runtime::check("simulation_spawns_start", || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("scenario runtime is valid")
+                .block_on(async {
+                    let runtime = tokio::spawn(bank(7).runtime())
+                        .await
+                        .expect("the spawned start completes")
+                        .expect("the bank runtime starts");
+                    runtime.stop().await.unwrap();
+                });
+        });
+    }
+    {
         scenario_runtime::check("simulation_refuses_drop", || {
             let (mirror, _) = support::Mirror::new();
             let refusal = bank(42)

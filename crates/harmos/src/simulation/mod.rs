@@ -43,7 +43,7 @@ type Inverting<A> = fn(
     &<A as Application>::Transaction,
     &<A as Application>::State,
 ) -> Option<<A as Application>::Transaction>;
-type BuildStep<A> = Arc<dyn Fn(Builder<A>) -> Builder<A>>;
+type BuildStep<A> = Arc<dyn Fn(Builder<A>) -> Builder<A> + Send + Sync>;
 type UndoResult<A> = Result<
     Receipt,
     Error<<<A as Application>::Transaction as Transaction<<A as Application>::State>>::Error>,
@@ -188,8 +188,9 @@ impl<A: Application> Configuration<A> {
         {
             self.inverses = Some(inverses);
         }
+        let catalog = std::sync::Mutex::new(catalog);
         self.assembly
-            .push(move |builder| builder.register(catalog.clone()));
+            .push(move |builder| builder.register(catalog.lock().unwrap().clone()));
     }
 
     pub(crate) fn operation_middleware(
@@ -249,13 +250,14 @@ impl<A: Application> Configuration<A> {
         let control = Arc::new(ServiceControl::new());
         self.services.insert(name.clone(), Arc::clone(&control));
 
+        let resident = std::sync::Mutex::new(resident);
         self.assembly.push(move |builder| {
             builder.service_with(
                 name.clone(),
                 policy,
                 ScriptedResident {
                     control: Arc::clone(&control),
-                    resident: resident.clone(),
+                    resident: resident.lock().unwrap().clone(),
                 },
             )
         });
@@ -572,7 +574,7 @@ impl<A: Application> Assembly<A> {
         Self { steps: Vec::new() }
     }
 
-    fn push(&mut self, step: impl Fn(Builder<A>) -> Builder<A> + 'static) {
+    fn push(&mut self, step: impl Fn(Builder<A>) -> Builder<A> + Send + Sync + 'static) {
         self.steps.push(Arc::new(step));
     }
 
