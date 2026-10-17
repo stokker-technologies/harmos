@@ -25,7 +25,6 @@ streaming = ["harmos-sdk/streaming"]
 # custom sections, and a native host that only does that has no world to bind.
 # Any Authored Async Lifecycle Or Operation May Wait On Rust-Originating Events.
 kit = ["dep:wit-bindgen", "wit-bindgen/inter-task-wakeup"]
-componentize = ["dep:wit-component"]
 
 # === Dependencies ===
 
@@ -88,7 +87,6 @@ wit-bindgen = { workspace = true, default-features = true, features = [
 # Utilities
 
 # Serialization
-wit-component = { workspace = true, default-features = true, optional = true }
 
 # Configuration
 
@@ -146,7 +144,6 @@ tokio = { workspace = true, features = ["rt", "macros"] }
 [[test]]
 name = "kit"
 path = "tests/kit/main.rs"
-required-features = ["componentize"]
 
 # === Bench Targets ===
 

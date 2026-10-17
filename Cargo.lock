@@ -1061,7 +1061,6 @@ dependencies = [
  "tracing",
  "wasmtime",
  "wit-bindgen 0.62.0",
- "wit-component 0.261.0",
 ]
 
 [[package]]

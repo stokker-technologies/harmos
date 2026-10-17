@@ -136,8 +136,6 @@ tower-http = { workspace = true, optional = true }
 [dev-dependencies]
 # Local
 harmos-packaging = { workspace = true, features = ["bindings-proto"] }
-harmos-guest = { workspace = true, features = ["componentize"] }
-
 schematic-domain = { path = "../../examples/schematic/domain" }
 
 # Git
