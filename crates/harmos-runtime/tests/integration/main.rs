@@ -11,7 +11,7 @@
 // Compose Runtime Integration Story Domains
 
 /* === Modules === */
-#[cfg(all(feature = "plugin"))]
+#[cfg(feature = "plugin")]
 #[path = "../plugin/main.rs"]
 mod plugin;
 #[path = "../state/main.rs"]
@@ -32,13 +32,13 @@ mod evidence;
 mod application;
 #[path = "../runtime/main.rs"]
 mod runtime;
-#[cfg(all(feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin-sidecar")]
 #[path = "../sidecar/main.rs"]
 mod sidecar;
 #[cfg(all(feature = "plugin-guest", feature = "plugin-sidecar"))]
 #[path = "../guest/main.rs"]
 mod guest;
-#[cfg(all(feature = "simulation"))]
+#[cfg(feature = "simulation")]
 #[path = "../simulation/main.rs"]
 mod simulation;
 

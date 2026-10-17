@@ -11,10 +11,10 @@
 // Compose Packaging Integration Story Domains
 
 /* === Modules === */
-#[cfg(all(feature = "sidecar"))]
+#[cfg(feature = "sidecar")]
 #[path = "../build/main.rs"]
 mod build;
-#[cfg(all(feature = "bindings-proto"))]
+#[cfg(feature = "bindings-proto")]
 #[path = "../grpc/main.rs"]
 mod grpc;
 

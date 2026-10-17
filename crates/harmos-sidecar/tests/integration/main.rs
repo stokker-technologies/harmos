@@ -11,13 +11,13 @@
 // Compose In Process Carrier Story Domains
 
 /* === Modules === */
-#[cfg(all(feature = "transport"))]
+#[cfg(feature = "transport")]
 #[path = "../attach/main.rs"]
 mod attach;
-#[cfg(all(feature = "kit"))]
+#[cfg(feature = "kit")]
 #[path = "../kit/main.rs"]
 mod kit;
-#[cfg(all(feature = "kit"))]
+#[cfg(feature = "kit")]
 #[path = "../transport/main.rs"]
 mod transport;
 
