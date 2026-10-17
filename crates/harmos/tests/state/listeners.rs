@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -475,162 +474,130 @@ async fn observed(owner: &Owner, count: usize) {
     .unwrap();
 }
 
-#[test]
-fn contract_scenario() {
-    {
-        scenario_runtime::check("reentrancy_preserve_positions", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, mut manager, mut host) = setup(false, true, 256).await;
-                    manager.initialize(&mut host).await.unwrap();
-                    observed(&host.owner, 4).await;
-                    assert_eq!(
-                        *host.owner.seen.lock().unwrap(),
-                        [
-                            (true, 0, Position(1)),
-                            (false, 0, Position(1)),
-                            (true, 9, Position(2)),
-                            (false, 9, Position(2))
-                        ]
-                    );
-                    manager.shutdown(&mut host).await.unwrap();
-                    runtime.stop().await.unwrap();
-                });
-        });
+#[tokio::test]
+async fn reentrancy_preserve_positions() {
+    let (runtime, mut manager, mut host) = setup(false, true, 256).await;
+    manager.initialize(&mut host).await.unwrap();
+    observed(&host.owner, 4).await;
+    assert_eq!(
+        *host.owner.seen.lock().unwrap(),
+        [
+            (true, 0, Position(1)),
+            (false, 0, Position(1)),
+            (true, 9, Position(2)),
+            (false, 9, Position(2))
+        ]
+    );
+    manager.shutdown(&mut host).await.unwrap();
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn sources_never_commit() {
+    for mode in 0..3 {
+        let (runtime, mut manager, mut host) = setup(false, false, 8).await;
+        host.skip_sources = mode == 0;
+        host.drop_before_commit = mode == 1;
+        host.fail_start = mode == 2;
+        assert!(manager.initialize(&mut host).await.is_err());
+        assert!(!host.scope.as_ref().unwrap().is_ready());
+        assert!(host.owner.seen.lock().unwrap().is_empty());
+        manager.shutdown(&mut host).await.unwrap();
+        runtime.stop().await.unwrap();
     }
-    {
-        scenario_runtime::check("sources_never_commit", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    for mode in 0..3 {
-                        let (runtime, mut manager, mut host) = setup(false, false, 8).await;
-                        host.skip_sources = mode == 0;
-                        host.drop_before_commit = mode == 1;
-                        host.fail_start = mode == 2;
-                        assert!(manager.initialize(&mut host).await.is_err());
-                        assert!(!host.scope.as_ref().unwrap().is_ready());
-                        assert!(host.owner.seen.lock().unwrap().is_empty());
-                        manager.shutdown(&mut host).await.unwrap();
-                        runtime.stop().await.unwrap();
-                    }
-                });
-        });
+}
+
+#[tokio::test]
+async fn failure_fences_side() {
+    let (runtime, mut manager, mut host) = setup(false, false, 8).await;
+    host.owner.fail_attempt.store(true, Ordering::SeqCst);
+    manager.initialize(&mut host).await.unwrap();
+    observed(&host.owner, 1).await;
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while host.scope.as_ref().unwrap().is_ready() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
+    assert_eq!(
+        manager.status("listener").unwrap().state,
+        harmos::plugin::PluginState::Failed
+    );
+    assert!(matches!(
+        host.view
+            .as_ref()
+            .unwrap()
+            .lock()
+            .await
+            .failure()
+            .as_deref(),
+        Some(Error::OperationFailed { .. })
+    ));
+    assert!(matches!(
+        runtime.operations.definition(Heard::<false>::ID),
+        Err(Error::Closing { .. })
+    ));
+    manager.shutdown(&mut host).await.unwrap();
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn runtime_signals_listener() {
+    struct BlockedObserver;
+    struct Gates {
+        running: Notify,
+        stopping: Notify,
+        release: Notify,
     }
-    {
-        scenario_runtime::check("failure_fences_side", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, mut manager, mut host) = setup(false, false, 8).await;
-                    host.owner.fail_attempt.store(true, Ordering::SeqCst);
-                    manager.initialize(&mut host).await.unwrap();
-                    observed(&host.owner, 1).await;
-                    tokio::time::timeout(Duration::from_secs(3), async {
-                        while host.scope.as_ref().unwrap().is_ready() {
-                            tokio::task::yield_now().await;
-                        }
-                    })
-                    .await
-                    .unwrap();
-                    assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
-                    assert_eq!(
-                        manager.status("listener").unwrap().state,
-                        harmos::plugin::PluginState::Failed
-                    );
-                    assert!(matches!(
-                        host.view
-                            .as_ref()
-                            .unwrap()
-                            .lock()
-                            .await
-                            .failure()
-                            .as_deref(),
-                        Some(Error::OperationFailed { .. })
-                    ));
-                    assert!(matches!(
-                        runtime.operations.definition(Heard::<false>::ID),
-                        Err(Error::Closing { .. })
-                    ));
-                    manager.shutdown(&mut host).await.unwrap();
-                    runtime.stop().await.unwrap();
-                });
-        });
+    impl harmos::observers::ObserverBackend for BlockedObserver {
+        type Resources = Gates;
+        fn definition(&self) -> harmos::Result<harmos::observers::ObserverDefinition> {
+            Ok(harmos::observers::ObserverDefinition {
+                id: "blocked-cleanup".into(),
+                interval: Duration::from_secs(10),
+                streams: vec![],
+                demand_keys: vec![],
+            })
+        }
+        async fn run(
+            &self,
+            gates: Arc<Gates>,
+            mut activation: harmos::observers::ObserverActivation,
+        ) -> Result<()> {
+            activation.ready();
+            gates.running.notify_one();
+            activation.stopping().await;
+            gates.stopping.notify_one();
+            gates.release.notified().await;
+            Ok(())
+        }
     }
-    {
-        scenario_runtime::check("runtime_signals_listener", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    struct BlockedObserver;
-                    struct Gates {
-                        running: Notify,
-                        stopping: Notify,
-                        release: Notify,
-                    }
-                    impl harmos::observers::ObserverBackend for BlockedObserver {
-                        type Resources = Gates;
-                        fn definition(
-                            &self,
-                        ) -> harmos::Result<harmos::observers::ObserverDefinition>
-                        {
-                            Ok(harmos::observers::ObserverDefinition {
-                                id: "blocked-cleanup".into(),
-                                interval: Duration::from_secs(10),
-                                streams: vec![],
-                                demand_keys: vec![],
-                            })
-                        }
-                        async fn run(
-                            &self,
-                            gates: Arc<Gates>,
-                            mut activation: harmos::observers::ObserverActivation,
-                        ) -> Result<()> {
-                            activation.ready();
-                            gates.running.notify_one();
-                            activation.stopping().await;
-                            gates.stopping.notify_one();
-                            gates.release.notified().await;
-                            Ok(())
-                        }
-                    }
-                    let (runtime, mut manager, mut host) = setup(true, false, 1).await;
-                    manager.initialize(&mut host).await.unwrap();
-                    tokio::time::timeout(Duration::from_secs(3), host.owner.started.notified())
-                        .await
-                        .unwrap();
-                    let gates = Arc::new(Gates {
-                        running: Notify::new(),
-                        stopping: Notify::new(),
-                        release: Notify::new(),
-                    });
-                    runtime
-                        .operations
-                        .register_observer(BlockedObserver)
-                        .unwrap();
-                    let lease = runtime
-                        .operations
-                        .submit_with_resources_at("blocked-cleanup", gates.clone())
-                        .await
-                        .unwrap();
-                    tokio::time::timeout(Duration::from_secs(2), gates.running.notified())
-                        .await
-                        .expect("the observer starts before testing blocked cleanup");
-                    let mut stopping = Box::pin(runtime.stop());
-                    tokio::time::timeout(Duration::from_secs(2), async {
+    let (runtime, mut manager, mut host) = setup(true, false, 1).await;
+    manager.initialize(&mut host).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(3), host.owner.started.notified())
+        .await
+        .unwrap();
+    let gates = Arc::new(Gates {
+        running: Notify::new(),
+        stopping: Notify::new(),
+        release: Notify::new(),
+    });
+    runtime
+        .operations
+        .register_observer(BlockedObserver)
+        .unwrap();
+    let lease = runtime
+        .operations
+        .submit_with_resources_at("blocked-cleanup", gates.clone())
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(2), gates.running.notified())
+        .await
+        .expect("the observer starts before testing blocked cleanup");
+    let mut stopping = Box::pin(runtime.stop());
+    tokio::time::timeout(Duration::from_secs(2), async {
         tokio::select! {
             _ = async {
                 gates.stopping.notified().await;
@@ -641,20 +608,16 @@ fn contract_scenario() {
     })
     .await
     .unwrap();
-                    assert_eq!(host.owner.finalizations.load(Ordering::SeqCst), 1);
-                    drop(stopping);
-                    host.owner.release.notify_one();
-                    gates.release.notify_one();
-                    runtime.stop().await.unwrap();
-                    drop(lease);
-                });
-        });
-    }
-    {
-        scenario_runtime::check("shutdown_retains_callback", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
+    assert_eq!(host.owner.finalizations.load(Ordering::SeqCst), 1);
+    drop(stopping);
+    host.owner.release.notify_one();
+    gates.release.notify_one();
+    runtime.stop().await.unwrap();
+    drop(lease);
+}
 
+#[tokio::test]
+async fn shutdown_retains_callback() {
     let (runtime, mut manager, mut host) = setup(true, false, 1).await;
     manager.initialize(&mut host).await.unwrap();
     tokio::time::timeout(Duration::from_secs(3), host.owner.started.notified())
@@ -677,205 +640,164 @@ fn contract_scenario() {
     assert_eq!(host.owner.finalizations.load(Ordering::SeqCst), 1);
     assert_eq!(host.original_drop.load(Ordering::SeqCst), 1);
     runtime.stop().await.unwrap();
+}
 
-});
-        });
+#[tokio::test]
+async fn cleanup_retries_finalizer() {
+    let (runtime, mut manager, mut host) = setup(true, false, 1).await;
+    manager.initialize(&mut host).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(3), host.owner.started.notified())
+        .await
+        .unwrap();
+    runtime.records.publish(fact(1)).await.unwrap();
+    host.owner.fail_cleanup.store(true, Ordering::SeqCst);
+    assert!(manager.shutdown(&mut host).await.is_err());
+    assert_eq!(host.original_drop.load(Ordering::SeqCst), 0);
+    let before = host.owner.finalizations.load(Ordering::SeqCst);
+    assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
+    host.owner.fail_cleanup.store(false, Ordering::SeqCst);
+    host.owner.release.notify_one();
+    manager.shutdown(&mut host).await.unwrap();
+    assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
+    assert_eq!(host.owner.finalizations.load(Ordering::SeqCst), before + 1);
+    assert_eq!(host.original_drop.load(Ordering::SeqCst), 1);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn pages_deliver_native() {
+    let (runtime, mut manager, mut host) = setup(true, false, 512).await;
+    manager.initialize(&mut host).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(3), host.owner.started.notified())
+        .await
+        .unwrap();
+    for value in 1..=260 {
+        runtime.records.publish(fact(value)).await.unwrap();
     }
+    host.owner.resume.notify_one();
+    host.owner.release.notify_one();
+    observed(&host.owner, 522).await;
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if host.view.as_ref().unwrap().lock().await.frontier() == Some(Position(261)) {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
     {
-        scenario_runtime::check("cleanup_retries_finalizer", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, mut manager, mut host) = setup(true, false, 1).await;
-                    manager.initialize(&mut host).await.unwrap();
-                    tokio::time::timeout(Duration::from_secs(3), host.owner.started.notified())
-                        .await
-                        .unwrap();
-                    runtime.records.publish(fact(1)).await.unwrap();
-                    host.owner.fail_cleanup.store(true, Ordering::SeqCst);
-                    assert!(manager.shutdown(&mut host).await.is_err());
-                    assert_eq!(host.original_drop.load(Ordering::SeqCst), 0);
-                    let before = host.owner.finalizations.load(Ordering::SeqCst);
-                    assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
-                    host.owner.fail_cleanup.store(false, Ordering::SeqCst);
-                    host.owner.release.notify_one();
-                    manager.shutdown(&mut host).await.unwrap();
-                    assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
-                    assert_eq!(host.owner.finalizations.load(Ordering::SeqCst), before + 1);
-                    assert_eq!(host.original_drop.load(Ordering::SeqCst), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
+        let seen = host.owner.seen.lock().unwrap();
+        for (value, pair) in seen.as_chunks::<2>().0.iter().enumerate() {
+            assert_eq!(
+                *pair,
+                [
+                    (true, value as u32, Position(value as u64 + 1)),
+                    (false, value as u32, Position(value as u64 + 1))
+                ]
+            );
+        }
     }
-    {
-        scenario_runtime::check("pages_deliver_native", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, mut manager, mut host) = setup(true, false, 512).await;
-                    manager.initialize(&mut host).await.unwrap();
-                    tokio::time::timeout(Duration::from_secs(3), host.owner.started.notified())
-                        .await
-                        .unwrap();
-                    for value in 1..=260 {
-                        runtime.records.publish(fact(value)).await.unwrap();
-                    }
-                    host.owner.resume.notify_one();
-                    host.owner.release.notify_one();
-                    observed(&host.owner, 522).await;
-                    tokio::time::timeout(Duration::from_secs(3), async {
-                        loop {
-                            if host.view.as_ref().unwrap().lock().await.frontier()
-                                == Some(Position(261))
-                            {
-                                break;
-                            }
-                            tokio::task::yield_now().await;
-                        }
-                    })
-                    .await
-                    .unwrap();
-                    {
-                        let seen = host.owner.seen.lock().unwrap();
-                        for (value, pair) in seen.as_chunks::<2>().0.iter().enumerate() {
-                            assert_eq!(
-                                *pair,
-                                [
-                                    (true, value as u32, Position(value as u64 + 1)),
-                                    (false, value as u32, Position(value as u64 + 1))
-                                ]
-                            );
-                        }
-                    }
-                    manager.shutdown(&mut host).await.unwrap();
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("gap_fences_generation", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, mut manager, mut host) = setup(true, false, 1).await;
-                    manager.initialize(&mut host).await.unwrap();
-                    tokio::time::timeout(Duration::from_secs(3), host.owner.started.notified())
-                        .await
-                        .unwrap();
-                    runtime.records.publish(fact(1)).await.unwrap();
-                    runtime.records.publish(fact(2)).await.unwrap();
-                    host.owner.resume.notify_one();
-                    host.owner.release.notify_one();
-                    tokio::time::timeout(Duration::from_secs(3), async {
-                        loop {
-                            if host.view.as_ref().unwrap().lock().await.failure().is_some() {
-                                break;
-                            }
-                            tokio::task::yield_now().await;
-                        }
-                    })
-                    .await
-                    .unwrap();
-                    assert!(matches!(
-                        host.view
-                            .as_ref()
-                            .unwrap()
-                            .lock()
-                            .await
-                            .failure()
-                            .as_deref(),
-                        Some(Error::BeyondTail)
-                    ));
-                    assert_eq!(
-                        manager.status("listener").unwrap().state,
-                        harmos::plugin::PluginState::Failed
-                    );
-                    assert_eq!(
-                        *host.owner.seen.lock().unwrap(),
-                        [(true, 0, Position(1)), (false, 0, Position(1))]
-                    );
-                    manager.shutdown(&mut host).await.unwrap();
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("receipt_cleans_replacement", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, mut manager, mut host) = setup(false, false, 8).await;
-                    host.drop_before_commit = true;
-                    assert!(manager.initialize(&mut host).await.is_err());
-                    let old = host.scope.as_ref().unwrap().clone();
-                    assert!(!old.is_ready());
-                    assert!(host.owner.seen.lock().unwrap().is_empty());
-                    host.drop_before_commit = false;
-                    manager.initialize(&mut host).await.unwrap();
-                    observed(&host.owner, 4).await;
-                    let current = host.scope.as_ref().unwrap();
-                    assert!(current.is_ready());
-                    assert!(runtime.records.shutdown_listeners_for(&old).await.is_err());
-                    assert!(current.is_ready());
-                    manager.shutdown(&mut host).await.unwrap();
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("codec_panic_fences", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, mut manager, mut host) = setup(false, false, 8).await;
-                    manager.initialize(&mut host).await.unwrap();
-                    observed(&host.owner, 2).await;
-                    runtime.records.publish(fact(u32::MAX)).await.unwrap();
-                    tokio::time::timeout(Duration::from_secs(3), async {
-                        loop {
-                            if host.view.as_ref().unwrap().lock().await.failure().is_some() {
-                                break;
-                            }
-                            tokio::task::yield_now().await;
-                        }
-                    })
-                    .await
-                    .unwrap();
-                    assert!(matches!(
-                        host.view
-                            .as_ref()
-                            .unwrap()
-                            .lock()
-                            .await
-                            .failure()
-                            .as_deref(),
-                        Some(Error::OperationPanicked { .. })
-                    ));
-                    assert_eq!(
-                        manager.status("listener").unwrap().state,
-                        harmos::plugin::PluginState::Failed
-                    );
-                    assert_eq!(host.owner.seen.lock().unwrap().len(), 2);
-                    manager.shutdown(&mut host).await.unwrap();
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
+    manager.shutdown(&mut host).await.unwrap();
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn gap_fences_generation() {
+    let (runtime, mut manager, mut host) = setup(true, false, 1).await;
+    manager.initialize(&mut host).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(3), host.owner.started.notified())
+        .await
+        .unwrap();
+    runtime.records.publish(fact(1)).await.unwrap();
+    runtime.records.publish(fact(2)).await.unwrap();
+    host.owner.resume.notify_one();
+    host.owner.release.notify_one();
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if host.view.as_ref().unwrap().lock().await.failure().is_some() {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(matches!(
+        host.view
+            .as_ref()
+            .unwrap()
+            .lock()
+            .await
+            .failure()
+            .as_deref(),
+        Some(Error::BeyondTail)
+    ));
+    assert_eq!(
+        manager.status("listener").unwrap().state,
+        harmos::plugin::PluginState::Failed
+    );
+    assert_eq!(
+        *host.owner.seen.lock().unwrap(),
+        [(true, 0, Position(1)), (false, 0, Position(1))]
+    );
+    manager.shutdown(&mut host).await.unwrap();
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn receipt_cleans_replacement() {
+    let (runtime, mut manager, mut host) = setup(false, false, 8).await;
+    host.drop_before_commit = true;
+    assert!(manager.initialize(&mut host).await.is_err());
+    let old = host.scope.as_ref().unwrap().clone();
+    assert!(!old.is_ready());
+    assert!(host.owner.seen.lock().unwrap().is_empty());
+    host.drop_before_commit = false;
+    manager.initialize(&mut host).await.unwrap();
+    observed(&host.owner, 4).await;
+    let current = host.scope.as_ref().unwrap();
+    assert!(current.is_ready());
+    assert!(runtime.records.shutdown_listeners_for(&old).await.is_err());
+    assert!(current.is_ready());
+    manager.shutdown(&mut host).await.unwrap();
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn codec_panic_fences() {
+    let (runtime, mut manager, mut host) = setup(false, false, 8).await;
+    manager.initialize(&mut host).await.unwrap();
+    observed(&host.owner, 2).await;
+    runtime.records.publish(fact(u32::MAX)).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if host.view.as_ref().unwrap().lock().await.failure().is_some() {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(matches!(
+        host.view
+            .as_ref()
+            .unwrap()
+            .lock()
+            .await
+            .failure()
+            .as_deref(),
+        Some(Error::OperationPanicked { .. })
+    ));
+    assert_eq!(
+        manager.status("listener").unwrap().state,
+        harmos::plugin::PluginState::Failed
+    );
+    assert_eq!(host.owner.seen.lock().unwrap().len(), 2);
+    manager.shutdown(&mut host).await.unwrap();
+    runtime.stop().await.unwrap();
 }
 
 /* === Tests === */

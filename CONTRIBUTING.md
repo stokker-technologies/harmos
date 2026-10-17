@@ -25,7 +25,7 @@ mise install --locked
 mise run sync
 ```
 
-Run the complete example with `mise run run:schematic`. Read the relevant source-level contracts and compiled examples before changing
+Run the complete example with `mise run build`, then `target/debug/schematic-cli`. Read the relevant source-level contracts and compiled examples before changing
 a public contract.
 
 ## Make A Change
@@ -55,9 +55,9 @@ mise run check
 mise run test
 ```
 
-Harmos prepares test-only compiler, guest, metadata and catalog fixtures once before
-its sequential test suites. Cargo owns compilation freshness; the consumer manifest
-records paths relative to its directory.
+`mise run build` builds the workspace and the schematic example once and stamps
+the example's artifacts in `target/fixtures/stamp.json`. Test lanes never compile:
+their preflight refuses an absent or stale stamp before any story runs.
 
 Acceptance consumes the exact release binaries and Wasm component staged by
 `mise run build:release`. Local `mise run test` prepares them first; native CI transfers

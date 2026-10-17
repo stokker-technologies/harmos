@@ -27,7 +27,7 @@ harmos = { workspace = true, default-features = true, features = [
   "plugin-guest",
   "plugin-sidecar",
 ] }
-jsonl-adapter = { path = "../../../tests/support/jsonl-adapter" }
+schematic-storage = { path = "../storage" }
 schematic-contract = { path = "../contract" }
 
 # Git
@@ -69,64 +69,11 @@ tokio = { workspace = true, default-features = true, features = ["time"] }
 
 # === Dev Dependencies ===
 
-[dev-dependencies]
-# Local
-harmos = { workspace = true, features = ["packaging-guest", "plugin-guest"] }
-
-# Git
-
-# Error Handling
-
-# Logging
-
-# Utilities
-
-# Serialization
-
-# Configuration
-
-# Filesystem
-
-# Parsing
-
-# Concurrency
-
-# Async
-futures-core = { workspace = true, default-features = true }
-tokio = { workspace = true, default-features = true, features = [
-  "macros",
-  "rt",
-  "rt-multi-thread",
-  "time",
-] }
-
-# Networking
-
-# Storage
-
-# UI
-
-# Testing
-criterion = { workspace = true, default-features = true }
-
 # === Target Dependencies ===
 
 # === Test Targets ===
 
-[[test]]
-name = "schematic"
-path = "tests/app/main.rs"
-
-[[test]]
-name = "simulation"
-path = "tests/app/simulation.rs"
-
 # === Bench Targets ===
-
-[[bench]]
-name = "guest"
-path = "benches/services/main.rs"
-harness = false
 
 # === Example Targets ===
 

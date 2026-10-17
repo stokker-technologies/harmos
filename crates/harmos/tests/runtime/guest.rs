@@ -8,20 +8,145 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
-
-#[path = "guest_core.rs"]
-mod core;
-#[path = "../../../harmos-guest/examples/route_component/contract.rs"]
-mod wire;
 
 #[path = "guest_operations.rs"]
 mod operations;
 #[path = "guest_publications.rs"]
 mod publications;
+#[path = "../../../harmos-guest/tests/fixtures/sandbox/src/contract.rs"]
+mod sandbox;
+
+// Mirrors `examples/schematic/contract`, Which Lives Outside This Workspace
+pub(crate) mod schematic {
+    pub mod model {
+        #[harmos::message]
+        #[derive(Clone, Debug, PartialEq)]
+        pub struct Point {
+            pub x: i32,
+            pub y: i32,
+        }
+
+        #[harmos::message]
+        #[derive(Clone, Debug, PartialEq)]
+        pub struct Connection {
+            pub from: u64,
+            pub to: u64,
+        }
+
+        #[harmos::message]
+        #[derive(Clone, Debug, PartialEq)]
+        pub struct Snapshot {
+            pub symbols: Vec<u64>,
+            pub connections: Vec<Connection>,
+        }
+    }
+
+    pub mod operations {
+        pub const POLICY: harmos::operations::OperationPolicy =
+            harmos::operations::OperationPolicy {
+                timeout: std::time::Duration::from_secs(10),
+                attempt_timeout: std::time::Duration::from_secs(10),
+                retries: harmos::operations::RetryPolicy::Never,
+                restart: harmos::operations::RestartPolicy::Never,
+            };
+
+        #[harmos::catalog]
+        pub enum Operations {
+            Validate(validate::ValidateSchematic),
+            Route(propose::ProposeRoute),
+            Analyze(analyze::AnalyzeSchematic),
+        }
+
+        pub mod analyze {
+            #[harmos::message]
+            #[derive(Clone, Debug, PartialEq)]
+            pub struct Finding {
+                pub text: String,
+            }
+
+            #[harmos::message]
+            #[derive(Clone, Debug, PartialEq)]
+            pub struct Request {
+                pub schematic: super::super::model::Snapshot,
+            }
+
+            #[harmos::message]
+            #[derive(Clone, Debug, PartialEq)]
+            pub struct Response {
+                pub checked: u32,
+            }
+
+            #[harmos::operation(
+                id = "schematic.analyze",
+                request = Request,
+                response = Response,
+                output = Finding,
+                policy = super::POLICY,
+                visibility = harmos::operations::Visibility::Shared,
+                replay = harmos::operations::ReplaySafety::Idempotent,
+                version = 1,
+                grpc(package = "schematic.v1", service = "Schematic", method = "Analyze"),
+            )]
+            pub struct AnalyzeSchematic;
+        }
+
+        pub mod propose {
+            #[harmos::message]
+            #[derive(Clone, Debug, PartialEq)]
+            pub struct Request {
+                pub from: super::super::model::Point,
+                pub to: super::super::model::Point,
+            }
+
+            #[harmos::message]
+            #[derive(Clone, Debug, PartialEq)]
+            pub struct Response {
+                pub points: Vec<super::super::model::Point>,
+            }
+
+            #[harmos::operation(
+                id = "schematic.route",
+                request = Request,
+                response = Response,
+                policy = super::POLICY,
+                visibility = harmos::operations::Visibility::Shared,
+                replay = harmos::operations::ReplaySafety::Idempotent,
+                version = 1,
+                grpc(package = "schematic.v1", service = "Schematic", method = "ProposeRoute"),
+            )]
+            pub struct ProposeRoute;
+        }
+
+        pub mod validate {
+            #[harmos::message]
+            #[derive(Clone, Debug, PartialEq)]
+            pub struct Request {
+                pub schematic: super::super::model::Snapshot,
+            }
+
+            #[harmos::message]
+            #[derive(Clone, Debug, PartialEq)]
+            pub struct Response {
+                pub diagnostics: Vec<String>,
+            }
+
+            #[harmos::operation(
+                id = "schematic.validate",
+                request = Request,
+                response = Response,
+                policy = super::POLICY,
+                visibility = harmos::operations::Visibility::Shared,
+                replay = harmos::operations::ReplaySafety::Idempotent,
+                version = 1,
+                grpc(package = "schematic.v1", service = "Schematic", method = "Validate"),
+            )]
+            pub struct ValidateSchematic;
+        }
+    }
+}
 
 /* === Re-Exports === */
-use wire::{Decline, Echo, Echoed, Fail, Spin, Wait};
+use sandbox::{Decline, Echo, Echoed, Fail, ProviderEcho, Spin, Wait};
 
 /* === Imports === */
 // Standard Library Imports
@@ -38,6 +163,8 @@ use harmos::guest::{Error, Host};
 use harmos::operations::Host as _;
 use harmos::operations::{OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
 use harmos_sidecar::Attach;
+use schematic::model::{Connection, Point, Snapshot};
+use schematic::operations::{propose, validate};
 
 /* === Constants === */
 const NATIVE_CAPACITY: usize = 64;
@@ -60,12 +187,7 @@ struct Reserved {}
 /* === Traits === */
 
 /* === Implementations === */
-
 impl harmos::operations::WireOperation for Forward {
-    const VERSION: u32 = 1;
-}
-
-impl harmos::operations::WireOperation for ProviderEcho {
     const VERSION: u32 = 1;
 }
 
@@ -79,21 +201,12 @@ impl OperationDeclaration for Reserved {
         restart: RestartPolicy::Never,
     };
 
-    type Response = Echoed;
+    type Response = Self;
 }
 
 /* === Public Functions === */
 
 /* === Private Functions === */
-#[harmos::catalog]
-enum GuestOperations {
-    Echo(Echo),
-    Decline(Decline),
-    Spin(Spin),
-    Wait(Wait),
-    Fail(Fail),
-}
-
 #[harmos::lanes]
 enum GuestLanes {
     #[default]
@@ -112,7 +225,7 @@ async fn retire_failed_guest<L: harmos::plugin::PluginLifecycle>(
         panic!("the failed generation retains its original physical cleanup owner")
     };
     assert_eq!(failures.len(), 1);
-    assert_eq!(failures[0].artifact, "route-guest");
+    assert_eq!(failures[0].artifact, "sandbox-guest");
     let harmos::Error::TaskFailed { domain, source } = &failures[0].error else {
         panic!("the manager preserves its original cleanup failure");
     };
@@ -126,7 +239,6 @@ async fn retire_failed_guest<L: harmos::plugin::PluginLifecycle>(
     ));
     manager.shutdown(lifecycle).await.unwrap();
 }
-
 fn component_error(error: &harmos::Error) -> &harmos::operations::ComponentError {
     let harmos::Error::OperationFailed { source, .. } = error else {
         panic!("expected the original handler failure, got {error:?}");
@@ -135,7 +247,6 @@ fn component_error(error: &harmos::Error) -> &harmos::operations::ComponentError
         .downcast_ref()
         .expect("component handler source is retained")
 }
-
 fn execution_error(error: &harmos::Error) -> &wasmtime::Error {
     let harmos::operations::ComponentError::Transport(Error::Execution { source }) =
         component_error(error)
@@ -145,280 +256,128 @@ fn execution_error(error: &harmos::Error) -> &wasmtime::Error {
     source
 }
 
-#[test]
-fn contract_scenario() {
-    scenario_runtime::check("host_resource_settings", || {
-        let mut executor = tokio::runtime::Builder::new_current_thread();
-        executor.enable_all().build().unwrap().block_on(async {
-            let runtime = runtime().await;
-            let bytes = route_component();
-            let settings = harmos::config::PluginGuestSettings {
-                component_bytes: std::num::NonZeroUsize::new(bytes.len() - 1).unwrap(),
-                ..Default::default()
-            };
-            let restricted = Host::with_settings(&runtime, settings).unwrap();
-            assert!(matches!(restricted.load(&bytes), Err(Error::Oversized { limit }) if limit == bytes.len() - 1));
-            let settings = harmos::config::PluginGuestSettings {
-                memory_bytes: std::num::NonZeroUsize::new(1).unwrap(),
-                ..Default::default()
-            };
-            let restricted = Host::with_settings(&runtime, settings).unwrap();
-            let refused = restricted.load(&bytes).unwrap().register().await;
-            let error = match refused { Ok(_) => panic!("one byte cannot admit the component's initial memory"), Err(error) => error };
-            assert!(error.to_string().contains("memory"), "{error}");
-            let allowed = Host::new(&runtime).unwrap().load(&bytes).unwrap().register().await.unwrap();
-            drop(allowed);
-            drop(restricted);
-            runtime.stop().await.unwrap();
-        });
-    });
-    {
-        scenario_runtime::check("memory_growth_bounded", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let mut lifecycle = publications::Lifecycle::new(&runtime);
-                    let mut manager =
-                        publications::Manager::new(lifecycle.candidate("idle").await).unwrap();
-                    manager.initialize(&mut lifecycle).await.unwrap();
-                    let refused = runtime
-                        .operations
-                        .call_as::<Echo>(Echo { say: "grow".into() })
-                        .await
-                        .unwrap_err();
-                    assert!(
-                        execution_error(&refused)
-                            .root_cause()
-                            .to_string()
-                            .starts_with("forcing trap when growing memory to "),
-                        "{refused}"
-                    );
-                    let after = runtime
-                        .operations
-                        .call_as::<Echo>(Echo {
-                            say: "after".into(),
-                        })
-                        .await
-                        .unwrap_err();
-                    assert!(matches!(
-                        component_error(&after),
-                        harmos::operations::ComponentError::Unavailable
-                    ));
-                    retire_failed_guest(&mut manager, &mut lifecycle).await;
-                    drop((manager, lifecycle));
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("inert_plan_denies", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    use harmos::plugin::PluginDefinitions;
-                    use std::sync::Arc;
-                    use std::sync::atomic::{AtomicUsize, Ordering};
+#[tokio::test]
+async fn host_resource_settings() {
+    let runtime = runtime().await;
+    let bytes = schematic();
+    let settings = harmos::config::PluginGuestSettings {
+        component_bytes: std::num::NonZeroUsize::new(bytes.len() - 1).unwrap(),
+        ..Default::default()
+    };
+    let restricted = Host::with_settings(&runtime, settings).unwrap();
+    assert!(
+        matches!(restricted.load(&bytes), Err(Error::Oversized { limit }) if limit == bytes.len() - 1)
+    );
+    let settings = harmos::config::PluginGuestSettings {
+        memory_bytes: std::num::NonZeroUsize::new(1).unwrap(),
+        ..Default::default()
+    };
+    let restricted = Host::with_settings(&runtime, settings).unwrap();
+    let refused = restricted.load(&bytes).unwrap().register().await;
+    let error = match refused {
+        Ok(_) => panic!("one byte cannot admit the component's initial memory"),
+        Err(error) => error,
+    };
+    assert!(error.to_string().contains("memory"), "{error}");
+    let allowed = Host::new(&runtime)
+        .unwrap()
+        .load(&bytes)
+        .unwrap()
+        .register()
+        .await
+        .unwrap();
+    drop(allowed);
+    drop(restricted);
+    runtime.stop().await.unwrap();
+}
 
-                    let runtime = runtime().await;
-                    let calls = Arc::new(AtomicUsize::new(0));
-                    let mut lifecycle = publications::Lifecycle::with_egress(
-                        &runtime,
-                        Duration::ZERO,
-                        calls.clone(),
-                        Arc::new(AtomicUsize::new(0)),
-                    );
-                    let definitions = lifecycle.candidate("idle").await;
-                    let invalid = definitions.definitions().cloned().map(|mut definition| {
-                        if definition.id == "route-guest" {
-                            definition.configuration = b"{}".to_vec();
-                        }
-                        definition
-                    });
-                    let mut manager =
-                        publications::Manager::new(PluginDefinitions::new(invalid, []).unwrap())
-                            .unwrap();
-                    assert!(manager.caller("route-guest").is_err());
-                    assert!(matches!(
-                        runtime
-                            .operations
-                            .call_as::<Echo>(Echo {
-                                say: "egress:vendor".into(),
-                            })
-                            .await,
-                        Err(harmos::Error::NotRegistered {
-                            domain: "operation",
-                            ..
-                        })
-                    ));
-                    assert_eq!(calls.load(Ordering::SeqCst), 0);
-                    assert!(manager.initialize(&mut lifecycle).await.is_err());
-                    assert_eq!(
-                        calls.load(Ordering::SeqCst),
-                        0,
-                        "invalid configuration cannot reach the Core handler"
-                    );
-                    manager.shutdown(&mut lifecycle).await.unwrap();
-
-                    let plan = manager
-                        .plan_reload(lifecycle.candidate("idle").await)
-                        .unwrap();
-                    assert!(manager.caller("route-guest").is_err());
-                    assert_eq!(
-                        calls.load(Ordering::SeqCst),
-                        0,
-                        "collection and planning retain an inert original store"
-                    );
-                    manager.apply_reload(plan, &mut lifecycle).await.unwrap();
-                    assert!(manager.caller("route-guest").is_ok());
-                    // Verify Activation With Ordinary Egress, Not The Five-Millisecond Deadline Probe.
-                    let response = runtime
-                        .operations
-                        .call_as::<Echo>(Echo {
-                            say: "egress:vendor".into(),
-                        })
-                        .await
-                        .unwrap();
-                    assert_eq!(response.said, "egress status 200");
-                    assert_eq!(calls.load(Ordering::SeqCst), 1);
-                    manager.shutdown(&mut lifecycle).await.unwrap();
-                    drop((manager, lifecycle));
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("egress_grant_checked", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    use std::sync::Arc;
-                    use std::sync::atomic::{AtomicUsize, Ordering};
-
-                    let runtime = runtime().await;
-                    let calls = Arc::new(AtomicUsize::new(0));
-                    let prepared = Arc::new(AtomicUsize::new(0));
-                    let mut lifecycle = publications::Lifecycle::with_egress(
-                        &runtime,
-                        Duration::ZERO,
-                        calls.clone(),
-                        prepared.clone(),
-                    );
-                    let mut manager =
-                        publications::Manager::new(lifecycle.candidate("idle").await).unwrap();
-                    manager.initialize(&mut lifecycle).await.unwrap();
-                    let refused = runtime
-                        .operations
-                        .call_as::<Echo>(Echo {
-                            say: "egress:other".into(),
-                        })
-                        .await
-                        .unwrap();
-                    assert!(
-                        refused.said.contains("may not invoke operation"),
-                        "{}",
-                        refused.said
-                    );
-                    assert!(refused.said.contains("host.egress"), "{}", refused.said);
-                    assert_eq!(prepared.load(Ordering::SeqCst), 0);
-                    assert_eq!(calls.load(Ordering::SeqCst), 0);
-                    let accepted = runtime
-                        .operations
-                        .call_as::<Echo>(Echo {
-                            say: "egress:vendor".into(),
-                        })
-                        .await
-                        .unwrap();
-                    assert_eq!(accepted.said, "egress status 200");
-                    assert_eq!(prepared.load(Ordering::SeqCst), 1);
-                    assert_eq!(calls.load(Ordering::SeqCst), 1);
-                    let refused = runtime
-                        .operations
-                        .call_as::<Echo>(Echo {
-                            say: "egress:other".into(),
-                        })
-                        .await
-                        .unwrap();
-                    assert!(
-                        refused.said.contains("may not invoke operation"),
-                        "{}",
-                        refused.said
-                    );
-                    assert_eq!(prepared.load(Ordering::SeqCst), 1);
-                    assert_eq!(calls.load(Ordering::SeqCst), 1);
-                    manager.shutdown(&mut lifecycle).await.unwrap();
-                    drop((manager, lifecycle));
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("declared_operation_roundtrip", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
+#[tokio::test]
+async fn inert_plan_denies() {
+    use harmos::plugin::PluginDefinitions;
 
     let runtime = runtime().await;
-    let mut lifecycle = publications::Lifecycle::new(&runtime);
-    let mut manager = publications::Manager::new(lifecycle.candidate("idle").await).unwrap();
+    let mut lifecycle = publications::Lifecycle::schematic(&runtime);
+    let definitions = lifecycle.candidate(()).await;
+    let invalid = definitions.definitions().cloned().map(|mut definition| {
+        if definition.id == "schematic-tools" {
+            definition.configuration = b"{}".to_vec();
+        }
+        definition
+    });
+    let mut manager =
+        publications::Manager::new(PluginDefinitions::new(invalid, []).unwrap()).unwrap();
+    assert!(manager.caller("schematic-tools").is_err());
+    assert!(matches!(
+        runtime
+            .operations
+            .call_as::<propose::ProposeRoute>(route(4))
+            .await,
+        Err(harmos::Error::NotRegistered {
+            domain: "operation",
+            ..
+        })
+    ));
+    assert!(
+        manager.initialize(&mut lifecycle).await.is_err(),
+        "a unit configuration refuses an object"
+    );
+    manager.shutdown(&mut lifecycle).await.unwrap();
+
+    let plan = manager.plan_reload(lifecycle.candidate(()).await).unwrap();
+    assert!(
+        manager.caller("schematic-tools").is_err(),
+        "collection and planning retain an inert original store"
+    );
+    manager.apply_reload(plan, &mut lifecycle).await.unwrap();
+    assert!(manager.caller("schematic-tools").is_ok());
+    let response = runtime
+        .operations
+        .call_as::<propose::ProposeRoute>(route(3))
+        .await
+        .unwrap();
+    assert_eq!(response.points, corner(3));
+    manager.shutdown(&mut lifecycle).await.unwrap();
+    drop((manager, lifecycle));
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn declared_operation_roundtrip() {
+    let runtime = runtime().await;
+    let mut lifecycle = publications::Lifecycle::schematic(&runtime);
+    let mut manager = publications::Manager::new(lifecycle.candidate(()).await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
     let answered = runtime
         .operations
-        .call_as::<Echo>(Echo {
-            say: "the probe".into(),
-        })
+        .call_as::<propose::ProposeRoute>(route(3))
         .await
         .unwrap();
-    assert_eq!(answered.said, "heard the probe");
-    let denied = runtime
-        .operations
-        .call_as::<Echo>(Echo {
-            say: "publish-foreign".into(),
-        })
-        .await
-        .unwrap();
-    assert!(
-        denied.said.contains("publication stream"),
-        "{}",
-        denied.said
-    );
-    assert!(
-        denied
-            .said
-            .contains("stream or schema differs from the frozen generation inventory"),
-        "{}",
-        denied.said
-    );
-    assert!(runtime.streams.publication("foreign", 1).is_none());
+    assert_eq!(answered.points, corner(3));
 
-    let operation = ["probe", "echo"].join(".");
+    // A Straight Route Collapses Its Corner Onto The Start
+    let operation = ["schematic", "route"].join(".");
     let encoded = runtime
         .operations
         .call_encoded(
             &operation,
-            Echo {
-                say: "dynamic".into(),
+            propose::Request {
+                from: Point { x: 0, y: 0 },
+                to: Point { x: 0, y: 4 },
             }
             .encode_to_vec(),
         )
         .await
         .unwrap();
     assert_eq!(
-        Echoed::decode(encoded.as_slice()).unwrap().said,
-        "heard dynamic"
+        propose::Response::decode(encoded.as_slice())
+            .unwrap()
+            .points,
+        [Point { x: 0, y: 0 }, Point { x: 0, y: 4 }]
     );
     assert!(matches!(
         runtime
             .operations
-            .call_encoded("probe.unknown", vec![])
+            .call_encoded("schematic.unknown", vec![])
             .await,
         Err(harmos::Error::NotRegistered {
             domain: "operation",
@@ -426,287 +385,181 @@ fn contract_scenario() {
         })
     ));
 
-    let refused = runtime
+    let validated = runtime
         .operations
-        .call_as::<Decline>(Decline {})
+        .call_as::<validate::ValidateSchematic>(validate::Request {
+            schematic: Snapshot {
+                symbols: vec![1, 1],
+                connections: vec![Connection { from: 1, to: 2 }],
+            },
+        })
         .await
-        .unwrap_err();
-    assert!(
-        matches!(component_error(&refused), harmos::operations::ComponentError::Remote(failure)
-            if failure.code() == harmos::operations::FailureKind::Permanent
-                && failure.cause().contains("the probe declines"))
+        .unwrap();
+    assert_eq!(
+        validated.diagnostics,
+        [
+            "Duplicate symbol IDs",
+            "Connection 1 to 2 references a missing symbol"
+        ]
     );
     assert!(harmos::operations::Definition::of::<Reserved>().is_err());
     assert_eq!(
         runtime
             .operations
-            .call_as::<Echo>(Echo {
-                say: "again".into()
-            })
+            .call_as::<propose::ProposeRoute>(route(3))
             .await
             .unwrap()
-            .said,
-        "heard again"
+            .points,
+        corner(3)
     );
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
     runtime.stop().await.unwrap();
+}
 
-});
-        });
-    }
-    {
-        scenario_runtime::check("fuel_retains_cause", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let mut lifecycle = publications::Lifecycle::new(&runtime);
-                    let mut manager =
-                        publications::Manager::new(lifecycle.candidate("idle").await).unwrap();
-                    manager.initialize(&mut lifecycle).await.unwrap();
-                    let spun = runtime
-                        .operations
-                        .call_as::<Spin>(Spin {})
-                        .await
-                        .unwrap_err();
-                    assert_eq!(
-                        execution_error(&spun).downcast_ref::<wasmtime::Trap>(),
-                        Some(&wasmtime::Trap::OutOfFuel)
-                    );
-                    let after = runtime
-                        .operations
-                        .call_as::<Echo>(Echo {
-                            say: "anyone".into(),
-                        })
-                        .await
-                        .unwrap_err();
-                    assert!(matches!(
-                        component_error(&after),
-                        harmos::operations::ComponentError::Unavailable
-                    ));
-                    retire_failed_guest(&mut manager, &mut lifecycle).await;
-                    drop((manager, lifecycle));
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("manager_bounds_wait", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let mut lifecycle = publications::Lifecycle::with_egress(
-                        &runtime,
-                        Duration::from_millis(200),
-                        std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
-                        std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
-                    );
-                    let mut manager =
-                        publications::Manager::new(lifecycle.candidate("idle").await).unwrap();
-                    manager.initialize(&mut lifecycle).await.unwrap();
-                    let waited = runtime
-                        .operations
-                        .call_as::<Wait>(Wait {})
-                        .await
-                        .unwrap_err();
-                    assert!(
-                        matches!(
-                            waited,
-                            harmos::Error::OperationRefused(harmos::Refusal::TimedOut)
-                        ),
-                        "{waited:?}"
-                    );
-                    let after = runtime
-                        .operations
-                        .call_as::<Echo>(Echo {
-                            say: "anyone".into(),
-                        })
-                        .await
-                        .unwrap_err();
-                    assert!(matches!(
-                        component_error(&after),
-                        harmos::operations::ComponentError::Unavailable
-                    ));
-                    retire_failed_guest(&mut manager, &mut lifecycle).await;
-                    drop((manager, lifecycle));
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("trap_discards_instance", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let mut lifecycle = publications::Lifecycle::new(&runtime);
-                    let mut manager =
-                        publications::Manager::new(lifecycle.candidate("idle").await).unwrap();
-                    manager.initialize(&mut lifecycle).await.unwrap();
-                    let trapped = runtime
-                        .operations
-                        .call_as::<Fail>(Fail {})
-                        .await
-                        .unwrap_err();
-                    assert_ne!(
-                        execution_error(&trapped).downcast_ref::<wasmtime::Trap>(),
-                        Some(&wasmtime::Trap::OutOfFuel)
-                    );
-                    assert!(
-                        execution_error(&trapped)
-                            .downcast_ref::<wasmtime::Trap>()
-                            .is_some()
-                    );
-                    let after = runtime
-                        .operations
-                        .call_as::<Echo>(Echo {
-                            say: "anyone".into(),
-                        })
-                        .await
-                        .unwrap_err();
-                    assert!(matches!(
-                        component_error(&after),
-                        harmos::operations::ComponentError::Unavailable
-                    ));
-                    retire_failed_guest(&mut manager, &mut lifecycle).await;
-                    drop((manager, lifecycle));
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("retired_metadata_refused", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let host = Host::<Bank>::new(&runtime).unwrap();
-                    let error = match host.load(&legacy_component()) {
-                        Ok(_) => {
-                            panic!("a current world cannot rehabilitate retired artifact metadata")
-                        }
-                        Err(error) => error,
-                    };
-                    assert!(matches!(
-                        error,
-                        harmos::guest::Error::Declaration(
-                            harmos::guest::inventory::DeclarationError::IncompatiblePayload
-                        )
-                    ));
-                    assert!(runtime.operations.definitions().is_empty());
-                    drop(host);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("scripted_ending_repeats", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    assert_eq!(scripted().await, scripted().await);
-                });
-        });
-    }
-    {
-        scenario_runtime::check("catalog_resources_bounded", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    for case in [
-                        "valid",
-                        "count",
-                        "bytes",
-                        "memory",
-                        "spin",
-                        "namespace",
-                        "schema",
-                        "duplicate",
-                    ] {
-                        let component = load("catalog-component", "componentize,kit", Some(case));
-                        let result = tokio::time::timeout(
-                            Duration::from_secs(30),
-                            harmos::guest::registrations(&component),
-                        )
-                        .await
-                        .expect("collection and runtime cleanup finish");
-                        match case {
-                            "valid" => {
-                                let entries = result.expect("register-only collection succeeds");
-                                assert_eq!(
-                                    entries
-                                        .iter()
-                                        .map(|entry| entry.namespace.as_str())
-                                        .collect::<Vec<_>>(),
-                                    ["alpha.catalog", "zeta.catalog"]
-                                );
-                                assert_eq!(entries[0].schema, 1);
-                                assert_eq!(entries[0].payload, br#""first""#);
-                            }
-                            "count" => {
-                                assert!(result.unwrap_err().to_string().contains("256 namespaces"))
-                            }
-                            "namespace" | "schema" | "duplicate" => assert!(
-                                result
-                                    .unwrap_err()
-                                    .to_string()
-                                    .contains("invalid or duplicate")
-                            ),
-                            "spin" => {
-                                let error = result.unwrap_err().to_string();
-                                assert!(
-                                    error.contains("fuel"),
-                                    "loop refusal identifies its exhausted fuel: {error}"
-                                );
-                            }
-                            "bytes" => {
-                                let error = result.unwrap_err().to_string();
-                                assert!(error.contains("16 MiB"), "catalog byte budget: {error}");
-                            }
-                            "memory" => {
-                                let error = result.unwrap_err().to_string();
-                                assert!(error.contains("memory"), "memory growth refusal: {error}");
-                                assert!(
-                                    !error.contains("fuel"),
-                                    "memory limit must be reached first: {error}"
-                                );
-                            }
-                            _ => unreachable!("all fixture cases are covered"),
-                        }
-                    }
-                    assert!(
-                        harmos::guest::registrations(b"not a component")
-                            .await
-                            .is_err()
-                    );
-                });
-        });
-    }
-    {
-        scenario_runtime::check("dependencies_share_admission", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
+#[tokio::test]
+async fn memory_growth_bounded() {
+    let runtime = runtime().await;
+    let mut lifecycle = publications::Lifecycle::sandbox(&runtime);
+    let mut manager = publications::Manager::new(lifecycle.candidate("idle").await).unwrap();
+    manager.initialize(&mut lifecycle).await.unwrap();
+    let refused = runtime
+        .operations
+        .call_as::<Echo>(Echo { say: "grow".into() })
+        .await
+        .unwrap_err();
+    assert!(
+        execution_error(&refused)
+            .root_cause()
+            .to_string()
+            .starts_with("forcing trap when growing memory to "),
+        "{refused}"
+    );
+    let after = runtime
+        .operations
+        .call_as::<Echo>(Echo {
+            say: "after".into(),
+        })
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        component_error(&after),
+        harmos::operations::ComponentError::Unavailable
+    ));
+    retire_failed_guest(&mut manager, &mut lifecycle).await;
+    drop((manager, lifecycle));
+    runtime.stop().await.unwrap();
+}
 
+#[tokio::test]
+async fn fuel_retains_cause() {
+    let runtime = runtime().await;
+    let mut lifecycle = publications::Lifecycle::sandbox(&runtime);
+    let mut manager = publications::Manager::new(lifecycle.candidate("idle").await).unwrap();
+    manager.initialize(&mut lifecycle).await.unwrap();
+    let spun = runtime
+        .operations
+        .call_as::<Spin>(Spin {})
+        .await
+        .unwrap_err();
+    assert_eq!(
+        execution_error(&spun).downcast_ref::<wasmtime::Trap>(),
+        Some(&wasmtime::Trap::OutOfFuel)
+    );
+    let after = runtime
+        .operations
+        .call_as::<Echo>(Echo {
+            say: "anyone".into(),
+        })
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        component_error(&after),
+        harmos::operations::ComponentError::Unavailable
+    ));
+    retire_failed_guest(&mut manager, &mut lifecycle).await;
+    drop((manager, lifecycle));
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn manager_bounds_wait() {
+    let runtime = runtime().await;
+    // The Embedded Provider Never Answers The Waiting Probe
+    let mut lifecycle = publications::Lifecycle::sandbox(&runtime);
+    let mut manager = publications::Manager::new(lifecycle.candidate("idle").await).unwrap();
+    manager.initialize(&mut lifecycle).await.unwrap();
+    let waited = runtime
+        .operations
+        .call_as::<Wait>(Wait {})
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(
+            waited,
+            harmos::Error::OperationRefused(harmos::Refusal::TimedOut)
+        ),
+        "{waited:?}"
+    );
+    let after = runtime
+        .operations
+        .call_as::<Echo>(Echo {
+            say: "anyone".into(),
+        })
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        component_error(&after),
+        harmos::operations::ComponentError::Unavailable
+    ));
+    retire_failed_guest(&mut manager, &mut lifecycle).await;
+    drop((manager, lifecycle));
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn trap_discards_instance() {
+    let runtime = runtime().await;
+    let mut lifecycle = publications::Lifecycle::sandbox(&runtime);
+    let mut manager = publications::Manager::new(lifecycle.candidate("idle").await).unwrap();
+    manager.initialize(&mut lifecycle).await.unwrap();
+    let trapped = runtime
+        .operations
+        .call_as::<Fail>(Fail {})
+        .await
+        .unwrap_err();
+    assert_ne!(
+        execution_error(&trapped).downcast_ref::<wasmtime::Trap>(),
+        Some(&wasmtime::Trap::OutOfFuel)
+    );
+    assert!(
+        execution_error(&trapped)
+            .downcast_ref::<wasmtime::Trap>()
+            .is_some()
+    );
+    let after = runtime
+        .operations
+        .call_as::<Echo>(Echo {
+            say: "anyone".into(),
+        })
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        component_error(&after),
+        harmos::operations::ComponentError::Unavailable
+    ));
+    retire_failed_guest(&mut manager, &mut lifecycle).await;
+    drop((manager, lifecycle));
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn scripted_ending_repeats() {
+    assert_eq!(scripted().await, scripted().await);
+}
+
+#[tokio::test]
+async fn dependencies_share_admission() {
     let runtime = runtime().await;
     let provider = std::sync::Arc::new(ProviderOwner::default());
     let mut lifecycle = DependencyHost::new(&runtime, provider.clone());
@@ -747,64 +600,51 @@ fn contract_scenario() {
 
     drop((manager, lifecycle));
     runtime.stop().await.unwrap();
+}
 
-});
-        });
-    }
-    {
-        scenario_runtime::check("cancelled_dependency_admission", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let provider = std::sync::Arc::new(ProviderOwner::default());
-                    let mut lifecycle = DependencyHost::new(&runtime, provider.clone());
-                    let mut manager = harmos::plugin::PluginManager::new(
-                        dependency_candidate(&mut lifecycle, "idle").await,
-                    )
-                    .unwrap();
-                    manager.initialize(&mut lifecycle).await.unwrap();
-                    let invocation = runtime
-                        .operations
-                        .submit_as::<Echo>(Echo {
-                            say: "dependency:cancel".into(),
-                        })
-                        .unwrap();
-                    provider.started.notified().await;
-                    invocation.cancel();
-                    assert!(matches!(
-                        invocation.await,
-                        Err(harmos::Error::OperationRefused(harmos::Refusal::Cancelled))
-                    ));
-                    tokio::time::timeout(Duration::from_secs(1), provider.cancelled.notified())
-                        .await
-                        .unwrap();
-                    let after = runtime
-                        .operations
-                        .call_as::<Echo>(Echo {
-                            say: "after cancellation".into(),
-                        })
-                        .await
-                        .unwrap_err();
-                    assert!(matches!(
-                        component_error(&after),
-                        harmos::operations::ComponentError::Unavailable
-                    ));
-                    retire_failed_guest(&mut manager, &mut lifecycle).await;
+#[tokio::test]
+async fn cancelled_dependency_admission() {
+    let runtime = runtime().await;
+    let provider = std::sync::Arc::new(ProviderOwner::default());
+    let mut lifecycle = DependencyHost::new(&runtime, provider.clone());
+    let mut manager =
+        harmos::plugin::PluginManager::new(dependency_candidate(&mut lifecycle, "idle").await)
+            .unwrap();
+    manager.initialize(&mut lifecycle).await.unwrap();
+    let invocation = runtime
+        .operations
+        .submit_as::<Echo>(Echo {
+            say: "dependency:cancel".into(),
+        })
+        .unwrap();
+    provider.started.notified().await;
+    invocation.cancel();
+    assert!(matches!(
+        invocation.await,
+        Err(harmos::Error::OperationRefused(harmos::Refusal::Cancelled))
+    ));
+    tokio::time::timeout(Duration::from_secs(1), provider.cancelled.notified())
+        .await
+        .unwrap();
+    let after = runtime
+        .operations
+        .call_as::<Echo>(Echo {
+            say: "after cancellation".into(),
+        })
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        component_error(&after),
+        harmos::operations::ComponentError::Unavailable
+    ));
+    retire_failed_guest(&mut manager, &mut lifecycle).await;
 
-                    drop((manager, lifecycle));
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("background_cleanup_retained", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
+    drop((manager, lifecycle));
+    runtime.stop().await.unwrap();
+}
 
+#[tokio::test]
+async fn background_cleanup_retained() {
     use std::sync::{Arc, atomic::Ordering};
     let runtime = runtime().await;
     let provider = Arc::new(ProviderOwner::default());
@@ -840,7 +680,11 @@ fn contract_scenario() {
     assert_eq!(provider.cleanup_finished.load(Ordering::SeqCst), 0);
 
     // Destroying The Actual Guest Store Does Not Settle Its Failed Host Debt.
-    let trapped = runtime.operations.call_as::<Fail>(Fail {}).await.unwrap_err();
+    let trapped = runtime
+        .operations
+        .call_as::<Fail>(Fail {})
+        .await
+        .unwrap_err();
     assert!(
         execution_error(&trapped)
             .downcast_ref::<wasmtime::Trap>()
@@ -854,7 +698,7 @@ fn contract_scenario() {
         panic!("the failed guest must retain its original ending");
     };
     assert_eq!(failures.len(), 1);
-    assert_eq!(failures[0].artifact, "route-guest");
+    assert_eq!(failures[0].artifact, "sandbox-guest");
 
     let harmos::Error::TaskFailed { domain, source } = &failures[0].error else {
         panic!("the manager preserves its original cleanup failure");
@@ -878,7 +722,7 @@ fn contract_scenario() {
             panic!("the original cleanup failure must remain inspectable");
         };
         assert_eq!(failures.len(), 1);
-        assert_eq!(failures[0].artifact, "route-guest");
+        assert_eq!(failures[0].artifact, "sandbox-guest");
         let mut source = Some(&failures[0].error as &dyn std::error::Error);
         let mut original_refusal = false;
         while let Some(error) = source {
@@ -932,128 +776,109 @@ fn contract_scenario() {
     assert_eq!(provider.cleanup_finished.load(Ordering::SeqCst), 1);
     drop((answered, manager, lifecycle));
     runtime.stop().await.unwrap();
+}
 
-});
-        });
-    }
-    {
-        scenario_runtime::check("missing_provider_refused", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let provider = std::sync::Arc::new(ProviderOwner::default());
-                    let mut lifecycle = DependencyHost::new(&runtime, provider.clone());
-                    let candidate = dependency_candidate(&mut lifecycle, "idle").await;
-                    let missing = candidate
-                        .definitions()
-                        .filter(|definition| definition.id != "provider")
-                        .cloned();
-                    // No Plugin Provides It, So Planning Routes It To The Host, Whose Preflight Refuses It
-                    let planned = harmos::plugin::PluginDefinitions::new(missing, []).unwrap();
-                    let routed = planned
-                        .host_requirements()
-                        .map(|(definition, required)| {
-                            (
-                                definition.id.clone(),
-                                required.contract.operation().id.to_string(),
-                            )
-                        })
-                        .filter(|(_, operation)| operation == "provider.echo")
-                        .collect::<Vec<_>>();
-                    assert_eq!(
-                        routed,
-                        [("route-guest".to_owned(), "provider.echo".to_owned())]
-                    );
-                    assert!(matches!(
-                        runtime.operations.validate_requirements(&planned),
-                        Err(harmos::Error::NotRegistered {
-                            domain: "host provider",
-                            ..
-                        })
-                    ));
-                    assert!(provider.observed.lock().unwrap().is_empty());
-                    let mut operations: Vec<_> = runtime
-                        .operations
-                        .definitions()
-                        .iter()
-                        .map(|operation| operation.id.to_string())
-                        .collect();
-                    operations.sort();
-                    assert_eq!(operations, ["host.egress", "host.invoke", "host.publish"]);
-                    drop(lifecycle);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("shutdown_fences_callers", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    use std::sync::Arc;
-                    let runtime = runtime().await;
-                    let provider = Arc::new(ProviderOwner::default());
-                    let mut lifecycle = DependencyHost::new(&runtime, provider.clone());
-                    let mut manager = harmos::plugin::PluginManager::new(
-                        native_dependency_candidate(&mut lifecycle, "dependencies", true).await,
-                    )
-                    .unwrap();
-                    manager.initialize(&mut lifecycle).await.unwrap();
-                    let stale = runtime
-                        .operations
-                        .caller(&manager.caller("client").unwrap())
-                        .unwrap();
-                    assert_eq!(
-                        runtime
-                            .operations
-                            .call_as::<Forward>(Echo {
-                                say: "dependency:roundtrip".into()
-                            })
-                            .await
-                            .unwrap()
-                            .said,
-                        "roundtrip"
-                    );
-                    manager.shutdown(&mut lifecycle).await.unwrap();
-                    assert_eq!(
-                        *provider.observed.lock().unwrap(),
-                        ["initialize", "roundtrip"]
-                    );
-                    assert!(
-                        stale
-                            .call_as::<Echo>(Echo {
-                                say: "closed".into()
-                            })
-                            .await
-                            .is_err()
-                    );
-                    manager.shutdown(&mut lifecycle).await.unwrap();
-                    assert!(
-                        !provider
-                            .observed
-                            .lock()
-                            .unwrap()
-                            .iter()
-                            .any(|say| say == "cleanup")
-                    );
+#[tokio::test]
+async fn missing_provider_refused() {
+    let runtime = runtime().await;
+    let provider = std::sync::Arc::new(ProviderOwner::default());
+    let mut lifecycle = DependencyHost::new(&runtime, provider.clone());
+    let candidate = dependency_candidate(&mut lifecycle, "idle").await;
+    let missing = candidate
+        .definitions()
+        .filter(|definition| definition.id != "provider")
+        .cloned();
+    // No Plugin Provides It, So Planning Routes It To The Host, Whose Preflight Refuses It
+    let planned = harmos::plugin::PluginDefinitions::new(missing, []).unwrap();
+    let routed = planned
+        .host_requirements()
+        .map(|(definition, required)| {
+            (
+                definition.id.clone(),
+                required.contract.operation().id.to_string(),
+            )
+        })
+        .filter(|(_, operation)| operation == "provider.echo")
+        .collect::<Vec<_>>();
+    assert_eq!(
+        routed,
+        [("sandbox-guest".to_owned(), "provider.echo".to_owned())]
+    );
+    assert!(matches!(
+        runtime.operations.validate_requirements(&planned),
+        Err(harmos::Error::NotRegistered {
+            domain: "host provider",
+            ..
+        })
+    ));
+    assert!(provider.observed.lock().unwrap().is_empty());
+    let mut operations: Vec<_> = runtime
+        .operations
+        .definitions()
+        .iter()
+        .map(|operation| operation.id.to_string())
+        .collect();
+    operations.sort();
+    assert_eq!(operations, ["host.publish"]);
+    drop(lifecycle);
+    runtime.stop().await.unwrap();
+}
 
-                    drop((manager, lifecycle, stale));
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("cancelled_shutdown_cleanup", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
+#[tokio::test]
+async fn shutdown_fences_callers() {
+    use std::sync::Arc;
+    let runtime = runtime().await;
+    let provider = Arc::new(ProviderOwner::default());
+    let mut lifecycle = DependencyHost::new(&runtime, provider.clone());
+    let mut manager = harmos::plugin::PluginManager::new(
+        native_dependency_candidate(&mut lifecycle, "dependencies", true).await,
+    )
+    .unwrap();
+    manager.initialize(&mut lifecycle).await.unwrap();
+    let stale = runtime
+        .operations
+        .caller(&manager.caller("client").unwrap())
+        .unwrap();
+    assert_eq!(
+        runtime
+            .operations
+            .call_as::<Forward>(Echo {
+                say: "dependency:roundtrip".into()
+            })
+            .await
+            .unwrap()
+            .said,
+        "roundtrip"
+    );
+    manager.shutdown(&mut lifecycle).await.unwrap();
+    assert_eq!(
+        *provider.observed.lock().unwrap(),
+        ["initialize", "roundtrip"]
+    );
+    assert!(
+        stale
+            .call_as::<Echo>(Echo {
+                say: "closed".into()
+            })
+            .await
+            .is_err()
+    );
+    manager.shutdown(&mut lifecycle).await.unwrap();
+    assert!(
+        !provider
+            .observed
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|say| say == "cleanup")
+    );
 
+    drop((manager, lifecycle, stale));
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn cancelled_shutdown_cleanup() {
     use std::sync::{Arc, atomic::Ordering};
     let runtime = runtime().await;
     let provider = Arc::new(ProviderOwner::default());
@@ -1101,163 +926,149 @@ fn contract_scenario() {
 
     drop((manager, lifecycle));
     runtime.stop().await.unwrap();
+}
 
-});
-        });
-    }
-    {
-        scenario_runtime::check("dependencies_revoke_instances", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    use std::sync::{Arc, atomic::Ordering};
-                    let runtime = runtime().await;
-                    let provider = Arc::new(ProviderOwner::default());
-                    let mut lifecycle = DependencyHost::new(&runtime, provider.clone());
-                    let mut manager = harmos::plugin::PluginManager::new(
-                        native_dependency_candidate(&mut lifecycle, "idle", false).await,
-                    )
-                    .unwrap();
-                    manager.initialize(&mut lifecycle).await.unwrap();
-                    let old = runtime
-                        .operations
-                        .caller(&manager.caller("route-guest").unwrap())
-                        .unwrap();
-                    let invocation = runtime
-                        .operations
-                        .submit_as::<Echo>(Echo {
-                            say: "dependency:cancel".into(),
-                        })
-                        .unwrap();
-                    tokio::time::timeout(Duration::from_secs(1), provider.started.notified())
-                        .await
-                        .unwrap();
-                    invocation.cancel();
-                    assert!(matches!(
-                        invocation.await,
-                        Err(harmos::Error::OperationRefused(harmos::Refusal::Cancelled))
-                    ));
-                    tokio::time::timeout(Duration::from_secs(1), provider.cancelled.notified())
-                        .await
-                        .unwrap();
-                    retire_failed_guest(&mut manager, &mut lifecycle).await;
-                    assert!(
-                        old.call_as::<ProviderEcho>(Echo {
-                            say: "stale".into()
-                        })
-                        .await
-                        .is_err()
-                    );
+#[tokio::test]
+async fn dependencies_revoke_instances() {
+    use std::sync::{Arc, atomic::Ordering};
+    let runtime = runtime().await;
+    let provider = Arc::new(ProviderOwner::default());
+    let mut lifecycle = DependencyHost::new(&runtime, provider.clone());
+    let mut manager = harmos::plugin::PluginManager::new(
+        native_dependency_candidate(&mut lifecycle, "idle", false).await,
+    )
+    .unwrap();
+    manager.initialize(&mut lifecycle).await.unwrap();
+    let old = runtime
+        .operations
+        .caller(&manager.caller("sandbox-guest").unwrap())
+        .unwrap();
+    let invocation = runtime
+        .operations
+        .submit_as::<Echo>(Echo {
+            say: "dependency:cancel".into(),
+        })
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(1), provider.started.notified())
+        .await
+        .unwrap();
+    invocation.cancel();
+    assert!(matches!(
+        invocation.await,
+        Err(harmos::Error::OperationRefused(harmos::Refusal::Cancelled))
+    ));
+    tokio::time::timeout(Duration::from_secs(1), provider.cancelled.notified())
+        .await
+        .unwrap();
+    retire_failed_guest(&mut manager, &mut lifecycle).await;
+    assert!(
+        old.call_as::<ProviderEcho>(Echo {
+            say: "stale".into()
+        })
+        .await
+        .is_err()
+    );
 
-                    let mut manager = harmos::plugin::PluginManager::new(
-                        native_dependency_candidate(&mut lifecycle, "dependencies", false).await,
-                    )
-                    .unwrap();
-                    manager.initialize(&mut lifecycle).await.unwrap();
-                    assert_eq!(
-                        runtime
-                            .operations
-                            .call_as::<Echo>(Echo {
-                                say: "replacement".into()
-                            })
-                            .await
-                            .unwrap()
-                            .said,
-                        "heard replacement"
-                    );
-                    assert!(
-                        old.call_as::<ProviderEcho>(Echo {
-                            say: "stale replacement".into()
-                        })
-                        .await
-                        .is_err()
-                    );
-                    let prepared = provider.prepared.load(Ordering::SeqCst);
-                    provider.fail_cleanup.store(true, Ordering::SeqCst);
-                    let mut debt = runtime
-                        .operations
-                        .submit_as::<ProviderEcho>(Echo {
-                            say: "physical-cleanup".into(),
-                        })
-                        .unwrap();
-                    assert!(matches!(
-                        (&mut debt).await,
-                        Err(harmos::Error::OperationFinalization { outcome: None, .. })
-                    ));
-                    for attempt in 0..2 {
-                        let harmos::Error::PluginLifecycle { source } =
-                            manager.shutdown(&mut lifecycle).await.unwrap_err()
-                        else {
-                            panic!(
-                                "failed physical cleanup must remain owned by the original manager"
-                            )
-                        };
-                        let harmos::plugin::PluginFailure::Cleanup(failures) = *source else {
-                            panic!("original cleanup failure expected")
-                        };
-                        assert_eq!(failures.len(), 1);
-                        assert_eq!(failures[0].artifact, "provider");
-                        let harmos::Error::TaskFailed { domain, source } = &failures[0].error
-                        else {
-                            panic!("the manager retains the original provider cleanup error");
-                        };
-                        assert_eq!(*domain, "plugin cleanup");
-                        let original = source.downcast_ref::<harmos::Error>().unwrap();
-                        if attempt == 0 {
-                            assert!(matches!(
-                                original,
-                                harmos::Error::OperationFinalization { .. }
-                            ));
-                        } else {
-                            assert!(matches!(
-                                original,
-                                harmos::Error::OperationSettlement { .. }
-                            ));
-                        }
-                        let mut source = Some(&failures[0].error as &dyn std::error::Error);
-                        let mut physical_refusal = false;
-                        while let Some(error) = source {
-                            physical_refusal |= error
-                                .to_string()
-                                .contains("fixture physical cleanup refused");
-                            source = error.source();
-                        }
-                        assert!(
-                            physical_refusal,
-                            "the same original physical refusal remains inspectable"
-                        );
-                    }
-                    assert_eq!(provider.prepared.load(Ordering::SeqCst), prepared + 1);
-                    assert_eq!(provider.cleanup_attempts.load(Ordering::SeqCst), 3);
-                    assert_eq!(provider.cleanup_finished.load(Ordering::SeqCst), 0);
-                    assert!(
-                        runtime
-                            .operations
-                            .call_as::<Echo>(Echo {
-                                say: "closed".into()
-                            })
-                            .await
-                            .is_err()
-                    );
-                    provider.fail_cleanup.store(false, Ordering::SeqCst);
-                    manager.shutdown(&mut lifecycle).await.unwrap();
-                    assert_eq!(provider.prepared.load(Ordering::SeqCst), prepared + 1);
-                    assert_eq!(provider.cleanup_attempts.load(Ordering::SeqCst), 4);
-                    assert_eq!(provider.cleanup_finished.load(Ordering::SeqCst), 1);
-                    drop(debt);
-                    drop((manager, lifecycle, old));
-                    runtime.stop().await.unwrap();
-                });
-        });
+    let mut manager = harmos::plugin::PluginManager::new(
+        native_dependency_candidate(&mut lifecycle, "dependencies", false).await,
+    )
+    .unwrap();
+    manager.initialize(&mut lifecycle).await.unwrap();
+    assert_eq!(
+        runtime
+            .operations
+            .call_as::<Echo>(Echo {
+                say: "replacement".into()
+            })
+            .await
+            .unwrap()
+            .said,
+        "heard replacement"
+    );
+    assert!(
+        old.call_as::<ProviderEcho>(Echo {
+            say: "stale replacement".into()
+        })
+        .await
+        .is_err()
+    );
+    let prepared = provider.prepared.load(Ordering::SeqCst);
+    provider.fail_cleanup.store(true, Ordering::SeqCst);
+    let mut debt = runtime
+        .operations
+        .submit_as::<ProviderEcho>(Echo {
+            say: "physical-cleanup".into(),
+        })
+        .unwrap();
+    assert!(matches!(
+        (&mut debt).await,
+        Err(harmos::Error::OperationFinalization { outcome: None, .. })
+    ));
+    for attempt in 0..2 {
+        let harmos::Error::PluginLifecycle { source } =
+            manager.shutdown(&mut lifecycle).await.unwrap_err()
+        else {
+            panic!("failed physical cleanup must remain owned by the original manager")
+        };
+        let harmos::plugin::PluginFailure::Cleanup(failures) = *source else {
+            panic!("original cleanup failure expected")
+        };
+        assert_eq!(failures.len(), 1);
+        assert_eq!(failures[0].artifact, "provider");
+        let harmos::Error::TaskFailed { domain, source } = &failures[0].error else {
+            panic!("the manager retains the original provider cleanup error");
+        };
+        assert_eq!(*domain, "plugin cleanup");
+        let original = source.downcast_ref::<harmos::Error>().unwrap();
+        if attempt == 0 {
+            assert!(matches!(
+                original,
+                harmos::Error::OperationFinalization { .. }
+            ));
+        } else {
+            assert!(matches!(
+                original,
+                harmos::Error::OperationSettlement { .. }
+            ));
+        }
+        let mut source = Some(&failures[0].error as &dyn std::error::Error);
+        let mut physical_refusal = false;
+        while let Some(error) = source {
+            physical_refusal |= error
+                .to_string()
+                .contains("fixture physical cleanup refused");
+            source = error.source();
+        }
+        assert!(
+            physical_refusal,
+            "the same original physical refusal remains inspectable"
+        );
     }
+    assert_eq!(provider.prepared.load(Ordering::SeqCst), prepared + 1);
+    assert_eq!(provider.cleanup_attempts.load(Ordering::SeqCst), 3);
+    assert_eq!(provider.cleanup_finished.load(Ordering::SeqCst), 0);
+    assert!(
+        runtime
+            .operations
+            .call_as::<Echo>(Echo {
+                say: "closed".into()
+            })
+            .await
+            .is_err()
+    );
+    provider.fail_cleanup.store(false, Ordering::SeqCst);
+    manager.shutdown(&mut lifecycle).await.unwrap();
+    assert_eq!(provider.prepared.load(Ordering::SeqCst), prepared + 1);
+    assert_eq!(provider.cleanup_attempts.load(Ordering::SeqCst), 4);
+    assert_eq!(provider.cleanup_finished.load(Ordering::SeqCst), 1);
+    drop(debt);
+    drop((manager, lifecycle, old));
+    runtime.stop().await.unwrap();
 }
 
 async fn scripted() -> Vec<String> {
     let runtime = runtime().await;
-    let mut lifecycle = publications::Lifecycle::new(&runtime);
+    let mut lifecycle = publications::Lifecycle::sandbox(&runtime);
     let mut manager = publications::Manager::new(lifecycle.candidate("idle").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
     let mut trace = vec![];
@@ -1323,33 +1134,30 @@ async fn runtime() -> Runtime<Bank> {
         .expect("an empty ledger has nothing to recover")
 }
 
-fn route_component() -> Vec<u8> {
+fn schematic() -> Vec<u8> {
+    static COMPONENT: OnceLock<Vec<u8>> = OnceLock::new();
+    COMPONENT.get_or_init(|| load("schematic-guest")).clone()
+}
+
+fn sandbox() -> Vec<u8> {
     static COMPONENT: OnceLock<Vec<u8>> = OnceLock::new();
     COMPONENT
-        .get_or_init(|| load("route-component", "test-component", None))
+        .get_or_init(|| load("harmos-sandbox-guest"))
         .clone()
 }
 
-fn legacy_component() -> Vec<u8> {
-    static COMPONENT: OnceLock<Vec<u8>> = OnceLock::new();
-    COMPONENT
-        .get_or_init(|| load("legacy-component", "componentize,kit", None))
-        .clone()
+// A Route From The Origin To `(x, 4)` Turns At `(x, 0)`
+pub(crate) fn route(x: i32) -> propose::Request {
+    propose::Request {
+        from: Point { x: 0, y: 0 },
+        to: Point { x, y: 4 },
+    }
 }
 
-struct ProviderEcho;
-impl OperationDeclaration for ProviderEcho {
-    type Request = Echo;
-    type Response = Echoed;
-    const ID: &'static str = "provider.echo";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_millis(100),
-        attempt_timeout: Duration::from_millis(100),
-        retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
-    };
-    const VISIBILITY: harmos::operations::Visibility = harmos::operations::Visibility::Shared;
+pub(crate) fn corner(x: i32) -> [Point; 3] {
+    [Point { x: 0, y: 0 }, Point { x, y: 0 }, Point { x, y: 4 }]
 }
+
 #[harmos::catalog]
 enum ProviderOperations {
     Echo(ProviderEcho),
@@ -1754,7 +1562,7 @@ impl DependencyHost {
     fn new(runtime: &Runtime<Bank>, provider: std::sync::Arc<ProviderOwner>) -> Self {
         Self {
             native_seed: None,
-            guest: publications::Lifecycle::new(runtime),
+            guest: publications::Lifecycle::sandbox(runtime),
             operations: runtime.operations.clone(),
             provider,
         }
@@ -1813,7 +1621,7 @@ impl harmos::plugin::PluginLifecycle for DependencyHost {
             }
             harmos::plugin::PluginBackend::Guest(resources) => {
                 resources
-                    .start::<GuestOperations, _>(
+                    .start::<publications::GuestOperations, _>(
                         &self.operations,
                         definition,
                         router,
@@ -2031,15 +1839,13 @@ async fn native_dependency_candidate(
                 ..Default::default()
             },
             requires: vec![Requirement {
-                id: "route-guest".into(),
+                id: "sandbox-guest".into(),
                 version: "*".parse().unwrap(),
             }],
         });
     }
     PluginDefinitions::new(definitions, []).unwrap()
 }
-
-/* === Tests === */
 
 #[tokio::test]
 #[ignore = "communication benchmark; selected explicitly by mise bench"]
@@ -2108,8 +1914,4 @@ async fn native_guest_benchmark() {
     runtime.stop().await.unwrap();
 }
 
-#[test]
-fn guest_contracts() {
-    operations::contract_scenario();
-    publications::contract_scenario();
-}
+/* === Tests === */

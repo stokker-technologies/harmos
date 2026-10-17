@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -1058,283 +1057,245 @@ async fn published_notices(notices: &Mutex<Vec<Notice>>, count: usize) {
     .unwrap();
 }
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("initialization_rows_commit", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = assembly()
-                        .operation_settings(harmos::operations::Settings { preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()), ..Default::default() })
-                        .runtime()
-                        .await
-                        .unwrap();
-                    let mut projected = runtime.streams.watch::<support::Pulse>();
-                    let mut lifecycle = host(&runtime, Arc::new(Provider::default()), true);
-                    lifecycle.publication_start = Some(PublicationStart::Commit);
-                    let mut manager =
-                        PluginManager::new(candidate(&lifecycle, true, false, true, false))
-                            .unwrap();
-                    manager.initialize(&mut lifecycle).await.unwrap();
-                    for sample in [41, 42] {
-                        let next = std::future::poll_fn(|context| {
-                            futures_core::Stream::poll_next(
-                                std::pin::Pin::new(&mut projected),
-                                context,
-                            )
-                        });
-                        let row = tokio::time::timeout(Duration::from_secs(2), next)
-                            .await
-                            .unwrap()
-                            .unwrap();
-                        assert!(
-                            matches!(row, harmos::streams::Item::Row(row) if row.value.sample == sample)
-                        );
-                    }
-                    let source = runtime.streams.publication("meter.pulse", 1).unwrap();
-                    let rows: Vec<_> = source.query(..).await.unwrap().collect();
-                    assert_eq!(rows.len(), 2);
-                    for (row, sample) in rows.iter().zip([41, 42]) {
-                        assert_eq!(
-                            support::Pulse::decode(row.value.payload.as_slice())
-                                .unwrap()
-                                .sample,
-                            sample
-                        );
-                    }
-                    manager.shutdown(&mut lifecycle).await.unwrap();
-                    drop((manager, lifecycle, projected, source));
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("notice_wire_order", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = assembly()
-                        .operation_settings(harmos::operations::Settings {
-                            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
-                            ..Default::default()
-                        })
-                        .runtime()
-                        .await
-                        .unwrap();
-                    let mut lifecycle = host(&runtime, Arc::new(Provider::default()), true);
-                    lifecycle.publication_start = Some(PublicationStart::Commit);
-                    lifecycle.project_publications = false;
-                    lifecycle.dynamic = true;
-                    let notices = lifecycle.notices.clone();
-                    let mut manager =
-                        PluginManager::new(candidate(&lifecycle, true, false, true, false))
-                            .unwrap();
-                    manager.initialize(&mut lifecycle).await.unwrap();
-                    runtime
-                        .operations
-                        .call_encoded(
-                            PublishPulse::ID,
-                            PublishPulse { sample: 43 }.encode_to_vec(),
-                        )
-                        .await
-                        .unwrap();
-                    published_notices(&notices, 3).await;
-                    let retained = notices.lock().unwrap().clone();
-                    assert_eq!(retained.len(), 3);
-                    let expected_generation = lifecycle
-                        .previous_native
-                        .as_ref()
-                        .unwrap()
-                        .scope()
-                        .unwrap()
-                        .generation()
-                        .get();
-                    let source = runtime.streams.publication("meter.pulse", 1).unwrap();
-                    let rows: Vec<_> = source.query(..).await.unwrap().collect();
-                    assert_eq!(rows.len(), 3);
-                    for (index, (notice, sample)) in retained.iter().zip([41, 42, 43]).enumerate() {
-                        let Notice::Published { publication } = notice else {
-                            panic!("only committed publications were retained")
-                        };
-                        let cloned = notice.clone();
-                        let Notice::Published {
-                            publication: shared,
-                        } = &cloned
-                        else {
-                            unreachable!()
-                        };
-                        assert_eq!(publication.stream(), "meter.pulse");
-                        assert_eq!(publication.owner(), "caller");
-                        assert_eq!(publication.schema(), 1);
-                        assert_eq!(publication.generation(), Some(expected_generation));
-                        assert_eq!(publication.sequence(), index as u64 + 1);
-                        assert_eq!(publication.wire_sequence(), index as u64 + 1);
-                        assert_eq!(publication.missed(), 0);
-                        assert_eq!(
-                            support::Pulse::decode(publication.payload())
-                                .unwrap()
-                                .sample,
-                            sample
-                        );
-                        assert_eq!(publication.payload(), rows[index].value.payload);
-                        assert_eq!(publication.payload().as_ptr(), shared.payload().as_ptr());
-                        assert_eq!(publication.owner().as_ptr(), shared.owner().as_ptr());
-                        assert_eq!(
-                            publication.published_unix_micros(),
-                            shared.published_unix_micros()
-                        );
-                        assert!(publication.published_unix_micros().is_some());
-                        assert_eq!(
-                            publication.context(),
-                            if index < 2 {
-                                Some("initialization")
-                            } else {
-                                None
-                            }
-                        );
-                        assert_eq!(publication.context(), shared.context());
-                    }
-                    assert!(
-                        runtime
-                            .streams
-                            .query::<support::Pulse>(..)
-                            .await
-                            .unwrap()
-                            .next()
-                            .is_none()
-                    );
-                    manager.shutdown(&mut lifecycle).await.unwrap();
-                    drop((manager, lifecycle, source));
-                    runtime.stop().await.unwrap();
-                    let Notice::Published { publication } = &retained[0] else {
-                        unreachable!()
-                    };
-                    assert_eq!(
-                        support::Pulse::decode(publication.payload())
-                            .unwrap()
-                            .sample,
-                        41
-                    );
-                });
-        });
-    }
-    {
-        scenario_runtime::check("shutdown_delivery", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let notices = Arc::new(Mutex::new(Vec::new()));
-                    let runtime = assembly()
-                        .operation_settings(harmos::operations::Settings {
-                            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
-                            ..Default::default()
-                        })
-                        .runtime()
-                        .await
-                        .unwrap();
-                    let mut lifecycle = host(&runtime, Arc::new(Provider::default()), true);
-                    lifecycle.publication_start = Some(PublicationStart::Commit);
-                    lifecycle.project_publications = false;
-                    lifecycle.dynamic = true;
-                    lifecycle.notices = notices.clone();
-                    let mut manager =
-                        PluginManager::new(candidate(&lifecycle, true, false, true, true)).unwrap();
-                    manager.initialize(&mut lifecycle).await.unwrap();
-                    let generation = lifecycle
-                        .previous_native
-                        .as_ref()
-                        .unwrap()
-                        .scope()
-                        .unwrap()
-                        .generation()
-                        .get();
-                    published_notices(&notices, 2).await;
-                    manager.shutdown(&mut lifecycle).await.unwrap();
-                    drop((manager, lifecycle));
-                    runtime.stop().await.unwrap();
-                    let retained = notices.lock().unwrap();
-                    assert_eq!(retained.len(), 3);
-                    for (index, (notice, sample)) in retained.iter().zip([41, 42, 44]).enumerate() {
-                        let Notice::Published { publication } = notice else {
-                            unreachable!()
-                        };
-                        assert_eq!(publication.owner(), "caller");
-                        assert_eq!(publication.generation(), Some(generation));
-                        assert_eq!(publication.schema(), 1);
-                        assert_eq!(publication.sequence(), index as u64 + 1);
-                        assert_eq!(publication.wire_sequence(), index as u64 + 1);
-                        assert_eq!(
-                            support::Pulse::decode(publication.payload())
-                                .unwrap()
-                                .sample,
-                            sample
-                        );
-                        assert_eq!(
-                            publication.context(),
-                            Some(if sample == 44 {
-                                "cleanup"
-                            } else {
-                                "initialization"
-                            })
-                        );
-                    }
-                });
-        });
-    }
-    {
-        scenario_runtime::check("failed_activation_discards", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = assembly()
-                        .operation_settings(harmos::operations::Settings {
-                            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
-                            ..Default::default()
-                        })
-                        .runtime()
-                        .await
-                        .unwrap();
-                    let mut lifecycle = host(&runtime, Arc::new(Provider::default()), true);
-                    lifecycle.publication_start = Some(PublicationStart::Refuse);
-                    let mut manager =
-                        PluginManager::new(candidate(&lifecycle, true, false, true, false))
-                            .unwrap();
-                    assert!(manager.initialize(&mut lifecycle).await.is_err());
-                    assert!(runtime.streams.publication("meter.pulse", 1).is_none());
-                    assert!(
-                        runtime
-                            .streams
-                            .query::<support::Pulse>(..)
-                            .await
-                            .unwrap()
-                            .next()
-                            .is_none()
-                    );
-                    manager.shutdown(&mut lifecycle).await.unwrap();
-                    drop((manager, lifecycle));
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("cancelled_activation_discards", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
-
+#[tokio::test]
+async fn initialization_rows_commit() {
     let runtime = assembly()
-        .operation_settings(harmos::operations::Settings { preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()), ..Default::default() })
+        .operation_settings(harmos::operations::Settings {
+            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+            ..Default::default()
+        })
+        .runtime()
+        .await
+        .unwrap();
+    let mut projected = runtime.streams.watch::<support::Pulse>();
+    let mut lifecycle = host(&runtime, Arc::new(Provider::default()), true);
+    lifecycle.publication_start = Some(PublicationStart::Commit);
+    let mut manager = PluginManager::new(candidate(&lifecycle, true, false, true, false)).unwrap();
+    manager.initialize(&mut lifecycle).await.unwrap();
+    for sample in [41, 42] {
+        let next = std::future::poll_fn(|context| {
+            futures_core::Stream::poll_next(std::pin::Pin::new(&mut projected), context)
+        });
+        let row = tokio::time::timeout(Duration::from_secs(2), next)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(row, harmos::streams::Item::Row(row) if row.value.sample == sample));
+    }
+    let source = runtime.streams.publication("meter.pulse", 1).unwrap();
+    let rows: Vec<_> = source.query(..).await.unwrap().collect();
+    assert_eq!(rows.len(), 2);
+    for (row, sample) in rows.iter().zip([41, 42]) {
+        assert_eq!(
+            support::Pulse::decode(row.value.payload.as_slice())
+                .unwrap()
+                .sample,
+            sample
+        );
+    }
+    manager.shutdown(&mut lifecycle).await.unwrap();
+    drop((manager, lifecycle, projected, source));
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn notice_wire_order() {
+    let runtime = assembly()
+        .operation_settings(harmos::operations::Settings {
+            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+            ..Default::default()
+        })
+        .runtime()
+        .await
+        .unwrap();
+    let mut lifecycle = host(&runtime, Arc::new(Provider::default()), true);
+    lifecycle.publication_start = Some(PublicationStart::Commit);
+    lifecycle.project_publications = false;
+    lifecycle.dynamic = true;
+    let notices = lifecycle.notices.clone();
+    let mut manager = PluginManager::new(candidate(&lifecycle, true, false, true, false)).unwrap();
+    manager.initialize(&mut lifecycle).await.unwrap();
+    runtime
+        .operations
+        .call_encoded(
+            PublishPulse::ID,
+            PublishPulse { sample: 43 }.encode_to_vec(),
+        )
+        .await
+        .unwrap();
+    published_notices(&notices, 3).await;
+    let retained = notices.lock().unwrap().clone();
+    assert_eq!(retained.len(), 3);
+    let expected_generation = lifecycle
+        .previous_native
+        .as_ref()
+        .unwrap()
+        .scope()
+        .unwrap()
+        .generation()
+        .get();
+    let source = runtime.streams.publication("meter.pulse", 1).unwrap();
+    let rows: Vec<_> = source.query(..).await.unwrap().collect();
+    assert_eq!(rows.len(), 3);
+    for (index, (notice, sample)) in retained.iter().zip([41, 42, 43]).enumerate() {
+        let Notice::Published { publication } = notice else {
+            panic!("only committed publications were retained")
+        };
+        let cloned = notice.clone();
+        let Notice::Published {
+            publication: shared,
+        } = &cloned
+        else {
+            unreachable!()
+        };
+        assert_eq!(publication.stream(), "meter.pulse");
+        assert_eq!(publication.owner(), "caller");
+        assert_eq!(publication.schema(), 1);
+        assert_eq!(publication.generation(), Some(expected_generation));
+        assert_eq!(publication.sequence(), index as u64 + 1);
+        assert_eq!(publication.wire_sequence(), index as u64 + 1);
+        assert_eq!(publication.missed(), 0);
+        assert_eq!(
+            support::Pulse::decode(publication.payload())
+                .unwrap()
+                .sample,
+            sample
+        );
+        assert_eq!(publication.payload(), rows[index].value.payload);
+        assert_eq!(publication.payload().as_ptr(), shared.payload().as_ptr());
+        assert_eq!(publication.owner().as_ptr(), shared.owner().as_ptr());
+        assert_eq!(
+            publication.published_unix_micros(),
+            shared.published_unix_micros()
+        );
+        assert!(publication.published_unix_micros().is_some());
+        assert_eq!(
+            publication.context(),
+            if index < 2 {
+                Some("initialization")
+            } else {
+                None
+            }
+        );
+        assert_eq!(publication.context(), shared.context());
+    }
+    assert!(
+        runtime
+            .streams
+            .query::<support::Pulse>(..)
+            .await
+            .unwrap()
+            .next()
+            .is_none()
+    );
+    manager.shutdown(&mut lifecycle).await.unwrap();
+    drop((manager, lifecycle, source));
+    runtime.stop().await.unwrap();
+    let Notice::Published { publication } = &retained[0] else {
+        unreachable!()
+    };
+    assert_eq!(
+        support::Pulse::decode(publication.payload())
+            .unwrap()
+            .sample,
+        41
+    );
+}
+
+#[tokio::test]
+async fn shutdown_delivery() {
+    let notices = Arc::new(Mutex::new(Vec::new()));
+    let runtime = assembly()
+        .operation_settings(harmos::operations::Settings {
+            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+            ..Default::default()
+        })
+        .runtime()
+        .await
+        .unwrap();
+    let mut lifecycle = host(&runtime, Arc::new(Provider::default()), true);
+    lifecycle.publication_start = Some(PublicationStart::Commit);
+    lifecycle.project_publications = false;
+    lifecycle.dynamic = true;
+    lifecycle.notices = notices.clone();
+    let mut manager = PluginManager::new(candidate(&lifecycle, true, false, true, true)).unwrap();
+    manager.initialize(&mut lifecycle).await.unwrap();
+    let generation = lifecycle
+        .previous_native
+        .as_ref()
+        .unwrap()
+        .scope()
+        .unwrap()
+        .generation()
+        .get();
+    published_notices(&notices, 2).await;
+    manager.shutdown(&mut lifecycle).await.unwrap();
+    drop((manager, lifecycle));
+    runtime.stop().await.unwrap();
+    let retained = notices.lock().unwrap();
+    assert_eq!(retained.len(), 3);
+    for (index, (notice, sample)) in retained.iter().zip([41, 42, 44]).enumerate() {
+        let Notice::Published { publication } = notice else {
+            unreachable!()
+        };
+        assert_eq!(publication.owner(), "caller");
+        assert_eq!(publication.generation(), Some(generation));
+        assert_eq!(publication.schema(), 1);
+        assert_eq!(publication.sequence(), index as u64 + 1);
+        assert_eq!(publication.wire_sequence(), index as u64 + 1);
+        assert_eq!(
+            support::Pulse::decode(publication.payload())
+                .unwrap()
+                .sample,
+            sample
+        );
+        assert_eq!(
+            publication.context(),
+            Some(if sample == 44 {
+                "cleanup"
+            } else {
+                "initialization"
+            })
+        );
+    }
+}
+
+#[tokio::test]
+async fn failed_activation_discards() {
+    let runtime = assembly()
+        .operation_settings(harmos::operations::Settings {
+            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+            ..Default::default()
+        })
+        .runtime()
+        .await
+        .unwrap();
+    let mut lifecycle = host(&runtime, Arc::new(Provider::default()), true);
+    lifecycle.publication_start = Some(PublicationStart::Refuse);
+    let mut manager = PluginManager::new(candidate(&lifecycle, true, false, true, false)).unwrap();
+    assert!(manager.initialize(&mut lifecycle).await.is_err());
+    assert!(runtime.streams.publication("meter.pulse", 1).is_none());
+    assert!(
+        runtime
+            .streams
+            .query::<support::Pulse>(..)
+            .await
+            .unwrap()
+            .next()
+            .is_none()
+    );
+    manager.shutdown(&mut lifecycle).await.unwrap();
+    drop((manager, lifecycle));
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn cancelled_activation_discards() {
+    let runtime = assembly()
+        .operation_settings(harmos::operations::Settings {
+            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+            ..Default::default()
+        })
         .runtime()
         .await
         .unwrap();
@@ -1363,58 +1324,47 @@ pub(super) fn contract_scenario() {
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
     runtime.stop().await.unwrap();
+}
 
-});
-        });
-    }
-    {
-        scenario_runtime::check("undeclared_calls_refused", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = assembly()
-                        .operation_settings(harmos::operations::Settings {
-                            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
-                            ..Default::default()
-                        })
-                        .runtime()
-                        .await
-                        .unwrap();
-                    let provider = Arc::new(Provider::default());
-                    let mut lifecycle = host(&runtime, provider.clone(), true);
-                    let mut manager =
-                        PluginManager::new(candidate(&lifecycle, true, false, false, true))
-                            .unwrap();
-                    let initialized = manager.initialize(&mut lifecycle).await;
-                    assert_eq!(*provider.observed.lock().unwrap(), [11]);
-                    assert!(
-                        runtime
-                            .streams
-                            .query::<support::Pulse>(..)
-                            .await
-                            .unwrap()
-                            .next()
-                            .is_none()
-                    );
-                    assert!(initialized.is_err());
-                    manager.shutdown(&mut lifecycle).await.unwrap();
-                    assert_eq!(*provider.observed.lock().unwrap(), [11]);
-                    assert!(manager.status("caller").unwrap().generation.is_none());
-                    drop((manager, lifecycle));
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("dependency_original_manager", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
-
+#[tokio::test]
+async fn undeclared_calls_refused() {
     let runtime = assembly()
-        .operation_settings(harmos::operations::Settings { preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()), ..Default::default() })
+        .operation_settings(harmos::operations::Settings {
+            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+            ..Default::default()
+        })
+        .runtime()
+        .await
+        .unwrap();
+    let provider = Arc::new(Provider::default());
+    let mut lifecycle = host(&runtime, provider.clone(), true);
+    let mut manager = PluginManager::new(candidate(&lifecycle, true, false, false, true)).unwrap();
+    let initialized = manager.initialize(&mut lifecycle).await;
+    assert_eq!(*provider.observed.lock().unwrap(), [11]);
+    assert!(
+        runtime
+            .streams
+            .query::<support::Pulse>(..)
+            .await
+            .unwrap()
+            .next()
+            .is_none()
+    );
+    assert!(initialized.is_err());
+    manager.shutdown(&mut lifecycle).await.unwrap();
+    assert_eq!(*provider.observed.lock().unwrap(), [11]);
+    assert!(manager.status("caller").unwrap().generation.is_none());
+    drop((manager, lifecycle));
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn dependency_original_manager() {
+    let runtime = assembly()
+        .operation_settings(harmos::operations::Settings {
+            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+            ..Default::default()
+        })
         .runtime()
         .await
         .unwrap();
@@ -1457,126 +1407,107 @@ pub(super) fn contract_scenario() {
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
     runtime.stop().await.unwrap();
+}
 
-});
-        });
-    }
-    {
-        scenario_runtime::check("dependency_lifecycle_calls", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = assembly()
-                        .operation_settings(harmos::operations::Settings {
-                            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
-                            ..Default::default()
-                        })
-                        .runtime()
-                        .await
-                        .unwrap();
-                    let provider = Arc::new(Provider {
-                        multiplier: 1,
-                        ..Default::default()
-                    });
-                    let mut lifecycle = host(&runtime, provider.clone(), true);
-                    let mut manager =
-                        PluginManager::new(candidate(&lifecycle, true, false, false, false))
-                            .unwrap();
-                    manager.initialize(&mut lifecycle).await.unwrap();
-                    assert_eq!(*provider.observed.lock().unwrap(), [11]);
-                    manager.shutdown(&mut lifecycle).await.unwrap();
-                    assert_eq!(*provider.observed.lock().unwrap(), [11, 22]);
-                    drop((manager, lifecycle));
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("cancellation_settles_handlers", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = assembly()
-                        .operation_settings(harmos::operations::Settings {
-                            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
-                            ..Default::default()
-                        })
-                        .runtime()
-                        .await
-                        .unwrap();
-                    let provider = Arc::new(Provider {
-                        multiplier: 1,
-                        ..Default::default()
-                    });
-                    let mut lifecycle = host(&runtime, provider.clone(), false);
-                    let mut manager =
-                        PluginManager::new(candidate(&lifecycle, false, false, false, false))
-                            .unwrap();
-                    manager.initialize(&mut lifecycle).await.unwrap();
-                    let invocation = runtime
-                        .operations
-                        .submit_as::<Forward<true>>(Amplify { value: 0 })
-                        .unwrap();
-                    tokio::time::timeout(Duration::from_secs(1), provider.started.notified())
-                        .await
-                        .unwrap();
-                    invocation.cancel();
-                    assert!(matches!(
-                        invocation.await,
-                        Err(harmos::Error::OperationRefused(harmos::Refusal::Cancelled))
-                    ));
-                    tokio::time::timeout(Duration::from_secs(1), provider.dropped.notified())
-                        .await
-                        .unwrap();
-                    assert_eq!(
-                        runtime
-                            .operations
-                            .call_as::<Forward<true>>(Amplify { value: 9 })
-                            .await
-                            .unwrap()
-                            .value,
-                        9
-                    );
-
-                    let timed = runtime
-                        .operations
-                        .call_as::<Amplify>(Amplify { value: 0 })
-                        .await;
-                    assert!(matches!(
-                        timed,
-                        Err(harmos::Error::OperationRefused(harmos::Refusal::TimedOut))
-                    ));
-                    tokio::time::timeout(Duration::from_secs(1), provider.dropped.notified())
-                        .await
-                        .unwrap();
-                    assert_eq!(
-                        runtime
-                            .operations
-                            .call_as::<Amplify>(Amplify { value: 10 })
-                            .await
-                            .unwrap()
-                            .value,
-                        10
-                    );
-                    manager.shutdown(&mut lifecycle).await.unwrap();
-                    drop((manager, lifecycle));
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("dependency_admission_revocation", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
-
+#[tokio::test]
+async fn dependency_lifecycle_calls() {
     let runtime = assembly()
-        .operation_settings(harmos::operations::Settings { preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()), ..Default::default() })
+        .operation_settings(harmos::operations::Settings {
+            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+            ..Default::default()
+        })
+        .runtime()
+        .await
+        .unwrap();
+    let provider = Arc::new(Provider {
+        multiplier: 1,
+        ..Default::default()
+    });
+    let mut lifecycle = host(&runtime, provider.clone(), true);
+    let mut manager = PluginManager::new(candidate(&lifecycle, true, false, false, false)).unwrap();
+    manager.initialize(&mut lifecycle).await.unwrap();
+    assert_eq!(*provider.observed.lock().unwrap(), [11]);
+    manager.shutdown(&mut lifecycle).await.unwrap();
+    assert_eq!(*provider.observed.lock().unwrap(), [11, 22]);
+    drop((manager, lifecycle));
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn cancellation_settles_handlers() {
+    let runtime = assembly()
+        .operation_settings(harmos::operations::Settings {
+            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+            ..Default::default()
+        })
+        .runtime()
+        .await
+        .unwrap();
+    let provider = Arc::new(Provider {
+        multiplier: 1,
+        ..Default::default()
+    });
+    let mut lifecycle = host(&runtime, provider.clone(), false);
+    let mut manager =
+        PluginManager::new(candidate(&lifecycle, false, false, false, false)).unwrap();
+    manager.initialize(&mut lifecycle).await.unwrap();
+    let invocation = runtime
+        .operations
+        .submit_as::<Forward<true>>(Amplify { value: 0 })
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(1), provider.started.notified())
+        .await
+        .unwrap();
+    invocation.cancel();
+    assert!(matches!(
+        invocation.await,
+        Err(harmos::Error::OperationRefused(harmos::Refusal::Cancelled))
+    ));
+    tokio::time::timeout(Duration::from_secs(1), provider.dropped.notified())
+        .await
+        .unwrap();
+    assert_eq!(
+        runtime
+            .operations
+            .call_as::<Forward<true>>(Amplify { value: 9 })
+            .await
+            .unwrap()
+            .value,
+        9
+    );
+
+    let timed = runtime
+        .operations
+        .call_as::<Amplify>(Amplify { value: 0 })
+        .await;
+    assert!(matches!(
+        timed,
+        Err(harmos::Error::OperationRefused(harmos::Refusal::TimedOut))
+    ));
+    tokio::time::timeout(Duration::from_secs(1), provider.dropped.notified())
+        .await
+        .unwrap();
+    assert_eq!(
+        runtime
+            .operations
+            .call_as::<Amplify>(Amplify { value: 10 })
+            .await
+            .unwrap()
+            .value,
+        10
+    );
+    manager.shutdown(&mut lifecycle).await.unwrap();
+    drop((manager, lifecycle));
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn dependency_admission_revocation() {
+    let runtime = assembly()
+        .operation_settings(harmos::operations::Settings {
+            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+            ..Default::default()
+        })
         .runtime()
         .await
         .unwrap();
@@ -1624,17 +1555,15 @@ pub(super) fn contract_scenario() {
     );
     drop((manager, lifecycle));
     runtime.stop().await.unwrap();
+}
 
-});
-        });
-    }
-    {
-        scenario_runtime::check("cancelled_dependency_capacity", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
-
+#[tokio::test]
+async fn cancelled_dependency_capacity() {
     let runtime = assembly()
-        .operation_settings(harmos::operations::Settings { preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()), ..Default::default() })
+        .operation_settings(harmos::operations::Settings {
+            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+            ..Default::default()
+        })
         .runtime()
         .await
         .unwrap();
@@ -1697,51 +1626,40 @@ pub(super) fn contract_scenario() {
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
     runtime.stop().await.unwrap();
+}
 
-});
-        });
-    }
-    {
-        scenario_runtime::check("empty_catalog_dependencies", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = assembly()
-                        .operation_settings(harmos::operations::Settings {
-                            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
-                            ..Default::default()
-                        })
-                        .runtime()
-                        .await
-                        .unwrap();
-                    let provider = Arc::new(Provider {
-                        multiplier: 1,
-                        ..Default::default()
-                    });
-                    let mut lifecycle = host(&runtime, provider.clone(), true);
-                    lifecycle.dynamic = true;
-                    let mut manager =
-                        PluginManager::new(candidate(&lifecycle, true, false, false, false))
-                            .unwrap();
-                    manager.initialize(&mut lifecycle).await.unwrap();
-                    assert_eq!(*provider.observed.lock().unwrap(), [11]);
-                    manager.shutdown(&mut lifecycle).await.unwrap();
-                    assert_eq!(*provider.observed.lock().unwrap(), [11, 22]);
-                    drop((manager, lifecycle));
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("retry_retained_finalization", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
-
+#[tokio::test]
+async fn empty_catalog_dependencies() {
     let runtime = assembly()
-        .operation_settings(harmos::operations::Settings { preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()), ..Default::default() })
+        .operation_settings(harmos::operations::Settings {
+            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+            ..Default::default()
+        })
+        .runtime()
+        .await
+        .unwrap();
+    let provider = Arc::new(Provider {
+        multiplier: 1,
+        ..Default::default()
+    });
+    let mut lifecycle = host(&runtime, provider.clone(), true);
+    lifecycle.dynamic = true;
+    let mut manager = PluginManager::new(candidate(&lifecycle, true, false, false, false)).unwrap();
+    manager.initialize(&mut lifecycle).await.unwrap();
+    assert_eq!(*provider.observed.lock().unwrap(), [11]);
+    manager.shutdown(&mut lifecycle).await.unwrap();
+    assert_eq!(*provider.observed.lock().unwrap(), [11, 22]);
+    drop((manager, lifecycle));
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn retry_retained_finalization() {
+    let runtime = assembly()
+        .operation_settings(harmos::operations::Settings {
+            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+            ..Default::default()
+        })
         .runtime()
         .await
         .unwrap();
@@ -1799,18 +1717,16 @@ pub(super) fn contract_scenario() {
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
     runtime.stop().await.unwrap();
+}
 
-});
-        });
-    }
-    {
-        scenario_runtime::check("capacity_precedes_encoding", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
-
+#[tokio::test]
+async fn capacity_precedes_encoding() {
     for (dynamic, canonical) in [(true, false), (true, true), (false, true)] {
         let runtime = assembly()
-            .operation_settings(harmos::operations::Settings { preparation_bytes: Some(NonZeroUsize::new(256).unwrap()), ..Default::default() })
+            .operation_settings(harmos::operations::Settings {
+                preparation_bytes: Some(NonZeroUsize::new(256).unwrap()),
+                ..Default::default()
+            })
             .runtime()
             .await
             .unwrap();
@@ -1901,10 +1817,6 @@ pub(super) fn contract_scenario() {
         manager.shutdown(&mut lifecycle).await.unwrap();
         drop((manager, lifecycle));
         runtime.stop().await.unwrap();
-    }
-
-});
-        });
     }
 }
 

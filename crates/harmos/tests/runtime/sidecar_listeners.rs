@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -220,97 +219,87 @@ fn delivered(value: u32) -> Delivery<Observation> {
     .unwrap()
 }
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("callback_outcomes_cleanup", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let probe = Arc::new(Probe::default());
-                    let seed = Seed::new(&probe);
-                    let capacity = std::num::NonZeroUsize::new(4).unwrap();
-                    let source = harmos_sidecar::PluginNative::<Receiver>::new(capacity).unwrap();
-                    let mut fixture = Managed::attach(
-                        source,
-                        serde_json::to_vec(&seed.id).unwrap(),
-                        Lanes::NativeOpen,
-                        capacity,
-                        vec![],
-                        std::convert::identity,
-                    )
-                    .await;
-                    assert!(
-                        fixture
-                            .runtime
-                            .operations
-                            .submit_encoded(Observe::ID, delivered(7).encode_to_vec())
-                            .is_err(),
-                        "an unstaged callback is unavailable"
-                    );
-                    fixture.initialize().await.unwrap();
-                    super::publications::ready(fixture.ready().clone()).await;
-                    let operations = fixture.runtime.operations.clone();
-                    fixture.call_as::<Observe>(delivered(7)).await.unwrap();
-                    assert_eq!(probe.total.load(Ordering::SeqCst), 7);
+#[tokio::test]
+async fn callback_outcomes_cleanup() {
+    let probe = Arc::new(Probe::default());
+    let seed = Seed::new(&probe);
+    let capacity = std::num::NonZeroUsize::new(4).unwrap();
+    let source = harmos_sidecar::PluginNative::<Receiver>::new(capacity).unwrap();
+    let mut fixture = Managed::attach(
+        source,
+        serde_json::to_vec(&seed.id).unwrap(),
+        Lanes::NativeOpen,
+        capacity,
+        vec![],
+        std::convert::identity,
+    )
+    .await;
+    assert!(
+        fixture
+            .runtime
+            .operations
+            .submit_encoded(Observe::ID, delivered(7).encode_to_vec())
+            .is_err(),
+        "an unstaged callback is unavailable"
+    );
+    fixture.initialize().await.unwrap();
+    super::publications::ready(fixture.ready().clone()).await;
+    let operations = fixture.runtime.operations.clone();
+    fixture.call_as::<Observe>(delivered(7)).await.unwrap();
+    assert_eq!(probe.total.load(Ordering::SeqCst), 7);
 
-                    for name in ["unknown", "harmos.record"] {
-                        assert!(
-                            operations
-                                .submit_encoded(name, delivered(1).encode_to_vec())
-                                .is_err(),
-                            "unknown and retired dispatch cannot reach a callback"
-                        );
-                    }
-                    for payload in [vec![0xff], delivered(99).encode_to_vec()] {
-                        let error = operations
-                            .submit_encoded(Observe::ID, payload)
-                            .unwrap()
-                            .await
-                            .unwrap_err();
-                        assert!(
-                            matches!(error, harmos::Error::OperationFailed { .. }),
-                            "malformed and refused callbacks retain operation failures: {error}"
-                        );
-                    }
-                    assert_eq!(probe.total.load(Ordering::SeqCst), 7);
-                    assert!(matches!(
-                        fixture.call_as::<Observe>(delivered(0)).await,
-                        Err(harmos::Error::OperationRefused(harmos::Refusal::TimedOut))
-                    ));
-                    fixture.call_as::<Observe>(delivered(3)).await.unwrap();
-                    assert_eq!(probe.active.load(Ordering::SeqCst), 0);
-                    assert_eq!(probe.total.load(Ordering::SeqCst), 10);
-
-                    let stalled = tokio::spawn({
-                        let operations = operations.clone();
-                        async move {
-                            let invocation = operations
-                                .submit_encoded(Observe::ID, delivered(0).encode_to_vec())
-                                .unwrap();
-                            Calling(invocation).await
-                        }
-                    });
-                    tokio::time::timeout(Duration::from_secs(2), async {
-                        while probe.active.load(Ordering::SeqCst) == 0 {
-                            tokio::task::yield_now().await;
-                        }
-                    })
-                    .await
-                    .unwrap();
-                    stalled.abort();
-                    let _ = stalled.await;
-                    fixture.call_as::<Observe>(delivered(2)).await.unwrap();
-                    assert_eq!(probe.total.load(Ordering::SeqCst), 12);
-                    fixture.shutdown().await.unwrap();
-                    fixture.runtime.stop().await.unwrap();
-                    assert_eq!(probe.active.load(Ordering::SeqCst), 0);
-                    assert!(probe.cleaned.load(Ordering::SeqCst));
-                });
-        });
+    for name in ["unknown", "harmos.record"] {
+        assert!(
+            operations
+                .submit_encoded(name, delivered(1).encode_to_vec())
+                .is_err(),
+            "unknown and retired dispatch cannot reach a callback"
+        );
     }
+    for payload in [vec![0xff], delivered(99).encode_to_vec()] {
+        let error = operations
+            .submit_encoded(Observe::ID, payload)
+            .unwrap()
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(error, harmos::Error::OperationFailed { .. }),
+            "malformed and refused callbacks retain operation failures: {error}"
+        );
+    }
+    assert_eq!(probe.total.load(Ordering::SeqCst), 7);
+    assert!(matches!(
+        fixture.call_as::<Observe>(delivered(0)).await,
+        Err(harmos::Error::OperationRefused(harmos::Refusal::TimedOut))
+    ));
+    fixture.call_as::<Observe>(delivered(3)).await.unwrap();
+    assert_eq!(probe.active.load(Ordering::SeqCst), 0);
+    assert_eq!(probe.total.load(Ordering::SeqCst), 10);
+
+    let stalled = tokio::spawn({
+        let operations = operations.clone();
+        async move {
+            let invocation = operations
+                .submit_encoded(Observe::ID, delivered(0).encode_to_vec())
+                .unwrap();
+            Calling(invocation).await
+        }
+    });
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while probe.active.load(Ordering::SeqCst) == 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    stalled.abort();
+    let _ = stalled.await;
+    fixture.call_as::<Observe>(delivered(2)).await.unwrap();
+    assert_eq!(probe.total.load(Ordering::SeqCst), 12);
+    fixture.shutdown().await.unwrap();
+    fixture.runtime.stop().await.unwrap();
+    assert_eq!(probe.active.load(Ordering::SeqCst), 0);
+    assert!(probe.cleaned.load(Ordering::SeqCst));
 }
 
 /* === Tests === */

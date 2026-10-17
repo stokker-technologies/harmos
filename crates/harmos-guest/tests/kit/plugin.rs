@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -39,10 +38,25 @@ wasmtime::component::bindgen!({
 /* === Type Aliases === */
 
 /* === Structs === */
+// Mirrors The Schematic Contract's Route Messages; Field Names Fix The Wire Tags
 #[harmos_guest::message(harmos_path = ::harmos_guest)]
-#[derive(Clone, PartialEq)]
-struct Reply {
-    value: String,
+#[derive(Clone, Debug, PartialEq)]
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+#[harmos_guest::message(harmos_path = ::harmos_guest)]
+#[derive(Clone, Debug, PartialEq)]
+struct Request {
+    from: Point,
+    to: Point,
+}
+
+#[harmos_guest::message(harmos_path = ::harmos_guest)]
+#[derive(Clone, Debug, PartialEq)]
+struct Response {
+    points: Vec<Point>,
 }
 
 struct Session {
@@ -105,167 +119,172 @@ impl Session {
 
 /* === Private Functions === */
 
-#[test]
-fn contract_scenario() {
-    {
-        scenario_runtime::check("sdk_lifecycle_retained", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let bytes = support::plugin_component();
-                    let declaration = harmos_contract::inventory::Declaration::inspect(
-                        &bytes,
-                        harmos_contract::inventory::Facility::Guest,
-                    )
-                    .unwrap();
-                    let contracts = &declaration.contracts;
-                    assert_eq!(declaration.id, "unified-guest");
-                    assert_eq!(contracts.provides.len(), 1);
-                    assert!(contracts.requires.is_empty());
-                    assert_eq!(declaration.operations[0].id.as_str(), "fixture.read");
+#[tokio::test]
+async fn sdk_lifecycle_retained() {
+    let bytes = support::component();
+    let declaration = harmos_contract::inventory::Declaration::inspect(
+        &bytes,
+        harmos_contract::inventory::Facility::Guest,
+    )
+    .unwrap();
+    let contracts = &declaration.contracts;
+    assert_eq!(declaration.id, "schematic-tools");
+    assert!(!contracts.provides.is_empty());
+    assert!(contracts.requires.is_empty());
+    assert!(
+        declaration
+            .operations
+            .iter()
+            .any(|operation| operation.id.as_str() == "schematic.route")
+    );
 
-                    let mut config = Config::new();
-                    config.wasm_component_model(true);
-                    config.wasm_component_model_async(true);
-                    let engine = Engine::new(&config).unwrap();
-                    let component = Component::new(&engine, bytes).unwrap();
-                    let mut linker = Linker::new(&engine);
-                    Plugin::add_to_linker::<_, HasSelf<_>>(&mut linker, |stub| stub).unwrap();
-                    let exports = component.component_type();
-                    for name in ["initialize", "shutdown"] {
-                        assert!(
-                            exports.get_export(&engine, name).is_none(),
-                            "the unified component exports no independent {name} function"
-                        );
-                    }
-                    let mut store = Store::new(&engine, Stub::default());
-                    let bindings = Plugin::instantiate_async(&mut store, &component, &linker)
-                        .await
-                        .unwrap();
-                    let mut session = Session { store, bindings };
-
-                    assert!(
-                        matches!(
-                            session
-                                .phase(WireCommand::Prepare {
-                                    invocation: 1,
-                                    operation: "fixture.read".to_owned(),
-                                    payload: vec![],
-                                })
-                                .await,
-                            WireAnswer::Failed { .. }
-                        ),
-                        "ordinary handlers are absent before SDK initialization"
-                    );
-                    assert!(
-                        matches!(
-                            session
-                                .phase(WireCommand::Prepare {
-                                    invocation: 7,
-                                    operation: "harmos.initialize".to_owned(),
-                                    payload: InitializeRequest {
-                                        config_json: b"null".to_vec(),
-                                        generation_context: Vec::new()
-                                    }
-                                    .encode_to_vec(),
-                                })
-                                .await,
-                            WireAnswer::Ready { .. }
-                        ),
-                        "inert preparation only retains the original request"
-                    );
-                    assert!(matches!(
-                        session
-                            .phase(WireCommand::Initialize {
-                                invocation: 7,
-                                context: [0; 32]
-                            })
-                            .await,
-                        WireAnswer::Ready { .. }
-                    ));
-                    assert!(
-                        matches!(
-                            session
-                                .phase(WireCommand::Attempt {
-                                    invocation: 7,
-                                    context: [0; 32],
-                                    values: Vec::new(),
-                                })
-                                .await,
-                            WireAnswer::Failed { .. }
-                        ),
-                        "the first run validates configuration before plugin initialization"
-                    );
-                    assert!(
-                        matches!(
-                            session.phase(WireCommand::Finalize { invocation: 7 }).await,
-                            WireAnswer::Ready { .. }
-                        ),
-                        "original finalization releases the failed invocation's capacity"
-                    );
-                    let registrations = session
-                        .bindings
-                        .call_register(&mut session.store)
-                        .await
-                        .unwrap()
-                        .unwrap();
-                    assert_eq!(registrations.len(), 2);
-                    assert_eq!(registrations[0].namespace, "alpha.catalog");
-                    assert_eq!(registrations[0].schema, 1);
-                    assert_eq!(registrations[0].payload, br#""first""#);
-                    assert_eq!(registrations[1].namespace, "zeta.catalog");
-                    assert!(
-                        matches!(
-                            session
-                                .phase(WireCommand::Prepare {
-                                    invocation: 8,
-                                    operation: "fixture.read".to_owned(),
-                                    payload: vec![],
-                                })
-                                .await,
-                            WireAnswer::Failed { .. }
-                        ),
-                        "metadata collection does not initialize resources or ordinary handlers"
-                    );
-                    let request = InitializeRequest {
-                        config_json: br#""same-owner""#.to_vec(),
-                        generation_context: Vec::new(),
-                    };
-                    assert!(
-                        session
-                            .call(2, "harmos.initialize", request.encode_to_vec())
-                            .await
-                            .is_empty()
-                    );
-                    let value = session.call(3, "fixture.read", vec![]).await;
-                    assert_eq!(
-                        Reply::decode(&value).unwrap().value,
-                        "same-owner:initialized:operation-initialized:1"
-                    );
-                    assert!(session.call(4, "harmos.shutdown", vec![]).await.is_empty());
-                    assert!(
-                        matches!(
-                            session
-                                .phase(WireCommand::Prepare {
-                                    invocation: 5,
-                                    operation: "fixture.read".to_owned(),
-                                    payload: vec![],
-                                })
-                                .await,
-                            WireAnswer::Failed { .. }
-                        ),
-                        "shutdown revokes ordinary admission"
-                    );
-                    assert!(
-                        session.call(6, "harmos.shutdown", vec![]).await.is_empty(),
-                        "SDK shutdown is idempotent on the same closed owner"
-                    );
-                });
-        });
+    let mut config = Config::new();
+    config.wasm_component_model(true);
+    config.wasm_component_model_async(true);
+    let engine = Engine::new(&config).unwrap();
+    let component = Component::new(&engine, bytes).unwrap();
+    let mut linker = Linker::new(&engine);
+    Plugin::add_to_linker::<_, HasSelf<_>>(&mut linker, |stub| stub).unwrap();
+    let exports = component.component_type();
+    for name in ["initialize", "shutdown"] {
+        assert!(
+            exports.get_export(&engine, name).is_none(),
+            "the unified component exports no independent {name} function"
+        );
     }
+    let mut store = Store::new(&engine, Stub::default());
+    let bindings = Plugin::instantiate_async(&mut store, &component, &linker)
+        .await
+        .unwrap();
+    let mut session = Session { store, bindings };
+    let route = || {
+        Request {
+            from: Point { x: 0, y: 0 },
+            to: Point { x: 3, y: 4 },
+        }
+        .encode_to_vec()
+    };
+
+    assert!(
+        matches!(
+            session
+                .phase(WireCommand::Prepare {
+                    invocation: 1,
+                    operation: "schematic.route".to_owned(),
+                    payload: route(),
+                })
+                .await,
+            WireAnswer::Failed { .. }
+        ),
+        "ordinary handlers are absent before SDK initialization"
+    );
+    // The Guest Takes No Configuration, So A JSON String Fails Its First Run
+    assert!(
+        matches!(
+            session
+                .phase(WireCommand::Prepare {
+                    invocation: 7,
+                    operation: "harmos.initialize".to_owned(),
+                    payload: InitializeRequest {
+                        config_json: br#""unexpected""#.to_vec(),
+                        generation_context: Vec::new()
+                    }
+                    .encode_to_vec(),
+                })
+                .await,
+            WireAnswer::Ready { .. }
+        ),
+        "inert preparation only retains the original request"
+    );
+    assert!(matches!(
+        session
+            .phase(WireCommand::Initialize {
+                invocation: 7,
+                context: [0; 32]
+            })
+            .await,
+        WireAnswer::Ready { .. }
+    ));
+    assert!(
+        matches!(
+            session
+                .phase(WireCommand::Attempt {
+                    invocation: 7,
+                    context: [0; 32],
+                    values: Vec::new(),
+                })
+                .await,
+            WireAnswer::Failed { .. }
+        ),
+        "the first run validates configuration before plugin initialization"
+    );
+    assert!(
+        matches!(
+            session.phase(WireCommand::Finalize { invocation: 7 }).await,
+            WireAnswer::Ready { .. }
+        ),
+        "original finalization releases the failed invocation's capacity"
+    );
+    let registrations = session
+        .bindings
+        .call_register(&mut session.store)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        registrations.is_empty(),
+        "the schematic guest registers no catalog"
+    );
+    assert!(
+        matches!(
+            session
+                .phase(WireCommand::Prepare {
+                    invocation: 8,
+                    operation: "schematic.route".to_owned(),
+                    payload: route(),
+                })
+                .await,
+            WireAnswer::Failed { .. }
+        ),
+        "metadata collection does not initialize resources or ordinary handlers"
+    );
+    let request = InitializeRequest {
+        config_json: b"null".to_vec(),
+        generation_context: Vec::new(),
+    };
+    assert!(
+        session
+            .call(2, "harmos.initialize", request.encode_to_vec())
+            .await
+            .is_empty()
+    );
+    let routed = session.call(3, "schematic.route", route()).await;
+    assert_eq!(
+        Response::decode(&routed).unwrap().points,
+        [
+            Point { x: 0, y: 0 },
+            Point { x: 3, y: 0 },
+            Point { x: 3, y: 4 },
+        ]
+    );
+    assert!(session.call(4, "harmos.shutdown", vec![]).await.is_empty());
+    assert!(
+        matches!(
+            session
+                .phase(WireCommand::Prepare {
+                    invocation: 5,
+                    operation: "schematic.route".to_owned(),
+                    payload: route(),
+                })
+                .await,
+            WireAnswer::Failed { .. }
+        ),
+        "shutdown revokes ordinary admission"
+    );
+    assert!(
+        session.call(6, "harmos.shutdown", vec![]).await.is_empty(),
+        "SDK shutdown is idempotent on the same closed owner"
+    );
 }
 
 /* === Tests === */

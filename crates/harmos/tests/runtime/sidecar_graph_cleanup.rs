@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 #[path = "../fixtures/process_provider.rs"]
 mod provider;
@@ -384,21 +383,14 @@ fn count(root: &Path, name: &str) -> usize {
         .count()
 }
 
-pub(super) fn contract_scenario() {
+#[tokio::test]
+async fn cancelled_stop_retains() {
+    let fixture = Fixture::new().await;
+    fixture.client.hold.store(true, Ordering::SeqCst);
     {
-        scenario_runtime::check("cancelled_stop_retains", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let fixture = Fixture::new().await;
-                    fixture.client.hold.store(true, Ordering::SeqCst);
-                    {
-                        let stop = fixture.runtime.stop();
-                        tokio::pin!(stop);
-                        tokio::time::timeout(Duration::from_secs(5), async {
+        let stop = fixture.runtime.stop();
+        tokio::pin!(stop);
+        tokio::time::timeout(Duration::from_secs(5), async {
             tokio::select! {
                 result = &mut stop => panic!("stop returned before original ending: {result:?}"),
                 _ = async {
@@ -409,135 +401,111 @@ pub(super) fn contract_scenario() {
         })
         .await
         .unwrap();
-                    }
-                    assert!(fixture.independent.joined.load(Ordering::SeqCst));
-                    assert!(!fixture.client.joined.load(Ordering::SeqCst));
-                    assert!(!fixture.provider.joined.load(Ordering::SeqCst));
-                    assert!(!fixture.path("process-provider").join("shutdown").exists());
-                    assert_eq!(
-                        count(&fixture.path("process-provider"), "read-finalized-2"),
-                        1
-                    );
-                    fixture.client.release.notify_one();
-                    tokio::time::timeout(Duration::from_secs(5), fixture.runtime.stop())
-                        .await
-                        .unwrap()
-                        .unwrap();
-                    fixture.settled();
-                });
-        });
     }
-    {
-        scenario_runtime::check("failed_ending_retires", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let fixture = Fixture::new().await;
-                    fixture.client.fail.store(true, Ordering::SeqCst);
-                    let result =
-                        tokio::time::timeout(Duration::from_secs(5), fixture.runtime.stop())
-                            .await
-                            .unwrap();
-                    assert!(matches!(
-                        result,
-                        Err(harmos::Error::TaskFailed {
-                            domain: "service",
-                            ..
-                        })
-                    ));
-                    assert!(!fixture.client.joined.load(Ordering::SeqCst));
-                    assert!(!fixture.provider.joined.load(Ordering::SeqCst));
-                    assert!(!fixture.path("process-provider").join("shutdown").exists());
-                    assert!(fixture.independent.joined.load(Ordering::SeqCst));
-                    assert_eq!(count(&fixture.path("process-independent"), "cleaned"), 1);
-                    let failures = fixture.client.failures.load(Ordering::SeqCst);
-                    assert!(failures > 0);
-                    let result =
-                        tokio::time::timeout(Duration::from_secs(5), fixture.runtime.stop())
-                            .await
-                            .unwrap();
-                    assert!(matches!(
-                        result,
-                        Err(harmos::Error::TaskFailed {
-                            domain: "service",
-                            ..
-                        })
-                    ));
-                    assert!(fixture.client.failures.load(Ordering::SeqCst) > failures);
-                    assert_eq!(fixture.client.starts.load(Ordering::SeqCst), 1);
-                    assert_eq!(count(&fixture.path("process-independent"), "cleaned"), 1);
-                    assert!(!fixture.path("process-provider").join("shutdown").exists());
-                    let failures = fixture.client.failures.load(Ordering::SeqCst);
-                    fixture.client.fail.store(false, Ordering::SeqCst);
-                    tokio::time::timeout(Duration::from_secs(5), fixture.runtime.stop())
-                        .await
-                        .unwrap()
-                        .unwrap();
-                    fixture.settled();
-                    assert_eq!(fixture.client.failures.load(Ordering::SeqCst), failures);
-                });
-        });
+    assert!(fixture.independent.joined.load(Ordering::SeqCst));
+    assert!(!fixture.client.joined.load(Ordering::SeqCst));
+    assert!(!fixture.provider.joined.load(Ordering::SeqCst));
+    assert!(!fixture.path("process-provider").join("shutdown").exists());
+    assert_eq!(
+        count(&fixture.path("process-provider"), "read-finalized-2"),
+        1
+    );
+    fixture.client.release.notify_one();
+    tokio::time::timeout(Duration::from_secs(5), fixture.runtime.stop())
+        .await
+        .unwrap()
+        .unwrap();
+    fixture.settled();
+}
+
+#[tokio::test]
+async fn failed_ending_retires() {
+    let fixture = Fixture::new().await;
+    fixture.client.fail.store(true, Ordering::SeqCst);
+    let result = tokio::time::timeout(Duration::from_secs(5), fixture.runtime.stop())
+        .await
+        .unwrap();
+    assert!(matches!(
+        result,
+        Err(harmos::Error::TaskFailed {
+            domain: "service",
+            ..
+        })
+    ));
+    assert!(!fixture.client.joined.load(Ordering::SeqCst));
+    assert!(!fixture.provider.joined.load(Ordering::SeqCst));
+    assert!(!fixture.path("process-provider").join("shutdown").exists());
+    assert!(fixture.independent.joined.load(Ordering::SeqCst));
+    assert_eq!(count(&fixture.path("process-independent"), "cleaned"), 1);
+    let failures = fixture.client.failures.load(Ordering::SeqCst);
+    assert!(failures > 0);
+    let result = tokio::time::timeout(Duration::from_secs(5), fixture.runtime.stop())
+        .await
+        .unwrap();
+    assert!(matches!(
+        result,
+        Err(harmos::Error::TaskFailed {
+            domain: "service",
+            ..
+        })
+    ));
+    assert!(fixture.client.failures.load(Ordering::SeqCst) > failures);
+    assert_eq!(fixture.client.starts.load(Ordering::SeqCst), 1);
+    assert_eq!(count(&fixture.path("process-independent"), "cleaned"), 1);
+    assert!(!fixture.path("process-provider").join("shutdown").exists());
+    let failures = fixture.client.failures.load(Ordering::SeqCst);
+    fixture.client.fail.store(false, Ordering::SeqCst);
+    tokio::time::timeout(Duration::from_secs(5), fixture.runtime.stop())
+        .await
+        .unwrap()
+        .unwrap();
+    fixture.settled();
+    assert_eq!(fixture.client.failures.load(Ordering::SeqCst), failures);
+}
+
+#[tokio::test]
+async fn unrelated_failure_retires() {
+    let fixture = Fixture::new().await;
+    fixture.independent.fail.store(true, Ordering::SeqCst);
+    let result = tokio::time::timeout(Duration::from_secs(5), fixture.runtime.stop())
+        .await
+        .unwrap();
+    assert!(matches!(
+        result,
+        Err(harmos::Error::TaskFailed {
+            domain: "service",
+            ..
+        })
+    ));
+    assert!(!fixture.independent.joined.load(Ordering::SeqCst));
+    assert!(fixture.client.joined.load(Ordering::SeqCst));
+    assert!(fixture.provider.joined.load(Ordering::SeqCst));
+    assert_eq!(
+        count(&fixture.path("process-provider"), "read-finalized-2"),
+        1
+    );
+    for owner in ["process-client", "process-provider"] {
+        assert_eq!(count(&fixture.path(owner), "shutdown"), 1);
+        assert_eq!(count(&fixture.path(owner), "cleaned"), 1);
     }
+    fixture.independent.fail.store(false, Ordering::SeqCst);
+    tokio::time::timeout(Duration::from_secs(5), fixture.runtime.stop())
+        .await
+        .unwrap()
+        .unwrap();
+    fixture.settled();
+}
+
+#[tokio::test]
+async fn eof_retains_child() {
+    let fixture = Fixture::new().await;
+    let provider = fixture.path("process-provider");
+    std::fs::write(provider.join("hold-read-2"), []).unwrap();
+    fixture.provider.hold.store(true, Ordering::SeqCst);
     {
-        scenario_runtime::check("unrelated_failure_retires", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let fixture = Fixture::new().await;
-                    fixture.independent.fail.store(true, Ordering::SeqCst);
-                    let result =
-                        tokio::time::timeout(Duration::from_secs(5), fixture.runtime.stop())
-                            .await
-                            .unwrap();
-                    assert!(matches!(
-                        result,
-                        Err(harmos::Error::TaskFailed {
-                            domain: "service",
-                            ..
-                        })
-                    ));
-                    assert!(!fixture.independent.joined.load(Ordering::SeqCst));
-                    assert!(fixture.client.joined.load(Ordering::SeqCst));
-                    assert!(fixture.provider.joined.load(Ordering::SeqCst));
-                    assert_eq!(
-                        count(&fixture.path("process-provider"), "read-finalized-2"),
-                        1
-                    );
-                    for owner in ["process-client", "process-provider"] {
-                        assert_eq!(count(&fixture.path(owner), "shutdown"), 1);
-                        assert_eq!(count(&fixture.path(owner), "cleaned"), 1);
-                    }
-                    fixture.independent.fail.store(false, Ordering::SeqCst);
-                    tokio::time::timeout(Duration::from_secs(5), fixture.runtime.stop())
-                        .await
-                        .unwrap()
-                        .unwrap();
-                    fixture.settled();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("eof_retains_child", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let fixture = Fixture::new().await;
-                    let provider = fixture.path("process-provider");
-                    std::fs::write(provider.join("hold-read-2"), []).unwrap();
-                    fixture.provider.hold.store(true, Ordering::SeqCst);
-                    {
-                        let stop = fixture.runtime.stop();
-                        tokio::pin!(stop);
-                        tokio::time::timeout(Duration::from_secs(5), async {
+        let stop = fixture.runtime.stop();
+        tokio::pin!(stop);
+        tokio::time::timeout(Duration::from_secs(5), async {
             tokio::select! {
                 result = &mut stop => panic!("stop returned before child request: {result:?}"),
                 _ = marked(&provider, "read-started-2") => {}
@@ -550,67 +518,62 @@ pub(super) fn contract_scenario() {
         })
         .await
         .unwrap();
-                        assert!(!fixture.provider.joined.load(Ordering::SeqCst));
-                        assert!(!fixture.client.joined.load(Ordering::SeqCst));
-                        assert!(
-                            !fixture
-                                .path("process-client")
-                                .join("dependency-shutdown")
-                                .exists()
-                        );
-                        // Cancel Only The Wait; The Same Original Child And Ending Remain Owned.
-                    }
-                    fixture.provider.fail.store(true, Ordering::SeqCst);
-                    fixture.provider.release.notify_one();
-                    let failed =
-                        tokio::time::timeout(Duration::from_secs(5), fixture.runtime.stop())
-                            .await
-                            .unwrap();
-                    assert!(matches!(
-                        failed,
-                        Err(harmos::Error::TaskFailed {
-                            domain: "service",
-                            ..
-                        })
-                    ));
-                    assert!(fixture.provider.failures.load(Ordering::SeqCst) > 0);
-                    assert!(!fixture.provider.joined.load(Ordering::SeqCst));
-                    assert!(!fixture.client.joined.load(Ordering::SeqCst));
-                    fixture.provider.fail.store(false, Ordering::SeqCst);
-                    for _ in 0..3 {
-                        let result =
-                            tokio::time::timeout(Duration::from_secs(5), fixture.runtime.stop())
-                                .await
-                                .unwrap();
-                        assert!(
-                            result.is_ok()
-                                || matches!(
-                                    result,
-                                    Err(harmos::Error::TaskFailed {
-                                        domain: "service",
-                                        ..
-                                    })
-                                )
-                        );
-                        if fixture.provider.joined.load(Ordering::SeqCst)
-                            && fixture.client.joined.load(Ordering::SeqCst)
-                        {
-                            break;
-                        }
-                    }
-                    for gate in [&fixture.client, &fixture.provider, &fixture.independent] {
-                        assert!(gate.joined.load(Ordering::SeqCst));
-                        assert_eq!(gate.attached.load(Ordering::SeqCst), 1);
-                        assert_eq!(gate.starts.load(Ordering::SeqCst), 1);
-                    }
-                    assert_eq!(count(&provider, "read-prepared-2"), 1);
-                    assert_eq!(count(&provider, "read-started-2"), 1);
-                    assert_eq!(count(&provider, "read-finalized-2"), 1);
-                    for owner in ["process-provider", "process-client", "process-independent"] {
-                        assert_eq!(count(&fixture.path(owner), "cleaned"), 1);
-                    }
-                });
-        });
+        assert!(!fixture.provider.joined.load(Ordering::SeqCst));
+        assert!(!fixture.client.joined.load(Ordering::SeqCst));
+        assert!(
+            !fixture
+                .path("process-client")
+                .join("dependency-shutdown")
+                .exists()
+        );
+        // Cancel Only The Wait; The Same Original Child And Ending Remain Owned.
+    }
+    fixture.provider.fail.store(true, Ordering::SeqCst);
+    fixture.provider.release.notify_one();
+    let failed = tokio::time::timeout(Duration::from_secs(5), fixture.runtime.stop())
+        .await
+        .unwrap();
+    assert!(matches!(
+        failed,
+        Err(harmos::Error::TaskFailed {
+            domain: "service",
+            ..
+        })
+    ));
+    assert!(fixture.provider.failures.load(Ordering::SeqCst) > 0);
+    assert!(!fixture.provider.joined.load(Ordering::SeqCst));
+    assert!(!fixture.client.joined.load(Ordering::SeqCst));
+    fixture.provider.fail.store(false, Ordering::SeqCst);
+    for _ in 0..3 {
+        let result = tokio::time::timeout(Duration::from_secs(5), fixture.runtime.stop())
+            .await
+            .unwrap();
+        assert!(
+            result.is_ok()
+                || matches!(
+                    result,
+                    Err(harmos::Error::TaskFailed {
+                        domain: "service",
+                        ..
+                    })
+                )
+        );
+        if fixture.provider.joined.load(Ordering::SeqCst)
+            && fixture.client.joined.load(Ordering::SeqCst)
+        {
+            break;
+        }
+    }
+    for gate in [&fixture.client, &fixture.provider, &fixture.independent] {
+        assert!(gate.joined.load(Ordering::SeqCst));
+        assert_eq!(gate.attached.load(Ordering::SeqCst), 1);
+        assert_eq!(gate.starts.load(Ordering::SeqCst), 1);
+    }
+    assert_eq!(count(&provider, "read-prepared-2"), 1);
+    assert_eq!(count(&provider, "read-started-2"), 1);
+    assert_eq!(count(&provider, "read-finalized-2"), 1);
+    for owner in ["process-provider", "process-client", "process-independent"] {
+        assert_eq!(count(&fixture.path(owner), "cleaned"), 1);
     }
 }
 

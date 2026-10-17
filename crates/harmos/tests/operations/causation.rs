@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -193,110 +192,93 @@ async fn runtime() -> Runtime<Bank> {
 
 /* === Tests === */
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("scope_hands_cause", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let causing = runtime
-                        .state
-                        .commit(support::deposit(5))
-                        .await
-                        .expect("the causing deposit lands");
-                    let other = runtime
-                        .state
-                        .commit(support::deposit(7))
-                        .await
-                        .expect("the second cause lands");
+#[tokio::test]
+async fn scope_hands_cause() {
+    let runtime = runtime().await;
+    let causing = runtime
+        .state
+        .commit(support::deposit(5))
+        .await
+        .expect("the causing deposit lands");
+    let other = runtime
+        .state
+        .commit(support::deposit(7))
+        .await
+        .expect("the second cause lands");
 
-                    runtime
-                        .operations
-                        .submit_caused::<FamilyContract>(other.position, causing.position)
-                        .unwrap()
-                        .await
-                        .expect("every generation records its fact");
+    runtime
+        .operations
+        .submit_caused::<FamilyContract>(other.position, causing.position)
+        .unwrap()
+        .await
+        .expect("every generation records its fact");
 
-                    let noted: BTreeMap<String, Option<CausationId>> = runtime
-                        .state
-                        .query::<Fact>(Position::ORIGIN)
-                        .await
-                        .map(|entry| entry.expect("the recorded fact is readable"))
-                        .map(|entry| {
-                            let Fact::Noted(Noted(label)) = entry.value;
-                            (label, entry.metadata.causation)
-                        })
-                        .collect();
+    let noted: BTreeMap<String, Option<CausationId>> = runtime
+        .state
+        .query::<Fact>(Position::ORIGIN)
+        .await
+        .map(|entry| entry.expect("the recorded fact is readable"))
+        .map(|entry| {
+            let Fact::Noted(Noted(label)) = entry.value;
+            (label, entry.metadata.causation)
+        })
+        .collect();
 
-                    let root = Some(CausationId(causing.position));
-                    let other = Some(CausationId(other.position));
-                    assert_eq!(noted.get("parent"), Some(&root));
-                    assert_eq!(
-                        noted.get("inherited"),
-                        Some(&root),
-                        "a submitted child inherits the cause its parent's attempt carries"
-                    );
-                    assert_eq!(
-                        noted.get("inherited-child"),
-                        Some(&root),
-                        "inheritance chains: a default-lane grandchild is in the same family"
-                    );
-                    assert_eq!(
-                        noted.get("rerooted"),
-                        Some(&other),
-                        "a child that named its own cause re-roots itself"
-                    );
-                    assert_eq!(
-                        noted.get("rerooted-child"),
-                        Some(&other),
-                        "and everything beneath it inherits the cause it re-rooted onto"
-                    );
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("scoped_attempt_records", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let receipt = runtime
-                        .state
-                        .commit(support::deposit(5))
-                        .await
-                        .expect("the causing deposit lands");
+    let root = Some(CausationId(causing.position));
+    let other = Some(CausationId(other.position));
+    assert_eq!(noted.get("parent"), Some(&root));
+    assert_eq!(
+        noted.get("inherited"),
+        Some(&root),
+        "a submitted child inherits the cause its parent's attempt carries"
+    );
+    assert_eq!(
+        noted.get("inherited-child"),
+        Some(&root),
+        "inheritance chains: a default-lane grandchild is in the same family"
+    );
+    assert_eq!(
+        noted.get("rerooted"),
+        Some(&other),
+        "a child that named its own cause re-roots itself"
+    );
+    assert_eq!(
+        noted.get("rerooted-child"),
+        Some(&other),
+        "and everything beneath it inherits the cause it re-rooted onto"
+    );
+    runtime.stop().await.unwrap();
+}
 
-                    runtime
-                        .operations
-                        .submit_caused::<NoteContract>("answered".to_owned(), receipt.position)
-                        .unwrap()
-                        .await
-                        .expect("the caused job records its fact");
+#[tokio::test]
+async fn scoped_attempt_records() {
+    let runtime = runtime().await;
+    let receipt = runtime
+        .state
+        .commit(support::deposit(5))
+        .await
+        .expect("the causing deposit lands");
 
-                    let noted: Vec<_> = runtime
-                        .state
-                        .query::<Fact>(Position::ORIGIN)
-                        .await
-                        .map(|entry| entry.expect("the recorded fact is readable"))
-                        .filter(|entry| matches!(entry.value, Fact::Noted(_)))
-                        .collect();
-                    assert_eq!(noted.len(), 1);
-                    assert_eq!(
-                        noted[0].metadata.causation,
-                        Some(CausationId(receipt.position)),
-                        "the recorded fact answers the position the submission named"
-                    );
-                    assert_eq!(noted[0].metadata.correlation.0, receipt.position);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
+    runtime
+        .operations
+        .submit_caused::<NoteContract>("answered".to_owned(), receipt.position)
+        .unwrap()
+        .await
+        .expect("the caused job records its fact");
+
+    let noted: Vec<_> = runtime
+        .state
+        .query::<Fact>(Position::ORIGIN)
+        .await
+        .map(|entry| entry.expect("the recorded fact is readable"))
+        .filter(|entry| matches!(entry.value, Fact::Noted(_)))
+        .collect();
+    assert_eq!(noted.len(), 1);
+    assert_eq!(
+        noted[0].metadata.causation,
+        Some(CausationId(receipt.position)),
+        "the recorded fact answers the position the submission named"
+    );
+    assert_eq!(noted[0].metadata.correlation.0, receipt.position);
+    runtime.stop().await.unwrap();
 }

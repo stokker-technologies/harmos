@@ -1,5 +1,7 @@
 # Rust
 /target
+/examples/schematic/target
+/crates/harmos-guest/tests/fixtures/sandbox/target
 /target-editor
 /.stkr-cargo-*.json
 /.stkr-cargo-*.lock

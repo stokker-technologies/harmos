@@ -10,13 +10,6 @@ version = { workspace = true }
 
 # === Package Targets ===
 
-[[bin]]
-name = "harmos-component-fixture"
-path = "tests/fixtures/componentizer.rs"
-required-features = ["test-component"]
-test = false
-bench = false
-
 # === Features ===
 
 [features]
@@ -32,7 +25,6 @@ streaming = ["harmos-contract/streaming", "wit-bindgen?/inter-task-wakeup"]
 # custom sections, and a native host that only does that has no world to bind.
 kit = ["dep:wit-bindgen"]
 componentize = ["dep:wit-component"]
-test-component = ["componentize", "kit"]
 
 # === Dependencies ===
 
@@ -157,46 +149,6 @@ required-features = ["componentize"]
 # === Bench Targets ===
 
 # === Example Targets ===
-
-[[example]]
-name = "test-component"
-path = "examples/test_component.rs"
-crate-type = ["cdylib"]
-required-features = ["test-component"]
-
-# Retired metadata must be rejected before either current-world export runs.
-[[example]]
-name = "legacy-component"
-path = "examples/legacy_component.rs"
-crate-type = ["cdylib"]
-required-features = ["componentize", "kit"]
-
-# The routed guest the host harness drives. A second binary rather than a mode
-# of the routeless one, so that "a guest serving routes presents the same world
-# as one serving none" is a claim about two components.
-[[example]]
-name = "route-component"
-path = "examples/route_component.rs"
-crate-type = ["cdylib"]
-required-features = ["test-component"]
-
-[[example]]
-name = "catalog-component"
-path = "examples/catalog_component.rs"
-crate-type = ["cdylib"]
-required-features = ["componentize", "kit"]
-
-[[example]]
-name = "operation-component"
-path = "examples/operation_component.rs"
-crate-type = ["cdylib"]
-required-features = ["componentize", "kit", "streaming"]
-
-[[example]]
-name = "plugin-component"
-path = "examples/plugin_component.rs"
-crate-type = ["cdylib"]
-required-features = ["componentize", "kit"]
 
 # === Workspace Lints ===
 

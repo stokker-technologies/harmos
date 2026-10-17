@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -230,743 +229,632 @@ async fn read(store: &Store) -> Vec<StoredRecord> {
         .collect()
 }
 
-#[test]
-fn contract_scenario() {
-    {
-        scenario_runtime::check("eviction_never_replays", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    let storage = store.manager(config());
-                    let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
-                    store.ready(&storage).await;
-                    for _ in 0..4 {
-                        runtime
-                            .state
-                            .commit(Advance { panic: false })
-                            .await
-                            .unwrap();
-                    }
-                    runtime
-                        .records
-                        .publish(Observed { before: 4 })
-                        .await
-                        .unwrap();
-                    assert_eq!(store.calls.load(Ordering::SeqCst), 5);
-                    assert!(read(&store).await.is_empty());
-                    storage.flush_recovery().await.unwrap();
-                    assert_eq!(runtime.state.stored(), Position(9));
-                    assert_eq!(storage.status().saved.sequence, 6);
-                    assert_eq!(read(&store).await.len(), 5);
-                    storage.flush().await.unwrap();
-                    let captured = read(&store).await;
-                    assert_eq!(captured.len(), 5);
-                    let entry: Envelope<serde_json::Value> =
-                        serde_json::from_slice(&captured[0].payload).unwrap();
-                    assert_eq!(entry.position, Position(2));
-                    assert_eq!(entry.metadata.commit, Some((Position(1), Position(2))));
-                    assert_eq!(entry.payload["before"], 0);
-                    runtime.stop().await.unwrap();
+#[tokio::test]
+async fn eviction_never_replays() {
+    let store = Store::new();
+    let storage = store.manager(config());
+    let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
+    store.ready(&storage).await;
+    for _ in 0..4 {
+        runtime
+            .state
+            .commit(Advance { panic: false })
+            .await
+            .unwrap();
+    }
+    runtime
+        .records
+        .publish(Observed { before: 4 })
+        .await
+        .unwrap();
+    assert_eq!(store.calls.load(Ordering::SeqCst), 5);
+    assert!(read(&store).await.is_empty());
+    storage.flush_recovery().await.unwrap();
+    assert_eq!(runtime.state.stored(), Position(9));
+    assert_eq!(storage.status().saved.sequence, 6);
+    assert_eq!(read(&store).await.len(), 5);
+    storage.flush().await.unwrap();
+    let captured = read(&store).await;
+    assert_eq!(captured.len(), 5);
+    let entry: Envelope<serde_json::Value> = serde_json::from_slice(&captured[0].payload).unwrap();
+    assert_eq!(entry.position, Position(2));
+    assert_eq!(entry.metadata.commit, Some((Position(1), Position(2))));
+    assert_eq!(entry.payload["before"], 0);
+    runtime.stop().await.unwrap();
 
-                    let storage = store.manager(config());
-                    let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
-                    assert_eq!(
-                        runtime
-                            .state
-                            .state()
-                            .read(|value| *value)
-                            .await
-                            .unwrap()
-                            .value,
-                        4
-                    );
-                    assert_eq!(store.calls.load(Ordering::SeqCst), 5);
-                    assert_eq!(read(&store).await, captured);
-                    runtime
-                        .state
-                        .commit(Advance { panic: false })
-                        .await
-                        .unwrap();
-                    assert_eq!(read(&store).await.len(), 5);
-                    storage.flush().await.unwrap();
-                    assert_eq!(read(&store).await.len(), 6);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("overflow_refuses_whole", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    for budget in [limits(1, 16 * 1024), limits(4, 1)] {
-                        let store = Store::new();
-                        let storage = store.manager(config());
-                        let runtime = store.boot(&storage, budget, true).await;
-                        store.ready(&storage).await;
-                        assert!(
-                            runtime
-                                .state
-                                .commit(Advance { panic: false })
-                                .await
-                                .is_err()
-                        );
-                        assert_eq!(
-                            runtime
-                                .state
-                                .state()
-                                .read(|value| *value)
-                                .await
-                                .unwrap()
-                                .value,
-                            0
-                        );
-                        assert_eq!(storage.status().accepted.sequence, 1);
-                        assert_eq!(storage.status().recovery_accepted.sequence, 0);
-                        assert_eq!(storage.status().pending_bytes, 0);
-                        assert_eq!(storage.status().pending_batches, 0);
-                        runtime.stop().await.unwrap();
-                    }
-                });
-        });
-    }
-    {
-        scenario_runtime::check("primary_queue_backpressure", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    let mut config = config();
-                    config.request.max_pending_write_batches = NonZeroUsize::new(2).unwrap();
-                    let storage = store.manager(config);
-                    let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
-                    store.ready(&storage).await;
-                    store.data.control.block_write.store(true, Ordering::SeqCst);
-                    runtime
-                        .state
-                        .commit(Advance { panic: false })
-                        .await
-                        .unwrap();
-                    let next = runtime.state.commit(Advance { panic: false });
-                    tokio::pin!(next);
-                    tokio::select! {
-                        result = &mut next => panic!("capacity must block: {result:?}"),
-                        _ = store.data.control.write_entered.notified() => {}
-                    }
-                    assert_eq!(store.calls.load(Ordering::SeqCst), 1);
-                    assert_eq!(
-                        runtime
-                            .state
-                            .state()
-                            .read(|value| *value)
-                            .await
-                            .unwrap()
-                            .value,
-                        1
-                    );
-                    assert_eq!(storage.status().pending_batches, 2);
-                    store
-                        .data
-                        .control
-                        .block_write
-                        .store(false, Ordering::SeqCst);
-                    store.data.control.write_release.notify_one();
-                    tokio::time::timeout(Duration::from_secs(5), next)
-                        .await
-                        .unwrap()
-                        .unwrap();
-                    assert_eq!(store.calls.load(Ordering::SeqCst), 2);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("mutation_releases_reserved", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    let storage = store.manager(config());
-                    let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
-                    store.ready(&storage).await;
-                    assert!(runtime.state.commit(Advance { panic: true }).await.is_err());
-                    assert_eq!(store.calls.load(Ordering::SeqCst), 1);
-                    assert_eq!(storage.status().accepted.sequence, 1);
-                    assert_eq!(storage.status().recovery_accepted.sequence, 0);
-                    assert_eq!(storage.status().pending_bytes, 0);
-                    assert_eq!(storage.status().pending_batches, 0);
-                    assert!(store.data.records.lock().unwrap().is_empty());
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("primary_save_retries", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    let storage = store.manager(config());
-                    let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
-                    store.ready(&storage).await;
-                    runtime
-                        .state
-                        .commit(Advance { panic: false })
-                        .await
-                        .unwrap();
-                    store.data.control.flush_failures.store(1, Ordering::SeqCst);
-                    assert!(runtime.stop().await.is_err());
-                    runtime.stop().await.unwrap();
-                    assert_eq!(store.calls.load(Ordering::SeqCst), 1);
-                    assert_eq!(store.data.records.lock().unwrap().len(), 1);
-                    assert_eq!(store.recovery.entries.lock().unwrap().len(), 1);
-                    assert_eq!(storage.status().saved.sequence, 2);
-                    assert_eq!(storage.status().recovery_saved.sequence, 1);
-                });
-        });
-    }
-    {
-        scenario_runtime::check("capture_requires_managed", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    assert!(
-                        Runtime::<Model>::builder(0, ())
-                            .store_records(
-                                limits(1, 4096),
-                                Projection {
-                                    calls: Arc::new(AtomicUsize::new(0)),
-                                    duplicate: false
-                                }
-                            )
-                            .runtime()
-                            .await
-                            .is_err()
-                    );
-                });
-        });
-    }
-    {
-        scenario_runtime::check("capacity_refuses_projection", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    let mut config = config();
-                    config.request.max_pending_write_batches = NonZeroUsize::new(1).unwrap();
-                    let storage = store.manager(config);
-                    let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
-                    store.ready(&storage).await;
-                    assert!(
-                        runtime
-                            .state
-                            .commit(Advance { panic: false })
-                            .await
-                            .is_err()
-                    );
-                    assert_eq!(store.calls.load(Ordering::SeqCst), 0);
-                    assert_eq!(runtime.state.applied(), Position::ORIGIN);
-                    assert_eq!(storage.status().accepted.sequence, 1);
-                    assert_eq!(storage.status().recovery_accepted.sequence, 0);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("primary_write_failure", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    let storage = store.manager(config());
-                    let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
-                    store.ready(&storage).await;
-                    store.data.control.failures.store(1, Ordering::SeqCst);
-                    runtime
-                        .state
-                        .commit(Advance { panic: false })
-                        .await
-                        .unwrap();
-                    assert!(storage.flush().await.is_err());
-                    assert!(
-                        runtime
-                            .state
-                            .commit(Advance { panic: false })
-                            .await
-                            .is_err()
-                    );
-                    assert_eq!(
-                        runtime
-                            .state
-                            .state()
-                            .read(|value| *value)
-                            .await
-                            .unwrap()
-                            .value,
-                        1
-                    );
-                    assert_eq!(store.calls.load(Ordering::SeqCst), 1);
-                    assert_eq!(storage.status().recovery_saved.sequence, 0);
-                    runtime.stop().await.unwrap();
-                    assert_eq!(store.data.records.lock().unwrap().len(), 1);
-                    assert_eq!(store.recovery.entries.lock().unwrap().len(), 1);
-                });
-        });
-    }
-    {
-        scenario_runtime::check("reconciliation_saves_capture", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    let storage = store.manager(config());
-                    let observed = Arc::new(tokio::sync::Notify::new());
-                    let notify = observed.clone();
-                    let check = storage.clone();
-                    let runtime = Runtime::<Model>::builder(0, ())
-                        .register(Transactions::catalog())
-                        .register(Records::catalog())
-                        .managed_state(limits(1, 64 * 1024))
-                        .store_records(
-                            limits(4, 16 * 1024),
-                            Projection {
-                                calls: store.calls.clone(),
-                                duplicate: false,
-                            },
-                        )
-                        .reconcile(|_, storage| async move {
-                            storage
-                                .write_schema(
-                                    &schema(),
-                                    &harmos::schema::graph::Schema {
-                                        root: 0,
-                                        definitions: vec![vec![]],
-                                    },
-                                )
-                                .await?;
-                            Ok(())
-                        })
-                        .service(
-                            "producer",
-                            move |context: harmos::services::Service<Model>| {
-                                let check = check.clone();
-                                let notify = notify.clone();
-                                async move {
-                                    assert_eq!(check.status().saved.sequence, 1);
-                                    context
-                                        .records()
-                                        .publish(Observed { before: 0 })
-                                        .await
-                                        .unwrap();
-                                    notify.notify_one();
-                                    Ok::<(), harmos::services::Fault<String>>(())
-                                }
-                            },
-                        )
-                        .runtime_with_storage(&storage)
-                        .await
-                        .unwrap();
-                    tokio::time::timeout(Duration::from_secs(1), observed.notified())
-                        .await
-                        .unwrap();
-                    assert!(read(&store).await.is_empty());
-                    storage.flush().await.unwrap();
-                    assert_eq!(read(&store).await.len(), 1);
-                    assert_eq!(store.calls.load(Ordering::SeqCst), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("capture_groups_reach", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    let mut config = config();
-                    config.request.max_pending_write_batches = NonZeroUsize::new(4096).unwrap();
-                    let storage = store.manager(config);
-                    let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
-                    store.ready(&storage).await;
-                    store.data.control.write_sizes.lock().unwrap().clear();
-                    store.recovery.control.write_sizes.lock().unwrap().clear();
-                    for _ in 0..2000 {
-                        runtime
-                            .state
-                            .commit(Advance { panic: false })
-                            .await
-                            .unwrap();
-                    }
-                    storage.flush().await.unwrap();
-                    storage.flush_recovery().await.unwrap();
+    let storage = store.manager(config());
+    let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
+    assert_eq!(
+        runtime
+            .state
+            .state()
+            .read(|value| *value)
+            .await
+            .unwrap()
+            .value,
+        4
+    );
+    assert_eq!(store.calls.load(Ordering::SeqCst), 5);
+    assert_eq!(read(&store).await, captured);
+    runtime
+        .state
+        .commit(Advance { panic: false })
+        .await
+        .unwrap();
+    assert_eq!(read(&store).await.len(), 5);
+    storage.flush().await.unwrap();
+    assert_eq!(read(&store).await.len(), 6);
+    runtime.stop().await.unwrap();
+}
 
-                    assert_eq!(store.data.records.lock().unwrap().len(), 2000);
-                    assert_eq!(runtime.state.stored(), Position(4000));
-                    assert_eq!(storage.status().pending_bytes, 0);
-                    for control in [&store.data.control, &store.recovery.control] {
-                        let sizes = control.write_sizes.lock().unwrap();
-                        assert!(
-                            sizes.len() < 100,
-                            "uncoalesced backend calls: {}",
-                            sizes.len()
-                        );
-                        assert!(sizes.iter().all(|size| *size <= 64));
-                        assert!(
-                            control
-                                .writes
-                                .lock()
-                                .unwrap()
-                                .windows(2)
-                                .all(|pair| pair[0] < pair[1])
-                        );
-                    }
-                    runtime.stop().await.unwrap();
-                });
-        });
+#[tokio::test]
+async fn overflow_refuses_whole() {
+    for budget in [limits(1, 16 * 1024), limits(4, 1)] {
+        let store = Store::new();
+        let storage = store.manager(config());
+        let runtime = store.boot(&storage, budget, true).await;
+        store.ready(&storage).await;
+        assert!(
+            runtime
+                .state
+                .commit(Advance { panic: false })
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            runtime
+                .state
+                .state()
+                .read(|value| *value)
+                .await
+                .unwrap()
+                .value,
+            0
+        );
+        assert_eq!(storage.status().accepted.sequence, 1);
+        assert_eq!(storage.status().recovery_accepted.sequence, 0);
+        assert_eq!(storage.status().pending_bytes, 0);
+        assert_eq!(storage.status().pending_batches, 0);
+        runtime.stop().await.unwrap();
     }
-    {
-        scenario_runtime::check("failure_retries_capture", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    let storage = store.manager(config());
-                    let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
-                    store.ready(&storage).await;
-                    for _ in 0..20 {
-                        runtime
-                            .state
-                            .commit(Advance { panic: false })
-                            .await
-                            .unwrap();
-                    }
-                    let admitted = storage.status().pending_bytes;
-                    store
-                        .recovery
-                        .control
-                        .block_write
-                        .store(true, Ordering::SeqCst);
-                    let flushing = storage.clone();
-                    let flushing = tokio::spawn(async move { flushing.flush_recovery().await });
-                    store.recovery.control.write_entered.notified().await;
-                    assert!(storage.status().pending_bytes > admitted);
-                    assert_eq!(storage.status().saved.sequence, 21);
-                    assert_eq!(store.data.records.lock().unwrap().len(), 20);
-                    store.recovery.control.failures.store(1, Ordering::SeqCst);
-                    store
-                        .recovery
-                        .control
-                        .block_write
-                        .store(false, Ordering::SeqCst);
-                    store.recovery.control.write_release.notify_one();
-                    assert!(flushing.await.unwrap().is_err());
-                    assert!(storage.status().pending_bytes <= admitted);
-                    storage.flush().await.unwrap();
-                    storage.flush_recovery().await.unwrap();
-                    assert_eq!(store.calls.load(Ordering::SeqCst), 20);
-                    assert_eq!(store.data.records.lock().unwrap().len(), 20);
-                    assert_eq!(store.recovery.entries.lock().unwrap().len(), 20);
-                    assert_eq!(storage.status().pending_bytes, 0);
-                    let writes = store.data.control.write_sizes.lock().unwrap().clone();
-                    assert_eq!(writes.iter().filter(|size| **size == 20).count(), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("barrier_never_wait", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    {
-                        let store = Store::new();
-                        let storage = store.manager(config());
-                        let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
-                        store.ready(&storage).await;
-                        for _ in 0..20 {
-                            runtime
-                                .state
-                                .commit(Advance { panic: false })
-                                .await
-                                .unwrap();
-                        }
-                        store
-                            .recovery
-                            .control
-                            .block_write
-                            .store(true, Ordering::SeqCst);
-                        let saved = tokio::select! {
-                            saved = storage.flush() => saved.unwrap(),
-                            _ = store.recovery.control.write_entered.notified() => {
-                                panic!("a primary-only barrier must not wait for recovery I/O")
-                            }
-                        };
-                        assert_eq!(saved.sequence, 21);
-                        assert_eq!(storage.status().recovery_saved.sequence, 0);
-                        assert_eq!(storage.status().pending_batches, 20);
-                        assert_eq!(runtime.state.stored(), Position(0));
-                        store
-                            .recovery
-                            .control
-                            .block_write
-                            .store(false, Ordering::SeqCst);
-                        storage.flush_recovery().await.unwrap();
-                        assert_eq!(runtime.state.stored(), Position(40));
-                        assert_eq!(storage.status().pending_bytes, 0);
-                        runtime.stop().await.unwrap();
-                    }
-                });
-        });
-    }
-    {
-        scenario_runtime::check("ceiling_never_reserve", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    let mut policy = config();
-                    policy.request.max_pending_write_bytes = NonZeroUsize::new(512 * 1024).unwrap();
-                    let storage = store.manager(policy);
-                    let runtime = store
-                        .boot(&storage, limits(4, 4 * 1024 * 1024), false)
-                        .await;
-                    store.ready(&storage).await;
+}
 
-                    for _ in 0..4 {
-                        runtime
-                            .state
-                            .commit(Advance { panic: false })
-                            .await
-                            .unwrap();
-                    }
-                    assert_eq!(store.calls.load(Ordering::SeqCst), 4);
-                    assert_eq!(storage.cursor_accepted().sequence, 5);
-                    assert_eq!(storage.cursor_saved().sequence, 1);
-                    assert!(storage.status().pending_bytes < 32 * 1024);
-                    assert_eq!(
-                        runtime
-                            .state
-                            .state()
-                            .read(|value| *value)
-                            .await
-                            .unwrap()
-                            .value,
-                        4
-                    );
-                    runtime.stop().await.unwrap();
-                });
-        });
+#[tokio::test]
+async fn primary_queue_backpressure() {
+    let store = Store::new();
+    let mut config = config();
+    config.request.max_pending_write_batches = NonZeroUsize::new(2).unwrap();
+    let storage = store.manager(config);
+    let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
+    store.ready(&storage).await;
+    store.data.control.block_write.store(true, Ordering::SeqCst);
+    runtime
+        .state
+        .commit(Advance { panic: false })
+        .await
+        .unwrap();
+    let next = runtime.state.commit(Advance { panic: false });
+    tokio::pin!(next);
+    tokio::select! {
+        result = &mut next => panic!("capacity must block: {result:?}"),
+        _ = store.data.control.write_entered.notified() => {}
     }
-    {
-        scenario_runtime::check("partial_projection_failure", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    for cancel in [false, true] {
-                        let store = Store::new();
-                        let mut policy = config();
-                        policy.request.max_pending_write_bytes =
-                            NonZeroUsize::new(256 * 1024).unwrap();
-                        let storage = store.manager(policy);
-                        let runtime = Runtime::<Model>::builder(0, ())
-                            .register(Transactions::catalog())
-                            .register(Records::catalog())
-                            .managed_state(limits(1, 64 * 1024))
-                            .store_records(
-                                limits(8, 4 * 1024 * 1024),
-                                IncrementalProjection {
-                                    calls: store.calls.clone(),
-                                    data: store.data.clone(),
-                                    cancel,
-                                },
-                            )
-                            .runtime_with_storage(&storage)
-                            .await
-                            .unwrap();
-                        store.ready(&storage).await;
-                        if cancel {
-                            store.data.control.block_write.store(true, Ordering::SeqCst);
-                            let item = Identifier::new("already-accepted").unwrap();
-                            storage
-                                .write_records(&[record(&schema(), &item, &vec![0; 100 * 1024])])
-                                .await
-                                .unwrap();
-                        }
-                        let accepted = storage.cursor_accepted();
-                        assert!(
-                            tokio::time::timeout(
-                                Duration::from_secs(2),
-                                runtime.state.commit(Advance { panic: false })
-                            )
-                            .await
-                            .unwrap()
-                            .is_err()
-                        );
-                        assert_eq!(store.calls.load(Ordering::SeqCst), 1);
-                        assert_eq!(
-                            runtime
-                                .state
-                                .state()
-                                .read(|state| *state)
-                                .await
-                                .unwrap()
-                                .value,
-                            0
-                        );
-                        assert_eq!(storage.cursor_accepted(), accepted);
-                        assert_eq!(storage.status().recovery_accepted.sequence, 0);
-                        store
-                            .data
-                            .control
-                            .block_write
-                            .store(false, Ordering::SeqCst);
-                        store.data.control.write_release.notify_one();
-                        storage.flush().await.unwrap();
-                        assert_eq!(storage.status().pending_bytes, 0);
-                        assert_eq!(storage.status().pending_batches, 0);
-                        runtime.stop().await.unwrap();
-                    }
-                });
-        });
-    }
-    {
-        scenario_runtime::check("registration_uses_managed", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    use harmos::schema::{Described, Validator};
+    assert_eq!(store.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        runtime
+            .state
+            .state()
+            .read(|value| *value)
+            .await
+            .unwrap()
+            .value,
+        1
+    );
+    assert_eq!(storage.status().pending_batches, 2);
+    store
+        .data
+        .control
+        .block_write
+        .store(false, Ordering::SeqCst);
+    store.data.control.write_release.notify_one();
+    tokio::time::timeout(Duration::from_secs(5), next)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(store.calls.load(Ordering::SeqCst), 2);
+    runtime.stop().await.unwrap();
+}
 
-                    #[harmos::message]
-                    struct Message {
-                        value: String,
-                    }
+#[tokio::test]
+async fn mutation_releases_reserved() {
+    let store = Store::new();
+    let storage = store.manager(config());
+    let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
+    store.ready(&storage).await;
+    assert!(runtime.state.commit(Advance { panic: true }).await.is_err());
+    assert_eq!(store.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(storage.status().accepted.sequence, 1);
+    assert_eq!(storage.status().recovery_accepted.sequence, 0);
+    assert_eq!(storage.status().pending_bytes, 0);
+    assert_eq!(storage.status().pending_batches, 0);
+    assert!(store.data.records.lock().unwrap().is_empty());
+    runtime.stop().await.unwrap();
+}
 
-                    let store = Store::new();
-                    let storage = store.manager(config());
-                    let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
-                    let key = schema();
-                    let definition = runtime
-                        .records
-                        .register(
-                            "plugin",
-                            &key,
-                            &harmos::schema::graph::Schema::from_declaration(
-                                Message::DEFINITION,
-                                &harmos::config::SchemaSettings::default(),
-                            )
-                            .unwrap(),
-                        )
+#[tokio::test]
+async fn primary_save_retries() {
+    let store = Store::new();
+    let storage = store.manager(config());
+    let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
+    store.ready(&storage).await;
+    runtime
+        .state
+        .commit(Advance { panic: false })
+        .await
+        .unwrap();
+    store.data.control.flush_failures.store(1, Ordering::SeqCst);
+    assert!(runtime.stop().await.is_err());
+    runtime.stop().await.unwrap();
+    assert_eq!(store.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(store.data.records.lock().unwrap().len(), 1);
+    assert_eq!(store.recovery.entries.lock().unwrap().len(), 1);
+    assert_eq!(storage.status().saved.sequence, 2);
+    assert_eq!(storage.status().recovery_saved.sequence, 1);
+}
+
+#[tokio::test]
+async fn capture_requires_managed() {
+    assert!(
+        Runtime::<Model>::builder(0, ())
+            .store_records(
+                limits(1, 4096),
+                Projection {
+                    calls: Arc::new(AtomicUsize::new(0)),
+                    duplicate: false
+                }
+            )
+            .runtime()
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
+async fn capacity_refuses_projection() {
+    let store = Store::new();
+    let mut config = config();
+    config.request.max_pending_write_batches = NonZeroUsize::new(1).unwrap();
+    let storage = store.manager(config);
+    let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
+    store.ready(&storage).await;
+    assert!(
+        runtime
+            .state
+            .commit(Advance { panic: false })
+            .await
+            .is_err()
+    );
+    assert_eq!(store.calls.load(Ordering::SeqCst), 0);
+    assert_eq!(runtime.state.applied(), Position::ORIGIN);
+    assert_eq!(storage.status().accepted.sequence, 1);
+    assert_eq!(storage.status().recovery_accepted.sequence, 0);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn primary_write_failure() {
+    let store = Store::new();
+    let storage = store.manager(config());
+    let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
+    store.ready(&storage).await;
+    store.data.control.failures.store(1, Ordering::SeqCst);
+    runtime
+        .state
+        .commit(Advance { panic: false })
+        .await
+        .unwrap();
+    assert!(storage.flush().await.is_err());
+    assert!(
+        runtime
+            .state
+            .commit(Advance { panic: false })
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        runtime
+            .state
+            .state()
+            .read(|value| *value)
+            .await
+            .unwrap()
+            .value,
+        1
+    );
+    assert_eq!(store.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(storage.status().recovery_saved.sequence, 0);
+    runtime.stop().await.unwrap();
+    assert_eq!(store.data.records.lock().unwrap().len(), 1);
+    assert_eq!(store.recovery.entries.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn reconciliation_saves_capture() {
+    let store = Store::new();
+    let storage = store.manager(config());
+    let observed = Arc::new(tokio::sync::Notify::new());
+    let notify = observed.clone();
+    let check = storage.clone();
+    let runtime = Runtime::<Model>::builder(0, ())
+        .register(Transactions::catalog())
+        .register(Records::catalog())
+        .managed_state(limits(1, 64 * 1024))
+        .store_records(
+            limits(4, 16 * 1024),
+            Projection {
+                calls: store.calls.clone(),
+                duplicate: false,
+            },
+        )
+        .reconcile(|_, storage| async move {
+            storage
+                .write_schema(
+                    &schema(),
+                    &harmos::schema::graph::Schema {
+                        root: 0,
+                        definitions: vec![vec![]],
+                    },
+                )
+                .await?;
+            Ok(())
+        })
+        .service(
+            "producer",
+            move |context: harmos::services::Service<Model>| {
+                let check = check.clone();
+                let notify = notify.clone();
+                async move {
+                    assert_eq!(check.status().saved.sequence, 1);
+                    context
+                        .records()
+                        .publish(Observed { before: 0 })
                         .await
                         .unwrap();
-                    runtime
-                        .records
-                        .clone()
-                        .register(
-                            "plugin",
-                            &key,
-                            &harmos::schema::graph::Schema::from_declaration(
-                                Message::DEFINITION,
-                                &harmos::config::SchemaSettings::default(),
-                            )
-                            .unwrap(),
-                        )
-                        .await
-                        .unwrap();
-                    assert_eq!(runtime.state.applied(), Position::ORIGIN);
-                    storage.flush().await.unwrap();
-                    let mut reader = storage
-                        .query(harmos::storage::query::Query {
-                            at: storage.cursor_saved(),
-                            source: harmos::storage::query::Source::Schemas(
-                                harmos::storage::query::SchemaSelection {
-                                    schema: Some(key.clone()),
-                                },
-                            ),
-                            transforms: Vec::new(),
-                            slice: harmos::storage::query::RowSlice::default(),
-                        })
-                        .await
-                        .unwrap();
-                    let mut stored = Vec::new();
-                    while let Some(output) = reader.next().await.unwrap() {
-                        if let harmos::storage::query::QueryOutput::Batch(batch) = output {
-                            let batch = batch.as_record_batch();
-                            let definitions = batch
-                                .column_by_name("definition")
-                                .unwrap()
-                                .as_any()
-                                .downcast_ref::<arrow_array::BinaryArray>()
-                                .unwrap();
-                            for row in 0..batch.num_rows() {
-                                stored.push(
-                                    <harmos::schema::graph::Schema as harmos::Message>::decode(
-                                        definitions.value(row),
-                                    )
-                                    .unwrap(),
-                                );
-                            }
-                        }
-                    }
-                    assert_eq!(stored, vec![definition.graph().clone()]);
-                    let payload = harmos::Message::encode_to_vec(&Message {
-                        value: "retained".into(),
-                    });
-                    drop(definition);
-                    Validator::from_schema(&stored[0], &harmos::config::SchemaSettings::default())
-                        .unwrap()
-                        .validate(&payload)
-                        .unwrap();
-                    drop(reader);
-                    runtime.stop().await.unwrap();
-                });
-        });
+                    notify.notify_one();
+                    Ok::<(), harmos::services::Fault<String>>(())
+                }
+            },
+        )
+        .runtime_with_storage(&storage)
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(1), observed.notified())
+        .await
+        .unwrap();
+    assert!(read(&store).await.is_empty());
+    storage.flush().await.unwrap();
+    assert_eq!(read(&store).await.len(), 1);
+    assert_eq!(store.calls.load(Ordering::SeqCst), 1);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn capture_groups_reach() {
+    let store = Store::new();
+    let mut config = config();
+    config.request.max_pending_write_batches = NonZeroUsize::new(4096).unwrap();
+    let storage = store.manager(config);
+    let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
+    store.ready(&storage).await;
+    store.data.control.write_sizes.lock().unwrap().clear();
+    store.recovery.control.write_sizes.lock().unwrap().clear();
+    for _ in 0..2000 {
+        runtime
+            .state
+            .commit(Advance { panic: false })
+            .await
+            .unwrap();
     }
+    storage.flush().await.unwrap();
+    storage.flush_recovery().await.unwrap();
+
+    assert_eq!(store.data.records.lock().unwrap().len(), 2000);
+    assert_eq!(runtime.state.stored(), Position(4000));
+    assert_eq!(storage.status().pending_bytes, 0);
+    for control in [&store.data.control, &store.recovery.control] {
+        let sizes = control.write_sizes.lock().unwrap();
+        assert!(
+            sizes.len() < 100,
+            "uncoalesced backend calls: {}",
+            sizes.len()
+        );
+        assert!(sizes.iter().all(|size| *size <= 64));
+        assert!(
+            control
+                .writes
+                .lock()
+                .unwrap()
+                .windows(2)
+                .all(|pair| pair[0] < pair[1])
+        );
+    }
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn failure_retries_capture() {
+    let store = Store::new();
+    let storage = store.manager(config());
+    let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
+    store.ready(&storage).await;
+    for _ in 0..20 {
+        runtime
+            .state
+            .commit(Advance { panic: false })
+            .await
+            .unwrap();
+    }
+    let admitted = storage.status().pending_bytes;
+    store
+        .recovery
+        .control
+        .block_write
+        .store(true, Ordering::SeqCst);
+    let flushing = storage.clone();
+    let flushing = tokio::spawn(async move { flushing.flush_recovery().await });
+    store.recovery.control.write_entered.notified().await;
+    assert!(storage.status().pending_bytes > admitted);
+    assert_eq!(storage.status().saved.sequence, 21);
+    assert_eq!(store.data.records.lock().unwrap().len(), 20);
+    store.recovery.control.failures.store(1, Ordering::SeqCst);
+    store
+        .recovery
+        .control
+        .block_write
+        .store(false, Ordering::SeqCst);
+    store.recovery.control.write_release.notify_one();
+    assert!(flushing.await.unwrap().is_err());
+    assert!(storage.status().pending_bytes <= admitted);
+    storage.flush().await.unwrap();
+    storage.flush_recovery().await.unwrap();
+    assert_eq!(store.calls.load(Ordering::SeqCst), 20);
+    assert_eq!(store.data.records.lock().unwrap().len(), 20);
+    assert_eq!(store.recovery.entries.lock().unwrap().len(), 20);
+    assert_eq!(storage.status().pending_bytes, 0);
+    let writes = store.data.control.write_sizes.lock().unwrap().clone();
+    assert_eq!(writes.iter().filter(|size| **size == 20).count(), 1);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn barrier_never_wait() {
+    {
+        let store = Store::new();
+        let storage = store.manager(config());
+        let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
+        store.ready(&storage).await;
+        for _ in 0..20 {
+            runtime
+                .state
+                .commit(Advance { panic: false })
+                .await
+                .unwrap();
+        }
+        store
+            .recovery
+            .control
+            .block_write
+            .store(true, Ordering::SeqCst);
+        let saved = tokio::select! {
+            saved = storage.flush() => saved.unwrap(),
+            _ = store.recovery.control.write_entered.notified() => {
+                panic!("a primary-only barrier must not wait for recovery I/O")
+            }
+        };
+        assert_eq!(saved.sequence, 21);
+        assert_eq!(storage.status().recovery_saved.sequence, 0);
+        assert_eq!(storage.status().pending_batches, 20);
+        assert_eq!(runtime.state.stored(), Position(0));
+        store
+            .recovery
+            .control
+            .block_write
+            .store(false, Ordering::SeqCst);
+        storage.flush_recovery().await.unwrap();
+        assert_eq!(runtime.state.stored(), Position(40));
+        assert_eq!(storage.status().pending_bytes, 0);
+        runtime.stop().await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn ceiling_never_reserve() {
+    let store = Store::new();
+    let mut policy = config();
+    policy.request.max_pending_write_bytes = NonZeroUsize::new(512 * 1024).unwrap();
+    let storage = store.manager(policy);
+    let runtime = store
+        .boot(&storage, limits(4, 4 * 1024 * 1024), false)
+        .await;
+    store.ready(&storage).await;
+
+    for _ in 0..4 {
+        runtime
+            .state
+            .commit(Advance { panic: false })
+            .await
+            .unwrap();
+    }
+    assert_eq!(store.calls.load(Ordering::SeqCst), 4);
+    assert_eq!(storage.cursor_accepted().sequence, 5);
+    assert_eq!(storage.cursor_saved().sequence, 1);
+    assert!(storage.status().pending_bytes < 32 * 1024);
+    assert_eq!(
+        runtime
+            .state
+            .state()
+            .read(|value| *value)
+            .await
+            .unwrap()
+            .value,
+        4
+    );
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn partial_projection_failure() {
+    for cancel in [false, true] {
+        let store = Store::new();
+        let mut policy = config();
+        policy.request.max_pending_write_bytes = NonZeroUsize::new(256 * 1024).unwrap();
+        let storage = store.manager(policy);
+        let runtime = Runtime::<Model>::builder(0, ())
+            .register(Transactions::catalog())
+            .register(Records::catalog())
+            .managed_state(limits(1, 64 * 1024))
+            .store_records(
+                limits(8, 4 * 1024 * 1024),
+                IncrementalProjection {
+                    calls: store.calls.clone(),
+                    data: store.data.clone(),
+                    cancel,
+                },
+            )
+            .runtime_with_storage(&storage)
+            .await
+            .unwrap();
+        store.ready(&storage).await;
+        if cancel {
+            store.data.control.block_write.store(true, Ordering::SeqCst);
+            let item = Identifier::new("already-accepted").unwrap();
+            storage
+                .write_records(&[record(&schema(), &item, &vec![0; 100 * 1024])])
+                .await
+                .unwrap();
+        }
+        let accepted = storage.cursor_accepted();
+        assert!(
+            tokio::time::timeout(
+                Duration::from_secs(2),
+                runtime.state.commit(Advance { panic: false })
+            )
+            .await
+            .unwrap()
+            .is_err()
+        );
+        assert_eq!(store.calls.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            runtime
+                .state
+                .state()
+                .read(|state| *state)
+                .await
+                .unwrap()
+                .value,
+            0
+        );
+        assert_eq!(storage.cursor_accepted(), accepted);
+        assert_eq!(storage.status().recovery_accepted.sequence, 0);
+        store
+            .data
+            .control
+            .block_write
+            .store(false, Ordering::SeqCst);
+        store.data.control.write_release.notify_one();
+        storage.flush().await.unwrap();
+        assert_eq!(storage.status().pending_bytes, 0);
+        assert_eq!(storage.status().pending_batches, 0);
+        runtime.stop().await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn registration_uses_managed() {
+    use harmos::schema::{Described, Validator};
+
+    #[harmos::message]
+    struct Message {
+        value: String,
+    }
+
+    let store = Store::new();
+    let storage = store.manager(config());
+    let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
+    let key = schema();
+    let definition = runtime
+        .records
+        .register(
+            "plugin",
+            &key,
+            &harmos::schema::graph::Schema::from_declaration(
+                Message::DEFINITION,
+                &harmos::config::SchemaSettings::default(),
+            )
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    runtime
+        .records
+        .clone()
+        .register(
+            "plugin",
+            &key,
+            &harmos::schema::graph::Schema::from_declaration(
+                Message::DEFINITION,
+                &harmos::config::SchemaSettings::default(),
+            )
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(runtime.state.applied(), Position::ORIGIN);
+    storage.flush().await.unwrap();
+    let mut reader = storage
+        .query(harmos::storage::query::Query {
+            at: storage.cursor_saved(),
+            source: harmos::storage::query::Source::Schemas(
+                harmos::storage::query::SchemaSelection {
+                    schema: Some(key.clone()),
+                },
+            ),
+            transforms: Vec::new(),
+            slice: harmos::storage::query::RowSlice::default(),
+        })
+        .await
+        .unwrap();
+    let mut stored = Vec::new();
+    while let Some(output) = reader.next().await.unwrap() {
+        if let harmos::storage::query::QueryOutput::Batch(batch) = output {
+            let batch = batch.as_record_batch();
+            let definitions = batch
+                .column_by_name("definition")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<arrow_array::BinaryArray>()
+                .unwrap();
+            for row in 0..batch.num_rows() {
+                stored.push(
+                    <harmos::schema::graph::Schema as harmos::Message>::decode(
+                        definitions.value(row),
+                    )
+                    .unwrap(),
+                );
+            }
+        }
+    }
+    assert_eq!(stored, vec![definition.graph().clone()]);
+    let payload = harmos::Message::encode_to_vec(&Message {
+        value: "retained".into(),
+    });
+    drop(definition);
+    Validator::from_schema(&stored[0], &harmos::config::SchemaSettings::default())
+        .unwrap()
+        .validate(&payload)
+        .unwrap();
+    drop(reader);
+    runtime.stop().await.unwrap();
 }
 
 /* === Tests === */

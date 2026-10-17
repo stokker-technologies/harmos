@@ -20,8 +20,6 @@ mod nominal;
 mod policy;
 mod query_pressure;
 mod retention;
-#[path = "../../../../tests/support/scenarios.rs"]
-mod scenario_runtime;
 mod state_admission;
 #[path = "../support/mod.rs"]
 mod support;

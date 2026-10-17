@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -578,326 +577,239 @@ impl Operation for Detaching {
 
 /* === Private Functions === */
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("calls_share_attempt", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let owner = Arc::new(Owner::default());
-                    runtime
-                        .operations
-                        .register_wire_operations::<Implemented, _>(
-                            "app",
-                            Lanes::Open,
-                            owner.clone(),
-                        )
-                        .unwrap();
-                    assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
-                    let invocation = runtime
-                        .operations
-                        .submit_encoded(Echo::ID, Text::from("retry").encode_to_vec())
-                        .unwrap();
-                    let id = invocation.id();
-                    let response = invocation.await.unwrap();
-                    assert_eq!(String::decode(&response).unwrap(), "retry retained:2");
-                    assert_eq!(*owner.seen.lock().unwrap(), [id, id]);
-                    assert_eq!(
-                        &*runtime
-                            .operations
-                            .call_as::<Echo>("retry".into())
-                            .await
-                            .unwrap(),
-                        "retry retained:2"
-                    );
-                    // The cached second call constructs nothing.
-                    assert_eq!(owner.prepared.load(Ordering::SeqCst), 1);
-                    assert_eq!(owner.runs.load(Ordering::SeqCst), 2);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("cancel_never_start", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let owner = Arc::new(Owner::default());
-                    runtime
-                        .operations
-                        .register_wire_operations::<Implemented, _>(
-                            "app",
-                            Lanes::Open,
-                            owner.clone(),
-                        )
-                        .unwrap();
-                    assert!(matches!(
-                        runtime.operations.submit_encoded(Echo::ID, vec![0xff]),
-                        Err(Error::OperationPayload { .. })
-                    ));
-                    assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
-                    let invocation = runtime
-                        .operations
-                        .submit_encoded(Echo::ID, Text::from("block").encode_to_vec())
-                        .unwrap();
-                    invocation.cancel();
-                    assert!(matches!(
-                        invocation.await,
-                        Err(Error::OperationRefused(Refusal::Cancelled))
-                    ));
-                    assert_eq!(owner.runs.load(Ordering::SeqCst), 0);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("binding_never_acquires", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let owner = Arc::new(Owner::default());
-                    runtime
-                        .operations
-                        .register_operations::<Implemented, _>("app", Lanes::Open, owner.clone())
-                        .unwrap();
-                    assert!(matches!(
-                        runtime
-                            .operations
-                            .submit_encoded(Echo::ID, Text::from("value").encode_to_vec()),
-                        Err(Error::InvalidInput {
-                            field: "encoded operation",
-                            ..
-                        })
-                    ));
-                    assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("budget_never_escape", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let owner = Arc::new(Owner::default());
-                    runtime
-                        .operations
-                        .register_wire_operations::<ImplementedCodecs, _>(
-                            "app",
-                            Lanes::Open,
-                            owner.clone(),
-                        )
-                        .unwrap();
-                    assert!(matches!(
-                        runtime
-                            .operations
-                            .submit_encoded(Codec::ID, Text::from("decode_panic").encode_to_vec()),
-                        Err(Error::OperationPanicked { .. })
-                    ));
-                    assert!(matches!(
-                        runtime
-                            .operations
-                            .submit_encoded(ShortCodec::ID, Text::from("slow").encode_to_vec()),
-                        Err(Error::OperationRefused(Refusal::TimedOut))
-                    ));
-                    assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
-                    assert!(matches!(
-                        runtime
-                            .operations
-                            .call_encoded(Codec::ID, Text::from("encode_panic").encode_to_vec())
-                            .await,
-                        Err(Error::OperationPanicked { .. })
-                    ));
-                    assert_eq!(owner.prepared.load(Ordering::SeqCst), 1);
-                    assert_eq!(owner.runs.load(Ordering::SeqCst), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("decoding_cannot_redirect", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let old = Arc::new(Owner::default());
-                    let replacement = Arc::new(Owner::default());
-                    runtime
-                        .operations
-                        .register_wire_operations::<ImplementedCodec, _>(
-                            "app",
-                            Lanes::Open,
-                            old.clone(),
-                        )
-                        .unwrap();
-                    let operations = runtime.operations.clone();
-                    let new_owner = replacement.clone();
-                    DECODE_HOOK.with(|hook| {
-                        *hook.borrow_mut() = Some(Box::new(move || {
-                            std::thread::spawn(move || {
-                                tokio::runtime::Builder::new_current_thread()
-                                    .enable_all()
-                                    .build()
-                                    .unwrap()
-                                    .block_on(async {
-                                        operations.unregister(Codec::ID).await.unwrap();
-                                        operations
-                                            .register_wire_operations::<ImplementedCodec, _>(
-                                                "app",
-                                                Lanes::Open,
-                                                new_owner,
-                                            )
-                                            .unwrap();
-                                    });
-                            })
-                            .join()
+#[tokio::test]
+async fn calls_share_attempt() {
+    let runtime = runtime().await;
+    let owner = Arc::new(Owner::default());
+    runtime
+        .operations
+        .register_wire_operations::<Implemented, _>("app", Lanes::Open, owner.clone())
+        .unwrap();
+    assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
+    let invocation = runtime
+        .operations
+        .submit_encoded(Echo::ID, Text::from("retry").encode_to_vec())
+        .unwrap();
+    let id = invocation.id();
+    let response = invocation.await.unwrap();
+    assert_eq!(String::decode(&response).unwrap(), "retry retained:2");
+    assert_eq!(*owner.seen.lock().unwrap(), [id, id]);
+    assert_eq!(
+        &*runtime
+            .operations
+            .call_as::<Echo>("retry".into())
+            .await
+            .unwrap(),
+        "retry retained:2"
+    );
+    // The cached second call constructs nothing.
+    assert_eq!(owner.prepared.load(Ordering::SeqCst), 1);
+    assert_eq!(owner.runs.load(Ordering::SeqCst), 2);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn cancel_never_start() {
+    let runtime = runtime().await;
+    let owner = Arc::new(Owner::default());
+    runtime
+        .operations
+        .register_wire_operations::<Implemented, _>("app", Lanes::Open, owner.clone())
+        .unwrap();
+    assert!(matches!(
+        runtime.operations.submit_encoded(Echo::ID, vec![0xff]),
+        Err(Error::OperationPayload { .. })
+    ));
+    assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
+    let invocation = runtime
+        .operations
+        .submit_encoded(Echo::ID, Text::from("block").encode_to_vec())
+        .unwrap();
+    invocation.cancel();
+    assert!(matches!(
+        invocation.await,
+        Err(Error::OperationRefused(Refusal::Cancelled))
+    ));
+    assert_eq!(owner.runs.load(Ordering::SeqCst), 0);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn binding_never_acquires() {
+    let runtime = runtime().await;
+    let owner = Arc::new(Owner::default());
+    runtime
+        .operations
+        .register_operations::<Implemented, _>("app", Lanes::Open, owner.clone())
+        .unwrap();
+    assert!(matches!(
+        runtime
+            .operations
+            .submit_encoded(Echo::ID, Text::from("value").encode_to_vec()),
+        Err(Error::InvalidInput {
+            field: "encoded operation",
+            ..
+        })
+    ));
+    assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn budget_never_escape() {
+    let runtime = runtime().await;
+    let owner = Arc::new(Owner::default());
+    runtime
+        .operations
+        .register_wire_operations::<ImplementedCodecs, _>("app", Lanes::Open, owner.clone())
+        .unwrap();
+    assert!(matches!(
+        runtime
+            .operations
+            .submit_encoded(Codec::ID, Text::from("decode_panic").encode_to_vec()),
+        Err(Error::OperationPanicked { .. })
+    ));
+    assert!(matches!(
+        runtime
+            .operations
+            .submit_encoded(ShortCodec::ID, Text::from("slow").encode_to_vec()),
+        Err(Error::OperationRefused(Refusal::TimedOut))
+    ));
+    assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
+    assert!(matches!(
+        runtime
+            .operations
+            .call_encoded(Codec::ID, Text::from("encode_panic").encode_to_vec())
+            .await,
+        Err(Error::OperationPanicked { .. })
+    ));
+    assert_eq!(owner.prepared.load(Ordering::SeqCst), 1);
+    assert_eq!(owner.runs.load(Ordering::SeqCst), 1);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn decoding_cannot_redirect() {
+    let runtime = runtime().await;
+    let old = Arc::new(Owner::default());
+    let replacement = Arc::new(Owner::default());
+    runtime
+        .operations
+        .register_wire_operations::<ImplementedCodec, _>("app", Lanes::Open, old.clone())
+        .unwrap();
+    let operations = runtime.operations.clone();
+    let new_owner = replacement.clone();
+    DECODE_HOOK.with(|hook| {
+        *hook.borrow_mut() = Some(Box::new(move || {
+            std::thread::spawn(move || {
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap()
+                    .block_on(async {
+                        operations.unregister(Codec::ID).await.unwrap();
+                        operations
+                            .register_wire_operations::<ImplementedCodec, _>(
+                                "app",
+                                Lanes::Open,
+                                new_owner,
+                            )
                             .unwrap();
-                        }));
                     });
-                    assert!(matches!(
-                        runtime
-                            .operations
-                            .submit_encoded(Codec::ID, Text::from("original").encode_to_vec()),
-                        Err(Error::Closing { .. })
-                    ));
-                    assert_eq!(old.prepared.load(Ordering::SeqCst), 0);
-                    assert_eq!(replacement.prepared.load(Ordering::SeqCst), 0);
-                    let reply = runtime
-                        .operations
-                        .call_encoded(Codec::ID, Text::from("replacement").encode_to_vec())
-                        .await
-                        .unwrap();
-                    assert_eq!(Text::decode(&reply).unwrap().value, "replacement");
-                    assert_eq!(replacement.prepared.load(Ordering::SeqCst), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("children_refuse_held", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let owner = Arc::new(Owner::default());
-                    runtime
-                        .operations
-                        .register_wire_operations::<ImplementedSerial, _>(
-                            "app",
-                            Lanes::Serial,
-                            owner.clone(),
-                        )
-                        .unwrap();
-                    let error = runtime
-                        .operations
-                        .call_as::<SameLane>("child".into())
-                        .await
-                        .unwrap_err();
-                    let Error::OperationFailed { source, .. } = error else {
-                        panic!("nested refusal retained");
-                    };
-                    assert!(matches!(
-                        source.downcast_ref::<Failed>(),
-                        Some(Failed::Nested(Error::OperationLaneCycle { .. }))
-                    ));
-                    assert_eq!(owner.prepared.load(Ordering::SeqCst), 1);
-                    assert_eq!(owner.runs.load(Ordering::SeqCst), 0);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("success_joins_unawaited", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let owner = Arc::new(Owner::default());
-                    runtime
-                        .operations
-                        .register_wire_operations::<Implemented, _>(
-                            "app",
-                            Lanes::Open,
-                            owner.clone(),
-                        )
-                        .unwrap();
-                    assert_eq!(
-                        &*runtime
-                            .operations
-                            .call_as::<Detached>("ignored".into())
-                            .await
-                            .unwrap(),
-                        "parent"
-                    );
-                    assert_eq!(owner.wire_joined.load(Ordering::SeqCst), 1);
-                    runtime
-                        .operations
-                        .unregister(PrivateEcho::ID)
-                        .await
-                        .unwrap();
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("cancellation_joins_child", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let owner = Arc::new(Owner::default());
-                    runtime
-                        .operations
-                        .register_wire_operations::<Implemented, _>(
-                            "app",
-                            Lanes::Open,
-                            owner.clone(),
-                        )
-                        .unwrap();
-                    let started = owner.wire_started.notified();
-                    let parent = runtime
-                        .operations
-                        .submit_as::<Nested>("block".into())
-                        .unwrap();
-                    started.await;
-                    parent.cancel();
-                    assert!(matches!(
-                        parent.await,
-                        Err(Error::OperationRefused(Refusal::Cancelled))
-                    ));
-                    assert_eq!(owner.wire_joined.load(Ordering::SeqCst), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
+            })
+            .join()
+            .unwrap();
+        }));
+    });
+    assert!(matches!(
+        runtime
+            .operations
+            .submit_encoded(Codec::ID, Text::from("original").encode_to_vec()),
+        Err(Error::Closing { .. })
+    ));
+    assert_eq!(old.prepared.load(Ordering::SeqCst), 0);
+    assert_eq!(replacement.prepared.load(Ordering::SeqCst), 0);
+    let reply = runtime
+        .operations
+        .call_encoded(Codec::ID, Text::from("replacement").encode_to_vec())
+        .await
+        .unwrap();
+    assert_eq!(Text::decode(&reply).unwrap().value, "replacement");
+    assert_eq!(replacement.prepared.load(Ordering::SeqCst), 1);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn children_refuse_held() {
+    let runtime = runtime().await;
+    let owner = Arc::new(Owner::default());
+    runtime
+        .operations
+        .register_wire_operations::<ImplementedSerial, _>("app", Lanes::Serial, owner.clone())
+        .unwrap();
+    let error = runtime
+        .operations
+        .call_as::<SameLane>("child".into())
+        .await
+        .unwrap_err();
+    let Error::OperationFailed { source, .. } = error else {
+        panic!("nested refusal retained");
+    };
+    assert!(matches!(
+        source.downcast_ref::<Failed>(),
+        Some(Failed::Nested(Error::OperationLaneCycle { .. }))
+    ));
+    assert_eq!(owner.prepared.load(Ordering::SeqCst), 1);
+    assert_eq!(owner.runs.load(Ordering::SeqCst), 0);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn success_joins_unawaited() {
+    let runtime = runtime().await;
+    let owner = Arc::new(Owner::default());
+    runtime
+        .operations
+        .register_wire_operations::<Implemented, _>("app", Lanes::Open, owner.clone())
+        .unwrap();
+    assert_eq!(
+        &*runtime
+            .operations
+            .call_as::<Detached>("ignored".into())
+            .await
+            .unwrap(),
+        "parent"
+    );
+    assert_eq!(owner.wire_joined.load(Ordering::SeqCst), 1);
+    runtime
+        .operations
+        .unregister(PrivateEcho::ID)
+        .await
+        .unwrap();
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn cancellation_joins_child() {
+    let runtime = runtime().await;
+    let owner = Arc::new(Owner::default());
+    runtime
+        .operations
+        .register_wire_operations::<Implemented, _>("app", Lanes::Open, owner.clone())
+        .unwrap();
+    let started = owner.wire_started.notified();
+    let parent = runtime
+        .operations
+        .submit_as::<Nested>("block".into())
+        .unwrap();
+    started.await;
+    parent.cancel();
+    assert!(matches!(
+        parent.await,
+        Err(Error::OperationRefused(Refusal::Cancelled))
+    ));
+    assert_eq!(owner.wire_joined.load(Ordering::SeqCst), 1);
+    runtime.stop().await.unwrap();
 }
 
 /* === Tests === */

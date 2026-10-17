@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -167,300 +166,253 @@ async fn group(observed: &mut mpsc::UnboundedReceiver<Group>) -> Group {
         .unwrap()
 }
 
-#[test]
-fn contract_scenario() {
-    {
-        scenario_runtime::check("capture_preserves_evicted", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    // Each 600-byte record charges >600 bytes; two cannot fit in 1,400.
-                    let (runtime, mut observed, release) = open(1400, 1400, false, 1).await;
-                    let first = runtime
-                        .records
-                        .publish(Observed("x".repeat(600)))
-                        .await
-                        .unwrap();
-                    let (held, frontier) = group(&mut observed).await;
-                    assert_eq!(frontier, first.frontier);
-                    let journal = runtime.state.clone();
-                    let mut second = tokio::spawn(async move {
-                        harmos::records::RecordManager::new(journal.clone())
-                            .publish(Observed("y".repeat(600)))
-                            .await
-                    });
-                    assert!(
-                        tokio::time::timeout(Duration::from_millis(30), &mut second)
-                            .await
-                            .is_err()
-                    );
-                    assert_eq!(runtime.state.applied(), Position(1));
-                    // Reads remain available while admission is awaiting capacity.
-                    assert_eq!(
-                        runtime
-                            .state
-                            .state()
-                            .read(|state| *state)
-                            .await
-                            .unwrap()
-                            .value,
-                        0
-                    );
-                    assert_eq!(held[0].position, Position(1));
-                    release.add_permits(1);
-                    assert_eq!(second.await.unwrap().unwrap().position, Position(2));
-                    let (next, _) = group(&mut observed).await;
-                    assert_eq!(next[0].position, Position(2));
-                    assert_eq!(
-                        held[0].position,
-                        Position(1),
-                        "direct ownership survives tail eviction"
-                    );
-                    assert!(
-                        runtime
-                            .state
-                            .query::<Facts>(Position::ORIGIN)
-                            .await
-                            .next()
-                            .unwrap()
-                            .is_err()
-                    );
-                    release.add_permits(1);
-                    runtime
-                        .state
-                        .wait_until_captured(Position(2))
-                        .await
-                        .unwrap();
-                    assert_eq!(runtime.stop().await.unwrap(), Position(2));
-                });
-        });
-    }
-    {
-        scenario_runtime::check("complete_order_shutdown", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, mut observed, release) = open(32_000, 8000, false, 1).await;
-                    let principal = PrincipalId::new("capture");
-                    let journal = runtime.state.as_principal(principal.clone());
-                    let commit = journal.commit(Add(5)).await.unwrap();
-                    assert_eq!(
-                        (commit.position, commit.frontier),
-                        (Position(1), Position(2))
-                    );
-                    harmos::records::RecordManager::new(journal.clone())
-                        .publish(Observed("typed".into()))
-                        .await
-                        .unwrap();
-                    harmos::records::RecordManager::new(journal.clone())
-                        .publish_system(SystemFact {
-                            source: FactSource::Sidecar("probe".into()),
-                            name: "sample".into(),
-                            version: 1,
-                            payload: vec![1, 2, 3],
-                        })
-                        .await
-                        .unwrap();
-                    journal.undo(principal.clone(), Focus::all()).await.unwrap();
-                    journal.redo(principal, Focus::all()).await.unwrap();
-                    drop(journal);
-                    let runtime = Arc::new(runtime);
-                    let mut stopping = tokio::spawn({
-                        let runtime = Arc::clone(&runtime);
+#[tokio::test]
+async fn capture_preserves_evicted() {
+    // Each 600-byte record charges >600 bytes; two cannot fit in 1,400.
+    let (runtime, mut observed, release) = open(1400, 1400, false, 1).await;
+    let first = runtime
+        .records
+        .publish(Observed("x".repeat(600)))
+        .await
+        .unwrap();
+    let (held, frontier) = group(&mut observed).await;
+    assert_eq!(frontier, first.frontier);
+    let journal = runtime.state.clone();
+    let mut second = tokio::spawn(async move {
+        harmos::records::RecordManager::new(journal.clone())
+            .publish(Observed("y".repeat(600)))
+            .await
+    });
+    assert!(
+        tokio::time::timeout(Duration::from_millis(30), &mut second)
+            .await
+            .is_err()
+    );
+    assert_eq!(runtime.state.applied(), Position(1));
+    // Reads remain available while admission is awaiting capacity.
+    assert_eq!(
+        runtime
+            .state
+            .state()
+            .read(|state| *state)
+            .await
+            .unwrap()
+            .value,
+        0
+    );
+    assert_eq!(held[0].position, Position(1));
+    release.add_permits(1);
+    assert_eq!(second.await.unwrap().unwrap().position, Position(2));
+    let (next, _) = group(&mut observed).await;
+    assert_eq!(next[0].position, Position(2));
+    assert_eq!(
+        held[0].position,
+        Position(1),
+        "direct ownership survives tail eviction"
+    );
+    assert!(
+        runtime
+            .state
+            .query::<Facts>(Position::ORIGIN)
+            .await
+            .next()
+            .unwrap()
+            .is_err()
+    );
+    release.add_permits(1);
+    runtime
+        .state
+        .wait_until_captured(Position(2))
+        .await
+        .unwrap();
+    assert_eq!(runtime.stop().await.unwrap(), Position(2));
+}
 
-                        async move { runtime.stop().await.unwrap() }
-                    });
-                    let mut positions = Vec::new();
-                    for expected in [2, 3, 4, 6, 8] {
-                        let (entries, frontier) = group(&mut observed).await;
-                        assert_eq!(frontier, Position(expected));
-                        if entries.len() == 2 {
-                            assert_eq!(
-                                entries[0].metadata.commit,
-                                Some((entries[0].position, frontier))
-                            );
-                            assert_eq!(
-                                entries[1].metadata.causation,
-                                Some(harmos::state::CausationId(entries[0].position))
-                            );
-                        }
-                        if expected == 4 {
-                            let Recorded::System(fact) = &entries[0].value else {
-                                panic!("system fact lost")
-                            };
-                            assert_eq!(fact.identify().0.as_str(), "harmos:sidecar/probe/sample");
-                            assert_eq!(fact.payload, vec![1, 2, 3]);
-                        }
-                        positions.extend(entries.iter().map(|entry| entry.position.0));
-                        assert!(
-                            tokio::time::timeout(Duration::from_millis(10), &mut stopping)
-                                .await
-                                .is_err()
-                        );
-                        release.add_permits(1);
-                    }
-                    assert_eq!(positions, vec![1, 2, 3, 4, 5, 6, 7, 8]);
-                    assert_eq!(stopping.await.unwrap(), Position(8));
-                });
-        });
-    }
-    {
-        scenario_runtime::check("failure_wakes_waiters", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, mut observed, release) = open(1400, 1400, true, 1).await;
-                    runtime
-                        .records
-                        .publish(Observed("x".repeat(600)))
-                        .await
-                        .unwrap();
-                    group(&mut observed).await;
-                    let journal = runtime.state.clone();
-                    let mut pending = tokio::spawn(async move {
-                        harmos::records::RecordManager::new(journal.clone())
-                            .publish(Observed("y".repeat(600)))
-                            .await
-                    });
-                    assert!(
-                        tokio::time::timeout(Duration::from_millis(30), &mut pending)
-                            .await
-                            .is_err()
-                    );
-                    release.add_permits(1);
-                    assert!(matches!(pending.await.unwrap(), Err(Error::CaptureFailed)));
-                    assert_eq!(runtime.state.applied(), Position(1));
-                    assert_eq!(
-                        runtime.state.wait_until_captured(Position(1)).await,
-                        Err(CaptureError::Failed)
-                    );
-                    assert_eq!(runtime.state.capture_status(), Err(CaptureError::Failed));
-                    assert!(matches!(
-                        runtime.records.publish(Observed("later".into())).await,
-                        Err(Error::CaptureFailed)
-                    ));
-                    runtime.stop().await.unwrap();
+#[tokio::test]
+async fn complete_order_shutdown() {
+    let (runtime, mut observed, release) = open(32_000, 8000, false, 1).await;
+    let principal = PrincipalId::new("capture");
+    let journal = runtime.state.as_principal(principal.clone());
+    let commit = journal.commit(Add(5)).await.unwrap();
+    assert_eq!(
+        (commit.position, commit.frontier),
+        (Position(1), Position(2))
+    );
+    harmos::records::RecordManager::new(journal.clone())
+        .publish(Observed("typed".into()))
+        .await
+        .unwrap();
+    harmos::records::RecordManager::new(journal.clone())
+        .publish_system(SystemFact {
+            source: FactSource::Sidecar("probe".into()),
+            name: "sample".into(),
+            version: 1,
+            payload: vec![1, 2, 3],
+        })
+        .await
+        .unwrap();
+    journal.undo(principal.clone(), Focus::all()).await.unwrap();
+    journal.redo(principal, Focus::all()).await.unwrap();
+    drop(journal);
+    let runtime = Arc::new(runtime);
+    let mut stopping = tokio::spawn({
+        let runtime = Arc::clone(&runtime);
 
-                    assert_eq!(
-                        runtime.state.capture_status(),
-                        Err(CaptureError::Failed),
-                        "a stop reports the frontier; capture health stays answerable after it"
-                    );
-                });
-        });
+        async move { runtime.stop().await.unwrap() }
+    });
+    let mut positions = Vec::new();
+    for expected in [2, 3, 4, 6, 8] {
+        let (entries, frontier) = group(&mut observed).await;
+        assert_eq!(frontier, Position(expected));
+        if entries.len() == 2 {
+            assert_eq!(
+                entries[0].metadata.commit,
+                Some((entries[0].position, frontier))
+            );
+            assert_eq!(
+                entries[1].metadata.causation,
+                Some(harmos::state::CausationId(entries[0].position))
+            );
+        }
+        if expected == 4 {
+            let Recorded::System(fact) = &entries[0].value else {
+                panic!("system fact lost")
+            };
+            assert_eq!(fact.identify().0.as_str(), "harmos:sidecar/probe/sample");
+            assert_eq!(fact.payload, vec![1, 2, 3]);
+        }
+        positions.extend(entries.iter().map(|entry| entry.position.0));
+        assert!(
+            tokio::time::timeout(Duration::from_millis(10), &mut stopping)
+                .await
+                .is_err()
+        );
+        release.add_permits(1);
     }
-    {
-        scenario_runtime::check("oversize_never_applies", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, mut observed, _) = open(1, 1, false, 1).await;
-                    assert!(matches!(
-                        runtime.state.commit(Add(9)).await,
-                        Err(Error::Preparation(PreparationError::Limit))
-                    ));
-                    assert_eq!(
-                        runtime
-                            .state
-                            .state()
-                            .read(|state| *state)
-                            .await
-                            .unwrap()
-                            .value,
-                        0
-                    );
-                    assert_eq!(runtime.state.applied(), Position::ORIGIN);
-                    assert!(observed.try_recv().is_err());
-                    assert_eq!(runtime.stop().await.unwrap(), Position::ORIGIN);
-                });
-        });
-    }
-    {
-        scenario_runtime::check("queued_groups_outlive", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, mut observed, release) = open(2_000_000, 4000, false, 1024).await;
-                    // More independent publications than the normal 1,024-entry tail, with
-                    // the first callback stalled and every later accepted group still pending.
-                    for index in 0..1100 {
-                        runtime
-                            .records
-                            .publish(Observed(index.to_string()))
-                            .await
-                            .unwrap();
-                    }
-                    assert_eq!(runtime.state.applied(), Position(1100));
-                    release.add_permits(1100);
-                    for expected in 1..=1100 {
-                        let (entries, frontier) = group(&mut observed).await;
-                        assert_eq!(frontier, Position(expected));
-                        assert_eq!(entries[0].position, Position(expected));
-                        let Recorded::Record(Facts::Observed(Observed(value))) = &entries[0].value
-                        else {
-                            panic!("typed record lost")
-                        };
-                        assert_eq!(value, &(expected - 1).to_string());
-                    }
-                    assert_eq!(runtime.stop().await.unwrap(), Position(1100));
-                });
-        });
-    }
-    {
-        scenario_runtime::check("panic_capture_failure", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = Runtime::<Model>::builder(0, ())
-                        .register(Facts::catalog())
-                        .require_capture(
-                            CaptureLimits {
-                                pending_bytes: 4096,
-                                max_group_bytes: 4096,
-                            },
-                            Panics,
-                        )
-                        .unwrap()
-                        .runtime()
-                        .await
-                        .unwrap();
-                    runtime
-                        .records
-                        .publish(Observed("accepted".into()))
-                        .await
-                        .unwrap();
-                    assert_eq!(
-                        runtime.state.wait_until_captured(Position(1)).await,
-                        Err(CaptureError::Failed)
-                    );
-                    runtime.stop().await.unwrap();
+    assert_eq!(positions, vec![1, 2, 3, 4, 5, 6, 7, 8]);
+    assert_eq!(stopping.await.unwrap(), Position(8));
+}
 
-                    assert_eq!(
-                        runtime.state.capture_status(),
-                        Err(CaptureError::Failed),
-                        "a panicking capture worker is a capture failure the journal keeps"
-                    );
-                });
-        });
+#[tokio::test]
+async fn failure_wakes_waiters() {
+    let (runtime, mut observed, release) = open(1400, 1400, true, 1).await;
+    runtime
+        .records
+        .publish(Observed("x".repeat(600)))
+        .await
+        .unwrap();
+    group(&mut observed).await;
+    let journal = runtime.state.clone();
+    let mut pending = tokio::spawn(async move {
+        harmos::records::RecordManager::new(journal.clone())
+            .publish(Observed("y".repeat(600)))
+            .await
+    });
+    assert!(
+        tokio::time::timeout(Duration::from_millis(30), &mut pending)
+            .await
+            .is_err()
+    );
+    release.add_permits(1);
+    assert!(matches!(pending.await.unwrap(), Err(Error::CaptureFailed)));
+    assert_eq!(runtime.state.applied(), Position(1));
+    assert_eq!(
+        runtime.state.wait_until_captured(Position(1)).await,
+        Err(CaptureError::Failed)
+    );
+    assert_eq!(runtime.state.capture_status(), Err(CaptureError::Failed));
+    assert!(matches!(
+        runtime.records.publish(Observed("later".into())).await,
+        Err(Error::CaptureFailed)
+    ));
+    runtime.stop().await.unwrap();
+
+    assert_eq!(
+        runtime.state.capture_status(),
+        Err(CaptureError::Failed),
+        "a stop reports the frontier; capture health stays answerable after it"
+    );
+}
+
+#[tokio::test]
+async fn oversize_never_applies() {
+    let (runtime, mut observed, _) = open(1, 1, false, 1).await;
+    assert!(matches!(
+        runtime.state.commit(Add(9)).await,
+        Err(Error::Preparation(PreparationError::Limit))
+    ));
+    assert_eq!(
+        runtime
+            .state
+            .state()
+            .read(|state| *state)
+            .await
+            .unwrap()
+            .value,
+        0
+    );
+    assert_eq!(runtime.state.applied(), Position::ORIGIN);
+    assert!(observed.try_recv().is_err());
+    assert_eq!(runtime.stop().await.unwrap(), Position::ORIGIN);
+}
+
+#[tokio::test]
+async fn queued_groups_outlive() {
+    let (runtime, mut observed, release) = open(2_000_000, 4000, false, 1024).await;
+    // More independent publications than the normal 1,024-entry tail, with
+    // the first callback stalled and every later accepted group still pending.
+    for index in 0..1100 {
+        runtime
+            .records
+            .publish(Observed(index.to_string()))
+            .await
+            .unwrap();
     }
+    assert_eq!(runtime.state.applied(), Position(1100));
+    release.add_permits(1100);
+    for expected in 1..=1100 {
+        let (entries, frontier) = group(&mut observed).await;
+        assert_eq!(frontier, Position(expected));
+        assert_eq!(entries[0].position, Position(expected));
+        let Recorded::Record(Facts::Observed(Observed(value))) = &entries[0].value else {
+            panic!("typed record lost")
+        };
+        assert_eq!(value, &(expected - 1).to_string());
+    }
+    assert_eq!(runtime.stop().await.unwrap(), Position(1100));
+}
+
+#[tokio::test]
+async fn panic_capture_failure() {
+    let runtime = Runtime::<Model>::builder(0, ())
+        .register(Facts::catalog())
+        .require_capture(
+            CaptureLimits {
+                pending_bytes: 4096,
+                max_group_bytes: 4096,
+            },
+            Panics,
+        )
+        .unwrap()
+        .runtime()
+        .await
+        .unwrap();
+    runtime
+        .records
+        .publish(Observed("accepted".into()))
+        .await
+        .unwrap();
+    assert_eq!(
+        runtime.state.wait_until_captured(Position(1)).await,
+        Err(CaptureError::Failed)
+    );
+    runtime.stop().await.unwrap();
+
+    assert_eq!(
+        runtime.state.capture_status(),
+        Err(CaptureError::Failed),
+        "a panicking capture worker is a capture failure the journal keeps"
+    );
 }
 
 /* === Tests === */

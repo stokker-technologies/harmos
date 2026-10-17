@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -187,165 +186,133 @@ impl Source<Bank> for Networked {
 
 /* === Private Functions === */
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("r003_stop_drains", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (recorder, asked) = Recorder::new();
-                    let runtime =
-                        booted(Ledger::default(), |builder| builder.attach(recorder)).await;
+#[tokio::test]
+async fn r003_stop_drains() {
+    let (recorder, asked) = Recorder::new();
+    let runtime = booted(Ledger::default(), |builder| builder.attach(recorder)).await;
 
-                    for amount in [10, 20] {
-                        runtime
-                            .state
-                            .commit(deposit(amount))
-                            .await
-                            .expect("accepted");
-                    }
-                    let applied = runtime.state.applied();
-                    let settled = runtime.stop().await.unwrap();
+    for amount in [10, 20] {
+        runtime
+            .state
+            .commit(deposit(amount))
+            .await
+            .expect("accepted");
+    }
+    let applied = runtime.state.applied();
+    let settled = runtime.stop().await.unwrap();
 
-                    // `stop` answered, so the join came last; what the probe wrote down is
-                    // everything that happened before it.
-                    let asked = asked.lock().expect("the probe is never poisoned").clone();
+    // `stop` answered, so the join came last; what the probe wrote down is
+    // everything that happened before it.
+    let asked = asked.lock().expect("the probe is never poisoned").clone();
 
-                    assert_eq!(
-                        settled, applied,
-                        "the frontier stop reports is read back after the flush"
-                    );
-                    assert!(
-                        asked.ends_with(&["drain", "flush", "drain"]),
-                        "the final drain precedes the flush, and the one drain after it is \
+    assert_eq!(
+        settled, applied,
+        "the frontier stop reports is read back after the flush"
+    );
+    assert!(
+        asked.ends_with(&["drain", "flush", "drain"]),
+        "the final drain precedes the flush, and the one drain after it is \
          the read-back of what the flush made durable: {asked:?}"
-                    );
-                    assert_eq!(
-                        asked.iter().filter(|verb| **verb == "flush").count(),
-                        1,
-                        "flush happens once, at stop, never per drain"
-                    );
-                });
-        });
+    );
+    assert_eq!(
+        asked.iter().filter(|verb| **verb == "flush").count(),
+        1,
+        "flush happens once, at stop, never per drain"
+    );
+}
+
+#[tokio::test]
+async fn recorder_resumes_own() {
+    let (tape, kept) = Tape::new();
+
+    let runtime = recording(tape).await;
+    for sample in 1..=5 {
+        runtime.streams.publish(pulse(sample));
     }
-    {
-        scenario_runtime::check("recorder_resumes_own", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (tape, kept) = Tape::new();
+    runtime.stop().await.unwrap();
 
-                    let runtime = recording(tape).await;
-                    for sample in 1..=5 {
-                        runtime.streams.publish(pulse(sample));
-                    }
-                    runtime.stop().await.unwrap();
+    assert_eq!(
+        kept.cursor.load(Ordering::Acquire),
+        5,
+        "the first supervisor made every published row durable"
+    );
+    assert_eq!(
+        *kept.samples.lock().expect("the tape is never poisoned"),
+        vec![1, 2, 3, 4, 5]
+    );
+    assert_eq!(
+        kept.flushed.load(Ordering::Acquire),
+        1,
+        "a stream recorder rides the same stop order as every other fold"
+    );
 
-                    assert_eq!(
-                        kept.cursor.load(Ordering::Acquire),
-                        5,
-                        "the first supervisor made every published row durable"
-                    );
-                    assert_eq!(
-                        *kept.samples.lock().expect("the tape is never poisoned"),
-                        vec![1, 2, 3, 4, 5]
-                    );
-                    assert_eq!(
-                        kept.flushed.load(Ordering::Acquire),
-                        1,
-                        "a stream recorder rides the same stop order as every other fold"
-                    );
-
-                    let runtime = recording(Tape::resuming(&kept)).await;
-                    for sample in 6..=9 {
-                        runtime.streams.publish(pulse(sample));
-                    }
-                    runtime.stop().await.unwrap();
-
-                    assert_eq!(
-                        kept.cursor.load(Ordering::Acquire),
-                        9,
-                        "new rows continue after the durable cursor instead of reusing it"
-                    );
-                    assert_eq!(
-                        *kept.samples.lock().expect("the tape is never poisoned"),
-                        vec![1, 2, 3, 4, 5, 6, 7, 8, 9],
-                        "reattachment neither skips nor repeats a row"
-                    );
-                    assert_eq!(
-                        kept.flushed.load(Ordering::Acquire),
-                        2,
-                        "every attachment is flushed by its own stop"
-                    );
-                });
-        });
+    let runtime = recording(Tape::resuming(&kept)).await;
+    for sample in 6..=9 {
+        runtime.streams.publish(pulse(sample));
     }
-    {
-        scenario_runtime::check("gap_reports_window", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (tape, kept) = Tape::new();
-                    let runtime = recording(tape).await;
+    runtime.stop().await.unwrap();
 
-                    // No await lets the supervisor run until all twelve rows have reached the
-                    // eight-row ring, so the first delivery must account for four evictions.
-                    for sample in 1..=12 {
-                        runtime.streams.publish(pulse(sample));
-                    }
-                    runtime.stop().await.unwrap();
+    assert_eq!(
+        kept.cursor.load(Ordering::Acquire),
+        9,
+        "new rows continue after the durable cursor instead of reusing it"
+    );
+    assert_eq!(
+        *kept.samples.lock().expect("the tape is never poisoned"),
+        vec![1, 2, 3, 4, 5, 6, 7, 8, 9],
+        "reattachment neither skips nor repeats a row"
+    );
+    assert_eq!(
+        kept.flushed.load(Ordering::Acquire),
+        2,
+        "every attachment is flushed by its own stop"
+    );
+}
 
-                    assert_eq!(
-                        *kept.gaps.lock().expect("the tape is never poisoned"),
-                        vec![4],
-                        "(reaches - resume) - delivered rows is the exact missed count"
-                    );
-                    assert_eq!(
-                        *kept.samples.lock().expect("the tape is never poisoned"),
-                        (5..=12).collect::<Vec<_>>(),
-                        "delivery continues from the oldest retained row"
-                    );
-                });
-        });
+#[tokio::test]
+async fn gap_reports_window() {
+    let (tape, kept) = Tape::new();
+    let runtime = recording(tape).await;
+
+    // No await lets the supervisor run until all twelve rows have reached the
+    // eight-row ring, so the first delivery must account for four evictions.
+    for sample in 1..=12 {
+        runtime.streams.publish(pulse(sample));
     }
-    {
-        scenario_runtime::check("recovery_accepts_source", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (copy, stored) = Copied::new();
-                    let live = booted(Ledger::default(), |builder| builder.recover(copy)).await;
+    runtime.stop().await.unwrap();
 
-                    live.state.commit(deposit(40)).await.expect("accepted");
-                    live.state.commit(withdraw(15)).await.expect("accepted");
-                    let expected = ledger(&live).await;
-                    let frontier = live.state.applied();
-                    live.stop().await.unwrap();
+    assert_eq!(
+        *kept.gaps.lock().expect("the tape is never poisoned"),
+        vec![4],
+        "(reaches - resume) - delivered rows is the exact missed count"
+    );
+    assert_eq!(
+        *kept.samples.lock().expect("the tape is never poisoned"),
+        (5..=12).collect::<Vec<_>>(),
+        "delivery continues from the oldest retained row"
+    );
+}
 
-                    let recovered = booted(Ledger::default(), |builder| {
-                        builder.recover(Networked {
-                            inner: Copied::resuming(&stored),
-                        })
-                    })
-                    .await;
+#[tokio::test]
+async fn recovery_accepts_source() {
+    let (copy, stored) = Copied::new();
+    let live = booted(Ledger::default(), |builder| builder.recover(copy)).await;
 
-                    assert_eq!(ledger(&recovered).await, expected);
-                    assert_eq!(recovered.state.applied(), frontier);
-                });
-        });
-    }
+    live.state.commit(deposit(40)).await.expect("accepted");
+    live.state.commit(withdraw(15)).await.expect("accepted");
+    let expected = ledger(&live).await;
+    let frontier = live.state.applied();
+    live.stop().await.unwrap();
+
+    let recovered = booted(Ledger::default(), |builder| {
+        builder.recover(Networked {
+            inner: Copied::resuming(&stored),
+        })
+    })
+    .await;
+
+    assert_eq!(ledger(&recovered).await, expected);
+    assert_eq!(recovered.state.applied(), frontier);
 }
 
 async fn recording(tape: Tape) -> Runtime<Bank> {

@@ -8,8 +8,6 @@
  */
 
 /* === Modules === */
-#[path = "../../../../tests/support/scenarios.rs"]
-mod scenario_runtime;
 
 #[path = "../support/mod.rs"]
 mod support;
@@ -114,417 +112,371 @@ fn ready<S: Clone + 'static>(
     Pin::new(watching).poll_next(&mut context)
 }
 
+#[cfg(feature = "signal")]
 #[test]
-fn contract_scenario() {
-    #[cfg(feature = "signal")]
-    {
-        scenario_runtime::check("aggregate_wire_names", aggregates::wire_names);
-        scenario_runtime::check("series_answers_all", aggregates::series_answers_all);
-        scenario_runtime::check("aggregate_empty_input", aggregates::empty_input);
-        scenario_runtime::check("summary_refuses_order", aggregates::summary_refuses_order);
+fn aggregate_wire_names() {
+    aggregates::wire_names();
+}
+
+#[cfg(feature = "signal")]
+#[test]
+fn series_answers_all() {
+    aggregates::series_answers_all();
+}
+
+#[cfg(feature = "signal")]
+#[test]
+fn aggregate_empty_input() {
+    aggregates::empty_input();
+}
+
+#[cfg(feature = "signal")]
+#[test]
+fn summary_refuses_order() {
+    aggregates::summary_refuses_order();
+}
+
+#[tokio::test]
+async fn overrunning_window_yields() {
+    let runtime = streaming().await;
+    let mut live = runtime.streams.watch::<Pulse>();
+
+    // A hundred thousand rows into a window of eight, published back to back
+    // with the watcher never polled: the deepest lag the facility can express.
+    let published: u64 = 100_000;
+    for sample in 1..=published {
+        runtime.streams.publish(pulse(sample));
     }
-    {
-        scenario_runtime::check("overrunning_window_yields", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = streaming().await;
-                    let mut live = runtime.streams.watch::<Pulse>();
 
-                    // A hundred thousand rows into a window of eight, published back to back
-                    // with the watcher never polled: the deepest lag the facility can express.
-                    let published: u64 = 100_000;
-                    for sample in 1..=published {
-                        runtime.streams.publish(pulse(sample));
-                    }
-
-                    let window = Pulse::WINDOW as u64;
-                    assert_eq!(
-                        next(&mut live).await,
-                        Some(Item::Gap {
-                            missed: published - window
-                        }),
-                        "the missed count is exact, never rounded and never silent"
-                    );
-                    for sample in (published - window + 1)..=published {
-                        assert!(
-                            matches!(
-                                next(&mut live).await,
-                                Some(Item::Row(At { value, .. })) if value == pulse(sample)
-                            ),
-                            "after the gap the watch continues from the oldest retained row"
-                        );
-                    }
-                    assert!(ready(&mut live).is_pending());
-
-                    runtime.stop().await.unwrap();
-                });
-        });
+    let window = Pulse::WINDOW as u64;
+    assert_eq!(
+        next(&mut live).await,
+        Some(Item::Gap {
+            missed: published - window
+        }),
+        "the missed count is exact, never rounded and never silent"
+    );
+    for sample in (published - window + 1)..=published {
+        assert!(
+            matches!(
+                next(&mut live).await,
+                Some(Item::Row(At { value, .. })) if value == pulse(sample)
+            ),
+            "after the gap the watch continues from the oldest retained row"
+        );
     }
-    {
-        scenario_runtime::check("rows_gaps_account", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_multi_thread();
-            scenario_executor.worker_threads(2);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = streaming().await;
-                    let mut live = runtime.streams.watch::<Pulse>();
-                    let streams = runtime.streams.clone();
+    assert!(ready(&mut live).is_pending());
 
-                    // A bare-thread publisher races an actively polling watcher. However the
-                    // two interleave, the invariant is total accounting: every published row
-                    // is either delivered or inside an exact gap count.
-                    let published: u64 = 50_000;
-                    let publisher = std::thread::spawn(move || {
-                        for sample in 1..=published {
-                            streams.publish(pulse(sample));
-                        }
-                    });
+    runtime.stop().await.unwrap();
+}
 
-                    let mut delivered: u64 = 0;
-                    let mut missed: u64 = 0;
-                    let mut last = 0;
-                    while delivered + missed < published {
-                        match next(&mut live).await.expect("the watch is live") {
-                            Item::Row(At { value, .. }) => {
-                                assert!(
-                                    value.sample > last,
-                                    "delivery is in publish order with no repeats: {} then {}",
-                                    last,
-                                    value.sample
-                                );
-                                last = value.sample;
-                                delivered += 1;
-                            }
-                            Item::Gap { missed: count } => missed += count,
-                        }
-                    }
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn rows_gaps_account() {
+    let runtime = streaming().await;
+    let mut live = runtime.streams.watch::<Pulse>();
+    let streams = runtime.streams.clone();
 
-                    publisher.join().expect("the publisher panics nowhere");
-                    assert_eq!(
-                        delivered + missed,
-                        published,
-                        "no row is lost silently: what was not delivered was counted"
-                    );
-                    assert_eq!(last, published, "the newest row is always delivered");
+    // A bare-thread publisher races an actively polling watcher. However the
+    // two interleave, the invariant is total accounting: every published row
+    // is either delivered or inside an exact gap count.
+    let published: u64 = 50_000;
+    let publisher = std::thread::spawn(move || {
+        for sample in 1..=published {
+            streams.publish(pulse(sample));
+        }
+    });
 
-                    runtime.stop().await.unwrap();
-                });
-        });
+    let mut delivered: u64 = 0;
+    let mut missed: u64 = 0;
+    let mut last = 0;
+    while delivered + missed < published {
+        match next(&mut live).await.expect("the watch is live") {
+            Item::Row(At { value, .. }) => {
+                assert!(
+                    value.sample > last,
+                    "delivery is in publish order with no repeats: {} then {}",
+                    last,
+                    value.sample
+                );
+                last = value.sample;
+                delivered += 1;
+            }
+            Item::Gap { missed: count } => missed += count,
+        }
     }
-    {
-        scenario_runtime::check("waits_lacks_consumer", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = streaming().await;
-                    // A watcher that makes no progress at all while publishing runs, and a
-                    // snapshot taken before it: zero consumer progress of any kind.
-                    let mut stalled = runtime.streams.watch::<Pulse>();
-                    let held: Vec<At<Pulse>> = runtime
-                        .streams
-                        .query::<Pulse>(..)
-                        .await
-                        .expect("nothing was evicted yet")
-                        .collect();
-                    let streams = runtime.streams.clone();
 
-                    // A bare OS thread with no async runtime underneath: a publish that
-                    // parked, waited on capacity, or required polling could never complete
-                    // here. Totality under overrun is the whole claim, so no timing is read.
-                    let published: u64 = 10_000;
-                    let publisher = std::thread::spawn(move || {
-                        for sample in 1..=published {
-                            streams.publish(pulse(sample));
-                        }
-                    });
-                    publisher.join().expect("publish is sync and infallible");
+    publisher.join().expect("the publisher panics nowhere");
+    assert_eq!(
+        delivered + missed,
+        published,
+        "no row is lost silently: what was not delivered was counted"
+    );
+    assert_eq!(last, published, "the newest row is always delivered");
 
-                    assert!(
-                        held.is_empty(),
-                        "the earlier snapshot is unmoved by publishes"
-                    );
+    runtime.stop().await.unwrap();
+}
 
-                    // The stalled watcher, polled only now, accounts for every row: the exact
-                    // gap, then the newest window in order.
-                    let window = Pulse::WINDOW as u64;
-                    assert_eq!(
-                        next(&mut stalled).await,
-                        Some(Item::Gap {
-                            missed: published - window
-                        })
-                    );
-                    for sample in (published - window + 1)..=published {
-                        assert!(matches!(
-                            next(&mut stalled).await,
-                            Some(Item::Row(At { value, .. })) if value == pulse(sample)
-                        ));
-                    }
+#[tokio::test]
+async fn waits_lacks_consumer() {
+    let runtime = streaming().await;
+    // A watcher that makes no progress at all while publishing runs, and a
+    // snapshot taken before it: zero consumer progress of any kind.
+    let mut stalled = runtime.streams.watch::<Pulse>();
+    let held: Vec<At<Pulse>> = runtime
+        .streams
+        .query::<Pulse>(..)
+        .await
+        .expect("nothing was evicted yet")
+        .collect();
+    let streams = runtime.streams.clone();
 
-                    runtime.stop().await.unwrap();
-                });
-        });
+    // A bare OS thread with no async runtime underneath: a publish that
+    // parked, waited on capacity, or required polling could never complete
+    // here. Totality under overrun is the whole claim, so no timing is read.
+    let published: u64 = 10_000;
+    let publisher = std::thread::spawn(move || {
+        for sample in 1..=published {
+            streams.publish(pulse(sample));
+        }
+    });
+    publisher.join().expect("publish is sync and infallible");
+
+    assert!(
+        held.is_empty(),
+        "the earlier snapshot is unmoved by publishes"
+    );
+
+    // The stalled watcher, polled only now, accounts for every row: the exact
+    // gap, then the newest window in order.
+    let window = Pulse::WINDOW as u64;
+    assert_eq!(
+        next(&mut stalled).await,
+        Some(Item::Gap {
+            missed: published - window
+        })
+    );
+    for sample in (published - window + 1)..=published {
+        assert!(matches!(
+            next(&mut stalled).await,
+            Some(Item::Row(At { value, .. })) if value == pulse(sample)
+        ));
     }
-    {
-        scenario_runtime::check("refused_never_truncated", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = streaming().await;
 
-                    // Advance the journal between publishes so stamps genuinely move.
-                    for sample in 1..=3u64 {
-                        runtime.state.commit(deposit(1)).await.expect("accepted");
-                        runtime.streams.publish(pulse(sample));
-                    }
+    runtime.stop().await.unwrap();
+}
 
-                    let complete: Vec<u64> = runtime
-                        .streams
-                        .query::<Pulse>(..)
-                        .await
-                        .expect("a window that never evicted answers any range completely")
-                        .map(|At { value, .. }| value.sample)
-                        .collect();
-                    assert_eq!(complete, vec![1, 2, 3]);
+#[tokio::test]
+async fn refused_never_truncated() {
+    let runtime = streaming().await;
 
-                    // Nine more pushes the first rows out of the window of eight.
-                    for sample in 4..=12u64 {
-                        runtime.state.commit(deposit(1)).await.expect("accepted");
-                        runtime.streams.publish(pulse(sample));
-                    }
-
-                    assert_eq!(
-                        runtime
-                            .streams
-                            .query::<Pulse>(..)
-                            .await
-                            .expect_err("an unbounded start reaches beneath the window"),
-                        BeneathWindow::Unserved,
-                        "with no series adapter attached the window is the whole served history"
-                    );
-                    assert_eq!(
-                        runtime
-                            .streams
-                            .query::<Pulse>(Position::ORIGIN..)
-                            .await
-                            .expect_err("the origin lies beneath the floor"),
-                        BeneathWindow::Unserved,
-                    );
-
-                    // A start the caller actually holds — the stamp of a row still retained —
-                    // is answerable, and completely so.
-                    let retained: Vec<u64> = runtime
-                        .streams
-                        .query::<Pulse>(Position(5)..)
-                        .await
-                        .expect("the range starts at a retained stamp above the floor")
-                        .map(|At { value, .. }| value.sample)
-                        .collect();
-                    assert_eq!(retained, vec![5, 6, 7, 8, 9, 10, 11, 12]);
-
-                    runtime.stop().await.unwrap();
-                });
-        });
+    // Advance the journal between publishes so stamps genuinely move.
+    for sample in 1..=3u64 {
+        runtime.state.commit(deposit(1)).await.expect("accepted");
+        runtime.streams.publish(pulse(sample));
     }
-    {
-        scenario_runtime::check("promises_state_consistency", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = streaming().await;
 
-                    let first = runtime.state.commit(deposit(10)).await.expect("accepted");
-                    // The journal now sits idle while rows keep flowing: two publishes at
-                    // different wall-clock moments carry the same unchanged stamp.
-                    runtime.streams.publish(pulse(1));
-                    runtime.streams.publish(pulse(2));
+    let complete: Vec<u64> = runtime
+        .streams
+        .query::<Pulse>(..)
+        .await
+        .expect("a window that never evicted answers any range completely")
+        .map(|At { value, .. }| value.sample)
+        .collect();
+    assert_eq!(complete, vec![1, 2, 3]);
 
-                    let second = runtime.state.commit(deposit(20)).await.expect("accepted");
-                    runtime.streams.publish(pulse(3));
+    // Nine more pushes the first rows out of the window of eight.
+    for sample in 4..=12u64 {
+        runtime.state.commit(deposit(1)).await.expect("accepted");
+        runtime.streams.publish(pulse(sample));
+    }
 
-                    let cut: Vec<u64> = runtime
-                        .streams
-                        .query::<Pulse>(..)
-                        .as_of(first.position)
-                        .await
-                        .expect("nothing was evicted")
-                        .map(|At { value, .. }| value.sample)
-                        .collect();
-                    assert_eq!(
-                        cut,
-                        vec![1, 2],
-                        "later wall-clock rows under the unchanged stamp witnessed state no \
+    assert_eq!(
+        runtime
+            .streams
+            .query::<Pulse>(..)
+            .await
+            .expect_err("an unbounded start reaches beneath the window"),
+        BeneathWindow::Unserved,
+        "with no series adapter attached the window is the whole served history"
+    );
+    assert_eq!(
+        runtime
+            .streams
+            .query::<Pulse>(Position::ORIGIN..)
+            .await
+            .expect_err("the origin lies beneath the floor"),
+        BeneathWindow::Unserved,
+    );
+
+    // A start the caller actually holds — the stamp of a row still retained —
+    // is answerable, and completely so.
+    let retained: Vec<u64> = runtime
+        .streams
+        .query::<Pulse>(Position(5)..)
+        .await
+        .expect("the range starts at a retained stamp above the floor")
+        .map(|At { value, .. }| value.sample)
+        .collect();
+    assert_eq!(retained, vec![5, 6, 7, 8, 9, 10, 11, 12]);
+
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn promises_state_consistency() {
+    let runtime = streaming().await;
+
+    let first = runtime.state.commit(deposit(10)).await.expect("accepted");
+    // The journal now sits idle while rows keep flowing: two publishes at
+    // different wall-clock moments carry the same unchanged stamp.
+    runtime.streams.publish(pulse(1));
+    runtime.streams.publish(pulse(2));
+
+    let second = runtime.state.commit(deposit(20)).await.expect("accepted");
+    runtime.streams.publish(pulse(3));
+
+    let cut: Vec<u64> = runtime
+        .streams
+        .query::<Pulse>(..)
+        .as_of(first.position)
+        .await
+        .expect("nothing was evicted")
+        .map(|At { value, .. }| value.sample)
+        .collect();
+    assert_eq!(
+        cut,
+        vec![1, 2],
+        "later wall-clock rows under the unchanged stamp witnessed state no \
          newer than the cutoff, so both are included and the later row is not"
-                    );
+    );
 
-                    let all: Vec<u64> = runtime
-                        .streams
-                        .query::<Pulse>(..)
-                        .as_of(second.position)
-                        .await
-                        .expect("nothing was evicted")
-                        .map(|At { value, .. }| value.sample)
-                        .collect();
-                    assert_eq!(all, vec![1, 2, 3]);
+    let all: Vec<u64> = runtime
+        .streams
+        .query::<Pulse>(..)
+        .as_of(second.position)
+        .await
+        .expect("nothing was evicted")
+        .map(|At { value, .. }| value.sample)
+        .collect();
+    assert_eq!(all, vec![1, 2, 3]);
 
-                    runtime.stop().await.unwrap();
-                });
-        });
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn demand_reflects_watchers() {
+    let runtime = streaming().await;
+    let demand = runtime.streams.demand::<Pulse>();
+
+    assert_eq!(*demand.borrow(), 0, "an unobserved stream has zero demand");
+
+    let first = runtime.streams.watch::<Pulse>();
+    let second = runtime.streams.watch::<Pulse>();
+    let other = runtime.streams.watch::<Reading>();
+
+    assert_eq!(*demand.borrow(), 2);
+    assert_eq!(
+        *runtime.streams.demand::<Reading>().borrow(),
+        1,
+        "demand is per stream: the other feed's watcher is not this one's"
+    );
+
+    drop(first);
+    assert_eq!(*demand.borrow(), 1);
+    drop(second);
+    drop(other);
+    assert_eq!(*demand.borrow(), 0, "demand falls back to zero on drop");
+
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn streams_ac003_demand() {
+    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
+        .register(support::catalog())
+        .register(streams())
+        .attach_streams(Selecting)
+        .runtime()
+        .await
+        .expect("the catalog and attachment are honorable");
+    let pulse_demand = runtime.streams.demand::<Pulse>();
+    let reading_demand = runtime.streams.demand::<Reading>();
+
+    assert_eq!(
+        *pulse_demand.borrow(),
+        1,
+        "the attached consumer counts for the stream it selected"
+    );
+    assert_eq!(
+        *reading_demand.borrow(),
+        0,
+        "selection is per definition, not per facility"
+    );
+
+    runtime.stop().await.unwrap();
+
+    assert_eq!(
+        *pulse_demand.borrow(),
+        0,
+        "the consumer leaves demand when its supervisor joins"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn capture_loop_pattern() {
+    let runtime = streaming().await;
+    let capture = Arc::new(AtomicBool::new(false));
+
+    // The capture loop from the spec, verbatim in shape: an application task
+    // that turns its source on while anyone is looking and off when nobody is.
+    // The acknowledgement channel stands in for the hardware call, so the test
+    // observes transitions instead of sleeping.
+    let (acknowledged, mut acknowledgements) = tokio::sync::watch::channel(false);
+    let mut demand = runtime.streams.demand::<Pulse>();
+    let looped = {
+        let capture = Arc::clone(&capture);
+        tokio::spawn(async move {
+            while demand.changed().await.is_ok() {
+                if *demand.borrow() > 0 {
+                    capture.store(true, Ordering::Release);
+                    acknowledged.send_replace(true);
+                } else {
+                    capture.store(false, Ordering::Release);
+                    acknowledged.send_replace(false);
+                }
+            }
+        })
+    };
+
+    let watching = runtime.streams.watch::<Pulse>();
+    while !*acknowledgements.borrow_and_update() {
+        acknowledgements.changed().await.expect("the loop is alive");
     }
-    {
-        scenario_runtime::check("demand_reflects_watchers", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = streaming().await;
-                    let demand = runtime.streams.demand::<Pulse>();
+    assert!(
+        capture.load(Ordering::Acquire),
+        "a watcher appearing turns capture on"
+    );
 
-                    assert_eq!(*demand.borrow(), 0, "an unobserved stream has zero demand");
-
-                    let first = runtime.streams.watch::<Pulse>();
-                    let second = runtime.streams.watch::<Pulse>();
-                    let other = runtime.streams.watch::<Reading>();
-
-                    assert_eq!(*demand.borrow(), 2);
-                    assert_eq!(
-                        *runtime.streams.demand::<Reading>().borrow(),
-                        1,
-                        "demand is per stream: the other feed's watcher is not this one's"
-                    );
-
-                    drop(first);
-                    assert_eq!(*demand.borrow(), 1);
-                    drop(second);
-                    drop(other);
-                    assert_eq!(*demand.borrow(), 0, "demand falls back to zero on drop");
-
-                    runtime.stop().await.unwrap();
-                });
-        });
+    drop(watching);
+    while *acknowledgements.borrow_and_update() {
+        acknowledgements.changed().await.expect("the loop is alive");
     }
-    {
-        scenario_runtime::check("streams_ac003_demand", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-                        .register(support::catalog())
-                        .register(streams())
-                        .attach_streams(Selecting)
-                        .runtime()
-                        .await
-                        .expect("the catalog and attachment are honorable");
-                    let pulse_demand = runtime.streams.demand::<Pulse>();
-                    let reading_demand = runtime.streams.demand::<Reading>();
+    assert!(
+        !capture.load(Ordering::Acquire),
+        "the last watcher leaving turns capture off"
+    );
 
-                    assert_eq!(
-                        *pulse_demand.borrow(),
-                        1,
-                        "the attached consumer counts for the stream it selected"
-                    );
-                    assert_eq!(
-                        *reading_demand.borrow(),
-                        0,
-                        "selection is per definition, not per facility"
-                    );
+    // The loop ends when the facility is gone entirely — no lifecycle control
+    // was ever exercised by the substrate itself. Stopping ends delivery; it is
+    // dropping the last `Streams` handle that closes the demand channel, and
+    // the runtime holds one for as long as it is alive.
+    runtime.stop().await.unwrap();
+    drop(runtime);
+    looped.await.expect("the capture loop ends without panic");
+}
 
-                    runtime.stop().await.unwrap();
-
-                    assert_eq!(
-                        *pulse_demand.borrow(),
-                        0,
-                        "the consumer leaves demand when its supervisor joins"
-                    );
-                });
-        });
-    }
-    {
-        scenario_runtime::check("capture_loop_pattern", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_multi_thread();
-            scenario_executor.worker_threads(2);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = streaming().await;
-                    let capture = Arc::new(AtomicBool::new(false));
-
-                    // The capture loop from the spec, verbatim in shape: an application task
-                    // that turns its source on while anyone is looking and off when nobody is.
-                    // The acknowledgement channel stands in for the hardware call, so the test
-                    // observes transitions instead of sleeping.
-                    let (acknowledged, mut acknowledgements) = tokio::sync::watch::channel(false);
-                    let mut demand = runtime.streams.demand::<Pulse>();
-                    let looped = {
-                        let capture = Arc::clone(&capture);
-                        tokio::spawn(async move {
-                            while demand.changed().await.is_ok() {
-                                if *demand.borrow() > 0 {
-                                    capture.store(true, Ordering::Release);
-                                    acknowledged.send_replace(true);
-                                } else {
-                                    capture.store(false, Ordering::Release);
-                                    acknowledged.send_replace(false);
-                                }
-                            }
-                        })
-                    };
-
-                    let watching = runtime.streams.watch::<Pulse>();
-                    while !*acknowledgements.borrow_and_update() {
-                        acknowledgements.changed().await.expect("the loop is alive");
-                    }
-                    assert!(
-                        capture.load(Ordering::Acquire),
-                        "a watcher appearing turns capture on"
-                    );
-
-                    drop(watching);
-                    while *acknowledgements.borrow_and_update() {
-                        acknowledgements.changed().await.expect("the loop is alive");
-                    }
-                    assert!(
-                        !capture.load(Ordering::Acquire),
-                        "the last watcher leaving turns capture off"
-                    );
-
-                    // The loop ends when the facility is gone entirely — no lifecycle control
-                    // was ever exercised by the substrate itself. Stopping ends delivery; it is
-                    // dropping the last `Streams` handle that closes the demand channel, and
-                    // the runtime holds one for as long as it is alive.
-                    runtime.stop().await.unwrap();
-                    drop(runtime);
-                    looped.await.expect("the capture loop ends without panic");
-                });
-        });
-    }
-    {
-        scenario_runtime::check("streams_stop_ends", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
-
+#[tokio::test]
+async fn streams_stop_ends() {
     let runtime = streaming().await;
     let mut live = runtime.streams.watch::<Pulse>();
 
@@ -543,100 +495,75 @@ fn contract_scenario() {
         None,
         "every row published before the stop is delivered, then the watch ends"
     );
+}
 
-});
-        });
+#[tokio::test]
+async fn catalog_refuses_boot() {
+    let refused = Runtime::<Bank>::builder(Ledger::default(), ())
+        .register(support::catalog())
+        .register(streams())
+        .register(colliding::Bank::catalog())
+        .runtime()
+        .await;
+
+    let Err(refused) = refused else {
+        panic!("two definitions share an id; the boot cannot honor both");
+    };
+    assert!(
+        refused.to_string().contains("pulse"),
+        "the refusal names the colliding id: {refused}"
+    );
+}
+
+#[tokio::test]
+async fn window_refuses_boot() {
+    #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+    struct Hollow;
+
+    impl Stream<Bank> for Hollow {
+        const ID: &'static str = "hollow";
+        const VERSION: u32 = 1;
+        const WINDOW: usize = 0;
     }
-    {
-        scenario_runtime::check("catalog_refuses_boot", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let refused = Runtime::<Bank>::builder(Ledger::default(), ())
-                        .register(support::catalog())
-                        .register(streams())
-                        .register(colliding::Bank::catalog())
-                        .runtime()
-                        .await;
 
-                    let Err(refused) = refused else {
-                        panic!("two definitions share an id; the boot cannot honor both");
-                    };
-                    assert!(
-                        refused.to_string().contains("pulse"),
-                        "the refusal names the colliding id: {refused}"
-                    );
-                });
-        });
-    }
-    {
-        scenario_runtime::check("window_refuses_boot", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-                    struct Hollow;
+    let refused = Runtime::<Bank>::builder(Ledger::default(), ())
+        .register(support::catalog())
+        .register([Hollow::definition()])
+        .runtime()
+        .await;
 
-                    impl Stream<Bank> for Hollow {
-                        const ID: &'static str = "hollow";
-                        const VERSION: u32 = 1;
-                        const WINDOW: usize = 0;
-                    }
+    let Err(refused) = refused else {
+        panic!("a window of zero rows retains nothing and cannot be honored");
+    };
+    assert!(
+        refused.to_string().contains("hollow"),
+        "the refusal names the stream it cannot honor: {refused}"
+    );
+}
 
-                    let refused = Runtime::<Bank>::builder(Ledger::default(), ())
-                        .register(support::catalog())
-                        .register([Hollow::definition()])
-                        .runtime()
-                        .await;
+#[tokio::test]
+async fn streams_locked_surface() {
+    let runtime = streaming().await;
 
-                    let Err(refused) = refused else {
-                        panic!("a window of zero rows retains nothing and cannot be honored");
-                    };
-                    assert!(
-                        refused.to_string().contains("hollow"),
-                        "the refusal names the stream it cannot honor: {refused}"
-                    );
-                });
-        });
-    }
-    {
-        scenario_runtime::check("streams_locked_surface", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = streaming().await;
+    runtime.streams.publish(pulse(7));
 
-                    runtime.streams.publish(pulse(7));
+    let at = runtime.state.applied();
+    let rows: Vec<At<Pulse>> = runtime
+        .streams
+        .query::<Pulse>(..)
+        .as_of(at)
+        .await
+        .expect("nothing was evicted")
+        .collect();
+    let mut live = runtime.streams.watch::<Pulse>();
+    let demand = runtime.streams.demand::<Pulse>();
 
-                    let at = runtime.state.applied();
-                    let rows: Vec<At<Pulse>> = runtime
-                        .streams
-                        .query::<Pulse>(..)
-                        .as_of(at)
-                        .await
-                        .expect("nothing was evicted")
-                        .collect();
-                    let mut live = runtime.streams.watch::<Pulse>();
-                    let demand = runtime.streams.demand::<Pulse>();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(*demand.borrow(), 1);
+    runtime.streams.publish(pulse(8));
+    assert!(matches!(next(&mut live).await, Some(Item::Row(_))));
 
-                    assert_eq!(rows.len(), 1);
-                    assert_eq!(*demand.borrow(), 1);
-                    runtime.streams.publish(pulse(8));
-                    assert!(matches!(next(&mut live).await, Some(Item::Row(_))));
-
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
+    runtime.stop().await.unwrap();
 }
 
 #[allow(dead_code)]

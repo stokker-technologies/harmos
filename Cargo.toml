@@ -2,14 +2,8 @@
 
 [workspace]
 resolver = "3"
-members = [
-  "crates/*",
-  "tests/fixtures/grpc",
-  "tests/fixtures/lifecycle",
-  "tests/support/jsonl-adapter",
-  "tests/fixtures/observer",
-  "examples/schematic/*",
-]
+members = ["crates/*"]
+exclude = ["crates/harmos-guest/tests/fixtures/sandbox", "examples/schematic"]
 
 # === Workspace Package ===
 
@@ -138,6 +132,30 @@ all = "warn"
 # === Lints ===
 
 # === Profiles ===
+
+[profile.dev]
+debug = "line-tables-only"
+
+# Measured 2026-10-17: guest stories compile components with Cranelift; unoptimized it costs 25 s per story, optimized 1.7 s.
+[profile.dev.package.cranelift-codegen]
+opt-level = 3
+
+[profile.dev.package.regalloc2]
+opt-level = 3
+
+[profile.dev.package.wasmtime-internal-cranelift]
+opt-level = 3
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+
+[profile.bench]
+inherits = "release"
+lto = false
+incremental = false
+debug = "line-tables-only"
 
 # === Patches ===
 

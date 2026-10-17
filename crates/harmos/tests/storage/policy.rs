@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -52,27 +51,23 @@ fn construct(settings: StorageSettings) -> harmos::Result<StorageManager> {
 use super::*;
 
 #[test]
-fn contract_scenario() {
-    {
-        scenario_runtime::check("response_fits_read_budget", || {
-            let mut settings = storage_settings();
-            construct(settings.clone()).unwrap();
-            settings.response.batch_bytes =
-                NonZeroUsize::new(settings.budget.read_memory_bytes.get() + 1).unwrap();
-            assert!(construct(settings.clone()).is_err());
-            settings.response.batch_bytes = settings.budget.read_memory_bytes;
-            construct(settings).unwrap();
-        });
-    }
-    {
-        scenario_runtime::check("query_counts_bounded", || {
-            let mut settings = storage_settings();
-            settings.request.max_active_queries =
-                NonZeroUsize::new(tokio::sync::Semaphore::MAX_PERMITS + 1).unwrap();
-            assert!(construct(settings.clone()).is_err());
-            settings.request.max_active_queries = NonZeroUsize::MIN;
-            settings.request.max_pending_queries = NonZeroUsize::MIN;
-            construct(settings).unwrap();
-        });
-    }
+fn response_fits_read_budget() {
+    let mut settings = storage_settings();
+    construct(settings.clone()).unwrap();
+    settings.response.batch_bytes =
+        NonZeroUsize::new(settings.budget.read_memory_bytes.get() + 1).unwrap();
+    assert!(construct(settings.clone()).is_err());
+    settings.response.batch_bytes = settings.budget.read_memory_bytes;
+    construct(settings).unwrap();
+}
+
+#[test]
+fn query_counts_bounded() {
+    let mut settings = storage_settings();
+    settings.request.max_active_queries =
+        NonZeroUsize::new(tokio::sync::Semaphore::MAX_PERMITS + 1).unwrap();
+    assert!(construct(settings.clone()).is_err());
+    settings.request.max_active_queries = NonZeroUsize::MIN;
+    settings.request.max_pending_queries = NonZeroUsize::MIN;
+    construct(settings).unwrap();
 }

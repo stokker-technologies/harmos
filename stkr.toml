@@ -33,6 +33,12 @@ step_timeout_seconds = 600
 [conventions.rust]
 exclude = ["schematic-contract"]
 
+[conventions.testing.limits]
+unit = 512
+integration = 256
+acceptance = 128
+system = 64
+
 [conventions.ci.multitask]
 "test_linux" = ["packages:restore", "test", "packages:validate", "packages:export"]
 "test_windows" = ["packages:restore", "test", "packages:validate", "packages:export"]

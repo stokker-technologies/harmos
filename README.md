@@ -100,7 +100,8 @@ cd harmos
 mise trust
 mise install --locked
 mise run sync
-mise run run:schematic
+mise run build
+target/debug/schematic-cli
 ```
 
 Install [mise](https://mise.jdx.dev) first. The walkthrough runs in the terminal
@@ -125,21 +126,21 @@ and propose a route, apply the proposal as a host transaction, undo/redo, and
 save/reopen the document.
 
 ```sh
-mise run run:schematic:sidecar
-mise run run:schematic:guest
+target/debug/schematic-cli
+target/debug/schematic-cli --guest target/fixtures/schematic-guest/schematic_guest.component.wasm
 ```
 
-Both plugins implement `ValidateSchematic`, `ProposeRoute`, and the streaming
+`mise run build` builds the workspace and the example's CLI, sidecar and guest
+component once. Without a flag the CLI loads the sidecar beside it. Both plugins implement `ValidateSchematic`, `ProposeRoute`, and the streaming
 `AnalyzeSchematic`. The native sidecar additionally implements `ListDirectories`,
 which lists immediate subdirectories of its explicitly configured working
 directory. The guest has no filesystem access and omits that operation.
 
 The [advanced follow-on](examples/schematic/cli/src/advanced.rs) demonstrates
 bounded streaming, cancellation with settlement, and native directory access.
-The [simulation test](examples/schematic/app/tests/app/simulation.rs) checks
-repeatability, replay, and inverses. Reusable [JSONL test support](tests/support/jsonl-adapter/)
-provides the example's persistence adapter; shutdown stress scenarios live in
-[test fixtures](tests/fixtures/lifecycle/).
+The example's [JSONL storage adapter](examples/schematic/storage/) shows how an
+application owns its persistence format. The example is a separate Cargo workspace
+under `examples/schematic/` and is also the system fixture of the Harmos test suite.
 
 ## Cargo Features
 
@@ -609,7 +610,7 @@ these native benchmarks do not establish Wasm guest performance.
 - [Runnable Examples](examples/) — application composition and plugin integration.
 - [Public Rust API](crates/harmos/src/lib.rs) — the SDK facade and module documentation.
 - [Cargo Features](crates/harmos/Cargo.toml) — select the facilities your application needs.
-- [Storage Adapter](tests/support/jsonl-adapter/) — own your persistence format.
+- [Storage Adapter](examples/schematic/storage/) — own your persistence format.
 
 ## Project Status & Roadmap
 
@@ -633,8 +634,7 @@ The consuming application owns authentication, connections, metadata and cancell
 Use the setup commands in [Quick Start](#quick-start), then choose a task:
 
 ```sh
-mise run run:schematic:sidecar # Run the native plugin example
-mise run run:schematic:guest # Run the sandboxed Wasm example
+mise run build                  # Build the workspace and the example once
 mise run check                  # Run repository checks
 mise run test                   # Run the test suite
 mise run bench                  # Record benchmark results

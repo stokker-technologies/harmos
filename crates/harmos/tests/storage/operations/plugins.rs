@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -196,207 +195,186 @@ async fn seed(fixture: &Fixture, values: &[u64]) {
 
 /* === Tests === */
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("requirements_route_plugins", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let fixture = Fixture::new(config()).await;
-                    Operations::register(
-                        &fixture.runtime.operations,
-                        "storage",
-                        Lanes::Open,
-                        Arc::new(fixture.storage.clone()),
-                    )
-                    .unwrap();
-                    let mut host = Host {
-                        operations: fixture.runtime.operations.clone(),
-                        callers: BTreeMap::new(),
-                    };
-                    let definitions = PluginDefinitions::new(
-                        [
-                            plugin(
-                                "writer",
-                                vec![
-                                    required::<WriteRecords>(vec![Grant::of(
-                                        WriteRecords::ID,
-                                        "bench",
-                                    )]),
-                                ],
-                            ),
-                            plugin("bystander", Vec::new()),
-                        ],
-                        [],
-                    )
-                    .unwrap();
-                    assert_eq!(definitions.host_requirements().count(), 1);
-                    let mut manager = PluginManager::new(definitions).unwrap();
-                    manager.initialize(&mut host).await.unwrap();
-                    let writer = fixture
-                        .runtime
-                        .operations
-                        .caller(&host.callers["writer"])
-                        .unwrap();
-                    let bystander = fixture
-                        .runtime
-                        .operations
-                        .caller(&host.callers["bystander"])
-                        .unwrap();
+#[tokio::test]
+async fn requirements_route_plugins() {
+    let fixture = Fixture::new(config()).await;
+    Operations::register(
+        &fixture.runtime.operations,
+        "storage",
+        Lanes::Open,
+        Arc::new(fixture.storage.clone()),
+    )
+    .unwrap();
+    let mut host = Host {
+        operations: fixture.runtime.operations.clone(),
+        callers: BTreeMap::new(),
+    };
+    let definitions = PluginDefinitions::new(
+        [
+            plugin(
+                "writer",
+                vec![required::<WriteRecords>(vec![Grant::of(
+                    WriteRecords::ID,
+                    "bench",
+                )])],
+            ),
+            plugin("bystander", Vec::new()),
+        ],
+        [],
+    )
+    .unwrap();
+    assert_eq!(definitions.host_requirements().count(), 1);
+    let mut manager = PluginManager::new(definitions).unwrap();
+    manager.initialize(&mut host).await.unwrap();
+    let writer = fixture
+        .runtime
+        .operations
+        .caller(&host.callers["writer"])
+        .unwrap();
+    let bystander = fixture
+        .runtime
+        .operations
+        .caller(&host.callers["bystander"])
+        .unwrap();
 
-                    super::writes::seed(&fixture).await;
-                    let mut exchange = writer
-                        .exchange::<WriteRecords>(
-                            WriteRequest { scope: None },
-                            super::writes::settings(),
-                            super::writes::settings(),
-                        )
-                        .unwrap();
-                    exchange
-                        .send(super::writes::batch(1, "bench"))
-                        .await
-                        .unwrap();
-                    let cursor = loop {
-                        let receipt = exchange.next().await.unwrap().unwrap();
-                        if let WriteReceipt::Durable(receipt) = &*receipt {
-                            break Arc::new(receipt.cursor.clone());
-                        }
-                    };
-                    // A Second Destination On The Same Invocation Needs Its Own Grant.
-                    exchange
-                        .send(super::writes::batch(2, "other"))
-                        .await
-                        .unwrap();
-                    exchange.finish_input();
-                    while exchange.next().await.unwrap().is_some() {}
-                    let failure = exchange.join().await.unwrap_err();
-                    assert!(matches!(
-                        &failure,
-                        Error::OperationFailed { source, .. }
-                            if matches!(source.downcast_ref::<Error>(), Some(Error::OperationUnauthorized { .. }))
-                    ), "unexpected write failure: {failure:?}");
-                    assert_eq!(fixture.data.records.lock().unwrap().len(), 2);
-                    assert_eq!(fixture.storage.cursor_accepted(), *cursor);
-                    assert!(matches!(
-                        bystander.exchange::<WriteRecords>(
-                            WriteRequest { scope: None },
-                            super::writes::settings(),
-                            super::writes::settings()
-                        ),
-                        Err(Error::OperationUnauthorized { .. })
-                    ));
+    super::writes::seed(&fixture).await;
+    let mut exchange = writer
+        .exchange::<WriteRecords>(
+            WriteRequest { scope: None },
+            super::writes::settings(),
+            super::writes::settings(),
+        )
+        .unwrap();
+    exchange
+        .send(super::writes::batch(1, "bench"))
+        .await
+        .unwrap();
+    let cursor = loop {
+        let receipt = exchange.next().await.unwrap().unwrap();
+        if let WriteReceipt::Durable(receipt) = &*receipt {
+            break Arc::new(receipt.cursor.clone());
+        }
+    };
+    // A Second Destination On The Same Invocation Needs Its Own Grant.
+    exchange
+        .send(super::writes::batch(2, "other"))
+        .await
+        .unwrap();
+    exchange.finish_input();
+    while exchange.next().await.unwrap().is_some() {}
+    let failure = exchange.join().await.unwrap_err();
+    assert!(
+        matches!(
+            &failure,
+            Error::OperationFailed { source, .. }
+                if matches!(source.downcast_ref::<Error>(), Some(Error::OperationUnauthorized { .. }))
+        ),
+        "unexpected write failure: {failure:?}"
+    );
+    assert_eq!(fixture.data.records.lock().unwrap().len(), 2);
+    assert_eq!(fixture.storage.cursor_accepted(), *cursor);
+    assert!(matches!(
+        bystander.exchange::<WriteRecords>(
+            WriteRequest { scope: None },
+            super::writes::settings(),
+            super::writes::settings()
+        ),
+        Err(Error::OperationUnauthorized { .. })
+    ));
 
-                    manager.shutdown(&mut host).await.unwrap();
-                    fixture.finish().await;
-                });
-        });
+    manager.shutdown(&mut host).await.unwrap();
+    fixture.finish().await;
+}
+
+#[tokio::test]
+async fn query_enforces_grants() {
+    let fixture = Fixture::new(config()).await;
+    seed(&fixture, &[9_007_199_254_740_993, 9_007_199_254_740_995]).await;
+    Operations::register(
+        &fixture.runtime.operations,
+        "storage",
+        Lanes::Open,
+        Arc::new(fixture.storage.clone()),
+    )
+    .unwrap();
+    let mut host = Host {
+        operations: fixture.runtime.operations.clone(),
+        callers: BTreeMap::new(),
+    };
+    let schema = super::super::schema();
+    let other = SchemaKey {
+        id: Identifier::new("other").unwrap(),
+        version: NonZeroU32::MIN,
+        ..schema.clone()
+    };
+    let survey = |schema: &SchemaKey| {
+        Grant::of(
+            Query::ID,
+            query(&fixture, schema.clone()).source.grant_scope(),
+        )
+    };
+    let definitions = PluginDefinitions::new(
+        [
+            plugin("reducer", vec![required::<Query>(vec![survey(&schema)])]),
+            plugin("bystander", Vec::new()),
+        ],
+        [],
+    )
+    .unwrap();
+    let mut manager = PluginManager::new(definitions).unwrap();
+    manager.initialize(&mut host).await.unwrap();
+    let reducer = fixture
+        .runtime
+        .operations
+        .caller(&host.callers["reducer"])
+        .unwrap();
+    let bystander = fixture
+        .runtime
+        .operations
+        .caller(&host.callers["bystander"])
+        .unwrap();
+
+    let mut collected = reducer
+        .download::<Query>(query(&fixture, schema.clone()), super::writes::settings())
+        .unwrap();
+    let mut count = None;
+    while let Some(output) = collected.next().await.unwrap() {
+        if let QueryOutput::Batch(batch) = &*output {
+            let values = batch
+                .as_record_batch()
+                .column_by_name("count")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<arrow_array::UInt64Array>()
+                .unwrap();
+            count = Some(values.value(0));
+        }
     }
-    {
-        scenario_runtime::check("query_enforces_grants", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let fixture = Fixture::new(config()).await;
-                    seed(&fixture, &[9_007_199_254_740_993, 9_007_199_254_740_995]).await;
-                    Operations::register(
-                        &fixture.runtime.operations,
-                        "storage",
-                        Lanes::Open,
-                        Arc::new(fixture.storage.clone()),
-                    )
-                    .unwrap();
-                    let mut host = Host {
-                        operations: fixture.runtime.operations.clone(),
-                        callers: BTreeMap::new(),
-                    };
-                    let schema = super::super::schema();
-                    let other = SchemaKey {
-                        id: Identifier::new("other").unwrap(),
-                        version: NonZeroU32::MIN,
-                        ..schema.clone()
-                    };
-                    let survey = |schema: &SchemaKey| {
-                        Grant::of(
-                            Query::ID,
-                            query(&fixture, schema.clone()).source.grant_scope(),
-                        )
-                    };
-                    let definitions = PluginDefinitions::new(
-                        [
-                            plugin("reducer", vec![required::<Query>(vec![survey(&schema)])]),
-                            plugin("bystander", Vec::new()),
-                        ],
-                        [],
-                    )
-                    .unwrap();
-                    let mut manager = PluginManager::new(definitions).unwrap();
-                    manager.initialize(&mut host).await.unwrap();
-                    let reducer = fixture
-                        .runtime
-                        .operations
-                        .caller(&host.callers["reducer"])
-                        .unwrap();
-                    let bystander = fixture
-                        .runtime
-                        .operations
-                        .caller(&host.callers["bystander"])
-                        .unwrap();
+    assert_eq!(count, Some(2));
+    assert_eq!(collected.join().await.unwrap().rows, 1);
+    let mut cross_kind = query(&fixture, schema.clone());
+    cross_kind.source = Source::Stream(harmos::storage::query::StreamSelection {
+        schema: schema.clone(),
+        scope: None,
+        item: None,
+        stream: None,
+        source_start: None,
+        source_end: None,
+        after: 0,
+    });
+    assert!(matches!(
+        reducer.download::<Query>(cross_kind, super::writes::settings()),
+        Err(Error::OperationUnauthorized { .. })
+    ));
 
-                    let mut collected = reducer
-                        .download::<Query>(
-                            query(&fixture, schema.clone()),
-                            super::writes::settings(),
-                        )
-                        .unwrap();
-                    let mut count = None;
-                    while let Some(output) = collected.next().await.unwrap() {
-                        if let QueryOutput::Batch(batch) = &*output {
-                            let values = batch
-                                .as_record_batch()
-                                .column_by_name("count")
-                                .unwrap()
-                                .as_any()
-                                .downcast_ref::<arrow_array::UInt64Array>()
-                                .unwrap();
-                            count = Some(values.value(0));
-                        }
-                    }
-                    assert_eq!(count, Some(2));
-                    assert_eq!(collected.join().await.unwrap().rows, 1);
-                    let mut cross_kind = query(&fixture, schema.clone());
-                    cross_kind.source = Source::Stream(harmos::storage::query::StreamSelection {
-                        schema: schema.clone(),
-                        scope: None,
-                        item: None,
-                        stream: None,
-                        source_start: None,
-                        source_end: None,
-                        after: 0,
-                    });
-                    assert!(matches!(
-                        reducer.download::<Query>(cross_kind, super::writes::settings()),
-                        Err(Error::OperationUnauthorized { .. })
-                    ));
-
-                    assert!(matches!(
-                        reducer
-                            .download::<Query>(query(&fixture, other), super::writes::settings()),
-                        Err(Error::OperationUnauthorized { .. })
-                    ));
-                    assert!(matches!(
-                        bystander
-                            .download::<Query>(query(&fixture, schema), super::writes::settings()),
-                        Err(Error::OperationUnauthorized { .. })
-                    ));
-                    manager.shutdown(&mut host).await.unwrap();
-                    fixture.finish().await;
-                });
-        });
-    }
+    assert!(matches!(
+        reducer.download::<Query>(query(&fixture, other), super::writes::settings()),
+        Err(Error::OperationUnauthorized { .. })
+    ));
+    assert!(matches!(
+        bystander.download::<Query>(query(&fixture, schema), super::writes::settings()),
+        Err(Error::OperationUnauthorized { .. })
+    ));
+    manager.shutdown(&mut host).await.unwrap();
+    fixture.finish().await;
 }

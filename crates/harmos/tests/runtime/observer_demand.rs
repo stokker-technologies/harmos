@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -276,164 +275,150 @@ async fn until(predicate: impl Fn() -> bool) {
     .expect("observer demand converges");
 }
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("demand_survives_reload", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let counts = Arc::new(Counts::default());
-                    let seed = Seed::new(&counts);
-                    let capacity = std::num::NonZeroUsize::new(2).unwrap();
-                    let source = harmos_sidecar::PluginNative::<Producer>::new(capacity).unwrap();
-                    let mut fixture = Managed::attach(
-                        source,
-                        serde_json::to_vec(&seed.id).unwrap(),
-                        Lanes::NativeOpen,
-                        capacity,
-                        vec![RECORD.name(), AUXILIARY.name()],
-                        std::convert::identity,
-                    )
-                    .await;
-                    let demands = fixture.demands();
-                    let first = demands.hold(&RECORD.name()).unwrap();
-                    assert_eq!(counts.prepared.load(SeqCst), 0);
-                    fixture.publication().unwrap();
-                    fixture.initialize().await.unwrap();
-                    tokio::time::timeout(
-                        Duration::from_secs(2),
-                        fixture.ready().wait_for(|ready| *ready),
-                    )
-                    .await
-                    .unwrap()
-                    .unwrap();
-                    assert!(!SEEDS.lock().unwrap().contains_key(&seed.id));
-                    assert_eq!(counts.prepared.load(SeqCst), 1);
-                    until(|| counts.observed.iter().all(|count| count.load(SeqCst) > 0)).await;
-                    assert!(
-                        counts.rejected.load(SeqCst) > 0,
-                        "record demand grants no stream publication"
-                    );
-                    assert_eq!(counts.initialized.load(SeqCst), 1);
-                    assert_eq!(counts.started[0].load(SeqCst), 1);
-                    assert_eq!(counts.started[1].load(SeqCst), 1);
-                    let first_statuses = observers(&fixture.runtime);
-                    assert_eq!(first_statuses.len(), 2);
+#[tokio::test]
+async fn demand_survives_reload() {
+    let counts = Arc::new(Counts::default());
+    let seed = Seed::new(&counts);
+    let capacity = std::num::NonZeroUsize::new(2).unwrap();
+    let source = harmos_sidecar::PluginNative::<Producer>::new(capacity).unwrap();
+    let mut fixture = Managed::attach(
+        source,
+        serde_json::to_vec(&seed.id).unwrap(),
+        Lanes::NativeOpen,
+        capacity,
+        vec![RECORD.name(), AUXILIARY.name()],
+        std::convert::identity,
+    )
+    .await;
+    let demands = fixture.demands();
+    let first = demands.hold(&RECORD.name()).unwrap();
+    assert_eq!(counts.prepared.load(SeqCst), 0);
+    fixture.publication().unwrap();
+    fixture.initialize().await.unwrap();
+    tokio::time::timeout(
+        Duration::from_secs(2),
+        fixture.ready().wait_for(|ready| *ready),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert!(!SEEDS.lock().unwrap().contains_key(&seed.id));
+    assert_eq!(counts.prepared.load(SeqCst), 1);
+    until(|| counts.observed.iter().all(|count| count.load(SeqCst) > 0)).await;
+    assert!(
+        counts.rejected.load(SeqCst) > 0,
+        "record demand grants no stream publication"
+    );
+    assert_eq!(counts.initialized.load(SeqCst), 1);
+    assert_eq!(counts.started[0].load(SeqCst), 1);
+    assert_eq!(counts.started[1].load(SeqCst), 1);
+    let first_statuses = observers(&fixture.runtime);
+    assert_eq!(first_statuses.len(), 2);
 
-                    let second = demands.hold(&RECORD.name()).unwrap();
-                    let auxiliary = demands.hold(&AUXILIARY.name()).unwrap();
-                    let stream = fixture
-                        .runtime
-                        .streams
-                        .publication("demand.row", 1)
-                        .unwrap();
-                    let rows = stream.watch();
-                    drop(first);
-                    let before = counts.observed[0].load(SeqCst);
-                    until(|| counts.observed[0].load(SeqCst) >= before + 3).await;
-                    assert_eq!(counts.stopped[0].load(SeqCst), 0);
-                    drop(second);
-                    until(|| counts.stopped[0].load(SeqCst) == 1).await;
-                    assert_eq!(counts.stopped[1].load(SeqCst), 0);
+    let second = demands.hold(&RECORD.name()).unwrap();
+    let auxiliary = demands.hold(&AUXILIARY.name()).unwrap();
+    let stream = fixture
+        .runtime
+        .streams
+        .publication("demand.row", 1)
+        .unwrap();
+    let rows = stream.watch();
+    drop(first);
+    let before = counts.observed[0].load(SeqCst);
+    until(|| counts.observed[0].load(SeqCst) >= before + 3).await;
+    assert_eq!(counts.stopped[0].load(SeqCst), 0);
+    drop(second);
+    until(|| counts.stopped[0].load(SeqCst) == 1).await;
+    assert_eq!(counts.stopped[1].load(SeqCst), 0);
 
-                    drop(rows);
-                    let before = counts.observed[1].load(SeqCst);
-                    until(|| counts.observed[1].load(SeqCst) >= before + 3).await;
-                    assert_eq!(counts.started[1].load(SeqCst), 1);
-                    assert_eq!(counts.stopped[1].load(SeqCst), 0);
-                    let current = observers(&fixture.runtime);
-                    for (key, status) in &first_statuses {
-                        assert_eq!(current[key].instance, status.instance);
-                    }
-                    drop(auxiliary);
-                    until(|| counts.stopped.iter().all(|count| count.load(SeqCst) == 1)).await;
-                    let mut statuses = fixture.runtime.operations.watch_residents();
-                    tokio::time::timeout(
-                        Duration::from_secs(2),
-                        statuses.wait_for(|values| {
-                            let observers: Vec<_> = values
-                                .values()
-                                .filter(|status| status.kind == Kind::Observer)
-                                .collect();
-                            observers.len() == 2
-                                && observers.iter().all(|status| {
-                                    status.lifecycle.phase() == OperationPhase::Stopped
-                                })
-                        }),
-                    )
-                    .await
-                    .unwrap()
-                    .unwrap();
-
-                    let held = demands.hold(&RECORD.name()).unwrap();
-                    until(|| counts.started.iter().all(|count| count.load(SeqCst) == 2)).await;
-                    fixture.shutdown().await.unwrap();
-                    assert!(
-                        fixture
-                            .runtime
-                            .operations
-                            .resident_definitions()
-                            .iter()
-                            .all(|definition| definition.kind() != Kind::Observer)
-                    );
-                    assert_eq!(counts.stopped[0].load(SeqCst), 2);
-                    assert_eq!(counts.stopped[1].load(SeqCst), 2);
-                    let replacement_seed = Seed::new(&counts);
-                    fixture
-                        .reload(serde_json::to_vec(&replacement_seed.id).unwrap())
-                        .await
-                        .unwrap();
-                    assert_eq!(counts.prepared.load(SeqCst), 2);
-                    until(|| counts.started.iter().all(|count| count.load(SeqCst) == 3)).await;
-                    assert_eq!(counts.initialized.load(SeqCst), 2);
-                    let replacement = observers(&fixture.runtime);
-                    assert!(
-                        replacement
-                            .keys()
-                            .all(|key| !first_statuses.contains_key(key)),
-                        "reload gets fresh resource scopes"
-                    );
-                    drop(held);
-                    fixture.shutdown().await.unwrap();
-                    fixture.runtime.stop().await.unwrap();
-                    assert_eq!(counts.stopped[0].load(SeqCst), 3);
-                    assert_eq!(counts.stopped[1].load(SeqCst), 3);
-                });
-        });
+    drop(rows);
+    let before = counts.observed[1].load(SeqCst);
+    until(|| counts.observed[1].load(SeqCst) >= before + 3).await;
+    assert_eq!(counts.started[1].load(SeqCst), 1);
+    assert_eq!(counts.stopped[1].load(SeqCst), 0);
+    let current = observers(&fixture.runtime);
+    for (key, status) in &first_statuses {
+        assert_eq!(current[key].instance, status.instance);
     }
-    {
-        scenario_runtime::check("catalog_keys_isolated", || {
-            let counts = Arc::new(Counts::default());
-            let seed = Seed::new(&counts);
-            let declaration = harmos_sidecar::PluginNative::<Producer>::new(
-                std::num::NonZeroUsize::new(2).unwrap(),
-            )
+    drop(auxiliary);
+    until(|| counts.stopped.iter().all(|count| count.load(SeqCst) == 1)).await;
+    let mut statuses = fixture.runtime.operations.watch_residents();
+    tokio::time::timeout(
+        Duration::from_secs(2),
+        statuses.wait_for(|values| {
+            let observers: Vec<_> = values
+                .values()
+                .filter(|status| status.kind == Kind::Observer)
+                .collect();
+            observers.len() == 2
+                && observers
+                    .iter()
+                    .all(|status| status.lifecycle.phase() == OperationPhase::Stopped)
+        }),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+
+    let held = demands.hold(&RECORD.name()).unwrap();
+    until(|| counts.started.iter().all(|count| count.load(SeqCst) == 2)).await;
+    fixture.shutdown().await.unwrap();
+    assert!(
+        fixture
+            .runtime
+            .operations
+            .resident_definitions()
+            .iter()
+            .all(|definition| definition.kind() != Kind::Observer)
+    );
+    assert_eq!(counts.stopped[0].load(SeqCst), 2);
+    assert_eq!(counts.stopped[1].load(SeqCst), 2);
+    let replacement_seed = Seed::new(&counts);
+    fixture
+        .reload(serde_json::to_vec(&replacement_seed.id).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(counts.prepared.load(SeqCst), 2);
+    until(|| counts.started.iter().all(|count| count.load(SeqCst) == 3)).await;
+    assert_eq!(counts.initialized.load(SeqCst), 2);
+    let replacement = observers(&fixture.runtime);
+    assert!(
+        replacement
+            .keys()
+            .all(|key| !first_statuses.contains_key(key)),
+        "reload gets fresh resource scopes"
+    );
+    drop(held);
+    fixture.shutdown().await.unwrap();
+    fixture.runtime.stop().await.unwrap();
+    assert_eq!(counts.stopped[0].load(SeqCst), 3);
+    assert_eq!(counts.stopped[1].load(SeqCst), 3);
+}
+
+#[test]
+fn catalog_keys_isolated() {
+    let counts = Arc::new(Counts::default());
+    let seed = Seed::new(&counts);
+    let declaration =
+        harmos_sidecar::PluginNative::<Producer>::new(std::num::NonZeroUsize::new(2).unwrap())
             .unwrap();
-            assert!(SEEDS.lock().unwrap().contains_key(&seed.id));
-            assert_eq!(counts.prepared.load(SeqCst), 0);
-            let observers = declaration.observers();
-            harmos::sidecar::inventory::observers::validate(
-                &observers,
-                &declaration.publications(),
-            )
-            .unwrap();
-            let record = observers
-                .iter()
-                .find(|observer| observer.id == "demand.record-only")
-                .unwrap();
-            assert!(record.streams.is_empty());
-            assert_eq!(record.demand_keys, [RECORD.name()]);
-            let mixed = observers
-                .iter()
-                .find(|observer| observer.id == "demand.mixed")
-                .unwrap();
-            assert_eq!(mixed.streams, ["demand.row"]);
-            assert_eq!(mixed.demand_keys, [RECORD.name(), AUXILIARY.name()]);
-        });
-    }
+    assert!(SEEDS.lock().unwrap().contains_key(&seed.id));
+    assert_eq!(counts.prepared.load(SeqCst), 0);
+    let observers = declaration.observers();
+    harmos::sidecar::inventory::observers::validate(&observers, &declaration.publications())
+        .unwrap();
+    let record = observers
+        .iter()
+        .find(|observer| observer.id == "demand.record-only")
+        .unwrap();
+    assert!(record.streams.is_empty());
+    assert_eq!(record.demand_keys, [RECORD.name()]);
+    let mixed = observers
+        .iter()
+        .find(|observer| observer.id == "demand.mixed")
+        .unwrap();
+    assert_eq!(mixed.streams, ["demand.row"]);
+    assert_eq!(mixed.demand_keys, [RECORD.name(), AUXILIARY.name()]);
 }
 
 /* === Tests === */

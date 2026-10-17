@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -25,15 +24,22 @@ use harmos::{
     Error, Runtime, runtime::Incompatible, state::Entry, state::Position, state::Recorded,
     storage::Horizon, storage::JournalConsumer, storage::Recovery, storage::Source,
 };
-use jsonl_adapter::Snapshot;
 
 /* === Constants === */
 
 /* === Macros === */
 
 /* === Type Aliases === */
+type Save = Box<dyn FnMut() -> io::Result<()> + Send>;
 
 /* === Structs === */
+// A Snapshot Is Durable Exactly As Far As Its Last Successful Save.
+struct Snapshot {
+    taken: Position,
+    durable: Position,
+    save: Save,
+}
+
 struct Prunable {
     taken: Position,
     take: bool,
@@ -83,6 +89,37 @@ impl Prunable {
     }
 }
 
+impl Snapshot {
+    fn new(save: impl FnMut() -> io::Result<()> + Send + 'static) -> Self {
+        Self {
+            taken: Position::ORIGIN,
+            durable: Position::ORIGIN,
+            save: Box::new(save),
+        }
+    }
+}
+
+impl JournalConsumer<Bank> for Snapshot {
+    fn resume(&self) -> Position {
+        self.taken
+    }
+
+    async fn drain(
+        &mut self,
+        entries: Vec<Arc<Entry<Recorded<Bank>>>>,
+        _applied: Position,
+    ) -> Position {
+        if let Some(last) = entries.last() {
+            self.taken = last.position;
+        }
+        if self.durable < self.taken && (self.save)().is_ok() {
+            self.durable = self.taken;
+        }
+
+        self.durable
+    }
+}
+
 impl JournalConsumer<Bank> for Prunable {
     fn resume(&self) -> Position {
         self.taken
@@ -127,141 +164,107 @@ impl Source<Bank> for Prunable {
 
 /* === Private Functions === */
 
-#[test]
-fn contract_scenario() {
-    {
-        scenario_runtime::check("snapshot_blocks_pruning", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (source, watched) = Prunable::controlled(true);
-                    let failing = Arc::new(AtomicBool::new(true));
-                    let attempts = Arc::new(AtomicUsize::new(0));
-                    let snapshot =
-                        Snapshot::<Bank>::folding(Ledger::default(), Position::ORIGIN, {
-                            let failing = Arc::clone(&failing);
-                            let attempts = Arc::clone(&attempts);
-                            move |_, _| {
-                                attempts.fetch_add(1, Ordering::AcqRel);
-                                if failing.load(Ordering::Acquire) {
-                                    Err(io::Error::other("injected snapshot failure"))
-                                } else {
-                                    Ok(())
-                                }
-                            }
-                        });
-                    let runtime = booted(Ledger::default(), |builder| {
-                        builder
-                            .recover(source)
-                            .snapshot(snapshot)
-                            .retain(Horizon::BeneathSnapshot)
-                            .tail(1)
-                    })
-                    .await;
+#[tokio::test]
+async fn snapshot_blocks_pruning() {
+    let (source, watched) = Prunable::controlled(true);
+    let failing = Arc::new(AtomicBool::new(true));
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let snapshot = Snapshot::new({
+        let failing = Arc::clone(&failing);
+        let attempts = Arc::clone(&attempts);
+        move || {
+            attempts.fetch_add(1, Ordering::AcqRel);
+            if failing.load(Ordering::Acquire) {
+                Err(io::Error::other("injected snapshot failure"))
+            } else {
+                Ok(())
+            }
+        }
+    });
+    let runtime = booted(Ledger::default(), |builder| {
+        builder
+            .recover(source)
+            .snapshot(snapshot)
+            .retain(Horizon::BeneathSnapshot)
+            .tail(1)
+    })
+    .await;
 
-                    let first = runtime.state.commit(deposit(1)).await.expect("accepted");
-                    runtime.state.wait_until_stored(first.position).await;
-                    wait_for(|| attempts.load(Ordering::Acquire) > 0).await;
-                    assert!(watched.pruned.lock().expect("not poisoned").is_empty());
+    let first = runtime.state.commit(deposit(1)).await.expect("accepted");
+    runtime.state.wait_until_stored(first.position).await;
+    wait_for(|| attempts.load(Ordering::Acquire) > 0).await;
+    assert!(watched.pruned.lock().expect("not poisoned").is_empty());
 
-                    failing.store(false, Ordering::Release);
-                    let second = runtime.state.commit(deposit(1)).await.expect("accepted");
-                    runtime.state.wait_until_stored(second.position).await;
-                    wait_for(|| last_prune(&watched) == Some(second.position)).await;
+    failing.store(false, Ordering::Release);
+    let second = runtime.state.commit(deposit(1)).await.expect("accepted");
+    runtime.state.wait_until_stored(second.position).await;
+    wait_for(|| last_prune(&watched) == Some(second.position)).await;
 
-                    assert!(matches!(
-                        runtime.state.query::<Change>(Position::ORIGIN).await.next(),
-                        Some(Err(Error::BeyondTail))
-                    ));
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("checkpoint_blocks_pruning", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (source, watched) = Prunable::controlled(false);
-                    let writes = Arc::new(AtomicUsize::new(0));
-                    let snapshot =
-                        Snapshot::<Bank>::folding(Ledger::default(), Position::ORIGIN, {
-                            let writes = Arc::clone(&writes);
-                            move |_, _| {
-                                writes.fetch_add(1, Ordering::AcqRel);
-                                Ok(())
-                            }
-                        });
-                    let runtime = booted(Ledger::default(), |builder| {
-                        builder
-                            .recover(source)
-                            .snapshot(snapshot)
-                            .retain(Horizon::BeneathSnapshot)
-                    })
-                    .await;
+    assert!(matches!(
+        runtime.state.query::<Change>(Position::ORIGIN).await.next(),
+        Some(Err(Error::BeyondTail))
+    ));
+    runtime.stop().await.unwrap();
+}
 
-                    runtime.state.commit(deposit(1)).await.expect("accepted");
-                    wait_for(|| writes.load(Ordering::Acquire) > 0).await;
-                    assert!(watched.pruned.lock().expect("not poisoned").is_empty());
+#[tokio::test]
+async fn checkpoint_blocks_pruning() {
+    let (source, watched) = Prunable::controlled(false);
+    let writes = Arc::new(AtomicUsize::new(0));
+    let snapshot = Snapshot::new({
+        let writes = Arc::clone(&writes);
+        move || {
+            writes.fetch_add(1, Ordering::AcqRel);
+            Ok(())
+        }
+    });
+    let runtime = booted(Ledger::default(), |builder| {
+        builder
+            .recover(source)
+            .snapshot(snapshot)
+            .retain(Horizon::BeneathSnapshot)
+    })
+    .await;
 
-                    watched.advance.store(true, Ordering::Release);
-                    let recovered = runtime.state.commit(deposit(1)).await.expect("accepted");
-                    runtime.state.wait_until_stored(recovered.position).await;
-                    wait_for(|| last_prune(&watched) == Some(recovered.position)).await;
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("snapshot_requires_snapshot", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let started = Runtime::<Bank>::builder(Ledger::default(), ())
-                        .register(catalog())
-                        .retain(Horizon::BeneathSnapshot)
-                        .runtime()
-                        .await;
-                    let Err(refused) = started else {
-                        panic!("retention without its snapshot must be refused at assembly");
-                    };
+    runtime.state.commit(deposit(1)).await.expect("accepted");
+    wait_for(|| writes.load(Ordering::Acquire) > 0).await;
+    assert!(watched.pruned.lock().expect("not poisoned").is_empty());
 
-                    assert!(
-                        refused
-                            .to_string()
-                            .contains("requires a snapshot declaration")
-                    );
-                });
-        });
-    }
-    {
-        scenario_runtime::check("storage_ac006_declared", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let beneath = run_stalled(2).await;
-                    let within = run_stalled(3).await;
+    watched.advance.store(true, Ordering::Release);
+    let recovered = runtime.state.commit(deposit(1)).await.expect("accepted");
+    runtime.state.wait_until_stored(recovered.position).await;
+    wait_for(|| last_prune(&watched) == Some(recovered.position)).await;
+    runtime.stop().await.unwrap();
+}
 
-                    assert_eq!(beneath.iter().rev().nth(1), Some(&Vec::new()));
-                    assert_eq!(
-                        within.iter().rev().nth(1),
-                        Some(&vec![Position(1), Position(2), Position(3)])
-                    );
-                });
-        });
-    }
+#[tokio::test]
+async fn snapshot_requires_snapshot() {
+    let started = Runtime::<Bank>::builder(Ledger::default(), ())
+        .register(catalog())
+        .retain(Horizon::BeneathSnapshot)
+        .runtime()
+        .await;
+    let Err(refused) = started else {
+        panic!("retention without its snapshot must be refused at assembly");
+    };
+
+    assert!(
+        refused
+            .to_string()
+            .contains("requires a snapshot declaration")
+    );
+}
+
+#[tokio::test]
+async fn storage_ac006_declared() {
+    let beneath = run_stalled(2).await;
+    let within = run_stalled(3).await;
+
+    assert_eq!(beneath.iter().rev().nth(1), Some(&Vec::new()));
+    assert_eq!(
+        within.iter().rev().nth(1),
+        Some(&vec![Position(1), Position(2), Position(3)])
+    );
 }
 
 async fn run_stalled(tail: usize) -> Vec<Vec<Position>> {

@@ -10,7 +10,7 @@
 /* === Modules === */
 #[cfg(feature = "bindings-python")]
 mod python;
-#[path = "../../../../tests/support/scenarios.rs"]
+#[path = "../support/scenarios.rs"]
 mod scenario_runtime;
 
 /* === Re-Exports === */

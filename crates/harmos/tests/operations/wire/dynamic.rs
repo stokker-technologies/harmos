@@ -63,14 +63,11 @@ struct Exchange;
 /* === Implementations === */
 
 /* === Public Functions === */
-pub fn contract_scenario() {
-    dynamic_wire_interop();
-    dynamic_stream_interop();
-}
 
 /* === Private Functions === */
 
 /* === Tests === */
+#[test]
 fn dynamic_wire_interop() {
     let contract = WireDeclaration::of::<Unary>().contract().unwrap();
     let operation = Operation::new(&contract, NonZeroUsize::new(4096).unwrap()).unwrap();
@@ -101,6 +98,7 @@ fn dynamic_wire_interop() {
     assert!(tiny.request(json).is_err());
 }
 
+#[test]
 fn dynamic_stream_interop() {
     let contract = WireDeclaration::of::<Exchange>().contract().unwrap();
     let operation = Operation::new(&contract, NonZeroUsize::new(4096).unwrap()).unwrap();

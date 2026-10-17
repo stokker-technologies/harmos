@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -227,174 +226,141 @@ async fn runtime() -> (Runtime<App>, Arc<Counts>) {
 
 /* === Tests === */
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("aliases_preserve_values", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, _) = runtime().await;
-                    let root = runtime
-                        .operations
-                        .submit_as::<ComputeContract>(Mode::Value(4))
-                        .unwrap()
-                        .await
-                        .unwrap();
-                    assert_eq!(*root, 4);
-                    let child = runtime
-                        .operations
-                        .submit_as::<ParentContract>(Mode::Value(9))
-                        .unwrap()
-                        .await
-                        .unwrap();
-                    assert_eq!(*child, 9);
-                    let error = runtime
-                        .operations
-                        .submit_as::<ComputeContract>(Mode::Reject)
-                        .unwrap()
-                        .await
-                        .unwrap_err();
-                    let Error::OperationFailed { operation, source } = error else {
-                        panic!("expected authored failure")
-                    };
-                    assert_eq!(operation, "outcomes.compute");
-                    assert!(matches!(
-                        source.downcast_ref::<Failed>(),
-                        Some(Failed::Instrument)
-                    ));
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("deadlines_remain_distinct", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, _) = runtime().await;
-                    let elapsed = runtime
-                        .operations
-                        .submit_as::<ComputeContract>(Mode::Wait)
-                        .unwrap()
-                        .await;
-                    assert!(matches!(
-                        elapsed,
-                        Err(Error::OperationRefused(Refusal::TimedOut))
-                    ));
+#[tokio::test]
+async fn aliases_preserve_values() {
+    let (runtime, _) = runtime().await;
+    let root = runtime
+        .operations
+        .submit_as::<ComputeContract>(Mode::Value(4))
+        .unwrap()
+        .await
+        .unwrap();
+    assert_eq!(*root, 4);
+    let child = runtime
+        .operations
+        .submit_as::<ParentContract>(Mode::Value(9))
+        .unwrap()
+        .await
+        .unwrap();
+    assert_eq!(*child, 9);
+    let error = runtime
+        .operations
+        .submit_as::<ComputeContract>(Mode::Reject)
+        .unwrap()
+        .await
+        .unwrap_err();
+    let Error::OperationFailed { operation, source } = error else {
+        panic!("expected authored failure")
+    };
+    assert_eq!(operation, "outcomes.compute");
+    assert!(matches!(
+        source.downcast_ref::<Failed>(),
+        Some(Failed::Instrument)
+    ));
+    runtime.stop().await.unwrap();
+}
 
-                    let error = runtime
-                        .operations
-                        .submit_as::<ParentContract>(Mode::Reject)
-                        .unwrap()
-                        .await
-                        .unwrap_err();
-                    let Error::OperationFailed { operation, source } = error else {
-                        panic!("expected parent failure")
-                    };
-                    assert_eq!(operation, "outcomes.parent");
-                    let Some(Failed::Child(Error::OperationFailed { operation, source })) =
-                        source.downcast_ref::<Failed>()
-                    else {
-                        panic!("expected original child failure")
-                    };
-                    assert_eq!(operation, "outcomes.compute");
-                    assert!(matches!(
-                        source.downcast_ref::<Failed>(),
-                        Some(Failed::Instrument)
-                    ));
+#[tokio::test(start_paused = true)]
+async fn deadlines_remain_distinct() {
+    let (runtime, _) = runtime().await;
+    let elapsed = runtime
+        .operations
+        .submit_as::<ComputeContract>(Mode::Wait)
+        .unwrap()
+        .await;
+    assert!(matches!(
+        elapsed,
+        Err(Error::OperationRefused(Refusal::TimedOut))
+    ));
 
-                    let error = runtime
-                        .operations
-                        .submit_as::<ParentContract>(Mode::Wait)
-                        .unwrap()
-                        .await
-                        .unwrap_err();
-                    let Error::OperationFailed { source, .. } = error else {
-                        panic!("expected parent failure")
-                    };
-                    assert!(matches!(
-                        source.downcast_ref::<Failed>(),
-                        Some(Failed::Child(Error::OperationRefused(Refusal::TimedOut)))
-                    ));
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("child_retries_reuse", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, counts) = runtime().await;
-                    let root = runtime
-                        .operations
-                        .submit_as::<ComputeContract>(Mode::Retry)
-                        .unwrap()
-                        .await
-                        .unwrap();
-                    let child = runtime
-                        .operations
-                        .submit_as::<ParentContract>(Mode::Retry)
-                        .unwrap()
-                        .await
-                        .unwrap();
-                    assert_eq!((*root, *child), (3, 3));
-                    assert_eq!(counts.constructed.load(Ordering::SeqCst), 2);
-                    assert_eq!(counts.initialized.load(Ordering::SeqCst), 2);
-                    assert_eq!(counts.finalized.load(Ordering::SeqCst), 2);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("failure_never_emit", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-                        .register(catalog())
-                        .register(Lanes::catalog())
-                        .operation::<Compute>("app", Lanes::Open, Arc::new(Counts::default()))
-                        .runtime()
-                        .await
-                        .unwrap();
-                    let error = runtime
-                        .operations
-                        .submit_as::<ComputeContract>(Mode::Reject)
-                        .unwrap()
-                        .await
-                        .unwrap_err();
-                    let Error::OperationFailed { source, .. } = error else {
-                        panic!("expected authored failure")
-                    };
-                    assert!(matches!(
-                        source.downcast_ref::<Failed>(),
-                        Some(Failed::Instrument)
-                    ));
-                    let facts: Vec<_> = runtime
-                        .state
-                        .query::<SystemFact>(Position::ORIGIN)
-                        .await
-                        .map(|entry| entry.expect("system evidence is readable"))
-                        .filter(|entry| matches!(entry.value.source, FactSource::Work(_)))
-                        .collect();
-                    assert!(facts.is_empty());
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
+    let error = runtime
+        .operations
+        .submit_as::<ParentContract>(Mode::Reject)
+        .unwrap()
+        .await
+        .unwrap_err();
+    let Error::OperationFailed { operation, source } = error else {
+        panic!("expected parent failure")
+    };
+    assert_eq!(operation, "outcomes.parent");
+    let Some(Failed::Child(Error::OperationFailed { operation, source })) =
+        source.downcast_ref::<Failed>()
+    else {
+        panic!("expected original child failure")
+    };
+    assert_eq!(operation, "outcomes.compute");
+    assert!(matches!(
+        source.downcast_ref::<Failed>(),
+        Some(Failed::Instrument)
+    ));
+
+    let error = runtime
+        .operations
+        .submit_as::<ParentContract>(Mode::Wait)
+        .unwrap()
+        .await
+        .unwrap_err();
+    let Error::OperationFailed { source, .. } = error else {
+        panic!("expected parent failure")
+    };
+    assert!(matches!(
+        source.downcast_ref::<Failed>(),
+        Some(Failed::Child(Error::OperationRefused(Refusal::TimedOut)))
+    ));
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn child_retries_reuse() {
+    let (runtime, counts) = runtime().await;
+    let root = runtime
+        .operations
+        .submit_as::<ComputeContract>(Mode::Retry)
+        .unwrap()
+        .await
+        .unwrap();
+    let child = runtime
+        .operations
+        .submit_as::<ParentContract>(Mode::Retry)
+        .unwrap()
+        .await
+        .unwrap();
+    assert_eq!((*root, *child), (3, 3));
+    assert_eq!(counts.constructed.load(Ordering::SeqCst), 2);
+    assert_eq!(counts.initialized.load(Ordering::SeqCst), 2);
+    assert_eq!(counts.finalized.load(Ordering::SeqCst), 2);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn failure_never_emit() {
+    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
+        .register(catalog())
+        .register(Lanes::catalog())
+        .operation::<Compute>("app", Lanes::Open, Arc::new(Counts::default()))
+        .runtime()
+        .await
+        .unwrap();
+    let error = runtime
+        .operations
+        .submit_as::<ComputeContract>(Mode::Reject)
+        .unwrap()
+        .await
+        .unwrap_err();
+    let Error::OperationFailed { source, .. } = error else {
+        panic!("expected authored failure")
+    };
+    assert!(matches!(
+        source.downcast_ref::<Failed>(),
+        Some(Failed::Instrument)
+    ));
+    let facts: Vec<_> = runtime
+        .state
+        .query::<SystemFact>(Position::ORIGIN)
+        .await
+        .map(|entry| entry.expect("system evidence is readable"))
+        .filter(|entry| matches!(entry.value.source, FactSource::Work(_)))
+        .collect();
+    assert!(facts.is_empty());
+    runtime.stop().await.unwrap();
 }

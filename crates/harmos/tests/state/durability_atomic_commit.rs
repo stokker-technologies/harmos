@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -21,12 +20,11 @@ use std::sync::{
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 // Local Imports
-use super::support::scratch;
+use super::support::journal::{Journal, Snapshot, Store, Wire};
 use harmos::{
     Application, Error, Runtime, state::Focus, state::Origin, state::Position, state::PrincipalId,
     state::Recorded, state::Records, state::RequestKey, state::Transaction,
 };
-use jsonl_adapter::{Jsonl, Wire};
 
 /* === Constants === */
 
@@ -310,550 +308,427 @@ fn add(amount: i64, count: usize, mode: u8) -> Add {
     }
 }
 
-async fn boot(path: &std::path::Path, tail: usize) -> Runtime<Model> {
+async fn boot(copy: &Store, tail: usize) -> Runtime<Model> {
     Runtime::<Model>::builder(State::default(), ())
         .register(Changes::catalog())
         .register(Facts::catalog())
-        .recover(Jsonl::<Model>::open(path).unwrap())
+        .recover(Journal::<Model>::open(copy))
         .tail(tail)
         .runtime()
         .await
         .unwrap()
 }
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("preparation_ignored_nothing", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let path = scratch("atomic-refusal").join("journal.jsonl");
-                    let runtime = boot(&path, 16).await;
-                    assert!(matches!(
-                        runtime.records.publish(Reserved).await,
-                        Err(Error::Preparation(
-                            harmos::state::PreparationError::Identity
-                        ))
-                    ));
-                    for mode in [2, 3, 4, 5, 6, 7, 9, 11, 12, 13, 14, 15, 16] {
-                        assert!(runtime.state.commit(add(7, 1, mode)).await.is_err());
-                        assert_eq!(
-                            runtime
-                                .state
-                                .state()
-                                .read(|s| (s.balance, s.applications))
-                                .await
-                                .unwrap()
-                                .value,
-                            (0, 0)
-                        );
-                        assert_eq!(runtime.state.applied(), Position::ORIGIN);
-                    }
-                    assert!(matches!(
-                        runtime
-                            .state
-                            .commit(add(1, Records::MAX_RECORDS + 1, 0))
-                            .await,
-                        Err(Error::Preparation(harmos::state::PreparationError::Limit))
-                    ));
-                    runtime.stop().await.unwrap();
-                    assert_eq!(std::fs::read_to_string(path).unwrap().lines().count(), 1);
-                });
-        });
+#[tokio::test]
+async fn preparation_ignored_nothing() {
+    let copy = Store::default();
+    let runtime = boot(&copy, 16).await;
+    assert!(matches!(
+        runtime.records.publish(Reserved).await,
+        Err(Error::Preparation(
+            harmos::state::PreparationError::Identity
+        ))
+    ));
+    for mode in [2, 3, 4, 5, 6, 7, 9, 11, 12, 13, 14, 15, 16] {
+        assert!(runtime.state.commit(add(7, 1, mode)).await.is_err());
+        assert_eq!(
+            runtime
+                .state
+                .state()
+                .read(|s| (s.balance, s.applications))
+                .await
+                .unwrap()
+                .value,
+            (0, 0)
+        );
+        assert_eq!(runtime.state.applied(), Position::ORIGIN);
     }
-    {
-        scenario_runtime::check("restart_preserves_members", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let path = scratch("atomic-restart").join("journal.jsonl");
-                    let runtime = boot(&path, 1).await;
-                    let change = add(7, 2, 1);
-                    let calls = Arc::clone(&change.encodings);
-                    let key = RequestKey::new("once");
-                    let receipt = runtime
-                        .state
-                        .commit_keyed(key.clone(), change.clone())
-                        .await
-                        .unwrap();
-                    assert_eq!(
-                        (receipt.position, receipt.frontier),
-                        (Position(1), Position(3))
-                    );
-                    assert_eq!(
-                        runtime.state.commit_keyed(key, change).await.unwrap(),
-                        receipt
-                    );
-                    runtime.state.wait_until_stored(receipt.frontier).await;
-                    assert_eq!(calls.load(Ordering::SeqCst), 1);
-                    let facts = runtime
-                        .state
-                        .query::<Facts>(Position::ORIGIN)
-                        .await
-                        .collect::<Result<Vec<_>, _>>()
-                        .unwrap();
-                    assert_eq!(facts.len(), 2);
-                    assert_eq!(facts[0].position, Position(2));
-                    assert_eq!(
-                        facts[0].value,
-                        Facts::Observed(Observed {
-                            before: 0,
-                            amount: 7,
-                            ordinal: 0
-                        })
-                    );
-                    assert!(matches!(
-                        runtime
-                            .state
-                            .state()
-                            .at(Origin::initial(State::default()), Position(1))
-                            .await,
-                        Err(Error::IncompleteCommit)
-                    ));
-                    runtime.stop().await.unwrap();
-                    let restarted = boot(&path, 1).await;
-                    assert_eq!(
-                        restarted
-                            .state
-                            .state()
-                            .read(|s| (s.balance, s.applications))
-                            .await
-                            .unwrap()
-                            .value,
-                        (7, 1)
-                    );
-                    assert_eq!(
-                        restarted
-                            .state
-                            .query::<Facts>(Position::ORIGIN)
-                            .await
-                            .collect::<Result<Vec<_>, _>>()
-                            .unwrap()
-                            .len(),
-                        2
-                    );
-                    restarted.stop().await.unwrap();
-                    let text = std::fs::read_to_string(path).unwrap();
-                    assert!(text.starts_with("{\"schema\":3,"));
-                    assert_eq!(text.lines().count(), 2);
-                });
-        });
+    assert!(matches!(
+        runtime
+            .state
+            .commit(add(1, Records::MAX_RECORDS + 1, 0))
+            .await,
+        Err(Error::Preparation(harmos::state::PreparationError::Limit))
+    ));
+    runtime.stop().await.unwrap();
+    assert!(copy.lines().is_empty());
+}
+
+#[tokio::test]
+async fn restart_preserves_members() {
+    let copy = Store::default();
+    let runtime = boot(&copy, 1).await;
+    let change = add(7, 2, 1);
+    let calls = Arc::clone(&change.encodings);
+    let key = RequestKey::new("once");
+    let receipt = runtime
+        .state
+        .commit_keyed(key.clone(), change.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        (receipt.position, receipt.frontier),
+        (Position(1), Position(3))
+    );
+    assert_eq!(
+        runtime.state.commit_keyed(key, change).await.unwrap(),
+        receipt
+    );
+    runtime.state.wait_until_stored(receipt.frontier).await;
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    let facts = runtime
+        .state
+        .query::<Facts>(Position::ORIGIN)
+        .await
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(facts.len(), 2);
+    assert_eq!(facts[0].position, Position(2));
+    assert_eq!(
+        facts[0].value,
+        Facts::Observed(Observed {
+            before: 0,
+            amount: 7,
+            ordinal: 0
+        })
+    );
+    assert!(matches!(
+        runtime
+            .state
+            .state()
+            .at(Origin::initial(State::default()), Position(1))
+            .await,
+        Err(Error::IncompleteCommit)
+    ));
+    runtime.stop().await.unwrap();
+    let restarted = boot(&copy, 1).await;
+    assert_eq!(
+        restarted
+            .state
+            .state()
+            .read(|s| (s.balance, s.applications))
+            .await
+            .unwrap()
+            .value,
+        (7, 1)
+    );
+    assert_eq!(
+        restarted
+            .state
+            .query::<Facts>(Position::ORIGIN)
+            .await
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+            .len(),
+        2
+    );
+    restarted.stop().await.unwrap();
+    assert_eq!(copy.lines().len(), 1);
+}
+
+#[tokio::test]
+async fn undo_redo_emit() {
+    let copy = Store::default();
+    let runtime = boot(&copy, 1).await;
+    let principal = PrincipalId::new("operator");
+    let journal = runtime.state.as_principal(principal.clone());
+    let initial = journal.commit(add(9, 1, 0)).await.unwrap();
+    let undone = journal.undo(principal.clone(), Focus::all()).await.unwrap();
+    let redone = journal.redo(principal, Focus::all()).await.unwrap();
+    assert_eq!(
+        (initial.frontier, undone.frontier, redone.frontier),
+        (Position(2), Position(4), Position(6))
+    );
+    journal.wait_until_stored(redone.frontier).await;
+    let changes = journal
+        .query::<Changes>(Position::ORIGIN)
+        .await
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(
+        changes[1].metadata.link,
+        Some(harmos::state::Link::UndoOf(initial.position))
+    );
+    assert_eq!(
+        journal
+            .state()
+            .read(|s| (s.balance, s.applications))
+            .await
+            .unwrap()
+            .value,
+        (9, 3)
+    );
+    drop(journal);
+    runtime.stop().await.unwrap();
+    let restarted = boot(&copy, 1).await;
+    assert_eq!(
+        restarted
+            .state
+            .state()
+            .read(|s| (s.balance, s.applications))
+            .await
+            .unwrap()
+            .value,
+        (9, 3)
+    );
+    assert_eq!(
+        restarted
+            .state
+            .query::<Facts>(Position::ORIGIN)
+            .await
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+            .len(),
+        3
+    );
+    restarted.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn historical_snapshot_boundary() {
+    let copy = Store::default();
+    let live = boot(&copy, 1).await;
+    live.state.commit(add(5, 1, 0)).await.unwrap();
+    live.stop().await.unwrap();
+    let [line] = copy.lines().try_into().unwrap();
+    let mut group: serde_json::Value = serde_json::from_str(&line).unwrap();
+    group[0]["version"] = 1.into();
+    group[0]["payload"] = serde_json::json!({"amount":5});
+    copy.replace(vec![group.to_string()]);
+    let snapshots = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let observed = Arc::clone(&snapshots);
+    let snapshot = Snapshot::<Model>::folding(
+        State::default(),
+        Position::ORIGIN,
+        move |state, position| {
+            observed
+                .lock()
+                .unwrap()
+                .push((state.balance, state.applications, position));
+            Ok(())
+        },
+    );
+    let runtime = Runtime::<Model>::builder(State::default(), ())
+        .register(Changes::catalog())
+        .register(Facts::catalog())
+        .recover(Journal::<Model>::open(&copy))
+        .snapshot(snapshot)
+        .tail(1)
+        .runtime()
+        .await
+        .unwrap();
+    assert_eq!(
+        runtime
+            .state
+            .state()
+            .read(|s| (s.balance, s.applications))
+            .await
+            .unwrap()
+            .value,
+        (10, 1)
+    );
+    runtime.stop().await.unwrap();
+    assert_eq!(*snapshots.lock().unwrap(), vec![(10, 1, Position(2))]);
+}
+
+#[tokio::test]
+async fn record_keeps_group() {
+    let copy = Store::default();
+    let mirror = Store::default();
+    let live = boot(&copy, 1).await;
+    live.state.commit(add(5, 1, 0)).await.unwrap();
+    live.stop().await.unwrap();
+    let original: Vec<String> = copy
+        .lines()
+        .iter()
+        .map(|line| line.replace("atomic.observed", "atomic.future"))
+        .collect();
+    copy.replace(original.clone());
+    let snapshots = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let observed = Arc::clone(&snapshots);
+    let snapshot = Snapshot::<Model>::folding(
+        State::default(),
+        Position::ORIGIN,
+        move |state, position| {
+            observed.lock().unwrap().push((state.balance, position));
+            Ok(())
+        },
+    );
+    let runtime = Runtime::<Model>::builder(State::default(), ())
+        .register(Changes::catalog())
+        .register(Facts::catalog())
+        .recover(Journal::<Model>::open(&copy))
+        .attach(Journal::<Model>::open(&mirror))
+        .snapshot(snapshot)
+        .tail(1)
+        .runtime()
+        .await
+        .unwrap();
+    assert_eq!(runtime.state.applied(), Position(2));
+    assert!(matches!(
+        runtime
+            .state
+            .state()
+            .at(Origin::initial(State::default()), Position(1))
+            .await,
+        Err(Error::IncompleteCommit)
+    ));
+    assert_eq!(
+        runtime.state.query::<Facts>(Position::ORIGIN).await.count(),
+        0
+    );
+    runtime.stop().await.unwrap();
+    assert_eq!(*snapshots.lock().unwrap(), vec![(5, Position(2))]);
+    assert_eq!(mirror.lines(), original);
+}
+
+#[tokio::test]
+async fn facts_share_group() {
+    let copy = Store::default();
+    let runtime = boot(&copy, 1).await;
+    let receipt = runtime.state.commit(add(5, 1, 10)).await.unwrap();
+    assert_eq!(
+        (receipt.position, receipt.frontier),
+        (Position(1), Position(3))
+    );
+    runtime.state.wait_until_stored(receipt.frontier).await;
+    runtime.stop().await.unwrap();
+    let runtime = boot(&copy, 1).await;
+    let facts = runtime
+        .state
+        .query::<harmos::state::SystemFact>(Position::ORIGIN)
+        .await
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(facts.len(), 1);
+    assert_eq!(facts[0].position, Position(2));
+    assert_eq!(
+        facts[0].value,
+        harmos::state::SystemFact {
+            source: harmos::state::FactSource::Sidecar("my.sidecar-2".to_owned()),
+            name: "result/sample".to_owned(),
+            version: 37,
+            payload: vec![0, 255, 17],
+        }
+    );
+    assert_eq!(
+        facts[0].value.identify().0.as_str(),
+        "harmos:sidecar/my.sidecar-2/result/sample"
+    );
+    let typed = runtime
+        .state
+        .query::<Facts>(Position::ORIGIN)
+        .await
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(typed.len(), 1);
+    assert_eq!(typed[0].position, Position(3));
+    assert_eq!(
+        runtime
+            .state
+            .state()
+            .read(|s| (s.balance, s.applications))
+            .await
+            .unwrap()
+            .value,
+        (5, 1)
+    );
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn mixed_frontier_recovers() {
+    let copy = Store::default();
+    let runtime = boot(&copy, 1).await;
+    let first = runtime.state.commit(add(5, 1, 10)).await.unwrap();
+    runtime.state.wait_until_stored(first.frontier).await;
+    let later = runtime.state.commit(add(8, 1, 10)).await.unwrap();
+    runtime.state.wait_until_stored(later.frontier).await;
+    let entries = runtime
+        .state
+        .query_through::<Recorded<Model>>(Position::ORIGIN, first.frontier)
+        .await
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(
+        entries
+            .iter()
+            .map(|entry| entry.position)
+            .collect::<Vec<_>>(),
+        [Position(1), Position(2), Position(3)]
+    );
+    assert!(matches!(entries[0].value, Recorded::Transaction(_)));
+    assert!(matches!(entries[1].value, Recorded::System(_)));
+    assert!(matches!(entries[2].value, Recorded::Record(_)));
+    runtime.stop().await.unwrap();
+    let inspector = Runtime::<Model>::inspect(State::default(), Journal::<Model>::open(&copy))
+        .await
+        .unwrap();
+    let read = inspector
+        .state
+        .query_through::<Recorded<Model>>(Position::ORIGIN, first.frontier)
+        .await
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(
+        read.iter().map(|entry| entry.position).collect::<Vec<_>>(),
+        [Position(1), Position(2), Position(3)]
+    );
+    assert!(matches!(
+        inspector
+            .state
+            .query_through::<Recorded<Model>>(later.frontier, Position(later.frontier.0 + 1))
+            .await
+            .next(),
+        Some(Err(Error::FrontierAhead))
+    ));
+}
+
+#[tokio::test]
+async fn contract_refuses_apply() {
+    struct Capture(Arc<AtomicUsize>);
+    impl harmos::state::JournalCapture<Model> for Capture {
+        async fn capture(
+            &mut self,
+            _: Vec<Arc<harmos::state::Entry<Recorded<Model>>>>,
+            _: Position,
+        ) -> Result<(), harmos::state::CaptureError> {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
     }
-    {
-        scenario_runtime::check("undo_redo_emit", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let path = scratch("atomic-revert").join("journal.jsonl");
-                    let runtime = boot(&path, 1).await;
-                    let principal = PrincipalId::new("operator");
-                    let journal = runtime.state.as_principal(principal.clone());
-                    let initial = journal.commit(add(9, 1, 0)).await.unwrap();
-                    let undone = journal.undo(principal.clone(), Focus::all()).await.unwrap();
-                    let redone = journal.redo(principal, Focus::all()).await.unwrap();
-                    assert_eq!(
-                        (initial.frontier, undone.frontier, redone.frontier),
-                        (Position(2), Position(4), Position(6))
-                    );
-                    journal.wait_until_stored(redone.frontier).await;
-                    let changes = journal
-                        .query::<Changes>(Position::ORIGIN)
-                        .await
-                        .collect::<Result<Vec<_>, _>>()
-                        .unwrap();
-                    assert_eq!(
-                        changes[1].metadata.link,
-                        Some(harmos::state::Link::UndoOf(initial.position))
-                    );
-                    assert_eq!(
-                        journal
-                            .state()
-                            .read(|s| (s.balance, s.applications))
-                            .await
-                            .unwrap()
-                            .value,
-                        (9, 3)
-                    );
-                    drop(journal);
-                    runtime.stop().await.unwrap();
-                    let restarted = boot(&path, 1).await;
-                    assert_eq!(
-                        restarted
-                            .state
-                            .state()
-                            .read(|s| (s.balance, s.applications))
-                            .await
-                            .unwrap()
-                            .value,
-                        (9, 3)
-                    );
-                    assert_eq!(
-                        restarted
-                            .state
-                            .query::<Facts>(Position::ORIGIN)
-                            .await
-                            .collect::<Result<Vec<_>, _>>()
-                            .unwrap()
-                            .len(),
-                        3
-                    );
-                    restarted.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("historical_snapshot_boundary", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    use harmos::{storage::JournalConsumer, storage::Source};
-                    let directory = scratch("atomic-historical");
-                    let path = directory.join("journal.jsonl");
-                    let live = boot(&path, 1).await;
-                    live.state.commit(add(5, 1, 0)).await.unwrap();
-                    live.stop().await.unwrap();
-                    let text = std::fs::read_to_string(&path).unwrap();
-                    let (header, line) = text.split_once('\n').unwrap();
-                    let mut group: serde_json::Value = serde_json::from_str(line).unwrap();
-                    group["entries"][0]["version"] = 1.into();
-                    group["entries"][0]["payload"] = serde_json::json!({"amount":5});
-                    std::fs::write(&path, format!("{header}\n{group}\n")).unwrap();
-                    let snapshots = Arc::new(std::sync::Mutex::new(Vec::new()));
-                    let observed = Arc::clone(&snapshots);
-                    let snapshot = jsonl_adapter::Snapshot::<Model>::folding(
-                        State::default(),
-                        Position::ORIGIN,
-                        move |state, position| {
-                            observed.lock().unwrap().push((
-                                state.balance,
-                                state.applications,
-                                position,
-                            ));
-                            Ok(())
-                        },
-                    );
-                    let runtime = Runtime::<Model>::builder(State::default(), ())
-                        .register(Changes::catalog())
-                        .register(Facts::catalog())
-                        .recover(Jsonl::<Model>::open(&path).unwrap())
-                        .snapshot(snapshot)
-                        .tail(1)
-                        .runtime()
-                        .await
-                        .unwrap();
-                    assert_eq!(
-                        runtime
-                            .state
-                            .state()
-                            .read(|s| (s.balance, s.applications))
-                            .await
-                            .unwrap()
-                            .value,
-                        (10, 1)
-                    );
-                    runtime.stop().await.unwrap();
-                    assert_eq!(*snapshots.lock().unwrap(), vec![(10, 1, Position(2))]);
-                    let mut source = Jsonl::<Model>::open(&path).unwrap();
-                    assert_eq!(
-                        source
-                            .read(Position(1), Position(2))
-                            .await
-                            .unwrap()
-                            .entries
-                            .len(),
-                        1
-                    );
-                    assert!(
-                        Jsonl::<Model>::open(&path)
-                            .unwrap()
-                            .after(Position(1))
-                            .load()
-                            .await
-                            .is_err()
-                    );
-                    source.prune(Position(1)).await;
-                    assert_eq!(
-                        source
-                            .read(Position::ORIGIN, Position(2))
-                            .await
-                            .unwrap()
-                            .entries
-                            .len(),
-                        2
-                    );
-                    source.prune(Position(2)).await;
-                    assert!(matches!(
-                        source.read(Position::ORIGIN, Position(2)).await,
-                        Err(Error::BeneathHorizon)
-                    ));
-                    assert_eq!(source.resume(), Position(2));
-                });
-        });
-    }
-    {
-        scenario_runtime::check("record_keeps_group", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let directory = scratch("atomic-unknown");
-                    let path = directory.join("journal.jsonl");
-                    let mirror = directory.join("mirror.jsonl");
-                    let live = boot(&path, 1).await;
-                    live.state.commit(add(5, 1, 0)).await.unwrap();
-                    live.stop().await.unwrap();
-                    let original = std::fs::read_to_string(&path)
-                        .unwrap()
-                        .replace("atomic.observed", "atomic.future");
-                    std::fs::write(&path, &original).unwrap();
-                    let snapshots = Arc::new(std::sync::Mutex::new(Vec::new()));
-                    let observed = Arc::clone(&snapshots);
-                    let snapshot = jsonl_adapter::Snapshot::<Model>::folding(
-                        State::default(),
-                        Position::ORIGIN,
-                        move |state, position| {
-                            observed.lock().unwrap().push((state.balance, position));
-                            Ok(())
-                        },
-                    );
-                    let runtime = Runtime::<Model>::builder(State::default(), ())
-                        .register(Changes::catalog())
-                        .register(Facts::catalog())
-                        .recover(Jsonl::<Model>::open(&path).unwrap())
-                        .attach(Jsonl::<Model>::open(&mirror).unwrap())
-                        .snapshot(snapshot)
-                        .tail(1)
-                        .runtime()
-                        .await
-                        .unwrap();
-                    assert_eq!(runtime.state.applied(), Position(2));
-                    assert!(matches!(
-                        runtime
-                            .state
-                            .state()
-                            .at(Origin::initial(State::default()), Position(1))
-                            .await,
-                        Err(Error::IncompleteCommit)
-                    ));
-                    assert_eq!(
-                        runtime.state.query::<Facts>(Position::ORIGIN).await.count(),
-                        0
-                    );
-                    runtime.stop().await.unwrap();
-                    assert_eq!(*snapshots.lock().unwrap(), vec![(5, Position(2))]);
-                    assert_eq!(std::fs::read_to_string(mirror).unwrap(), original);
-                });
-        });
-    }
-    {
-        scenario_runtime::check("facts_share_group", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let path = scratch("atomic-sidecar").join("journal.jsonl");
-                    let runtime = boot(&path, 1).await;
-                    let receipt = runtime.state.commit(add(5, 1, 10)).await.unwrap();
-                    assert_eq!(
-                        (receipt.position, receipt.frontier),
-                        (Position(1), Position(3))
-                    );
-                    runtime.state.wait_until_stored(receipt.frontier).await;
-                    runtime.stop().await.unwrap();
-                    let runtime = boot(&path, 1).await;
-                    let facts = runtime
-                        .state
-                        .query::<harmos::state::SystemFact>(Position::ORIGIN)
-                        .await
-                        .collect::<Result<Vec<_>, _>>()
-                        .unwrap();
-                    assert_eq!(facts.len(), 1);
-                    assert_eq!(facts[0].position, Position(2));
-                    assert_eq!(
-                        facts[0].value,
-                        harmos::state::SystemFact {
-                            source: harmos::state::FactSource::Sidecar("my.sidecar-2".to_owned()),
-                            name: "result/sample".to_owned(),
-                            version: 37,
-                            payload: vec![0, 255, 17],
-                        }
-                    );
-                    assert_eq!(
-                        facts[0].value.identify().0.as_str(),
-                        "harmos:sidecar/my.sidecar-2/result/sample"
-                    );
-                    let typed = runtime
-                        .state
-                        .query::<Facts>(Position::ORIGIN)
-                        .await
-                        .collect::<Result<Vec<_>, _>>()
-                        .unwrap();
-                    assert_eq!(typed.len(), 1);
-                    assert_eq!(typed[0].position, Position(3));
-                    assert_eq!(
-                        runtime
-                            .state
-                            .state()
-                            .read(|s| (s.balance, s.applications))
-                            .await
-                            .unwrap()
-                            .value,
-                        (5, 1)
-                    );
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("mixed_frontier_recovers", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    use harmos::storage::Source;
-                    let path = scratch("atomic-query-frontier").join("journal.jsonl");
-                    let runtime = boot(&path, 1).await;
-                    let first = runtime.state.commit(add(5, 1, 10)).await.unwrap();
-                    runtime.state.wait_until_stored(first.frontier).await;
-                    let mut lagging = Jsonl::<Model>::open(&path).unwrap();
-                    let later = runtime.state.commit(add(8, 1, 10)).await.unwrap();
-                    runtime.state.wait_until_stored(later.frontier).await;
-                    assert!(matches!(
-                        lagging.read(Position::ORIGIN, later.frontier).await,
-                        Err(Error::BeyondTail)
-                    ));
-                    let entries = runtime
-                        .state
-                        .query_through::<Recorded<Model>>(Position::ORIGIN, first.frontier)
-                        .await
-                        .collect::<Result<Vec<_>, _>>()
-                        .unwrap();
-                    assert_eq!(
-                        entries
-                            .iter()
-                            .map(|entry| entry.position)
-                            .collect::<Vec<_>>(),
-                        [Position(1), Position(2), Position(3)]
-                    );
-                    assert!(matches!(entries[0].value, Recorded::Transaction(_)));
-                    assert!(matches!(entries[1].value, Recorded::System(_)));
-                    assert!(matches!(entries[2].value, Recorded::Record(_)));
-                    runtime.stop().await.unwrap();
-                    let inspector = Runtime::<Model>::inspect(
-                        State::default(),
-                        Jsonl::<Model>::open(&path).unwrap(),
-                    )
-                    .await
-                    .unwrap();
-                    let read = inspector
-                        .state
-                        .query_through::<Recorded<Model>>(Position::ORIGIN, first.frontier)
-                        .await
-                        .collect::<Result<Vec<_>, _>>()
-                        .unwrap();
-                    assert_eq!(
-                        read.iter().map(|entry| entry.position).collect::<Vec<_>>(),
-                        [Position(1), Position(2), Position(3)]
-                    );
-                    assert!(matches!(
-                        inspector
-                            .state
-                            .query_through::<Recorded<Model>>(
-                                later.frontier,
-                                Position(later.frontier.0 + 1)
-                            )
-                            .await
-                            .next(),
-                        Some(Err(Error::FrontierAhead))
-                    ));
-                    drop(inspector);
-                    let mut source = Jsonl::<Model>::open(&path).unwrap();
-                    assert!(matches!(
-                        source
-                            .read(Position::ORIGIN, Position(later.frontier.0 + 1))
-                            .await,
-                        Err(Error::BeyondTail)
-                    ));
-                    source.prune(first.frontier).await;
-                    assert!(matches!(
-                        source.read(Position::ORIGIN, later.frontier).await,
-                        Err(Error::BeneathHorizon)
-                    ));
-                });
-        });
-    }
-    {
-        scenario_runtime::check("contract_refuses_apply", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    struct Capture(Arc<AtomicUsize>);
-                    impl harmos::state::JournalCapture<Model> for Capture {
-                        async fn capture(
-                            &mut self,
-                            _: Vec<Arc<harmos::state::Entry<Recorded<Model>>>>,
-                            _: Position,
-                        ) -> Result<(), harmos::state::CaptureError> {
-                            self.0.fetch_add(1, Ordering::SeqCst);
-                            Ok(())
-                        }
-                    }
-                    let captures = Arc::new(AtomicUsize::new(0));
-                    let runtime = Runtime::<Model>::builder(State::default(), ())
-                        .register(Changes::catalog())
-                        .require_capture(
-                            harmos::state::CaptureLimits {
-                                pending_bytes: 4096,
-                                max_group_bytes: 4096,
-                            },
-                            Capture(Arc::clone(&captures)),
-                        )
-                        .unwrap()
-                        .runtime()
-                        .await
-                        .unwrap();
-                    let refused = runtime.state.commit(add(7, 1, 0)).await;
-                    assert!(matches!(
-                        refused,
-                        Err(Error::Preparation(
-                            harmos::state::PreparationError::Membership
-                        ))
-                    ));
-                    assert_eq!(runtime.state.applied(), Position::ORIGIN);
-                    let state = runtime
-                        .state
-                        .state()
-                        .read(|state| (state.balance, state.applications))
-                        .await
-                        .unwrap();
-                    assert_eq!(state.value, (0, 0));
-                    assert_eq!(state.position, Position::ORIGIN);
-                    runtime.stop().await.unwrap();
-                    assert_eq!(captures.load(Ordering::SeqCst), 0);
-                });
-        });
-    }
+    let captures = Arc::new(AtomicUsize::new(0));
+    let runtime = Runtime::<Model>::builder(State::default(), ())
+        .register(Changes::catalog())
+        .require_capture(
+            harmos::state::CaptureLimits {
+                pending_bytes: 4096,
+                max_group_bytes: 4096,
+            },
+            Capture(Arc::clone(&captures)),
+        )
+        .unwrap()
+        .runtime()
+        .await
+        .unwrap();
+    let refused = runtime.state.commit(add(7, 1, 0)).await;
+    assert!(matches!(
+        refused,
+        Err(Error::Preparation(
+            harmos::state::PreparationError::Membership
+        ))
+    ));
+    assert_eq!(runtime.state.applied(), Position::ORIGIN);
+    let state = runtime
+        .state
+        .state()
+        .read(|state| (state.balance, state.applications))
+        .await
+        .unwrap();
+    assert_eq!(state.value, (0, 0));
+    assert_eq!(state.position, Position::ORIGIN);
+    runtime.stop().await.unwrap();
+    assert_eq!(captures.load(Ordering::SeqCst), 0);
 }
 
 /* === Tests === */

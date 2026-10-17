@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -317,465 +316,407 @@ fn requiring(required: Vec<Required>) -> PluginDefinitions {
     PluginDefinitions::new(declared, []).unwrap()
 }
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("discovery_keeps_original_authority", || {
-            tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .unwrap()
-                .block_on(async {
-                    use harmos::operations::discovery::Discovery;
-                    use harmos::operations::host::{
-                        DiscoveredOperation, Operations, OperationsRequest, Survey, SurveyRequest,
-                    };
-                    let runtime =
-                        super::runtime_with_preparation(NonZeroUsize::new(4096).unwrap()).await;
-                    runtime
-                        .operations
-                        .register_wire_operation::<Discovery>(
-                            "host",
-                            super::Lanes::Open,
-                            Arc::new(()),
-                        )
-                        .unwrap();
-                    runtime
-                        .operations
-                        .register_wire_operation::<Surveying>(
-                            "host",
-                            super::Lanes::Open,
-                            Arc::new(CoreOwner::default()),
-                        )
-                        .unwrap();
-                    let survey = WireDeclaration::of::<Survey>().contract().unwrap();
-                    let candidate = requiring(vec![
-                        required(
-                            WireDeclaration::of::<Operations>().contract().unwrap(),
-                            vec![],
-                        ),
-                        required(survey.clone(), vec![Grant::of(Survey::ID, "reading")]),
-                    ]);
-                    let mut host = Host {
-                        operations: runtime.operations.clone(),
-                        owner: Arc::new(Owner::default()),
-                        scope: None,
-                        callers: BTreeMap::new(),
-                    };
-                    let mut manager = PluginManager::new(candidate).unwrap();
-                    manager.initialize(&mut host).await.unwrap();
-                    let caller = runtime.operations.caller(&host.callers["client"]).unwrap();
-                    let page = caller
-                        .submit_as::<Operations>(OperationsRequest {
-                            rows: Some(1),
-                            ..Default::default()
-                        })
-                        .unwrap()
-                        .await
-                        .unwrap();
-                    let first: Vec<DiscoveredOperation> =
-                        serde_json::from_slice(&page.catalog).unwrap();
-                    assert_eq!(first.len(), 1);
-                    assert!(page.next.is_some());
-                    let discovery = first
-                        .iter()
-                        .find(|entry| entry.contract.operation().id.as_str() == Operations::ID)
-                        .unwrap();
-                    assert_eq!(discovery.grpc_available, cfg!(feature = "grpc"));
-                    #[cfg(feature = "grpc")]
-                    assert_eq!(
-                        discovery.contract.grpc().unwrap().path(),
-                        "/harmos.host.v1.Host/Operations"
-                    );
-                    let bounded = caller
-                        .submit_as::<Operations>(OperationsRequest {
-                            bytes: Some(page.catalog.len() as u32),
-                            ..Default::default()
-                        })
-                        .unwrap()
-                        .await
-                        .unwrap();
-                    assert!(bounded.catalog.len() <= page.catalog.len());
-                    assert!(bounded.next.is_some());
-                    let bounded_entries: Vec<DiscoveredOperation> =
-                        serde_json::from_slice(&bounded.catalog).unwrap();
-                    assert_eq!(bounded_entries, first);
-                    let page = caller
-                        .submit_as::<Operations>(OperationsRequest {
-                            after: page.next.clone(),
-                            rows: Some(1),
-                            ..Default::default()
-                        })
-                        .unwrap()
-                        .await
-                        .unwrap();
-                    let second: Vec<DiscoveredOperation> =
-                        serde_json::from_slice(&page.catalog).unwrap();
-                    assert_eq!(second.len(), 1);
-                    assert!(page.next.is_none());
-                    let discovered = first
-                        .iter()
-                        .chain(&second)
-                        .find(|entry| entry.contract.operation().id.as_str() == Survey::ID)
-                        .unwrap();
-                    assert_eq!(discovered.contract, survey);
-                    assert_eq!(discovered.grants, vec![Grant::of(Survey::ID, "reading")]);
-                    assert_eq!(discovered.owner.as_str(), "host");
-                    assert!(discovered.generation > 0 && discovered.conditional_access);
-                    assert!(!discovered.grpc_available);
-                    assert!(
-                        first.iter().chain(&second).all(|entry| entry
-                            .contract
-                            .operation()
-                            .id
-                            .as_str()
-                            != Control::ID)
-                    );
-                    assert!(matches!(
-                        caller.submit_as::<Survey>(SurveyRequest {
-                            stream: "power".into(),
-                            ..Default::default()
-                        }),
-                        Err(Error::OperationUnauthorized { .. })
-                    ));
-                    assert!(
-                        caller
-                            .submit_as::<Operations>(OperationsRequest {
-                                bytes: Some(2),
-                                ..Default::default()
-                            })
-                            .unwrap()
-                            .await
-                            .is_err()
-                    );
-                    assert!(
-                        caller
-                            .submit_as::<Operations>(OperationsRequest {
-                                after: Some("invalid".into()),
-                                ..Default::default()
-                            })
-                            .unwrap()
-                            .await
-                            .is_err()
-                    );
-                    assert!(
-                        caller
-                            .submit_as::<Operations>(OperationsRequest {
-                                rows: Some(257),
-                                ..Default::default()
-                            })
-                            .unwrap()
-                            .await
-                            .is_err()
-                    );
-                    let host_page = runtime
-                        .operations
-                        .submit_as::<Operations>(OperationsRequest::default())
-                        .unwrap()
-                        .await
-                        .unwrap();
-                    let ready: Vec<DiscoveredOperation> =
-                        serde_json::from_slice(&host_page.catalog).unwrap();
-                    assert!(ready.iter().any(|entry| entry.owner.as_str() == "provider"
-                        && entry.contract.operation().id.as_str() == Control::ID));
-                    manager.shutdown(&mut host).await.unwrap();
-                    let host_page = runtime
-                        .operations
-                        .submit_as::<Operations>(OperationsRequest::default())
-                        .unwrap()
-                        .await
-                        .unwrap();
-                    let stopped: Vec<DiscoveredOperation> =
-                        serde_json::from_slice(&host_page.catalog).unwrap();
-                    assert!(
-                        stopped
-                            .iter()
-                            .all(|entry| entry.owner.as_str() != "provider")
-                    );
-                    assert!(
-                        caller
-                            .submit_as::<Operations>(OperationsRequest::default())
-                            .is_err()
-                    );
-                    runtime.stop().await.unwrap();
-                });
-        });
+#[tokio::test]
+async fn discovery_keeps_original_authority() {
+    use harmos::operations::discovery::Discovery;
+    use harmos::operations::host::{
+        DiscoveredOperation, Operations, OperationsRequest, Survey, SurveyRequest,
+    };
+    let runtime = super::runtime_with_preparation(NonZeroUsize::new(4096).unwrap()).await;
+    runtime
+        .operations
+        .register_wire_operation::<Discovery>("host", super::Lanes::Open, Arc::new(()))
+        .unwrap();
+    runtime
+        .operations
+        .register_wire_operation::<Surveying>(
+            "host",
+            super::Lanes::Open,
+            Arc::new(CoreOwner::default()),
+        )
+        .unwrap();
+    let survey = WireDeclaration::of::<Survey>().contract().unwrap();
+    let candidate = requiring(vec![
+        required(
+            WireDeclaration::of::<Operations>().contract().unwrap(),
+            vec![],
+        ),
+        required(survey.clone(), vec![Grant::of(Survey::ID, "reading")]),
+    ]);
+    let mut host = Host {
+        operations: runtime.operations.clone(),
+        owner: Arc::new(Owner::default()),
+        scope: None,
+        callers: BTreeMap::new(),
+    };
+    let mut manager = PluginManager::new(candidate).unwrap();
+    manager.initialize(&mut host).await.unwrap();
+    let caller = runtime.operations.caller(&host.callers["client"]).unwrap();
+    let page = caller
+        .submit_as::<Operations>(OperationsRequest {
+            rows: Some(1),
+            ..Default::default()
+        })
+        .unwrap()
+        .await
+        .unwrap();
+    let first: Vec<DiscoveredOperation> = serde_json::from_slice(&page.catalog).unwrap();
+    assert_eq!(first.len(), 1);
+    assert!(page.next.is_some());
+    let discovery = first
+        .iter()
+        .find(|entry| entry.contract.operation().id.as_str() == Operations::ID)
+        .unwrap();
+    assert_eq!(discovery.grpc_available, cfg!(feature = "grpc"));
+    #[cfg(feature = "grpc")]
+    assert_eq!(
+        discovery.contract.grpc().unwrap().path(),
+        "/harmos.host.v1.Host/Operations"
+    );
+    let bounded = caller
+        .submit_as::<Operations>(OperationsRequest {
+            bytes: Some(page.catalog.len() as u32),
+            ..Default::default()
+        })
+        .unwrap()
+        .await
+        .unwrap();
+    assert!(bounded.catalog.len() <= page.catalog.len());
+    assert!(bounded.next.is_some());
+    let bounded_entries: Vec<DiscoveredOperation> =
+        serde_json::from_slice(&bounded.catalog).unwrap();
+    assert_eq!(bounded_entries, first);
+    let page = caller
+        .submit_as::<Operations>(OperationsRequest {
+            after: page.next.clone(),
+            rows: Some(1),
+            ..Default::default()
+        })
+        .unwrap()
+        .await
+        .unwrap();
+    let second: Vec<DiscoveredOperation> = serde_json::from_slice(&page.catalog).unwrap();
+    assert_eq!(second.len(), 1);
+    assert!(page.next.is_none());
+    let discovered = first
+        .iter()
+        .chain(&second)
+        .find(|entry| entry.contract.operation().id.as_str() == Survey::ID)
+        .unwrap();
+    assert_eq!(discovered.contract, survey);
+    assert_eq!(discovered.grants, vec![Grant::of(Survey::ID, "reading")]);
+    assert_eq!(discovered.owner.as_str(), "host");
+    assert!(discovered.generation > 0 && discovered.conditional_access);
+    assert!(!discovered.grpc_available);
+    assert!(
+        first
+            .iter()
+            .chain(&second)
+            .all(|entry| entry.contract.operation().id.as_str() != Control::ID)
+    );
+    assert!(matches!(
+        caller.submit_as::<Survey>(SurveyRequest {
+            stream: "power".into(),
+            ..Default::default()
+        }),
+        Err(Error::OperationUnauthorized { .. })
+    ));
+    assert!(
+        caller
+            .submit_as::<Operations>(OperationsRequest {
+                bytes: Some(2),
+                ..Default::default()
+            })
+            .unwrap()
+            .await
+            .is_err()
+    );
+    assert!(
+        caller
+            .submit_as::<Operations>(OperationsRequest {
+                after: Some("invalid".into()),
+                ..Default::default()
+            })
+            .unwrap()
+            .await
+            .is_err()
+    );
+    assert!(
+        caller
+            .submit_as::<Operations>(OperationsRequest {
+                rows: Some(257),
+                ..Default::default()
+            })
+            .unwrap()
+            .await
+            .is_err()
+    );
+    let host_page = runtime
+        .operations
+        .submit_as::<Operations>(OperationsRequest::default())
+        .unwrap()
+        .await
+        .unwrap();
+    let ready: Vec<DiscoveredOperation> = serde_json::from_slice(&host_page.catalog).unwrap();
+    assert!(ready.iter().any(|entry| entry.owner.as_str() == "provider"
+        && entry.contract.operation().id.as_str() == Control::ID));
+    manager.shutdown(&mut host).await.unwrap();
+    let host_page = runtime
+        .operations
+        .submit_as::<Operations>(OperationsRequest::default())
+        .unwrap()
+        .await
+        .unwrap();
+    let stopped: Vec<DiscoveredOperation> = serde_json::from_slice(&host_page.catalog).unwrap();
+    assert!(
+        stopped
+            .iter()
+            .all(|entry| entry.owner.as_str() != "provider")
+    );
+    assert!(
+        caller
+            .submit_as::<Operations>(OperationsRequest::default())
+            .is_err()
+    );
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn preflight_preserves_plugin() {
+    use harmos::operations::host::{Publication, Publish};
+    let runtime = super::runtime_with_preparation(NonZeroUsize::new(4096).unwrap()).await;
+    let owner = Arc::new(CoreOwner::default());
+    runtime
+        .operations
+        .register_wire_operation::<CorePublication>("host", super::Lanes::Open, owner.clone())
+        .unwrap();
+    let mut host = Host {
+        operations: runtime.operations.clone(),
+        owner: Arc::new(Owner::default()),
+        scope: None,
+        callers: BTreeMap::new(),
+    };
+
+    // A Requirement The Host Does Not Provide Exactly Is Refused Before Preparation
+    let selected = WireDeclaration::of::<Publish>().contract().unwrap();
+    let mut drift = selected.operation().clone();
+    drift.policy.timeout = std::time::Duration::from_secs(10);
+    let drift = harmos::operations::Contract::new(
+        drift,
+        selected.version(),
+        selected.codec(),
+        selected.schema().clone(),
+    )
+    .unwrap();
+    let mut refused = PluginManager::new(requiring(vec![required(drift, vec![])])).unwrap();
+    assert!(matches!(
+        refused.initialize(&mut host).await,
+        Err(Error::NotRegistered {
+            domain: "host provider",
+            ..
+        })
+    ));
+    assert!(host.callers.is_empty());
+
+    // The Exact Requirement Routes To The Host Provider For The Original Caller
+    let chosen = requiring(vec![required(selected.clone(), vec![])]);
+    let mut manager = PluginManager::new(chosen.clone()).unwrap();
+    manager.initialize(&mut host).await.unwrap();
+    let provider = runtime
+        .operations
+        .caller(&host.callers["provider"])
+        .unwrap();
+    assert!(matches!(
+        provider.submit_as::<Publish>(Publication::default()),
+        Err(Error::OperationUnauthorized { .. })
+    ));
+    let mut context = harmos::operations::CallContext::default();
+    context.insert(Principal("alice")).unwrap();
+    let caller = runtime
+        .operations
+        .with_context(context)
+        .caller(&host.callers["client"])
+        .unwrap();
+    caller
+        .submit_as::<Publish>(Publication::default())
+        .unwrap()
+        .await
+        .unwrap();
+    assert_eq!(owner.prepared.load(Ordering::SeqCst), 1);
+    assert_eq!(owner.called.load(Ordering::SeqCst), 1);
+    assert_eq!(host.owner.prepared.load(Ordering::SeqCst), 0);
+
+    // Two Host Providers Make The Requirement Ambiguous
+    runtime
+        .operations
+        .register_wire_operation::<CorePublication>("other-host", super::Lanes::Open, owner.clone())
+        .unwrap();
+    assert!(matches!(
+        runtime.operations.validate_requirements(&chosen),
+        Err(Error::InvalidInput {
+            field: "host provider",
+            ..
+        })
+    ));
+    runtime
+        .operations
+        .unregister_from("other-host", Publish::ID)
+        .await
+        .unwrap();
+    manager.shutdown(&mut host).await.unwrap();
+    assert!(matches!(
+        caller.submit_as::<Publish>(Publication::default()),
+        Err(Error::OperationCaller { .. })
+    ));
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn grants_select_request() {
+    use harmos::operations::host::{Survey, SurveyRequest};
+    let runtime = super::runtime_with_preparation(NonZeroUsize::new(4096).unwrap()).await;
+    let owner = Arc::new(CoreOwner::default());
+    runtime
+        .operations
+        .register_wire_operation::<Surveying>("host", super::Lanes::Open, owner.clone())
+        .unwrap();
+    let mut host = Host {
+        operations: runtime.operations.clone(),
+        owner: Arc::new(Owner::default()),
+        scope: None,
+        callers: BTreeMap::new(),
+    };
+    let contract = WireDeclaration::of::<Survey>().contract().unwrap();
+    let candidate = requiring(vec![required(
+        contract,
+        vec![Grant::of(Survey::ID, "reading")],
+    )]);
+    let mut manager = PluginManager::new(candidate).unwrap();
+    manager.initialize(&mut host).await.unwrap();
+    let caller = runtime.operations.caller(&host.callers["client"]).unwrap();
+    let survey = |stream: &str| SurveyRequest {
+        stream: stream.into(),
+        ..SurveyRequest::default()
+    };
+    caller
+        .submit_as::<Survey>(survey("reading"))
+        .unwrap()
+        .await
+        .unwrap();
+    assert!(matches!(
+        caller.submit_as::<Survey>(survey("power")),
+        Err(Error::OperationUnauthorized { .. })
+    ));
+    assert_eq!(owner.called.load(Ordering::SeqCst), 1);
+    // The Host Itself Needs No Grant
+    runtime
+        .operations
+        .submit_as::<Survey>(survey("power"))
+        .unwrap()
+        .await
+        .unwrap();
+    assert_eq!(owner.called.load(Ordering::SeqCst), 2);
+    manager.shutdown(&mut host).await.unwrap();
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn controls_retain_ready() {
+    let runtime = super::runtime_with_preparation(NonZeroUsize::new(128).unwrap()).await;
+    let mut host = Host {
+        operations: runtime.operations.clone(),
+        owner: Arc::new(Owner::default()),
+        scope: None,
+        callers: BTreeMap::new(),
+    };
+    let mut manager = PluginManager::new(definitions("first")).unwrap();
+    manager.initialize(&mut host).await.unwrap();
+    let scope = host.scope.as_ref().unwrap().clone();
+    let own = runtime
+        .operations
+        .caller(&host.callers["provider"])
+        .unwrap();
+    let dependency = runtime.operations.caller(&host.callers["client"]).unwrap();
+    for caller in [&own, &dependency] {
+        assert!(matches!(
+            caller.submit_as::<Control>("plugin".into()),
+            Err(Error::OperationUnauthorized { .. })
+        ));
+        assert!(matches!(
+            caller.submit_encoded(Control::ID, Text::from("encoded").encode_to_vec()),
+            Err(Error::OperationUnauthorized { .. })
+        ));
     }
-    {
-        scenario_runtime::check("preflight_preserves_plugin", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    use harmos::operations::host::{Publication, Publish};
-                    let runtime =
-                        super::runtime_with_preparation(NonZeroUsize::new(4096).unwrap()).await;
-                    let owner = Arc::new(CoreOwner::default());
-                    runtime
-                        .operations
-                        .register_wire_operation::<CorePublication>(
-                            "host",
-                            super::Lanes::Open,
-                            owner.clone(),
-                        )
-                        .unwrap();
-                    let mut host = Host {
-                        operations: runtime.operations.clone(),
-                        owner: Arc::new(Owner::default()),
-                        scope: None,
-                        callers: BTreeMap::new(),
-                    };
+    let contract = WireDeclaration::of::<Control>().contract().unwrap();
+    let captured = runtime
+        .operations
+        .capture_callback(&scope, &contract)
+        .unwrap();
+    let encoded = AtomicBool::new(false);
+    assert!(matches!(
+        captured.submit_with(NonZeroUsize::new(64).unwrap(), |_| {
+            encoded.store(true, Ordering::SeqCst);
+            Ok(Text::from("callback").encode_to_vec())
+        }),
+        Err(Error::OperationUnauthorized { .. })
+    ));
+    assert!(!encoded.load(Ordering::SeqCst));
+    assert_eq!(host.owner.prepared.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        *runtime
+            .operations
+            .call_as::<Control>("host".into())
+            .await
+            .unwrap(),
+        "host"
+    );
 
-                    // A Requirement The Host Does Not Provide Exactly Is Refused Before Preparation
-                    let selected = WireDeclaration::of::<Publish>().contract().unwrap();
-                    let mut drift = selected.operation().clone();
-                    drift.policy.timeout = std::time::Duration::from_secs(10);
-                    let drift = harmos::operations::Contract::new(
-                        drift,
-                        selected.version(),
-                        selected.codec(),
-                        selected.schema().clone(),
-                    )
-                    .unwrap();
-                    let mut refused =
-                        PluginManager::new(requiring(vec![required(drift, vec![])])).unwrap();
-                    assert!(matches!(
-                        refused.initialize(&mut host).await,
-                        Err(Error::NotRegistered {
-                            domain: "host provider",
-                            ..
-                        })
-                    ));
-                    assert!(host.callers.is_empty());
+    let response = runtime
+        .operations
+        .call_encoded(Control::ID, Text::from("encoded host").encode_to_vec())
+        .await
+        .unwrap();
+    assert_eq!(String::decode(&response).unwrap(), "encoded host");
 
-                    // The Exact Requirement Routes To The Host Provider For The Original Caller
-                    let chosen = requiring(vec![required(selected.clone(), vec![])]);
-                    let mut manager = PluginManager::new(chosen.clone()).unwrap();
-                    manager.initialize(&mut host).await.unwrap();
-                    let provider = runtime
-                        .operations
-                        .caller(&host.callers["provider"])
-                        .unwrap();
-                    assert!(matches!(
-                        provider.submit_as::<Publish>(Publication::default()),
-                        Err(Error::OperationUnauthorized { .. })
-                    ));
-                    let mut context = harmos::operations::CallContext::default();
-                    context.insert(Principal("alice")).unwrap();
-                    let caller = runtime
-                        .operations
-                        .with_context(context)
-                        .caller(&host.callers["client"])
-                        .unwrap();
-                    caller
-                        .submit_as::<Publish>(Publication::default())
-                        .unwrap()
-                        .await
-                        .unwrap();
-                    assert_eq!(owner.prepared.load(Ordering::SeqCst), 1);
-                    assert_eq!(owner.called.load(Ordering::SeqCst), 1);
-                    assert_eq!(host.owner.prepared.load(Ordering::SeqCst), 0);
-
-                    // Two Host Providers Make The Requirement Ambiguous
-                    runtime
-                        .operations
-                        .register_wire_operation::<CorePublication>(
-                            "other-host",
-                            super::Lanes::Open,
-                            owner.clone(),
-                        )
-                        .unwrap();
-                    assert!(matches!(
-                        runtime.operations.validate_requirements(&chosen),
-                        Err(Error::InvalidInput {
-                            field: "host provider",
-                            ..
-                        })
-                    ));
-                    runtime
-                        .operations
-                        .unregister_from("other-host", Publish::ID)
-                        .await
-                        .unwrap();
-                    manager.shutdown(&mut host).await.unwrap();
-                    assert!(matches!(
-                        caller.submit_as::<Publish>(Publication::default()),
-                        Err(Error::OperationCaller { .. })
-                    ));
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("grants_select_request", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    use harmos::operations::host::{Survey, SurveyRequest};
-                    let runtime =
-                        super::runtime_with_preparation(NonZeroUsize::new(4096).unwrap()).await;
-                    let owner = Arc::new(CoreOwner::default());
-                    runtime
-                        .operations
-                        .register_wire_operation::<Surveying>(
-                            "host",
-                            super::Lanes::Open,
-                            owner.clone(),
-                        )
-                        .unwrap();
-                    let mut host = Host {
-                        operations: runtime.operations.clone(),
-                        owner: Arc::new(Owner::default()),
-                        scope: None,
-                        callers: BTreeMap::new(),
-                    };
-                    let contract = WireDeclaration::of::<Survey>().contract().unwrap();
-                    let candidate = requiring(vec![required(
-                        contract,
-                        vec![Grant::of(Survey::ID, "reading")],
-                    )]);
-                    let mut manager = PluginManager::new(candidate).unwrap();
-                    manager.initialize(&mut host).await.unwrap();
-                    let caller = runtime.operations.caller(&host.callers["client"]).unwrap();
-                    let survey = |stream: &str| SurveyRequest {
-                        stream: stream.into(),
-                        ..SurveyRequest::default()
-                    };
-                    caller
-                        .submit_as::<Survey>(survey("reading"))
-                        .unwrap()
-                        .await
-                        .unwrap();
-                    assert!(matches!(
-                        caller.submit_as::<Survey>(survey("power")),
-                        Err(Error::OperationUnauthorized { .. })
-                    ));
-                    assert_eq!(owner.called.load(Ordering::SeqCst), 1);
-                    // The Host Itself Needs No Grant
-                    runtime
-                        .operations
-                        .submit_as::<Survey>(survey("power"))
-                        .unwrap()
-                        .await
-                        .unwrap();
-                    assert_eq!(owner.called.load(Ordering::SeqCst), 2);
-                    manager.shutdown(&mut host).await.unwrap();
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("controls_retain_ready", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime =
-                        super::runtime_with_preparation(NonZeroUsize::new(128).unwrap()).await;
-                    let mut host = Host {
-                        operations: runtime.operations.clone(),
-                        owner: Arc::new(Owner::default()),
-                        scope: None,
-                        callers: BTreeMap::new(),
-                    };
-                    let mut manager = PluginManager::new(definitions("first")).unwrap();
-                    manager.initialize(&mut host).await.unwrap();
-                    let scope = host.scope.as_ref().unwrap().clone();
-                    let own = runtime
-                        .operations
-                        .caller(&host.callers["provider"])
-                        .unwrap();
-                    let dependency = runtime.operations.caller(&host.callers["client"]).unwrap();
-                    for caller in [&own, &dependency] {
-                        assert!(matches!(
-                            caller.submit_as::<Control>("plugin".into()),
-                            Err(Error::OperationUnauthorized { .. })
-                        ));
-                        assert!(matches!(
-                            caller
-                                .submit_encoded(Control::ID, Text::from("encoded").encode_to_vec()),
-                            Err(Error::OperationUnauthorized { .. })
-                        ));
-                    }
-                    let contract = WireDeclaration::of::<Control>().contract().unwrap();
-                    let captured = runtime
-                        .operations
-                        .capture_callback(&scope, &contract)
-                        .unwrap();
-                    let encoded = AtomicBool::new(false);
-                    assert!(matches!(
-                        captured.submit_with(NonZeroUsize::new(64).unwrap(), |_| {
-                            encoded.store(true, Ordering::SeqCst);
-                            Ok(Text::from("callback").encode_to_vec())
-                        }),
-                        Err(Error::OperationUnauthorized { .. })
-                    ));
-                    assert!(!encoded.load(Ordering::SeqCst));
-                    assert_eq!(host.owner.prepared.load(Ordering::SeqCst), 0);
-                    assert_eq!(
-                        *runtime
-                            .operations
-                            .call_as::<Control>("host".into())
-                            .await
-                            .unwrap(),
-                        "host"
-                    );
-
-                    let response = runtime
-                        .operations
-                        .call_encoded(Control::ID, Text::from("encoded host").encode_to_vec())
-                        .await
-                        .unwrap();
-                    assert_eq!(String::decode(&response).unwrap(), "encoded host");
-
-                    // Revoke The Exact Managed Generation Before Its Replacement Becomes Ready
-                    host.owner.prepared.store(0, Ordering::SeqCst);
-                    manager
-                        .reload(definitions("second"), &mut host)
-                        .await
-                        .unwrap();
-                    assert_ne!(
-                        scope.generation(),
-                        host.scope.as_ref().unwrap().generation()
-                    );
-                    assert!(matches!(
-                        own.submit_as::<Control>("stale".into()),
-                        Err(Error::OperationCaller { .. })
-                    ));
-                    assert!(
-                        captured
-                            .submit_with(NonZeroUsize::new(64).unwrap(), |_| {
-                                encoded.store(true, Ordering::SeqCst);
-                                Ok(Text::from("stale").encode_to_vec())
-                            })
-                            .is_err()
-                    );
-                    assert!(!encoded.load(Ordering::SeqCst));
-                    assert_eq!(
-                        *runtime
-                            .operations
-                            .call_as::<Control>("replacement".into())
-                            .await
-                            .unwrap(),
-                        "replacement"
-                    );
-                    manager.shutdown(&mut host).await.unwrap();
-                    assert!(
-                        runtime
-                            .operations
-                            .submit_as::<Control>("closed".into())
-                            .is_err()
-                    );
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
+    // Revoke The Exact Managed Generation Before Its Replacement Becomes Ready
+    host.owner.prepared.store(0, Ordering::SeqCst);
+    manager
+        .reload(definitions("second"), &mut host)
+        .await
+        .unwrap();
+    assert_ne!(
+        scope.generation(),
+        host.scope.as_ref().unwrap().generation()
+    );
+    assert!(matches!(
+        own.submit_as::<Control>("stale".into()),
+        Err(Error::OperationCaller { .. })
+    ));
+    assert!(
+        captured
+            .submit_with(NonZeroUsize::new(64).unwrap(), |_| {
+                encoded.store(true, Ordering::SeqCst);
+                Ok(Text::from("stale").encode_to_vec())
+            })
+            .is_err()
+    );
+    assert!(!encoded.load(Ordering::SeqCst));
+    assert_eq!(
+        *runtime
+            .operations
+            .call_as::<Control>("replacement".into())
+            .await
+            .unwrap(),
+        "replacement"
+    );
+    manager.shutdown(&mut host).await.unwrap();
+    assert!(
+        runtime
+            .operations
+            .submit_as::<Control>("closed".into())
+            .is_err()
+    );
+    runtime.stop().await.unwrap();
 }
 
 /* === Tests === */

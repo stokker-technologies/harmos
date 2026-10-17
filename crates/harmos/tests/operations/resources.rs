@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -131,66 +130,49 @@ impl Operation for Read {
 
 /* === Tests === */
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("needs_lacks_registration", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = Runtime::<App>::builder((), ()).runtime().await.unwrap();
-                    assert_eq!(runtime.stop().await.unwrap(), Position::ORIGIN);
-                });
-        });
-    }
-    {
-        scenario_runtime::check("child_own_resources", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let resources = Arc::new(Bench {
-                        device: "sim://rig-a".to_owned(),
-                        reads: AtomicUsize::new(0),
-                        initialized: AtomicUsize::new(0),
-                        finalized: AtomicUsize::new(0),
-                    });
-                    let runtime = Runtime::<App<Arc<Bench>>>::builder((), resources.clone())
-                        .register(Lanes::catalog())
-                        .runtime()
-                        .await
-                        .unwrap();
-                    runtime
-                        .operations
-                        .register_operation::<Read>("app", Lanes::Open, resources.clone())
-                        .unwrap();
+#[tokio::test]
+async fn needs_lacks_registration() {
+    let runtime = Runtime::<App>::builder((), ()).runtime().await.unwrap();
+    assert_eq!(runtime.stop().await.unwrap(), Position::ORIGIN);
+}
 
-                    let parent = runtime
-                        .operations
-                        .submit_as::<ReadContract>(true)
-                        .unwrap()
-                        .await
-                        .unwrap();
-                    assert_eq!(parent.0, "sim://rig-a");
-                    assert_eq!(parent.1, 0);
-                    let following = runtime
-                        .operations
-                        .submit_as::<ReadContract>(false)
-                        .unwrap()
-                        .await
-                        .unwrap();
-                    assert_eq!(
-                        following.1, 2,
-                        "parent, child and following attempt share one value"
-                    );
-                    assert_eq!(resources.initialized.load(Ordering::SeqCst), 3);
-                    assert_eq!(resources.finalized.load(Ordering::SeqCst), 3);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
+#[tokio::test]
+async fn child_own_resources() {
+    let resources = Arc::new(Bench {
+        device: "sim://rig-a".to_owned(),
+        reads: AtomicUsize::new(0),
+        initialized: AtomicUsize::new(0),
+        finalized: AtomicUsize::new(0),
+    });
+    let runtime = Runtime::<App<Arc<Bench>>>::builder((), resources.clone())
+        .register(Lanes::catalog())
+        .runtime()
+        .await
+        .unwrap();
+    runtime
+        .operations
+        .register_operation::<Read>("app", Lanes::Open, resources.clone())
+        .unwrap();
+
+    let parent = runtime
+        .operations
+        .submit_as::<ReadContract>(true)
+        .unwrap()
+        .await
+        .unwrap();
+    assert_eq!(parent.0, "sim://rig-a");
+    assert_eq!(parent.1, 0);
+    let following = runtime
+        .operations
+        .submit_as::<ReadContract>(false)
+        .unwrap()
+        .await
+        .unwrap();
+    assert_eq!(
+        following.1, 2,
+        "parent, child and following attempt share one value"
+    );
+    assert_eq!(resources.initialized.load(Ordering::SeqCst), 3);
+    assert_eq!(resources.finalized.load(Ordering::SeqCst), 3);
+    runtime.stop().await.unwrap();
 }

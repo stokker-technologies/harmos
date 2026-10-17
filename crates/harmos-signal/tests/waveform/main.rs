@@ -9,8 +9,6 @@
 
 /* === Modules === */
 mod aggregates;
-#[path = "../../../../tests/support/scenarios.rs"]
-mod scenario_runtime;
 
 #[allow(dead_code)]
 mod probe {
@@ -250,70 +248,103 @@ fn dependencies(manifest: &str) -> BTreeSet<String> {
 /* === Tests === */
 
 #[test]
-fn contract_scenario() {
-    {
-        scenario_runtime::check("crate_root_hands", || {
-            let handed_out = reexported(&read(&source().join("lib.rs")));
-            let accepted: BTreeSet<String> = CENSUS.iter().map(|name| (*name).to_owned()).collect();
+fn crate_root_hands() {
+    let handed_out = reexported(&read(&source().join("lib.rs")));
+    let accepted: BTreeSet<String> = CENSUS.iter().map(|name| (*name).to_owned()).collect();
 
-            assert_eq!(handed_out, accepted, "the signal surface drifted");
-        });
-    }
-    {
-        scenario_runtime::check("manifest_names_approved", || {
-            let manifest = read(&crate_root().join("Cargo.toml"));
+    assert_eq!(handed_out, accepted, "the signal surface drifted");
+}
 
-            assert_eq!(
-                dependencies(&manifest),
-                BTreeSet::from([
-                    "rustfft".to_owned(),
-                    "thiserror".to_owned(),
-                    "tracing".to_owned()
-                ]),
-                "the dependency budget is a planned FFT and shared error/tracing contracts"
-            );
-            assert!(
-                !manifest.contains("[dev-dependencies]"),
-                "a development dependency enters the lockfile too, and harmos's \
-         allowance audit counts it against this crate"
-            );
-        });
-    }
-    {
-        scenario_runtime::check("nothing_here_names", || {
-            let found: Vec<String> = sources()
-                .into_iter()
-                .filter(|(_, text)| code(text).contains("harmos"))
-                .map(|(path, _)| path)
-                .collect();
+#[test]
+fn manifest_names_approved() {
+    let manifest = read(&crate_root().join("Cargo.toml"));
 
-            assert!(
-                found.is_empty(),
-                "this crate must lift into a repository of its own unchanged: {found:?}"
-            );
-        });
-    }
-    scenario_runtime::check("empty_input", aggregates::empty_input);
-    scenario_runtime::check("single_value", aggregates::single_value);
-    scenario_runtime::check("known_run", aggregates::known_run);
-    scenario_runtime::check("odd_even_medians", aggregates::odd_even_medians);
-    scenario_runtime::check(
-        "interpolated_percentiles",
-        aggregates::interpolated_percentiles,
+    assert_eq!(
+        dependencies(&manifest),
+        BTreeSet::from([
+            "rustfft".to_owned(),
+            "thiserror".to_owned(),
+            "tracing".to_owned()
+        ]),
+        "the dependency budget is a planned FFT and shared error/tracing contracts"
     );
-    scenario_runtime::check("sorted_once", aggregates::sorted_once);
-    scenario_runtime::check("finite_extremes", aggregates::finite_extremes);
-    scenario_runtime::check("non_finite_skipped", aggregates::non_finite_skipped);
-    scenario_runtime::check("value_predicates", aggregates::value_predicates);
-    scenario_runtime::check("summaries_agree", aggregates::summaries_agree);
-    {
-        scenario_runtime::check("anchor_reached_root", || {
-            let root = code(&read(&source().join("lib.rs")));
+    assert!(
+        !manifest.contains("[dev-dependencies]"),
+        "a development dependency enters the lockfile too, and harmos's \
+         allowance audit counts it against this crate"
+    );
+}
 
-            // Private modules, public names: a caller writes `harmos_signal::lttb` and
-            // never a module path, so the census above is the whole reachable surface.
-            assert!(root.contains("mod spectrum;") && !root.contains("pub mod spectrum;"));
-            assert!(root.contains("mod waveform;") && !root.contains("pub mod waveform;"));
-        });
-    }
+#[test]
+fn nothing_here_names() {
+    let found: Vec<String> = sources()
+        .into_iter()
+        .filter(|(_, text)| code(text).contains("harmos"))
+        .map(|(path, _)| path)
+        .collect();
+
+    assert!(
+        found.is_empty(),
+        "this crate must lift into a repository of its own unchanged: {found:?}"
+    );
+}
+
+#[test]
+fn empty_input() {
+    aggregates::empty_input();
+}
+
+#[test]
+fn single_value() {
+    aggregates::single_value();
+}
+
+#[test]
+fn known_run() {
+    aggregates::known_run();
+}
+
+#[test]
+fn odd_even_medians() {
+    aggregates::odd_even_medians();
+}
+
+#[test]
+fn interpolated_percentiles() {
+    aggregates::interpolated_percentiles();
+}
+
+#[test]
+fn sorted_once() {
+    aggregates::sorted_once();
+}
+
+#[test]
+fn finite_extremes() {
+    aggregates::finite_extremes();
+}
+
+#[test]
+fn non_finite_skipped() {
+    aggregates::non_finite_skipped();
+}
+
+#[test]
+fn value_predicates() {
+    aggregates::value_predicates();
+}
+
+#[test]
+fn summaries_agree() {
+    aggregates::summaries_agree();
+}
+
+#[test]
+fn anchor_reached_root() {
+    let root = code(&read(&source().join("lib.rs")));
+
+    // Private modules, public names: a caller writes `harmos_signal::lttb` and
+    // never a module path, so the census above is the whole reachable surface.
+    assert!(root.contains("mod spectrum;") && !root.contains("pub mod spectrum;"));
+    assert!(root.contains("mod waveform;") && !root.contains("pub mod waveform;"));
 }

@@ -8,24 +8,21 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
 /* === Imports === */
 // Standard Library Imports
-use std::fs::OpenOptions;
-use std::io::Write;
-use std::path::Path;
 use std::sync::{Arc, Mutex};
 // Third Party Imports
-use support::{Bank, Bonus, Fact, Ledger, Noted, booted, deposit, ledger, scratch};
+use support::{Bank, Bonus, Fact, Ledger, Noted, booted, deposit, ledger};
 // Local Imports
 use super::support;
 use harmos::{
-    state::Entry, state::Origin, state::Position, state::Recorded, storage::JournalConsumer,
+    state::Entry, state::Kind, state::Origin, state::Position, state::Recorded,
+    storage::JournalConsumer,
 };
-use jsonl_adapter::Jsonl;
+use support::journal::{Journal, Store, frame};
 
 /* === Constants === */
 
@@ -84,117 +81,96 @@ impl JournalConsumer<Bank> for Kept {
 
 /* === Private Functions === */
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("change_applies_own", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let copy = scratch("evolution-change").join("journal.jsonl");
+#[tokio::test]
+async fn change_applies_own() {
+    let copy = Store::default();
 
-                    // What this build writes: a bonus of 10 credits 10.
-                    let live = booted(Ledger::default(), |builder| {
-                        builder.recover(Jsonl::<Bank>::open(&copy).expect("a fresh copy"))
-                    })
-                    .await;
-                    let written = live
-                        .state
-                        .commit(Bonus { amount: 10 })
-                        .await
-                        .expect("accepted");
-                    live.state.wait_until_stored(written.position).await;
-                    live.stop().await.unwrap();
+    // What this build writes: a bonus of 10 credits 10.
+    let live = booted(Ledger::default(), |builder| {
+        builder.recover(Journal::<Bank>::open(&copy))
+    })
+    .await;
+    let written = live
+        .state
+        .commit(Bonus { amount: 10 })
+        .await
+        .expect("accepted");
+    live.state.wait_until_stored(written.position).await;
+    live.stop().await.unwrap();
 
-                    // What a version-1 build wrote: the same declared amount, under version 1,
-                    // in version 1's own shape — and version 1 credited double.
-                    append(
-                        &copy,
-                        2,
-                        "Transaction",
-                        "ledger.bonus",
-                        1,
-                        r#"{"amount":10}"#,
-                    );
+    // What a version-1 build wrote: the same declared amount, under version 1,
+    // in version 1's own shape — and version 1 credited double.
+    copy.push(frame(
+        2,
+        Kind::Transaction,
+        "ledger.bonus",
+        1,
+        serde_json::json!({ "amount": 10 }),
+    ));
 
-                    let recovered = booted(Ledger::default(), |builder| {
-                        builder.recover(Jsonl::<Bank>::open(&copy).expect("the copy is there"))
-                    })
-                    .await;
-                    let rebuilt = ledger(&recovered).await;
+    let recovered = booted(Ledger::default(), |builder| {
+        builder.recover(Journal::<Bank>::open(&copy))
+    })
+    .await;
+    let rebuilt = ledger(&recovered).await;
 
-                    assert_eq!(
-                        rebuilt.balance, 30,
-                        "the entry this build wrote credited 10 and the one version 1 wrote \
+    assert_eq!(
+        rebuilt.balance, 30,
+        "the entry this build wrote credited 10 and the one version 1 wrote \
          credited 20, because replay asked the version each was written with"
-                    );
-                    assert_eq!(rebuilt.applications, 2);
-                    assert_eq!(recovered.state.applied(), Position(2));
-                    let historical = recovered
-                        .state
-                        .state()
-                        .at(Origin::initial(Ledger::default()), Position(2))
-                        .await
-                        .expect("the stored versions replay historically too");
-                    assert_eq!(historical.value.balance, 30);
-                    recovered.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("stored_fact_comes", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let copy = scratch("evolution-fact").join("journal.jsonl");
+    );
+    assert_eq!(rebuilt.applications, 2);
+    assert_eq!(recovered.state.applied(), Position(2));
+    let historical = recovered
+        .state
+        .state()
+        .at(Origin::initial(Ledger::default()), Position(2))
+        .await
+        .expect("the stored versions replay historically too");
+    assert_eq!(historical.value.balance, 30);
+    recovered.stop().await.unwrap();
+}
 
-                    let live = booted(Ledger::default(), |builder| {
-                        builder.recover(Jsonl::<Bank>::open(&copy).expect("a fresh copy"))
-                    })
-                    .await;
-                    let written = live.state.commit(deposit(4)).await.expect("accepted");
-                    live.state.wait_until_stored(written.position).await;
-                    live.stop().await.unwrap();
+#[tokio::test]
+async fn stored_fact_comes() {
+    let copy = Store::default();
 
-                    // A fact as a version-1 build wrote it: the note under a field name the
-                    // current shape does not have.
-                    append(
-                        &copy,
-                        2,
-                        "Record",
-                        "ledger.noted",
-                        1,
-                        r#"{"text":"audited"}"#,
-                    );
+    let live = booted(Ledger::default(), |builder| {
+        builder.recover(Journal::<Bank>::open(&copy))
+    })
+    .await;
+    let written = live.state.commit(deposit(4)).await.expect("accepted");
+    live.state.wait_until_stored(written.position).await;
+    live.stop().await.unwrap();
 
-                    let (kept, held) = Kept::new();
-                    let recovered = booted(Ledger::default(), |builder| {
-                        builder
-                            .recover(Jsonl::<Bank>::open(&copy).expect("the copy is there"))
-                            .attach(kept)
-                    })
-                    .await;
+    // A fact as a version-1 build wrote it: the note under a field name the
+    // current shape does not have.
+    copy.push(frame(
+        2,
+        Kind::Record,
+        "ledger.noted",
+        1,
+        serde_json::json!({ "text": "audited" }),
+    ));
 
-                    assert_eq!(recovered.state.applied(), Position(2));
+    let (kept, held) = Kept::new();
+    let recovered = booted(Ledger::default(), |builder| {
+        builder.recover(Journal::<Bank>::open(&copy)).attach(kept)
+    })
+    .await;
 
-                    // The fold is drained by the supervisor, so what it was handed is settled
-                    // once the runtime has stopped.
-                    recovered.stop().await.unwrap();
+    assert_eq!(recovered.state.applied(), Position(2));
 
-                    assert_eq!(
-                        facts(&held),
-                        vec![Fact::Noted(Noted("audited".to_owned()))],
-                        "an older fact converts into the current type and is nothing else \
+    // The fold is drained by the supervisor, so what it was handed is settled
+    // once the runtime has stopped.
+    recovered.stop().await.unwrap();
+
+    assert_eq!(
+        facts(&held),
+        vec![Fact::Noted(Noted("audited".to_owned()))],
+        "an older fact converts into the current type and is nothing else \
          afterwards, which is what a fold below it is handed"
-                    );
-                });
-        });
-    }
+    );
 }
 
 fn facts(held: &Held) -> Vec<Fact> {
@@ -207,22 +183,6 @@ fn facts(held: &Held) -> Vec<Fact> {
             Recorded::System(_) => None,
         })
         .collect()
-}
-
-fn append(copy: &Path, position: u64, kind: &str, id: &str, version: u32, payload: &str) {
-    let mut file = OpenOptions::new()
-        .append(true)
-        .open(copy)
-        .expect("the copy is there");
-    let line =
-        format!(r#"{{"position":{position},"kind":"{kind}","id":"{id}","version":{version},"#,)
-            + r#""metadata":{"principal":null,"correlation":"#
-            + &position.to_string()
-            + r#","causation":null,"request":null,"link":null,"#
-            + r#""at_us":0},"#
-            + &format!(r#""payload":{payload}}}"#);
-
-    writeln!(file, "{line}").expect("the copy is writable");
 }
 
 /* === Tests === */

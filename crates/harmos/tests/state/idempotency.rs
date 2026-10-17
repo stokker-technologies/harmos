@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -39,74 +38,57 @@ use harmos::{state::Entry, state::Position, state::RequestKey};
 
 /* === Private Functions === */
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("journal_ac006_retried", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let key = RequestKey::new("transfer-9");
+#[tokio::test]
+async fn journal_ac006_retried() {
+    let runtime = runtime().await;
+    let key = RequestKey::new("transfer-9");
 
-                    let first = runtime
-                        .state
-                        .commit_keyed(key.clone(), deposit(25))
-                        .await
-                        .expect("accepted");
-                    let retry = runtime
-                        .state
-                        .commit_keyed(key.clone(), deposit(25))
-                        .await
-                        .expect("the retry answers with what the first attempt got");
+    let first = runtime
+        .state
+        .commit_keyed(key.clone(), deposit(25))
+        .await
+        .expect("accepted");
+    let retry = runtime
+        .state
+        .commit_keyed(key.clone(), deposit(25))
+        .await
+        .expect("the retry answers with what the first attempt got");
 
-                    assert_eq!(retry, first);
-                    assert_eq!(
-                        runtime.state.applied(),
-                        first.position,
-                        "the retry minted nothing"
-                    );
-                    assert_eq!(
-                        balance(&runtime, HOUSE).await,
-                        25,
-                        "the retry applied nothing"
-                    );
+    assert_eq!(retry, first);
+    assert_eq!(
+        runtime.state.applied(),
+        first.position,
+        "the retry minted nothing"
+    );
+    assert_eq!(
+        balance(&runtime, HOUSE).await,
+        25,
+        "the retry applied nothing"
+    );
 
-                    let history = history(&runtime).await;
-                    assert_eq!(history.len(), 1, "the retry appended nothing");
-                    assert_eq!(history[0].metadata.request, Some(key));
-                });
-        });
-    }
-    {
-        scenario_runtime::check("journal_ac006_second", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
+    let history = history(&runtime).await;
+    assert_eq!(history.len(), 1, "the retry appended nothing");
+    assert_eq!(history[0].metadata.request, Some(key));
+}
 
-                    let first = runtime
-                        .state
-                        .commit_keyed(RequestKey::new("one"), deposit(25))
-                        .await
-                        .expect("accepted");
-                    let second = runtime
-                        .state
-                        .commit_keyed(RequestKey::new("two"), deposit(25))
-                        .await
-                        .expect("accepted");
+#[tokio::test]
+async fn journal_ac006_second() {
+    let runtime = runtime().await;
 
-                    assert_eq!(first.position, Position(1));
-                    assert_eq!(second.position, Position(2));
-                    assert_eq!(balance(&runtime, HOUSE).await, 50);
-                });
-        });
-    }
+    let first = runtime
+        .state
+        .commit_keyed(RequestKey::new("one"), deposit(25))
+        .await
+        .expect("accepted");
+    let second = runtime
+        .state
+        .commit_keyed(RequestKey::new("two"), deposit(25))
+        .await
+        .expect("accepted");
+
+    assert_eq!(first.position, Position(1));
+    assert_eq!(second.position, Position(2));
+    assert_eq!(balance(&runtime, HOUSE).await, 50);
 }
 
 async fn history(runtime: &harmos::Runtime<support::Bank>) -> Vec<Entry<Change>> {

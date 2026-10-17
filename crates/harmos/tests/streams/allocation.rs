@@ -8,8 +8,6 @@
  */
 
 /* === Modules === */
-#[path = "../../../../tests/support/scenarios.rs"]
-mod scenario_runtime;
 
 #[path = "../support/allocation.rs"]
 pub mod allocation;
@@ -41,20 +39,9 @@ pub mod allocation;
 
 /* === Private Functions === */
 
-#[test]
-fn contract_scenario() {
-    {
-        scenario_runtime::check("publish_allocation_independent", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    allocation::streams_r004_publish_cost_is_independent_of_the_window_size().await;
-                });
-        });
-    }
+#[tokio::test]
+async fn publish_allocation_independent() {
+    allocation::streams_r004_publish_cost_is_independent_of_the_window_size().await;
 }
 
 /* === Tests === */

@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -18,12 +17,10 @@ use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::atomic::AtomicUsize;
 // Third Party Imports
 use futures_core::Stream;
 // Local Imports
-use super::{Bank, Duration, Host, Message, Runtime, route_component, runtime, wire};
-use crate::core_journal::OriginalJournal;
+use super::{Bank, Duration, Host, Message, Runtime, runtime, sandbox as wire};
 use harmos::operations::{
     Context, EncodedInvocation, Operation, OperationDeclaration, PluginRegistration,
     PluginSdkRegistration, WireDeclaration,
@@ -68,7 +65,6 @@ pub(super) struct Resources {
 }
 
 pub(super) struct Lifecycle<C = GuestOperations, L = super::GuestLanes> {
-    pub(super) state: Option<Arc<OriginalJournal>>,
     loader: Host<Bank>,
     operations: harmos::operations::OperationManager,
     prepared: Option<harmos::guest::Registered<Bank>>,
@@ -87,6 +83,8 @@ pub(super) enum GuestOperations {
     Spin(wire::Spin),
     Wait(wire::Wait),
     Fail(wire::Fail),
+    Read(wire::Read),
+    Counts(wire::Counts),
 }
 
 #[harmos::catalog]
@@ -118,6 +116,10 @@ impl Operation for Echo {
         _endpoints: &mut Self::Endpoints,
     ) -> harmos::Result<harmos::operations::Response<wire::Echoed>> {
         let result: ::core::result::Result<wire::Echoed, Self::Error> = async move {
+            // The Waiting Probe Asks For An Answer That Never Comes Before Its Deadline
+            if request.say == "slow" {
+                std::future::pending::<()>().await;
+            }
             Ok(wire::Echoed {
                 said: format!("provider:{}", request.say),
             })
@@ -218,7 +220,7 @@ where
                 let scope = resources.endpoint.as_ref().unwrap().scope().unwrap();
                 resources.registration = Some(self.operations.stage_plugin(scope, |bindings| {
                     bindings.register_wire_operations::<ProviderOperations, _>(
-                        super::GuestLanes::Open,
+                        self.lane,
                         Arc::new(Domain),
                     )
                 })?);
@@ -353,54 +355,25 @@ impl Resources {
 }
 
 impl Lifecycle {
-    pub(super) fn new(runtime: &Runtime<Bank>) -> Self {
-        Self::with_egress(
-            runtime,
-            Duration::ZERO,
-            Arc::new(AtomicUsize::new(0)),
-            Arc::new(AtomicUsize::new(0)),
-        )
+    pub(super) fn sandbox(runtime: &Runtime<Bank>) -> Self {
+        Self::sandbox_in(runtime, super::GuestLanes::Open)
     }
-    pub(super) fn with_egress(
-        runtime: &Runtime<Bank>,
-        answering: Duration,
-        egress_calls: Arc<AtomicUsize>,
-        egress_prepared: Arc<AtomicUsize>,
-    ) -> Self {
-        let domain = Arc::new(Domain);
-        let egress = Arc::new(crate::core_egress::Endpoint {
-            answering,
-            calls: egress_calls,
-            prepared: egress_prepared,
-        });
+}
+
+impl Lifecycle<super::schematic::operations::Operations> {
+    pub(super) fn schematic(runtime: &Runtime<Bank>) -> Self {
+        Self::for_component(runtime, super::schematic(), super::GuestLanes::Open)
+    }
+}
+
+impl<L: harmos::operations::Lane + Copy> Lifecycle<GuestOperations, L> {
+    // The Sandbox Requires Host Publication And An Embedded Provider In Its Own Lane
+    pub(super) fn sandbox_in(runtime: &Runtime<Bank>, lane: L) -> Self {
         runtime
             .operations
-            .register_wire_operation::<Publish>(
-                "publication-core",
-                super::GuestLanes::Open,
-                domain.clone(),
-            )
+            .register_wire_operation::<Publish>("publication-core", lane, Arc::new(Domain))
             .unwrap();
-        runtime
-            .operations
-            .register_wire_operation::<crate::core_egress::Egress>(
-                "publication-core",
-                super::GuestLanes::Open,
-                egress,
-            )
-            .unwrap();
-        let journal = Arc::new(OriginalJournal::new(runtime.state.clone()));
-        runtime
-            .operations
-            .register_wire_operation::<crate::core_journal::Invoke>(
-                "bank-journal",
-                super::GuestLanes::Open,
-                journal.clone(),
-            )
-            .unwrap();
-        let mut lifecycle =
-            Self::for_component(runtime, route_component(), super::GuestLanes::Open);
-        lifecycle.state = Some(journal);
+        let mut lifecycle = Self::for_component(runtime, super::sandbox(), lane);
         let contract = WireDeclaration::of::<wire::ProviderEcho>()
             .contract()
             .unwrap();
@@ -426,7 +399,6 @@ impl Lifecycle {
 impl<C, L> Lifecycle<C, L> {
     pub(super) fn for_component(runtime: &Runtime<Bank>, bytes: Vec<u8>, lane: L) -> Self {
         Self {
-            state: None,
             loader: Host::new(runtime).unwrap(),
             operations: runtime.operations.clone(),
             prepared: None,
@@ -453,7 +425,7 @@ impl<C, L> Lifecycle<C, L> {
             .expect("the original component was staged")
             .clone()
     }
-    pub(super) async fn candidate(&mut self, mode: &str) -> PluginDefinitions {
+    pub(super) async fn candidate(&mut self, mode: impl serde::Serialize) -> PluginDefinitions {
         assert!(self.prepared.is_none());
         let loaded = self.loader.load(&self.bytes).unwrap();
         let declaration = loaded.declaration().clone();
@@ -465,7 +437,7 @@ impl<C, L> Lifecycle<C, L> {
             version: declaration.version,
             artifact: PluginArtifact::Guest { sha256 },
             requires: vec![],
-            configuration: serde_json::to_vec(mode).unwrap(),
+            configuration: serde_json::to_vec(&mode).unwrap(),
             contributions: PluginContributions {
                 lifecycle: Some(manifest.lifecycle),
                 operations: declaration.operations,
@@ -486,9 +458,21 @@ impl<C, L> Lifecycle<C, L> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+// Serves The Sandbox's Requirements From The Host When No Plugin Provides Them
+pub(super) fn serve_host(runtime: &Runtime<Bank>, lane: impl harmos::operations::Lane + Clone) {
+    runtime
+        .operations
+        .register_wire_operation::<Publish>("publication-core", lane.clone(), Arc::new(Domain))
+        .unwrap();
+    runtime
+        .operations
+        .register_wire_operation::<Echo>("provider-core", lane, Arc::new(Domain))
+        .unwrap();
+}
+
 fn guest_error(source: harmos::guest::Error) -> harmos::Error {
     harmos::Error::OperationFailed {
-        operation: "route-guest".into(),
+        operation: "sandbox-guest".into(),
         source: Arc::new(source),
     }
 }
@@ -513,231 +497,191 @@ async fn values(stream: &harmos::streams::PluginStream) -> Vec<String> {
         .collect()
 }
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("publications_survive_unload", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let mut lifecycle = Lifecycle::new(&runtime);
-                    let mut manager =
-                        Manager::new(lifecycle.candidate("publications").await).unwrap();
-                    manager.initialize(&mut lifecycle).await.unwrap();
-                    let stream = runtime.streams.publication("progress", 1).unwrap();
-                    assert_eq!(stream.definition().owner(), Some("route-guest"));
-                    assert_eq!(
-                        stream
-                            .definition()
-                            .schema()
-                            .unwrap()
-                            .root()
-                            .unwrap()
-                            .fields()[0]
-                            .name,
-                        "said"
-                    );
-                    runtime
-                        .operations
-                        .call_as::<wire::Echo>(wire::Echo {
-                            say: "publish:route".into(),
-                        })
-                        .await
-                        .unwrap();
-                    manager.shutdown(&mut lifecycle).await.unwrap();
-                    assert_eq!(
-                        values(&stream).await,
-                        ["initialize", "route"],
-                        "shutdown cannot admit another publication after the fence"
-                    );
-                    drop(manager);
-                    let mut replacement = Manager::new(lifecycle.candidate("idle").await).unwrap();
-                    replacement.initialize(&mut lifecycle).await.unwrap();
-                    runtime
-                        .operations
-                        .call_as::<wire::Echo>(wire::Echo {
-                            say: "publish:replacement".into(),
-                        })
-                        .await
-                        .unwrap();
-                    replacement.shutdown(&mut lifecycle).await.unwrap();
-                    assert_eq!(
-                        values(&stream).await,
-                        ["initialize", "route", "replacement"]
-                    );
-                    drop((replacement, lifecycle));
-                    runtime.stop().await.unwrap();
-                });
-        });
+#[tokio::test]
+async fn publications_survive_unload() {
+    let runtime = runtime().await;
+    let mut lifecycle = Lifecycle::sandbox(&runtime);
+    let mut manager = Manager::new(lifecycle.candidate("publications").await).unwrap();
+    manager.initialize(&mut lifecycle).await.unwrap();
+    let stream = runtime.streams.publication("progress", 1).unwrap();
+    assert_eq!(stream.definition().owner(), Some("sandbox-guest"));
+    assert_eq!(
+        stream
+            .definition()
+            .schema()
+            .unwrap()
+            .root()
+            .unwrap()
+            .fields()[0]
+            .name,
+        "said"
+    );
+    runtime
+        .operations
+        .call_as::<wire::Echo>(wire::Echo {
+            say: "publish:route".into(),
+        })
+        .await
+        .unwrap();
+    manager.shutdown(&mut lifecycle).await.unwrap();
+    assert_eq!(
+        values(&stream).await,
+        ["initialize", "route"],
+        "shutdown cannot admit another publication after the fence"
+    );
+    drop(manager);
+    let mut replacement = Manager::new(lifecycle.candidate("idle").await).unwrap();
+    replacement.initialize(&mut lifecycle).await.unwrap();
+    runtime
+        .operations
+        .call_as::<wire::Echo>(wire::Echo {
+            say: "publish:replacement".into(),
+        })
+        .await
+        .unwrap();
+    replacement.shutdown(&mut lifecycle).await.unwrap();
+    assert_eq!(
+        values(&stream).await,
+        ["initialize", "route", "replacement"]
+    );
+    drop((replacement, lifecycle));
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn replacement_preserves_owner() {
+    let runtime = runtime().await;
+    let mut lifecycle = Lifecycle::sandbox(&runtime);
+    let mut manager = Manager::new(lifecycle.candidate("idle").await).unwrap();
+    manager.initialize(&mut lifecycle).await.unwrap();
+    let stream = runtime.streams.publication("progress", 1).unwrap();
+    let candidate = lifecycle.candidate("replacement").await;
+    let plan = manager.plan_reload(candidate).unwrap();
+    runtime
+        .operations
+        .call_as::<wire::Echo>(wire::Echo {
+            say: "publish:original".into(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(values(&stream).await, ["original"]);
+    manager.apply_reload(plan, &mut lifecycle).await.unwrap();
+    runtime
+        .operations
+        .call_as::<wire::Echo>(wire::Echo {
+            say: "publish:replacement".into(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(values(&stream).await, ["original", "replacement"]);
+    manager.shutdown(&mut lifecycle).await.unwrap();
+    drop((manager, lifecycle));
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn initialization_aborts_staging() {
+    let runtime = runtime().await;
+    let mut lifecycle = Lifecycle::sandbox(&runtime);
+    let mut manager = Manager::new(lifecycle.candidate("failed-publications").await).unwrap();
+    assert!(manager.initialize(&mut lifecycle).await.is_err());
+    manager.shutdown(&mut lifecycle).await.unwrap();
+    if let Some(stream) = runtime.streams.publication("progress", 1) {
+        assert!(
+            values(&stream).await.is_empty(),
+            "an aborted activation cannot expose its staged row"
+        );
     }
-    {
-        scenario_runtime::check("replacement_preserves_owner", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let mut lifecycle = Lifecycle::new(&runtime);
-                    let mut manager = Manager::new(lifecycle.candidate("idle").await).unwrap();
-                    manager.initialize(&mut lifecycle).await.unwrap();
-                    let stream = runtime.streams.publication("progress", 1).unwrap();
-                    let candidate = lifecycle.candidate("replacement").await;
-                    let plan = manager.plan_reload(candidate).unwrap();
-                    runtime
-                        .operations
-                        .call_as::<wire::Echo>(wire::Echo {
-                            say: "publish:original".into(),
-                        })
-                        .await
-                        .unwrap();
-                    assert_eq!(values(&stream).await, ["original"]);
-                    manager.apply_reload(plan, &mut lifecycle).await.unwrap();
-                    runtime
-                        .operations
-                        .call_as::<wire::Echo>(wire::Echo {
-                            say: "publish:replacement".into(),
-                        })
-                        .await
-                        .unwrap();
-                    assert_eq!(values(&stream).await, ["original", "replacement"]);
-                    manager.shutdown(&mut lifecycle).await.unwrap();
-                    drop((manager, lifecycle));
-                    runtime.stop().await.unwrap();
-                });
-        });
+    manager
+        .reload(lifecycle.candidate("idle").await, &mut lifecycle)
+        .await
+        .unwrap();
+    let stream = runtime.streams.publication("progress", 1).unwrap();
+    runtime
+        .operations
+        .call_as::<wire::Echo>(wire::Echo {
+            say: "publish:replacement".into(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(values(&stream).await, ["replacement"]);
+    manager.shutdown(&mut lifecycle).await.unwrap();
+    drop((manager, lifecycle));
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn bounded_window_gaps() {
+    let runtime = runtime().await;
+    let mut lifecycle = Lifecycle::sandbox(&runtime);
+    let mut manager = Manager::new(lifecycle.candidate("idle").await).unwrap();
+    manager.initialize(&mut lifecycle).await.unwrap();
+    let stream = runtime.streams.publication("progress", 1).unwrap();
+    let mut rows = stream.watch();
+    runtime
+        .operations
+        .call_as::<wire::Echo>(wire::Echo {
+            say: "publish-many".into(),
+        })
+        .await
+        .unwrap();
+    let gap = tokio::time::timeout(
+        Duration::from_secs(2),
+        std::future::poll_fn(|cx| Pin::new(&mut rows).poll_next(cx)),
+    )
+    .await
+    .unwrap();
+    assert_eq!(gap, Some(harmos::streams::Item::Gap { missed: 4 }));
+    let mut retained = Vec::new();
+    for _ in 0..4 {
+        let row = tokio::time::timeout(
+            Duration::from_secs(2),
+            std::future::poll_fn(|cx| Pin::new(&mut rows).poll_next(cx)),
+        )
+        .await
+        .unwrap();
+        let Some(harmos::streams::Item::Row(row)) = row else {
+            panic!("retained row expected")
+        };
+        retained.push(
+            wire::Echoed::decode(row.value.payload.as_slice())
+                .unwrap()
+                .said,
+        );
     }
-    {
-        scenario_runtime::check("initialization_aborts_staging", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let mut lifecycle = Lifecycle::new(&runtime);
-                    let mut manager =
-                        Manager::new(lifecycle.candidate("failed-publications").await).unwrap();
-                    assert!(manager.initialize(&mut lifecycle).await.is_err());
-                    manager.shutdown(&mut lifecycle).await.unwrap();
-                    if let Some(stream) = runtime.streams.publication("progress", 1) {
-                        assert!(
-                            values(&stream).await.is_empty(),
-                            "an aborted activation cannot expose its staged row"
-                        );
-                    }
-                    manager
-                        .reload(lifecycle.candidate("idle").await, &mut lifecycle)
-                        .await
-                        .unwrap();
-                    let stream = runtime.streams.publication("progress", 1).unwrap();
-                    runtime
-                        .operations
-                        .call_as::<wire::Echo>(wire::Echo {
-                            say: "publish:replacement".into(),
-                        })
-                        .await
-                        .unwrap();
-                    assert_eq!(values(&stream).await, ["replacement"]);
-                    manager.shutdown(&mut lifecycle).await.unwrap();
-                    drop((manager, lifecycle));
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("bounded_window_gaps", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let mut lifecycle = Lifecycle::new(&runtime);
-                    let mut manager = Manager::new(lifecycle.candidate("idle").await).unwrap();
-                    manager.initialize(&mut lifecycle).await.unwrap();
-                    let stream = runtime.streams.publication("progress", 1).unwrap();
-                    let mut rows = stream.watch();
-                    runtime
-                        .operations
-                        .call_as::<wire::Echo>(wire::Echo {
-                            say: "publish-many".into(),
-                        })
-                        .await
-                        .unwrap();
-                    let gap = tokio::time::timeout(
-                        Duration::from_secs(2),
-                        std::future::poll_fn(|cx| Pin::new(&mut rows).poll_next(cx)),
-                    )
-                    .await
-                    .unwrap();
-                    assert_eq!(gap, Some(harmos::streams::Item::Gap { missed: 4 }));
-                    let mut retained = Vec::new();
-                    for _ in 0..4 {
-                        let row = tokio::time::timeout(
-                            Duration::from_secs(2),
-                            std::future::poll_fn(|cx| Pin::new(&mut rows).poll_next(cx)),
-                        )
-                        .await
-                        .unwrap();
-                        let Some(harmos::streams::Item::Row(row)) = row else {
-                            panic!("retained row expected")
-                        };
-                        retained.push(
-                            wire::Echoed::decode(row.value.payload.as_slice())
-                                .unwrap()
-                                .said,
-                        );
-                    }
-                    assert_eq!(retained, ["4", "5", "6", "7"]);
-                    manager.shutdown(&mut lifecycle).await.unwrap();
-                    drop((manager, lifecycle));
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("saved_context_generation", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let mut lifecycle = Lifecycle::new(&runtime);
-                    let mut manager = Manager::new(lifecycle.candidate("idle").await).unwrap();
-                    manager.initialize(&mut lifecycle).await.unwrap();
-                    let stream = runtime.streams.publication("progress", 1).unwrap();
-                    let published = runtime
-                        .operations
-                        .call_as::<wire::Echo>(wire::Echo {
-                            say: "saved-publish:original".into(),
-                        })
-                        .await
-                        .unwrap();
-                    assert_eq!(published.said, "published original");
-                    assert_eq!(values(&stream).await, ["original"]);
-                    let dependency = runtime
-                        .operations
-                        .call_as::<wire::Echo>(wire::Echo {
-                            say: "saved-dependency:original".into(),
-                        })
-                        .await
-                        .unwrap();
-                    assert_eq!(dependency.said, "provider:original");
-                    manager.shutdown(&mut lifecycle).await.unwrap();
-                    drop((manager, lifecycle));
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
+    assert_eq!(retained, ["4", "5", "6", "7"]);
+    manager.shutdown(&mut lifecycle).await.unwrap();
+    drop((manager, lifecycle));
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn saved_context_generation() {
+    let runtime = runtime().await;
+    let mut lifecycle = Lifecycle::sandbox(&runtime);
+    let mut manager = Manager::new(lifecycle.candidate("idle").await).unwrap();
+    manager.initialize(&mut lifecycle).await.unwrap();
+    let stream = runtime.streams.publication("progress", 1).unwrap();
+    let published = runtime
+        .operations
+        .call_as::<wire::Echo>(wire::Echo {
+            say: "saved-publish:original".into(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(published.said, "published original");
+    assert_eq!(values(&stream).await, ["original"]);
+    let dependency = runtime
+        .operations
+        .call_as::<wire::Echo>(wire::Echo {
+            say: "saved-dependency:original".into(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(dependency.said, "provider:original");
+    manager.shutdown(&mut lifecycle).await.unwrap();
+    drop((manager, lifecycle));
+    runtime.stop().await.unwrap();
 }
 
 /* === Tests === */

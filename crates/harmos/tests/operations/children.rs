@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -253,156 +252,109 @@ async fn torn_down(exit: Exit, cancel: bool) -> Result<harmos::operations::Respo
 
 /* === Tests === */
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("returning_parent_settles", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    torn_down(Exit::Return, false).await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("failed_parent_settles", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let error = torn_down(Exit::Fail, false).await.unwrap_err();
-                    let Error::OperationFailed { source, .. } = error else {
-                        panic!("expected authored failure")
-                    };
-                    assert!(matches!(
-                        source.downcast_ref::<Failed>(),
-                        Some(Failed::Attempt)
-                    ));
-                });
-        });
-    }
-    {
-        scenario_runtime::check("expired_parent_settles", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    assert!(matches!(
-                        torn_down(Exit::Wait, false).await,
-                        Err(Error::OperationRefused(Refusal::TimedOut))
-                    ));
-                });
-        });
-    }
-    {
-        scenario_runtime::check("parent_settles_child", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    assert!(matches!(
-                        torn_down(Exit::Wait, true).await,
-                        Err(Error::OperationRefused(Refusal::Cancelled))
-                    ));
-                });
-        });
-    }
-    {
-        scenario_runtime::check("retry_waits_child", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, trace) = runtime(true).await;
-                    let parent = runtime
-                        .operations
-                        .submit_as::<ParentContract>(Exit::Retry)
-                        .unwrap();
-                    trace.finalizing.notified().await;
-                    tokio::time::advance(Duration::from_millis(20)).await;
-                    assert_eq!(trace.attempts.load(Ordering::SeqCst), 1);
-                    assert_eq!(
-                        *trace.events.lock().unwrap(),
-                        ["parent-attempt", "child-started"]
-                    );
+#[tokio::test]
+async fn returning_parent_settles() {
+    torn_down(Exit::Return, false).await.unwrap();
+}
 
-                    trace.release.add_permits(1);
-                    trace.finalizing.notified().await;
-                    assert_eq!(trace.attempts.load(Ordering::SeqCst), 2);
-                    trace.release.add_permits(1);
-                    let error = parent.await.unwrap_err();
-                    let Error::OperationFailed { source, .. } = error else {
-                        panic!("expected authored failure")
-                    };
-                    assert!(matches!(
-                        source.downcast_ref::<Failed>(),
-                        Some(Failed::Retry)
-                    ));
-                    assert_eq!(
-                        *trace.events.lock().unwrap(),
-                        [
-                            "parent-attempt",
-                            "child-started",
-                            "child-finalized",
-                            "child-dropped",
-                            "parent-attempt",
-                            "child-started",
-                            "child-finalized",
-                            "child-dropped",
-                        ]
-                    );
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("result_remains_during", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    for exit in [Exit::Return, Exit::Fail] {
-                        let succeeds = matches!(exit, Exit::Return);
-                        let (runtime, trace) = runtime(true).await;
-                        let mut parent = runtime
-                            .operations
-                            .submit_as::<ParentContract>(exit)
-                            .unwrap();
-                        trace.finalizing.notified().await;
-                        assert!((&mut parent).now_or_never().is_none());
-                        assert_eq!(
-                            *trace.events.lock().unwrap(),
-                            ["parent-attempt", "child-started"]
-                        );
+#[tokio::test]
+async fn failed_parent_settles() {
+    let error = torn_down(Exit::Fail, false).await.unwrap_err();
+    let Error::OperationFailed { source, .. } = error else {
+        panic!("expected authored failure")
+    };
+    assert!(matches!(
+        source.downcast_ref::<Failed>(),
+        Some(Failed::Attempt)
+    ));
+}
 
-                        trace.release.add_permits(1);
-                        assert_eq!(parent.await.is_ok(), succeeds);
-                        assert_eq!(
-                            *trace.events.lock().unwrap(),
-                            [
-                                "parent-attempt",
-                                "child-started",
-                                "child-finalized",
-                                "child-dropped"
-                            ]
-                        );
-                        runtime.stop().await.unwrap();
-                    }
-                });
-        });
+#[tokio::test(start_paused = true)]
+async fn expired_parent_settles() {
+    assert!(matches!(
+        torn_down(Exit::Wait, false).await,
+        Err(Error::OperationRefused(Refusal::TimedOut))
+    ));
+}
+
+#[tokio::test]
+async fn parent_settles_child() {
+    assert!(matches!(
+        torn_down(Exit::Wait, true).await,
+        Err(Error::OperationRefused(Refusal::Cancelled))
+    ));
+}
+
+#[tokio::test(start_paused = true)]
+async fn retry_waits_child() {
+    let (runtime, trace) = runtime(true).await;
+    let parent = runtime
+        .operations
+        .submit_as::<ParentContract>(Exit::Retry)
+        .unwrap();
+    trace.finalizing.notified().await;
+    tokio::time::advance(Duration::from_millis(20)).await;
+    assert_eq!(trace.attempts.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        *trace.events.lock().unwrap(),
+        ["parent-attempt", "child-started"]
+    );
+
+    trace.release.add_permits(1);
+    trace.finalizing.notified().await;
+    assert_eq!(trace.attempts.load(Ordering::SeqCst), 2);
+    trace.release.add_permits(1);
+    let error = parent.await.unwrap_err();
+    let Error::OperationFailed { source, .. } = error else {
+        panic!("expected authored failure")
+    };
+    assert!(matches!(
+        source.downcast_ref::<Failed>(),
+        Some(Failed::Retry)
+    ));
+    assert_eq!(
+        *trace.events.lock().unwrap(),
+        [
+            "parent-attempt",
+            "child-started",
+            "child-finalized",
+            "child-dropped",
+            "parent-attempt",
+            "child-started",
+            "child-finalized",
+            "child-dropped",
+        ]
+    );
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn result_remains_during() {
+    for exit in [Exit::Return, Exit::Fail] {
+        let succeeds = matches!(exit, Exit::Return);
+        let (runtime, trace) = runtime(true).await;
+        let mut parent = runtime
+            .operations
+            .submit_as::<ParentContract>(exit)
+            .unwrap();
+        trace.finalizing.notified().await;
+        assert!((&mut parent).now_or_never().is_none());
+        assert_eq!(
+            *trace.events.lock().unwrap(),
+            ["parent-attempt", "child-started"]
+        );
+
+        trace.release.add_permits(1);
+        assert_eq!(parent.await.is_ok(), succeeds);
+        assert_eq!(
+            *trace.events.lock().unwrap(),
+            [
+                "parent-attempt",
+                "child-started",
+                "child-finalized",
+                "child-dropped"
+            ]
+        );
+        runtime.stop().await.unwrap();
     }
 }

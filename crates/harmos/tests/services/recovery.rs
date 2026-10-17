@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -120,181 +119,163 @@ async fn stop_cleanup(
 
 /* === Tests === */
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("unregister_retains_cleanup", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    for retry in [true, false] {
-                        let runtime = Runtime::<App>::builder((), ()).runtime().await.unwrap();
-                        let entered = Arc::new(Notify::new());
-                        let release = Arc::new(Notify::new());
-                        let cleaned = Arc::new(AtomicBool::new(false));
-                        let signals = (entered.clone(), release.clone(), cleaned.clone());
-                        runtime
-                            .operations
-                            .register_service(
-                                harmos::services::ServiceDefinition {
-                                    id: "reload".into(),
-                                    policy: harmos::services::POLICY,
-                                },
-                                move |_: Arc<()>| {
-                                    let signals = signals.clone();
-                                    move |mut context: harmos::services::Service<App>| {
-                                        let (entered, release, cleaned) = signals.clone();
-                                        async move {
-                                            context.ready();
-                                            context.stopping().await;
-                                            entered.notify_one();
-                                            release.notified().await;
-                                            cleaned.store(true, Ordering::SeqCst);
-                                            Ok::<(), Fault<String>>(())
-                                        }
-                                    }
-                                },
-                            )
-                            .unwrap();
-                        let _lease = runtime.operations.submit_resident("reload").await.unwrap();
-                        service_status(runtime.operations.watch_residents(), "reload", |status| {
-                            matches!(status, ServiceStatus::Running { .. })
-                        })
-                        .await;
-
-                        {
-                            let stopping = runtime.operations.unregister_resident("reload");
-                            tokio::pin!(stopping);
-                            tokio::select! {
-                                _ = &mut stopping => panic!("cleanup has not been released"),
-                                _ = entered.notified() => {}
-                            }
-                        }
-                        assert!(!cleaned.load(Ordering::SeqCst));
-                        if retry {
-                            {
-                                let stopping = runtime.operations.unregister_resident("reload");
-                                tokio::pin!(stopping);
-                                let pending = std::future::poll_fn(|cx| {
-                                    std::task::Poll::Ready(
-                                        std::future::Future::poll(stopping.as_mut(), cx)
-                                            .is_pending(),
-                                    )
-                                })
-                                .await;
-                                assert!(pending, "retry must join the existing cleanup");
-                                release.notify_one();
-                                stopping.await.unwrap();
-                            }
-                            assert!(cleaned.load(Ordering::SeqCst));
-                            assert!(
-                                !runtime.operations.watch_residents().borrow().contains_key(
-                                    &harmos::operations::resident::Key::root("reload")
-                                )
-                            );
-                            runtime.stop().await.unwrap();
-                        } else {
-                            let stopping = runtime.stop();
-                            tokio::pin!(stopping);
-                            let pending = std::future::poll_fn(|cx| {
-                                std::task::Poll::Ready(
-                                    std::future::Future::poll(stopping.as_mut(), cx).is_pending(),
-                                )
-                            })
-                            .await;
-                            assert!(pending, "shutdown must join the existing cleanup");
-                            release.notify_one();
-                            stopping.await.unwrap();
-                            assert!(cleaned.load(Ordering::SeqCst));
+#[tokio::test]
+async fn unregister_retains_cleanup() {
+    for retry in [true, false] {
+        let runtime = Runtime::<App>::builder((), ()).runtime().await.unwrap();
+        let entered = Arc::new(Notify::new());
+        let release = Arc::new(Notify::new());
+        let cleaned = Arc::new(AtomicBool::new(false));
+        let signals = (entered.clone(), release.clone(), cleaned.clone());
+        runtime
+            .operations
+            .register_service(
+                harmos::services::ServiceDefinition {
+                    id: "reload".into(),
+                    policy: harmos::services::POLICY,
+                },
+                move |_: Arc<()>| {
+                    let signals = signals.clone();
+                    move |mut context: harmos::services::Service<App>| {
+                        let (entered, release, cleaned) = signals.clone();
+                        async move {
+                            context.ready();
+                            context.stopping().await;
+                            entered.notify_one();
+                            release.notified().await;
+                            cleaned.store(true, Ordering::SeqCst);
+                            Ok::<(), Fault<String>>(())
                         }
                     }
-                });
-        });
-    }
-    {
-        scenario_runtime::check("shutdown_retains_resident", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    for tenant in [false, true] {
-                        let entered = Arc::new(Notify::new());
-                        let release = Arc::new(Notify::new());
-                        let cleaned = Arc::new(AtomicBool::new(false));
-                        let signals = (entered.clone(), release.clone(), cleaned.clone());
-                        let resident = move |mut context: harmos::services::Service<App>| {
-                            let (entered, release, cleaned) = signals.clone();
-                            async move {
-                                context.ready();
-                                context.stopping().await;
-                                entered.notify_one();
-                                release.notified().await;
-                                cleaned.store(true, Ordering::SeqCst);
-                                Ok::<(), Fault<String>>(())
-                            }
-                        };
-                        let mut lease = None;
-                        let runtime = if tenant {
-                            let runtime = Runtime::<App>::builder((), ()).runtime().await.unwrap();
-                            runtime
-                                .operations
-                                .register_service(
-                                    harmos::services::ServiceDefinition {
-                                        id: "cleanup".into(),
-                                        policy: harmos::services::POLICY,
-                                    },
-                                    move |_: Arc<()>| resident.clone(),
-                                )
-                                .unwrap();
-                            lease =
-                                Some(runtime.operations.submit_resident("cleanup").await.unwrap());
-                            runtime
-                        } else {
-                            Runtime::<App>::builder((), ())
-                                .service("cleanup", resident)
-                                .runtime()
-                                .await
-                                .unwrap()
-                        };
-                        service_status(runtime.operations.watch_residents(), "cleanup", |status| {
-                            matches!(status, ServiceStatus::Running { .. })
-                        })
-                        .await;
+                },
+            )
+            .unwrap();
+        let _lease = runtime.operations.submit_resident("reload").await.unwrap();
+        service_status(runtime.operations.watch_residents(), "reload", |status| {
+            matches!(status, ServiceStatus::Running { .. })
+        })
+        .await;
 
-                        {
-                            let stop = runtime.stop();
-                            tokio::pin!(stop);
-                            tokio::select! {
-                                _ = &mut stop => panic!("cleanup has not finished"),
-                                _ = entered.notified() => {}
-                            }
-                        }
-                        assert!(runtime.operations.submit_resident("late").await.is_err());
-                        let stop = runtime.stop();
-                        tokio::pin!(stop);
-                        assert!(
-                            tokio::time::timeout(Duration::from_millis(10), &mut stop)
-                                .await
-                                .is_err()
-                        );
-                        assert!(!cleaned.load(Ordering::SeqCst));
-                        release.notify_one();
-                        stop.await.unwrap();
-                        drop(lease);
-                        assert!(cleaned.load(Ordering::SeqCst));
-                    }
-                });
-        });
+        {
+            let stopping = runtime.operations.unregister_resident("reload");
+            tokio::pin!(stopping);
+            tokio::select! {
+                _ = &mut stopping => panic!("cleanup has not been released"),
+                _ = entered.notified() => {}
+            }
+        }
+        assert!(!cleaned.load(Ordering::SeqCst));
+        if retry {
+            {
+                let stopping = runtime.operations.unregister_resident("reload");
+                tokio::pin!(stopping);
+                let pending = std::future::poll_fn(|cx| {
+                    std::task::Poll::Ready(
+                        std::future::Future::poll(stopping.as_mut(), cx).is_pending(),
+                    )
+                })
+                .await;
+                assert!(pending, "retry must join the existing cleanup");
+                release.notify_one();
+                stopping.await.unwrap();
+            }
+            assert!(cleaned.load(Ordering::SeqCst));
+            assert!(
+                !runtime
+                    .operations
+                    .watch_residents()
+                    .borrow()
+                    .contains_key(&harmos::operations::resident::Key::root("reload"))
+            );
+            runtime.stop().await.unwrap();
+        } else {
+            let stopping = runtime.stop();
+            tokio::pin!(stopping);
+            let pending = std::future::poll_fn(|cx| {
+                std::task::Poll::Ready(
+                    std::future::Future::poll(stopping.as_mut(), cx).is_pending(),
+                )
+            })
+            .await;
+            assert!(pending, "shutdown must join the existing cleanup");
+            release.notify_one();
+            stopping.await.unwrap();
+            assert!(cleaned.load(Ordering::SeqCst));
+        }
     }
-    {
-        scenario_runtime::check("resident_retains_cleanup", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
+}
 
+#[tokio::test]
+async fn shutdown_retains_resident() {
+    for tenant in [false, true] {
+        let entered = Arc::new(Notify::new());
+        let release = Arc::new(Notify::new());
+        let cleaned = Arc::new(AtomicBool::new(false));
+        let signals = (entered.clone(), release.clone(), cleaned.clone());
+        let resident = move |mut context: harmos::services::Service<App>| {
+            let (entered, release, cleaned) = signals.clone();
+            async move {
+                context.ready();
+                context.stopping().await;
+                entered.notify_one();
+                release.notified().await;
+                cleaned.store(true, Ordering::SeqCst);
+                Ok::<(), Fault<String>>(())
+            }
+        };
+        let mut lease = None;
+        let runtime = if tenant {
+            let runtime = Runtime::<App>::builder((), ()).runtime().await.unwrap();
+            runtime
+                .operations
+                .register_service(
+                    harmos::services::ServiceDefinition {
+                        id: "cleanup".into(),
+                        policy: harmos::services::POLICY,
+                    },
+                    move |_: Arc<()>| resident.clone(),
+                )
+                .unwrap();
+            lease = Some(runtime.operations.submit_resident("cleanup").await.unwrap());
+            runtime
+        } else {
+            Runtime::<App>::builder((), ())
+                .service("cleanup", resident)
+                .runtime()
+                .await
+                .unwrap()
+        };
+        service_status(runtime.operations.watch_residents(), "cleanup", |status| {
+            matches!(status, ServiceStatus::Running { .. })
+        })
+        .await;
+
+        {
+            let stop = runtime.stop();
+            tokio::pin!(stop);
+            tokio::select! {
+                _ = &mut stop => panic!("cleanup has not finished"),
+                _ = entered.notified() => {}
+            }
+        }
+        assert!(runtime.operations.submit_resident("late").await.is_err());
+        let stop = runtime.stop();
+        tokio::pin!(stop);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(10), &mut stop)
+                .await
+                .is_err()
+        );
+        assert!(!cleaned.load(Ordering::SeqCst));
+        release.notify_one();
+        stop.await.unwrap();
+        drop(lease);
+        assert!(cleaned.load(Ordering::SeqCst));
+    }
+}
+
+#[tokio::test]
+async fn resident_retains_cleanup() {
     for (panic_first, request) in [false, true].into_iter().flat_map(|panic_first| {
         [
             CleanupRequest::Instance,
@@ -323,7 +304,10 @@ pub(super) fn contract_scenario() {
             .register_service(
                 harmos::services::ServiceDefinition {
                     id: "retained-cleanup".into(),
-                    policy: harmos::operations::OperationPolicy { timeout: Duration::from_millis(10), ..harmos::services::POLICY },
+                    policy: harmos::operations::OperationPolicy {
+                        timeout: Duration::from_millis(10),
+                        ..harmos::services::POLICY
+                    },
                 },
                 move |_: Arc<()>| {
                     let (gate, factories, attempts, completed, finalizing) = &resources;
@@ -415,15 +399,10 @@ pub(super) fn contract_scenario() {
             runtime.stop().await.unwrap();
         }
     }
+}
 
-});
-        });
-    }
-    {
-        scenario_runtime::check("exit_survives_physical", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
-
+#[tokio::test]
+async fn exit_survives_physical() {
     let runtime = Runtime::<App>::builder((), ()).runtime().await.unwrap();
     let (release, gate) = tokio::sync::oneshot::channel();
     let gate = Arc::new(Mutex::new(Some(gate)));
@@ -474,8 +453,4 @@ pub(super) fn contract_scenario() {
     assert!(observed.load(Ordering::Acquire));
     drop(lease);
     runtime.stop().await.unwrap();
-
-});
-        });
-    }
 }

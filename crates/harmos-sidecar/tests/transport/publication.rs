@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -221,106 +220,93 @@ async fn publish(
 }
 
 // Runs Inside The Transport SDK Scenario, Which Owns The Test Entry Point.
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("batches_split_contiguously", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let native =
-                        PluginNative::<TransportPlugin>::new(NonZeroUsize::new(8).unwrap())
-                            .unwrap();
-                    let (write, read, control, _, _ending) =
-                        native.attach().await.unwrap().into_parts();
-                    let Connection {
-                        sender: outgoing,
-                        receiver: mut incoming,
-                        mut driver,
-                    } = Connection::new((read, write), control.unwrap());
-                    let driving = tokio::spawn(async move { driver.run().await });
-                    outgoing
-                        .send(Frame::Call {
-                            id: 1,
-                            method: Frame::REGISTER.to_owned(),
-                            params: Vec::new(),
-                        })
-                        .await
-                        .unwrap();
-                    assert!(matches!(
-                        receive(&mut incoming).await,
-                        Frame::Answer { id: 1, .. }
-                    ));
-                    let initialization = InitializeRequest {
-                        config_json: b"null".to_vec(),
-                        generation_context: GENERATION.to_vec(),
-                    };
-                    invoke(
-                        &outgoing,
-                        &mut incoming,
-                        2,
-                        Initialize::<TransportPlugin>::ID,
-                        initialization.encode_to_vec(),
-                    )
-                    .await;
+#[tokio::test]
+async fn batches_split_contiguously() {
+    let native = PluginNative::<TransportPlugin>::new(NonZeroUsize::new(8).unwrap()).unwrap();
+    let (write, read, control, _, _ending) = native.attach().await.unwrap().into_parts();
+    let Connection {
+        sender: outgoing,
+        receiver: mut incoming,
+        mut driver,
+    } = Connection::new((read, write), control.unwrap());
+    let driving = tokio::spawn(async move { driver.run().await });
+    outgoing
+        .send(Frame::Call {
+            id: 1,
+            method: Frame::REGISTER.to_owned(),
+            params: Vec::new(),
+        })
+        .await
+        .unwrap();
+    assert!(matches!(
+        receive(&mut incoming).await,
+        Frame::Answer { id: 1, .. }
+    ));
+    let initialization = InitializeRequest {
+        config_json: b"null".to_vec(),
+        generation_context: GENERATION.to_vec(),
+    };
+    invoke(
+        &outgoing,
+        &mut incoming,
+        2,
+        Initialize::<TransportPlugin>::ID,
+        initialization.encode_to_vec(),
+    )
+    .await;
 
-                    // Row By Row, Then Ordered Batches With A Short Tail
-                    let single = publish(&outgoing, &mut incoming, 3, 3, 64, 1).await;
-                    assert_eq!(
-                        single,
-                        (1..=3)
-                            .map(|first| Call { first, rows: 1 })
-                            .collect::<Vec<_>>()
-                    );
-                    let batched = publish(&outgoing, &mut incoming, 4, 250, 64, 100).await;
-                    assert_eq!(
-                        batched,
-                        vec![
-                            Call {
-                                first: 4,
-                                rows: 100
-                            },
-                            Call {
-                                first: 104,
-                                rows: 100
-                            },
-                            Call {
-                                first: 204,
-                                rows: 50
-                            },
-                        ]
-                    );
+    // Row By Row, Then Ordered Batches With A Short Tail
+    let single = publish(&outgoing, &mut incoming, 3, 3, 64, 1).await;
+    assert_eq!(
+        single,
+        (1..=3)
+            .map(|first| Call { first, rows: 1 })
+            .collect::<Vec<_>>()
+    );
+    let batched = publish(&outgoing, &mut incoming, 4, 250, 64, 100).await;
+    assert_eq!(
+        batched,
+        vec![
+            Call {
+                first: 4,
+                rows: 100
+            },
+            Call {
+                first: 104,
+                rows: 100
+            },
+            Call {
+                first: 204,
+                rows: 50
+            },
+        ]
+    );
 
-                    // Rows That Fit One Frame But Not One Batch Budget Split
-                    let large = publish(&outgoing, &mut incoming, 5, 4, 600 * 1024, 4).await;
-                    assert_eq!(
-                        large,
-                        (254..=257)
-                            .map(|first| Call { first, rows: 1 })
-                            .collect::<Vec<_>>()
-                    );
-                    let medium = publish(&outgoing, &mut incoming, 6, 5, 300 * 1024, 5).await;
-                    assert_eq!(
-                        medium,
-                        vec![
-                            Call {
-                                first: 258,
-                                rows: 3
-                            },
-                            Call {
-                                first: 261,
-                                rows: 2
-                            },
-                        ]
-                    );
-                    drop(outgoing);
-                    drop(incoming);
-                    let _ = driving.await;
-                });
-        });
-    }
+    // Rows That Fit One Frame But Not One Batch Budget Split
+    let large = publish(&outgoing, &mut incoming, 5, 4, 600 * 1024, 4).await;
+    assert_eq!(
+        large,
+        (254..=257)
+            .map(|first| Call { first, rows: 1 })
+            .collect::<Vec<_>>()
+    );
+    let medium = publish(&outgoing, &mut incoming, 6, 5, 300 * 1024, 5).await;
+    assert_eq!(
+        medium,
+        vec![
+            Call {
+                first: 258,
+                rows: 3
+            },
+            Call {
+                first: 261,
+                rows: 2
+            },
+        ]
+    );
+    drop(outgoing);
+    drop(incoming);
+    let _ = driving.await;
 }
 
 /* === Tests === */

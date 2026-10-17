@@ -17,9 +17,6 @@ mod atomic_commit;
 #[path = "durability_delivery.rs"]
 mod delivery;
 
-#[path = "durability_evidence.rs"]
-mod evidence;
-
 #[path = "durability_evolution.rs"]
 mod evolution;
 
@@ -63,23 +60,3 @@ mod wire;
 /* === Private Functions === */
 
 /* === Tests === */
-
-#[test]
-fn durable_commit() {
-    atomic_commit::contract_scenario();
-    delivery::contract_scenario();
-    evidence::contract_scenario();
-}
-
-#[test]
-fn recovery_history() {
-    recovery::contract_scenario();
-    history::contract_scenario();
-    retention::contract_scenario();
-}
-
-#[test]
-fn schema_evolution() {
-    evolution::contract_scenario();
-    wire::contract_scenario();
-}

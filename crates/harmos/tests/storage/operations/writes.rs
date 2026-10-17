@@ -87,85 +87,79 @@ pub(super) async fn seed(f: &Fixture) {
     f.storage.flush().await.unwrap();
 }
 
-pub(super) fn contract_scenario() {
-    crate::scenario_runtime::check("typed_writer_batches", || {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async {
-                let f = Fixture::new(config()).await;
-                Operations::register(
-                    &f.runtime.operations,
-                    "storage",
-                    Lanes::Open,
-                    Arc::new(f.storage.clone()),
-                )
-                .unwrap();
-                seed(&f).await;
-                let mut records = f
-                    .runtime
-                    .operations
-                    .exchange::<WriteRecords>(WriteRequest { scope: None }, settings(), settings())
-                    .unwrap();
-                let first = batch(1, "bench");
-                records
-                    .send_with(first.memory_size(), || Ok(first))
-                    .await
-                    .unwrap();
-                records.finish_input();
-                let mut accepted = None;
-                let mut durable = None;
-                while let Some(receipt) = records.next().await.unwrap() {
-                    match &*receipt {
-                        WriteReceipt::Accepted(receipt) => {
-                            assert!(accepted.is_none());
-                            accepted = Some(receipt.clone());
-                        }
-                        WriteReceipt::Durable(receipt) => {
-                            assert_eq!(accepted.as_ref(), Some(receipt));
-                            durable = Some(receipt.clone());
-                        }
-                    }
-                }
-                let completed = records.join().await.unwrap();
-                assert_eq!(completed.batches, 1);
-                assert_eq!(completed.cursor, durable.unwrap().cursor);
-                assert_eq!(f.data.records.lock().unwrap().len(), 2);
+#[tokio::test]
+async fn typed_writer_batches() {
+    let f = Fixture::new(config()).await;
+    Operations::register(
+        &f.runtime.operations,
+        "storage",
+        Lanes::Open,
+        Arc::new(f.storage.clone()),
+    )
+    .unwrap();
+    seed(&f).await;
+    let mut records = f
+        .runtime
+        .operations
+        .exchange::<WriteRecords>(WriteRequest { scope: None }, settings(), settings())
+        .unwrap();
+    let first = batch(1, "bench");
+    records
+        .send_with(first.memory_size(), || Ok(first))
+        .await
+        .unwrap();
+    records.finish_input();
+    let mut accepted = None;
+    let mut durable = None;
+    while let Some(receipt) = records.next().await.unwrap() {
+        match &*receipt {
+            WriteReceipt::Accepted(receipt) => {
+                assert!(accepted.is_none());
+                accepted = Some(receipt.clone());
+            }
+            WriteReceipt::Durable(receipt) => {
+                assert_eq!(accepted.as_ref(), Some(receipt));
+                durable = Some(receipt.clone());
+            }
+        }
+    }
+    let completed = records.join().await.unwrap();
+    assert_eq!(completed.batches, 1);
+    assert_eq!(completed.cursor, durable.unwrap().cursor);
+    assert_eq!(f.data.records.lock().unwrap().len(), 2);
 
-                // Cancelling Delivery Does Not Retract Storage-Owned Samples.
-                let mut stream = f
-                    .runtime
-                    .operations
-                    .exchange::<WriteStreams>(WriteRequest { scope: None }, settings(), settings())
-                    .unwrap();
-                let first = batch(1, "voltage");
-                stream.send(first).await.unwrap();
-                let accepted = loop {
-                    let receipt = stream.next().await.unwrap().unwrap();
-                    if let WriteReceipt::Accepted(receipt) = &*receipt {
-                        break receipt.cursor.clone();
-                    }
-                };
-                stream.cancel_and_settle().await.unwrap();
-                f.storage.flush_until(&accepted).await.unwrap();
-                assert_eq!(f.data.rows.lock().unwrap().len(), 2);
-                assert_eq!(f.storage.cursor_saved(), accepted);
+    // Cancelling Delivery Does Not Retract Storage-Owned Samples.
+    let mut stream = f
+        .runtime
+        .operations
+        .exchange::<WriteStreams>(WriteRequest { scope: None }, settings(), settings())
+        .unwrap();
+    let first = batch(1, "voltage");
+    stream.send(first).await.unwrap();
+    let accepted = loop {
+        let receipt = stream.next().await.unwrap().unwrap();
+        if let WriteReceipt::Accepted(receipt) = &*receipt {
+            break receipt.cursor.clone();
+        }
+    };
+    stream.cancel_and_settle().await.unwrap();
+    f.storage.flush_until(&accepted).await.unwrap();
+    assert_eq!(f.data.rows.lock().unwrap().len(), 2);
+    assert_eq!(f.storage.cursor_saved(), accepted);
 
-                // Portable Batch Descriptors Preserve Identity And Native Arrow Values.
-                let original = batch(42, "roundtrip");
-                let encoded = original.encode_to_vec();
-                assert!(DataBatch::decoding_memory(&encoded).unwrap() >= encoded.len());
-                let decoded = DataBatch::decode(&encoded).unwrap();
-                assert_eq!(decoded.sequence, 42);
-                assert_eq!(decoded.destination, original.destination);
-                assert_eq!(
-                    decoded.data.as_record_batch(),
-                    original.data.as_record_batch()
-                );
-                f.finish().await;
-            })
-    });
+    // Portable Batch Descriptors Preserve Identity And Native Arrow Values.
+    let original = batch(42, "roundtrip");
+    let encoded = original.encode_to_vec();
+    assert!(DataBatch::decoding_memory(&encoded).unwrap() >= encoded.len());
+    let decoded = DataBatch::decode(&encoded).unwrap();
+    assert_eq!(decoded.sequence, 42);
+    assert_eq!(decoded.destination, original.destination);
+    assert_eq!(
+        decoded.data.as_record_batch(),
+        original.data.as_record_batch()
+    );
+    f.finish().await;
 }
+
 /* === Private Functions === */
 /* === Tests === */

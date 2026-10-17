@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -204,65 +203,53 @@ fn channel(
 
 /* === Tests === */
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("items_precede_settled", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, trace) = runtime().await;
-                    let (sender, receiver) = channel(3);
-                    let permit = sender.reserve(4).await.unwrap();
-                    let instance = runtime
-                        .operations
-                        .submit_endpoints::<Produce, _>(
-                            Request {
-                                count: 2,
-                                fail: false,
-                            },
-                            sender.clone(),
-                        )
-                        .unwrap();
-                    let id = instance.id();
-                    let mut stream = harmos::grpc::stream(instance, receiver);
-                    trace.finalizing.acquire().await.unwrap().forget();
-                    assert_eq!(item(stream.next().await.unwrap()), 0);
-                    assert_eq!(item(stream.next().await.unwrap()), 1);
-                    assert!(
-                        std::future::poll_fn(|cx| std::task::Poll::Ready(
-                            futures_core::Stream::poll_next(std::pin::Pin::new(&mut stream), cx)
-                                .is_pending()
-                        ))
-                        .await
-                    );
-                    assert_eq!(trace.dropped.load(Ordering::SeqCst), 0);
-                    trace.release.add_permits(1);
-                    match stream.next().await.unwrap().unwrap() {
-                        Event::Completion(response) => assert_eq!(*response, 2),
-                        Event::Item(_) => panic!("expected settled response"),
-                    }
-                    assert!(sender.is_closed());
-                    assert!(
-                        permit
-                            .send_with(|| panic!("closed stream constructed a late item"))
-                            .is_err()
-                    );
-                    assert!(stream.next().await.is_none());
-                    assert!(stream.next().await.is_none());
-                    assert!(runtime.operations.status(id).is_none());
-                    assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
+#[tokio::test]
+async fn items_precede_settled() {
+    let (runtime, trace) = runtime().await;
+    let (sender, receiver) = channel(3);
+    let permit = sender.reserve(4).await.unwrap();
+    let instance = runtime
+        .operations
+        .submit_endpoints::<Produce, _>(
+            Request {
+                count: 2,
+                fail: false,
+            },
+            sender.clone(),
+        )
+        .unwrap();
+    let id = instance.id();
+    let mut stream = harmos::grpc::stream(instance, receiver);
+    trace.finalizing.acquire().await.unwrap().forget();
+    assert_eq!(item(stream.next().await.unwrap()), 0);
+    assert_eq!(item(stream.next().await.unwrap()), 1);
+    assert!(
+        std::future::poll_fn(|cx| std::task::Poll::Ready(
+            futures_core::Stream::poll_next(std::pin::Pin::new(&mut stream), cx).is_pending()
+        ))
+        .await
+    );
+    assert_eq!(trace.dropped.load(Ordering::SeqCst), 0);
+    trace.release.add_permits(1);
+    match stream.next().await.unwrap().unwrap() {
+        Event::Completion(response) => assert_eq!(*response, 2),
+        Event::Item(_) => panic!("expected settled response"),
     }
-    {
-        scenario_runtime::check("output_releases_backpressure", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
+    assert!(sender.is_closed());
+    assert!(
+        permit
+            .send_with(|| panic!("closed stream constructed a late item"))
+            .is_err()
+    );
+    assert!(stream.next().await.is_none());
+    assert!(stream.next().await.is_none());
+    assert!(runtime.operations.status(id).is_none());
+    assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
+    runtime.stop().await.unwrap();
+}
 
+#[tokio::test]
+async fn output_releases_backpressure() {
     let (runtime, trace) = runtime().await;
     let (sender, receiver) = channel(1);
     let instance = runtime
@@ -288,176 +275,143 @@ pub(super) fn contract_scenario() {
     assert!(stream.next().await.is_none());
     assert_eq!(trace.constructed.load(Ordering::SeqCst), 1);
     runtime.stop().await.unwrap();
+}
 
-});
-        });
-    }
-    {
-        scenario_runtime::check("abandonment_retains_cleanup", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, trace) = runtime().await;
-                    let (sender, receiver) = channel(1);
-                    let instance = runtime
-                        .operations
-                        .submit_endpoints::<Produce, _>(
-                            Request {
-                                count: 3,
-                                fail: false,
-                            },
-                            sender,
-                        )
-                        .unwrap();
-                    let id = instance.id();
-                    // Only a constructed instance has cleanup to retain.
-                    let stream = harmos::grpc::stream(instance, receiver);
-                    trace.attempting.acquire().await.unwrap().forget();
-                    drop(stream);
-                    trace.finalizing.acquire().await.unwrap().forget();
-                    let status = runtime.operations.status(id).unwrap();
-                    assert!(status.cancellation_requested());
-                    assert_eq!(status.phase(), OperationPhase::Finalizing);
-                    assert_eq!(trace.dropped.load(Ordering::SeqCst), 0);
-                    trace.release.add_permits(1);
-                    runtime.stop().await.unwrap();
-                    assert_eq!(trace.constructed.load(Ordering::SeqCst), 1);
-                    assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-                });
-        });
-    }
-    {
-        scenario_runtime::check("abandonment_cancels_retains", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, trace) = runtime().await;
-                    let (sender, receiver) = channel(1);
-                    let instance = runtime
-                        .operations
-                        .submit_endpoints::<Produce, _>(
-                            Request {
-                                count: 3,
-                                fail: false,
-                            },
-                            sender,
-                        )
-                        .unwrap();
-                    let id = instance.id();
-                    let stream = harmos::grpc::stream(instance, receiver);
-                    trace.attempting.acquire_many(2).await.unwrap().forget();
-                    drop(stream);
-                    trace.finalizing.acquire().await.unwrap().forget();
-                    assert!(
-                        runtime
-                            .operations
-                            .status(id)
-                            .unwrap()
-                            .cancellation_requested()
-                    );
-                    assert_eq!(trace.dropped.load(Ordering::SeqCst), 0);
-                    trace.release.add_permits(1);
-                    runtime.stop().await.unwrap();
-                    assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-                });
-        });
-    }
-    {
-        scenario_runtime::check("items_remain_visible", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, trace) = runtime().await;
-                    let (sender, receiver) = channel(2);
-                    let instance = runtime
-                        .operations
-                        .submit_endpoints::<Produce, _>(
-                            Request {
-                                count: 2,
-                                fail: true,
-                            },
-                            sender,
-                        )
-                        .unwrap();
-                    let mut stream = harmos::grpc::stream(instance, receiver);
-                    trace.finalizing.acquire().await.unwrap().forget();
-                    trace.release.add_permits(1);
-                    assert_eq!(item(stream.next().await.unwrap()), 0);
-                    assert_eq!(item(stream.next().await.unwrap()), 1);
-                    assert!(stream.next().await.unwrap().is_err());
-                    assert!(stream.next().await.is_none());
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("failure_not_success", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, trace) = runtime().await;
-                    trace.fail_cleanup.store(true, Ordering::SeqCst);
-                    let observations = Arc::new(Mutex::new(Vec::new()));
-                    runtime
-                        .operations
-                        .register_middleware(Arc::new(Observe(observations.clone())))
-                        .unwrap();
-                    let (sender, receiver) = channel(1);
-                    let instance = runtime
-                        .operations
-                        .submit_endpoints::<Produce, _>(
-                            Request {
-                                count: 1,
-                                fail: false,
-                            },
-                            sender,
-                        )
-                        .unwrap();
-                    let id = instance.id();
-                    let mut stream = harmos::grpc::stream(instance, receiver);
-                    assert_eq!(item(stream.next().await.unwrap()), 0);
-                    assert!(stream.next().await.unwrap().is_err());
-                    assert!(stream.next().await.is_none());
-                    assert!(runtime.operations.status(id).unwrap().cleanup_pending());
-                    {
-                        let observations = observations.lock().unwrap();
-                        assert_eq!(observations.len(), 1);
-                        assert!(!observations[0].settled);
-                        assert_eq!(
-                            observations[0].outcome,
-                            harmos::operations::OperationOutcome::Failed
-                        );
-                    }
-                    drop(stream);
-                    assert_eq!(trace.finalized.load(Ordering::SeqCst), 1);
-                    assert_eq!(trace.dropped.load(Ordering::SeqCst), 0);
-                    trace.fail_cleanup.store(false, Ordering::SeqCst);
-                    trace.release.add_permits(1);
-                    runtime.stop().await.unwrap();
-                    assert_eq!(trace.constructed.load(Ordering::SeqCst), 1);
-                    assert_eq!(trace.finalized.load(Ordering::SeqCst), 2);
-                    assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-                    assert_eq!(observations.lock().unwrap().len(), 1);
-                });
-        });
-    }
-    {
-        scenario_runtime::check("eof_waits_physical", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
+#[tokio::test]
+async fn abandonment_retains_cleanup() {
+    let (runtime, trace) = runtime().await;
+    let (sender, receiver) = channel(1);
+    let instance = runtime
+        .operations
+        .submit_endpoints::<Produce, _>(
+            Request {
+                count: 3,
+                fail: false,
+            },
+            sender,
+        )
+        .unwrap();
+    let id = instance.id();
+    // Only a constructed instance has cleanup to retain.
+    let stream = harmos::grpc::stream(instance, receiver);
+    trace.attempting.acquire().await.unwrap().forget();
+    drop(stream);
+    trace.finalizing.acquire().await.unwrap().forget();
+    let status = runtime.operations.status(id).unwrap();
+    assert!(status.cancellation_requested());
+    assert_eq!(status.phase(), OperationPhase::Finalizing);
+    assert_eq!(trace.dropped.load(Ordering::SeqCst), 0);
+    trace.release.add_permits(1);
+    runtime.stop().await.unwrap();
+    assert_eq!(trace.constructed.load(Ordering::SeqCst), 1);
+    assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
+}
 
+#[tokio::test]
+async fn abandonment_cancels_retains() {
+    let (runtime, trace) = runtime().await;
+    let (sender, receiver) = channel(1);
+    let instance = runtime
+        .operations
+        .submit_endpoints::<Produce, _>(
+            Request {
+                count: 3,
+                fail: false,
+            },
+            sender,
+        )
+        .unwrap();
+    let id = instance.id();
+    let stream = harmos::grpc::stream(instance, receiver);
+    trace.attempting.acquire_many(2).await.unwrap().forget();
+    drop(stream);
+    trace.finalizing.acquire().await.unwrap().forget();
+    assert!(
+        runtime
+            .operations
+            .status(id)
+            .unwrap()
+            .cancellation_requested()
+    );
+    assert_eq!(trace.dropped.load(Ordering::SeqCst), 0);
+    trace.release.add_permits(1);
+    runtime.stop().await.unwrap();
+    assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn items_remain_visible() {
+    let (runtime, trace) = runtime().await;
+    let (sender, receiver) = channel(2);
+    let instance = runtime
+        .operations
+        .submit_endpoints::<Produce, _>(
+            Request {
+                count: 2,
+                fail: true,
+            },
+            sender,
+        )
+        .unwrap();
+    let mut stream = harmos::grpc::stream(instance, receiver);
+    trace.finalizing.acquire().await.unwrap().forget();
+    trace.release.add_permits(1);
+    assert_eq!(item(stream.next().await.unwrap()), 0);
+    assert_eq!(item(stream.next().await.unwrap()), 1);
+    assert!(stream.next().await.unwrap().is_err());
+    assert!(stream.next().await.is_none());
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn failure_not_success() {
+    let (runtime, trace) = runtime().await;
+    trace.fail_cleanup.store(true, Ordering::SeqCst);
+    let observations = Arc::new(Mutex::new(Vec::new()));
+    runtime
+        .operations
+        .register_middleware(Arc::new(Observe(observations.clone())))
+        .unwrap();
+    let (sender, receiver) = channel(1);
+    let instance = runtime
+        .operations
+        .submit_endpoints::<Produce, _>(
+            Request {
+                count: 1,
+                fail: false,
+            },
+            sender,
+        )
+        .unwrap();
+    let id = instance.id();
+    let mut stream = harmos::grpc::stream(instance, receiver);
+    assert_eq!(item(stream.next().await.unwrap()), 0);
+    assert!(stream.next().await.unwrap().is_err());
+    assert!(stream.next().await.is_none());
+    assert!(runtime.operations.status(id).unwrap().cleanup_pending());
+    {
+        let observations = observations.lock().unwrap();
+        assert_eq!(observations.len(), 1);
+        assert!(!observations[0].settled);
+        assert_eq!(
+            observations[0].outcome,
+            harmos::operations::OperationOutcome::Failed
+        );
+    }
+    drop(stream);
+    assert_eq!(trace.finalized.load(Ordering::SeqCst), 1);
+    assert_eq!(trace.dropped.load(Ordering::SeqCst), 0);
+    trace.fail_cleanup.store(false, Ordering::SeqCst);
+    trace.release.add_permits(1);
+    runtime.stop().await.unwrap();
+    assert_eq!(trace.constructed.load(Ordering::SeqCst), 1);
+    assert_eq!(trace.finalized.load(Ordering::SeqCst), 2);
+    assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
+    assert_eq!(observations.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn eof_waits_physical() {
     let (runtime, trace) = runtime().await;
     let (sender, receiver) = channel(1);
     let instance = runtime
@@ -485,52 +439,39 @@ pub(super) fn contract_scenario() {
     );
     assert!(stream.next().await.is_none());
     runtime.stop().await.unwrap();
+}
 
-});
-        });
-    }
-    {
-        scenario_runtime::check("deadline_settles_draining", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, trace) = runtime().await;
-                    trace.release.add_permits(1);
-                    let (sender, receiver) = channel(1);
-                    let instance = runtime
-                        .operations
-                        .submit_endpoints::<Produce, _>(
-                            Request {
-                                count: 3,
-                                fail: false,
-                            },
-                            sender,
-                        )
-                        .unwrap();
-                    let id = instance.id();
-                    let mut stream = harmos::grpc::stream(instance, receiver);
-                    trace.attempting.acquire_many(2).await.unwrap().forget();
-                    tokio::time::advance(Duration::from_secs(6)).await;
-                    trace.finalizing.acquire().await.unwrap().forget();
-                    assert_eq!(item(stream.next().await.unwrap()), 0);
-                    assert!(stream.next().await.unwrap().is_err());
-                    assert!(stream.next().await.is_none());
-                    assert!(runtime.operations.status(id).is_none());
-                    assert_eq!(trace.constructed.load(Ordering::SeqCst), 1);
-                    assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("item_keeps_byte", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
+#[tokio::test(start_paused = true)]
+async fn deadline_settles_draining() {
+    let (runtime, trace) = runtime().await;
+    trace.release.add_permits(1);
+    let (sender, receiver) = channel(1);
+    let instance = runtime
+        .operations
+        .submit_endpoints::<Produce, _>(
+            Request {
+                count: 3,
+                fail: false,
+            },
+            sender,
+        )
+        .unwrap();
+    let id = instance.id();
+    let mut stream = harmos::grpc::stream(instance, receiver);
+    trace.attempting.acquire_many(2).await.unwrap().forget();
+    tokio::time::advance(Duration::from_secs(6)).await;
+    trace.finalizing.acquire().await.unwrap().forget();
+    assert_eq!(item(stream.next().await.unwrap()), 0);
+    assert!(stream.next().await.unwrap().is_err());
+    assert!(stream.next().await.is_none());
+    assert!(runtime.operations.status(id).is_none());
+    assert_eq!(trace.constructed.load(Ordering::SeqCst), 1);
+    assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
+    runtime.stop().await.unwrap();
+}
 
+#[tokio::test]
+async fn item_keeps_byte() {
     let (runtime, trace) = runtime().await;
     let (sender, receiver) = harmos::operations::stream(harmos::operations::StreamSettings {
         items: std::num::NonZeroUsize::new(2).unwrap(),
@@ -569,51 +510,39 @@ pub(super) fn contract_scenario() {
     );
     assert!(stream.next().await.is_none());
     runtime.stop().await.unwrap();
+}
 
-});
-        });
-    }
-    {
-        scenario_runtime::check("abandonment_cancels_operation", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, trace) = runtime().await;
-                    let (sender, receiver) =
-                        harmos::operations::stream(harmos::operations::StreamSettings {
-                            items: std::num::NonZeroUsize::new(2).unwrap(),
-                            bytes: std::num::NonZeroUsize::new(4).unwrap(),
-                        })
-                        .unwrap();
-                    let instance = runtime
-                        .operations
-                        .submit_endpoints::<Produce, _>(
-                            Request {
-                                count: 2,
-                                fail: false,
-                            },
-                            sender,
-                        )
-                        .unwrap();
-                    let id = instance.id();
-                    let mut stream = harmos::grpc::stream(instance, receiver);
-                    trace.attempting.acquire_many(2).await.unwrap().forget();
-                    let Event::Item(held) = stream.next().await.unwrap().unwrap() else {
-                        panic!("expected item")
-                    };
-                    drop(stream);
-                    trace.finalizing.acquire().await.unwrap().forget();
-                    assert_eq!(trace.items_created.load(Ordering::SeqCst), 1);
-                    assert_eq!(trace.dropped.load(Ordering::SeqCst), 0);
-                    trace.release.add_permits(1);
-                    runtime.stop().await.unwrap();
-                    assert!(runtime.operations.status(id).is_none());
-                    assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-                    assert_eq!(*held, 0);
-                });
-        });
-    }
+#[tokio::test]
+async fn abandonment_cancels_operation() {
+    let (runtime, trace) = runtime().await;
+    let (sender, receiver) = harmos::operations::stream(harmos::operations::StreamSettings {
+        items: std::num::NonZeroUsize::new(2).unwrap(),
+        bytes: std::num::NonZeroUsize::new(4).unwrap(),
+    })
+    .unwrap();
+    let instance = runtime
+        .operations
+        .submit_endpoints::<Produce, _>(
+            Request {
+                count: 2,
+                fail: false,
+            },
+            sender,
+        )
+        .unwrap();
+    let id = instance.id();
+    let mut stream = harmos::grpc::stream(instance, receiver);
+    trace.attempting.acquire_many(2).await.unwrap().forget();
+    let Event::Item(held) = stream.next().await.unwrap().unwrap() else {
+        panic!("expected item")
+    };
+    drop(stream);
+    trace.finalizing.acquire().await.unwrap().forget();
+    assert_eq!(trace.items_created.load(Ordering::SeqCst), 1);
+    assert_eq!(trace.dropped.load(Ordering::SeqCst), 0);
+    trace.release.add_permits(1);
+    runtime.stop().await.unwrap();
+    assert!(runtime.operations.status(id).is_none());
+    assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
+    assert_eq!(*held, 0);
 }

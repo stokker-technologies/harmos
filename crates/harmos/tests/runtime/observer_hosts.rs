@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -406,31 +405,14 @@ async fn exercise(panic_first: bool) {
     );
 }
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("custom_hosts_bind", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    exercise(false).await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("binding_panic_isolated", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    exercise(true).await;
-                });
-        });
-    }
+#[tokio::test]
+async fn custom_hosts_bind() {
+    exercise(false).await;
+}
+
+#[tokio::test]
+async fn binding_panic_isolated() {
+    exercise(true).await;
 }
 
 /* === Tests === */

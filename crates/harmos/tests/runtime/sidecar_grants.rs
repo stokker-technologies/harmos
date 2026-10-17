@@ -10,7 +10,6 @@
 // Enforce Request Grants For External Callers Across Sidecar And In-Process Bindings
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -361,79 +360,63 @@ async fn enforced(channel: &tonic::transport::Channel, path: &'static str, runs:
     assert_eq!(runs.0.load(Ordering::SeqCst), 2, "refusals never run");
 }
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("external_request_grants", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let remote = Arc::new(Runs::default());
-                    let local = Arc::new(Runs::default());
-                    let seed = Seed::new(&remote);
-                    let capacity = std::num::NonZeroUsize::new(2).unwrap();
-                    let source = harmos_sidecar::PluginNative::<Provider>::new(capacity).unwrap();
-                    let mut fixture = Managed::attach(
-                        source,
-                        serde_json::to_vec(&seed.id).unwrap(),
-                        Lanes::NativeOpen,
-                        capacity,
-                        vec![],
-                        std::convert::identity,
-                    )
-                    .await;
-                    fixture.initialize().await.unwrap();
-                    fixture
-                        .runtime
-                        .operations
-                        .register_wire_operation::<LocalFetching>(
-                            "app",
-                            Lanes::NativeOpen,
-                            local.clone(),
-                        )
-                        .unwrap();
-                    fixture
-                        .runtime
-                        .operations
-                        .register_authorizer(Arc::new(Holdings))
-                        .unwrap();
-                    fixture
-                        .runtime
-                        .grpc()
-                        .register_middleware(Arc::new(Authenticate::new(Arc::new(Bearers))))
-                        .unwrap();
-                    let settings = harmos::grpc::Settings {
-                        address: "127.0.0.1:0".parse().unwrap(),
-                        operations: harmos::grpc::server::Settings::default(),
-                        reflection: false,
-                        web: false,
-                        allowed_origins: Vec::new(),
-                        tls: None,
-                        connections: std::num::NonZeroUsize::new(4).unwrap(),
-                        calls_per_connection: std::num::NonZeroUsize::new(8).unwrap(),
-                        request_timeout: Duration::from_secs(2),
-                        shutdown_timeout: Duration::from_secs(2),
-                    };
-                    let attached = fixture.runtime.grpc().attach(settings).await.unwrap();
-                    let channel = tonic::transport::Endpoint::from_shared(format!(
-                        "http://{}",
-                        attached.local_addr()
-                    ))
-                    .unwrap()
-                    .connect()
-                    .await
-                    .unwrap();
-                    enforced(&channel, "/fixture.gated.v1.Remote/Fetch", &remote).await;
-                    enforced(&channel, "/fixture.gated.v1.Local/Fetch", &local).await;
-                    drop(channel);
-                    attached.detach().await.unwrap();
-                    fixture.shutdown().await.unwrap();
-                    fixture.runtime.stop().await.unwrap();
-                });
-        });
-    }
+#[tokio::test]
+async fn external_request_grants() {
+    let remote = Arc::new(Runs::default());
+    let local = Arc::new(Runs::default());
+    let seed = Seed::new(&remote);
+    let capacity = std::num::NonZeroUsize::new(2).unwrap();
+    let source = harmos_sidecar::PluginNative::<Provider>::new(capacity).unwrap();
+    let mut fixture = Managed::attach(
+        source,
+        serde_json::to_vec(&seed.id).unwrap(),
+        Lanes::NativeOpen,
+        capacity,
+        vec![],
+        std::convert::identity,
+    )
+    .await;
+    fixture.initialize().await.unwrap();
+    fixture
+        .runtime
+        .operations
+        .register_wire_operation::<LocalFetching>("app", Lanes::NativeOpen, local.clone())
+        .unwrap();
+    fixture
+        .runtime
+        .operations
+        .register_authorizer(Arc::new(Holdings))
+        .unwrap();
+    fixture
+        .runtime
+        .grpc()
+        .register_middleware(Arc::new(Authenticate::new(Arc::new(Bearers))))
+        .unwrap();
+    let settings = harmos::grpc::Settings {
+        address: "127.0.0.1:0".parse().unwrap(),
+        operations: harmos::grpc::server::Settings::default(),
+        reflection: false,
+        web: false,
+        allowed_origins: Vec::new(),
+        tls: None,
+        connections: std::num::NonZeroUsize::new(4).unwrap(),
+        calls_per_connection: std::num::NonZeroUsize::new(8).unwrap(),
+        request_timeout: Duration::from_secs(2),
+        shutdown_timeout: Duration::from_secs(2),
+    };
+    let attached = fixture.runtime.grpc().attach(settings).await.unwrap();
+    let channel =
+        tonic::transport::Endpoint::from_shared(format!("http://{}", attached.local_addr()))
+            .unwrap()
+            .connect()
+            .await
+            .unwrap();
+    enforced(&channel, "/fixture.gated.v1.Remote/Fetch", &remote).await;
+    enforced(&channel, "/fixture.gated.v1.Local/Fetch", &local).await;
+    drop(channel);
+    attached.detach().await.unwrap();
+    fixture.shutdown().await.unwrap();
+    fixture.runtime.stop().await.unwrap();
 }
 
 /* === Tests === */

@@ -8,8 +8,6 @@
  */
 
 /* === Modules === */
-#[path = "../../../../../tests/support/scenarios.rs"]
-mod scenario_runtime;
 
 #[path = "../../support/runtime_mirror.rs"]
 mod mirror;
@@ -195,370 +193,294 @@ async fn title(runtime: &Runtime<Editor>) -> String {
         .value
 }
 
-#[test]
-fn contract_scenario() {
-    {
-        scenario_runtime::check("boot_preserves_origin", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = Runtime::<Editor>::builder(Sheet::default(), ())
-                        .register(catalog())
-                        .runtime()
-                        .await
-                        .expect("nothing was recovered");
+#[tokio::test]
+async fn boot_preserves_origin() {
+    let runtime = Runtime::<Editor>::builder(Sheet::default(), ())
+        .register(catalog())
+        .runtime()
+        .await
+        .expect("nothing was recovered");
 
-                    assert_eq!(title(&runtime).await, "");
-                    assert_eq!(runtime.state.applied(), Position::ORIGIN);
-                    assert_eq!(
-                        runtime.state.stored(),
-                        runtime.state.applied(),
-                        "with nothing attached, stored tracks applied"
-                    );
-                    assert_eq!(runtime.stop().await.unwrap(), Position::ORIGIN);
-                });
-        });
+    assert_eq!(title(&runtime).await, "");
+    assert_eq!(runtime.state.applied(), Position::ORIGIN);
+    assert_eq!(
+        runtime.state.stored(),
+        runtime.state.applied(),
+        "with nothing attached, stored tracks applied"
+    );
+    assert_eq!(runtime.stop().await.unwrap(), Position::ORIGIN);
+}
+
+#[tokio::test]
+async fn read_stamped_position() {
+    let runtime = Runtime::<Editor>::builder(Sheet::default(), ())
+        .register(catalog())
+        .runtime()
+        .await
+        .expect("nothing was recovered");
+
+    let receipt = runtime
+        .state
+        .commit(rename("draft"))
+        .await
+        .expect("accepted");
+    let read = runtime
+        .state
+        .state()
+        .read(|sheet| sheet.title.clone())
+        .await
+        .expect("reads are open");
+
+    assert_eq!(read.value, "draft");
+    assert_eq!(read.position, receipt.position);
+    assert!(read.position >= receipt.position);
+}
+
+#[tokio::test]
+async fn boot_folds_state() {
+    // The live path: two renames and one undo of the second.
+    let live = Runtime::<Editor>::builder(origin(), ())
+        .register(catalog())
+        .runtime()
+        .await
+        .expect("nothing was recovered");
+    let handle = live.state.as_principal(alice());
+    handle.commit(rename("first")).await.expect("accepted");
+    let second = handle.commit(rename("second")).await.expect("accepted");
+    handle
+        .undo(alice(), Focus::all())
+        .await
+        .expect("alice has an entry to undo");
+
+    // The recovered path: the very same entries, replayed.
+    let recovered = Runtime::<Editor>::builder(origin(), ())
+        .register(catalog())
+        .recover(recovering(vec![
+            renamed(1, "first", None),
+            renamed(2, "second", None),
+            renamed(3, "first", Some(Link::UndoOf(second.position))),
+            stored(4, EXPORTED.1, None, Recorded::Record(Note::Exported)),
+        ]))
+        .runtime()
+        .await
+        .expect("every definition is declared");
+
+    assert_eq!(title(&live).await, title(&recovered).await);
+    assert_eq!(recovered.state.applied(), Position(4));
+
+    // The rebuilt fold has to answer the next undo exactly as the live one
+    // does — which it can only do if replay re-derived the inverse of entry
+    // one against the state as it stood before entry one.
+    live.state
+        .undo(alice(), Focus::all())
+        .await
+        .expect("the first rename is still active");
+    recovered
+        .state
+        .undo(alice(), Focus::all())
+        .await
+        .expect("the rebuilt stack knows the same");
+
+    assert_eq!(title(&live).await, "origin");
+    assert_eq!(
+        title(&recovered).await,
+        "origin",
+        "the inverse was re-derived against the state before its own entry"
+    );
+}
+
+#[tokio::test]
+async fn boot_refuses_loudly() {
+    let booted = Runtime::<Editor>::builder(Sheet::default(), ())
+        .register(catalog())
+        .recover(recovering(vec![stored(
+            1,
+            "sheet.rotate",
+            None,
+            Recorded::Transaction(Arc::new(Change::Seal)),
+        )]))
+        .runtime()
+        .await;
+
+    let Err(refused) = booted else {
+        panic!("no definition is declared under that name");
+    };
+    assert!(
+        refused.to_string().contains("sheet.rotate"),
+        "the refusal names what it could not honor: {refused}"
+    );
+}
+
+#[tokio::test]
+async fn shutdown_drains_attached() {
+    let (mirror, (checkpoint, _)) = Mirror::new();
+    let runtime = Runtime::<Editor>::builder(Sheet::default(), ())
+        .register(catalog())
+        .attach(mirror)
+        .runtime()
+        .await
+        .expect("nothing was recovered");
+
+    for title in ["one", "two", "three"] {
+        runtime.state.commit(rename(title)).await.expect("accepted");
     }
-    {
-        scenario_runtime::check("read_stamped_position", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = Runtime::<Editor>::builder(Sheet::default(), ())
-                        .register(catalog())
-                        .runtime()
-                        .await
-                        .expect("nothing was recovered");
+    let applied = runtime.state.applied();
+    let settled = runtime.stop().await.unwrap();
 
-                    let receipt = runtime
-                        .state
-                        .commit(rename("draft"))
-                        .await
-                        .expect("accepted");
-                    let read = runtime
-                        .state
-                        .state()
-                        .read(|sheet| sheet.title.clone())
-                        .await
-                        .expect("reads are open");
+    assert_eq!(applied, Position(3));
+    assert_eq!(settled, applied, "shutdown drains to the applied frontier");
+    assert_eq!(checkpoint.load(Ordering::Acquire), applied.0);
+}
 
-                    assert_eq!(read.value, "draft");
-                    assert_eq!(read.position, receipt.position);
-                    assert!(read.position >= receipt.position);
-                });
-        });
-    }
-    {
-        scenario_runtime::check("boot_folds_state", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    // The live path: two renames and one undo of the second.
-                    let live = Runtime::<Editor>::builder(origin(), ())
-                        .register(catalog())
-                        .runtime()
-                        .await
-                        .expect("nothing was recovered");
-                    let handle = live.state.as_principal(alice());
-                    handle.commit(rename("first")).await.expect("accepted");
-                    let second = handle.commit(rename("second")).await.expect("accepted");
-                    handle
-                        .undo(alice(), Focus::all())
-                        .await
-                        .expect("alice has an entry to undo");
+#[tokio::test]
+async fn poisoned_writer_evacuates() {
+    let (mirror, (checkpoint, _)) = Mirror::new();
+    let runtime = Runtime::<Editor>::builder(Sheet::default(), ())
+        .register(catalog())
+        .attach(mirror)
+        .runtime()
+        .await
+        .expect("nothing was recovered");
 
-                    // The recovered path: the very same entries, replayed.
-                    let recovered = Runtime::<Editor>::builder(origin(), ())
-                        .register(catalog())
-                        .recover(recovering(vec![
-                            renamed(1, "first", None),
-                            renamed(2, "second", None),
-                            renamed(3, "first", Some(Link::UndoOf(second.position))),
-                            stored(4, EXPORTED.1, None, Recorded::Record(Note::Exported)),
-                        ]))
-                        .runtime()
-                        .await
-                        .expect("every definition is declared");
+    runtime
+        .state
+        .commit(rename("kept"))
+        .await
+        .expect("accepted");
 
-                    assert_eq!(title(&live).await, title(&recovered).await);
-                    assert_eq!(recovered.state.applied(), Position(4));
+    let silence = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let poisoned = runtime.state.commit(Change::Explode).await;
+    std::panic::set_hook(silence);
 
-                    // The rebuilt fold has to answer the next undo exactly as the live one
-                    // does — which it can only do if replay re-derived the inverse of entry
-                    // one against the state as it stood before entry one.
-                    live.state
-                        .undo(alice(), Focus::all())
-                        .await
-                        .expect("the first rename is still active");
-                    recovered
-                        .state
-                        .undo(alice(), Focus::all())
-                        .await
-                        .expect("the rebuilt stack knows the same");
+    assert!(matches!(poisoned, Err(Error::Unavailable)));
+    assert_eq!(
+        runtime.state.applied(),
+        Position(1),
+        "no entry was sealed for the change that panicked"
+    );
+    assert!(matches!(
+        runtime
+            .state
+            .state()
+            .read(|sheet| sheet.title.clone())
+            .await,
+        Err(Error::Unavailable)
+    ));
 
-                    assert_eq!(title(&live).await, "origin");
-                    assert_eq!(
-                        title(&recovered).await,
-                        "origin",
-                        "the inverse was re-derived against the state before its own entry"
-                    );
-                });
-        });
-    }
-    {
-        scenario_runtime::check("boot_refuses_loudly", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let booted = Runtime::<Editor>::builder(Sheet::default(), ())
-                        .register(catalog())
-                        .recover(recovering(vec![stored(
-                            1,
-                            "sheet.rotate",
-                            None,
-                            Recorded::Transaction(Arc::new(Change::Seal)),
-                        )]))
-                        .runtime()
-                        .await;
+    // The runtime evacuates without being asked: the writer is gone, so the
+    // supervisor folds the intact tail out and stops rather than restarting.
+    let settled = runtime.stop().await.unwrap();
 
-                    let Err(refused) = booted else {
-                        panic!("no definition is declared under that name");
-                    };
-                    assert!(
-                        refused.to_string().contains("sheet.rotate"),
-                        "the refusal names what it could not honor: {refused}"
-                    );
-                });
-        });
-    }
-    {
-        scenario_runtime::check("shutdown_drains_attached", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (mirror, (checkpoint, _)) = Mirror::new();
-                    let runtime = Runtime::<Editor>::builder(Sheet::default(), ())
-                        .register(catalog())
-                        .attach(mirror)
-                        .runtime()
-                        .await
-                        .expect("nothing was recovered");
+    assert_eq!(settled, Position(1));
+    assert_eq!(
+        checkpoint.load(Ordering::Acquire),
+        1,
+        "the entry committed before the panic reached storage"
+    );
+}
 
-                    for title in ["one", "two", "three"] {
-                        runtime.state.commit(rename(title)).await.expect("accepted");
-                    }
-                    let applied = runtime.state.applied();
-                    let settled = runtime.stop().await.unwrap();
+#[tokio::test]
+async fn repeat_stop_frontier() {
+    let runtime = Runtime::<Editor>::builder(Sheet::default(), ())
+        .register(catalog())
+        .runtime()
+        .await
+        .expect("nothing was recovered");
 
-                    assert_eq!(applied, Position(3));
-                    assert_eq!(settled, applied, "shutdown drains to the applied frontier");
-                    assert_eq!(checkpoint.load(Ordering::Acquire), applied.0);
-                });
-        });
-    }
-    {
-        scenario_runtime::check("poisoned_writer_evacuates", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (mirror, (checkpoint, _)) = Mirror::new();
-                    let runtime = Runtime::<Editor>::builder(Sheet::default(), ())
-                        .register(catalog())
-                        .attach(mirror)
-                        .runtime()
-                        .await
-                        .expect("nothing was recovered");
+    runtime
+        .state
+        .commit(rename("once"))
+        .await
+        .expect("accepted");
+    let settled = runtime.stop().await.unwrap();
 
-                    runtime
-                        .state
-                        .commit(rename("kept"))
-                        .await
-                        .expect("accepted");
+    assert_eq!(settled, Position(1));
+    assert_eq!(
+        runtime.stop().await.unwrap(),
+        settled,
+        "a repeat stop joins nothing and reports the frontier the first saw"
+    );
+}
 
-                    let silence = std::panic::take_hook();
-                    std::panic::set_hook(Box::new(|_| {}));
-                    let poisoned = runtime.state.commit(Change::Explode).await;
-                    std::panic::set_hook(silence);
+#[tokio::test]
+async fn handles_allow_shutdown() {
+    let runtime = Runtime::<Editor>::builder(Sheet::default(), ())
+        .register(catalog())
+        .runtime()
+        .await
+        .expect("nothing was recovered");
+    // What a host-side plugin keeps for its whole life, and cannot drop
+    // before asking the runtime it holds to stop.
+    let retained = runtime.handle();
 
-                    assert!(matches!(poisoned, Err(Error::Unavailable)));
-                    assert_eq!(
-                        runtime.state.applied(),
-                        Position(1),
-                        "no entry was sealed for the change that panicked"
-                    );
-                    assert!(matches!(
-                        runtime
-                            .state
-                            .state()
-                            .read(|sheet| sheet.title.clone())
-                            .await,
-                        Err(Error::Unavailable)
-                    ));
+    let settled = tokio::time::timeout(Duration::from_secs(5), runtime.stop())
+        .await
+        .expect("the stop does not wait on a live handle")
+        .unwrap();
 
-                    // The runtime evacuates without being asked: the writer is gone, so the
-                    // supervisor folds the intact tail out and stops rather than restarting.
-                    let settled = runtime.stop().await.unwrap();
+    assert_eq!(settled, Position::ORIGIN);
+    assert!(
+        matches!(
+            retained.state.commit(rename("after")).await,
+            Err(Error::Unavailable)
+        ),
+        "a sealed journal refuses a late write rather than leaving it hanging"
+    );
+}
 
-                    assert_eq!(settled, Position(1));
-                    assert_eq!(
-                        checkpoint.load(Ordering::Acquire),
-                        1,
-                        "the entry committed before the panic reached storage"
-                    );
-                });
-        });
-    }
-    {
-        scenario_runtime::check("repeat_stop_frontier", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = Runtime::<Editor>::builder(Sheet::default(), ())
-                        .register(catalog())
-                        .runtime()
-                        .await
-                        .expect("nothing was recovered");
+#[tokio::test(start_paused = true)]
+async fn slow_stop_says() {
+    let runtime = Runtime::<Editor>::builder(Sheet::default(), ())
+        .register(catalog())
+        .attach(Slow(|| tokio::time::sleep(STOP_GRACE * 3)))
+        .runtime()
+        .await
+        .expect("nothing was recovered");
+    let mut notices = runtime.notices();
 
-                    runtime
-                        .state
-                        .commit(rename("once"))
-                        .await
-                        .expect("accepted");
-                    let settled = runtime.stop().await.unwrap();
+    let settled = runtime.stop().await.unwrap();
 
-                    assert_eq!(settled, Position(1));
-                    assert_eq!(
-                        runtime.stop().await.unwrap(),
-                        settled,
-                        "a repeat stop joins nothing and reports the frontier the first saw"
-                    );
-                });
-        });
-    }
-    {
-        scenario_runtime::check("handles_allow_shutdown", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = Runtime::<Editor>::builder(Sheet::default(), ())
-                        .register(catalog())
-                        .runtime()
-                        .await
-                        .expect("nothing was recovered");
-                    // What a host-side plugin keeps for its whole life, and cannot drop
-                    // before asking the runtime it holds to stop.
-                    let retained = runtime.handle();
+    assert_eq!(
+        settled,
+        Position::ORIGIN,
+        "the grace window is a diagnostic, never a deadline the drain is cut at"
+    );
+    let notice = notices
+        .borrow_and_update()
+        .clone()
+        .expect("a join past the grace window publishes its diagnostic");
+    assert!(notice.contains("StateManager clone"), "{notice}");
+}
 
-                    let settled = tokio::time::timeout(Duration::from_secs(5), runtime.stop())
-                        .await
-                        .expect("the stop does not wait on a live handle")
-                        .unwrap();
+#[tokio::test(start_paused = true)]
+async fn abandoned_stop_leaves() {
+    let runtime = Runtime::<Editor>::builder(Sheet::default(), ())
+        .register(catalog())
+        .attach(Slow(|| tokio::time::sleep(STOP_GRACE * 3)))
+        .runtime()
+        .await
+        .expect("nothing was recovered");
 
-                    assert_eq!(settled, Position::ORIGIN);
-                    assert!(
-                        matches!(
-                            retained.state.commit(rename("after")).await,
-                            Err(Error::Unavailable)
-                        ),
-                        "a sealed journal refuses a late write rather than leaving it hanging"
-                    );
-                });
-        });
-    }
-    {
-        scenario_runtime::check("slow_stop_says", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = Runtime::<Editor>::builder(Sheet::default(), ())
-                        .register(catalog())
-                        .attach(Slow(|| tokio::time::sleep(STOP_GRACE * 3)))
-                        .runtime()
-                        .await
-                        .expect("nothing was recovered");
-                    let mut notices = runtime.notices();
+    runtime
+        .state
+        .commit(rename("once"))
+        .await
+        .expect("accepted");
+    // Abandoned mid-join, which is what a host-side timeout around a stop
+    // does: the frontier must not go out with the dropped future.
+    assert!(
+        tokio::time::timeout(STOP_GRACE, runtime.stop())
+            .await
+            .is_err(),
+        "the slow fold's flush outlasts the grace window"
+    );
 
-                    let settled = runtime.stop().await.unwrap();
-
-                    assert_eq!(
-                        settled,
-                        Position::ORIGIN,
-                        "the grace window is a diagnostic, never a deadline the drain is cut at"
-                    );
-                    let notice = notices
-                        .borrow_and_update()
-                        .clone()
-                        .expect("a join past the grace window publishes its diagnostic");
-                    assert!(notice.contains("StateManager clone"), "{notice}");
-                });
-        });
-    }
-    {
-        scenario_runtime::check("abandoned_stop_leaves", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = Runtime::<Editor>::builder(Sheet::default(), ())
-                        .register(catalog())
-                        .attach(Slow(|| tokio::time::sleep(STOP_GRACE * 3)))
-                        .runtime()
-                        .await
-                        .expect("nothing was recovered");
-
-                    runtime
-                        .state
-                        .commit(rename("once"))
-                        .await
-                        .expect("accepted");
-                    // Abandoned mid-join, which is what a host-side timeout around a stop
-                    // does: the frontier must not go out with the dropped future.
-                    assert!(
-                        tokio::time::timeout(STOP_GRACE, runtime.stop())
-                            .await
-                            .is_err(),
-                        "the slow fold's flush outlasts the grace window"
-                    );
-
-                    assert_eq!(
-                        runtime.stop().await.unwrap(),
-                        Position(1),
-                        "the next stop resumes the join rather than panicking on a spent handle"
-                    );
-                });
-        });
-    }
+    assert_eq!(
+        runtime.stop().await.unwrap(),
+        Position(1),
+        "the next stop resumes the join rather than panicking on a spent handle"
+    );
 }
 
 struct Slow<F>(F);

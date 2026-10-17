@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -149,174 +148,138 @@ fn request(blocked: bool) -> Request {
 
 /* === Tests === */
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("queue_refuses_construction", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let counts = Arc::new(Counts::default());
-                    runtime
-                        .operations
-                        .register_operation::<Hold>("app", Lanes::Serial, counts.clone())
-                        .unwrap();
-                    let first_request = request(true);
-                    let started = first_request.started.clone();
-                    let first = runtime
-                        .operations
-                        .submit_as::<HoldContract>(first_request)
-                        .unwrap();
-                    started.notified().await;
-                    let second = runtime
-                        .operations
-                        .submit_as::<HoldContract>(request(true))
-                        .unwrap();
-                    let first_id = first.id();
-                    let second_id = second.id();
-                    assert!(matches!(
-                        runtime.operations.submit_as::<HoldContract>(request(false)),
-                        Err(Error::ResourceExhausted {
-                            resource: "operation admission queue"
-                        })
-                    ));
-                    // A queued instance is constructed only when it initializes.
-                    assert_eq!(counts.constructed.load(Ordering::SeqCst), 1);
-                    assert_eq!(second.status().phase(), OperationPhase::Queued);
-                    tokio::time::timeout(Duration::from_secs(1), runtime.stop())
-                        .await
-                        .unwrap()
-                        .unwrap();
-                    for answer in [first.join().await, second.join().await] {
-                        assert!(matches!(
-                            answer,
-                            Err(Error::OperationRefused(Refusal::Cancelled))
-                        ));
-                    }
-                    assert_eq!(counts.drops.load(Ordering::SeqCst), 1);
-                    assert!(runtime.operations.status(first_id).is_none());
-                    assert!(runtime.operations.status(second_id).is_none());
-                });
-        });
+#[tokio::test(start_paused = true)]
+async fn queue_refuses_construction() {
+    let runtime = runtime().await;
+    let counts = Arc::new(Counts::default());
+    runtime
+        .operations
+        .register_operation::<Hold>("app", Lanes::Serial, counts.clone())
+        .unwrap();
+    let first_request = request(true);
+    let started = first_request.started.clone();
+    let first = runtime
+        .operations
+        .submit_as::<HoldContract>(first_request)
+        .unwrap();
+    started.notified().await;
+    let second = runtime
+        .operations
+        .submit_as::<HoldContract>(request(true))
+        .unwrap();
+    let first_id = first.id();
+    let second_id = second.id();
+    assert!(matches!(
+        runtime.operations.submit_as::<HoldContract>(request(false)),
+        Err(Error::ResourceExhausted {
+            resource: "operation admission queue"
+        })
+    ));
+    // A queued instance is constructed only when it initializes.
+    assert_eq!(counts.constructed.load(Ordering::SeqCst), 1);
+    assert_eq!(second.status().phase(), OperationPhase::Queued);
+    tokio::time::timeout(Duration::from_secs(1), runtime.stop())
+        .await
+        .unwrap()
+        .unwrap();
+    for answer in [first.join().await, second.join().await] {
+        assert!(matches!(
+            answer,
+            Err(Error::OperationRefused(Refusal::Cancelled))
+        ));
     }
-    {
-        scenario_runtime::check("cancelled_queue_skips_cleanup", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let counts = Arc::new(Counts::default());
-                    runtime
-                        .operations
-                        .register_operation::<Hold>("app", Lanes::Serial, counts.clone())
-                        .unwrap();
-                    let first_request = request(true);
-                    let started = first_request.started.clone();
-                    let first = runtime
-                        .operations
-                        .submit_as::<HoldContract>(first_request)
-                        .unwrap();
-                    started.notified().await;
-                    let second_request = request(false);
-                    counts.fail_cleanup.store(true, Ordering::SeqCst);
-                    let mut second = runtime
-                        .operations
-                        .submit_as::<HoldContract>(second_request)
-                        .unwrap();
-                    second.cancel();
-                    // A cancelled queued instance never initialized, so it owns
-                    // nothing to clean up and releases its queue slot at once.
-                    assert!(matches!(
-                        (&mut second).await,
-                        Err(Error::OperationRefused(Refusal::Cancelled))
-                    ));
-                    second.settle().await.unwrap();
-                    assert!(runtime.operations.status(second.id()).is_none());
-                    assert_eq!(counts.constructed.load(Ordering::SeqCst), 1);
-                    assert_eq!(counts.drops.load(Ordering::SeqCst), 0);
-                    counts.fail_cleanup.store(false, Ordering::SeqCst);
-                    let third = runtime
-                        .operations
-                        .submit_as::<HoldContract>(request(false))
-                        .unwrap();
-                    third.cancel();
-                    assert!(matches!(
-                        third.join().await,
-                        Err(Error::OperationRefused(Refusal::Cancelled))
-                    ));
-                    first.cancel();
-                    assert!(matches!(
-                        first.join().await,
-                        Err(Error::OperationRefused(Refusal::Cancelled))
-                    ));
-                    assert_eq!(counts.drops.load(Ordering::SeqCst), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
+    assert_eq!(counts.drops.load(Ordering::SeqCst), 1);
+    assert!(runtime.operations.status(first_id).is_none());
+    assert!(runtime.operations.status(second_id).is_none());
+}
+
+#[tokio::test(start_paused = true)]
+async fn cancelled_queue_skips_cleanup() {
+    let runtime = runtime().await;
+    let counts = Arc::new(Counts::default());
+    runtime
+        .operations
+        .register_operation::<Hold>("app", Lanes::Serial, counts.clone())
+        .unwrap();
+    let first_request = request(true);
+    let started = first_request.started.clone();
+    let first = runtime
+        .operations
+        .submit_as::<HoldContract>(first_request)
+        .unwrap();
+    started.notified().await;
+    let second_request = request(false);
+    counts.fail_cleanup.store(true, Ordering::SeqCst);
+    let mut second = runtime
+        .operations
+        .submit_as::<HoldContract>(second_request)
+        .unwrap();
+    second.cancel();
+    // A cancelled queued instance never initialized, so it owns
+    // nothing to clean up and releases its queue slot at once.
+    assert!(matches!(
+        (&mut second).await,
+        Err(Error::OperationRefused(Refusal::Cancelled))
+    ));
+    second.settle().await.unwrap();
+    assert!(runtime.operations.status(second.id()).is_none());
+    assert_eq!(counts.constructed.load(Ordering::SeqCst), 1);
+    assert_eq!(counts.drops.load(Ordering::SeqCst), 0);
+    counts.fail_cleanup.store(false, Ordering::SeqCst);
+    let third = runtime
+        .operations
+        .submit_as::<HoldContract>(request(false))
+        .unwrap();
+    third.cancel();
+    assert!(matches!(
+        third.join().await,
+        Err(Error::OperationRefused(Refusal::Cancelled))
+    ));
+    first.cancel();
+    assert!(matches!(
+        first.join().await,
+        Err(Error::OperationRefused(Refusal::Cancelled))
+    ));
+    assert_eq!(counts.drops.load(Ordering::SeqCst), 1);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn instances_leave_lookup() {
+    let runtime = runtime().await;
+    let counts = Arc::new(Counts::default());
+    runtime
+        .operations
+        .register_operation::<Hold>("app", Lanes::Serial, counts.clone())
+        .unwrap();
+    for _ in 0..64 {
+        let instance = runtime
+            .operations
+            .submit_as::<HoldContract>(request(false))
+            .unwrap();
+        let id = instance.id();
+        instance.join().await.unwrap();
+        assert!(runtime.operations.status(id).is_none());
     }
-    {
-        scenario_runtime::check("instances_leave_lookup", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let counts = Arc::new(Counts::default());
-                    runtime
-                        .operations
-                        .register_operation::<Hold>("app", Lanes::Serial, counts.clone())
-                        .unwrap();
-                    for _ in 0..64 {
-                        let instance = runtime
-                            .operations
-                            .submit_as::<HoldContract>(request(false))
-                            .unwrap();
-                        let id = instance.id();
-                        instance.join().await.unwrap();
-                        assert!(runtime.operations.status(id).is_none());
-                    }
-                    assert_eq!(counts.drops.load(Ordering::SeqCst), 64);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("submission_uses_boot", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let counts = Arc::new(Counts::default());
-                    runtime
-                        .operations
-                        .register_operation::<Hold>("app", Lanes::Serial, counts.clone())
-                        .unwrap();
-                    let operations = runtime.operations.clone();
-                    let instance = std::thread::spawn(move || {
-                        operations.submit_as::<HoldContract>(request(false))
-                    })
-                    .join()
-                    .unwrap()
-                    .unwrap();
-                    instance.join().await.unwrap();
-                    assert_eq!(counts.constructed.load(Ordering::SeqCst), 1);
-                    assert_eq!(counts.drops.load(Ordering::SeqCst), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
+    assert_eq!(counts.drops.load(Ordering::SeqCst), 64);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn submission_uses_boot() {
+    let runtime = runtime().await;
+    let counts = Arc::new(Counts::default());
+    runtime
+        .operations
+        .register_operation::<Hold>("app", Lanes::Serial, counts.clone())
+        .unwrap();
+    let operations = runtime.operations.clone();
+    let instance = std::thread::spawn(move || operations.submit_as::<HoldContract>(request(false)))
+        .join()
+        .unwrap()
+        .unwrap();
+    instance.join().await.unwrap();
+    assert_eq!(counts.constructed.load(Ordering::SeqCst), 1);
+    assert_eq!(counts.drops.load(Ordering::SeqCst), 1);
+    runtime.stop().await.unwrap();
 }

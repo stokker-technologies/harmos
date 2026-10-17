@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -148,122 +147,92 @@ impl Operation for Read {
     }
 }
 
-#[test]
-fn contract_scenario() {
-    {
-        scenario_runtime::check("owned_request_lifecycle", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = harmos::Runtime::<crate::probe::Editor>::builder(
-                        crate::probe::Sheet::default(),
-                        (),
-                    )
-                    .register(LifecycleLanes::catalog())
-                    .runtime()
-                    .await
-                    .unwrap();
-                    let events = Arc::new(Mutex::new(Vec::new()));
-                    runtime
-                        .operations
-                        .register_operation::<Read>("owner", LifecycleLanes::Owned, events.clone())
-                        .unwrap();
-                    let request = Request {
-                        value: Cell::new(19),
-                        events: events.clone(),
-                    };
-                    let call = runtime
-                        .operations
-                        .submit_as::<Declaration>(request)
-                        .unwrap();
-                    assert_eq!(*call.join().await.unwrap(), 21);
-                    runtime.stop().await.unwrap();
-                    assert_eq!(
-                        *events.lock().unwrap(),
-                        [
-                            "new",
-                            "initialize",
-                            "run",
-                            "run",
-                            "stop",
-                            "finalize",
-                            "request dropped"
-                        ]
-                    );
-                });
-        });
+#[tokio::test]
+async fn owned_request_lifecycle() {
+    let runtime =
+        harmos::Runtime::<crate::probe::Editor>::builder(crate::probe::Sheet::default(), ())
+            .register(LifecycleLanes::catalog())
+            .runtime()
+            .await
+            .unwrap();
+    let events = Arc::new(Mutex::new(Vec::new()));
+    runtime
+        .operations
+        .register_operation::<Read>("owner", LifecycleLanes::Owned, events.clone())
+        .unwrap();
+    let request = Request {
+        value: Cell::new(19),
+        events: events.clone(),
+    };
+    let call = runtime
+        .operations
+        .submit_as::<Declaration>(request)
+        .unwrap();
+    assert_eq!(*call.join().await.unwrap(), 21);
+    runtime.stop().await.unwrap();
+    assert_eq!(
+        *events.lock().unwrap(),
+        [
+            "new",
+            "initialize",
+            "run",
+            "run",
+            "stop",
+            "finalize",
+            "request dropped"
+        ]
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn transfer_fences_retries() {
+    use std::{
+        num::NonZeroUsize,
+        sync::atomic::{AtomicUsize, Ordering},
+    };
+    let runtime =
+        harmos::Runtime::<crate::probe::Editor>::builder(crate::probe::Sheet::default(), ())
+            .register(LifecycleLanes::catalog())
+            .runtime()
+            .await
+            .unwrap();
+    let runs = Arc::new(AtomicUsize::new(0));
+    runtime
+        .operations
+        .register_operation::<Streaming>("owner", LifecycleLanes::Owned, runs.clone())
+        .unwrap();
+    let settings = harmos::operations::StreamSettings {
+        items: NonZeroUsize::new(2).unwrap(),
+        bytes: NonZeroUsize::new(8).unwrap(),
+    };
+    for mode in [0, 1, 2, 3] {
+        runs.store(0, Ordering::SeqCst);
+        let (send, input) = harmos::operations::stream::<u32>(settings).unwrap();
+        let (output, mut receive) = harmos::operations::stream::<u32>(settings).unwrap();
+        let instance = runtime
+            .operations
+            .submit_endpoints::<StreamingDeclaration, _>(mode, (input, output))
+            .unwrap();
+        if mode == 2 {
+            for _ in 0..1000 {
+                if instance.status().phase() == harmos::operations::OperationPhase::RetryWaiting {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+            assert_eq!(
+                instance.status().phase(),
+                harmos::operations::OperationPhase::RetryWaiting
+            );
+            send.send_with(4, || Ok(9)).await.unwrap();
+        }
+        assert!(instance.join().await.is_err());
+        assert_eq!(runs.load(Ordering::SeqCst), if mode == 0 { 2 } else { 1 });
+        if mode == 1 {
+            assert_eq!(*receive.recv().await.unwrap(), 7);
+        }
     }
-    {
-        scenario_runtime::check("transfer_fences_retries", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    use std::{
-                        num::NonZeroUsize,
-                        sync::atomic::{AtomicUsize, Ordering},
-                    };
-                    let runtime = harmos::Runtime::<crate::probe::Editor>::builder(
-                        crate::probe::Sheet::default(),
-                        (),
-                    )
-                    .register(LifecycleLanes::catalog())
-                    .runtime()
-                    .await
-                    .unwrap();
-                    let runs = Arc::new(AtomicUsize::new(0));
-                    runtime
-                        .operations
-                        .register_operation::<Streaming>(
-                            "owner",
-                            LifecycleLanes::Owned,
-                            runs.clone(),
-                        )
-                        .unwrap();
-                    let settings = harmos::operations::StreamSettings {
-                        items: NonZeroUsize::new(2).unwrap(),
-                        bytes: NonZeroUsize::new(8).unwrap(),
-                    };
-                    for mode in [0, 1, 2, 3] {
-                        runs.store(0, Ordering::SeqCst);
-                        let (send, input) = harmos::operations::stream::<u32>(settings).unwrap();
-                        let (output, mut receive) =
-                            harmos::operations::stream::<u32>(settings).unwrap();
-                        let instance = runtime
-                            .operations
-                            .submit_endpoints::<StreamingDeclaration, _>(mode, (input, output))
-                            .unwrap();
-                        if mode == 2 {
-                            for _ in 0..1000 {
-                                if instance.status().phase()
-                                    == harmos::operations::OperationPhase::RetryWaiting
-                                {
-                                    break;
-                                }
-                                tokio::task::yield_now().await;
-                            }
-                            assert_eq!(
-                                instance.status().phase(),
-                                harmos::operations::OperationPhase::RetryWaiting
-                            );
-                            send.send_with(4, || Ok(9)).await.unwrap();
-                        }
-                        assert!(instance.join().await.is_err());
-                        assert_eq!(runs.load(Ordering::SeqCst), if mode == 0 { 2 } else { 1 });
-                        if mode == 1 {
-                            assert_eq!(*receive.recv().await.unwrap(), 7);
-                        }
-                    }
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
+    runtime.stop().await.unwrap();
 }
 
 struct Streaming(Arc<std::sync::atomic::AtomicUsize>, bool);

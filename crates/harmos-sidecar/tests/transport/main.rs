@@ -14,8 +14,6 @@ mod measurement;
 #[path = "../fixtures/throughput_protocol.rs"]
 pub mod protocol;
 mod publication;
-#[path = "../../../../tests/support/scenarios.rs"]
-mod scenario_runtime;
 
 /* === Re-Exports === */
 

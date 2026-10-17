@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -330,175 +329,142 @@ async fn publish(runtime: &Runtime<Bank>, rows: &Kept, ordinals: &[u64]) {
     }
 }
 
-#[test]
-fn contract_scenario() {
-    {
-        scenario_runtime::check("range_beneath_window", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (tape, (rows, asked, _budgets)) = Tape::new();
-                    let runtime = served(tape).await;
+#[tokio::test]
+async fn range_beneath_window() {
+    let (tape, (rows, asked, _budgets)) = Tape::new();
+    let runtime = served(tape).await;
 
-                    // Twelve rows through a window of four: eight are answerable only from
-                    // the tier beneath it.
-                    publish(&runtime, &rows, &(1..=12).collect::<Vec<_>>()).await;
+    // Twelve rows through a window of four: eight are answerable only from
+    // the tier beneath it.
+    publish(&runtime, &rows, &(1..=12).collect::<Vec<_>>()).await;
 
-                    let answered: Vec<u64> = runtime
-                        .streams
-                        .query::<Capture>(..)
-                        .await
-                        .expect("the series tier holds what the window evicted")
-                        .map(|At { value, .. }| value.ordinal)
-                        .collect();
+    let answered: Vec<u64> = runtime
+        .streams
+        .query::<Capture>(..)
+        .await
+        .expect("the series tier holds what the window evicted")
+        .map(|At { value, .. }| value.ordinal)
+        .collect();
 
-                    assert_eq!(
-                        answered,
-                        (1..=12).collect::<Vec<_>>(),
-                        "every row is answered exactly once, in publish order, across the seam"
-                    );
-                    assert_eq!(
-                        asked.lock().expect("the tape is never poisoned").as_slice(),
-                        [("capture".to_owned(), Vec::new())],
-                        "the served tier is asked once, and asked about the stream by name"
-                    );
+    assert_eq!(
+        answered,
+        (1..=12).collect::<Vec<_>>(),
+        "every row is answered exactly once, in publish order, across the seam"
+    );
+    assert_eq!(
+        asked.lock().expect("the tape is never poisoned").as_slice(),
+        [("capture".to_owned(), Vec::new())],
+        "the served tier is asked once, and asked about the stream by name"
+    );
 
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("holds_never_reaches", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (tape, (rows, asked, _budgets)) = Tape::new();
-                    let runtime = served(tape).await;
+    runtime.stop().await.unwrap();
+}
 
-                    publish(&runtime, &rows, &[1, 2]).await;
+#[tokio::test]
+async fn holds_never_reaches() {
+    let (tape, (rows, asked, _budgets)) = Tape::new();
+    let runtime = served(tape).await;
 
-                    let answered: Vec<u64> = runtime
-                        .streams
-                        .query::<Capture>(..)
-                        .await
-                        .expect("nothing was evicted")
-                        .map(|At { value, .. }| value.ordinal)
-                        .collect();
+    publish(&runtime, &rows, &[1, 2]).await;
 
-                    assert_eq!(answered, vec![1, 2]);
-                    assert!(
-                        asked.lock().expect("the tape is never poisoned").is_empty(),
-                        "the window answered the whole range, so nothing was asked beneath it"
-                    );
+    let answered: Vec<u64> = runtime
+        .streams
+        .query::<Capture>(..)
+        .await
+        .expect("nothing was evicted")
+        .map(|At { value, .. }| value.ordinal)
+        .collect();
 
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("window_stands_durable", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (tape, (rows, asked, _budgets)) = Tape::new();
+    assert_eq!(answered, vec![1, 2]);
+    assert!(
+        asked.lock().expect("the tape is never poisoned").is_empty(),
+        "the window answered the whole range, so nothing was asked beneath it"
+    );
 
-                    // What a previous run left in the tier. This boot's ring never saw these
-                    // rows and never will, so a window that answered for the whole of history
-                    // until it had evicted something would call them missing.
-                    rows.lock().expect("the tape is never poisoned").extend([
-                        At {
-                            value: capture(1, 1, 1, 1),
-                            position: Position(1),
-                        },
-                        At {
-                            value: capture(1, 1, 2, 2),
-                            position: Position(2),
-                        },
-                    ]);
-                    let runtime = resumed(tape, Position(2)).await;
+    runtime.stop().await.unwrap();
+}
 
-                    let answered: Vec<u64> = runtime
-                        .streams
-                        .query::<Capture>(..)
-                        .await
-                        .expect("the tier beneath holds the pre-boot history")
-                        .map(|At { value, .. }| value.ordinal)
-                        .collect();
+#[tokio::test]
+async fn window_stands_durable() {
+    let (tape, (rows, asked, _budgets)) = Tape::new();
 
-                    assert_eq!(
-                        answered,
-                        vec![1, 2],
-                        "the first query of a restart splices, before the ring has evicted anything"
-                    );
-                    assert_eq!(
-                        asked.lock().expect("the tape is never poisoned").as_slice(),
-                        [("capture".to_owned(), Vec::new())],
-                        "an empty ring standing on a watermark reaches the tier exactly once"
-                    );
+    // What a previous run left in the tier. This boot's ring never saw these
+    // rows and never will, so a window that answered for the whole of history
+    // until it had evicted something would call them missing.
+    rows.lock().expect("the tape is never poisoned").extend([
+        At {
+            value: capture(1, 1, 1, 1),
+            position: Position(1),
+        },
+        At {
+            value: capture(1, 1, 2, 2),
+            position: Position(2),
+        },
+    ]);
+    let runtime = resumed(tape, Position(2)).await;
 
-                    // The live half is still the window's. A row published above that floor is
-                    // answered from the ring, once, beside the durable prefix beneath it.
-                    publish(&runtime, &rows, &[3]).await;
+    let answered: Vec<u64> = runtime
+        .streams
+        .query::<Capture>(..)
+        .await
+        .expect("the tier beneath holds the pre-boot history")
+        .map(|At { value, .. }| value.ordinal)
+        .collect();
 
-                    let answered: Vec<u64> = runtime
-                        .streams
-                        .query::<Capture>(..)
-                        .await
-                        .expect("both tiers answer")
-                        .map(|At { value, .. }| value.ordinal)
-                        .collect();
+    assert_eq!(
+        answered,
+        vec![1, 2],
+        "the first query of a restart splices, before the ring has evicted anything"
+    );
+    assert_eq!(
+        asked.lock().expect("the tape is never poisoned").as_slice(),
+        [("capture".to_owned(), Vec::new())],
+        "an empty ring standing on a watermark reaches the tier exactly once"
+    );
 
-                    assert_eq!(
-                        answered,
-                        vec![1, 2, 3],
-                        "the boundary is the watermark: beneath it the tier's, above it the ring's"
-                    );
+    // The live half is still the window's. A row published above that floor is
+    // answered from the ring, once, beside the durable prefix beneath it.
+    publish(&runtime, &rows, &[3]).await;
 
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("floor_lacks_tier", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (tape, (rows, _asked, _budgets)) = Tape::retaining_above(Position(6));
-                    let runtime = served(tape).await;
+    let answered: Vec<u64> = runtime
+        .streams
+        .query::<Capture>(..)
+        .await
+        .expect("both tiers answer")
+        .map(|At { value, .. }| value.ordinal)
+        .collect();
 
-                    publish(&runtime, &rows, &(1..=12).collect::<Vec<_>>()).await;
+    assert_eq!(
+        answered,
+        vec![1, 2, 3],
+        "the boundary is the watermark: beneath it the tier's, above it the ring's"
+    );
 
-                    assert_eq!(
-                        runtime
-                            .streams
-                            .query::<Capture>(..)
-                            .await
-                            .expect_err("the adapter's own history begins later than the range"),
-                        BeneathWindow::Floor { floor: Position(6) },
-                        "the floor is evidence, not a shortened answer"
-                    );
+    runtime.stop().await.unwrap();
+}
 
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("tracked_read_narrows", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
+#[tokio::test]
+async fn floor_lacks_tier() {
+    let (tape, (rows, _asked, _budgets)) = Tape::retaining_above(Position(6));
+    let runtime = served(tape).await;
 
+    publish(&runtime, &rows, &(1..=12).collect::<Vec<_>>()).await;
+
+    assert_eq!(
+        runtime
+            .streams
+            .query::<Capture>(..)
+            .await
+            .expect_err("the adapter's own history begins later than the range"),
+        BeneathWindow::Floor { floor: Position(6) },
+        "the floor is evidence, not a shortened answer"
+    );
+
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn tracked_read_narrows() {
     let (tape, (rows, asked, _budgets)) = Tape::new();
     let runtime = served(tape).await;
 
@@ -559,158 +525,133 @@ fn contract_scenario() {
     );
 
     runtime.stop().await.unwrap();
+}
 
-});
-        });
-    }
-    {
-        scenario_runtime::check("survey_spends_caller", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (tape, (rows, asked, budgets)) = Tape::new();
-                    let runtime = served(tape).await;
+#[tokio::test]
+async fn survey_spends_caller() {
+    let (tape, (rows, asked, budgets)) = Tape::new();
+    let runtime = served(tape).await;
 
-                    publish(&runtime, &rows, &(1..=12).collect::<Vec<_>>()).await;
-                    let sealed = runtime.streams.seal::<Capture>().await;
+    publish(&runtime, &rows, &(1..=12).collect::<Vec<_>>()).await;
+    let sealed = runtime.streams.seal::<Capture>().await;
 
-                    let buckets = runtime
-                        .streams
-                        .survey::<Capture>(..)
-                        .budget(12)
-                        .await
-                        .expect("the served tier holds the sealed rows");
+    let buckets = runtime
+        .streams
+        .survey::<Capture>(..)
+        .budget(12)
+        .await
+        .expect("the served tier holds the sealed rows");
 
-                    assert_eq!(
-                        *budgets.lock().expect("the tape is never poisoned"),
-                        vec![12],
-                        "the caller's ceiling reaches the adapter unchanged"
-                    );
-                    assert_eq!(
-                        asked.lock().expect("the tape is never poisoned").as_slice(),
-                        [("capture".to_owned(), Vec::new())]
-                    );
-                    assert_eq!(buckets.len(), 3, "twelve points of budget is three buckets");
-                    assert_eq!(
-                        buckets.iter().map(Bucket::count).sum::<u64>(),
-                        12,
-                        "every sealed row is folded into exactly one bucket"
-                    );
-                    let whole = buckets
-                        .iter()
-                        .skip(1)
-                        .fold(buckets[0].clone(), |held, next| held.merge(next));
-                    assert_eq!(whole.aggregate(Aggregate::Count), Some(12.0));
-                    assert_eq!(
-                        whole.aggregate(Aggregate::Min),
-                        Some(whole.min.value),
-                        "the summary and the drawn points agree"
-                    );
-                    assert_eq!(
-                        whole.aggregate(Aggregate::Median),
-                        None,
-                        "a bucket keeps no values to order"
-                    );
-                    assert_eq!(
-                        buckets[0].first,
-                        Point {
-                            axis: 1,
-                            value: 1.0
-                        },
-                        "the extremes carry the axis coordinates they occurred at"
-                    );
-                    assert_eq!(
-                        buckets
-                            .iter()
-                            .cloned()
-                            .reduce(|held, next| held.merge(&next))
-                            .expect("a survey answers at least one bucket")
-                            .max,
-                        Point {
-                            axis: 12,
-                            value: 12.0
-                        },
-                        "merging the answer back down reproduces the whole range's extreme"
-                    );
-                    assert!(sealed > Position::ORIGIN);
+    assert_eq!(
+        *budgets.lock().expect("the tape is never poisoned"),
+        vec![12],
+        "the caller's ceiling reaches the adapter unchanged"
+    );
+    assert_eq!(
+        asked.lock().expect("the tape is never poisoned").as_slice(),
+        [("capture".to_owned(), Vec::new())]
+    );
+    assert_eq!(buckets.len(), 3, "twelve points of budget is three buckets");
+    assert_eq!(
+        buckets.iter().map(Bucket::count).sum::<u64>(),
+        12,
+        "every sealed row is folded into exactly one bucket"
+    );
+    let whole = buckets
+        .iter()
+        .skip(1)
+        .fold(buckets[0].clone(), |held, next| held.merge(next));
+    assert_eq!(whole.aggregate(Aggregate::Count), Some(12.0));
+    assert_eq!(
+        whole.aggregate(Aggregate::Min),
+        Some(whole.min.value),
+        "the summary and the drawn points agree"
+    );
+    assert_eq!(
+        whole.aggregate(Aggregate::Median),
+        None,
+        "a bucket keeps no values to order"
+    );
+    assert_eq!(
+        buckets[0].first,
+        Point {
+            axis: 1,
+            value: 1.0
+        },
+        "the extremes carry the axis coordinates they occurred at"
+    );
+    assert_eq!(
+        buckets
+            .iter()
+            .cloned()
+            .reduce(|held, next| held.merge(&next))
+            .expect("a survey answers at least one bucket")
+            .max,
+        Point {
+            axis: 12,
+            value: 12.0
+        },
+        "merging the answer back down reproduces the whole range's extreme"
+    );
+    assert!(sealed > Position::ORIGIN);
 
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("seal_reports_position", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (tape, (rows, _asked, _budgets)) = Tape::new();
-                    let runtime = served(tape).await;
+    runtime.stop().await.unwrap();
+}
 
-                    assert_eq!(
-                        runtime.streams.seal::<Capture>().await,
-                        Position::ORIGIN,
-                        "a tape that has taken nothing has made nothing durable"
-                    );
+#[tokio::test]
+async fn seal_reports_position() {
+    let (tape, (rows, _asked, _budgets)) = Tape::new();
+    let runtime = served(tape).await;
 
-                    publish(&runtime, &rows, &(1..=6).collect::<Vec<_>>()).await;
-                    let sealed = runtime.streams.seal::<Capture>().await;
+    assert_eq!(
+        runtime.streams.seal::<Capture>().await,
+        Position::ORIGIN,
+        "a tape that has taken nothing has made nothing durable"
+    );
 
-                    assert_eq!(
-                        sealed,
-                        runtime.state.applied(),
-                        "the barrier reaches the last row published, which was stamped here"
-                    );
-                    assert_eq!(
-                        runtime
-                            .streams
-                            .survey::<Capture>(..)
-                            .budget(4)
-                            .await
-                            .expect("the sealed rows are surveyable")
-                            .len(),
-                        1,
-                        "four points of budget is one bucket over the whole sealed range"
-                    );
+    publish(&runtime, &rows, &(1..=6).collect::<Vec<_>>()).await;
+    let sealed = runtime.streams.seal::<Capture>().await;
 
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("absent_adapter_nothing", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = support::streaming().await;
+    assert_eq!(
+        sealed,
+        runtime.state.applied(),
+        "the barrier reaches the last row published, which was stamped here"
+    );
+    assert_eq!(
+        runtime
+            .streams
+            .survey::<Capture>(..)
+            .budget(4)
+            .await
+            .expect("the sealed rows are surveyable")
+            .len(),
+        1,
+        "four points of budget is one bucket over the whole sealed range"
+    );
 
-                    assert_eq!(
-                        runtime
-                            .streams
-                            .survey::<Capture>(..)
-                            .budget(64)
-                            .await
-                            .expect_err("the window retains rows, not levels"),
-                        BeneathWindow::Unserved,
-                    );
-                    assert_eq!(
-                        runtime.streams.seal::<Capture>().await,
-                        Position::ORIGIN,
-                        "nothing serving means nothing durable, said plainly"
-                    );
+    runtime.stop().await.unwrap();
+}
 
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
+#[tokio::test]
+async fn absent_adapter_nothing() {
+    let runtime = support::streaming().await;
+
+    assert_eq!(
+        runtime
+            .streams
+            .survey::<Capture>(..)
+            .budget(64)
+            .await
+            .expect_err("the window retains rows, not levels"),
+        BeneathWindow::Unserved,
+    );
+    assert_eq!(
+        runtime.streams.seal::<Capture>().await,
+        Position::ORIGIN,
+        "nothing serving means nothing durable, said plainly"
+    );
+
+    runtime.stop().await.unwrap();
 }
 
 /* === Tests === */

@@ -8,8 +8,6 @@
  */
 
 /* === Modules === */
-#[path = "../../../../tests/support/scenarios.rs"]
-mod scenario_runtime;
 #[path = "../support/mod.rs"]
 mod support;
 

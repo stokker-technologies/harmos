@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -87,137 +86,108 @@ fn limits() -> harmos::operations::StreamSettings {
 
 /* === Tests === */
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("read_file_fixes", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    tokio::time::timeout(Duration::from_secs(5), async {
-                        let (fixture, mut producer, _) = setup().await;
-                        let finished = producer.finish().await.unwrap();
-                        fixture.storage.flush().await.unwrap();
-                        let request = harmos::storage::files::ReadFile {
-                            file: finished,
-                            range: harmos::storage::files::ByteRange {
-                                offset: 0,
-                                limit: None,
-                            },
-                        };
-                        let (sender, mut receiver) = harmos::operations::stream::<
-                            harmos::storage::files::FileBatch,
-                        >(limits())
-                        .unwrap();
-                        let instance = fixture
-                            .runtime
-                            .operations
-                            .submit_endpoints::<ReadFile, _>(request, sender)
-                            .unwrap();
-                        let first = receiver.recv().await.unwrap();
-                        assert_eq!(first.offset, 0);
-                        let mut bytes = first.bytes.clone();
-                        drop(first);
+#[tokio::test]
+async fn read_file_fixes() {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        let (fixture, mut producer, _) = setup().await;
+        let finished = producer.finish().await.unwrap();
+        fixture.storage.flush().await.unwrap();
+        let request = harmos::storage::files::ReadFile {
+            file: finished,
+            range: harmos::storage::files::ByteRange {
+                offset: 0,
+                limit: None,
+            },
+        };
+        let (sender, mut receiver) =
+            harmos::operations::stream::<harmos::storage::files::FileBatch>(limits()).unwrap();
+        let instance = fixture
+            .runtime
+            .operations
+            .submit_endpoints::<ReadFile, _>(request, sender)
+            .unwrap();
+        let first = receiver.recv().await.unwrap();
+        assert_eq!(first.offset, 0);
+        let mut bytes = first.bytes.clone();
+        drop(first);
 
-                        while let Some(chunk) = receiver.recv().await {
-                            assert_eq!(chunk.offset, bytes.len() as u64);
+        while let Some(chunk) = receiver.recv().await {
+            assert_eq!(chunk.offset, bytes.len() as u64);
 
-                            bytes.extend_from_slice(&chunk.bytes);
-                        }
-                        assert_eq!(bytes, b"prefix");
-                        let result = instance.await.unwrap();
-                        assert_eq!(result.bytes, 6);
-                        fixture.finish().await;
-                    })
-                    .await
-                    .unwrap();
-                });
-        });
+            bytes.extend_from_slice(&chunk.bytes);
+        }
+        assert_eq!(bytes, b"prefix");
+        let result = instance.await.unwrap();
+        assert_eq!(result.bytes, 6);
+        fixture.finish().await;
+    })
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn reconnects_never_cancel() {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        let (fixture, mut producer, mut request) = setup().await;
+        let (sender, mut receiver) = harmos::operations::stream::<FileBytes>(limits()).unwrap();
+        let instance = fixture
+            .runtime
+            .operations
+            .submit_endpoints::<FollowFile, _>(request.clone(), sender)
+            .unwrap();
+        let mut offset = 0;
+        while offset < 6 {
+            let chunk = receiver.recv().await.unwrap();
+            assert_eq!(chunk.offset, offset);
+            offset += chunk.bytes.len() as u64;
+        }
+        instance.cancel();
+        assert!(instance.await.is_err());
+        drop(receiver);
+        producer.write_all(b"later").await.unwrap();
+        request.offset = offset;
+        let (sender, mut receiver) = harmos::operations::stream::<FileBytes>(limits()).unwrap();
+        let instance = fixture
+            .runtime
+            .operations
+            .submit_endpoints::<FollowFile, _>(request, sender)
+            .unwrap();
+        let mut bytes = Vec::new();
+        while offset < 11 {
+            let chunk = receiver.recv().await.unwrap();
+            assert_eq!(chunk.offset, offset);
+            bytes.extend_from_slice(&chunk.bytes);
+            offset += chunk.bytes.len() as u64;
+        }
+        assert_eq!(bytes, b"later");
+        producer.abort().await.unwrap();
+        assert!(receiver.recv().await.is_none());
+        let result = instance.await.unwrap();
+        assert_eq!(result.length, 11);
+        assert_eq!(result.phase, FilePhase::Abandoned);
+        fixture.finish().await;
+    })
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn operations_reject_future() {
+    let (fixture, mut producer, request) = setup().await;
+    for invalid in [FileSelection {
+        offset: 7,
+        ..request
+    }] {
+        let (sender, mut receiver) = harmos::operations::stream::<FileBytes>(limits()).unwrap();
+        let result = fixture
+            .runtime
+            .operations
+            .submit_endpoints::<FollowFile, _>(invalid, sender);
+        if let Ok(instance) = result {
+            assert!(instance.await.is_err());
+        }
+        assert!(receiver.recv().await.is_none());
     }
-    {
-        scenario_runtime::check("reconnects_never_cancel", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    tokio::time::timeout(Duration::from_secs(5), async {
-                        let (fixture, mut producer, mut request) = setup().await;
-                        let (sender, mut receiver) =
-                            harmos::operations::stream::<FileBytes>(limits()).unwrap();
-                        let instance = fixture
-                            .runtime
-                            .operations
-                            .submit_endpoints::<FollowFile, _>(request.clone(), sender)
-                            .unwrap();
-                        let mut offset = 0;
-                        while offset < 6 {
-                            let chunk = receiver.recv().await.unwrap();
-                            assert_eq!(chunk.offset, offset);
-                            offset += chunk.bytes.len() as u64;
-                        }
-                        instance.cancel();
-                        assert!(instance.await.is_err());
-                        drop(receiver);
-                        producer.write_all(b"later").await.unwrap();
-                        request.offset = offset;
-                        let (sender, mut receiver) =
-                            harmos::operations::stream::<FileBytes>(limits()).unwrap();
-                        let instance = fixture
-                            .runtime
-                            .operations
-                            .submit_endpoints::<FollowFile, _>(request, sender)
-                            .unwrap();
-                        let mut bytes = Vec::new();
-                        while offset < 11 {
-                            let chunk = receiver.recv().await.unwrap();
-                            assert_eq!(chunk.offset, offset);
-                            bytes.extend_from_slice(&chunk.bytes);
-                            offset += chunk.bytes.len() as u64;
-                        }
-                        assert_eq!(bytes, b"later");
-                        producer.abort().await.unwrap();
-                        assert!(receiver.recv().await.is_none());
-                        let result = instance.await.unwrap();
-                        assert_eq!(result.length, 11);
-                        assert_eq!(result.phase, FilePhase::Abandoned);
-                        fixture.finish().await;
-                    })
-                    .await
-                    .unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("operations_reject_future", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (fixture, mut producer, request) = setup().await;
-                    for invalid in [FileSelection {
-                        offset: 7,
-                        ..request
-                    }] {
-                        let (sender, mut receiver) =
-                            harmos::operations::stream::<FileBytes>(limits()).unwrap();
-                        let result = fixture
-                            .runtime
-                            .operations
-                            .submit_endpoints::<FollowFile, _>(invalid, sender);
-                        if let Ok(instance) = result {
-                            assert!(instance.await.is_err());
-                        }
-                        assert!(receiver.recv().await.is_none());
-                    }
-                    producer.abort().await.unwrap();
-                    fixture.finish().await;
-                });
-        });
-    }
+    producer.abort().await.unwrap();
+    fixture.finish().await;
 }

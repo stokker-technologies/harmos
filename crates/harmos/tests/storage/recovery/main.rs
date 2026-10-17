@@ -12,8 +12,6 @@
 mod backend;
 #[path = "../../support/storage_fixture.rs"]
 mod fixture;
-#[path = "../../../../../tests/support/scenarios.rs"]
-mod scenario_runtime;
 #[path = "../../support/mod.rs"]
 mod support;
 use fixture::*;
@@ -63,16 +61,3 @@ mod snapshots;
 /* === Private Functions === */
 
 /* === Tests === */
-
-#[test]
-fn journal_recovery() {
-    boot::contract_scenario();
-    composition::contract_scenario();
-    managed::contract_scenario();
-    reconcile::contract_scenario();
-}
-
-#[test]
-fn snapshot_recovery() {
-    snapshots::contract_scenario();
-}

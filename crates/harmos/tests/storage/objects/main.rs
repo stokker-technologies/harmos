@@ -12,8 +12,6 @@
 mod backend;
 #[path = "../../support/storage_fixture.rs"]
 mod fixture;
-#[path = "../../../../../tests/support/scenarios.rs"]
-mod scenario_runtime;
 #[path = "../../support/mod.rs"]
 mod support;
 use fixture::*;

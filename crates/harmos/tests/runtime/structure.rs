@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -112,25 +111,23 @@ fn inspect(directory: &Path, findings: &mut Vec<String>) {
 /* === Tests === */
 
 #[test]
-fn contract_scenario() {
-    {
-        scenario_runtime::check("authored_test_limit", || {
-            let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-                .parent()
-                .unwrap()
-                .parent()
-                .unwrap();
-            let mut findings = Vec::new();
-            for directory in ["crates", "examples", "tests"] {
-                inspect(&root.join(directory), &mut findings);
-            }
-            findings.sort();
-            assert!(findings.is_empty(), "{}", findings.join("\n"));
-        });
+fn authored_test_limit() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap();
+    let mut findings = Vec::new();
+    for directory in ["crates", "examples"] {
+        inspect(&root.join(directory), &mut findings);
     }
-    {
-        scenario_runtime::check("nested_conditional_counts", || {
-            let source = r##"
+    findings.sort();
+    assert!(findings.is_empty(), "{}", findings.join("\n"));
+}
+
+#[test]
+fn nested_conditional_counts() {
+    let source = r##"
         // #[test] fn comment() {}
         const TEXT: &str = r#"#[test] fn text() {}"#;
         #[cfg(test)] mod tests {
@@ -144,11 +141,9 @@ fn contract_scenario() {
             }
         }
     "##;
-            assert_eq!(count(source), 5);
-            let functions = (0..33)
-                .map(|index| format!("#[test] fn test_{index}() {{}}\n"))
-                .collect::<String>();
-            assert_eq!(count(&functions), 33);
-        });
-    }
+    assert_eq!(count(source), 5);
+    let functions = (0..33)
+        .map(|index| format!("#[test] fn test_{index}() {{}}\n"))
+        .collect::<String>();
+    assert_eq!(count(&functions), 33);
 }

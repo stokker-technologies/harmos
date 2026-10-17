@@ -16,8 +16,6 @@ mod authored_lifecycle;
 mod fixture;
 #[path = "../../support/runtime_probe.rs"]
 mod probe;
-#[path = "../../../../../tests/support/scenarios.rs"]
-mod scenario_runtime;
 #[path = "../../support/mod.rs"]
 mod support;
 use fixture::*;
@@ -84,39 +82,3 @@ mod wire;
 /* === Private Functions === */
 
 /* === Tests === */
-
-#[test]
-fn portable_calls() {
-    authored::contract_scenario();
-    owned_wire::contract_scenario();
-    wire::contract_scenario();
-    endpoints::contract_scenario();
-}
-
-#[test]
-fn call_projections() {
-    #[cfg(any(feature = "plugin-guest", feature = "plugin-sidecar"))]
-    artifact::contract_scenario();
-    #[cfg(any(
-        feature = "plugin",
-        feature = "plugin-guest",
-        feature = "plugin-sidecar"
-    ))]
-    host::contract_scenario();
-    #[cfg(any(
-        feature = "plugin",
-        feature = "plugin-guest",
-        feature = "plugin-sidecar"
-    ))]
-    plugin::contract_scenario();
-}
-
-#[test]
-fn grpc_calls() {
-    #[cfg(feature = "grpc")]
-    grpc::contract_scenario();
-    #[cfg(feature = "grpc")]
-    grpc_manager::contract_scenario();
-    #[cfg(feature = "grpc")]
-    dynamic::contract_scenario();
-}

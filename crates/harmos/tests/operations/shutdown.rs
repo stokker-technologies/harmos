@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -163,92 +162,75 @@ async fn runtime() -> (Runtime<App>, Arc<Trace>) {
 
 /* === Tests === */
 
-pub(super) fn contract_scenario() {
+#[tokio::test]
+async fn cancellation_observable_queued() {
+    let (runtime, trace) = runtime().await;
+    let first = runtime
+        .operations
+        .submit_as::<WaitContract>(Mode::Hold)
+        .unwrap();
+    trace.started.notified().await;
+    let queued = runtime
+        .operations
+        .submit_as::<WaitContract>(Mode::Count)
+        .unwrap();
+    queued.cancel();
+    assert!(matches!(
+        queued.await,
+        Err(Error::OperationRefused(Refusal::Cancelled))
+    ));
+    assert_eq!(trace.counted.load(Ordering::SeqCst), 0);
+    trace.release.notify_one();
+    first.await.unwrap();
+
+    let running = runtime
+        .operations
+        .submit_as::<WaitContract>(Mode::Sleep)
+        .unwrap();
+    trace.started.notified().await;
+
+    running.cancel();
+    assert!(matches!(
+        running.await,
+        Err(Error::OperationRefused(Refusal::Cancelled))
+    ));
+
+    // The cancelled queued instance was never constructed.
+    assert_eq!(trace.dropped.load(Ordering::SeqCst), 2);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn shutdown_retains_operation() {
+    let (runtime, trace) = runtime().await;
+    let instance = runtime
+        .operations
+        .submit_as::<WaitContract>(Mode::Hold)
+        .unwrap();
+    trace.started.notified().await;
     {
-        scenario_runtime::check("cancellation_observable_queued", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, trace) = runtime().await;
-                    let first = runtime
-                        .operations
-                        .submit_as::<WaitContract>(Mode::Hold)
-                        .unwrap();
-                    trace.started.notified().await;
-                    let queued = runtime
-                        .operations
-                        .submit_as::<WaitContract>(Mode::Count)
-                        .unwrap();
-                    queued.cancel();
-                    assert!(matches!(
-                        queued.await,
-                        Err(Error::OperationRefused(Refusal::Cancelled))
-                    ));
-                    assert_eq!(trace.counted.load(Ordering::SeqCst), 0);
-                    trace.release.notify_one();
-                    first.await.unwrap();
-
-                    let running = runtime
-                        .operations
-                        .submit_as::<WaitContract>(Mode::Sleep)
-                        .unwrap();
-                    trace.started.notified().await;
-
-                    running.cancel();
-                    assert!(matches!(
-                        running.await,
-                        Err(Error::OperationRefused(Refusal::Cancelled))
-                    ));
-
-                    // The cancelled queued instance was never constructed.
-                    assert_eq!(trace.dropped.load(Ordering::SeqCst), 2);
-                    runtime.stop().await.unwrap();
-                });
-        });
+        let stop = runtime.stop();
+        tokio::pin!(stop);
+        tokio::select! {
+            _ = &mut stop => panic!("the original finalizer is still waiting"),
+            _ = trace.finalizing.notified() => {},
+        }
     }
-    {
-        scenario_runtime::check("shutdown_retains_operation", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, trace) = runtime().await;
-                    let instance = runtime
-                        .operations
-                        .submit_as::<WaitContract>(Mode::Hold)
-                        .unwrap();
-                    trace.started.notified().await;
-                    {
-                        let stop = runtime.stop();
-                        tokio::pin!(stop);
-                        tokio::select! {
-                            _ = &mut stop => panic!("the original finalizer is still waiting"),
-                            _ = trace.finalizing.notified() => {},
-                        }
-                    }
-                    for _ in 0..2 {
-                        assert!(runtime.stop().now_or_never().is_none());
-                        assert!(matches!(
-                            runtime.operations.submit_resident("late").await,
-                            Err(Error::Closing { domain: "resident" })
-                        ));
-                        assert_eq!(trace.finalizations.load(Ordering::SeqCst), 1);
-                        assert_eq!(trace.dropped.load(Ordering::SeqCst), 0);
-                    }
-                    trace.release.notify_one();
-                    runtime.stop().await.unwrap();
-                    assert!(matches!(
-                        instance.await,
-                        Err(Error::OperationRefused(Refusal::Cancelled))
-                    ));
-                    assert_eq!(trace.finalizations.load(Ordering::SeqCst), 1);
-                    assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-                });
-        });
+    for _ in 0..2 {
+        assert!(runtime.stop().now_or_never().is_none());
+        assert!(matches!(
+            runtime.operations.submit_resident("late").await,
+            Err(Error::Closing { domain: "resident" })
+        ));
+        assert_eq!(trace.finalizations.load(Ordering::SeqCst), 1);
+        assert_eq!(trace.dropped.load(Ordering::SeqCst), 0);
     }
+    trace.release.notify_one();
+    runtime.stop().await.unwrap();
+    assert!(matches!(
+        instance.await,
+        Err(Error::OperationRefused(Refusal::Cancelled))
+    ));
+    assert_eq!(trace.finalizations.load(Ordering::SeqCst), 1);
+    assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
 }

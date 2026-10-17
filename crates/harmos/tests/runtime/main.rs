@@ -11,14 +11,9 @@
 #[path = "../support/core_egress.rs"]
 #[cfg(all(feature = "plugin-sidecar", feature = "plugin-guest"))]
 mod core_egress;
-#[path = "../../../harmos-guest/examples/operation_component/contract.rs"]
-#[cfg(all(feature = "plugin-sidecar", feature = "plugin-guest"))]
-mod operation_component_contract;
 #[path = "../support/process_core_contract.rs"]
 #[cfg(all(feature = "plugin-sidecar", feature = "plugin-guest"))]
 mod process_core_contract;
-#[path = "../../../../tests/support/scenarios.rs"]
-mod scenario_runtime;
 
 #[path = "../support/core_journal.rs"]
 #[cfg(all(feature = "plugin-sidecar", feature = "plugin-guest"))]
@@ -79,13 +74,3 @@ mod stream_consumption;
 /* === Private Functions === */
 
 /* === Tests === */
-
-#[test]
-fn observer_binding() {
-    #[cfg(feature = "plugin-sidecar")]
-    observer_host_accessor::contract_scenario();
-    #[cfg(all(feature = "plugin-sidecar", feature = "plugin-guest"))]
-    observer_demand::contract_scenario();
-    #[cfg(all(feature = "plugin-sidecar", feature = "plugin-guest"))]
-    observer_hosts::contract_scenario();
-}

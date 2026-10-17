@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -324,303 +323,230 @@ async fn invalid<O: OperationDeclaration<Request = Request, Response = usize>>()
     runtime.stop().await.unwrap();
 }
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("queued_deadline_starts", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    type Queued = Policy<50, 1000, 0, 1, false>;
-                    let (runtime, queued_probe) = bound::<Queued>().await;
-                    let blocker_probe = Arc::new(Probe::default());
-                    runtime
-                        .operations
-                        .register_operation::<Attempting<Blocker>>(
-                            "policy",
-                            Lanes::Serial,
-                            Arc::new(Owner(Arc::clone(&blocker_probe))),
-                        )
-                        .unwrap();
-                    let gate = Arc::new(Notify::new());
-                    let blocker = runtime
-                        .operations
-                        .submit_as::<Blocker>(Request {
-                            behavior: Behavior::Gate(Arc::clone(&gate)),
-                        })
-                        .unwrap();
-                    blocker_probe.started.notified().await;
-                    let queued = runtime.operations.submit_as::<Queued>(failing(0)).unwrap();
-                    tokio::time::advance(Duration::from_millis(100)).await;
-                    assert!(matches!(
-                        queued.await,
-                        Err(Error::OperationRefused(Refusal::TimedOut))
-                    ));
-                    // An instance that expires while queued is never constructed.
-                    assert_eq!(queued_probe.prepared.load(Ordering::SeqCst), 0);
-                    assert_eq!(queued_probe.attempts.load(Ordering::SeqCst), 0);
-                    assert_eq!(queued_probe.dropped.load(Ordering::SeqCst), 0);
-                    gate.notify_one();
-                    assert_eq!(*blocker.await.unwrap(), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("attempt_limits_backoff", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    type Attempt = Policy<100, 2000, 0, 1, false>;
-                    let (runtime, probe) = bound::<Attempt>().await;
-                    let submitted = tokio::time::Instant::now();
-                    let result = runtime
-                        .operations
-                        .call_as::<Attempt>(Request {
-                            behavior: Behavior::Pending,
-                        })
-                        .await;
-                    assert!(matches!(
-                        result,
-                        Err(Error::OperationRefused(Refusal::TimedOut))
-                    ));
-                    assert_eq!(submitted.elapsed(), Duration::from_millis(100));
-                    assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
-                    assert_eq!(probe.dropped.load(Ordering::SeqCst), 1);
-                    runtime.stop().await.unwrap();
+#[tokio::test(start_paused = true)]
+async fn queued_deadline_starts() {
+    type Queued = Policy<50, 1000, 0, 1, false>;
+    let (runtime, queued_probe) = bound::<Queued>().await;
+    let blocker_probe = Arc::new(Probe::default());
+    runtime
+        .operations
+        .register_operation::<Attempting<Blocker>>(
+            "policy",
+            Lanes::Serial,
+            Arc::new(Owner(Arc::clone(&blocker_probe))),
+        )
+        .unwrap();
+    let gate = Arc::new(Notify::new());
+    let blocker = runtime
+        .operations
+        .submit_as::<Blocker>(Request {
+            behavior: Behavior::Gate(Arc::clone(&gate)),
+        })
+        .unwrap();
+    blocker_probe.started.notified().await;
+    let queued = runtime.operations.submit_as::<Queued>(failing(0)).unwrap();
+    tokio::time::advance(Duration::from_millis(100)).await;
+    assert!(matches!(
+        queued.await,
+        Err(Error::OperationRefused(Refusal::TimedOut))
+    ));
+    // An instance that expires while queued is never constructed.
+    assert_eq!(queued_probe.prepared.load(Ordering::SeqCst), 0);
+    assert_eq!(queued_probe.attempts.load(Ordering::SeqCst), 0);
+    assert_eq!(queued_probe.dropped.load(Ordering::SeqCst), 0);
+    gate.notify_one();
+    assert_eq!(*blocker.await.unwrap(), 1);
+    runtime.stop().await.unwrap();
+}
 
-                    type Retrying = Policy<100, 1000, 10, 1000, false>;
-                    let (runtime, probe) = bound::<Retrying>().await;
-                    let submitted = tokio::time::Instant::now();
-                    let result = runtime.operations.call_as::<Retrying>(failing(100)).await;
-                    assert!(matches!(
-                        result,
-                        Err(Error::OperationRefused(Refusal::TimedOut))
-                    ));
-                    assert_eq!(submitted.elapsed(), Duration::from_millis(100));
-                    assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
-                    assert_eq!(probe.dropped.load(Ordering::SeqCst), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("retry_reuses_state", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    type Retrying = Policy<1000, 100, 2, 20, false>;
-                    let (runtime, probe) = bound::<Retrying>().await;
-                    assert_eq!(
-                        *runtime
-                            .operations
-                            .call_as::<Retrying>(failing(2))
-                            .await
-                            .unwrap(),
-                        3
-                    );
-                    assert_eq!(probe.prepared.load(Ordering::SeqCst), 1);
-                    assert_eq!(probe.attempts.load(Ordering::SeqCst), 3);
-                    assert_eq!(probe.dropped.load(Ordering::SeqCst), 1);
-                    assert_eq!(waits(&probe), [20, 20]);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("reaches_wait_ceiling", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, probe) = bound::<Exponential>().await;
-                    let result = runtime
-                        .operations
-                        .call_as::<Exponential>(failing(100))
-                        .await;
-                    let Err(Error::OperationFailed { source, .. }) = result else {
-                        panic!("the last typed attempt failure is retained")
-                    };
-                    assert_eq!(
-                        source.downcast_ref::<std::io::Error>().unwrap().to_string(),
-                        "retained attempt failure"
-                    );
-                    assert_eq!(waits(&probe), [200, 400, 800, 1000]);
-                    assert_eq!(probe.prepared.load(Ordering::SeqCst), 1);
-                    assert_eq!(probe.attempts.load(Ordering::SeqCst), 5);
-                    assert_eq!(probe.dropped.load(Ordering::SeqCst), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("cancellation_skips_backoff", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    type Retrying = Policy<10000, 100, 2, 1000, false>;
-                    let (runtime, probe) = bound::<Retrying>().await;
-                    let invocation = runtime
-                        .operations
-                        .submit_as::<Retrying>(failing(100))
-                        .unwrap();
-                    probe.started.notified().await;
-                    let cancelled = tokio::time::Instant::now();
-                    invocation.cancel();
-                    assert!(matches!(
-                        invocation.await,
-                        Err(Error::OperationRefused(Refusal::Cancelled))
-                    ));
-                    assert_eq!(cancelled.elapsed(), Duration::ZERO);
-                    assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
-                    assert_eq!(probe.dropped.load(Ordering::SeqCst), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("timeouts_require_replay", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    type Unknown = Policy<1000, 5, 1, 1, false>;
-                    let (runtime, probe) = bound::<Unknown>().await;
-                    let result = runtime
-                        .operations
-                        .call_as::<Unknown>(Request {
-                            behavior: Behavior::Pending,
-                        })
-                        .await;
-                    assert!(matches!(
-                        result,
-                        Err(Error::OperationRefused(Refusal::TimedOut))
-                    ));
-                    assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
-                    runtime.stop().await.unwrap();
+#[tokio::test(start_paused = true)]
+async fn attempt_limits_backoff() {
+    type Attempt = Policy<100, 2000, 0, 1, false>;
+    let (runtime, probe) = bound::<Attempt>().await;
+    let submitted = tokio::time::Instant::now();
+    let result = runtime
+        .operations
+        .call_as::<Attempt>(Request {
+            behavior: Behavior::Pending,
+        })
+        .await;
+    assert!(matches!(
+        result,
+        Err(Error::OperationRefused(Refusal::TimedOut))
+    ));
+    assert_eq!(submitted.elapsed(), Duration::from_millis(100));
+    assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
+    assert_eq!(probe.dropped.load(Ordering::SeqCst), 1);
+    runtime.stop().await.unwrap();
 
-                    type Replayable = Policy<1000, 5, 1, 1, true>;
-                    let (runtime, probe) = bound::<Replayable>().await;
-                    let result = runtime
-                        .operations
-                        .call_as::<Replayable>(Request {
-                            behavior: Behavior::Pending,
-                        })
-                        .await;
-                    assert!(matches!(
-                        result,
-                        Err(Error::OperationRefused(Refusal::TimedOut))
-                    ));
-                    assert_eq!(probe.prepared.load(Ordering::SeqCst), 1);
-                    assert_eq!(probe.attempts.load(Ordering::SeqCst), 2);
-                    assert_eq!(waits(&probe), [6]);
-                    assert_eq!(probe.dropped.load(Ordering::SeqCst), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
+    type Retrying = Policy<100, 1000, 10, 1000, false>;
+    let (runtime, probe) = bound::<Retrying>().await;
+    let submitted = tokio::time::Instant::now();
+    let result = runtime.operations.call_as::<Retrying>(failing(100)).await;
+    assert!(matches!(
+        result,
+        Err(Error::OperationRefused(Refusal::TimedOut))
+    ));
+    assert_eq!(submitted.elapsed(), Duration::from_millis(100));
+    assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
+    assert_eq!(probe.dropped.load(Ordering::SeqCst), 1);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn retry_reuses_state() {
+    type Retrying = Policy<1000, 100, 2, 20, false>;
+    let (runtime, probe) = bound::<Retrying>().await;
+    assert_eq!(
+        *runtime
+            .operations
+            .call_as::<Retrying>(failing(2))
+            .await
+            .unwrap(),
+        3
+    );
+    assert_eq!(probe.prepared.load(Ordering::SeqCst), 1);
+    assert_eq!(probe.attempts.load(Ordering::SeqCst), 3);
+    assert_eq!(probe.dropped.load(Ordering::SeqCst), 1);
+    assert_eq!(waits(&probe), [20, 20]);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn reaches_wait_ceiling() {
+    let (runtime, probe) = bound::<Exponential>().await;
+    let result = runtime
+        .operations
+        .call_as::<Exponential>(failing(100))
+        .await;
+    let Err(Error::OperationFailed { source, .. }) = result else {
+        panic!("the last typed attempt failure is retained")
+    };
+    assert_eq!(
+        source.downcast_ref::<std::io::Error>().unwrap().to_string(),
+        "retained attempt failure"
+    );
+    assert_eq!(waits(&probe), [200, 400, 800, 1000]);
+    assert_eq!(probe.prepared.load(Ordering::SeqCst), 1);
+    assert_eq!(probe.attempts.load(Ordering::SeqCst), 5);
+    assert_eq!(probe.dropped.load(Ordering::SeqCst), 1);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn cancellation_skips_backoff() {
+    type Retrying = Policy<10000, 100, 2, 1000, false>;
+    let (runtime, probe) = bound::<Retrying>().await;
+    let invocation = runtime
+        .operations
+        .submit_as::<Retrying>(failing(100))
+        .unwrap();
+    probe.started.notified().await;
+    let cancelled = tokio::time::Instant::now();
+    invocation.cancel();
+    assert!(matches!(
+        invocation.await,
+        Err(Error::OperationRefused(Refusal::Cancelled))
+    ));
+    assert_eq!(cancelled.elapsed(), Duration::ZERO);
+    assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
+    assert_eq!(probe.dropped.load(Ordering::SeqCst), 1);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn timeouts_require_replay() {
+    type Unknown = Policy<1000, 5, 1, 1, false>;
+    let (runtime, probe) = bound::<Unknown>().await;
+    let result = runtime
+        .operations
+        .call_as::<Unknown>(Request {
+            behavior: Behavior::Pending,
+        })
+        .await;
+    assert!(matches!(
+        result,
+        Err(Error::OperationRefused(Refusal::TimedOut))
+    ));
+    assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
+    runtime.stop().await.unwrap();
+
+    type Replayable = Policy<1000, 5, 1, 1, true>;
+    let (runtime, probe) = bound::<Replayable>().await;
+    let result = runtime
+        .operations
+        .call_as::<Replayable>(Request {
+            behavior: Behavior::Pending,
+        })
+        .await;
+    assert!(matches!(
+        result,
+        Err(Error::OperationRefused(Refusal::TimedOut))
+    ));
+    assert_eq!(probe.prepared.load(Ordering::SeqCst), 1);
+    assert_eq!(probe.attempts.load(Ordering::SeqCst), 2);
+    assert_eq!(waits(&probe), [6]);
+    assert_eq!(probe.dropped.load(Ordering::SeqCst), 1);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn policy_refuses_binding() {
+    invalid::<Policy<0, 1, 0, 1, false>>().await;
+    invalid::<Policy<10, 0, 0, 1, false>>().await;
+    invalid::<Policy<10, 5, 1, 0, false>>().await;
+    invalid::<EmptyRetries>().await;
+    invalid::<InvertedBackoff>().await;
+}
+
+#[tokio::test]
+async fn calls_settle_retry() {
+    type Queued = Policy<1000, 1000, 0, 1, false>;
+    let (runtime, probe) = bound::<Queued>().await;
+    let gate = Arc::new(Notify::new());
+    let first = runtime
+        .operations
+        .submit_as::<Queued>(Request {
+            behavior: Behavior::Gate(gate),
+        })
+        .unwrap();
+    probe.started.notified().await;
+    let second = runtime.operations.submit_as::<Queued>(failing(0)).unwrap();
+    second.cancel();
+    assert!(matches!(
+        second.await,
+        Err(Error::OperationRefused(Refusal::Cancelled))
+    ));
+    assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
+    first.cancel();
+    assert!(matches!(
+        first.await,
+        Err(Error::OperationRefused(Refusal::Cancelled))
+    ));
+    // The cancelled queued instance was never constructed.
+    assert_eq!(probe.prepared.load(Ordering::SeqCst), 1);
+    assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
+    assert_eq!(probe.dropped.load(Ordering::SeqCst), 1);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn jitter_respects_ceiling() {
+    let (runtime, probe) = bound::<Jittered>().await;
+    let result = runtime.operations.call_as::<Jittered>(failing(100)).await;
+    assert!(matches!(result, Err(Error::OperationFailed { .. })));
+    let waits = waits(&probe);
+    assert_eq!(waits.len(), 4);
+    for (wait, (minimum, maximum)) in
+        waits
+            .into_iter()
+            .zip([(200, 250), (400, 500), (800, 1000), (1000, 1000)])
     {
-        scenario_runtime::check("policy_refuses_binding", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    invalid::<Policy<0, 1, 0, 1, false>>().await;
-                    invalid::<Policy<10, 0, 0, 1, false>>().await;
-                    invalid::<Policy<10, 5, 1, 0, false>>().await;
-                    invalid::<EmptyRetries>().await;
-                    invalid::<InvertedBackoff>().await;
-                });
-        });
+        assert!((minimum..=maximum).contains(&wait));
     }
-    {
-        scenario_runtime::check("calls_settle_retry", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    type Queued = Policy<1000, 1000, 0, 1, false>;
-                    let (runtime, probe) = bound::<Queued>().await;
-                    let gate = Arc::new(Notify::new());
-                    let first = runtime
-                        .operations
-                        .submit_as::<Queued>(Request {
-                            behavior: Behavior::Gate(gate),
-                        })
-                        .unwrap();
-                    probe.started.notified().await;
-                    let second = runtime.operations.submit_as::<Queued>(failing(0)).unwrap();
-                    second.cancel();
-                    assert!(matches!(
-                        second.await,
-                        Err(Error::OperationRefused(Refusal::Cancelled))
-                    ));
-                    assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
-                    first.cancel();
-                    assert!(matches!(
-                        first.await,
-                        Err(Error::OperationRefused(Refusal::Cancelled))
-                    ));
-                    // The cancelled queued instance was never constructed.
-                    assert_eq!(probe.prepared.load(Ordering::SeqCst), 1);
-                    assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
-                    assert_eq!(probe.dropped.load(Ordering::SeqCst), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("jitter_respects_ceiling", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, probe) = bound::<Jittered>().await;
-                    let result = runtime.operations.call_as::<Jittered>(failing(100)).await;
-                    assert!(matches!(result, Err(Error::OperationFailed { .. })));
-                    let waits = waits(&probe);
-                    assert_eq!(waits.len(), 4);
-                    for (wait, (minimum, maximum)) in
-                        waits
-                            .into_iter()
-                            .zip([(200, 250), (400, 500), (800, 1000), (1000, 1000)])
-                    {
-                        assert!((minimum..=maximum).contains(&wait));
-                    }
-                    assert_eq!(probe.prepared.load(Ordering::SeqCst), 1);
-                    assert_eq!(probe.attempts.load(Ordering::SeqCst), 5);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
+    assert_eq!(probe.prepared.load(Ordering::SeqCst), 1);
+    assert_eq!(probe.attempts.load(Ordering::SeqCst), 5);
+    runtime.stop().await.unwrap();
 }
 
 /* === Tests === */

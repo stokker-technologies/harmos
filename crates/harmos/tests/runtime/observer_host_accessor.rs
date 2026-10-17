@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -247,87 +246,63 @@ async fn next(events: &mut mpsc::Receiver<Event>) -> Event {
         .unwrap()
 }
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("typed_context_dispatch", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (host, mut events, _) = host(false);
-                    let task = Observing::start(
-                        Instance::<u64, Host>::of::<Watch>()
-                            .activate(Arc::new(35), host)
-                            .unwrap(),
-                    );
-                    let activation = task.activation;
-                    assert_eq!(
-                        next(&mut events).await,
-                        Event::Call(("host.watch", activation, 1), 7)
-                    );
-                    assert_eq!(
-                        next(&mut events).await,
-                        Event::Call(("host.watch", activation, 2), 7)
-                    );
-                    assert_eq!(
-                        next(&mut events).await,
-                        Event::Record(("host.watch", activation, 2), 42)
-                    );
-                    assert_eq!(
-                        next(&mut events).await,
-                        Event::Stream(("host.watch", activation, 2), 42)
-                    );
-                    assert_eq!(
-                        next(&mut events).await,
-                        Event::Stream(("host.watch", activation, 2), 43)
-                    );
-                    task.stop().await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("version_grants_checked", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (host, mut events, _) = host(false);
-                    let task = Observing::start(
-                        Instance::<u64, Host>::of::<CheckGrants>()
-                            .activate(Arc::new(0), host)
-                            .unwrap(),
-                    );
-                    assert_eq!(next(&mut events).await, Event::GrantsChecked);
-                    task.stop().await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("stop_drops_call", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (host, mut events, dropped) = host(true);
-                    let task = Observing::start(
-                        Instance::<u64, Host>::of::<Watch>()
-                            .activate(Arc::new(0), host)
-                            .unwrap(),
-                    );
-                    assert!(matches!(next(&mut events).await, Event::Call(..)));
-                    assert!(!dropped.load(Ordering::SeqCst));
-                    task.stop().await;
-                    assert!(dropped.load(Ordering::SeqCst));
-                    assert_eq!(events.recv().await, None);
-                });
-        });
-    }
+#[tokio::test]
+async fn typed_context_dispatch() {
+    let (host, mut events, _) = host(false);
+    let task = Observing::start(
+        Instance::<u64, Host>::of::<Watch>()
+            .activate(Arc::new(35), host)
+            .unwrap(),
+    );
+    let activation = task.activation;
+    assert_eq!(
+        next(&mut events).await,
+        Event::Call(("host.watch", activation, 1), 7)
+    );
+    assert_eq!(
+        next(&mut events).await,
+        Event::Call(("host.watch", activation, 2), 7)
+    );
+    assert_eq!(
+        next(&mut events).await,
+        Event::Record(("host.watch", activation, 2), 42)
+    );
+    assert_eq!(
+        next(&mut events).await,
+        Event::Stream(("host.watch", activation, 2), 42)
+    );
+    assert_eq!(
+        next(&mut events).await,
+        Event::Stream(("host.watch", activation, 2), 43)
+    );
+    task.stop().await;
+}
+
+#[tokio::test]
+async fn version_grants_checked() {
+    let (host, mut events, _) = host(false);
+    let task = Observing::start(
+        Instance::<u64, Host>::of::<CheckGrants>()
+            .activate(Arc::new(0), host)
+            .unwrap(),
+    );
+    assert_eq!(next(&mut events).await, Event::GrantsChecked);
+    task.stop().await;
+}
+
+#[tokio::test]
+async fn stop_drops_call() {
+    let (host, mut events, dropped) = host(true);
+    let task = Observing::start(
+        Instance::<u64, Host>::of::<Watch>()
+            .activate(Arc::new(0), host)
+            .unwrap(),
+    );
+    assert!(matches!(next(&mut events).await, Event::Call(..)));
+    assert!(!dropped.load(Ordering::SeqCst));
+    task.stop().await;
+    assert!(dropped.load(Ordering::SeqCst));
+    assert_eq!(events.recv().await, None);
 }
 
 /* === Tests === */

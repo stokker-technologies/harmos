@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -140,27 +139,23 @@ fn scripted<C: Registration<Amplifier> + 'static>(catalog: C) -> SimulatedRuntim
 // SIM-AC008: a declared inverse restores the state its change replaced.
 
 #[test]
-fn contract_scenario() {
-    {
-        scenario_runtime::check("inverse_restores_change", || {
-            scripted(Faithful).assert_inverses_restore();
-        });
-    }
-    {
-        scenario_runtime::check("inverse_fails_law", || {
-            let sim = scripted(Wrong);
-            let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                sim.assert_inverses_restore();
-            }))
-            .expect_err("an inverse that restores nothing is not an inverse");
-            let message = failure
-                .downcast_ref::<String>()
-                .expect("divergence diagnostic");
-            assert_eq!(
-                message,
-                "the inverse of the change at Position(1) did not restore the state it changed\n  before:   Model { gain: 0 }\n  restored: Model { gain: 3 }",
-                "the first change reports its exact position, before and restored values"
-            );
-        });
-    }
+fn inverse_restores_change() {
+    scripted(Faithful).assert_inverses_restore();
+}
+
+#[test]
+fn inverse_fails_law() {
+    let sim = scripted(Wrong);
+    let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        sim.assert_inverses_restore();
+    }))
+    .expect_err("an inverse that restores nothing is not an inverse");
+    let message = failure
+        .downcast_ref::<String>()
+        .expect("divergence diagnostic");
+    assert_eq!(
+        message,
+        "the inverse of the change at Position(1) did not restore the state it changed\n  before:   Model { gain: 0 }\n  restored: Model { gain: 3 }",
+        "the first change reports its exact position, before and restored values"
+    );
 }

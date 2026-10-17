@@ -12,8 +12,6 @@
 mod app;
 #[path = "../support/operations_fixture.rs"]
 mod fixture;
-#[path = "../../../../tests/support/scenarios.rs"]
-mod scenario_runtime;
 #[path = "../support/mod.rs"]
 mod support;
 use fixture::*;
@@ -78,33 +76,3 @@ mod wire;
 /* === Private Functions === */
 
 /* === Tests === */
-
-#[test]
-fn admitted_operations() {
-    admission::contract_scenario();
-    lanes::contract_scenario();
-    middleware::contract_scenario();
-    policy::contract_scenario();
-    resources::contract_scenario();
-}
-
-#[test]
-fn nested_operations() {
-    causation::contract_scenario();
-    children::contract_scenario();
-    clock::contract_scenario();
-    scoped::contract_scenario();
-    outcomes::contract_scenario();
-}
-
-#[test]
-fn operation_settlement() {
-    execution::contract_scenario();
-    finalization::contract_scenario();
-    shutdown::contract_scenario();
-}
-
-#[test]
-fn host() {
-    host::contract_scenario();
-}

@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -109,541 +108,448 @@ pub(super) async fn restart(source: &Fixture) -> Fixture {
 
 /* === Tests === */
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("restart_restores_saved", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let f = Fixture::new(config()).await;
-                    let mut producer = f
-                        .storage
-                        .produce_file(metadata("durable-prefix"))
-                        .await
-                        .unwrap();
-                    let prefix = vec![42; 137];
-                    producer.write_all(&prefix).await.unwrap();
-                    let token = producer.session().unwrap().clone();
-                    f.storage.flush().await.unwrap();
-                    producer.write_all(b"unsaved tail").await.unwrap();
-                    let recovered = restart(&f).await;
-                    let identity = StagedFile {
-                        history: token.history.clone(),
-                        id: token.id.clone(),
-                    };
-                    assert!(recovered.storage.follow_file(&identity, 138).await.is_err());
-                    let mut resumed = recovered.storage.resume_file(&token).await.unwrap();
-                    assert_eq!(resumed.length(), 137);
-                    resumed.write_all(b"new suffix").await.unwrap();
-                    let reference = resumed.finish().await.unwrap();
-                    let mut expected = prefix;
-                    expected.extend_from_slice(b"new suffix");
-                    assert_eq!(
-                        recovered.data.blobs.lock().unwrap()[reference.metadata.id.as_str()].1,
-                        expected
-                    );
-                    recovered.finish().await;
-                    f.finish().await;
-                });
-        });
+#[tokio::test]
+async fn restart_restores_saved() {
+    let f = Fixture::new(config()).await;
+    let mut producer = f
+        .storage
+        .produce_file(metadata("durable-prefix"))
+        .await
+        .unwrap();
+    let prefix = vec![42; 137];
+    producer.write_all(&prefix).await.unwrap();
+    let token = producer.session().unwrap().clone();
+    f.storage.flush().await.unwrap();
+    producer.write_all(b"unsaved tail").await.unwrap();
+    let recovered = restart(&f).await;
+    let identity = StagedFile {
+        history: token.history.clone(),
+        id: token.id.clone(),
+    };
+    assert!(recovered.storage.follow_file(&identity, 138).await.is_err());
+    let mut resumed = recovered.storage.resume_file(&token).await.unwrap();
+    assert_eq!(resumed.length(), 137);
+    resumed.write_all(b"new suffix").await.unwrap();
+    let reference = resumed.finish().await.unwrap();
+    let mut expected = prefix;
+    expected.extend_from_slice(b"new suffix");
+    assert_eq!(
+        recovered.data.blobs.lock().unwrap()[reference.metadata.id.as_str()].1,
+        expected
+    );
+    recovered.finish().await;
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn fences_survive_saving() {
+    let f = Fixture::new(config()).await;
+    let mut original = f
+        .storage
+        .produce_file(metadata("durable-fence"))
+        .await
+        .unwrap();
+    original.write_all(b"saved").await.unwrap();
+    let first = original.session().unwrap().clone();
+    f.storage.flush().await.unwrap();
+    let mut current = f.storage.resume_file(&first).await.unwrap();
+    current.write_all(b"volatile").await.unwrap();
+    let token = current.session().unwrap().clone();
+    assert_eq!(token.generation, 2);
+    let recovered = restart(&f).await;
+    assert!(recovered.storage.resume_file(&first).await.is_err());
+    let mut resumed = recovered.storage.resume_file(&token).await.unwrap();
+    assert_eq!(resumed.session().unwrap().generation, 3);
+    assert_eq!(resumed.length(), 5);
+    resumed.abort().await.unwrap();
+    recovered.finish().await;
+    f.finish().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn recovered_producers_receive() {
+    let f = Fixture::new(config()).await;
+    let producer = f
+        .storage
+        .produce_file(metadata("fresh-window"))
+        .await
+        .unwrap();
+    let token = producer.session().unwrap().clone();
+    f.storage.flush().await.unwrap();
+    drop(producer);
+    tokio::time::advance(Duration::from_secs(50)).await;
+    let recovered = restart(&f).await;
+    tokio::time::advance(Duration::from_secs(59)).await;
+    let mut resumed = recovered.storage.resume_file(&token).await.unwrap();
+    resumed.write_all(b"after recovery").await.unwrap();
+    resumed.abort().await.unwrap();
+    recovered.finish().await;
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn appends_never_extend() {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        let f = Fixture::new(config()).await;
+        let mut producer = f.storage.produce_file(metadata("fixed-cut")).await.unwrap();
+        producer.write_all(b"saved").await.unwrap();
+        f.data
+            .control
+            .block_checkpoint
+            .store(true, Ordering::SeqCst);
+        {
+            let save = f.storage.flush();
+            tokio::pin!(save);
+            tokio::select! {
+                biased;
+                _ = &mut save => panic!("checkpoint must block"),
+                _ = f.data.control.checkpoint_entered.notified() => {}
+            }
+            producer.write_all(b"later").await.unwrap();
+            f.data
+                .control
+                .block_checkpoint
+                .store(false, Ordering::SeqCst);
+            f.data.control.checkpoint_release.notify_one();
+            save.await.unwrap();
+        }
+        {
+            let checkpoints = f.data.saved_productions.lock().unwrap();
+            assert_eq!(checkpoints["fixed-cut"].0.length, 5);
+            assert_eq!(checkpoints["fixed-cut"].1, b"saved");
+        }
+        f.finish().await;
+    })
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn graceful_close_saves() {
+    let f = Fixture::new(config()).await;
+    let mut producer = f
+        .storage
+        .produce_file(metadata("close-restart"))
+        .await
+        .unwrap();
+    producer.write_all(b"retained on close").await.unwrap();
+    let token = producer.session().unwrap().clone();
+    f.storage.close().await.unwrap();
+    assert!(
+        !f.data
+            .abandoned_files
+            .lock()
+            .unwrap()
+            .contains("close-restart")
+    );
+    let restored: StorageManager = StorageManager::new(
+        StorageBackends {
+            primary: f.data.clone(),
+            state: f.recovery.clone(),
+        },
+        config(),
+    )
+    .unwrap();
+    restored.start(&f.runtime).await.unwrap();
+    let mut resumed = restored.resume_file(&token).await.unwrap();
+    assert_eq!(resumed.length(), 17);
+    resumed.abort().await.unwrap();
+    restored.close().await.unwrap();
+    f.finish().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn lost_fence_response() {
+    let f = Fixture::new(config()).await;
+    let mut producer = f
+        .storage
+        .produce_file(metadata("fence-retry"))
+        .await
+        .unwrap();
+    producer.write_all(b"prefix").await.unwrap();
+    let token = producer.session().unwrap().clone();
+    f.data.control.fence_failures.store(3, Ordering::SeqCst);
+    let mut resumed = f.storage.resume_file(&token).await.unwrap();
+    assert_eq!(resumed.session().unwrap().generation, 2);
+    assert_eq!(resumed.length(), 6);
+    assert!(producer.write_all(b"stale").await.is_err());
+    assert_eq!(f.data.control.fence_failures.load(Ordering::SeqCst), 0);
+    resumed.abort().await.unwrap();
+    f.finish().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn operation_retries_file() {
+    use harmos::storage::operations::{Operations, Save};
+    let f = Fixture::new(config()).await;
+    Operations::register(
+        &f.runtime.operations,
+        "storage",
+        operations::Lanes::Open,
+        Arc::new(f.storage.clone()),
+    )
+    .unwrap();
+    let mut producer = f
+        .storage
+        .produce_file(metadata("save-retry"))
+        .await
+        .unwrap();
+    producer.write_all(b"prefix").await.unwrap();
+    f.data
+        .control
+        .block_checkpoint
+        .store(true, Ordering::SeqCst);
+    f.data
+        .control
+        .checkpoint_failures
+        .store(3, Ordering::SeqCst);
+    let request = super::super::operations::save_request(&f, f.storage.cursor_accepted());
+    let save = f.runtime.operations.call_as::<Save>(request.clone());
+    let append = async {
+        f.data.control.checkpoint_entered.notified().await;
+        f.data
+            .control
+            .block_checkpoint
+            .store(false, Ordering::SeqCst);
+        f.data.control.checkpoint_release.notify_one();
+    };
+    let (result, ()) = tokio::join!(save, append);
+    result.unwrap();
+    producer.write_all(b"later").await.unwrap();
+    f.runtime.operations.call_as::<Save>(request).await.unwrap();
+    assert_eq!(f.data.control.checkpoint_failures.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        f.data.saved_productions.lock().unwrap()["save-retry"].1,
+        b"prefix"
+    );
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn recovery_releases_read() {
+    let source = Fixture::new(config()).await;
+    let first = source
+        .storage
+        .produce_file(metadata("first"))
+        .await
+        .unwrap();
+    let second = source
+        .storage
+        .produce_file(metadata("second"))
+        .await
+        .unwrap();
+    source.storage.flush().await.unwrap();
+    for failure in 1..3 {
+        let data = crash_image(&source);
+        let recovery = Arc::new(Recovery::new(data.history.clone()));
+        let settings = config();
+        match failure {
+            1 => {
+                data.saved_productions
+                    .lock()
+                    .unwrap()
+                    .get_mut("first")
+                    .unwrap()
+                    .0
+                    .length += 1
+            }
+            // File Restoration Succeeded Before The Recovery Owner Failed.
+            _ => recovery.control.fail_open.store(true, Ordering::SeqCst),
+        }
+        let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
+            .register(catalog())
+            .runtime()
+            .await
+            .unwrap();
+        let storage: StorageManager = StorageManager::new(
+            StorageBackends {
+                primary: data.clone(),
+                state: recovery,
+            },
+            settings,
+        )
+        .unwrap();
+        assert!(storage.start(&runtime).await.is_err());
+        storage.close().await.unwrap();
+        assert_eq!(storage.status().read_bytes, 0);
+        assert_eq!(storage.status().pending_bytes, 0);
+        assert_eq!(data.saved_productions.lock().unwrap().len(), 2);
+        runtime.stop().await.unwrap();
     }
-    {
-        scenario_runtime::check("fences_survive_saving", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let f = Fixture::new(config()).await;
-                    let mut original = f
-                        .storage
-                        .produce_file(metadata("durable-fence"))
-                        .await
-                        .unwrap();
-                    original.write_all(b"saved").await.unwrap();
-                    let first = original.session().unwrap().clone();
-                    f.storage.flush().await.unwrap();
-                    let mut current = f.storage.resume_file(&first).await.unwrap();
-                    current.write_all(b"volatile").await.unwrap();
-                    let token = current.session().unwrap().clone();
-                    assert_eq!(token.generation, 2);
-                    let recovered = restart(&f).await;
-                    assert!(recovered.storage.resume_file(&first).await.is_err());
-                    let mut resumed = recovered.storage.resume_file(&token).await.unwrap();
-                    assert_eq!(resumed.session().unwrap().generation, 3);
-                    assert_eq!(resumed.length(), 5);
-                    resumed.abort().await.unwrap();
-                    recovered.finish().await;
-                    f.finish().await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("recovered_producers_receive", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let f = Fixture::new(config()).await;
-                    let producer = f
-                        .storage
-                        .produce_file(metadata("fresh-window"))
-                        .await
-                        .unwrap();
-                    let token = producer.session().unwrap().clone();
-                    f.storage.flush().await.unwrap();
-                    drop(producer);
-                    tokio::time::advance(Duration::from_secs(50)).await;
-                    let recovered = restart(&f).await;
-                    tokio::time::advance(Duration::from_secs(59)).await;
-                    let mut resumed = recovered.storage.resume_file(&token).await.unwrap();
-                    resumed.write_all(b"after recovery").await.unwrap();
-                    resumed.abort().await.unwrap();
-                    recovered.finish().await;
-                    f.finish().await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("appends_never_extend", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    tokio::time::timeout(Duration::from_secs(5), async {
-                        let f = Fixture::new(config()).await;
-                        let mut producer =
-                            f.storage.produce_file(metadata("fixed-cut")).await.unwrap();
-                        producer.write_all(b"saved").await.unwrap();
-                        f.data
-                            .control
-                            .block_checkpoint
-                            .store(true, Ordering::SeqCst);
-                        {
-                            let save = f.storage.flush();
-                            tokio::pin!(save);
-                            tokio::select! {
-                                biased;
-                                _ = &mut save => panic!("checkpoint must block"),
-                                _ = f.data.control.checkpoint_entered.notified() => {}
-                            }
-                            producer.write_all(b"later").await.unwrap();
-                            f.data
-                                .control
-                                .block_checkpoint
-                                .store(false, Ordering::SeqCst);
-                            f.data.control.checkpoint_release.notify_one();
-                            save.await.unwrap();
-                        }
-                        {
-                            let checkpoints = f.data.saved_productions.lock().unwrap();
-                            assert_eq!(checkpoints["fixed-cut"].0.length, 5);
-                            assert_eq!(checkpoints["fixed-cut"].1, b"saved");
-                        }
-                        f.finish().await;
-                    })
-                    .await
-                    .unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("graceful_close_saves", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let f = Fixture::new(config()).await;
-                    let mut producer = f
-                        .storage
-                        .produce_file(metadata("close-restart"))
-                        .await
-                        .unwrap();
-                    producer.write_all(b"retained on close").await.unwrap();
-                    let token = producer.session().unwrap().clone();
-                    f.storage.close().await.unwrap();
-                    assert!(
-                        !f.data
-                            .abandoned_files
-                            .lock()
-                            .unwrap()
-                            .contains("close-restart")
-                    );
-                    let restored: StorageManager = StorageManager::new(
-                        StorageBackends {
-                            primary: f.data.clone(),
-                            state: f.recovery.clone(),
-                        },
-                        config(),
-                    )
-                    .unwrap();
-                    restored.start(&f.runtime).await.unwrap();
-                    let mut resumed = restored.resume_file(&token).await.unwrap();
-                    assert_eq!(resumed.length(), 17);
-                    resumed.abort().await.unwrap();
-                    restored.close().await.unwrap();
-                    f.finish().await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("lost_fence_response", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let f = Fixture::new(config()).await;
-                    let mut producer = f
-                        .storage
-                        .produce_file(metadata("fence-retry"))
-                        .await
-                        .unwrap();
-                    producer.write_all(b"prefix").await.unwrap();
-                    let token = producer.session().unwrap().clone();
-                    f.data.control.fence_failures.store(3, Ordering::SeqCst);
-                    let mut resumed = f.storage.resume_file(&token).await.unwrap();
-                    assert_eq!(resumed.session().unwrap().generation, 2);
-                    assert_eq!(resumed.length(), 6);
-                    assert!(producer.write_all(b"stale").await.is_err());
-                    assert_eq!(f.data.control.fence_failures.load(Ordering::SeqCst), 0);
-                    resumed.abort().await.unwrap();
-                    f.finish().await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("operation_retries_file", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    use harmos::storage::operations::{Operations, Save};
-                    let f = Fixture::new(config()).await;
-                    Operations::register(
-                        &f.runtime.operations,
-                        "storage",
-                        operations::Lanes::Open,
-                        Arc::new(f.storage.clone()),
-                    )
-                    .unwrap();
-                    let mut producer = f
-                        .storage
-                        .produce_file(metadata("save-retry"))
-                        .await
-                        .unwrap();
-                    producer.write_all(b"prefix").await.unwrap();
-                    f.data
-                        .control
-                        .block_checkpoint
-                        .store(true, Ordering::SeqCst);
-                    f.data
-                        .control
-                        .checkpoint_failures
-                        .store(3, Ordering::SeqCst);
-                    let request =
-                        super::super::operations::save_request(&f, f.storage.cursor_accepted());
-                    let save = f.runtime.operations.call_as::<Save>(request.clone());
-                    let append = async {
-                        f.data.control.checkpoint_entered.notified().await;
-                        f.data
-                            .control
-                            .block_checkpoint
-                            .store(false, Ordering::SeqCst);
-                        f.data.control.checkpoint_release.notify_one();
-                    };
-                    let (result, ()) = tokio::join!(save, append);
-                    result.unwrap();
-                    producer.write_all(b"later").await.unwrap();
-                    f.runtime.operations.call_as::<Save>(request).await.unwrap();
-                    assert_eq!(f.data.control.checkpoint_failures.load(Ordering::SeqCst), 0);
-                    assert_eq!(
-                        f.data.saved_productions.lock().unwrap()["save-retry"].1,
-                        b"prefix"
-                    );
-                    f.finish().await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("recovery_releases_read", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let source = Fixture::new(config()).await;
-                    let first = source
-                        .storage
-                        .produce_file(metadata("first"))
-                        .await
-                        .unwrap();
-                    let second = source
-                        .storage
-                        .produce_file(metadata("second"))
-                        .await
-                        .unwrap();
-                    source.storage.flush().await.unwrap();
-                    for failure in 1..3 {
-                        let data = crash_image(&source);
-                        let recovery = Arc::new(Recovery::new(data.history.clone()));
-                        let settings = config();
-                        match failure {
-                            1 => {
-                                data.saved_productions
-                                    .lock()
-                                    .unwrap()
-                                    .get_mut("first")
-                                    .unwrap()
-                                    .0
-                                    .length += 1
-                            }
-                            // File Restoration Succeeded Before The Recovery Owner Failed.
-                            _ => recovery.control.fail_open.store(true, Ordering::SeqCst),
-                        }
-                        let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-                            .register(catalog())
-                            .runtime()
-                            .await
-                            .unwrap();
-                        let storage: StorageManager = StorageManager::new(
-                            StorageBackends {
-                                primary: data.clone(),
-                                state: recovery,
-                            },
-                            settings,
-                        )
-                        .unwrap();
-                        assert!(storage.start(&runtime).await.is_err());
-                        storage.close().await.unwrap();
-                        assert_eq!(storage.status().read_bytes, 0);
-                        assert_eq!(storage.status().pending_bytes, 0);
-                        assert_eq!(data.saved_productions.lock().unwrap().len(), 2);
-                        runtime.stop().await.unwrap();
-                    }
-                    drop((first, second));
-                    source.finish().await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("receipts_replay_readmitting", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    use harmos::Identifier;
-                    use harmos::storage::MutationId;
-                    let f = Fixture::new(config()).await;
-                    let window = f.storage.mutation_window().unwrap().id;
-                    let first = MutationId {
-                        window: window.clone(),
-                        key: Identifier::new("first-write").unwrap(),
-                    };
-                    let second = MutationId {
-                        window,
-                        key: Identifier::new("second-write").unwrap(),
-                    };
-                    let schema = super::super::schema();
-                    let item = Identifier::new("record").unwrap();
-                    let values = [super::super::record(&schema, &item, b"saved")];
-                    let original = f.storage.write_records_once(&first, &values).await.unwrap();
-                    f.storage
-                        .write_records_once(&second, &values)
-                        .await
-                        .unwrap();
-                    f.storage.flush_until(&original).await.unwrap();
-                    assert!(
-                        f.data
-                            .mutation_receipts
-                            .lock()
-                            .unwrap()
-                            .contains_key(&first)
-                    );
-                    assert!(
-                        !f.data
-                            .mutation_receipts
-                            .lock()
-                            .unwrap()
-                            .contains_key(&second)
-                    );
-                    let restored = restart(&f).await;
-                    let before = restored.storage.cursor_accepted();
-                    assert_eq!(
-                        restored
-                            .storage
-                            .write_records_once(&first, &values)
-                            .await
-                            .unwrap(),
-                        original
-                    );
-                    assert_eq!(restored.storage.cursor_accepted(), before);
-                    assert!(
-                        restored
-                            .storage
-                            .write_records_once(&second, &values)
-                            .await
-                            .is_err()
-                    );
-                    assert!(!restored.data.records.lock().unwrap().is_empty());
-                    restored.finish().await;
-                    f.finish().await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("save_replays_restart", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let f = Fixture::new(config()).await;
-                    let mut producer = f.storage.produce_file(metadata("lost-save")).await.unwrap();
-                    producer.write_all(b"saved-prefix").await.unwrap();
-                    let request =
-                        super::super::operations::save_request(&f, f.storage.cursor_accepted());
-                    f.data.control.receipt_failures.store(1, Ordering::SeqCst);
-                    assert!(
-                        f.storage
-                            .save_once(&request.mutation, &request.at)
-                            .await
-                            .is_err()
-                    );
-                    assert!(
-                        f.data
-                            .mutation_receipts
-                            .lock()
-                            .unwrap()
-                            .contains_key(&request.mutation)
-                    );
-                    let restored = restart(&f).await;
-                    assert_eq!(
-                        restored
-                            .storage
-                            .save_once(&request.mutation, &request.at)
-                            .await
-                            .unwrap(),
-                        request.at
-                    );
-                    assert_eq!(
-                        restored.data.saved_productions.lock().unwrap()["lost-save"].1,
-                        b"saved-prefix"
-                    );
-                    assert_eq!(restored.storage.status().read_bytes, 0);
-                    restored.finish().await;
-                    f.finish().await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("files_retry_outcomes", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let f = Fixture::new(config()).await;
-                    let metadata = metadata("deleted-restart");
-                    let reference = f
-                        .storage
-                        .write_file(metadata.clone(), b"retained")
-                        .await
-                        .unwrap();
-                    let file = StagedFile {
-                        history: reference.position.history,
-                        id: metadata.id.clone(),
-                    };
-                    let mutation = harmos::storage::MutationId {
-                        window: f.storage.mutation_window().unwrap().id,
-                        key: harmos::Identifier::new("delete").unwrap(),
-                    };
-                    f.storage.delete_file_once(&mutation, &file).await.unwrap();
-                    let recovered = restart(&f).await;
-                    assert_eq!(
-                        recovered
-                            .storage
-                            .delete_file_once(&mutation, &file)
-                            .await
-                            .unwrap(),
-                        file
-                    );
-                    assert!(recovered.storage.follow_file(&file, 0).await.is_err());
-                    assert!(recovered.storage.produce_file(metadata).await.is_err());
-                    recovered.finish().await;
-                    f.finish().await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("mutation_replays_restart", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let f = Fixture::new(config()).await;
-                    let key = crate::schema();
-                    let mutation = harmos::storage::MutationId {
-                        window: f.storage.mutation_window().unwrap().id,
-                        key: harmos::Identifier::new("write-schema").unwrap(),
-                    };
-                    let accepted = f
-                        .storage
-                        .write_schema_once(
-                            &mutation,
-                            &key,
-                            &harmos::schema::graph::Schema {
-                                root: 0,
-                                definitions: vec![vec![]],
-                            },
-                        )
-                        .await
-                        .unwrap();
-                    f.storage.flush().await.unwrap();
-                    let recovered = restart(&f).await;
-                    assert_eq!(
-                        recovered
-                            .storage
-                            .write_schema_once(
-                                &mutation,
-                                &key,
-                                &harmos::schema::graph::Schema {
-                                    root: 0,
-                                    definitions: vec![vec![]]
-                                }
-                            )
-                            .await
-                            .unwrap(),
-                        accepted
-                    );
-                    assert_eq!(recovered.storage.cursor_accepted(), accepted);
-                    assert_eq!(recovered.data.schemas.lock().unwrap().len(), 1);
-                    recovered.finish().await;
-                    f.finish().await;
-                });
-        });
-    }
+    drop((first, second));
+    source.finish().await;
+}
+
+#[tokio::test]
+async fn receipts_replay_readmitting() {
+    use harmos::Identifier;
+    use harmos::storage::MutationId;
+    let f = Fixture::new(config()).await;
+    let window = f.storage.mutation_window().unwrap().id;
+    let first = MutationId {
+        window: window.clone(),
+        key: Identifier::new("first-write").unwrap(),
+    };
+    let second = MutationId {
+        window,
+        key: Identifier::new("second-write").unwrap(),
+    };
+    let schema = super::super::schema();
+    let item = Identifier::new("record").unwrap();
+    let values = [super::super::record(&schema, &item, b"saved")];
+    let original = f.storage.write_records_once(&first, &values).await.unwrap();
+    f.storage
+        .write_records_once(&second, &values)
+        .await
+        .unwrap();
+    f.storage.flush_until(&original).await.unwrap();
+    assert!(
+        f.data
+            .mutation_receipts
+            .lock()
+            .unwrap()
+            .contains_key(&first)
+    );
+    assert!(
+        !f.data
+            .mutation_receipts
+            .lock()
+            .unwrap()
+            .contains_key(&second)
+    );
+    let restored = restart(&f).await;
+    let before = restored.storage.cursor_accepted();
+    assert_eq!(
+        restored
+            .storage
+            .write_records_once(&first, &values)
+            .await
+            .unwrap(),
+        original
+    );
+    assert_eq!(restored.storage.cursor_accepted(), before);
+    assert!(
+        restored
+            .storage
+            .write_records_once(&second, &values)
+            .await
+            .is_err()
+    );
+    assert!(!restored.data.records.lock().unwrap().is_empty());
+    restored.finish().await;
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn save_replays_restart() {
+    let f = Fixture::new(config()).await;
+    let mut producer = f.storage.produce_file(metadata("lost-save")).await.unwrap();
+    producer.write_all(b"saved-prefix").await.unwrap();
+    let request = super::super::operations::save_request(&f, f.storage.cursor_accepted());
+    f.data.control.receipt_failures.store(1, Ordering::SeqCst);
+    assert!(
+        f.storage
+            .save_once(&request.mutation, &request.at)
+            .await
+            .is_err()
+    );
+    assert!(
+        f.data
+            .mutation_receipts
+            .lock()
+            .unwrap()
+            .contains_key(&request.mutation)
+    );
+    let restored = restart(&f).await;
+    assert_eq!(
+        restored
+            .storage
+            .save_once(&request.mutation, &request.at)
+            .await
+            .unwrap(),
+        request.at
+    );
+    assert_eq!(
+        restored.data.saved_productions.lock().unwrap()["lost-save"].1,
+        b"saved-prefix"
+    );
+    assert_eq!(restored.storage.status().read_bytes, 0);
+    restored.finish().await;
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn files_retry_outcomes() {
+    let f = Fixture::new(config()).await;
+    let metadata = metadata("deleted-restart");
+    let reference = f
+        .storage
+        .write_file(metadata.clone(), b"retained")
+        .await
+        .unwrap();
+    let file = StagedFile {
+        history: reference.position.history,
+        id: metadata.id.clone(),
+    };
+    let mutation = harmos::storage::MutationId {
+        window: f.storage.mutation_window().unwrap().id,
+        key: harmos::Identifier::new("delete").unwrap(),
+    };
+    f.storage.delete_file_once(&mutation, &file).await.unwrap();
+    let recovered = restart(&f).await;
+    assert_eq!(
+        recovered
+            .storage
+            .delete_file_once(&mutation, &file)
+            .await
+            .unwrap(),
+        file
+    );
+    assert!(recovered.storage.follow_file(&file, 0).await.is_err());
+    assert!(recovered.storage.produce_file(metadata).await.is_err());
+    recovered.finish().await;
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn mutation_replays_restart() {
+    let f = Fixture::new(config()).await;
+    let key = crate::schema();
+    let mutation = harmos::storage::MutationId {
+        window: f.storage.mutation_window().unwrap().id,
+        key: harmos::Identifier::new("write-schema").unwrap(),
+    };
+    let accepted = f
+        .storage
+        .write_schema_once(
+            &mutation,
+            &key,
+            &harmos::schema::graph::Schema {
+                root: 0,
+                definitions: vec![vec![]],
+            },
+        )
+        .await
+        .unwrap();
+    f.storage.flush().await.unwrap();
+    let recovered = restart(&f).await;
+    assert_eq!(
+        recovered
+            .storage
+            .write_schema_once(
+                &mutation,
+                &key,
+                &harmos::schema::graph::Schema {
+                    root: 0,
+                    definitions: vec![vec![]]
+                }
+            )
+            .await
+            .unwrap(),
+        accepted
+    );
+    assert_eq!(recovered.storage.cursor_accepted(), accepted);
+    assert_eq!(recovered.data.schemas.lock().unwrap().len(), 1);
+    recovered.finish().await;
+    f.finish().await;
 }

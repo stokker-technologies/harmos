@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -95,29 +94,26 @@ fn revision() -> Revision {
 
 /* === Tests === */
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("values_roundtrip_prost", || {
-            let value = revision();
-            let bytes = value.encode_to_vec();
-            assert_eq!(bytes.len(), value.encoded_len());
-            assert_eq!(Revision::decode(&bytes).unwrap(), value);
-            assert!(Revision::decode(&[]).is_err());
-            let value = Source::Stored {
-                cursor: value.cursor,
-            };
-            let bytes = value.encode_to_vec();
-            assert_eq!(bytes.len(), value.encoded_len());
-            assert_eq!(Source::decode(&bytes).unwrap(), value);
-            assert!(Source::decode(&[]).is_err());
-            let empty = Seal::default();
-            assert!(empty.cursor.is_none() && empty.version.is_none() && empty.file.is_none());
-            for field in Revision::FIELDS {
-                assert!(matches!(
-                    field.kind,
-                    harmos::schema::graph::Kind::Message { .. }
-                ));
-            }
-        });
+#[test]
+fn values_roundtrip_prost() {
+    let value = revision();
+    let bytes = value.encode_to_vec();
+    assert_eq!(bytes.len(), value.encoded_len());
+    assert_eq!(Revision::decode(&bytes).unwrap(), value);
+    assert!(Revision::decode(&[]).is_err());
+    let value = Source::Stored {
+        cursor: value.cursor,
+    };
+    let bytes = value.encode_to_vec();
+    assert_eq!(bytes.len(), value.encoded_len());
+    assert_eq!(Source::decode(&bytes).unwrap(), value);
+    assert!(Source::decode(&[]).is_err());
+    let empty = Seal::default();
+    assert!(empty.cursor.is_none() && empty.version.is_none() && empty.file.is_none());
+    for field in Revision::FIELDS {
+        assert!(matches!(
+            field.kind,
+            harmos::schema::graph::Kind::Message { .. }
+        ));
     }
 }

@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 mod hygiene {
     mod harmos {}
@@ -167,60 +166,36 @@ async fn assert_admission(lane: Lanes, count: usize, admitted: usize) {
 
 /* === Tests === */
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("capacity_bounds_admission", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    assert_admission(Lanes::Serial, 3, 1).await;
-                    assert_admission(Lanes::Concurrent, 3, 2).await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("unbounded_lane_admits", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    assert_admission(Lanes::Unbounded, 8, 8).await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("lane_admits_instances", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    assert_admission(Lanes::default(), 8, 8).await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("catalog_resolves_crate", || {
-            assert_eq!(hygiene::Lanes::Probe.name(), "Probe");
-            assert_eq!(hygiene::Lanes::Probe.capacity(), Capacity::concurrent(2));
-            assert!(format!("{:?}", hygiene::Lanes::catalog()).contains("Probe"));
-            assert_eq!(hygiene::Lanes::default().name(), "Open");
-        });
-    }
-    {
-        scenario_runtime::check("capacities_match_variants", || {
-            assert_eq!(Lanes::Serial.name(), "Serial");
-            assert_eq!(Lanes::Serial.capacity(), Capacity::serial());
-            assert_eq!(Lanes::Concurrent.capacity(), Capacity::concurrent(2));
-            assert_eq!(Lanes::Unbounded.capacity(), Capacity::unbounded());
-            assert_eq!(Lanes::default().name(), "Open");
-            assert_eq!(Lanes::Open.capacity(), Capacity::unbounded());
-        });
-    }
+#[tokio::test]
+async fn capacity_bounds_admission() {
+    assert_admission(Lanes::Serial, 3, 1).await;
+    assert_admission(Lanes::Concurrent, 3, 2).await;
+}
+
+#[tokio::test]
+async fn unbounded_lane_admits() {
+    assert_admission(Lanes::Unbounded, 8, 8).await;
+}
+
+#[tokio::test]
+async fn lane_admits_instances() {
+    assert_admission(Lanes::default(), 8, 8).await;
+}
+
+#[test]
+fn catalog_resolves_crate() {
+    assert_eq!(hygiene::Lanes::Probe.name(), "Probe");
+    assert_eq!(hygiene::Lanes::Probe.capacity(), Capacity::concurrent(2));
+    assert!(format!("{:?}", hygiene::Lanes::catalog()).contains("Probe"));
+    assert_eq!(hygiene::Lanes::default().name(), "Open");
+}
+
+#[test]
+fn capacities_match_variants() {
+    assert_eq!(Lanes::Serial.name(), "Serial");
+    assert_eq!(Lanes::Serial.capacity(), Capacity::serial());
+    assert_eq!(Lanes::Concurrent.capacity(), Capacity::concurrent(2));
+    assert_eq!(Lanes::Unbounded.capacity(), Capacity::unbounded());
+    assert_eq!(Lanes::default().name(), "Open");
+    assert_eq!(Lanes::Open.capacity(), Capacity::unbounded());
 }

@@ -8,8 +8,6 @@
  */
 
 /* === Modules === */
-#[path = "../../../../tests/support/scenarios.rs"]
-mod scenario_runtime;
 
 #[path = "../support/app/minimal.rs"]
 mod app;
@@ -144,12 +142,8 @@ async fn resident(mut context: Service<Bank>) -> Result<(), Fault<&'static str>>
     Ok(())
 }
 
-fn own_contract() {
-    {
-        scenario_runtime::check("handle_clones_share", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
-
+#[tokio::test]
+async fn handle_clones_share() {
     let runtime = assembly()
         .service("boot", resident)
         .runtime()
@@ -165,19 +159,19 @@ fn own_contract() {
             |_: Arc<()>| resident,
         )
         .unwrap();
-    let dynamic = manager
-        .submit_resident("dynamic")
-        .await
-        .unwrap();
+    let dynamic = manager.submit_resident("dynamic").await.unwrap();
     assert_eq!(runtime.operations.residents().len(), 2);
     assert!(
         matches!(manager.register_service(harmos::services::ServiceDefinition { id: "boot".into(), policy: harmos::services::POLICY }, |_: Arc<()>| resident), Err(Error::AlreadyRegistered { domain: "service", name }) if name == "boot")
     );
-    let boot = manager
-        .submit_resident("boot")
-        .await
-        .unwrap();
-    assert_eq!(manager.resident(&manager.resident_key(boot.id()).unwrap()).unwrap().leases, 2);
+    let boot = manager.submit_resident("boot").await.unwrap();
+    assert_eq!(
+        manager
+            .resident(&manager.resident_key(boot.id()).unwrap())
+            .unwrap()
+            .leases,
+        2
+    );
     boot.release().await.unwrap();
     assert_eq!(
         manager
@@ -186,7 +180,13 @@ fn own_contract() {
             .leases,
         1
     );
-    assert_eq!(manager.resident(&manager.resident_key(dynamic.id()).unwrap()).unwrap().leases, 1);
+    assert_eq!(
+        manager
+            .resident(&manager.resident_key(dynamic.id()).unwrap())
+            .unwrap()
+            .leases,
+        1
+    );
     runtime.stop().await.unwrap();
     assert_eq!(
         manager
@@ -200,216 +200,169 @@ fn own_contract() {
             .and_then(|item| item.health),
         Some(ServiceStatus::Stopped)
     );
+}
 
-});
-        });
+#[tokio::test]
+async fn shutdown_preserves_work() {
+    let runtime = assembly()
+        .service("boot", resident)
+        .runtime()
+        .await
+        .unwrap();
+    let manager = runtime.operations.clone();
+    manager.shutdown_residents().await.unwrap();
+    assert!(matches!(
+        manager.submit_resident("late").await,
+        Err(Error::Closing { .. })
+    ));
+    runtime
+        .operations
+        .register_operation::<Ping>("service", Lanes::Open, Arc::new(()))
+        .unwrap();
+    assert_eq!(
+        *runtime
+            .operations
+            .call_as::<PingContract>(())
+            .await
+            .unwrap(),
+        42
+    );
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn admission_rejects_reserved() {
+    let runtime = assembly().runtime().await.unwrap();
+    for name in ["", "artifact"] {
+        assert!(matches!(
+            runtime.operations.register_service(
+                harmos::services::ServiceDefinition {
+                    id: name.into(),
+                    policy: harmos::services::POLICY
+                },
+                |_: Arc<()>| resident
+            ),
+            Err(Error::InvalidInput {
+                field: "service name",
+                ..
+            })
+        ));
     }
-    {
-        scenario_runtime::check("shutdown_preserves_work", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = assembly()
-                        .service("boot", resident)
-                        .runtime()
-                        .await
-                        .unwrap();
-                    let manager = runtime.operations.clone();
-                    manager.shutdown_residents().await.unwrap();
-                    assert!(matches!(
-                        manager.submit_resident("late").await,
-                        Err(Error::Closing { .. })
-                    ));
-                    runtime
-                        .operations
-                        .register_operation::<Ping>("service", Lanes::Open, Arc::new(()))
-                        .unwrap();
-                    assert_eq!(
-                        *runtime
-                            .operations
-                            .call_as::<PingContract>(())
-                            .await
-                            .unwrap(),
-                        42
-                    );
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("admission_rejects_reserved", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = assembly().runtime().await.unwrap();
-                    for name in ["", "artifact"] {
-                        assert!(matches!(
-                            runtime.operations.register_service(
-                                harmos::services::ServiceDefinition {
-                                    id: name.into(),
-                                    policy: harmos::services::POLICY
-                                },
-                                |_: Arc<()>| resident
-                            ),
-                            Err(Error::InvalidInput {
-                                field: "service name",
-                                ..
-                            })
-                        ));
-                    }
-                    assert!(runtime.operations.residents().is_empty());
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("shutdown_join_started", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_multi_thread();
-            scenario_executor.worker_threads(2);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = assembly().runtime().await.unwrap();
-                    let barrier = Arc::new(Barrier::new(9));
-                    let entered = Arc::new(AtomicUsize::new(0));
-                    let exited = Arc::new(AtomicUsize::new(0));
-                    let mut producers = Vec::new();
-                    for index in 0..8 {
-                        let manager = runtime.operations.clone();
-                        let barrier = barrier.clone();
+    assert!(runtime.operations.residents().is_empty());
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn shutdown_join_started() {
+    let runtime = assembly().runtime().await.unwrap();
+    let barrier = Arc::new(Barrier::new(9));
+    let entered = Arc::new(AtomicUsize::new(0));
+    let exited = Arc::new(AtomicUsize::new(0));
+    let mut producers = Vec::new();
+    for index in 0..8 {
+        let manager = runtime.operations.clone();
+        let barrier = barrier.clone();
+        let entered = entered.clone();
+        let exited = exited.clone();
+        producers.push(tokio::spawn(async move {
+            barrier.wait().await;
+            let id = format!("resident-{index}");
+            manager.register_service(
+                harmos::services::ServiceDefinition {
+                    id: id.clone(),
+                    policy: harmos::services::POLICY,
+                },
+                move |_: Arc<()>| {
+                    let entered = entered.clone();
+                    let exited = exited.clone();
+                    move |mut context: Service<Bank>| {
                         let entered = entered.clone();
                         let exited = exited.clone();
-                        producers.push(tokio::spawn(async move {
-                            barrier.wait().await;
-                            let id = format!("resident-{index}");
-                            manager.register_service(
-                                harmos::services::ServiceDefinition {
-                                    id: id.clone(),
-                                    policy: harmos::services::POLICY,
-                                },
-                                move |_: Arc<()>| {
-                                    let entered = entered.clone();
-                                    let exited = exited.clone();
-                                    move |mut context: Service<Bank>| {
-                                        let entered = entered.clone();
-                                        let exited = exited.clone();
-                                        async move {
-                                            entered.fetch_add(1, Ordering::SeqCst);
-                                            context.stopping().await;
-                                            exited.fetch_add(1, Ordering::SeqCst);
-                                            Ok::<(), Fault<&str>>(())
-                                        }
-                                    }
-                                },
-                            )?;
-                            manager.submit_resident(&id).await
-                        }));
-                    }
-                    barrier.wait().await;
-                    runtime.operations.shutdown_residents().await.unwrap();
-                    for producer in producers {
-                        match producer.await.unwrap() {
-                            Ok(_lease) => {}
-                            Err(Error::Closing { .. }) => {}
-                            Err(error) => panic!("unexpected admission: {error:?}"),
+                        async move {
+                            entered.fetch_add(1, Ordering::SeqCst);
+                            context.stopping().await;
+                            exited.fetch_add(1, Ordering::SeqCst);
+                            Ok::<(), Fault<&str>>(())
                         }
                     }
-                    assert_eq!(
-                        entered.load(Ordering::SeqCst),
-                        exited.load(Ordering::SeqCst)
-                    );
-                    assert!(
-                        runtime
-                            .operations
-                            .residents()
-                            .values()
-                            .all(|instance| instance.health == Some(ServiceStatus::Stopped))
-                    );
-                    runtime.stop().await.unwrap();
-                });
-        });
+                },
+            )?;
+            manager.submit_resident(&id).await
+        }));
     }
-    {
-        scenario_runtime::check("shutdowns_wait_boot", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let entered = Arc::new(Notify::new());
-                    let stopping = Arc::new(Notify::new());
-                    let release = Arc::new(Notify::new());
-                    let runtime = assembly()
-                        .service("boot", {
-                            let entered = entered.clone();
-                            let stopping = stopping.clone();
-                            let release = release.clone();
-                            move |mut context: Service<Bank>| {
-                                let entered = entered.clone();
-                                let stopping = stopping.clone();
-                                let release = release.clone();
-                                async move {
-                                    entered.notify_one();
-                                    context.stopping().await;
-                                    stopping.notify_one();
-                                    release.notified().await;
-                                    Ok::<(), Fault<&str>>(())
-                                }
-                            }
-                        })
-                        .runtime()
-                        .await
-                        .unwrap();
-                    entered.notified().await;
-                    let first = tokio::spawn({
-                        let manager = runtime.operations.clone();
-                        async move { manager.shutdown_residents().await }
-                    });
-                    stopping.notified().await;
-                    let second = tokio::spawn({
-                        let manager = runtime.operations.clone();
-                        async move { manager.shutdown_residents().await }
-                    });
-                    tokio::task::yield_now().await;
-                    assert!(!first.is_finished());
-                    assert!(!second.is_finished());
-                    release.notify_one();
-                    first.await.unwrap().unwrap();
-                    second.await.unwrap().unwrap();
-                    assert_eq!(
-                        runtime
-                            .operations
-                            .resident(&harmos::operations::resident::Key::root("boot"))
-                            .and_then(|item| item.health),
-                        Some(ServiceStatus::Stopped)
-                    );
-                    runtime.stop().await.unwrap();
-                });
-        });
+    barrier.wait().await;
+    runtime.operations.shutdown_residents().await.unwrap();
+    for producer in producers {
+        match producer.await.unwrap() {
+            Ok(_lease) => {}
+            Err(Error::Closing { .. }) => {}
+            Err(error) => panic!("unexpected admission: {error:?}"),
+        }
     }
+    assert_eq!(
+        entered.load(Ordering::SeqCst),
+        exited.load(Ordering::SeqCst)
+    );
+    assert!(
+        runtime
+            .operations
+            .residents()
+            .values()
+            .all(|instance| instance.health == Some(ServiceStatus::Stopped))
+    );
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn shutdowns_wait_boot() {
+    let entered = Arc::new(Notify::new());
+    let stopping = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let runtime = assembly()
+        .service("boot", {
+            let entered = entered.clone();
+            let stopping = stopping.clone();
+            let release = release.clone();
+            move |mut context: Service<Bank>| {
+                let entered = entered.clone();
+                let stopping = stopping.clone();
+                let release = release.clone();
+                async move {
+                    entered.notify_one();
+                    context.stopping().await;
+                    stopping.notify_one();
+                    release.notified().await;
+                    Ok::<(), Fault<&str>>(())
+                }
+            }
+        })
+        .runtime()
+        .await
+        .unwrap();
+    entered.notified().await;
+    let first = tokio::spawn({
+        let manager = runtime.operations.clone();
+        async move { manager.shutdown_residents().await }
+    });
+    stopping.notified().await;
+    let second = tokio::spawn({
+        let manager = runtime.operations.clone();
+        async move { manager.shutdown_residents().await }
+    });
+    tokio::task::yield_now().await;
+    assert!(!first.is_finished());
+    assert!(!second.is_finished());
+    release.notify_one();
+    first.await.unwrap().unwrap();
+    second.await.unwrap().unwrap();
+    assert_eq!(
+        runtime
+            .operations
+            .resident(&harmos::operations::resident::Key::root("boot"))
+            .and_then(|item| item.health),
+        Some(ServiceStatus::Stopped)
+    );
+    runtime.stop().await.unwrap();
 }
 
 /* === Tests === */
-
-#[test]
-fn service_readiness() {
-    own_contract();
-    lifecycle::contract_scenario();
-    readiness::contract_scenario();
-    recovery::contract_scenario();
-}
-
-#[test]
-fn service_shutdown() {
-    scopes::contract_scenario();
-    shutdown::contract_scenario();
-}

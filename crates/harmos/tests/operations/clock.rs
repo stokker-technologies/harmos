@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -120,69 +119,58 @@ fn bypasses(directory: &Path, found: &mut Vec<String>) {
 
 /* === Tests === */
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("timers_use_runtime", || {
-            let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-            assert!(
-                !source.join("work").exists(),
-                "operations own their execution support"
-            );
-            let mut found = Vec::new();
-            for domain in ["operations", "services", "supervision"] {
-                bypasses(&source.join(domain), &mut found);
-            }
-            found.sort();
-            assert!(
-                found.is_empty(),
-                "lifecycle bypassed its simulation executor: {found:?}"
-            );
-        });
+#[test]
+fn timers_use_runtime() {
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    assert!(
+        !source.join("work").exists(),
+        "operations own their execution support"
+    );
+    let mut found = Vec::new();
+    for domain in ["operations", "services", "supervision"] {
+        bypasses(&source.join(domain), &mut found);
     }
-    {
-        scenario_runtime::check("clock_measures_script", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = Runtime::<App>::builder((), ())
-                        .register(Lanes::catalog())
-                        .runtime()
-                        .await
-                        .unwrap();
-                    runtime
-                        .operations
-                        .register_operation::<Measure>("app", Lanes::Open, Arc::new(()))
-                        .unwrap();
-                    let scripted = Duration::from_secs(300);
+    found.sort();
+    assert!(
+        found.is_empty(),
+        "lifecycle bypassed its simulation executor: {found:?}"
+    );
+}
 
-                    let answer = runtime
-                        .operations
-                        .submit_as::<MeasureContract>(scripted)
-                        .unwrap()
-                        .await
-                        .expect("the attempt measures its own wait");
+#[tokio::test(start_paused = true)]
+async fn clock_measures_script() {
+    let runtime = Runtime::<App>::builder((), ())
+        .register(Lanes::catalog())
+        .runtime()
+        .await
+        .unwrap();
+    runtime
+        .operations
+        .register_operation::<Measure>("app", Lanes::Open, Arc::new(()))
+        .unwrap();
+    let scripted = Duration::from_secs(300);
 
-                    let (scoped, _) = *answer;
-                    assert_eq!(
-                        scoped, scripted,
-                        "the scope's clock is the one the attempt's wait was taken on"
-                    );
+    let answer = runtime
+        .operations
+        .submit_as::<MeasureContract>(scripted)
+        .unwrap()
+        .await
+        .expect("the attempt measures its own wait");
 
-                    // Deterministic, not merely virtual: the same script measures the same
-                    // duration every time it is run.
-                    let again = runtime
-                        .operations
-                        .submit_as::<MeasureContract>(scripted)
-                        .unwrap()
-                        .await
-                        .expect("the second attempt measures its own wait");
-                    assert_eq!(again.0, scoped);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
+    let (scoped, _) = *answer;
+    assert_eq!(
+        scoped, scripted,
+        "the scope's clock is the one the attempt's wait was taken on"
+    );
+
+    // Deterministic, not merely virtual: the same script measures the same
+    // duration every time it is run.
+    let again = runtime
+        .operations
+        .submit_as::<MeasureContract>(scripted)
+        .unwrap()
+        .await
+        .expect("the second attempt measures its own wait");
+    assert_eq!(again.0, scoped);
+    runtime.stop().await.unwrap();
 }

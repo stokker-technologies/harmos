@@ -1,3 +1,0 @@
-{"schema":2,"generation":0,"origin":0}
-{"position":1,"kind":"Record","id":"harmos:work/autoroute/finding","version":3,"metadata":{"principal":null,"correlation":1,"causation":null,"request":null,"link":null,"at_us":0},"payload":[1,2,3]}
-{"position":2,"kind":"Record","id":"harmos:work/exporter/deactivated","version":1,"metadata":{"principal":null,"correlation":2,"causation":null,"request":null,"link":null,"at_us":1},"payload":[9,8]}

@@ -8,10 +8,8 @@
  */
 
 /* === Modules === */
-#[path = "../../../../tests/support/scenarios.rs"]
-mod scenario_runtime;
 
-#[path = "../../../../tests/support/fixtures.rs"]
+#[path = "../../../harmos/tests/support/fixtures.rs"]
 mod prepared_fixtures;
 mod source_scenarios;
 
@@ -46,114 +44,73 @@ use harmos_sidecar::{Attach, Executable};
 
 /* === Private Functions === */
 
-#[test]
-fn contract_scenario() {
-    {
-        scenario_runtime::check("isolated_networking", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    check(None).await;
-                });
-        });
+#[tokio::test]
+async fn isolated_networking() {
+    check(None).await;
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn missing_system_root() {
+    check(Some(None)).await;
+    check(Some(Some(""))).await;
+}
+
+#[tokio::test]
+async fn ambient_temporary_directory() {
+    let ambient = fresh_directory("ambient-host");
+    std::fs::create_dir_all(&ambient).unwrap();
+    check_temp_directory(&ambient, None).await;
+    std::fs::remove_dir_all(&ambient).unwrap();
+}
+
+#[tokio::test]
+async fn explicit_temporary_directory() {
+    let ambient = fresh_directory("explicit-host");
+    let overridden = fresh_directory("explicit-override");
+    std::fs::create_dir_all(&ambient).unwrap();
+    std::fs::create_dir_all(&overridden).unwrap();
+    check_temp_directory(&ambient, Some(&overridden)).await;
+    std::fs::remove_dir_all(&ambient).unwrap();
+    std::fs::remove_dir_all(&overridden).unwrap();
+}
+
+#[tokio::test]
+async fn attach_controller() {
+    if std::env::var_os("HARMOS_ATTACH_CONTROLLER").is_none() {
+        return;
     }
-    #[cfg(windows)]
-    {
-        scenario_runtime::check("missing_system_root", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    check(Some(None)).await;
-                    check(Some(Some(""))).await;
-                });
-        });
+    assert!(std::env::var_os("HARMOS_ATTACH_HOST_ONLY").is_some());
+    let mut executable = Executable::at(prepared_fixtures::binary("harmos-sidecar-attach-fixture"))
+        .unwrap()
+        .variable("HARMOS_ATTACH_EXPLICIT", "configured");
+    if let Some(expected) = std::env::var_os("HARMOS_ATTACH_EXPECT_TEMP_DIR") {
+        executable = executable.variable("HARMOS_ATTACH_EXPECT_TEMP_DIR", expected);
     }
-    {
-        scenario_runtime::check("ambient_temporary_directory", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let ambient = fresh_directory("ambient-host");
-                    std::fs::create_dir_all(&ambient).unwrap();
-                    check_temp_directory(&ambient, None).await;
-                    std::fs::remove_dir_all(&ambient).unwrap();
-                });
-        });
+    if let Some(overridden) = std::env::var_os("HARMOS_ATTACH_EXPLICIT_TEMP_DIR") {
+        executable = executable.variable(host_temp_variable(), overridden);
     }
-    {
-        scenario_runtime::check("explicit_temporary_directory", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let ambient = fresh_directory("explicit-host");
-                    let overridden = fresh_directory("explicit-override");
-                    std::fs::create_dir_all(&ambient).unwrap();
-                    std::fs::create_dir_all(&overridden).unwrap();
-                    check_temp_directory(&ambient, Some(&overridden)).await;
-                    std::fs::remove_dir_all(&ambient).unwrap();
-                    std::fs::remove_dir_all(&overridden).unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("attach_controller", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    if std::env::var_os("HARMOS_ATTACH_CONTROLLER").is_none() {
-                        return;
-                    }
-                    assert!(std::env::var_os("HARMOS_ATTACH_HOST_ONLY").is_some());
-                    let mut executable = Executable::at(prepared_fixtures::artifact(
-                        "harmos-sidecar-attach-fixture",
-                    ))
-                    .unwrap()
-                    .variable("HARMOS_ATTACH_EXPLICIT", "configured");
-                    if let Some(expected) = std::env::var_os("HARMOS_ATTACH_EXPECT_TEMP_DIR") {
-                        executable = executable.variable("HARMOS_ATTACH_EXPECT_TEMP_DIR", expected);
-                    }
-                    if let Some(overridden) = std::env::var_os("HARMOS_ATTACH_EXPLICIT_TEMP_DIR") {
-                        executable = executable.variable(host_temp_variable(), overridden);
-                    }
-                    assert_eq!(executable.operation_contracts().unwrap(), Some(Vec::new()));
-                    let attached = executable.attach().await.unwrap();
-                    let (write, mut read, _control, diagnostics, end) = attached.into_parts();
-                    drop(write);
-                    let mut diagnostics = diagnostics.unwrap();
-                    let mut stdout = String::new();
-                    let mut stderr = String::new();
-                    let result = tokio::time::timeout(Duration::from_secs(10), async {
-                        tokio::try_join!(
-                            read.read_to_string(&mut stdout),
-                            diagnostics.read_to_string(&mut stderr),
-                        )
-                    })
-                    .await;
-                    // Reap the attached child even if its networking check hangs or fails.
-                    let mut ending = end.unwrap();
-                    ending.settle().await.unwrap();
-                    result
-                        .expect("attached child must finish within 10 seconds")
-                        .unwrap();
-                    assert_eq!(stdout, "networking-ok\n", "child diagnostics: {stderr}");
-                });
-        });
-    }
+    assert_eq!(executable.operation_contracts().unwrap(), Some(Vec::new()));
+    let attached = executable.attach().await.unwrap();
+    let (write, mut read, _control, diagnostics, end) = attached.into_parts();
+    drop(write);
+    let mut diagnostics = diagnostics.unwrap();
+    let mut stdout = String::new();
+    let mut stderr = String::new();
+    let result = tokio::time::timeout(Duration::from_secs(10), async {
+        tokio::try_join!(
+            read.read_to_string(&mut stdout),
+            diagnostics.read_to_string(&mut stderr),
+        )
+    })
+    .await;
+    // Reap the attached child even if its networking check hangs or fails.
+    let mut ending = end.unwrap();
+    ending.settle().await.unwrap();
+    result
+        .expect("attached child must finish within 10 seconds")
+        .unwrap();
+    assert_eq!(stdout, "networking-ok\n", "child diagnostics: {stderr}");
 }
 
 fn host_temp_variable() -> &'static str {

@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 #[cfg(feature = "plugin-guest")]
 mod facade {
@@ -186,71 +185,68 @@ impl harmos::operations::WireOperation for Selected {
 
 /* === Tests === */
 
-pub(super) fn contract_scenario() {
-    #[cfg(feature = "plugin-sidecar")]
-    {
-        scenario_runtime::check("native_inventory_contains", || {
-            use harmos_contract::inventory::{Declaration, Facility};
-            use harmos_contract::plugin::Declared;
+#[cfg(feature = "plugin-sidecar")]
+#[test]
+fn native_inventory_contains() {
+    use harmos_contract::inventory::{Declaration, Facility};
+    use harmos_contract::plugin::Declared;
 
-            let bytes = <Native as Declared>::markers().unwrap().concat();
-            let inspected = Declaration::inspect(&bytes, Facility::Sidecar).unwrap();
-            let expected = Declarations::of::<Operations>().unwrap();
-            assert_eq!(inspected.operations, expected.clone());
-            assert_eq!(
-                harmos::operations::Contracts::from_tree(Native::PROVIDES).unwrap()[0]
-                    .operation()
-                    .clone(),
-                expected[0]
-            );
-            assert_ne!(expected[0].id.as_str(), Unselected::ID);
+    let bytes = <Native as Declared>::markers().unwrap().concat();
+    let inspected = Declaration::inspect(&bytes, Facility::Sidecar).unwrap();
+    let expected = Declarations::of::<Operations>().unwrap();
+    assert_eq!(inspected.operations, expected.clone());
+    assert_eq!(
+        harmos::operations::Contracts::from_tree(Native::PROVIDES).unwrap()[0]
+            .operation()
+            .clone(),
+        expected[0]
+    );
+    assert_ne!(expected[0].id.as_str(), Unselected::ID);
 
-            for bytes in [
-                <EmptyNative as Declared>::markers().unwrap().concat(),
-                <ExplicitEmptyNative as Declared>::markers()
-                    .unwrap()
-                    .concat(),
-            ] {
-                assert_eq!(
-                    Declaration::inspect(&bytes, Facility::Sidecar)
-                        .unwrap()
-                        .operations,
-                    vec![]
-                );
-            }
-        });
+    for bytes in [
+        <EmptyNative as Declared>::markers().unwrap().concat(),
+        <ExplicitEmptyNative as Declared>::markers()
+            .unwrap()
+            .concat(),
+    ] {
+        assert_eq!(
+            Declaration::inspect(&bytes, Facility::Sidecar)
+                .unwrap()
+                .operations,
+            vec![]
+        );
     }
-    #[cfg(feature = "plugin-guest")]
-    {
-        scenario_runtime::check("guest_inventory_contains", || {
-            use harmos_contract::inventory::{Declaration, Facility};
-            use harmos_contract::plugin::Declared;
+}
 
-            let bytes = <Guest as Declared>::markers().unwrap().concat();
-            let inspected = Declaration::inspect(&bytes, Facility::Guest).unwrap();
-            let expected = Declarations::of::<Operations>().unwrap();
-            assert_eq!(inspected.operations, expected.clone());
-            assert_eq!(
-                harmos::operations::Contracts::from_tree(Guest::PROVIDES).unwrap()[0]
-                    .operation()
-                    .clone(),
-                expected[0]
-            );
-            assert_ne!(expected[0].id.as_str(), Unselected::ID);
+#[cfg(feature = "plugin-guest")]
+#[test]
+fn guest_inventory_contains() {
+    use harmos_contract::inventory::{Declaration, Facility};
+    use harmos_contract::plugin::Declared;
 
-            for bytes in [
-                <EmptyGuest as Declared>::markers().unwrap().concat(),
-                <ExplicitEmptyGuest as Declared>::markers()
-                    .unwrap()
-                    .concat(),
-            ] {
-                assert_eq!(
-                    Declaration::inspect(&bytes, Facility::Guest)
-                        .unwrap()
-                        .operations,
-                    vec![]
-                );
-            }
-        });
+    let bytes = <Guest as Declared>::markers().unwrap().concat();
+    let inspected = Declaration::inspect(&bytes, Facility::Guest).unwrap();
+    let expected = Declarations::of::<Operations>().unwrap();
+    assert_eq!(inspected.operations, expected.clone());
+    assert_eq!(
+        harmos::operations::Contracts::from_tree(Guest::PROVIDES).unwrap()[0]
+            .operation()
+            .clone(),
+        expected[0]
+    );
+    assert_ne!(expected[0].id.as_str(), Unselected::ID);
+
+    for bytes in [
+        <EmptyGuest as Declared>::markers().unwrap().concat(),
+        <ExplicitEmptyGuest as Declared>::markers()
+            .unwrap()
+            .concat(),
+    ] {
+        assert_eq!(
+            Declaration::inspect(&bytes, Facility::Guest)
+                .unwrap()
+                .operations,
+            vec![]
+        );
     }
 }

@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -39,140 +38,116 @@ use harmos::{Error, state::Focus, state::Position};
 
 /* === Private Functions === */
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("seals_lacks_entry", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (mirror, checkpoint) = Mirror::new();
-                    let runtime = booted(Ledger::default(), |builder| builder.attach(mirror)).await;
-                    let kept = runtime
-                        .state
-                        .commit(deposit(40))
-                        .await
-                        .expect("the change before the panic is ordinary");
+#[tokio::test]
+async fn seals_lacks_entry() {
+    let (mirror, checkpoint) = Mirror::new();
+    let runtime = booted(Ledger::default(), |builder| builder.attach(mirror)).await;
+    let kept = runtime
+        .state
+        .commit(deposit(40))
+        .await
+        .expect("the change before the panic is ordinary");
 
-                    let poisoned = quietly(runtime.state.commit(Change::Explode)).await;
+    let poisoned = quietly(runtime.state.commit(Change::Explode)).await;
 
-                    assert!(matches!(poisoned, Err(Error::Unavailable)));
-                    assert_eq!(
-                        runtime.state.applied(),
-                        kept.position,
-                        "no entry was sealed for the change that panicked"
-                    );
+    assert!(matches!(poisoned, Err(Error::Unavailable)));
+    assert_eq!(
+        runtime.state.applied(),
+        kept.position,
+        "no entry was sealed for the change that panicked"
+    );
 
-                    // Evacuation happens without being asked: the writer is gone, so the
-                    // supervisor folds the intact tail out and stops rather than restarting.
-                    let settled = runtime.stop().await.unwrap();
+    // Evacuation happens without being asked: the writer is gone, so the
+    // supervisor folds the intact tail out and stops rather than restarting.
+    let settled = runtime.stop().await.unwrap();
 
-                    assert_eq!(settled, kept.position);
-                    assert_eq!(
-                        checkpoint.load(Ordering::Acquire),
-                        kept.position.0,
-                        "consumers drained until durability caught up with what was applied"
-                    );
-                });
-        });
-    }
-    {
-        scenario_runtime::check("verb_refuses_once", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = booted(Ledger::default(), |builder| builder).await;
-                    runtime.state.commit(deposit(40)).await.expect("accepted");
-                    quietly(runtime.state.commit(Change::Explode))
-                        .await
-                        .expect_err("the change panicked");
+    assert_eq!(settled, kept.position);
+    assert_eq!(
+        checkpoint.load(Ordering::Acquire),
+        kept.position.0,
+        "consumers drained until durability caught up with what was applied"
+    );
+}
 
-                    let read = runtime.state.state().read(|ledger| ledger.clone()).await;
-                    let commit = runtime.state.commit(deposit(1)).await;
-                    let record = runtime.records.publish(Noted("after".to_owned())).await;
-                    let undo = runtime.state.undo(alice(), Focus::all()).await;
-                    let query: Vec<_> = runtime
-                        .state
-                        .query::<Change>(Position::ORIGIN)
-                        .await
-                        .collect();
+#[tokio::test]
+async fn verb_refuses_once() {
+    let runtime = booted(Ledger::default(), |builder| builder).await;
+    runtime.state.commit(deposit(40)).await.expect("accepted");
+    quietly(runtime.state.commit(Change::Explode))
+        .await
+        .expect_err("the change panicked");
 
-                    assert!(matches!(read, Err(Error::Unavailable)));
-                    assert!(matches!(commit, Err(Error::Unavailable)));
-                    assert!(matches!(record, Err(Error::Unavailable)));
-                    assert!(matches!(undo, Err(Error::Unavailable)));
-                    assert!(
-                        matches!(query.as_slice(), [Err(Error::Unavailable)]),
-                        "no reader observes half-mutated state, not even a historical one"
-                    );
+    let read = runtime.state.state().read(|ledger| ledger.clone()).await;
+    let commit = runtime.state.commit(deposit(1)).await;
+    let record = runtime.records.publish(Noted("after".to_owned())).await;
+    let undo = runtime.state.undo(alice(), Focus::all()).await;
+    let query: Vec<_> = runtime
+        .state
+        .query::<Change>(Position::ORIGIN)
+        .await
+        .collect();
 
-                    // The writer is never restarted in place: a second attempt is refused too,
-                    // and the runtime stops at the frontier it reached.
-                    assert!(matches!(
-                        runtime.state.commit(deposit(2)).await,
-                        Err(Error::Unavailable)
-                    ));
-                    assert_eq!(runtime.stop().await.unwrap(), Position(1));
-                });
-        });
-    }
-    {
-        scenario_runtime::check("next_boot_recovers", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (copy, stored) = Copied::new();
-                    let live = booted(Ledger::default(), |builder| builder.recover(copy)).await;
+    assert!(matches!(read, Err(Error::Unavailable)));
+    assert!(matches!(commit, Err(Error::Unavailable)));
+    assert!(matches!(record, Err(Error::Unavailable)));
+    assert!(matches!(undo, Err(Error::Unavailable)));
+    assert!(
+        matches!(query.as_slice(), [Err(Error::Unavailable)]),
+        "no reader observes half-mutated state, not even a historical one"
+    );
 
-                    live.state.commit(deposit(40)).await.expect("accepted");
-                    live.records
-                        .publish(Noted("audited".to_owned()))
-                        .await
-                        .expect("facts cannot be refused");
-                    let kept = ledger(&live).await;
+    // The writer is never restarted in place: a second attempt is refused too,
+    // and the runtime stops at the frontier it reached.
+    assert!(matches!(
+        runtime.state.commit(deposit(2)).await,
+        Err(Error::Unavailable)
+    ));
+    assert_eq!(runtime.stop().await.unwrap(), Position(1));
+}
 
-                    let poisoned = quietly(live.state.commit(Change::Explode)).await;
-                    let observer = live.state.clone();
-                    let settled = live.stop().await.unwrap();
+#[tokio::test]
+async fn next_boot_recovers() {
+    let (copy, stored) = Copied::new();
+    let live = booted(Ledger::default(), |builder| builder.recover(copy)).await;
 
-                    assert!(matches!(poisoned, Err(Error::Unavailable)));
-                    assert_eq!(
-                        settled,
-                        Position(2),
-                        "the intact tail drained on the way out"
-                    );
-                    assert_eq!(
-                        observer.stored(),
-                        observer.applied(),
-                        "evacuation drained until durability caught up with what was applied"
-                    );
+    live.state.commit(deposit(40)).await.expect("accepted");
+    live.records
+        .publish(Noted("audited".to_owned()))
+        .await
+        .expect("facts cannot be refused");
+    let kept = ledger(&live).await;
 
-                    let recovered = booted(Ledger::default(), |builder| {
-                        builder.recover(Copied::resuming(&stored))
-                    })
-                    .await;
+    let poisoned = quietly(live.state.commit(Change::Explode)).await;
+    let observer = live.state.clone();
+    let settled = live.stop().await.unwrap();
 
-                    assert_eq!(
-                        ledger(&recovered).await,
-                        kept,
-                        "the next boot recovered every committed transition that preceded the panic"
-                    );
-                    assert_eq!(
-                        recovered.state.applied(),
-                        Position(2),
-                        "and nothing was replayed for the change that panicked"
-                    );
-                });
-        });
-    }
+    assert!(matches!(poisoned, Err(Error::Unavailable)));
+    assert_eq!(
+        settled,
+        Position(2),
+        "the intact tail drained on the way out"
+    );
+    assert_eq!(
+        observer.stored(),
+        observer.applied(),
+        "evacuation drained until durability caught up with what was applied"
+    );
+
+    let recovered = booted(Ledger::default(), |builder| {
+        builder.recover(Copied::resuming(&stored))
+    })
+    .await;
+
+    assert_eq!(
+        ledger(&recovered).await,
+        kept,
+        "the next boot recovered every committed transition that preceded the panic"
+    );
+    assert_eq!(
+        recovered.state.applied(),
+        Position(2),
+        "and nothing was replayed for the change that panicked"
+    );
 }
 
 /* === Tests === */

@@ -30,7 +30,6 @@ github_attestations = false
 UV_PROJECT_ENVIRONMENT = "{{config_root}}/.venv"
 RUSTC_WRAPPER = "{% if os() == 'windows' %}{% else %}sccache{% endif %}"
 CARGO_INCREMENTAL = "0"
-HARMOS_FIXTURES_MANIFEST = "{{config_root}}/target/fixtures/harmos/consumer.json"
 TMPDIR = "/var/tmp"
 
 # === Tasks | Setup === #
@@ -80,27 +79,13 @@ description = "Check / Wasm"
 run = [
   "{{vars.cargo_guard}}cargo check --locked -p harmos-contract --target wasm32-unknown-unknown",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-contract --target wasm32-wasip2",
-  "{{vars.cargo_guard}}cargo check --locked -p schematic-contract --target wasm32-unknown-unknown",
-  "{{vars.cargo_guard}}cargo check --locked -p schematic-guest --target wasm32-unknown-unknown",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos-guest --example operation-component --features componentize,kit,streaming --target wasm32-unknown-unknown",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos-guest --example plugin-component --features componentize,kit --target wasm32-unknown-unknown",
+  "{{vars.cargo_guard}}cargo check --locked --manifest-path examples/schematic/Cargo.toml -p schematic-contract --target wasm32-unknown-unknown",
+  "{{vars.cargo_guard}}cargo check --locked --manifest-path examples/schematic/Cargo.toml -p schematic-guest --target wasm32-unknown-unknown",
 ]
 
 [tasks."check:sidecar:bench"]
 description = "Check / Sidecar / Bench"
 run = "{{vars.cargo_guard}}cargo clippy --locked -p harmos-sidecar --features kit --bench transport --test transport --bin harmos-sidecar-throughput-fixture -- -D warnings"
-
-[tasks."run:schematic"]
-description = "Run / Schematic"
-run = "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harmos_tools.examples sidecar"
-
-[tasks."run:schematic:guest"]
-description = "Run / Schematic / Guest"
-run = "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harmos_tools.examples guest"
-
-[tasks."run:schematic:sidecar"]
-description = "Run / Schematic / Sidecar"
-run = "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harmos_tools.examples sidecar"
 
 # === Tasks | Build === #
 
@@ -112,11 +97,6 @@ run = "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harm
 # === Tasks | Docs === #
 
 # === Tasks | Tests === #
-
-[tasks."check:examples"]
-description = "Check / Example Crate Boundaries"
-run = "{{vars.cargo_guard}}cargo check --locked -p schematic-contract -p schematic-app -p schematic-cli -p schematic-guest -p schematic-sidecar -p jsonl-adapter -p harmos-observer-fixture -p harmos-lifecycle-fixture --all-targets"
-
 
 # === Tasks | Stats === #
 
@@ -271,11 +251,15 @@ description = "Check Feature Branch Source Without Compiling Product Targets"
 run = [{ task = "check:fast" }]
 
 
+[tasks.build]
+description = "Build The Workspace And The Schematic Fixture Once And Stamp Them"
+run = "uv run --locked --project tools/python python -m harmos_tools.build.fixtures"
+
 [tasks."test:integration:rust"]
-depends = ["fixtures:prepare"]
 # Bound Concurrent Guest Compilers To Avoid Oversubscribing The Host.
 env = { NEXTEST_TEST_THREADS = "4" }
 run = [
+  "uv run --locked --project tools/python python -m harmos_tools.test.preflight",
   "{{vars.cargo_guard}}uv run --locked --project tools/python --group test python -m harmos_tools.evidence run integration rust --all-features",
 ]
 
@@ -379,12 +363,6 @@ description = "Test Integration Python"
 wait_for = ["test:integration:rust"]
 run = "uv run --locked --project tools/python python -m harmos_tools.evidence run integration python"
 
-
-[tasks."fixtures:prepare"]
-# Fixtures Build Their Own Inputs; Exact Release Verification Remains On Acceptance.
-depends = ["sync:tools"]
-description = "Prepare And Validate Native Fixture Artifacts"
-run = "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harmos_tools.artifacts target/fixtures/harmos"
 
 [tasks."ci:mirror"]
 description = "Mirror Published GitHub Branch To GitLab"

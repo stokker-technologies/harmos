@@ -5,11 +5,11 @@ The algorithms are deliberately small so the Harmos workflow stays visible.
 
 ## Run It
 
-From the repository root, after `mise install --locked` and `mise run sync`:
+From the repository root, after `mise install --locked`, `mise run sync` and `mise run build`:
 
 ```sh
-mise run run:schematic:sidecar
-mise run run:schematic:guest
+target/debug/schematic-cli
+target/debug/schematic-cli --guest target/fixtures/schematic-guest/schematic_guest.component.wasm
 ```
 
 Read [walkthrough.rs](cli/src/walkthrough.rs) alongside the output. It creates a
@@ -79,12 +79,10 @@ Examples and test reports remain GitHub Actions artifacts.
 
 ## Tests And Persistence
 
-The [app tests](app/tests/app/) cover edits, recovery, streams, and deterministic
-simulation. Acceptance compares both backends and checks native directory access
-against a temporary directory. Detailed shutdown, backlog-flush, and process
-settlement stress belongs in the [lifecycle fixture](../../tests/fixtures/lifecycle/).
+This example is the system fixture of the Harmos test suite: the build stamps its
+CLI, sidecar and guest component under `target/fixtures/`, and the system stories
+in `crates/*/tests/system/` drive those artifacts.
 
-The [JSONL adapter](../../tests/support/jsonl-adapter/) is test infrastructure
-shared with this example. A document's recovery journal is distinct from a native
+The [JSONL adapter](storage/) is the example's persistence format. A document's recovery journal is distinct from a native
 plugin sidecar. Saving uses the adapter's checkpoint protocol after runtime
 settlement and publishes the document through an atomic file replacement.

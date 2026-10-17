@@ -11,8 +11,6 @@
 mod activation;
 mod reload;
 mod retirement;
-#[path = "../../../../tests/support/scenarios.rs"]
-mod scenario_runtime;
 
 /* === Re-Exports === */
 

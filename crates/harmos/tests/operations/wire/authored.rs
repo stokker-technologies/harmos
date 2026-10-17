@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -242,582 +241,447 @@ fn count(value: &AtomicUsize) -> usize {
 
 /* === Tests === */
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("construction_awaits_initialization", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, trace) = runtime().await;
-                    let mut instance = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::Complete)
-                        .unwrap();
-                    // Construction waits for the first attempt's initialization.
-                    assert_eq!(count(&trace.constructed), 0);
-                    assert_eq!(count(&trace.initialized), 0);
-                    assert_eq!((&mut instance).await.unwrap().0, 42);
-                    assert_eq!(count(&trace.initialized), 1);
-                    assert_eq!(count(&trace.stopped), 1);
-                    assert_eq!(count(&trace.finalized), 1);
-                    assert_eq!(count(&trace.dropped), 1);
-                    assert!(
-                        trace
-                            .ids
-                            .lock()
-                            .unwrap()
-                            .iter()
-                            .all(|id| *id == instance.id())
-                    );
-                    assert_eq!(instance.status().phase(), OperationPhase::Settled);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("initialization_never_retries", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, trace) = runtime().await;
-                    trace.fail_initialize.store(true, Ordering::SeqCst);
-                    let instance = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::Complete)
-                        .unwrap();
-                    assert!(matches!(
-                        instance.join().await,
-                        Err(Error::OperationFailed { .. })
-                    ));
-                    assert_eq!(count(&trace.initialized), 1);
-                    assert_eq!(count(&trace.ran), 0);
-                    // A failed initialization drops its partial owner without cleanup.
-                    assert_eq!(count(&trace.stopped), 0);
-                    assert_eq!(count(&trace.finalized), 0);
-                    assert_eq!(count(&trace.dropped), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("cancellation_interrupts_run", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, trace) = runtime().await;
-                    trace.wait_initialize.store(true, Ordering::SeqCst);
-                    let instance = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::Complete)
-                        .unwrap();
-                    trace.initializing.notified().await;
-                    assert_eq!(instance.status().phase(), OperationPhase::Initializing);
-                    assert!(instance.status().started_at().is_some());
-                    instance.cancel();
-                    assert!(matches!(
-                        instance.join().await,
-                        Err(Error::OperationRefused(Refusal::Cancelled))
-                    ));
-                    assert_eq!(count(&trace.ran), 0);
-                    // A failed initialization drops its partial owner without cleanup.
-                    assert_eq!(count(&trace.stopped), 0);
-                    assert_eq!(count(&trace.finalized), 0);
-                    assert_eq!(count(&trace.dropped), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("initialization_uses_total", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, trace) = runtime().await;
-                    trace.wait_initialize.store(true, Ordering::SeqCst);
-                    let instance = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::Complete)
-                        .unwrap();
-                    trace.initializing.notified().await;
-                    tokio::time::advance(Duration::from_secs(2)).await;
-                    assert!(matches!(
-                        instance.join().await,
-                        Err(Error::OperationRefused(Refusal::TimedOut))
-                    ));
-                    assert_eq!(count(&trace.initialized), 1);
-                    assert_eq!(count(&trace.ran), 0);
-                    assert_eq!(count(&trace.stopped), 0);
-                    assert_eq!(count(&trace.dropped), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("retries_preserve_instance", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, trace) = runtime().await;
-                    let instance = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::Retry)
-                        .unwrap();
-                    let id = instance.id();
-                    assert_eq!(instance.join().await.unwrap().0, 42);
-                    assert_eq!(count(&trace.constructed), 1);
-                    assert_eq!(count(&trace.initialized), 1);
-                    assert_eq!(count(&trace.ran), 2);
-                    assert_eq!(count(&trace.stopped), 1);
-                    assert!(
-                        trace
-                            .ids
-                            .lock()
-                            .unwrap()
-                            .iter()
-                            .all(|observed| *observed == id)
-                    );
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("finalize_retain_owner", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, trace) = runtime().await;
-                    trace.fail_stop.store(true, Ordering::SeqCst);
-                    let mut instance = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::Complete)
-                        .unwrap();
-                    assert!((&mut instance).await.is_err());
-                    assert_eq!(instance.status().phase(), OperationPhase::Stopping);
-                    assert!(instance.status().cleanup_pending());
-                    assert_eq!(count(&trace.finalized), 0);
-                    assert_eq!(count(&trace.dropped), 0);
-                    trace.fail_stop.store(false, Ordering::SeqCst);
-                    trace.block_finalize.store(true, Ordering::SeqCst);
-                    assert!(
-                        tokio::time::timeout(Duration::from_millis(1), instance.settle())
-                            .await
-                            .is_err()
-                    );
-                    assert_eq!(count(&trace.stopped), 2);
-                    assert_eq!(count(&trace.finalized), 1);
-                    assert_eq!(count(&trace.dropped), 0);
-                    trace.release.notify_one();
-                    instance.settle().await.unwrap();
-                    assert_eq!(count(&trace.constructed), 1);
-                    assert_eq!(count(&trace.stopped), 2);
-                    assert_eq!(count(&trace.finalized), 1);
-                    assert_eq!(count(&trace.dropped), 1);
-                    assert_eq!(instance.status().phase(), OperationPhase::Settled);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("failure_never_replay", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, trace) = runtime().await;
-                    trace.fail_finalize.store(true, Ordering::SeqCst);
-                    let mut instance = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::Complete)
-                        .unwrap();
-                    assert!((&mut instance).await.is_err());
-                    assert_eq!(instance.status().phase(), OperationPhase::Finalizing);
-                    assert_eq!(count(&trace.stopped), 1);
-                    assert_eq!(count(&trace.dropped), 0);
-                    trace.fail_finalize.store(false, Ordering::SeqCst);
-                    instance.settle().await.unwrap();
-                    assert_eq!(count(&trace.stopped), 1);
-                    assert_eq!(count(&trace.finalized), 2);
-                    assert_eq!(count(&trace.dropped), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("cancellation_never_initializes", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, trace) = runtime().await;
-                    let first = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::WaitRun)
-                        .unwrap();
-                    trace.running.notified().await;
-                    let queued = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::Complete)
-                        .unwrap();
-                    queued.cancel();
-                    assert!(matches!(
-                        queued.join().await,
-                        Err(Error::OperationRefused(Refusal::Cancelled))
-                    ));
-                    assert_eq!(count(&trace.constructed), 1);
-                    assert_eq!(count(&trace.initialized), 1);
-                    assert_eq!(count(&trace.ran), 1);
-                    assert_eq!(count(&trace.dropped), 0);
-                    first.cancel();
-                    assert!(first.join().await.is_err());
-                    assert_eq!(count(&trace.stopped), 1);
-                    assert_eq!(count(&trace.dropped), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("delivery_skips_acquisition", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, trace) = runtime().await;
-                    assert_eq!(
-                        runtime
-                            .operations
-                            .call_as::<ReadContract>(Mode::Cache)
-                            .await
-                            .unwrap()
-                            .0,
-                        42
-                    );
-                    assert_eq!(
-                        runtime
-                            .operations
-                            .call_as::<ReadContract>(Mode::Cache)
-                            .await
-                            .unwrap()
-                            .0,
-                        42
-                    );
-                    // The cache hit constructs nothing.
-                    assert_eq!(count(&trace.constructed), 1);
-                    assert_eq!(count(&trace.initialized), 1);
-                    assert_eq!(count(&trace.ran), 1);
-                    assert_eq!(count(&trace.stopped), 1);
-                    assert_eq!(count(&trace.finalized), 1);
-                    assert_eq!(count(&trace.dropped), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("refusal_never_start", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, trace) = runtime().await;
-                    trace.fail_new.store(true, Ordering::SeqCst);
-                    // A refused construction fails the instance before any work.
-                    let instance = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::Complete)
-                        .unwrap();
-                    assert!(matches!(
-                        instance.join().await,
-                        Err(Error::OperationFailed { .. })
-                    ));
-                    runtime.stop().await.unwrap();
-                    assert_eq!(count(&trace.initialized), 0);
-                    assert_eq!(count(&trace.stopped), 0);
-                    assert_eq!(count(&trace.dropped), 0);
-                });
-        });
-    }
-    {
-        scenario_runtime::check("panic_stops_finalizes", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, trace) = runtime().await;
-                    let instance = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::PanicRun)
-                        .unwrap();
-                    assert!(matches!(
-                        instance.join().await,
-                        Err(Error::OperationPanicked { .. })
-                    ));
-                    assert_eq!(count(&trace.initialized), 1);
-                    assert_eq!(count(&trace.ran), 1);
-                    assert_eq!(count(&trace.stopped), 1);
-                    assert_eq!(count(&trace.finalized), 1);
-                    assert_eq!(count(&trace.dropped), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("recovery_preserves_stop", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, trace) = runtime().await;
-                    trace.fail_stop.store(true, Ordering::SeqCst);
-                    let mut instance = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::Complete)
-                        .unwrap();
-                    assert!((&mut instance).await.is_err());
-                    trace.fail_stop.store(false, Ordering::SeqCst);
-                    trace.block_stop.store(true, Ordering::SeqCst);
-                    assert!(
-                        tokio::time::timeout(Duration::from_millis(1), instance.settle())
-                            .await
-                            .is_err()
-                    );
-                    assert_eq!(instance.status().phase(), OperationPhase::Stopping);
-                    assert_eq!(count(&trace.stopped), 2);
-                    assert_eq!(count(&trace.finalized), 0);
-                    assert_eq!(count(&trace.dropped), 0);
-                    trace.release_stop.notify_one();
-                    instance.settle().await.unwrap();
-                    assert_eq!(count(&trace.stopped), 2);
-                    assert_eq!(count(&trace.finalized), 1);
-                    assert_eq!(count(&trace.dropped), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("failed_initialization_skips_stop", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, trace) = runtime().await;
-                    trace.fail_initialize.store(true, Ordering::SeqCst);
-                    trace.fail_stop.store(true, Ordering::SeqCst);
-                    let mut instance = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::Complete)
-                        .unwrap();
-                    // A failed initialization owns no instance, so a failing
-                    // stop cannot retain one.
-                    let error = (&mut instance).await.err().unwrap();
-                    assert!(matches!(error, Error::OperationFailed { .. }));
-                    instance.settle().await.unwrap();
-                    assert_eq!(instance.status().phase(), OperationPhase::Settled);
-                    assert_eq!(
-                        instance.status().outcome(),
-                        Some(harmos::operations::OperationOutcome::Failed)
-                    );
-                    assert_eq!(count(&trace.initialized), 1);
-                    assert_eq!(count(&trace.ran), 0);
-                    assert_eq!(count(&trace.stopped), 0);
-                    assert_eq!(count(&trace.dropped), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    #[cfg(feature = "grpc")]
-    {
-        scenario_runtime::check("poll_retains_manager", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, trace) = runtime().await;
-                    trace.block_finalize.store(true, Ordering::SeqCst);
-                    let instance = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::WaitRun)
-                        .unwrap();
-                    let id = instance.id();
-                    // Only a constructed instance has cleanup to retain.
-                    trace.running.notified().await;
-                    let response = harmos::grpc::response(instance);
-                    drop(response);
-                    trace.finalizing.notified().await;
-                    let status = runtime
-                        .operations
-                        .status(id)
-                        .expect("original instance remains owned");
-                    assert!(status.cancellation_requested());
-                    assert_eq!(status.phase(), OperationPhase::Finalizing);
-                    assert_eq!(count(&trace.constructed), 1);
-                    assert_eq!(count(&trace.dropped), 0);
-                    trace.release.notify_one();
-                    runtime.stop().await.unwrap();
-                    assert_eq!(count(&trace.dropped), 1);
-                });
-        });
-    }
-    #[cfg(feature = "grpc")]
-    {
-        scenario_runtime::check("success_waits_physical", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    use std::future::Future;
-                    use std::task::{Context as TaskContext, Waker};
-                    let (runtime, trace) = runtime().await;
-                    trace.block_finalize.store(true, Ordering::SeqCst);
-                    let instance = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::Complete)
-                        .unwrap();
-                    let id = instance.id();
-                    let mut response = Box::pin(harmos::grpc::response(instance));
-                    trace.finalizing.notified().await;
-                    assert!(
-                        response
-                            .as_mut()
-                            .poll(&mut TaskContext::from_waker(Waker::noop()))
-                            .is_pending()
-                    );
-                    assert_eq!(count(&trace.dropped), 0);
-                    trace.release.notify_one();
-                    assert_eq!(response.await.unwrap().0, 42);
-                    assert!(runtime.operations.status(id).is_none());
-                    assert_eq!(count(&trace.dropped), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    #[cfg(feature = "grpc")]
-    {
-        scenario_runtime::check("failure_keeps_owner", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, trace) = runtime().await;
-                    trace.fail_finalize.store(true, Ordering::SeqCst);
-                    let instance = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::Complete)
-                        .unwrap();
-                    let id = instance.id();
-                    assert!(harmos::grpc::response(instance).await.is_err());
-                    let status = runtime
-                        .operations
-                        .status(id)
-                        .expect("failed cleanup retains its owner");
-                    assert!(status.cleanup_pending());
-                    assert_eq!(
-                        count(&trace.finalized),
-                        1,
-                        "RPC delivery does not retry cleanup"
-                    );
-                    assert_eq!(count(&trace.dropped), 0);
-                    trace.fail_finalize.store(false, Ordering::SeqCst);
-                    runtime.stop().await.unwrap();
-                    assert_eq!(count(&trace.constructed), 1);
-                    assert_eq!(count(&trace.finalized), 2);
-                    assert_eq!(count(&trace.dropped), 1);
-                });
-        });
-    }
-    #[cfg(feature = "grpc")]
-    {
-        scenario_runtime::check("run_retains_instance", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    use std::future::Future;
-                    use std::task::{Context as TaskContext, Waker};
-                    let (runtime, trace) = runtime().await;
-                    trace.block_finalize.store(true, Ordering::SeqCst);
-                    let instance = runtime
-                        .operations
-                        .submit_as::<ReadContract>(Mode::WaitRun)
-                        .unwrap();
-                    let id = instance.id();
-                    let mut response = Box::pin(harmos::grpc::response(instance));
-                    trace.running.notified().await;
-                    assert!(
-                        response
-                            .as_mut()
-                            .poll(&mut TaskContext::from_waker(Waker::noop()))
-                            .is_pending()
-                    );
-                    drop(response);
-                    trace.finalizing.notified().await;
-                    let status = runtime
-                        .operations
-                        .status(id)
-                        .expect("same running instance is retained");
-                    assert!(status.cancellation_requested());
-                    assert_eq!(status.phase(), OperationPhase::Finalizing);
-                    assert_eq!(count(&trace.ran), 1);
-                    assert_eq!(count(&trace.stopped), 1);
-                    assert_eq!(count(&trace.dropped), 0);
-                    trace.release.notify_one();
-                    runtime.stop().await.unwrap();
-                    assert_eq!(count(&trace.constructed), 1);
-                    assert_eq!(count(&trace.dropped), 1);
-                });
-        });
-    }
+#[tokio::test(start_paused = true)]
+async fn construction_awaits_initialization() {
+    let (runtime, trace) = runtime().await;
+    let mut instance = runtime
+        .operations
+        .submit_as::<ReadContract>(Mode::Complete)
+        .unwrap();
+    // Construction waits for the first attempt's initialization.
+    assert_eq!(count(&trace.constructed), 0);
+    assert_eq!(count(&trace.initialized), 0);
+    assert_eq!((&mut instance).await.unwrap().0, 42);
+    assert_eq!(count(&trace.initialized), 1);
+    assert_eq!(count(&trace.stopped), 1);
+    assert_eq!(count(&trace.finalized), 1);
+    assert_eq!(count(&trace.dropped), 1);
+    assert!(
+        trace
+            .ids
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|id| *id == instance.id())
+    );
+    assert_eq!(instance.status().phase(), OperationPhase::Settled);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn initialization_never_retries() {
+    let (runtime, trace) = runtime().await;
+    trace.fail_initialize.store(true, Ordering::SeqCst);
+    let instance = runtime
+        .operations
+        .submit_as::<ReadContract>(Mode::Complete)
+        .unwrap();
+    assert!(matches!(
+        instance.join().await,
+        Err(Error::OperationFailed { .. })
+    ));
+    assert_eq!(count(&trace.initialized), 1);
+    assert_eq!(count(&trace.ran), 0);
+    // A failed initialization drops its partial owner without cleanup.
+    assert_eq!(count(&trace.stopped), 0);
+    assert_eq!(count(&trace.finalized), 0);
+    assert_eq!(count(&trace.dropped), 1);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn cancellation_interrupts_run() {
+    let (runtime, trace) = runtime().await;
+    trace.wait_initialize.store(true, Ordering::SeqCst);
+    let instance = runtime
+        .operations
+        .submit_as::<ReadContract>(Mode::Complete)
+        .unwrap();
+    trace.initializing.notified().await;
+    assert_eq!(instance.status().phase(), OperationPhase::Initializing);
+    assert!(instance.status().started_at().is_some());
+    instance.cancel();
+    assert!(matches!(
+        instance.join().await,
+        Err(Error::OperationRefused(Refusal::Cancelled))
+    ));
+    assert_eq!(count(&trace.ran), 0);
+    // A failed initialization drops its partial owner without cleanup.
+    assert_eq!(count(&trace.stopped), 0);
+    assert_eq!(count(&trace.finalized), 0);
+    assert_eq!(count(&trace.dropped), 1);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn initialization_uses_total() {
+    let (runtime, trace) = runtime().await;
+    trace.wait_initialize.store(true, Ordering::SeqCst);
+    let instance = runtime
+        .operations
+        .submit_as::<ReadContract>(Mode::Complete)
+        .unwrap();
+    trace.initializing.notified().await;
+    tokio::time::advance(Duration::from_secs(2)).await;
+    assert!(matches!(
+        instance.join().await,
+        Err(Error::OperationRefused(Refusal::TimedOut))
+    ));
+    assert_eq!(count(&trace.initialized), 1);
+    assert_eq!(count(&trace.ran), 0);
+    assert_eq!(count(&trace.stopped), 0);
+    assert_eq!(count(&trace.dropped), 1);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn retries_preserve_instance() {
+    let (runtime, trace) = runtime().await;
+    let instance = runtime
+        .operations
+        .submit_as::<ReadContract>(Mode::Retry)
+        .unwrap();
+    let id = instance.id();
+    assert_eq!(instance.join().await.unwrap().0, 42);
+    assert_eq!(count(&trace.constructed), 1);
+    assert_eq!(count(&trace.initialized), 1);
+    assert_eq!(count(&trace.ran), 2);
+    assert_eq!(count(&trace.stopped), 1);
+    assert!(
+        trace
+            .ids
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|observed| *observed == id)
+    );
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn finalize_retain_owner() {
+    let (runtime, trace) = runtime().await;
+    trace.fail_stop.store(true, Ordering::SeqCst);
+    let mut instance = runtime
+        .operations
+        .submit_as::<ReadContract>(Mode::Complete)
+        .unwrap();
+    assert!((&mut instance).await.is_err());
+    assert_eq!(instance.status().phase(), OperationPhase::Stopping);
+    assert!(instance.status().cleanup_pending());
+    assert_eq!(count(&trace.finalized), 0);
+    assert_eq!(count(&trace.dropped), 0);
+    trace.fail_stop.store(false, Ordering::SeqCst);
+    trace.block_finalize.store(true, Ordering::SeqCst);
+    assert!(
+        tokio::time::timeout(Duration::from_millis(1), instance.settle())
+            .await
+            .is_err()
+    );
+    assert_eq!(count(&trace.stopped), 2);
+    assert_eq!(count(&trace.finalized), 1);
+    assert_eq!(count(&trace.dropped), 0);
+    trace.release.notify_one();
+    instance.settle().await.unwrap();
+    assert_eq!(count(&trace.constructed), 1);
+    assert_eq!(count(&trace.stopped), 2);
+    assert_eq!(count(&trace.finalized), 1);
+    assert_eq!(count(&trace.dropped), 1);
+    assert_eq!(instance.status().phase(), OperationPhase::Settled);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn failure_never_replay() {
+    let (runtime, trace) = runtime().await;
+    trace.fail_finalize.store(true, Ordering::SeqCst);
+    let mut instance = runtime
+        .operations
+        .submit_as::<ReadContract>(Mode::Complete)
+        .unwrap();
+    assert!((&mut instance).await.is_err());
+    assert_eq!(instance.status().phase(), OperationPhase::Finalizing);
+    assert_eq!(count(&trace.stopped), 1);
+    assert_eq!(count(&trace.dropped), 0);
+    trace.fail_finalize.store(false, Ordering::SeqCst);
+    instance.settle().await.unwrap();
+    assert_eq!(count(&trace.stopped), 1);
+    assert_eq!(count(&trace.finalized), 2);
+    assert_eq!(count(&trace.dropped), 1);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn cancellation_never_initializes() {
+    let (runtime, trace) = runtime().await;
+    let first = runtime
+        .operations
+        .submit_as::<ReadContract>(Mode::WaitRun)
+        .unwrap();
+    trace.running.notified().await;
+    let queued = runtime
+        .operations
+        .submit_as::<ReadContract>(Mode::Complete)
+        .unwrap();
+    queued.cancel();
+    assert!(matches!(
+        queued.join().await,
+        Err(Error::OperationRefused(Refusal::Cancelled))
+    ));
+    assert_eq!(count(&trace.constructed), 1);
+    assert_eq!(count(&trace.initialized), 1);
+    assert_eq!(count(&trace.ran), 1);
+    assert_eq!(count(&trace.dropped), 0);
+    first.cancel();
+    assert!(first.join().await.is_err());
+    assert_eq!(count(&trace.stopped), 1);
+    assert_eq!(count(&trace.dropped), 1);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn delivery_skips_acquisition() {
+    let (runtime, trace) = runtime().await;
+    assert_eq!(
+        runtime
+            .operations
+            .call_as::<ReadContract>(Mode::Cache)
+            .await
+            .unwrap()
+            .0,
+        42
+    );
+    assert_eq!(
+        runtime
+            .operations
+            .call_as::<ReadContract>(Mode::Cache)
+            .await
+            .unwrap()
+            .0,
+        42
+    );
+    // The cache hit constructs nothing.
+    assert_eq!(count(&trace.constructed), 1);
+    assert_eq!(count(&trace.initialized), 1);
+    assert_eq!(count(&trace.ran), 1);
+    assert_eq!(count(&trace.stopped), 1);
+    assert_eq!(count(&trace.finalized), 1);
+    assert_eq!(count(&trace.dropped), 1);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn refusal_never_start() {
+    let (runtime, trace) = runtime().await;
+    trace.fail_new.store(true, Ordering::SeqCst);
+    // A refused construction fails the instance before any work.
+    let instance = runtime
+        .operations
+        .submit_as::<ReadContract>(Mode::Complete)
+        .unwrap();
+    assert!(matches!(
+        instance.join().await,
+        Err(Error::OperationFailed { .. })
+    ));
+    runtime.stop().await.unwrap();
+    assert_eq!(count(&trace.initialized), 0);
+    assert_eq!(count(&trace.stopped), 0);
+    assert_eq!(count(&trace.dropped), 0);
+}
+
+#[tokio::test(start_paused = true)]
+async fn panic_stops_finalizes() {
+    let (runtime, trace) = runtime().await;
+    let instance = runtime
+        .operations
+        .submit_as::<ReadContract>(Mode::PanicRun)
+        .unwrap();
+    assert!(matches!(
+        instance.join().await,
+        Err(Error::OperationPanicked { .. })
+    ));
+    assert_eq!(count(&trace.initialized), 1);
+    assert_eq!(count(&trace.ran), 1);
+    assert_eq!(count(&trace.stopped), 1);
+    assert_eq!(count(&trace.finalized), 1);
+    assert_eq!(count(&trace.dropped), 1);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn recovery_preserves_stop() {
+    let (runtime, trace) = runtime().await;
+    trace.fail_stop.store(true, Ordering::SeqCst);
+    let mut instance = runtime
+        .operations
+        .submit_as::<ReadContract>(Mode::Complete)
+        .unwrap();
+    assert!((&mut instance).await.is_err());
+    trace.fail_stop.store(false, Ordering::SeqCst);
+    trace.block_stop.store(true, Ordering::SeqCst);
+    assert!(
+        tokio::time::timeout(Duration::from_millis(1), instance.settle())
+            .await
+            .is_err()
+    );
+    assert_eq!(instance.status().phase(), OperationPhase::Stopping);
+    assert_eq!(count(&trace.stopped), 2);
+    assert_eq!(count(&trace.finalized), 0);
+    assert_eq!(count(&trace.dropped), 0);
+    trace.release_stop.notify_one();
+    instance.settle().await.unwrap();
+    assert_eq!(count(&trace.stopped), 2);
+    assert_eq!(count(&trace.finalized), 1);
+    assert_eq!(count(&trace.dropped), 1);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn failed_initialization_skips_stop() {
+    let (runtime, trace) = runtime().await;
+    trace.fail_initialize.store(true, Ordering::SeqCst);
+    trace.fail_stop.store(true, Ordering::SeqCst);
+    let mut instance = runtime
+        .operations
+        .submit_as::<ReadContract>(Mode::Complete)
+        .unwrap();
+    // A failed initialization owns no instance, so a failing
+    // stop cannot retain one.
+    let error = (&mut instance).await.err().unwrap();
+    assert!(matches!(error, Error::OperationFailed { .. }));
+    instance.settle().await.unwrap();
+    assert_eq!(instance.status().phase(), OperationPhase::Settled);
+    assert_eq!(
+        instance.status().outcome(),
+        Some(harmos::operations::OperationOutcome::Failed)
+    );
+    assert_eq!(count(&trace.initialized), 1);
+    assert_eq!(count(&trace.ran), 0);
+    assert_eq!(count(&trace.stopped), 0);
+    assert_eq!(count(&trace.dropped), 1);
+    runtime.stop().await.unwrap();
+}
+
+#[cfg(feature = "grpc")]
+#[tokio::test]
+async fn poll_retains_manager() {
+    let (runtime, trace) = runtime().await;
+    trace.block_finalize.store(true, Ordering::SeqCst);
+    let instance = runtime
+        .operations
+        .submit_as::<ReadContract>(Mode::WaitRun)
+        .unwrap();
+    let id = instance.id();
+    // Only a constructed instance has cleanup to retain.
+    trace.running.notified().await;
+    let response = harmos::grpc::response(instance);
+    drop(response);
+    trace.finalizing.notified().await;
+    let status = runtime
+        .operations
+        .status(id)
+        .expect("original instance remains owned");
+    assert!(status.cancellation_requested());
+    assert_eq!(status.phase(), OperationPhase::Finalizing);
+    assert_eq!(count(&trace.constructed), 1);
+    assert_eq!(count(&trace.dropped), 0);
+    trace.release.notify_one();
+    runtime.stop().await.unwrap();
+    assert_eq!(count(&trace.dropped), 1);
+}
+
+#[cfg(feature = "grpc")]
+#[tokio::test]
+async fn success_waits_physical() {
+    use std::future::Future;
+    use std::task::{Context as TaskContext, Waker};
+    let (runtime, trace) = runtime().await;
+    trace.block_finalize.store(true, Ordering::SeqCst);
+    let instance = runtime
+        .operations
+        .submit_as::<ReadContract>(Mode::Complete)
+        .unwrap();
+    let id = instance.id();
+    let mut response = Box::pin(harmos::grpc::response(instance));
+    trace.finalizing.notified().await;
+    assert!(
+        response
+            .as_mut()
+            .poll(&mut TaskContext::from_waker(Waker::noop()))
+            .is_pending()
+    );
+    assert_eq!(count(&trace.dropped), 0);
+    trace.release.notify_one();
+    assert_eq!(response.await.unwrap().0, 42);
+    assert!(runtime.operations.status(id).is_none());
+    assert_eq!(count(&trace.dropped), 1);
+    runtime.stop().await.unwrap();
+}
+
+#[cfg(feature = "grpc")]
+#[tokio::test]
+async fn failure_keeps_owner() {
+    let (runtime, trace) = runtime().await;
+    trace.fail_finalize.store(true, Ordering::SeqCst);
+    let instance = runtime
+        .operations
+        .submit_as::<ReadContract>(Mode::Complete)
+        .unwrap();
+    let id = instance.id();
+    assert!(harmos::grpc::response(instance).await.is_err());
+    let status = runtime
+        .operations
+        .status(id)
+        .expect("failed cleanup retains its owner");
+    assert!(status.cleanup_pending());
+    assert_eq!(
+        count(&trace.finalized),
+        1,
+        "RPC delivery does not retry cleanup"
+    );
+    assert_eq!(count(&trace.dropped), 0);
+    trace.fail_finalize.store(false, Ordering::SeqCst);
+    runtime.stop().await.unwrap();
+    assert_eq!(count(&trace.constructed), 1);
+    assert_eq!(count(&trace.finalized), 2);
+    assert_eq!(count(&trace.dropped), 1);
+}
+
+#[cfg(feature = "grpc")]
+#[tokio::test]
+async fn run_retains_instance() {
+    use std::future::Future;
+    use std::task::{Context as TaskContext, Waker};
+    let (runtime, trace) = runtime().await;
+    trace.block_finalize.store(true, Ordering::SeqCst);
+    let instance = runtime
+        .operations
+        .submit_as::<ReadContract>(Mode::WaitRun)
+        .unwrap();
+    let id = instance.id();
+    let mut response = Box::pin(harmos::grpc::response(instance));
+    trace.running.notified().await;
+    assert!(
+        response
+            .as_mut()
+            .poll(&mut TaskContext::from_waker(Waker::noop()))
+            .is_pending()
+    );
+    drop(response);
+    trace.finalizing.notified().await;
+    let status = runtime
+        .operations
+        .status(id)
+        .expect("same running instance is retained");
+    assert!(status.cancellation_requested());
+    assert_eq!(status.phase(), OperationPhase::Finalizing);
+    assert_eq!(count(&trace.ran), 1);
+    assert_eq!(count(&trace.stopped), 1);
+    assert_eq!(count(&trace.dropped), 0);
+    trace.release.notify_one();
+    runtime.stop().await.unwrap();
+    assert_eq!(count(&trace.constructed), 1);
+    assert_eq!(count(&trace.dropped), 1);
 }
 
 mod listed {
@@ -933,109 +797,93 @@ mod listed {
         Doubling(DoublingDeclaration),
     }
 
+    #[tokio::test]
+    async fn cache_restoration_never_borrows() {
+        let runtime = crate::fixture::runtime().await;
+        let observed = Arc::new(runtime.operations.clone());
+        let owner = Arc::new(BorrowOwner {
+            value: 7,
+            borrowed: std::sync::atomic::AtomicUsize::new(0),
+            ran: std::sync::atomic::AtomicUsize::new(0),
+            operations: Arc::downgrade(&observed),
+        });
+        runtime
+            .operations
+            .register_operation::<CachedOwner>("owner", crate::fixture::Lanes::Open, owner.clone())
+            .unwrap();
+        let first = runtime
+            .operations
+            .call_as::<CachedOwnerDeclaration>(0)
+            .await
+            .unwrap();
+        let cached = runtime
+            .operations
+            .call_as::<CachedOwnerDeclaration>(0)
+            .await
+            .unwrap();
+        assert!(first.ptr_eq(&cached));
+        assert_eq!(owner.ran.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(owner.borrowed.load(std::sync::atomic::Ordering::SeqCst), 0);
+        let erased = cached.clone().into_erased();
+        assert!(erased.clone().restore::<String>().is_none());
+        let restored = erased.restore::<u32>().unwrap();
+        assert_eq!(owner.borrowed.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert_eq!(*restored, 7);
+        assert_eq!(owner.borrowed.load(std::sync::atomic::Ordering::SeqCst), 1);
+        drop((first, cached, restored));
+        runtime.stop().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn owned_macro_retains_payload() {
+        let runtime = crate::fixture::runtime().await;
+        let original = Arc::new(7_u32);
+        runtime
+            .operations
+            .register_operation::<InferredOwned>(
+                "owner",
+                crate::fixture::Lanes::Open,
+                original.clone(),
+            )
+            .unwrap();
+        runtime
+            .operations
+            .register_operation::<DeclaredOwned>(
+                "owner",
+                crate::fixture::Lanes::Open,
+                original.clone(),
+            )
+            .unwrap();
+        let inferred = runtime
+            .operations
+            .call_as::<InferredOwnedDeclaration>(0)
+            .await
+            .unwrap();
+        let declared = runtime
+            .operations
+            .call_as::<DoublingDeclaration>(0)
+            .await
+            .unwrap();
+        assert_eq!(*inferred, 7_u32);
+        assert_eq!(*declared, 7_u32);
+        assert!(std::ptr::eq(inferred.as_ref(), original.as_ref()));
+        assert!(inferred.ptr_eq(&declared));
+        drop((inferred, declared));
+        runtime.stop().await.unwrap();
+        let recovered = harmos::operations::Response::from_owner(original)
+            .try_unwrap()
+            .unwrap();
+        assert_eq!(recovered, 7);
+    }
+
     #[test]
-    fn contract_scenario() {
-        super::scenario_runtime::check("cache_restoration_never_borrows", || {
-            tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .unwrap()
-                .block_on(async {
-                    let runtime = crate::fixture::runtime().await;
-                    let observed = Arc::new(runtime.operations.clone());
-                    let owner = Arc::new(BorrowOwner {
-                        value: 7,
-                        borrowed: std::sync::atomic::AtomicUsize::new(0),
-                        ran: std::sync::atomic::AtomicUsize::new(0),
-                        operations: Arc::downgrade(&observed),
-                    });
-                    runtime
-                        .operations
-                        .register_operation::<CachedOwner>(
-                            "owner",
-                            crate::fixture::Lanes::Open,
-                            owner.clone(),
-                        )
-                        .unwrap();
-                    let first = runtime
-                        .operations
-                        .call_as::<CachedOwnerDeclaration>(0)
-                        .await
-                        .unwrap();
-                    let cached = runtime
-                        .operations
-                        .call_as::<CachedOwnerDeclaration>(0)
-                        .await
-                        .unwrap();
-                    assert!(first.ptr_eq(&cached));
-                    assert_eq!(owner.ran.load(std::sync::atomic::Ordering::SeqCst), 1);
-                    assert_eq!(owner.borrowed.load(std::sync::atomic::Ordering::SeqCst), 0);
-                    let erased = cached.clone().into_erased();
-                    assert!(erased.clone().restore::<String>().is_none());
-                    let restored = erased.restore::<u32>().unwrap();
-                    assert_eq!(owner.borrowed.load(std::sync::atomic::Ordering::SeqCst), 0);
-                    assert_eq!(*restored, 7);
-                    assert_eq!(owner.borrowed.load(std::sync::atomic::Ordering::SeqCst), 1);
-                    drop((first, cached, restored));
-                    runtime.stop().await.unwrap();
-                });
-        });
-        super::scenario_runtime::check("owned_macro_retains_payload", || {
-            tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .unwrap()
-                .block_on(async {
-                    let runtime = crate::fixture::runtime().await;
-                    let original = Arc::new(7_u32);
-                    runtime
-                        .operations
-                        .register_operation::<InferredOwned>(
-                            "owner",
-                            crate::fixture::Lanes::Open,
-                            original.clone(),
-                        )
-                        .unwrap();
-                    runtime
-                        .operations
-                        .register_operation::<DeclaredOwned>(
-                            "owner",
-                            crate::fixture::Lanes::Open,
-                            original.clone(),
-                        )
-                        .unwrap();
-                    let inferred = runtime
-                        .operations
-                        .call_as::<InferredOwnedDeclaration>(0)
-                        .await
-                        .unwrap();
-                    let declared = runtime
-                        .operations
-                        .call_as::<DoublingDeclaration>(0)
-                        .await
-                        .unwrap();
-                    assert_eq!(*inferred, 7_u32);
-                    assert_eq!(*declared, 7_u32);
-                    assert!(std::ptr::eq(inferred.as_ref(), original.as_ref()));
-                    assert!(inferred.ptr_eq(&declared));
-                    drop((inferred, declared));
-                    runtime.stop().await.unwrap();
-                    let recovered = harmos::operations::Response::from_owner(original)
-                        .try_unwrap()
-                        .unwrap();
-                    assert_eq!(recovered, 7);
-                });
-        });
-        {
-            super::scenario_runtime::check("catalogs_project_declarations", || {
-                let projected = Declarations::of::<Listing>().unwrap();
-                assert_eq!(projected, Declarations::of::<Declared>().unwrap());
-                assert_eq!(projected, AuthoredDeclarations::of::<Listing>().unwrap());
-                assert_eq!(projected[0].id.as_str(), "authored.doubling");
-                let contracts = Contracts::of::<Listing>().unwrap();
-                assert_eq!(contracts, Contracts::of::<Declared>().unwrap());
-                assert_eq!(contracts[0].version(), 1);
-            });
-        }
+    fn catalogs_project_declarations() {
+        let projected = Declarations::of::<Listing>().unwrap();
+        assert_eq!(projected, Declarations::of::<Declared>().unwrap());
+        assert_eq!(projected, AuthoredDeclarations::of::<Listing>().unwrap());
+        assert_eq!(projected[0].id.as_str(), "authored.doubling");
+        let contracts = Contracts::of::<Listing>().unwrap();
+        assert_eq!(contracts, Contracts::of::<Declared>().unwrap());
+        assert_eq!(contracts[0].version(), 1);
     }
 }

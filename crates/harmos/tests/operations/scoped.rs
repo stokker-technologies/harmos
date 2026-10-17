@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -242,36 +241,25 @@ async fn runtime(parent_lane: Lanes) -> (Runtime<App>, Arc<Trace>) {
 
 /* === Tests === */
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("ancestor_cycles_rejected", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    for lane in [Lanes::Serial, Lanes::Concurrent] {
-                        let (runtime, trace) = runtime(lane).await;
-                        let answer = runtime
-                            .operations
-                            .submit_as::<ParentContract>(Mode::HandleCycle)
-                            .unwrap()
-                            .await
-                            .unwrap();
-                        assert_eq!(*answer, 7);
-                        assert_eq!(trace.parent_constructions.load(Ordering::SeqCst), 1);
-                        assert!(trace.free_dropped.load(Ordering::SeqCst));
-                        runtime.stop().await.unwrap();
-                    }
-                });
-        });
+#[tokio::test]
+async fn ancestor_cycles_rejected() {
+    for lane in [Lanes::Serial, Lanes::Concurrent] {
+        let (runtime, trace) = runtime(lane).await;
+        let answer = runtime
+            .operations
+            .submit_as::<ParentContract>(Mode::HandleCycle)
+            .unwrap()
+            .await
+            .unwrap();
+        assert_eq!(*answer, 7);
+        assert_eq!(trace.parent_constructions.load(Ordering::SeqCst), 1);
+        assert!(trace.free_dropped.load(Ordering::SeqCst));
+        runtime.stop().await.unwrap();
     }
-    {
-        scenario_runtime::check("refusal_survives_parent", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
+}
 
+#[tokio::test]
+async fn refusal_survives_parent() {
     let (runtime, trace) = runtime(Lanes::Serial).await;
     let error = runtime
         .operations
@@ -287,40 +275,29 @@ pub(super) fn contract_scenario() {
     );
     assert_eq!(trace.parent_constructions.load(Ordering::SeqCst), 1);
     runtime.stop().await.unwrap();
+}
 
-});
-        });
-    }
-    {
-        scenario_runtime::check("child_settles_another", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let (runtime, trace) = runtime(Lanes::Concurrent).await;
-                    let blocker = runtime.operations.submit_as::<BoundContract>(true).unwrap();
-                    trace.bound_started.notified().await;
-                    let answer = runtime
-                        .operations
-                        .submit_as::<ParentContract>(Mode::FullLane)
-                        .unwrap()
-                        .await
-                        .unwrap();
-                    assert_eq!(*answer, 0);
-                    assert!(trace.free_dropped.load(Ordering::SeqCst));
-                    assert_eq!(trace.queued_runs.load(Ordering::SeqCst), 0);
+#[tokio::test]
+async fn child_settles_another() {
+    let (runtime, trace) = runtime(Lanes::Concurrent).await;
+    let blocker = runtime.operations.submit_as::<BoundContract>(true).unwrap();
+    trace.bound_started.notified().await;
+    let answer = runtime
+        .operations
+        .submit_as::<ParentContract>(Mode::FullLane)
+        .unwrap()
+        .await
+        .unwrap();
+    assert_eq!(*answer, 0);
+    assert!(trace.free_dropped.load(Ordering::SeqCst));
+    assert_eq!(trace.queued_runs.load(Ordering::SeqCst), 0);
 
-                    trace.release.notify_one();
-                    assert_eq!(*blocker.await.unwrap(), 7);
-                    runtime.stop().await.unwrap();
-                    assert_eq!(
-                        trace.queued_runs.load(Ordering::SeqCst),
-                        0,
-                        "the cancelled child never runs after capacity returns"
-                    );
-                });
-        });
-    }
+    trace.release.notify_one();
+    assert_eq!(*blocker.await.unwrap(), 7);
+    runtime.stop().await.unwrap();
+    assert_eq!(
+        trace.queued_runs.load(Ordering::SeqCst),
+        0,
+        "the cancelled child never runs after capacity returns"
+    );
 }

@@ -9,13 +9,14 @@
 
 #![allow(dead_code)]
 /* === Modules === */
+#[path = "journal.rs"]
+pub mod journal;
 
 /* === Re-Exports === */
 
 /* === Imports === */
 // Standard Library Imports
 use std::fmt;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 // Third Party Imports
@@ -27,7 +28,7 @@ use harmos::{
     state::Position, state::PrincipalId, state::Recorded, state::Transaction,
     storage::JournalConsumer, storage::Payload,
 };
-use jsonl_adapter::Wire;
+use journal::Wire;
 
 /* === Constants === */
 
@@ -281,7 +282,7 @@ impl Wire for Bank {
         match value {
             Recorded::Transaction(change) => change.identify(),
             Recorded::Record(fact) => fact.identify(),
-            Recorded::System(_) => unreachable!("system facts are encoded by the adapter"),
+            Recorded::System(_) => unreachable!("system facts are encoded by the journal"),
         }
     }
 
@@ -289,7 +290,7 @@ impl Wire for Bank {
         match value {
             Recorded::Transaction(change) => change.encode_with(serializer),
             Recorded::Record(fact) => fact.encode_with(serializer),
-            Recorded::System(_) => unreachable!("system facts are encoded by the adapter"),
+            Recorded::System(_) => unreachable!("system facts are encoded by the journal"),
         }
     }
 
@@ -454,15 +455,6 @@ pub async fn ledger(runtime: &Runtime<Bank>) -> Ledger {
 
 pub fn alice() -> PrincipalId {
     PrincipalId::new("alice")
-}
-
-pub fn scratch(name: &str) -> PathBuf {
-    let directory = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(name);
-
-    std::fs::remove_dir_all(&directory).ok();
-    std::fs::create_dir_all(&directory).expect("the target directory is writable");
-
-    directory
 }
 
 /* === Private Functions === */

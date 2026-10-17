@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -206,115 +205,97 @@ fn request() -> Request {
     }
 }
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("cache_delivery_finalizes", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let counters = Arc::new(Counters::default());
-                    let owner = Owner(Arc::clone(&counters));
-                    let owner = Arc::new(owner);
-                    runtime
-                        .operations
-                        .register_operation::<Finishing>("app", Lanes::Open, owner)
-                        .unwrap();
-                    for _ in 0..2 {
-                        let request = Request {
-                            keyed: true,
-                            fail_attempt: false,
-                        };
-                        let invocation = runtime.operations.submit_as::<Finish>(request).unwrap();
-                        assert_eq!(*invocation.await.unwrap(), 42);
-                    }
-                    assert_eq!(counters.runs.load(Ordering::SeqCst), 1);
-                    // A cache hit never constructs an operation, so only the
-                    // executed one is cleaned up.
-                    assert_eq!(counters.finished.load(Ordering::SeqCst), 1);
-                    assert_eq!(counters.dropped.load(Ordering::SeqCst), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
+#[tokio::test]
+async fn cache_delivery_finalizes() {
+    let runtime = runtime().await;
+    let counters = Arc::new(Counters::default());
+    let owner = Owner(Arc::clone(&counters));
+    let owner = Arc::new(owner);
+    runtime
+        .operations
+        .register_operation::<Finishing>("app", Lanes::Open, owner)
+        .unwrap();
+    for _ in 0..2 {
+        let request = Request {
+            keyed: true,
+            fail_attempt: false,
+        };
+        let invocation = runtime.operations.submit_as::<Finish>(request).unwrap();
+        assert_eq!(*invocation.await.unwrap(), 42);
     }
-    {
-        scenario_runtime::check("failure_retains_state", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let counters = Arc::new(Counters::default());
-                    counters.fail.store(true, Ordering::SeqCst);
-                    let owner = Owner(Arc::clone(&counters));
-                    let owner = Arc::new(owner);
-                    runtime
-                        .operations
-                        .register_operation::<Finishing>("app", Lanes::Serial, owner)
-                        .unwrap();
-                    let failed_request = Request {
-                        fail_attempt: true,
-                        ..request()
-                    };
-                    let first = runtime
-                        .operations
-                        .submit_as::<Finish>(failed_request)
-                        .unwrap();
-                    let error = first.await.unwrap_err();
-                    let Error::OperationFinalization {
-                        outcome: Some(outcome),
-                        source,
-                        ..
-                    } = error
-                    else {
-                        panic!("must retain both attempt and cleanup causes");
-                    };
-                    let outcome = std::iter::successors(
-                        Some(&*outcome as &(dyn std::error::Error + 'static)),
-                        |error| error.source(),
-                    )
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join(": ");
-                    assert!(outcome.contains("attempt cause"), "{outcome}");
-                    let source = std::iter::successors(
-                        Some(&*source as &(dyn std::error::Error + 'static)),
-                        |error| error.source(),
-                    )
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join(": ");
-                    assert!(source.contains("cleanup cause"), "{source}");
-                    assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
+    assert_eq!(counters.runs.load(Ordering::SeqCst), 1);
+    // A cache hit never constructs an operation, so only the
+    // executed one is cleaned up.
+    assert_eq!(counters.finished.load(Ordering::SeqCst), 1);
+    assert_eq!(counters.dropped.load(Ordering::SeqCst), 1);
+    runtime.stop().await.unwrap();
+}
 
-                    let second = runtime.operations.submit_as::<Finish>(request()).unwrap();
-                    tokio::task::yield_now().await;
-                    assert_eq!(counters.runs.load(Ordering::SeqCst), 1);
-                    second.cancel();
-                    // The queued second never initialized, so it has no cleanup.
-                    let error = second.await.unwrap_err();
-                    assert!(matches!(error, Error::OperationRefused(Refusal::Cancelled)));
-                    assert!(runtime.operations.unregister(Finish::ID).await.is_err());
-                    assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
+#[tokio::test]
+async fn failure_retains_state() {
+    let runtime = runtime().await;
+    let counters = Arc::new(Counters::default());
+    counters.fail.store(true, Ordering::SeqCst);
+    let owner = Owner(Arc::clone(&counters));
+    let owner = Arc::new(owner);
+    runtime
+        .operations
+        .register_operation::<Finishing>("app", Lanes::Serial, owner)
+        .unwrap();
+    let failed_request = Request {
+        fail_attempt: true,
+        ..request()
+    };
+    let first = runtime
+        .operations
+        .submit_as::<Finish>(failed_request)
+        .unwrap();
+    let error = first.await.unwrap_err();
+    let Error::OperationFinalization {
+        outcome: Some(outcome),
+        source,
+        ..
+    } = error
+    else {
+        panic!("must retain both attempt and cleanup causes");
+    };
+    let outcome = std::iter::successors(
+        Some(&*outcome as &(dyn std::error::Error + 'static)),
+        |error| error.source(),
+    )
+    .map(ToString::to_string)
+    .collect::<Vec<_>>()
+    .join(": ");
+    assert!(outcome.contains("attempt cause"), "{outcome}");
+    let source = std::iter::successors(
+        Some(&*source as &(dyn std::error::Error + 'static)),
+        |error| error.source(),
+    )
+    .map(ToString::to_string)
+    .collect::<Vec<_>>()
+    .join(": ");
+    assert!(source.contains("cleanup cause"), "{source}");
+    assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
 
-                    counters.fail.store(false, Ordering::SeqCst);
-                    runtime.operations.unregister(Finish::ID).await.unwrap();
-                    assert_eq!(counters.runs.load(Ordering::SeqCst), 1);
-                    assert_eq!(counters.dropped.load(Ordering::SeqCst), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("retirement_keeps_finalization", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
+    let second = runtime.operations.submit_as::<Finish>(request()).unwrap();
+    tokio::task::yield_now().await;
+    assert_eq!(counters.runs.load(Ordering::SeqCst), 1);
+    second.cancel();
+    // The queued second never initialized, so it has no cleanup.
+    let error = second.await.unwrap_err();
+    assert!(matches!(error, Error::OperationRefused(Refusal::Cancelled)));
+    assert!(runtime.operations.unregister(Finish::ID).await.is_err());
+    assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
 
+    counters.fail.store(false, Ordering::SeqCst);
+    runtime.operations.unregister(Finish::ID).await.unwrap();
+    assert_eq!(counters.runs.load(Ordering::SeqCst), 1);
+    assert_eq!(counters.dropped.load(Ordering::SeqCst), 1);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn retirement_keeps_finalization() {
     let runtime = runtime().await;
     let counters = Arc::new(Counters::default());
     counters.block.store(true, Ordering::SeqCst);
@@ -341,180 +322,146 @@ pub(super) fn contract_scenario() {
     assert_eq!(*invocation.await.unwrap(), 42);
     assert_eq!(counters.dropped.load(Ordering::SeqCst), 1);
     runtime.stop().await.unwrap();
+}
 
-});
-        });
-    }
-    {
-        scenario_runtime::check("retirement_retries_child", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let child = Arc::new(Counters::default());
-                    child.fail.store(true, Ordering::SeqCst);
-                    let child_owner = Owner(Arc::clone(&child));
-                    let child_owner = Arc::new(child_owner);
-                    runtime
-                        .operations
-                        .register_operation::<Finishing>("child", Lanes::Serial, child_owner)
-                        .unwrap();
-                    let parent = Arc::new(Counters::default());
-                    let parent_owner = ParentOwner(Arc::clone(&parent));
-                    let parent_owner = Arc::new(parent_owner);
-                    runtime
-                        .operations
-                        .register_operation::<ParentCall>("parent", Lanes::Open, parent_owner)
-                        .unwrap();
-                    let invocation = runtime.operations.submit_as::<Parent>(request()).unwrap();
-                    child.entering.notified().await;
-                    assert!(runtime.operations.unregister(Parent::ID).await.is_err());
-                    assert_eq!(child.dropped.load(Ordering::SeqCst), 0);
-                    assert_eq!(parent.dropped.load(Ordering::SeqCst), 0);
+#[tokio::test]
+async fn retirement_retries_child() {
+    let runtime = runtime().await;
+    let child = Arc::new(Counters::default());
+    child.fail.store(true, Ordering::SeqCst);
+    let child_owner = Owner(Arc::clone(&child));
+    let child_owner = Arc::new(child_owner);
+    runtime
+        .operations
+        .register_operation::<Finishing>("child", Lanes::Serial, child_owner)
+        .unwrap();
+    let parent = Arc::new(Counters::default());
+    let parent_owner = ParentOwner(Arc::clone(&parent));
+    let parent_owner = Arc::new(parent_owner);
+    runtime
+        .operations
+        .register_operation::<ParentCall>("parent", Lanes::Open, parent_owner)
+        .unwrap();
+    let invocation = runtime.operations.submit_as::<Parent>(request()).unwrap();
+    child.entering.notified().await;
+    assert!(runtime.operations.unregister(Parent::ID).await.is_err());
+    assert_eq!(child.dropped.load(Ordering::SeqCst), 0);
+    assert_eq!(parent.dropped.load(Ordering::SeqCst), 0);
 
-                    child.fail.store(false, Ordering::SeqCst);
-                    runtime.operations.unregister(Parent::ID).await.unwrap();
-                    assert!(invocation.await.is_err());
-                    assert_eq!(child.dropped.load(Ordering::SeqCst), 1);
-                    assert_eq!(parent.dropped.load(Ordering::SeqCst), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
+    child.fail.store(false, Ordering::SeqCst);
+    runtime.operations.unregister(Parent::ID).await.unwrap();
+    assert!(invocation.await.is_err());
+    assert_eq!(child.dropped.load(Ordering::SeqCst), 1);
+    assert_eq!(parent.dropped.load(Ordering::SeqCst), 1);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn cleanup_retry_retains() {
+    let runtime = runtime().await;
+    let counters = Arc::new(Counters::default());
+    counters.fail.store(true, Ordering::SeqCst);
+    let owner = Owner(Arc::clone(&counters));
+    let owner = Arc::new(owner);
+    runtime
+        .operations
+        .register_operation::<Finishing>("app", Lanes::Serial, owner)
+        .unwrap();
+    let invocation = runtime.operations.submit_as::<Finish>(request()).unwrap();
+    assert!(invocation.await.is_err());
+    counters.fail.store(false, Ordering::SeqCst);
+    counters.block.store(true, Ordering::SeqCst);
     {
-        scenario_runtime::check("cleanup_retry_retains", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let counters = Arc::new(Counters::default());
-                    counters.fail.store(true, Ordering::SeqCst);
-                    let owner = Owner(Arc::clone(&counters));
-                    let owner = Arc::new(owner);
-                    runtime
-                        .operations
-                        .register_operation::<Finishing>("app", Lanes::Serial, owner)
-                        .unwrap();
-                    let invocation = runtime.operations.submit_as::<Finish>(request()).unwrap();
-                    assert!(invocation.await.is_err());
-                    counters.fail.store(false, Ordering::SeqCst);
-                    counters.block.store(true, Ordering::SeqCst);
-                    {
-                        let waiting = runtime.operations.unregister(Finish::ID);
-                        tokio::pin!(waiting);
-                        tokio::select! {
-                            biased;
-                            result = &mut waiting => panic!("retry is blocked: {result:?}"),
-                            _ = async {
-                                while counters.finished.load(Ordering::SeqCst) < 2 {
-                                    counters.entering.notified().await;
-                                }
-                            } => {},
-                        }
-                        assert_eq!(counters.finished.load(Ordering::SeqCst), 2);
-                    }
-                    assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
-                    counters.release.notify_one();
-                    runtime.operations.unregister(Finish::ID).await.unwrap();
-                    assert_eq!(counters.finished.load(Ordering::SeqCst), 2);
-                    assert_eq!(counters.runs.load(Ordering::SeqCst), 1);
-                    assert_eq!(counters.dropped.load(Ordering::SeqCst), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("cleanup_panic_shutdown", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let counters = Arc::new(Counters::default());
-                    counters.panic_cleanup.store(true, Ordering::SeqCst);
-                    let owner = Owner(Arc::clone(&counters));
-                    let owner = Arc::new(owner);
-                    runtime
-                        .operations
-                        .register_operation::<Finishing>("app", Lanes::Open, owner)
-                        .unwrap();
-                    let invocation = runtime.operations.submit_as::<Finish>(request()).unwrap();
-                    let error = invocation.await.unwrap_err();
-                    assert!(matches!(error, Error::OperationFinalization { source, .. }
-        if matches!(source.as_ref(), Error::OperationPanicked { .. })));
-                    assert!(runtime.operations.shutdown().await.is_err());
-                    assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
-                    counters.panic_cleanup.store(false, Ordering::SeqCst);
-                    runtime.operations.shutdown().await.unwrap();
-                    assert_eq!(counters.runs.load(Ordering::SeqCst), 1);
-                    assert_eq!(counters.dropped.load(Ordering::SeqCst), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("finalization_past_deadline", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let counters = Arc::new(Counters::default());
-                    counters.block.store(true, Ordering::SeqCst);
-                    let owner = Owner(Arc::clone(&counters));
-                    let owner = Arc::new(owner);
-                    runtime
-                        .operations
-                        .register_operation::<Finishing>("app", Lanes::Open, owner)
-                        .unwrap();
-                    let first_request = Request {
-                        keyed: true,
-                        ..request()
-                    };
-                    let first = runtime
-                        .operations
-                        .submit_as::<Finish>(first_request)
-                        .unwrap();
+        let waiting = runtime.operations.unregister(Finish::ID);
+        tokio::pin!(waiting);
+        tokio::select! {
+            biased;
+            result = &mut waiting => panic!("retry is blocked: {result:?}"),
+            _ = async {
+                while counters.finished.load(Ordering::SeqCst) < 2 {
                     counters.entering.notified().await;
-                    tokio::time::advance(Finish::POLICY.timeout).await;
-                    counters.release.notify_one();
-                    assert!(matches!(
-                        first.await,
-                        Err(Error::OperationRefused(Refusal::TimedOut))
-                    ));
-                    assert_eq!(counters.dropped.load(Ordering::SeqCst), 1);
-
-                    counters.block.store(false, Ordering::SeqCst);
-                    let second_request = Request {
-                        keyed: true,
-                        ..request()
-                    };
-                    let second = runtime
-                        .operations
-                        .submit_as::<Finish>(second_request)
-                        .unwrap();
-                    assert_eq!(*second.await.unwrap(), 42);
-                    assert_eq!(counters.runs.load(Ordering::SeqCst), 2);
-                    runtime.stop().await.unwrap();
-                });
-        });
+                }
+            } => {},
+        }
+        assert_eq!(counters.finished.load(Ordering::SeqCst), 2);
     }
-    {
-        scenario_runtime::check("boot_retains_invocation", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
+    assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
+    counters.release.notify_one();
+    runtime.operations.unregister(Finish::ID).await.unwrap();
+    assert_eq!(counters.finished.load(Ordering::SeqCst), 2);
+    assert_eq!(counters.runs.load(Ordering::SeqCst), 1);
+    assert_eq!(counters.dropped.load(Ordering::SeqCst), 1);
+    runtime.stop().await.unwrap();
+}
 
+#[tokio::test]
+async fn cleanup_panic_shutdown() {
+    let runtime = runtime().await;
+    let counters = Arc::new(Counters::default());
+    counters.panic_cleanup.store(true, Ordering::SeqCst);
+    let owner = Owner(Arc::clone(&counters));
+    let owner = Arc::new(owner);
+    runtime
+        .operations
+        .register_operation::<Finishing>("app", Lanes::Open, owner)
+        .unwrap();
+    let invocation = runtime.operations.submit_as::<Finish>(request()).unwrap();
+    let error = invocation.await.unwrap_err();
+    assert!(matches!(error, Error::OperationFinalization { source, .. }
+        if matches!(source.as_ref(), Error::OperationPanicked { .. })));
+    assert!(runtime.operations.shutdown().await.is_err());
+    assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
+    counters.panic_cleanup.store(false, Ordering::SeqCst);
+    runtime.operations.shutdown().await.unwrap();
+    assert_eq!(counters.runs.load(Ordering::SeqCst), 1);
+    assert_eq!(counters.dropped.load(Ordering::SeqCst), 1);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn finalization_past_deadline() {
+    let runtime = runtime().await;
+    let counters = Arc::new(Counters::default());
+    counters.block.store(true, Ordering::SeqCst);
+    let owner = Owner(Arc::clone(&counters));
+    let owner = Arc::new(owner);
+    runtime
+        .operations
+        .register_operation::<Finishing>("app", Lanes::Open, owner)
+        .unwrap();
+    let first_request = Request {
+        keyed: true,
+        ..request()
+    };
+    let first = runtime
+        .operations
+        .submit_as::<Finish>(first_request)
+        .unwrap();
+    counters.entering.notified().await;
+    tokio::time::advance(Finish::POLICY.timeout).await;
+    counters.release.notify_one();
+    assert!(matches!(
+        first.await,
+        Err(Error::OperationRefused(Refusal::TimedOut))
+    ));
+    assert_eq!(counters.dropped.load(Ordering::SeqCst), 1);
+
+    counters.block.store(false, Ordering::SeqCst);
+    let second_request = Request {
+        keyed: true,
+        ..request()
+    };
+    let second = runtime
+        .operations
+        .submit_as::<Finish>(second_request)
+        .unwrap();
+    assert_eq!(*second.await.unwrap(), 42);
+    assert_eq!(counters.runs.load(Ordering::SeqCst), 2);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn boot_retains_invocation() {
     let counters = Arc::new(Counters::default());
     counters.fail.store(true, Ordering::SeqCst);
     let owner = Arc::new(Owner(Arc::clone(&counters)));
@@ -567,82 +514,71 @@ pub(super) fn contract_scenario() {
     assert!(error.cleanup_error().is_none());
     assert_eq!(counters.runs.load(Ordering::SeqCst), 1);
     assert_eq!(counters.dropped.load(Ordering::SeqCst), 1);
+}
 
-});
-        });
-    }
+#[tokio::test]
+async fn receipt_retains_invocation() {
+    let counters = Arc::new(Counters::default());
+    counters.fail.store(true, Ordering::SeqCst);
+    let owner = Arc::new(Owner(Arc::clone(&counters)));
+    let (ready, mut reached) = tokio::sync::watch::channel(false);
+    let cleanup;
     {
-        scenario_runtime::check("receipt_retains_invocation", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let counters = Arc::new(Counters::default());
-                    counters.fail.store(true, Ordering::SeqCst);
-                    let owner = Arc::new(Owner(Arc::clone(&counters)));
-                    let (ready, mut reached) = tokio::sync::watch::channel(false);
-                    let cleanup;
-                    {
-                        let opening = harmos::Runtime::<super::support::Bank>::builder(
-                            super::support::Ledger::default(),
-                            (),
-                        )
-                        .register(super::support::catalog())
-                        .register(Lanes::catalog())
-                        .initialize(std::time::Duration::from_secs(1), move |handle| {
-                            let owner = Arc::clone(&owner);
-                            let ready = ready.clone();
-                            async move {
-                                handle
-                                    .operations
-                                    .register_operation::<Finishing>("app", Lanes::Serial, owner)
-                                    .unwrap();
-                                assert!(matches!(
-                                    handle.operations.call_as::<Finish>(request()).await,
-                                    Err(Error::OperationFinalization { .. })
-                                ));
-                                ready.send_replace(true);
-                                std::future::pending::<Result<(), std::io::Error>>().await
-                            }
-                        })
-                        .runtime();
-                        cleanup = opening.cleanup();
-                        tokio::pin!(opening);
-                        tokio::time::timeout(std::time::Duration::from_secs(2), async {
-                            tokio::select! {
-                                _ = &mut opening => panic!("startup must remain pending"),
-                                ready = reached.wait_for(|ready| *ready) => { ready.unwrap(); }
-                            }
-                        })
-                        .await
-                        .unwrap();
+        let opening =
+            harmos::Runtime::<super::support::Bank>::builder(super::support::Ledger::default(), ())
+                .register(super::support::catalog())
+                .register(Lanes::catalog())
+                .initialize(std::time::Duration::from_secs(1), move |handle| {
+                    let owner = Arc::clone(&owner);
+                    let ready = ready.clone();
+                    async move {
+                        handle
+                            .operations
+                            .register_operation::<Finishing>("app", Lanes::Serial, owner)
+                            .unwrap();
+                        assert!(matches!(
+                            handle.operations.call_as::<Finish>(request()).await,
+                            Err(Error::OperationFinalization { .. })
+                        ));
+                        ready.send_replace(true);
+                        std::future::pending::<Result<(), std::io::Error>>().await
                     }
-                    let refusal =
-                        tokio::time::timeout(std::time::Duration::from_secs(2), cleanup.wait())
-                            .await
-                            .unwrap()
-                            .unwrap_err();
-                    assert!(matches!(
-                        refusal,
-                        Error::TaskFailed {
-                            domain: "bootstrap cleanup",
-                            ..
-                        }
-                    ));
-                    assert_eq!(cleanup.status(), harmos::runtime::BootstrapStatus::Failed);
-                    assert!(cleanup.failure().is_some());
-                    assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
+                })
+                .runtime();
+        cleanup = opening.cleanup();
+        tokio::pin!(opening);
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            tokio::select! {
+                _ = &mut opening => panic!("startup must remain pending"),
+                ready = reached.wait_for(|ready| *ready) => { ready.unwrap(); }
+            }
+        })
+        .await
+        .unwrap();
+    }
+    let refusal = tokio::time::timeout(std::time::Duration::from_secs(2), cleanup.wait())
+        .await
+        .unwrap()
+        .unwrap_err();
+    assert!(matches!(
+        refusal,
+        Error::TaskFailed {
+            domain: "bootstrap cleanup",
+            ..
+        }
+    ));
+    assert_eq!(cleanup.status(), harmos::runtime::BootstrapStatus::Failed);
+    assert!(cleanup.failure().is_some());
+    assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
 
-                    // Cancelling The Retry Waiter Does Not Cancel Physical Cleanup
-                    counters.fail.store(false, Ordering::SeqCst);
-                    counters.block.store(true, Ordering::SeqCst);
-                    let previous = counters.finished.load(Ordering::SeqCst);
-                    {
-                        let retry = cleanup.retry();
-                        tokio::pin!(retry);
-                        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+    // Cancelling The Retry Waiter Does Not Cancel Physical Cleanup
+    counters.fail.store(false, Ordering::SeqCst);
+    counters.block.store(true, Ordering::SeqCst);
+    let previous = counters.finished.load(Ordering::SeqCst);
+    {
+        let retry = cleanup.retry();
+        tokio::pin!(retry);
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
             tokio::select! {
                 outcome = &mut retry => panic!("cleanup remains blocked: {outcome:?}"),
                 _ = async {
@@ -654,274 +590,219 @@ pub(super) fn contract_scenario() {
         })
         .await
         .unwrap();
-                    }
-                    assert_eq!(cleanup.status(), harmos::runtime::BootstrapStatus::Cleaning);
-                    assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
-                    counters.block.store(false, Ordering::SeqCst);
-                    counters.release.notify_one();
-                    tokio::time::timeout(std::time::Duration::from_secs(2), cleanup.wait())
-                        .await
-                        .unwrap()
-                        .unwrap();
-                    assert_eq!(cleanup.status(), harmos::runtime::BootstrapStatus::Settled);
-                    assert!(cleanup.failure().is_none());
-                    assert_eq!(counters.runs.load(Ordering::SeqCst), 1);
-                    assert_eq!(counters.dropped.load(Ordering::SeqCst), 1);
-                });
-        });
     }
-    {
-        scenario_runtime::check("unpolled_startup_cleanup", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let opening = harmos::Runtime::<super::support::Bank>::builder(
-                        super::support::Ledger::default(),
-                        (),
-                    )
-                    .register(super::support::catalog())
-                    .runtime();
-                    let cleanup = opening.cleanup();
-                    assert_eq!(cleanup.status(), harmos::runtime::BootstrapStatus::Starting);
-                    drop(opening);
-                    cleanup.wait().await.unwrap();
-                    assert_eq!(cleanup.status(), harmos::runtime::BootstrapStatus::Settled);
-                });
-        });
-    }
-    {
-        scenario_runtime::check("outcome_preserves_observable", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let counters = Arc::new(Counters::default());
-                    counters.fail.store(true, Ordering::SeqCst);
-                    runtime
-                        .operations
-                        .register_operation::<Finishing>(
-                            "app",
-                            Lanes::Serial,
-                            Arc::new(Owner(Arc::clone(&counters))),
-                        )
-                        .unwrap();
-                    let mut instance = runtime
-                        .operations
-                        .submit_as::<Finish>(Request {
-                            fail_attempt: true,
-                            ..request()
-                        })
-                        .unwrap();
-                    let id = instance.id();
-                    let generation = instance.generation();
-                    assert!(matches!(
-                        (&mut instance).await,
-                        Err(Error::OperationFinalization { .. })
-                    ));
-                    let failed = instance.status();
-                    assert_eq!(failed.phase(), OperationPhase::Finalizing);
-                    assert_eq!(failed.outcome(), Some(OperationOutcome::Failed));
-                    assert!(failed.cleanup_pending());
-                    assert!(failed.settled_at().is_none());
-                    assert!(matches!(failed.cleanup_failure().unwrap().as_ref(),
+    assert_eq!(cleanup.status(), harmos::runtime::BootstrapStatus::Cleaning);
+    assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
+    counters.block.store(false, Ordering::SeqCst);
+    counters.release.notify_one();
+    tokio::time::timeout(std::time::Duration::from_secs(2), cleanup.wait())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(cleanup.status(), harmos::runtime::BootstrapStatus::Settled);
+    assert!(cleanup.failure().is_none());
+    assert_eq!(counters.runs.load(Ordering::SeqCst), 1);
+    assert_eq!(counters.dropped.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn unpolled_startup_cleanup() {
+    let opening =
+        harmos::Runtime::<super::support::Bank>::builder(super::support::Ledger::default(), ())
+            .register(super::support::catalog())
+            .runtime();
+    let cleanup = opening.cleanup();
+    assert_eq!(cleanup.status(), harmos::runtime::BootstrapStatus::Starting);
+    drop(opening);
+    cleanup.wait().await.unwrap();
+    assert_eq!(cleanup.status(), harmos::runtime::BootstrapStatus::Settled);
+}
+
+#[tokio::test(start_paused = true)]
+async fn outcome_preserves_observable() {
+    let runtime = runtime().await;
+    let counters = Arc::new(Counters::default());
+    counters.fail.store(true, Ordering::SeqCst);
+    runtime
+        .operations
+        .register_operation::<Finishing>(
+            "app",
+            Lanes::Serial,
+            Arc::new(Owner(Arc::clone(&counters))),
+        )
+        .unwrap();
+    let mut instance = runtime
+        .operations
+        .submit_as::<Finish>(Request {
+            fail_attempt: true,
+            ..request()
+        })
+        .unwrap();
+    let id = instance.id();
+    let generation = instance.generation();
+    assert!(matches!(
+        (&mut instance).await,
+        Err(Error::OperationFinalization { .. })
+    ));
+    let failed = instance.status();
+    assert_eq!(failed.phase(), OperationPhase::Finalizing);
+    assert_eq!(failed.outcome(), Some(OperationOutcome::Failed));
+    assert!(failed.cleanup_pending());
+    assert!(failed.settled_at().is_none());
+    assert!(matches!(failed.cleanup_failure().unwrap().as_ref(),
         Error::OperationFinalization { outcome: Some(outcome), .. }
         if std::iter::successors(Some(&**outcome as &(dyn std::error::Error + 'static)), |error| error.source()).map(ToString::to_string).collect::<Vec<_>>().join(": ").contains("attempt cause")));
-                    assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
+    assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
 
-                    counters.fail.store(false, Ordering::SeqCst);
-                    instance.settle().await.unwrap();
-                    let settled = instance.status();
-                    assert_eq!(instance.id(), id);
-                    assert_eq!(instance.generation(), generation);
-                    assert_eq!(settled.phase(), OperationPhase::Settled);
-                    assert_eq!(settled.outcome(), Some(OperationOutcome::Failed));
-                    assert!(!settled.cleanup_pending());
-                    assert!(settled.cleanup_failure().is_none());
-                    assert!(settled.settled_at().is_some());
-                    assert_eq!(counters.dropped.load(Ordering::SeqCst), 1);
-                    assert_eq!(
-                        failed.phase(),
-                        OperationPhase::Finalizing,
-                        "snapshots remain independent"
-                    );
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("queued_cancel_retains", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let counters = Arc::new(Counters::default());
-                    counters.block.store(true, Ordering::SeqCst);
-                    runtime
-                        .operations
-                        .register_operation::<Finishing>(
-                            "app",
-                            Lanes::Serial,
-                            Arc::new(Owner(Arc::clone(&counters))),
-                        )
-                        .unwrap();
-                    let first = runtime.operations.submit_as::<Finish>(request()).unwrap();
-                    counters.entering.notified().await;
-                    let mut second = runtime.operations.submit_as::<Finish>(request()).unwrap();
-                    assert_ne!(first.id(), second.id());
-                    assert_eq!(first.generation(), second.generation());
-                    assert_eq!(second.status().phase(), OperationPhase::Queued);
-                    second.cancel();
-                    second.cancel();
-                    assert!(second.status().cancellation_requested());
-                    assert_eq!(second.status().phase(), OperationPhase::Stopping);
-                    assert!(matches!(
-                        (&mut second).await,
-                        Err(Error::OperationRefused(Refusal::Cancelled))
-                    ));
-                    assert_eq!(second.status().phase(), OperationPhase::Settled);
-                    assert_eq!(second.status().outcome(), Some(OperationOutcome::Cancelled));
-                    assert!(second.status().started_at().is_none());
-                    assert_eq!(counters.runs.load(Ordering::SeqCst), 1);
-                    // The cancelled queued instance was never constructed.
-                    assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
-                    counters.release.notify_one();
-                    assert_eq!(*first.join().await.unwrap(), 42);
+    counters.fail.store(false, Ordering::SeqCst);
+    instance.settle().await.unwrap();
+    let settled = instance.status();
+    assert_eq!(instance.id(), id);
+    assert_eq!(instance.generation(), generation);
+    assert_eq!(settled.phase(), OperationPhase::Settled);
+    assert_eq!(settled.outcome(), Some(OperationOutcome::Failed));
+    assert!(!settled.cleanup_pending());
+    assert!(settled.cleanup_failure().is_none());
+    assert!(settled.settled_at().is_some());
+    assert_eq!(counters.dropped.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        failed.phase(),
+        OperationPhase::Finalizing,
+        "snapshots remain independent"
+    );
+    runtime.stop().await.unwrap();
+}
 
-                    runtime.operations.unregister(Finish::ID).await.unwrap();
-                    counters.block.store(false, Ordering::SeqCst);
-                    runtime
-                        .operations
-                        .register_operation::<Finishing>(
-                            "app",
-                            Lanes::Serial,
-                            Arc::new(Owner(Arc::clone(&counters))),
-                        )
-                        .unwrap();
-                    let replacement = runtime.operations.submit_as::<Finish>(request()).unwrap();
-                    assert_ne!(replacement.generation(), second.generation());
-                    assert_ne!(replacement.id(), second.id());
-                    assert_eq!(*replacement.join().await.unwrap(), 42);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("cleanup_wait_retains", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let counters = Arc::new(Counters::default());
-                    counters.fail.store(true, Ordering::SeqCst);
-                    runtime
-                        .operations
-                        .register_operation::<Finishing>(
-                            "app",
-                            Lanes::Open,
-                            Arc::new(Owner(Arc::clone(&counters))),
-                        )
-                        .unwrap();
-                    let mut instance = runtime.operations.submit_as::<Finish>(request()).unwrap();
-                    assert!(matches!(
-                        (&mut instance).await,
-                        Err(Error::OperationFinalization { .. })
-                    ));
-                    assert_eq!(
-                        instance.status().outcome(),
-                        Some(OperationOutcome::Succeeded)
-                    );
-                    counters.fail.store(false, Ordering::SeqCst);
-                    counters.block.store(true, Ordering::SeqCst);
-                    assert!(
-                        tokio::time::timeout(
-                            std::time::Duration::from_millis(10),
-                            instance.settle()
-                        )
-                        .await
-                        .is_err()
-                    );
-                    assert_eq!(counters.finished.load(Ordering::SeqCst), 2);
-                    instance.cancel();
-                    let pending = instance.status();
-                    assert_eq!(pending.phase(), OperationPhase::Finalizing);
-                    assert_eq!(pending.outcome(), Some(OperationOutcome::Succeeded));
-                    assert!(pending.cancellation_requested());
-                    assert!(pending.cleanup_pending());
-                    assert!(pending.settled_at().is_none());
-                    assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
-                    counters.release.notify_one();
-                    instance.settle().await.unwrap();
-                    assert_eq!(counters.finished.load(Ordering::SeqCst), 2);
-                    assert_eq!(counters.dropped.load(Ordering::SeqCst), 1);
-                    assert_eq!(instance.status().phase(), OperationPhase::Settled);
-                    assert_eq!(
-                        instance.status().outcome(),
-                        Some(OperationOutcome::Succeeded)
-                    );
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("runtime_recovers_failed", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.start_paused(true);
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let child = Arc::new(Counters::default());
-                    child.fail.store(true, Ordering::SeqCst);
-                    runtime
-                        .operations
-                        .register_operation::<Finishing>(
-                            "child",
-                            Lanes::Serial,
-                            Arc::new(Owner(child.clone())),
-                        )
-                        .unwrap();
-                    let parent = Arc::new(Counters::default());
-                    runtime
-                        .operations
-                        .register_operation::<ParentCall>(
-                            "parent",
-                            Lanes::Open,
-                            Arc::new(ParentOwner(parent.clone())),
-                        )
-                        .unwrap();
-                    let invocation = runtime.operations.submit_as::<Parent>(request()).unwrap();
-                    child.entering.notified().await;
-                    assert_eq!(child.dropped.load(Ordering::SeqCst), 0);
-                    assert_eq!(parent.dropped.load(Ordering::SeqCst), 0);
-                    child.fail.store(false, Ordering::SeqCst);
-                    tokio::time::timeout(std::time::Duration::from_secs(1), runtime.stop())
-                        .await
-                        .unwrap()
-                        .unwrap();
-                    assert!(invocation.join().await.is_err());
-                    assert_eq!(child.finished.load(Ordering::SeqCst), 2);
-                    assert_eq!(child.dropped.load(Ordering::SeqCst), 1);
-                    assert_eq!(parent.dropped.load(Ordering::SeqCst), 1);
-                });
-        });
-    }
+#[tokio::test(start_paused = true)]
+async fn queued_cancel_retains() {
+    let runtime = runtime().await;
+    let counters = Arc::new(Counters::default());
+    counters.block.store(true, Ordering::SeqCst);
+    runtime
+        .operations
+        .register_operation::<Finishing>(
+            "app",
+            Lanes::Serial,
+            Arc::new(Owner(Arc::clone(&counters))),
+        )
+        .unwrap();
+    let first = runtime.operations.submit_as::<Finish>(request()).unwrap();
+    counters.entering.notified().await;
+    let mut second = runtime.operations.submit_as::<Finish>(request()).unwrap();
+    assert_ne!(first.id(), second.id());
+    assert_eq!(first.generation(), second.generation());
+    assert_eq!(second.status().phase(), OperationPhase::Queued);
+    second.cancel();
+    second.cancel();
+    assert!(second.status().cancellation_requested());
+    assert_eq!(second.status().phase(), OperationPhase::Stopping);
+    assert!(matches!(
+        (&mut second).await,
+        Err(Error::OperationRefused(Refusal::Cancelled))
+    ));
+    assert_eq!(second.status().phase(), OperationPhase::Settled);
+    assert_eq!(second.status().outcome(), Some(OperationOutcome::Cancelled));
+    assert!(second.status().started_at().is_none());
+    assert_eq!(counters.runs.load(Ordering::SeqCst), 1);
+    // The cancelled queued instance was never constructed.
+    assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
+    counters.release.notify_one();
+    assert_eq!(*first.join().await.unwrap(), 42);
+
+    runtime.operations.unregister(Finish::ID).await.unwrap();
+    counters.block.store(false, Ordering::SeqCst);
+    runtime
+        .operations
+        .register_operation::<Finishing>(
+            "app",
+            Lanes::Serial,
+            Arc::new(Owner(Arc::clone(&counters))),
+        )
+        .unwrap();
+    let replacement = runtime.operations.submit_as::<Finish>(request()).unwrap();
+    assert_ne!(replacement.generation(), second.generation());
+    assert_ne!(replacement.id(), second.id());
+    assert_eq!(*replacement.join().await.unwrap(), 42);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn cleanup_wait_retains() {
+    let runtime = runtime().await;
+    let counters = Arc::new(Counters::default());
+    counters.fail.store(true, Ordering::SeqCst);
+    runtime
+        .operations
+        .register_operation::<Finishing>("app", Lanes::Open, Arc::new(Owner(Arc::clone(&counters))))
+        .unwrap();
+    let mut instance = runtime.operations.submit_as::<Finish>(request()).unwrap();
+    assert!(matches!(
+        (&mut instance).await,
+        Err(Error::OperationFinalization { .. })
+    ));
+    assert_eq!(
+        instance.status().outcome(),
+        Some(OperationOutcome::Succeeded)
+    );
+    counters.fail.store(false, Ordering::SeqCst);
+    counters.block.store(true, Ordering::SeqCst);
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(10), instance.settle())
+            .await
+            .is_err()
+    );
+    assert_eq!(counters.finished.load(Ordering::SeqCst), 2);
+    instance.cancel();
+    let pending = instance.status();
+    assert_eq!(pending.phase(), OperationPhase::Finalizing);
+    assert_eq!(pending.outcome(), Some(OperationOutcome::Succeeded));
+    assert!(pending.cancellation_requested());
+    assert!(pending.cleanup_pending());
+    assert!(pending.settled_at().is_none());
+    assert_eq!(counters.dropped.load(Ordering::SeqCst), 0);
+    counters.release.notify_one();
+    instance.settle().await.unwrap();
+    assert_eq!(counters.finished.load(Ordering::SeqCst), 2);
+    assert_eq!(counters.dropped.load(Ordering::SeqCst), 1);
+    assert_eq!(instance.status().phase(), OperationPhase::Settled);
+    assert_eq!(
+        instance.status().outcome(),
+        Some(OperationOutcome::Succeeded)
+    );
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn runtime_recovers_failed() {
+    let runtime = runtime().await;
+    let child = Arc::new(Counters::default());
+    child.fail.store(true, Ordering::SeqCst);
+    runtime
+        .operations
+        .register_operation::<Finishing>("child", Lanes::Serial, Arc::new(Owner(child.clone())))
+        .unwrap();
+    let parent = Arc::new(Counters::default());
+    runtime
+        .operations
+        .register_operation::<ParentCall>(
+            "parent",
+            Lanes::Open,
+            Arc::new(ParentOwner(parent.clone())),
+        )
+        .unwrap();
+    let invocation = runtime.operations.submit_as::<Parent>(request()).unwrap();
+    child.entering.notified().await;
+    assert_eq!(child.dropped.load(Ordering::SeqCst), 0);
+    assert_eq!(parent.dropped.load(Ordering::SeqCst), 0);
+    child.fail.store(false, Ordering::SeqCst);
+    tokio::time::timeout(std::time::Duration::from_secs(1), runtime.stop())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(invocation.join().await.is_err());
+    assert_eq!(child.finished.load(Ordering::SeqCst), 2);
+    assert_eq!(child.dropped.load(Ordering::SeqCst), 1);
+    assert_eq!(parent.dropped.load(Ordering::SeqCst), 1);
 }
 
 /* === Tests === */

@@ -9,8 +9,6 @@
 
 /* === Modules === */
 mod managed;
-#[path = "../../../../tests/support/scenarios.rs"]
-mod scenario_runtime;
 #[path = "../support/mod.rs"]
 mod support;
 
@@ -70,17 +68,3 @@ mod undo;
 /* === Private Functions === */
 
 /* === Tests === */
-
-#[test]
-fn committed_history() {
-    ordering::contract_scenario();
-    idempotency::contract_scenario();
-    records::contract_scenario();
-    consumers::contract_scenario();
-}
-
-#[test]
-fn state_ownership() {
-    managed::contract_scenario();
-    poison::contract_scenario();
-}

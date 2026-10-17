@@ -10,7 +10,6 @@
 #![allow(dead_code)]
 /* === Modules === */
 mod app;
-#[path = "../../../../tests/support/fixtures.rs"]
 pub mod fixtures;
 mod feeds {
     use serde::{Deserialize, Serialize};

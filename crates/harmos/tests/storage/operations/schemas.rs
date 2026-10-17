@@ -88,94 +88,86 @@ async fn setup() -> Fixture {
 }
 
 /* === Tests === */
-pub(super) fn contract_scenario() {
-    crate::scenario_runtime::check("schema_registry_roundtrip", || {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async {
-                let f = setup().await;
-                let request = request(&f, "nested");
-                let accepted = f
-                    .runtime
-                    .operations
-                    .call_as::<WriteSchema>(request.clone())
-                    .await
-                    .unwrap();
-                let repeated = f
-                    .runtime
-                    .operations
-                    .call_as::<WriteSchema>(request.clone())
-                    .await
-                    .unwrap();
-                assert_eq!(*accepted, *repeated);
-                assert_eq!(f.storage.cursor_accepted(), *accepted);
-                let mut conflict = request.clone();
-                conflict.schema.key.version = NonZeroU32::new(2).unwrap();
-                assert!(
-                    f.runtime
-                        .operations
-                        .call_as::<WriteSchema>(conflict)
-                        .await
-                        .is_err()
-                );
-                let at = f.storage.flush().await.unwrap();
-                let query = QueryRequest {
-                    at: at.clone(),
-                    source: Source::Schemas(SchemaSelection {
-                        schema: Some(request.schema.key.clone()),
-                    }),
-                    transforms: vec![],
-                    slice: RowSlice {
-                        offset: 0,
-                        limit: None,
-                    },
-                };
-                let mut response = f
-                    .runtime
-                    .operations
-                    .download::<Query>(
-                        query,
-                        harmos::operations::StreamSettings {
-                            items: NonZeroUsize::MIN,
-                            bytes: NonZeroUsize::new(64 * 1024).unwrap(),
-                        },
-                    )
-                    .unwrap();
-                let mut announced = false;
-                let mut rows = 0;
-                while let Some(output) = response.next().await.unwrap() {
-                    match &*output {
-                        QueryOutput::Schema(_) => {
-                            assert!(!announced);
-                            announced = true;
-                        }
-                        QueryOutput::Batch(batch) => {
-                            assert!(announced);
-                            rows += batch.as_record_batch().num_rows();
-                        }
-                    }
-                }
-                let completed = response.join().await.unwrap();
-                assert_eq!(completed.at, at);
-                assert_eq!(completed.rows, 1);
-                assert_eq!(rows, 1);
-                let persisted = f
-                    .data
-                    .schemas
-                    .lock()
-                    .unwrap()
-                    .values()
-                    .next()
-                    .unwrap()
-                    .clone();
-                assert_eq!(persisted.schema, *request.schema.graph());
-                let encoded = serde_json::to_value(&persisted).unwrap();
-                let decoded: harmos::storage::StorageSchema =
-                    serde_json::from_value(encoded).unwrap();
-                assert_eq!(decoded, persisted);
-                f.finish().await;
-            })
-    });
+#[tokio::test]
+async fn schema_registry_roundtrip() {
+    let f = setup().await;
+    let request = request(&f, "nested");
+    let accepted = f
+        .runtime
+        .operations
+        .call_as::<WriteSchema>(request.clone())
+        .await
+        .unwrap();
+    let repeated = f
+        .runtime
+        .operations
+        .call_as::<WriteSchema>(request.clone())
+        .await
+        .unwrap();
+    assert_eq!(*accepted, *repeated);
+    assert_eq!(f.storage.cursor_accepted(), *accepted);
+    let mut conflict = request.clone();
+    conflict.schema.key.version = NonZeroU32::new(2).unwrap();
+    assert!(
+        f.runtime
+            .operations
+            .call_as::<WriteSchema>(conflict)
+            .await
+            .is_err()
+    );
+    let at = f.storage.flush().await.unwrap();
+    let query = QueryRequest {
+        at: at.clone(),
+        source: Source::Schemas(SchemaSelection {
+            schema: Some(request.schema.key.clone()),
+        }),
+        transforms: vec![],
+        slice: RowSlice {
+            offset: 0,
+            limit: None,
+        },
+    };
+    let mut response = f
+        .runtime
+        .operations
+        .download::<Query>(
+            query,
+            harmos::operations::StreamSettings {
+                items: NonZeroUsize::MIN,
+                bytes: NonZeroUsize::new(64 * 1024).unwrap(),
+            },
+        )
+        .unwrap();
+    let mut announced = false;
+    let mut rows = 0;
+    while let Some(output) = response.next().await.unwrap() {
+        match &*output {
+            QueryOutput::Schema(_) => {
+                assert!(!announced);
+                announced = true;
+            }
+            QueryOutput::Batch(batch) => {
+                assert!(announced);
+                rows += batch.as_record_batch().num_rows();
+            }
+        }
+    }
+    let completed = response.join().await.unwrap();
+    assert_eq!(completed.at, at);
+    assert_eq!(completed.rows, 1);
+    assert_eq!(rows, 1);
+    let persisted = f
+        .data
+        .schemas
+        .lock()
+        .unwrap()
+        .values()
+        .next()
+        .unwrap()
+        .clone();
+    assert_eq!(persisted.schema, *request.schema.graph());
+    let encoded = serde_json::to_value(&persisted).unwrap();
+    let decoded: harmos::storage::StorageSchema = serde_json::from_value(encoded).unwrap();
+    assert_eq!(decoded, persisted);
+    f.finish().await;
 }

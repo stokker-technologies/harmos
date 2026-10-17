@@ -198,7 +198,6 @@ tower-http = { workspace = true, optional = true }
 [dev-dependencies]
 # Local
 harmos-guest = { workspace = true, features = ["componentize"] }
-jsonl-adapter = { path = "../../tests/support/jsonl-adapter" }
 
 # Git
 

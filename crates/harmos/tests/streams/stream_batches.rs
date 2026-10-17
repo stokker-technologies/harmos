@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 #[path = "../support/stream_batches.rs"]
 pub mod batches;
@@ -40,20 +39,9 @@ pub mod batches;
 
 /* === Private Functions === */
 
-#[test]
-fn contract_scenario() {
-    {
-        scenario_runtime::check("raw_summary_delivery", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    batches::raw_and_summary_delivery().await;
-                });
-        });
-    }
+#[tokio::test]
+async fn raw_summary_delivery() {
+    batches::raw_and_summary_delivery().await;
 }
 
 /* === Tests === */

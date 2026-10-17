@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -193,374 +192,308 @@ async fn restore(
     Ok(())
 }
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("saved_facts_reconcile", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    store.seed().await;
-                    for _ in 0..2 {
-                        let storage = store.manager();
-                        let started = Arc::new(Notify::new());
-                        let signal = started.clone();
-                        let saved = storage.clone();
-                        let runtime = builder()
-                            .reconcile(restore)
-                            .service("application", move |context: Service<Bank>| {
-                                let signal = signal.clone();
-                                let saved = saved.clone();
-                                async move {
-                                    assert_eq!(
-                                        context
-                                            .state()
-                                            .state()
-                                            .read(|state| state.balances[&HOUSE])
-                                            .await
-                                            .unwrap()
-                                            .value,
-                                        8
-                                    );
-                                    assert_eq!(context.state().stored(), Position(2));
-                                    assert_eq!(saved.status().recovery_saved.sequence, 2);
-                                    signal.notify_one();
-                                    Ok::<(), Fault<String>>(())
-                                }
-                            })
-                            .runtime_with_storage(&storage)
-                            .await
-                            .unwrap();
-                        tokio::time::timeout(Duration::from_secs(1), started.notified())
-                            .await
-                            .unwrap();
-                        assert_eq!(runtime.state.applied(), Position(2));
-                        runtime.stop().await.unwrap();
-                    }
-                });
-        });
-    }
-    {
-        scenario_runtime::check("primary_flush_precedes", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    store.seed().await;
-                    let storage = store.manager();
-                    store.data.control.block_flush.store(true, Ordering::SeqCst);
-                    store
-                        .recovery
-                        .control
-                        .block_flush
-                        .store(true, Ordering::SeqCst);
-                    let started = Arc::new(AtomicBool::new(false));
-                    let mark = started.clone();
-                    let opening = builder()
-                        .reconcile(|journal, storage| async move {
-                            storage
-                                .write_records(&[record(
-                                    &schema(),
-                                    &Identifier::new("repair-marker").unwrap(),
-                                    b"saved",
-                                )])
-                                .await?;
-                            restore(journal, storage).await
-                        })
-                        .service("application", move |_context: Service<Bank>| {
-                            mark.store(true, Ordering::SeqCst);
-                            async { Ok::<(), Fault<String>>(()) }
-                        })
-                        .runtime_with_storage(&storage);
-                    tokio::pin!(opening);
-                    tokio::select! {
-                        _ = &mut opening => panic!("primary save must block boot"),
-                        _ = store.data.control.flush_entered.notified() => {}
-                    }
-                    assert!(!started.load(Ordering::SeqCst));
-                    assert_eq!(storage.status().saved.sequence, 2);
-                    assert_eq!(storage.status().recovery_saved.sequence, 1);
-                    store
-                        .data
-                        .control
-                        .block_flush
-                        .store(false, Ordering::SeqCst);
-                    store.data.control.flush_release.notify_one();
-                    tokio::select! {
-                        _ = &mut opening => panic!("recovery save must block boot"),
-                        _ = store.recovery.control.flush_entered.notified() => {}
-                    }
-                    assert!(!started.load(Ordering::SeqCst));
-                    assert_eq!(storage.status().saved.sequence, 3);
-                    assert_eq!(storage.status().recovery_saved.sequence, 1);
-                    store
-                        .recovery
-                        .control
-                        .block_flush
-                        .store(false, Ordering::SeqCst);
-                    store.recovery.control.flush_release.notify_one();
-                    let runtime = opening.await.unwrap();
-                    assert_eq!(runtime.state.stored(), Position(2));
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("failure_closes_owners", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    let storage = store.manager();
-                    let started = Arc::new(AtomicBool::new(false));
-                    let mark = started.clone();
-                    let result = builder()
-                        .reconcile(|journal, _| async move {
-                            journal.commit(deposit(2)).await.unwrap();
-                            Err(failure())
-                        })
-                        .service("application", move |_context: Service<Bank>| {
-                            mark.store(true, Ordering::SeqCst);
-                            async { Ok::<(), Fault<String>>(()) }
-                        })
-                        .runtime_with_storage(&storage)
-                        .await;
-                    assert!(result.err().unwrap().to_string().contains("reconciliation"));
-                    assert!(!started.load(Ordering::SeqCst));
-                    assert!(storage.status().closed);
-                    assert!(!store.data.control.open.load(Ordering::SeqCst));
-                    assert!(!store.recovery.control.open.load(Ordering::SeqCst));
-                    // Boot failure is not a rollback of admitted repairs.
-                    let storage = store.manager();
-                    let runtime = builder().runtime_with_storage(&storage).await.unwrap();
+#[tokio::test]
+async fn saved_facts_reconcile() {
+    let store = Store::new();
+    store.seed().await;
+    for _ in 0..2 {
+        let storage = store.manager();
+        let started = Arc::new(Notify::new());
+        let signal = started.clone();
+        let saved = storage.clone();
+        let runtime = builder()
+            .reconcile(restore)
+            .service("application", move |context: Service<Bank>| {
+                let signal = signal.clone();
+                let saved = saved.clone();
+                async move {
                     assert_eq!(
-                        runtime
-                            .state
+                        context
+                            .state()
                             .state()
                             .read(|state| state.balances[&HOUSE])
                             .await
                             .unwrap()
                             .value,
-                        2
+                        8
                     );
-                    runtime.stop().await.unwrap();
-                });
-        });
+                    assert_eq!(context.state().stored(), Position(2));
+                    assert_eq!(saved.status().recovery_saved.sequence, 2);
+                    signal.notify_one();
+                    Ok::<(), Fault<String>>(())
+                }
+            })
+            .runtime_with_storage(&storage)
+            .await
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(1), started.notified())
+            .await
+            .unwrap();
+        assert_eq!(runtime.state.applied(), Position(2));
+        runtime.stop().await.unwrap();
     }
+}
+
+#[tokio::test]
+async fn primary_flush_precedes() {
+    let store = Store::new();
+    store.seed().await;
+    let storage = store.manager();
+    store.data.control.block_flush.store(true, Ordering::SeqCst);
+    store
+        .recovery
+        .control
+        .block_flush
+        .store(true, Ordering::SeqCst);
+    let started = Arc::new(AtomicBool::new(false));
+    let mark = started.clone();
+    let opening = builder()
+        .reconcile(|journal, storage| async move {
+            storage
+                .write_records(&[record(
+                    &schema(),
+                    &Identifier::new("repair-marker").unwrap(),
+                    b"saved",
+                )])
+                .await?;
+            restore(journal, storage).await
+        })
+        .service("application", move |_context: Service<Bank>| {
+            mark.store(true, Ordering::SeqCst);
+            async { Ok::<(), Fault<String>>(()) }
+        })
+        .runtime_with_storage(&storage);
+    tokio::pin!(opening);
+    tokio::select! {
+        _ = &mut opening => panic!("primary save must block boot"),
+        _ = store.data.control.flush_entered.notified() => {}
+    }
+    assert!(!started.load(Ordering::SeqCst));
+    assert_eq!(storage.status().saved.sequence, 2);
+    assert_eq!(storage.status().recovery_saved.sequence, 1);
+    store
+        .data
+        .control
+        .block_flush
+        .store(false, Ordering::SeqCst);
+    store.data.control.flush_release.notify_one();
+    tokio::select! {
+        _ = &mut opening => panic!("recovery save must block boot"),
+        _ = store.recovery.control.flush_entered.notified() => {}
+    }
+    assert!(!started.load(Ordering::SeqCst));
+    assert_eq!(storage.status().saved.sequence, 3);
+    assert_eq!(storage.status().recovery_saved.sequence, 1);
+    store
+        .recovery
+        .control
+        .block_flush
+        .store(false, Ordering::SeqCst);
+    store.recovery.control.flush_release.notify_one();
+    let runtime = opening.await.unwrap();
+    assert_eq!(runtime.state.stored(), Position(2));
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn failure_closes_owners() {
+    let store = Store::new();
+    let storage = store.manager();
+    let started = Arc::new(AtomicBool::new(false));
+    let mark = started.clone();
+    let result = builder()
+        .reconcile(|journal, _| async move {
+            journal.commit(deposit(2)).await.unwrap();
+            Err(failure())
+        })
+        .service("application", move |_context: Service<Bank>| {
+            mark.store(true, Ordering::SeqCst);
+            async { Ok::<(), Fault<String>>(()) }
+        })
+        .runtime_with_storage(&storage)
+        .await;
+    assert!(result.err().unwrap().to_string().contains("reconciliation"));
+    assert!(!started.load(Ordering::SeqCst));
+    assert!(storage.status().closed);
+    assert!(!store.data.control.open.load(Ordering::SeqCst));
+    assert!(!store.recovery.control.open.load(Ordering::SeqCst));
+    // Boot failure is not a rollback of admitted repairs.
+    let storage = store.manager();
+    let runtime = builder().runtime_with_storage(&storage).await.unwrap();
+    assert_eq!(
+        runtime
+            .state
+            .state()
+            .read(|state| state.balances[&HOUSE])
+            .await
+            .unwrap()
+            .value,
+        2
+    );
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn reconciliation_seals_journal() {
+    let store = Store::new();
+    let storage = store.manager();
+    let gate = Arc::new(Gate::default());
+    let entered = gate.clone();
+    let retained = Arc::new(std::sync::Mutex::new(None));
+    let keep = retained.clone();
     {
-        scenario_runtime::check("reconciliation_seals_journal", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    let storage = store.manager();
-                    let gate = Arc::new(Gate::default());
-                    let entered = gate.clone();
-                    let retained = Arc::new(std::sync::Mutex::new(None));
-                    let keep = retained.clone();
-                    {
-                        let opening = builder()
-                            .reconcile(move |journal, _| async move {
-                                journal.commit(deposit(2)).await.unwrap();
-                                *keep.lock().unwrap() = Some(journal);
-                                entered.entered.notify_one();
-                                entered.release.notified().await;
-                                Ok(())
-                            })
-                            .runtime_with_storage(&storage);
-                        tokio::pin!(opening);
-                        tokio::select! {
-                            _ = &mut opening => panic!("callback must wait"),
-                            _ = gate.entered.notified() => {}
-                        }
-                    }
-                    closed(&storage).await;
-                    let journal = retained.lock().unwrap().take().unwrap();
-                    assert!(journal.commit(deposit(2)).await.is_err());
-                    assert_eq!(storage.status().recovery_saved.sequence, 1);
-                    assert!(!store.data.control.open.load(Ordering::SeqCst));
-                    assert!(!store.recovery.control.open.load(Ordering::SeqCst));
-                });
-        });
+        let opening = builder()
+            .reconcile(move |journal, _| async move {
+                journal.commit(deposit(2)).await.unwrap();
+                *keep.lock().unwrap() = Some(journal);
+                entered.entered.notify_one();
+                entered.release.notified().await;
+                Ok(())
+            })
+            .runtime_with_storage(&storage);
+        tokio::pin!(opening);
+        tokio::select! {
+            _ = &mut opening => panic!("callback must wait"),
+            _ = gate.entered.notified() => {}
+        }
     }
+    closed(&storage).await;
+    let journal = retained.lock().unwrap().take().unwrap();
+    assert!(journal.commit(deposit(2)).await.is_err());
+    assert_eq!(storage.status().recovery_saved.sequence, 1);
+    assert!(!store.data.control.open.load(Ordering::SeqCst));
+    assert!(!store.recovery.control.open.load(Ordering::SeqCst));
+}
+
+#[tokio::test]
+async fn reconciliation_save_prevents() {
+    let store = Store::new();
+    let storage = store.manager();
+    let started = Arc::new(AtomicBool::new(false));
+    let mark = started.clone();
+    store
+        .recovery
+        .control
+        .flush_failures
+        .store(1, Ordering::SeqCst);
+    assert!(
+        builder()
+            .reconcile(|journal, _| async move {
+                harmos::records::RecordManager::new(journal.clone())
+                    .publish(Noted("repair".into()))
+                    .await?;
+                Ok(())
+            })
+            .service("application", move |_context: Service<Bank>| {
+                mark.store(true, Ordering::SeqCst);
+                async { Ok::<(), Fault<String>>(()) }
+            })
+            .runtime_with_storage(&storage)
+            .await
+            .is_err()
+    );
+    assert!(!started.load(Ordering::SeqCst));
+    assert!(storage.status().closed);
+    assert_eq!(storage.status().recovery_saved.sequence, 1);
+}
+
+#[tokio::test]
+async fn reconciliation_requires_managed() {
+    let store = Store::new();
+    let storage = store.manager();
+    assert!(
+        Runtime::<Bank>::builder(Ledger::default(), ())
+            .reconcile(|_, _| async { Ok(()) })
+            .runtime_with_storage(&storage)
+            .await
+            .is_err()
+    );
+    assert!(!store.data.control.open.load(Ordering::SeqCst));
+    assert!(!store.recovery.control.open.load(Ordering::SeqCst));
+    let runtime = builder().runtime_with_storage(&storage).await.unwrap();
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn reconciliation_keeps_async() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let store = Store::new();
+            let storage = store.manager();
+            let owned = storage.clone();
+            let task = tokio::task::spawn_local(async move {
+                builder()
+                    .reconcile(|journal, _| async move {
+                        harmos::records::RecordManager::new(journal.clone())
+                            .publish(Noted("before panic".into()))
+                            .await?;
+                        panic!("controlled reconciliation panic");
+                    })
+                    .runtime_with_storage(&owned)
+                    .await
+            });
+            assert!(task.await.err().unwrap().is_panic());
+            closed(&storage).await;
+            assert_eq!(storage.status().recovery_saved.sequence, 1);
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn final_save_retains() {
+    let store = Store::new();
+    let storage = store.manager();
+    store
+        .recovery
+        .control
+        .block_flush
+        .store(true, Ordering::SeqCst);
     {
-        scenario_runtime::check("reconciliation_save_prevents", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    let storage = store.manager();
-                    let started = Arc::new(AtomicBool::new(false));
-                    let mark = started.clone();
-                    store
-                        .recovery
-                        .control
-                        .flush_failures
-                        .store(1, Ordering::SeqCst);
-                    assert!(
-                        builder()
-                            .reconcile(|journal, _| async move {
-                                harmos::records::RecordManager::new(journal.clone())
-                                    .publish(Noted("repair".into()))
-                                    .await?;
-                                Ok(())
-                            })
-                            .service("application", move |_context: Service<Bank>| {
-                                mark.store(true, Ordering::SeqCst);
-                                async { Ok::<(), Fault<String>>(()) }
-                            })
-                            .runtime_with_storage(&storage)
-                            .await
-                            .is_err()
-                    );
-                    assert!(!started.load(Ordering::SeqCst));
-                    assert!(storage.status().closed);
-                    assert_eq!(storage.status().recovery_saved.sequence, 1);
-                });
-        });
+        let opening = builder()
+            .reconcile(|journal, _| async move {
+                harmos::records::RecordManager::new(journal.clone())
+                    .publish(Noted("repair".into()))
+                    .await?;
+                Ok(())
+            })
+            .runtime_with_storage(&storage);
+        tokio::pin!(opening);
+        tokio::select! {
+            _ = &mut opening => panic!("save must wait"),
+            _ = store.recovery.control.flush_entered.notified() => {}
+        }
     }
-    {
-        scenario_runtime::check("reconciliation_requires_managed", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    let storage = store.manager();
-                    assert!(
-                        Runtime::<Bank>::builder(Ledger::default(), ())
-                            .reconcile(|_, _| async { Ok(()) })
-                            .runtime_with_storage(&storage)
-                            .await
-                            .is_err()
-                    );
-                    assert!(!store.data.control.open.load(Ordering::SeqCst));
-                    assert!(!store.recovery.control.open.load(Ordering::SeqCst));
-                    let runtime = builder().runtime_with_storage(&storage).await.unwrap();
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("reconciliation_keeps_async", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    tokio::task::LocalSet::new()
-                        .run_until(async {
-                            let store = Store::new();
-                            let storage = store.manager();
-                            let owned = storage.clone();
-                            let task = tokio::task::spawn_local(async move {
-                                builder()
-                                    .reconcile(|journal, _| async move {
-                                        harmos::records::RecordManager::new(journal.clone())
-                                            .publish(Noted("before panic".into()))
-                                            .await?;
-                                        panic!("controlled reconciliation panic");
-                                    })
-                                    .runtime_with_storage(&owned)
-                                    .await
-                            });
-                            assert!(task.await.err().unwrap().is_panic());
-                            closed(&storage).await;
-                            assert_eq!(storage.status().recovery_saved.sequence, 1);
-                        })
-                        .await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("final_save_retains", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    let storage = store.manager();
-                    store
-                        .recovery
-                        .control
-                        .block_flush
-                        .store(true, Ordering::SeqCst);
-                    {
-                        let opening = builder()
-                            .reconcile(|journal, _| async move {
-                                harmos::records::RecordManager::new(journal.clone())
-                                    .publish(Noted("repair".into()))
-                                    .await?;
-                                Ok(())
-                            })
-                            .runtime_with_storage(&storage);
-                        tokio::pin!(opening);
-                        tokio::select! {
-                            _ = &mut opening => panic!("save must wait"),
-                            _ = store.recovery.control.flush_entered.notified() => {}
-                        }
-                    }
-                    assert!(!storage.status().closed);
-                    store
-                        .recovery
-                        .control
-                        .block_flush
-                        .store(false, Ordering::SeqCst);
-                    store.recovery.control.flush_release.notify_one();
-                    closed(&storage).await;
-                    assert_eq!(storage.status().recovery_saved.sequence, 1);
-                });
-        });
-    }
-    {
-        scenario_runtime::check("cleanup_retains_storage", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    let storage = store.manager();
-                    store.data.control.fail_close.store(true, Ordering::SeqCst);
-                    let error = builder()
-                        .reconcile(|_, _| async { Err(failure()) })
-                        .runtime_with_storage(&storage)
-                        .await
-                        .err()
-                        .unwrap()
-                        .to_string();
-                    assert!(error.contains("controlled failure"));
-                    assert!(error.contains("cleanup also failed"));
-                    assert!(!storage.status().closed);
-                    store.data.control.fail_close.store(false, Ordering::SeqCst);
-                    storage.close().await.unwrap();
-                    assert!(storage.status().closed);
-                    assert!(!store.data.control.open.load(Ordering::SeqCst));
-                    assert!(!store.recovery.control.open.load(Ordering::SeqCst));
-                });
-        });
-    }
+    assert!(!storage.status().closed);
+    store
+        .recovery
+        .control
+        .block_flush
+        .store(false, Ordering::SeqCst);
+    store.recovery.control.flush_release.notify_one();
+    closed(&storage).await;
+    assert_eq!(storage.status().recovery_saved.sequence, 1);
+}
+
+#[tokio::test]
+async fn cleanup_retains_storage() {
+    let store = Store::new();
+    let storage = store.manager();
+    store.data.control.fail_close.store(true, Ordering::SeqCst);
+    let error = builder()
+        .reconcile(|_, _| async { Err(failure()) })
+        .runtime_with_storage(&storage)
+        .await
+        .err()
+        .unwrap()
+        .to_string();
+    assert!(error.contains("controlled failure"));
+    assert!(error.contains("cleanup also failed"));
+    assert!(!storage.status().closed);
+    store.data.control.fail_close.store(false, Ordering::SeqCst);
+    storage.close().await.unwrap();
+    assert!(storage.status().closed);
+    assert!(!store.data.control.open.load(Ordering::SeqCst));
+    assert!(!store.recovery.control.open.load(Ordering::SeqCst));
 }
 
 /* === Tests === */

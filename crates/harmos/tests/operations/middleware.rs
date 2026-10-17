@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -211,351 +210,304 @@ fn context(actor: &'static str) -> CallContext {
 
 /* === Tests === */
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("portable_overlays_preserve_local_values", || {
-            use harmos::Message;
-            use harmos::operations::{CallValue, ContextError, PORTABLE_BYTES, PORTABLE_VALUES};
-            let mut original = context("alice");
-            original
-                .insert_portable(Stage {
-                    id: "parent".into(),
-                })
-                .unwrap();
-            let child = original.with_value(Stage { id: "child".into() }).unwrap();
-            assert!(std::ptr::eq(
-                original.require::<Principal>().unwrap(),
-                child.require::<Principal>().unwrap()
-            ));
-            assert_eq!(original.require::<Stage>().unwrap().id, "parent");
-            assert_eq!(child.require::<Stage>().unwrap().id, "child");
-            assert_eq!(child.value::<Stage>().unwrap().unwrap().id, "child");
-            let values = vec![CallValue {
-                key: "test.stage".into(),
-                payload: Stage { id: "wire".into() }.encode_to_vec(),
-            }];
-            let mut call = harmos::operations::WireChildCall {
-                context: [7; 32],
-                generation_context: Some([9; 32]),
-                values: values.clone(),
-                operation: "overlay.child".into(),
-                payload: ().encode_to_vec(),
-                submit: true,
-            };
-            let encoded = call.encode().unwrap();
-            let decoded = harmos::operations::WireChildCall::decode(&encoded).unwrap();
-            assert_eq!(decoded.context, call.context);
-            assert_eq!(decoded.generation_context, call.generation_context);
-            assert_eq!(decoded.values, values);
-            assert!(decoded.submit);
-            let mut obsolete = encoded.clone();
-            obsolete[0] = 5;
-            assert!(matches!(
-                harmos::operations::WireChildCall::decode(&obsolete),
-                Err(harmos::operations::WireCodecError::Version)
-            ));
-            call.values.push(values[0].clone());
-            assert!(call.encode().is_err());
-            call.values = vec![CallValue {
-                key: "oversized".into(),
-                payload: vec![0; PORTABLE_BYTES],
-            }];
-            assert!(matches!(
-                call.encode(),
-                Err(harmos::operations::WireCodecError::Oversized)
-            ));
-            let wire = original.with_values(decoded.values).unwrap();
-            assert!(wire.get::<Stage>().is_none());
-            assert_eq!(wire.value::<Stage>().unwrap().unwrap().id, "wire");
-            assert!(std::ptr::eq(
-                original.require::<Principal>().unwrap(),
-                wire.require::<Principal>().unwrap()
-            ));
-            assert!(matches!(
-                original.with_values(vec![values[0].clone(), values[0].clone()]),
-                Err(ContextError::Duplicate { .. })
-            ));
-            assert!(matches!(
-                original.with_values(vec![CallValue {
-                    key: "oversized".into(),
-                    payload: vec![0; PORTABLE_BYTES]
-                }]),
-                Err(ContextError::Budget)
-            ));
-            let replacements = (0..PORTABLE_VALUES)
-                .map(|index| CallValue {
-                    key: format!("value{index}"),
-                    payload: Vec::new(),
-                })
-                .collect();
-            assert!(matches!(
-                original.with_values(replacements),
-                Err(ContextError::Budget)
-            ));
-            assert_eq!(original.value::<Stage>().unwrap().unwrap().id, "parent");
-            let mut trusted = CallContext::default();
-            trusted.insert(Stage { id: "local".into() }).unwrap();
-            assert!(matches!(
-                trusted.with_value(Stage { id: "other".into() }),
-                Err(ContextError::Duplicate { .. })
-            ));
-            assert_eq!(trusted.require::<Stage>().unwrap().id, "local");
-        });
+#[test]
+fn portable_overlays_preserve_local_values() {
+    use harmos::Message;
+    use harmos::operations::{CallValue, ContextError, PORTABLE_BYTES, PORTABLE_VALUES};
+    let mut original = context("alice");
+    original
+        .insert_portable(Stage {
+            id: "parent".into(),
+        })
+        .unwrap();
+    let child = original.with_value(Stage { id: "child".into() }).unwrap();
+    assert!(std::ptr::eq(
+        original.require::<Principal>().unwrap(),
+        child.require::<Principal>().unwrap()
+    ));
+    assert_eq!(original.require::<Stage>().unwrap().id, "parent");
+    assert_eq!(child.require::<Stage>().unwrap().id, "child");
+    assert_eq!(child.value::<Stage>().unwrap().unwrap().id, "child");
+    let values = vec![CallValue {
+        key: "test.stage".into(),
+        payload: Stage { id: "wire".into() }.encode_to_vec(),
+    }];
+    let mut call = harmos::operations::WireChildCall {
+        context: [7; 32],
+        generation_context: Some([9; 32]),
+        values: values.clone(),
+        operation: "overlay.child".into(),
+        payload: ().encode_to_vec(),
+        submit: true,
+    };
+    let encoded = call.encode().unwrap();
+    let decoded = harmos::operations::WireChildCall::decode(&encoded).unwrap();
+    assert_eq!(decoded.context, call.context);
+    assert_eq!(decoded.generation_context, call.generation_context);
+    assert_eq!(decoded.values, values);
+    assert!(decoded.submit);
+    let mut obsolete = encoded.clone();
+    obsolete[0] = 5;
+    assert!(matches!(
+        harmos::operations::WireChildCall::decode(&obsolete),
+        Err(harmos::operations::WireCodecError::Version)
+    ));
+    call.values.push(values[0].clone());
+    assert!(call.encode().is_err());
+    call.values = vec![CallValue {
+        key: "oversized".into(),
+        payload: vec![0; PORTABLE_BYTES],
+    }];
+    assert!(matches!(
+        call.encode(),
+        Err(harmos::operations::WireCodecError::Oversized)
+    ));
+    let wire = original.with_values(decoded.values).unwrap();
+    assert!(wire.get::<Stage>().is_none());
+    assert_eq!(wire.value::<Stage>().unwrap().unwrap().id, "wire");
+    assert!(std::ptr::eq(
+        original.require::<Principal>().unwrap(),
+        wire.require::<Principal>().unwrap()
+    ));
+    assert!(matches!(
+        original.with_values(vec![values[0].clone(), values[0].clone()]),
+        Err(ContextError::Duplicate { .. })
+    ));
+    assert!(matches!(
+        original.with_values(vec![CallValue {
+            key: "oversized".into(),
+            payload: vec![0; PORTABLE_BYTES]
+        }]),
+        Err(ContextError::Budget)
+    ));
+    let replacements = (0..PORTABLE_VALUES)
+        .map(|index| CallValue {
+            key: format!("value{index}"),
+            payload: Vec::new(),
+        })
+        .collect();
+    assert!(matches!(
+        original.with_values(replacements),
+        Err(ContextError::Budget)
+    ));
+    assert_eq!(original.value::<Stage>().unwrap().unwrap().id, "parent");
+    let mut trusted = CallContext::default();
+    trusted.insert(Stage { id: "local".into() }).unwrap();
+    assert!(matches!(
+        trusted.with_value(Stage { id: "other".into() }),
+        Err(ContextError::Duplicate { .. })
+    ));
+    assert_eq!(trusted.require::<Stage>().unwrap().id, "local");
+}
+
+#[tokio::test]
+async fn child_overlay_preserves_principal_and_parent_stage() {
+    let runtime = runtime().await;
+    runtime
+        .operations
+        .register_operation::<Overlay<false>>("app", Lanes::Open, Arc::new(()))
+        .unwrap();
+    runtime
+        .operations
+        .register_operation::<Overlay<true>>("app", Lanes::Open, Arc::new(()))
+        .unwrap();
+    let mut original = context("alice");
+    original
+        .insert_portable(Stage {
+            id: "parent".into(),
+        })
+        .unwrap();
+    let operations = runtime.operations.with_context(original.clone());
+    assert_eq!(
+        &*operations.call_as::<Overlay<false>>(()).await.unwrap(),
+        "alice:parent:alice:child"
+    );
+    assert_eq!(original.require::<Stage>().unwrap().id, "parent");
+    assert_eq!(
+        &*operations.call_as::<Overlay<true>>(()).await.unwrap(),
+        "alice:parent"
+    );
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn children_inherit_principals() {
+    let runtime = runtime().await;
+    let events = Arc::new(Mutex::new(Vec::new()));
+    for name in ["first", "second"] {
+        runtime
+            .operations
+            .register_middleware(Arc::new(Policy {
+                name,
+                events: events.clone(),
+                reject: false,
+            }))
+            .unwrap();
     }
-    {
-        scenario_runtime::check("child_overlay_preserves_principal_and_parent_stage", || {
-            let mut executor = tokio::runtime::Builder::new_current_thread();
-            executor.enable_all().build().unwrap().block_on(async {
-                let runtime = runtime().await;
-                runtime
-                    .operations
-                    .register_operation::<Overlay<false>>("app", Lanes::Open, Arc::new(()))
-                    .unwrap();
-                runtime
-                    .operations
-                    .register_operation::<Overlay<true>>("app", Lanes::Open, Arc::new(()))
-                    .unwrap();
-                let mut original = context("alice");
-                original
-                    .insert_portable(Stage {
-                        id: "parent".into(),
-                    })
-                    .unwrap();
-                let operations = runtime.operations.with_context(original.clone());
-                assert_eq!(
-                    &*operations.call_as::<Overlay<false>>(()).await.unwrap(),
-                    "alice:parent:alice:child"
-                );
-                assert_eq!(original.require::<Stage>().unwrap().id, "parent");
-                assert_eq!(
-                    &*operations.call_as::<Overlay<true>>(()).await.unwrap(),
-                    "alice:parent"
-                );
-                runtime.stop().await.unwrap();
-            });
-        });
+    let alice = runtime.operations.with_context(context("alice"));
+    assert_eq!(
+        &*alice.call_as::<Declare<false>>(()).await.unwrap(),
+        "alice:alice"
+    );
+    assert_eq!(
+        *events.lock().unwrap(),
+        [
+            "first enter middleware.parent",
+            "second enter middleware.parent",
+            "first enter middleware.child",
+            "second enter middleware.child",
+            "second observe middleware.child",
+            "first observe middleware.child",
+            "second observe middleware.parent",
+            "first observe middleware.parent",
+        ]
+    );
+    assert!(
+        runtime
+            .operations
+            .register_middleware(Arc::new(Policy {
+                name: "late",
+                events: events.clone(),
+                reject: false
+            }))
+            .is_err()
+    );
+    let bob = runtime.operations.with_context(context("bob"));
+    let (a, b) = tokio::join!(
+        alice.call_as::<Declare<false>>(()),
+        bob.call_as::<Declare<false>>(())
+    );
+    assert_eq!(&*a.unwrap(), "alice:alice");
+    assert_eq!(&*b.unwrap(), "bob:bob");
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn layers_skips_layers() {
+    let runtime = runtime().await;
+    let events = Arc::new(Mutex::new(Vec::new()));
+    for (name, reject) in [("first", false), ("reject", true), ("unreached", false)] {
+        runtime
+            .operations
+            .register_middleware(Arc::new(Policy {
+                name,
+                events: events.clone(),
+                reject,
+            }))
+            .unwrap();
     }
+    assert!(
+        runtime
+            .operations
+            .with_context(context("alice"))
+            .call_as::<Declare<false>>(())
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        *events.lock().unwrap(),
+        [
+            "first enter middleware.parent",
+            "reject enter middleware.parent",
+            "reject observe middleware.parent",
+            "first observe middleware.parent",
+        ]
+    );
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn cancellation_interrupts_policy() {
+    let runtime = runtime().await;
+    let entered = Arc::new(tokio::sync::Semaphore::new(0));
+    let observed = Arc::new(Mutex::new(Vec::new()));
+    runtime
+        .operations
+        .register_middleware(Arc::new(Wait {
+            entered: entered.clone(),
+            observed: observed.clone(),
+        }))
+        .unwrap();
+    let invocation = runtime
+        .operations
+        .with_context(context("alice"))
+        .submit_as::<Declare<false>>(())
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(1), entered.acquire())
+        .await
+        .unwrap()
+        .unwrap()
+        .forget();
+    invocation.cancel();
+    assert!(matches!(
+        invocation.await,
+        Err(Error::OperationRefused(harmos::Refusal::Cancelled))
+    ));
     {
-        scenario_runtime::check("children_inherit_principals", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let events = Arc::new(Mutex::new(Vec::new()));
-                    for name in ["first", "second"] {
-                        runtime
-                            .operations
-                            .register_middleware(Arc::new(Policy {
-                                name,
-                                events: events.clone(),
-                                reject: false,
-                            }))
-                            .unwrap();
-                    }
-                    let alice = runtime.operations.with_context(context("alice"));
-                    assert_eq!(
-                        &*alice.call_as::<Declare<false>>(()).await.unwrap(),
-                        "alice:alice"
-                    );
-                    assert_eq!(
-                        *events.lock().unwrap(),
-                        [
-                            "first enter middleware.parent",
-                            "second enter middleware.parent",
-                            "first enter middleware.child",
-                            "second enter middleware.child",
-                            "second observe middleware.child",
-                            "first observe middleware.child",
-                            "second observe middleware.parent",
-                            "first observe middleware.parent",
-                        ]
-                    );
-                    assert!(
-                        runtime
-                            .operations
-                            .register_middleware(Arc::new(Policy {
-                                name: "late",
-                                events: events.clone(),
-                                reject: false
-                            }))
-                            .is_err()
-                    );
-                    let bob = runtime.operations.with_context(context("bob"));
-                    let (a, b) = tokio::join!(
-                        alice.call_as::<Declare<false>>(()),
-                        bob.call_as::<Declare<false>>(())
-                    );
-                    assert_eq!(&*a.unwrap(), "alice:alice");
-                    assert_eq!(&*b.unwrap(), "bob:bob");
-                    runtime.stop().await.unwrap();
-                });
-        });
+        let observations = observed.lock().unwrap();
+        assert_eq!(observations.len(), 1);
+        assert_eq!(
+            observations[0].outcome,
+            harmos::operations::OperationOutcome::Cancelled
+        );
+        assert!(observations[0].settled);
     }
-    {
-        scenario_runtime::check("layers_skips_layers", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let events = Arc::new(Mutex::new(Vec::new()));
-                    for (name, reject) in [("first", false), ("reject", true), ("unreached", false)]
-                    {
-                        runtime
-                            .operations
-                            .register_middleware(Arc::new(Policy {
-                                name,
-                                events: events.clone(),
-                                reject,
-                            }))
-                            .unwrap();
-                    }
-                    assert!(
-                        runtime
-                            .operations
-                            .with_context(context("alice"))
-                            .call_as::<Declare<false>>(())
-                            .await
-                            .is_err()
-                    );
-                    assert_eq!(
-                        *events.lock().unwrap(),
-                        [
-                            "first enter middleware.parent",
-                            "reject enter middleware.parent",
-                            "reject observe middleware.parent",
-                            "first observe middleware.parent",
-                        ]
-                    );
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("cancellation_interrupts_policy", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    let entered = Arc::new(tokio::sync::Semaphore::new(0));
-                    let observed = Arc::new(Mutex::new(Vec::new()));
-                    runtime
-                        .operations
-                        .register_middleware(Arc::new(Wait {
-                            entered: entered.clone(),
-                            observed: observed.clone(),
-                        }))
-                        .unwrap();
-                    let invocation = runtime
-                        .operations
-                        .with_context(context("alice"))
-                        .submit_as::<Declare<false>>(())
-                        .unwrap();
-                    tokio::time::timeout(Duration::from_secs(1), entered.acquire())
-                        .await
-                        .unwrap()
-                        .unwrap()
-                        .forget();
-                    invocation.cancel();
-                    assert!(matches!(
-                        invocation.await,
-                        Err(Error::OperationRefused(harmos::Refusal::Cancelled))
-                    ));
-                    {
-                        let observations = observed.lock().unwrap();
-                        assert_eq!(observations.len(), 1);
-                        assert_eq!(
-                            observations[0].outcome,
-                            harmos::operations::OperationOutcome::Cancelled
-                        );
-                        assert!(observations[0].settled);
-                    }
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("overrides_preserve_type", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    runtime
-                        .operations
-                        .register_operation_id::<Read<true>>(
-                            "camera",
-                            "camera.child",
-                            Lanes::Open,
-                            Arc::new(()),
-                        )
-                        .unwrap();
-                    let operations = runtime.operations.with_context(context("alice"));
-                    let result = operations
-                        .submit_at::<Declare<true>>("camera.child", ())
-                        .unwrap()
-                        .await
-                        .unwrap();
-                    assert_eq!(&*result, "alice");
-                    assert!(
-                        operations
-                            .submit_at::<Declare<false>>("camera.child", ())
-                            .is_err()
-                    );
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("retries_preserve_principal", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = runtime().await;
-                    runtime
-                        .operations
-                        .register_operation::<Retry>("app", Lanes::Open, Arc::new(()))
-                        .unwrap();
-                    let events = Arc::new(Mutex::new(Vec::new()));
-                    runtime
-                        .operations
-                        .register_middleware(Arc::new(Policy {
-                            name: "once",
-                            events: events.clone(),
-                            reject: false,
-                        }))
-                        .unwrap();
-                    let answer = runtime
-                        .operations
-                        .with_context(context("alice"))
-                        .call_as::<Retry>(())
-                        .await
-                        .unwrap();
-                    assert_eq!(&*answer, "alice:3");
-                    assert_eq!(
-                        *events.lock().unwrap(),
-                        [
-                            "once enter middleware.retry",
-                            "once observe middleware.retry"
-                        ]
-                    );
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn overrides_preserve_type() {
+    let runtime = runtime().await;
+    runtime
+        .operations
+        .register_operation_id::<Read<true>>("camera", "camera.child", Lanes::Open, Arc::new(()))
+        .unwrap();
+    let operations = runtime.operations.with_context(context("alice"));
+    let result = operations
+        .submit_at::<Declare<true>>("camera.child", ())
+        .unwrap()
+        .await
+        .unwrap();
+    assert_eq!(&*result, "alice");
+    assert!(
+        operations
+            .submit_at::<Declare<false>>("camera.child", ())
+            .is_err()
+    );
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn retries_preserve_principal() {
+    let runtime = runtime().await;
+    runtime
+        .operations
+        .register_operation::<Retry>("app", Lanes::Open, Arc::new(()))
+        .unwrap();
+    let events = Arc::new(Mutex::new(Vec::new()));
+    runtime
+        .operations
+        .register_middleware(Arc::new(Policy {
+            name: "once",
+            events: events.clone(),
+            reject: false,
+        }))
+        .unwrap();
+    let answer = runtime
+        .operations
+        .with_context(context("alice"))
+        .call_as::<Retry>(())
+        .await
+        .unwrap();
+    assert_eq!(&*answer, "alice:3");
+    assert_eq!(
+        *events.lock().unwrap(),
+        [
+            "once enter middleware.retry",
+            "once observe middleware.retry"
+        ]
+    );
+    runtime.stop().await.unwrap();
 }
 
 struct Wait {

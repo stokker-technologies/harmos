@@ -8,11 +8,11 @@
  */
 
 /* === Modules === */
-#[path = "../../../../tests/support/scenarios.rs"]
-mod scenario_runtime;
 
 #[path = "../support/mod.rs"]
 mod support;
+#[path = "../support/vault.rs"]
+mod vault;
 
 /* === Re-Exports === */
 
@@ -30,8 +30,8 @@ use harmos::{
     evidence::Vault, runtime::Incompatible, services::Fault, services::Resident, services::Service,
     state::Position,
 };
-use jsonl_adapter::EvidenceDirectory;
 use support::{Bank, Copied, Ledger, Stored, catalog};
+use vault::Directory;
 
 /* === Constants === */
 
@@ -53,12 +53,12 @@ struct Report;
 struct Rumour;
 
 struct Interrupted {
-    inner: EvidenceDirectory,
+    inner: Directory,
     at: Interruption,
 }
 
 struct Counted {
-    inner: EvidenceDirectory,
+    inner: Directory,
     looks: Arc<AtomicUsize>,
 }
 
@@ -107,7 +107,7 @@ impl EvidenceKind for Rumour {
 }
 
 impl Interrupted {
-    fn new(inner: EvidenceDirectory, at: Interruption) -> Self {
+    fn new(inner: Directory, at: Interruption) -> Self {
         Self { inner, at }
     }
 }
@@ -182,7 +182,7 @@ impl Vault for Interrupted {
 }
 
 impl Counted {
-    fn new(inner: EvidenceDirectory) -> Self {
+    fn new(inner: Directory) -> Self {
         Self {
             inner: inner.watching(Duration::from_millis(5)),
             looks: Arc::new(AtomicUsize::new(0)),
@@ -303,63 +303,45 @@ async fn kept_with(vault: impl Vault, history: &Stored) -> Runtime<Bank> {
         .expect("the copy replays")
 }
 
-#[test]
-fn contract_scenario() {
-    {
-        scenario_runtime::check("written_evidence_verified", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime =
-                        kept(EvidenceDirectory::at(scratch("written")).expect("a fresh directory"))
-                            .await;
-                    let evidence = &runtime.evidence;
+#[tokio::test]
+async fn written_evidence_verified() {
+    let runtime = kept(Directory::at(scratch("written"))).await;
+    let evidence = &runtime.evidence;
 
-                    let draft = evidence
-                        .open::<Recording>("session-7", "capture.log", upload())
-                        .await
-                        .expect("a declared kind opens");
-                    draft.write(b"first\n").await.expect("a draft takes bytes");
-                    draft.write(b"second\n").await.expect("a draft takes bytes");
-                    let recording = evidence.finalize(&draft).await.expect("verified bytes");
+    let draft = evidence
+        .open::<Recording>("session-7", "capture.log", upload())
+        .await
+        .expect("a declared kind opens");
+    draft.write(b"first\n").await.expect("a draft takes bytes");
+    draft.write(b"second\n").await.expect("a draft takes bytes");
+    let recording = evidence.finalize(&draft).await.expect("verified bytes");
 
-                    assert_eq!(recording.length, 13);
-                    let finalized = recording.finalized.expect("finalizing records a fact");
-                    assert!(
-                        finalized.position > Position::ORIGIN,
-                        "the evidence is stamped with where its fact landed"
-                    );
+    assert_eq!(recording.length, 13);
+    let finalized = recording.finalized.expect("finalizing records a fact");
+    assert!(
+        finalized.position > Position::ORIGIN,
+        "the evidence is stamped with where its fact landed"
+    );
 
-                    let read = evidence
-                        .read::<Recording>("session-7", "capture.log", 0, 64)
-                        .await
-                        .expect("a finalized evidence reads");
-                    assert_eq!(read.bytes, b"first\nsecond\n");
-                    assert_eq!(read.length, recording.length);
-                    assert_eq!(
-                        evidence.list("session-7"),
-                        vec![recording],
-                        "one finalized evidence, folded from the one fact that named it"
-                    );
-                });
-        });
-    }
-    {
-        scenario_runtime::check("declares_survives_fact", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
+    let read = evidence
+        .read::<Recording>("session-7", "capture.log", 0, 64)
+        .await
+        .expect("a finalized evidence reads");
+    assert_eq!(read.bytes, b"first\nsecond\n");
+    assert_eq!(read.length, recording.length);
+    assert_eq!(
+        evidence.list("session-7"),
+        vec![recording],
+        "one finalized evidence, folded from the one fact that named it"
+    );
+}
 
+#[tokio::test]
+async fn declares_survives_fact() {
     let directory = scratch("described");
     let history = Stored::default();
     {
-        let runtime = kept_with(
-            EvidenceDirectory::at(&directory).expect("a fresh directory"),
-            &history,
-        )
-        .await;
+        let runtime = kept_with(Directory::at(&directory), &history).await;
         let evidence = &runtime.evidence;
         let draft = evidence
             .open::<Recording>("session-7", "capture.log", upload())
@@ -391,11 +373,7 @@ fn contract_scenario() {
         runtime.stop().await.unwrap();
     }
 
-    let reopened = kept_with(
-        EvidenceDirectory::at(&directory).expect("a directory a stop left behind"),
-        &history,
-    )
-    .await;
+    let reopened = kept_with(Directory::at(&directory), &history).await;
     let listed = reopened.evidence.list("session-7");
     let [recovered] = listed.as_slice() else {
         panic!("one finalized evidence");
@@ -415,546 +393,428 @@ fn contract_scenario() {
         ),
         "an account means what its own declaration says, and no other kind may read it"
     );
+}
 
-});
-        });
-    }
+#[tokio::test]
+async fn names_never_visible() {
+    let directory = scratch("crashed");
+    let history = Stored::default();
     {
-        scenario_runtime::check("names_never_visible", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let directory = scratch("crashed");
-                    let history = Stored::default();
-                    {
-                        let runtime = kept_with(
-                            Interrupted::new(
-                                EvidenceDirectory::at(&directory).expect("a fresh directory"),
-                                Interruption::Fact,
-                            ),
-                            &history,
-                        )
-                        .await;
-                        let draft = runtime
-                            .evidence
-                            .open::<Recording>("session-7", "capture.log", upload())
-                            .await
-                            .expect("a declared kind opens");
-                        draft.write(b"half a capture").await.expect("bytes land");
+        let runtime = kept_with(
+            Interrupted::new(Directory::at(&directory), Interruption::Fact),
+            &history,
+        )
+        .await;
+        let draft = runtime
+            .evidence
+            .open::<Recording>("session-7", "capture.log", upload())
+            .await
+            .expect("a declared kind opens");
+        draft.write(b"half a capture").await.expect("bytes land");
 
-                        // The bytes are made durable and read back, and the process ends in
-                        // the instant before the fact naming them would have been recorded.
-                        let refused =
-                            runtime.evidence.finalize(&draft).await.expect_err(
-                                "the crash falls between the durable bytes and the fact",
-                            );
-                        assert!(matches!(refused, EvidenceError::Unreadable(_)));
-                        runtime.stop().await.unwrap();
-                    }
-
-                    let reopened = kept_with(
-                        EvidenceDirectory::at(&directory).expect("a directory a stop left behind"),
-                        &history,
-                    )
-                    .await;
-                    let evidence = &reopened.evidence;
-
-                    assert!(
-                        evidence.list("session-7").is_empty(),
-                        "recovery reads facts, and no fact names these bytes"
-                    );
-                    assert_eq!(
-                        evidence
-                            .read::<Recording>("session-7", "capture.log", 0, 64)
-                            .await
-                            .expect_err("nothing finalized under this key"),
-                        EvidenceError::Unknown
-                    );
-
-                    let resumed = evidence
-                        .open::<Recording>("session-7", "capture.log", upload())
-                        .await
-                        .expect("an unfinished draft is resumed, not replaced");
-
-                    assert_eq!(
-                        resumed.length(),
-                        14,
-                        "the staged bytes are still there to carry on from"
-                    );
-                });
-        });
+        // The bytes are made durable and read back, and the process ends in
+        // the instant before the fact naming them would have been recorded.
+        let refused = runtime
+            .evidence
+            .finalize(&draft)
+            .await
+            .expect_err("the crash falls between the durable bytes and the fact");
+        assert!(matches!(refused, EvidenceError::Unreadable(_)));
+        runtime.stop().await.unwrap();
     }
+
+    let reopened = kept_with(Directory::at(&directory), &history).await;
+    let evidence = &reopened.evidence;
+
+    assert!(
+        evidence.list("session-7").is_empty(),
+        "recovery reads facts, and no fact names these bytes"
+    );
+    assert_eq!(
+        evidence
+            .read::<Recording>("session-7", "capture.log", 0, 64)
+            .await
+            .expect_err("nothing finalized under this key"),
+        EvidenceError::Unknown
+    );
+
+    let resumed = evidence
+        .open::<Recording>("session-7", "capture.log", upload())
+        .await
+        .expect("an unfinished draft is resumed, not replaced");
+
+    assert_eq!(
+        resumed.length(),
+        14,
+        "the staged bytes are still there to carry on from"
+    );
+}
+
+#[tokio::test]
+async fn fact_recorded_claim() {
+    let directory = scratch("healed");
+    let history = Stored::default();
+    let vault = Interrupted::new(Directory::at(&directory), Interruption::Claim);
     {
-        scenario_runtime::check("fact_recorded_claim", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let directory = scratch("healed");
-                    let history = Stored::default();
-                    let vault = Interrupted::new(
-                        EvidenceDirectory::at(&directory).expect("a fresh directory"),
-                        Interruption::Claim,
-                    );
-                    {
-                        let runtime = kept_with(vault, &history).await;
-                        let draft = runtime
-                            .evidence
-                            .open::<Recording>("session-7", "capture.log", upload())
-                            .await
-                            .expect("a declared kind opens");
-                        draft.write(b"whole capture").await.expect("bytes land");
+        let runtime = kept_with(vault, &history).await;
+        let draft = runtime
+            .evidence
+            .open::<Recording>("session-7", "capture.log", upload())
+            .await
+            .expect("a declared kind opens");
+        draft.write(b"whole capture").await.expect("bytes land");
 
-                        let refused = runtime
-                            .evidence
-                            .finalize(&draft)
-                            .await
-                            .expect_err("the claim is interrupted");
-                        assert!(matches!(refused, EvidenceError::Unwritable(_)));
+        let refused = runtime
+            .evidence
+            .finalize(&draft)
+            .await
+            .expect_err("the claim is interrupted");
+        assert!(matches!(refused, EvidenceError::Unwritable(_)));
 
-                        assert_eq!(
-                            runtime.evidence.list("session-7").len(),
-                            1,
-                            "the fact landed before the claim, so the evidence is already true"
-                        );
-                        runtime.stop().await.unwrap();
-                    }
-
-                    let reopened = kept_with(
-                        EvidenceDirectory::at(&directory).expect("a directory a stop left behind"),
-                        &history,
-                    )
-                    .await;
-                    let listed = reopened.evidence.list("session-7");
-
-                    assert_eq!(listed.len(), 1, "the fact folded back on its own");
-                    assert!(listed[0].finalized.is_some());
-                    assert_eq!(
-                        reopened
-                            .evidence
-                            .read::<Recording>("session-7", "capture.log", 0, 64)
-                            .await
-                            .expect("the interrupted claim is completed on the way in")
-                            .bytes,
-                        b"whole capture",
-                    );
-                });
-        });
+        assert_eq!(
+            runtime.evidence.list("session-7").len(),
+            1,
+            "the fact landed before the claim, so the evidence is already true"
+        );
+        runtime.stop().await.unwrap();
     }
-    {
-        scenario_runtime::check("bounded_read_clamps", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = kept(
-                        EvidenceDirectory::at(scratch("bounded"))
-                            .expect("a fresh directory")
-                            .reading(4),
-                    )
-                    .await;
-                    let evidence = &runtime.evidence;
 
-                    let draft = evidence
-                        .open::<Recording>("run-1", "tail.log", upload())
-                        .await
-                        .expect("a declared kind opens");
-                    draft.write(b"abcdefg").await.expect("bytes land");
+    let reopened = kept_with(Directory::at(&directory), &history).await;
+    let listed = reopened.evidence.list("session-7");
 
-                    let window = evidence
-                        .read::<Recording>("run-1", "tail.log", 2, 4)
-                        .await
-                        .expect("a live draft reads");
-                    assert_eq!(window.bytes, b"cdef");
-                    assert_eq!(window.length, 7);
-                    assert_eq!(window.next(), 6);
+    assert_eq!(listed.len(), 1, "the fact folded back on its own");
+    assert!(listed[0].finalized.is_some());
+    assert_eq!(
+        reopened
+            .evidence
+            .read::<Recording>("session-7", "capture.log", 0, 64)
+            .await
+            .expect("the interrupted claim is completed on the way in")
+            .bytes,
+        b"whole capture",
+    );
+}
 
-                    let past = evidence
-                        .read::<Recording>("run-1", "tail.log", 99, 4)
-                        .await
-                        .expect("reading past the end is not a failure");
-                    assert_eq!(past.requested, 99);
-                    assert_eq!(past.offset, 7, "the offset clamps to what is there");
-                    assert!(past.bytes.is_empty());
-                    assert_eq!(past.next(), 7);
+#[tokio::test]
+async fn bounded_read_clamps() {
+    let runtime = kept(Directory::at(scratch("bounded")).reading(4)).await;
+    let evidence = &runtime.evidence;
 
-                    assert_eq!(
-                        evidence
-                            .read::<Recording>("run-1", "tail.log", 0, 8)
-                            .await
-                            .expect_err("past the vault's own bound"),
-                        EvidenceError::Bound {
-                            requested: 8,
-                            ceiling: 4
-                        },
-                        "a bound a caller got wrong is refused, never quietly shortened"
-                    );
+    let draft = evidence
+        .open::<Recording>("run-1", "tail.log", upload())
+        .await
+        .expect("a declared kind opens");
+    draft.write(b"abcdefg").await.expect("bytes land");
 
-                    evidence.finalize(&draft).await.expect("verified bytes");
+    let window = evidence
+        .read::<Recording>("run-1", "tail.log", 2, 4)
+        .await
+        .expect("a live draft reads");
+    assert_eq!(window.bytes, b"cdef");
+    assert_eq!(window.length, 7);
+    assert_eq!(window.next(), 6);
 
-                    let finished = evidence
-                        .read::<Recording>("run-1", "tail.log", 5, 4)
-                        .await
-                        .expect("the same key reads after it finalizes");
-                    assert_eq!(finished.bytes, b"fg");
-                    assert_eq!(finished.length, 7);
-                    assert_eq!(finished.next(), 7);
-                });
-        });
+    let past = evidence
+        .read::<Recording>("run-1", "tail.log", 99, 4)
+        .await
+        .expect("reading past the end is not a failure");
+    assert_eq!(past.requested, 99);
+    assert_eq!(past.offset, 7, "the offset clamps to what is there");
+    assert!(past.bytes.is_empty());
+    assert_eq!(past.next(), 7);
+
+    assert_eq!(
+        evidence
+            .read::<Recording>("run-1", "tail.log", 0, 8)
+            .await
+            .expect_err("past the vault's own bound"),
+        EvidenceError::Bound {
+            requested: 8,
+            ceiling: 4
+        },
+        "a bound a caller got wrong is refused, never quietly shortened"
+    );
+
+    evidence.finalize(&draft).await.expect("verified bytes");
+
+    let finished = evidence
+        .read::<Recording>("run-1", "tail.log", 5, 4)
+        .await
+        .expect("the same key reads after it finalizes");
+    assert_eq!(finished.bytes, b"fg");
+    assert_eq!(finished.length, 7);
+    assert_eq!(finished.next(), 7);
+}
+
+#[tokio::test]
+async fn scope_finalize_visible() {
+    let runtime = kept(Directory::at(scratch("scoped"))).await;
+    let evidence = &runtime.evidence;
+
+    for key in ["one.log", "two.log"] {
+        let draft = evidence
+            .open::<Recording>("run-9", key, upload())
+            .await
+            .expect("a declared kind opens");
+        draft.write(key.as_bytes()).await.expect("bytes land");
     }
-    {
-        scenario_runtime::check("scope_finalize_visible", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime =
-                        kept(EvidenceDirectory::at(scratch("scoped")).expect("a fresh directory"))
-                            .await;
-                    let evidence = &runtime.evidence;
+    let report = evidence
+        .open::<Report>("run-9", "one.log", ())
+        .await
+        .expect("a key is unique within its kind, not across kinds");
+    report.write(b"summary").await.expect("bytes land");
 
-                    for key in ["one.log", "two.log"] {
-                        let draft = evidence
-                            .open::<Recording>("run-9", key, upload())
-                            .await
-                            .expect("a declared kind opens");
-                        draft.write(key.as_bytes()).await.expect("bytes land");
-                    }
-                    let report = evidence
-                        .open::<Report>("run-9", "one.log", ())
-                        .await
-                        .expect("a key is unique within its kind, not across kinds");
-                    report.write(b"summary").await.expect("bytes land");
+    let before = evidence.list("run-9");
+    assert_eq!(before.len(), 3);
+    assert!(before.iter().all(|evidence| evidence.finalized.is_none()));
 
-                    let before = evidence.list("run-9");
-                    assert_eq!(before.len(), 3);
-                    assert!(before.iter().all(|evidence| evidence.finalized.is_none()));
+    let finalized = evidence
+        .finalize_scope("run-9")
+        .await
+        .expect("every draft in the scope");
+    assert_eq!(finalized.len(), 3);
 
-                    let finalized = evidence
-                        .finalize_scope("run-9")
-                        .await
-                        .expect("every draft in the scope");
-                    assert_eq!(finalized.len(), 3);
-
-                    let after = evidence.list("run-9");
-                    assert_eq!(
-                        after.len(),
-                        3,
-                        "the union of active and finalized never gains or loses an entry: the \
+    let after = evidence.list("run-9");
+    assert_eq!(
+        after.len(),
+        3,
+        "the union of active and finalized never gains or loses an entry: the \
          key is the identity on both sides of finalization"
-                    );
-                    assert!(after.iter().all(|evidence| evidence.finalized.is_some()));
-                    assert_eq!(
-                        after
-                            .iter()
-                            .map(|evidence| (evidence.kind.to_string(), evidence.key.clone()))
-                            .collect::<Vec<_>>(),
-                        vec![
-                            ("recording".to_owned(), "one.log".to_owned()),
-                            ("recording".to_owned(), "two.log".to_owned()),
-                            ("report".to_owned(), "one.log".to_owned()),
-                        ]
-                    );
-                });
-        });
-    }
-    {
-        scenario_runtime::check("watch_coalesces_final", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime =
-                        kept(EvidenceDirectory::at(scratch("watched")).expect("a fresh directory"))
-                            .await;
-                    let evidence = &runtime.evidence;
+    );
+    assert!(after.iter().all(|evidence| evidence.finalized.is_some()));
+    assert_eq!(
+        after
+            .iter()
+            .map(|evidence| (evidence.kind.to_string(), evidence.key.clone()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("recording".to_owned(), "one.log".to_owned()),
+            ("recording".to_owned(), "two.log".to_owned()),
+            ("report".to_owned(), "one.log".to_owned()),
+        ]
+    );
+}
 
-                    let draft = evidence
-                        .open::<Recording>("run-4", "growing.log", upload())
-                        .await
-                        .expect("a declared kind opens");
-                    let mut watching = evidence.watch(&draft).expect("a live draft is watchable");
-                    assert_eq!(*watching.borrow_and_update(), 0);
+#[tokio::test]
+async fn watch_coalesces_final() {
+    let runtime = kept(Directory::at(scratch("watched"))).await;
+    let evidence = &runtime.evidence;
 
-                    draft.write(b"ab").await.expect("bytes land");
-                    draft.write(b"cde").await.expect("bytes land");
-                    watching.changed().await.expect("growth wakes a watcher");
-                    assert_eq!(
-                        *watching.borrow_and_update(),
-                        5,
-                        "two appends coalesce into the one length a watcher has yet to see"
-                    );
+    let draft = evidence
+        .open::<Recording>("run-4", "growing.log", upload())
+        .await
+        .expect("a declared kind opens");
+    let mut watching = evidence.watch(&draft).expect("a live draft is watchable");
+    assert_eq!(*watching.borrow_and_update(), 0);
 
-                    evidence.finalize(&draft).await.expect("verified bytes");
-                    watching
-                        .changed()
-                        .await
-                        .expect("the final revision precedes the close");
-                    assert_eq!(*watching.borrow_and_update(), 5);
-                    assert!(
-                        watching.changed().await.is_err(),
-                        "the channel closing is how a watcher learns there will be no more"
-                    );
-                });
-        });
-    }
-    {
-        scenario_runtime::check("draft_never_looked", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let counted =
-                        Counted::new(EvidenceDirectory::at(scratch("unwatched")).expect("fresh"));
-                    let looks = counted.looks();
-                    let runtime = kept(counted).await;
-                    let evidence = &runtime.evidence;
+    draft.write(b"ab").await.expect("bytes land");
+    draft.write(b"cde").await.expect("bytes land");
+    watching.changed().await.expect("growth wakes a watcher");
+    assert_eq!(
+        *watching.borrow_and_update(),
+        5,
+        "two appends coalesce into the one length a watcher has yet to see"
+    );
 
-                    let draft = evidence
-                        .external::<Recording>("run-5", "quiet.log", upload())
-                        .await
-                        .expect("a filesystem vault hands out a path");
-                    tokio::time::sleep(Duration::from_millis(60)).await;
+    evidence.finalize(&draft).await.expect("verified bytes");
+    watching
+        .changed()
+        .await
+        .expect("the final revision precedes the close");
+    assert_eq!(*watching.borrow_and_update(), 5);
+    assert!(
+        watching.changed().await.is_err(),
+        "the channel closing is how a watcher learns there will be no more"
+    );
+}
 
-                    assert_eq!(
-                        looks.load(Ordering::Acquire),
-                        0,
-                        "nobody is watching, so nothing polls"
-                    );
+#[tokio::test]
+async fn draft_never_looked() {
+    let counted = Counted::new(Directory::at(scratch("unwatched")));
+    let looks = counted.looks();
+    let runtime = kept(counted).await;
+    let evidence = &runtime.evidence;
 
-                    let watching = evidence.watch(&draft).expect("a live draft is watchable");
-                    tokio::time::sleep(Duration::from_millis(60)).await;
-                    let observed = looks.load(Ordering::Acquire);
-                    assert!(observed > 0, "a watcher is what starts the looking");
+    let draft = evidence
+        .external::<Recording>("run-5", "quiet.log", upload())
+        .await
+        .expect("a filesystem vault hands out a path");
+    tokio::time::sleep(Duration::from_millis(60)).await;
 
-                    drop(watching);
-                    tokio::time::sleep(Duration::from_millis(60)).await;
-                    let settled = looks.load(Ordering::Acquire);
-                    tokio::time::sleep(Duration::from_millis(60)).await;
+    assert_eq!(
+        looks.load(Ordering::Acquire),
+        0,
+        "nobody is watching, so nothing polls"
+    );
 
-                    assert_eq!(
-                        looks.load(Ordering::Acquire),
-                        settled,
-                        "the last watcher leaving is what stops it again"
-                    );
-                });
-        });
-    }
-    {
-        scenario_runtime::check("nothing_verified_means", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let directory = scratch("unverified");
-                    let runtime = kept(Interrupted::new(
-                        EvidenceDirectory::at(&directory).expect("a fresh directory"),
-                        Interruption::Verify,
-                    ))
-                    .await;
-                    let evidence = &runtime.evidence;
+    let watching = evidence.watch(&draft).expect("a live draft is watchable");
+    tokio::time::sleep(Duration::from_millis(60)).await;
+    let observed = looks.load(Ordering::Acquire);
+    assert!(observed > 0, "a watcher is what starts the looking");
 
-                    let draft = evidence
-                        .open::<Recording>("run-6", "torn.log", upload())
-                        .await
-                        .expect("a declared kind opens");
-                    draft.write(b"suspect").await.expect("bytes land");
+    drop(watching);
+    tokio::time::sleep(Duration::from_millis(60)).await;
+    let settled = looks.load(Ordering::Acquire);
+    tokio::time::sleep(Duration::from_millis(60)).await;
 
-                    let refused = evidence
-                        .finalize(&draft)
-                        .await
-                        .expect_err("the bytes do not verify");
-                    assert!(matches!(refused, EvidenceError::Unreadable(_)));
+    assert_eq!(
+        looks.load(Ordering::Acquire),
+        settled,
+        "the last watcher leaving is what stops it again"
+    );
+}
 
-                    assert_eq!(
-                        evidence.list("run-6").len(),
-                        1,
-                        "the draft outlived the attempt to finalize it"
-                    );
-                    assert!(
-                        evidence.list("run-6")[0].finalized.is_none(),
-                        "no fact was recorded, so nothing is finalized"
-                    );
-                });
-        });
-    }
-    {
-        scenario_runtime::check("abandoned_draft_nothing", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let directory = scratch("abandoned");
-                    let runtime =
-                        kept(EvidenceDirectory::at(&directory).expect("a fresh directory")).await;
-                    let evidence = &runtime.evidence;
+#[tokio::test]
+async fn nothing_verified_means() {
+    let directory = scratch("unverified");
+    let runtime = kept(Interrupted::new(
+        Directory::at(&directory),
+        Interruption::Verify,
+    ))
+    .await;
+    let evidence = &runtime.evidence;
 
-                    let draft = evidence
-                        .open::<Recording>("run-7", "partial.log", upload())
-                        .await
-                        .expect("a declared kind opens");
-                    draft.write(b"as far as it got").await.expect("bytes land");
-                    evidence
-                        .abandon(&draft)
-                        .await
-                        .expect("a draft is put aside");
+    let draft = evidence
+        .open::<Recording>("run-6", "torn.log", upload())
+        .await
+        .expect("a declared kind opens");
+    draft.write(b"suspect").await.expect("bytes land");
 
-                    assert!(evidence.list("run-7").is_empty());
-                    assert_eq!(
-                        draft.write(b"more").await.expect_err("the draft has ended"),
-                        EvidenceError::Unknown
-                    );
-                    assert_eq!(
-                        EvidenceDirectory::at(&directory)
-                            .expect("the directory reopens")
-                            .quarantined()
-                            .expect("the quarantine is readable")
-                            .len(),
-                        1,
-                        "a partial capture is evidence of what happened, so it is kept"
-                    );
-                });
-        });
-    }
-    {
-        scenario_runtime::check("key_claimed_once", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime =
-                        kept(EvidenceDirectory::at(scratch("claimed")).expect("a fresh directory"))
-                            .await;
-                    let evidence = &runtime.evidence;
+    let refused = evidence
+        .finalize(&draft)
+        .await
+        .expect_err("the bytes do not verify");
+    assert!(matches!(refused, EvidenceError::Unreadable(_)));
 
-                    let draft = evidence
-                        .open::<Recording>("run-8", "once.log", upload())
-                        .await
-                        .expect("a declared kind opens");
+    assert_eq!(
+        evidence.list("run-6").len(),
+        1,
+        "the draft outlived the attempt to finalize it"
+    );
+    assert!(
+        evidence.list("run-6")[0].finalized.is_none(),
+        "no fact was recorded, so nothing is finalized"
+    );
+}
 
-                    assert!(matches!(
-                        evidence
-                            .open::<Recording>("run-8", "once.log", upload())
-                            .await
-                            .expect_err("the key is taken"),
-                        EvidenceError::Conflict { .. }
-                    ));
+#[tokio::test]
+async fn abandoned_draft_nothing() {
+    let directory = scratch("abandoned");
+    let runtime = kept(Directory::at(&directory)).await;
+    let evidence = &runtime.evidence;
 
-                    evidence.finalize(&draft).await.expect("verified bytes");
+    let draft = evidence
+        .open::<Recording>("run-7", "partial.log", upload())
+        .await
+        .expect("a declared kind opens");
+    draft.write(b"as far as it got").await.expect("bytes land");
+    evidence
+        .abandon(&draft)
+        .await
+        .expect("a draft is put aside");
 
-                    assert!(
-                        matches!(
-                            evidence
-                                .open::<Recording>("run-8", "once.log", upload())
-                                .await
-                                .expect_err("evidence is never overwritten"),
-                            EvidenceError::Conflict { .. }
-                        ),
-                        "a finalized key stays claimed"
-                    );
-                    assert_eq!(
-                        evidence
-                            .open::<Rumour>("run-8", "hearsay.log", ())
-                            .await
-                            .expect_err("outside the frozen catalog"),
-                        EvidenceError::Undeclared {
-                            kind: DefinitionId::new("rumour")
-                        }
-                    );
-                });
-        });
-    }
-    {
-        scenario_runtime::check("build_lacks_path", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-                        .register(catalog())
-                        .runtime()
-                        .await
-                        .expect("a fresh boot");
+    assert!(evidence.list("run-7").is_empty());
+    assert_eq!(
+        draft.write(b"more").await.expect_err("the draft has ended"),
+        EvidenceError::Unknown
+    );
+    assert_eq!(
+        Directory::at(&directory).quarantined().len(),
+        1,
+        "a partial capture is evidence of what happened, so it is kept"
+    );
+}
 
-                    assert_eq!(
-                        runtime
-                            .evidence
-                            .open::<Recording>("run-0", "nowhere.log", upload())
-                            .await
-                            .expect_err("nothing was declared to keep it in"),
-                        EvidenceError::Unserved
-                    );
-                    assert!(runtime.evidence.list("run-0").is_empty());
-                });
-        });
-    }
-    {
-        scenario_runtime::check("source_not_service", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let refused = refusal(
-                        Runtime::<Bank>::builder(Ledger::default(), ())
-                            .register(catalog())
-                            .service("artifact", Idle)
-                            .runtime()
-                            .await,
-                    );
+#[tokio::test]
+async fn key_claimed_once() {
+    let runtime = kept(Directory::at(scratch("claimed"))).await;
+    let evidence = &runtime.evidence;
 
-                    assert!(
-                        refused.to_string().contains("artifact"),
-                        "one fact namespace, one author: {refused}"
-                    );
-                });
-        });
-    }
-    {
-        scenario_runtime::check("twice_never_stands", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let refused = refusal(
-                        Runtime::<Bank>::builder(Ledger::default(), ())
-                            .register(catalog())
-                            .evidence(
-                                EvidenceDirectory::at(scratch("twice")).expect("a fresh directory"),
-                                [Recording::definition(), Recording::definition()],
-                            )
-                            .runtime()
-                            .await,
-                    );
+    let draft = evidence
+        .open::<Recording>("run-8", "once.log", upload())
+        .await
+        .expect("a declared kind opens");
 
-                    assert!(refused.to_string().contains("recording"), "{refused}");
-                });
-        });
-    }
+    assert!(matches!(
+        evidence
+            .open::<Recording>("run-8", "once.log", upload())
+            .await
+            .expect_err("the key is taken"),
+        EvidenceError::Conflict { .. }
+    ));
+
+    evidence.finalize(&draft).await.expect("verified bytes");
+
+    assert!(
+        matches!(
+            evidence
+                .open::<Recording>("run-8", "once.log", upload())
+                .await
+                .expect_err("evidence is never overwritten"),
+            EvidenceError::Conflict { .. }
+        ),
+        "a finalized key stays claimed"
+    );
+    assert_eq!(
+        evidence
+            .open::<Rumour>("run-8", "hearsay.log", ())
+            .await
+            .expect_err("outside the frozen catalog"),
+        EvidenceError::Undeclared {
+            kind: DefinitionId::new("rumour")
+        }
+    );
+}
+
+#[tokio::test]
+async fn build_lacks_path() {
+    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
+        .register(catalog())
+        .runtime()
+        .await
+        .expect("a fresh boot");
+
+    assert_eq!(
+        runtime
+            .evidence
+            .open::<Recording>("run-0", "nowhere.log", upload())
+            .await
+            .expect_err("nothing was declared to keep it in"),
+        EvidenceError::Unserved
+    );
+    assert!(runtime.evidence.list("run-0").is_empty());
+}
+
+#[tokio::test]
+async fn source_not_service() {
+    let refused = refusal(
+        Runtime::<Bank>::builder(Ledger::default(), ())
+            .register(catalog())
+            .service("artifact", Idle)
+            .runtime()
+            .await,
+    );
+
+    assert!(
+        refused.to_string().contains("artifact"),
+        "one fact namespace, one author: {refused}"
+    );
+}
+
+#[tokio::test]
+async fn twice_never_stands() {
+    let refused = refusal(
+        Runtime::<Bank>::builder(Ledger::default(), ())
+            .register(catalog())
+            .evidence(
+                Directory::at(scratch("twice")),
+                [Recording::definition(), Recording::definition()],
+            )
+            .runtime()
+            .await,
+    );
+
+    assert!(refused.to_string().contains("recording"), "{refused}");
 }
 
 fn refusal(booted: Result<Runtime<Bank>, Incompatible>) -> Incompatible {

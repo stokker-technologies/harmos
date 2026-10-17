@@ -8,8 +8,6 @@
  */
 
 /* === Modules === */
-#[path = "../../../../../tests/support/scenarios.rs"]
-mod scenario_runtime;
 
 #[path = "../structure.rs"]
 mod structure;
@@ -736,7 +734,7 @@ const DOWNSTREAM: [&str; 44] = [
 ];
 
 // Reviewed Direct Dependencies Include Dev-Only Test And Benchmark Edges.
-const ALLOWANCE: [(&str, &[&str]); 17] = [
+const ALLOWANCE: [(&str, &[&str]); 8] = [
     (
         "cargo-harmos",
         &[
@@ -775,7 +773,6 @@ const ALLOWANCE: [(&str, &[&str]); 17] = [
             "heck",
             "http-body",
             "http-body-util",
-            "jsonl-adapter",
             "notify",
             "petgraph",
             "process-wrap",
@@ -836,26 +833,6 @@ const ALLOWANCE: [(&str, &[&str]); 17] = [
         ],
     ),
     (
-        "harmos-grpc-fixture",
-        &[
-            "arrow-array",
-            "arrow-schema",
-            "futures-util",
-            "harmos",
-            "prost",
-            "prost-reflect",
-            "serde",
-            "serde_json",
-            "sha2",
-            "thiserror",
-            "tokio",
-            "tonic",
-            "tonic-prost",
-            "tonic-prost-build",
-            "tracing",
-        ],
-    ),
-    (
         "harmos-guest",
         &[
             "harmos-contract",
@@ -871,22 +848,6 @@ const ALLOWANCE: [(&str, &[&str]); 17] = [
         ],
     ),
     (
-        "harmos-lifecycle-fixture",
-        &[
-            "clap",
-            "futures-core",
-            "harmos",
-            "schematic-app",
-            "serde_json",
-            "sha2",
-            "tempfile",
-            "thiserror",
-            "tokio",
-            "tracing",
-            "tracing-subscriber",
-        ],
-    ),
-    (
         "harmos-macros",
         &[
             "heck",
@@ -897,10 +858,6 @@ const ALLOWANCE: [(&str, &[&str]); 17] = [
             "serde_json",
             "syn",
         ],
-    ),
-    (
-        "harmos-observer-fixture",
-        &["harmos", "serde", "thiserror", "tokio", "tracing"],
     ),
     (
         "harmos-sidecar",
@@ -924,27 +881,16 @@ const ALLOWANCE: [(&str, &[&str]); 17] = [
         ],
     ),
     ("harmos-signal", &["rustfft", "thiserror", "tracing"]),
-    (
-        "jsonl-adapter",
-        &[
-            "harmos",
-            "serde",
-            "serde_json",
-            "tempfile",
-            "thiserror",
-            "tokio",
-            "tracing",
-        ],
-    ),
+];
+
+// The Schematic Is Its Own Workspace, Audited Against Its Own Lockfile.
+const SCHEMATIC_ALLOWANCE: [(&str, &[&str]); 6] = [
     (
         "schematic-app",
         &[
-            "criterion",
-            "futures-core",
             "harmos",
-            "harmos-guest",
-            "jsonl-adapter",
             "schematic-contract",
+            "schematic-storage",
             "serde",
             "serde_json",
             "sha2",
@@ -959,7 +905,6 @@ const ALLOWANCE: [(&str, &[&str]); 17] = [
         &[
             "clap",
             "harmos",
-            "harmos-contract",
             "schematic-app",
             "schematic-contract",
             "tempfile",
@@ -989,11 +934,14 @@ const ALLOWANCE: [(&str, &[&str]); 17] = [
         &[
             "harmos",
             "schematic-contract",
-            "schematic-guest",
             "thiserror",
             "tokio",
             "tracing",
         ],
+    ),
+    (
+        "schematic-storage",
+        &["harmos", "serde", "serde_json", "thiserror", "tracing"],
     ),
 ];
 
@@ -1029,17 +977,35 @@ fn workspace() -> PathBuf {
         .to_path_buf()
 }
 
+fn schematic() -> PathBuf {
+    workspace().join("examples/schematic")
+}
+
 fn sources() -> Vec<(String, String)> {
     let mut found = Vec::new();
     collect(&workspace().join("crates"), &mut found);
     collect(&workspace().join("examples"), &mut found);
-    collect(&workspace().join("tests/fixtures"), &mut found);
-    collect(
-        &workspace().join("tests/support/jsonl-adapter/src"),
-        &mut found,
-    );
     found.sort();
     found
+}
+
+// Every Package Directory Beneath A Workspace Directory, By Package Name.
+fn members(directory: &Path) -> BTreeSet<String> {
+    let listing = fs::read_dir(directory).expect("the member directory is readable");
+
+    listing
+        .flatten()
+        .map(|entry| entry.path().join("Cargo.toml"))
+        .filter(|manifest| manifest.is_file())
+        .map(|manifest| {
+            read(&manifest)
+                .lines()
+                .find_map(|line| line.strip_prefix("name = \""))
+                .and_then(|name| name.strip_suffix('"'))
+                .unwrap_or_else(|| panic!("{} names its package", manifest.display()))
+                .to_owned()
+        })
+        .collect()
 }
 
 fn collect(directory: &Path, found: &mut Vec<(String, String)>) {
@@ -1050,7 +1016,7 @@ fn collect(directory: &Path, found: &mut Vec<(String, String)>) {
         if path.is_dir() {
             if path
                 .file_name()
-                .is_some_and(|name| name != "tests" && name != "docs")
+                .is_some_and(|name| name != "tests" && name != "docs" && name != "target")
             {
                 collect(&path, found);
             }
@@ -1202,8 +1168,8 @@ fn reexported(text: &str) -> BTreeSet<String> {
     handed_out
 }
 
-fn locked_dependencies(name: &str) -> Option<BTreeSet<String>> {
-    let lock = read(&workspace().join("Cargo.lock"));
+fn locked_dependencies(workspace: &Path, name: &str) -> Option<BTreeSet<String>> {
+    let lock = read(&workspace.join("Cargo.lock"));
     let block = lock
         .split("[[package]]")
         .find(|block| block.contains(&format!("name = \"{name}\"")))?;
@@ -1383,7 +1349,6 @@ fn contract_facility_gate(path: &str, attribute: &str) -> bool {
             "crates/harmos-contract/src/operations/streaming.rs",
             "crates/harmos-contract/src/schema.rs",
             "crates/harmos-contract/src/schema/graph/codec.rs",
-            "crates/harmos-guest/examples/operation_component/contract.rs",
             "crates/harmos/src/operations/mod.rs",
             "crates/harmos/src/operations/native.rs",
             "crates/harmos/src/operations/registration.rs",
@@ -1557,7 +1522,6 @@ fn transport_facility_gate(path: &str, attribute: &str) -> bool {
         "#[cfg(feature=\"grpc\")]" => &[
             "crates/harmos/src/config.rs",
             "crates/harmos/src/operations/manager/discovery.rs",
-            "tests/fixtures/grpc/build.rs",
             "crates/harmos-sidecar/build.rs",
             "crates/harmos-sidecar/src/lib.rs",
             "crates/harmos-sidecar/src/wire.rs",
@@ -1579,7 +1543,6 @@ fn transport_facility_gate(path: &str, attribute: &str) -> bool {
         "#[cfg(not(feature=\"grpc\"))]" => &[
             "crates/harmos/src/operations/manager/discovery.rs",
             "crates/harmos/src/operations/manager.rs",
-            "tests/fixtures/grpc/build.rs",
             "crates/harmos-sidecar/src/wire.rs",
             "crates/harmos-sidecar/src/kit/plugin.rs",
             "crates/harmos/src/services/sidecar/carrier.rs",
@@ -1595,15 +1558,7 @@ fn transport_facility_gate(path: &str, attribute: &str) -> bool {
         | "#[cfg(any(feature=\"grpc\",feature=\"kit\",test))]" => {
             &["crates/harmos-sidecar/src/wire.rs"]
         }
-        "#[cfg(unix)]" => &[
-            "crates/harmos-sidecar/src/attach.rs",
-            "tests/fixtures/lifecycle/src/serve.rs",
-            "tests/fixtures/lifecycle/src/serve.rs",
-        ],
-        "#[cfg(windows)]" => &[
-            "tests/fixtures/lifecycle/src/serve.rs",
-            "tests/fixtures/lifecycle/src/serve.rs",
-        ],
+        "#[cfg(unix)]" => &["crates/harmos-sidecar/src/attach.rs"],
         "#[cfg(any(unix,windows))]" => &[
             "crates/harmos-sidecar/src/attach.rs",
             "crates/harmos-sidecar/src/kit/plugin.rs",
@@ -1621,394 +1576,409 @@ fn transport_facility_gate(path: &str, attribute: &str) -> bool {
 /* === Tests === */
 
 #[test]
-fn contract_scenario() {
-    {
-        scenario_runtime::check("gates_preserve_persistence", || {
-            let codec = "/crates/harmos/src/storage/codec.rs";
-            let gate = "#[cfg(feature = \"grpc\")]";
-            assert!(codec_facility_gate(
-                codec,
-                gate,
-                "impl crate::__private::Protobuf for Value {"
-            ));
-            for declaration in [
-                "impl crate::Message for Value {",
-                "impl crate::__private::PostcardValue for Value {",
-                "fn postcard_write() {}",
-                "fn persist() {}",
-                "struct Backend;",
-            ] {
-                assert!(!codec_facility_gate(codec, gate, declaration));
-            }
-            assert!(!codec_facility_gate(
-                "/crates/harmos/src/storage/engine.rs",
-                gate,
-                "fn write() {}"
-            ));
-            assert!(!contract_facility_gate(codec, gate));
-
-            let grpc = "#[cfg(feature = \"grpc\")]";
-            assert!(transport_facility_gate("/crates/harmos/src/lib.rs", grpc));
-            assert!(transport_facility_gate(
-                "/crates/harmos-sidecar/build.rs",
-                grpc
-            ));
-            assert!(transport_facility_gate(
-                "/crates/harmos/src/operations/streaming.rs",
-                grpc
-            ));
-            assert!(!operation_facility_gate(
-                "/crates/harmos/src/grpc/envelope.rs",
-                "#[cfg(feature = \"runtime\")]"
-            ));
-            assert!(operation_facility_gate(
-                "/crates/harmos/src/grpc/server.rs",
-                "#[cfg(any(feature = \"plugin\", feature = \"plugin-guest\", feature = \"plugin-sidecar\"))]"
-            ));
-            let runtime = "#[cfg(feature = \"runtime\")]";
-            assert!(!operation_facility_gate(
-                "/crates/harmos/src/storage/operations/save.rs",
-                runtime
-            ));
-            for owner in [
-                "storage/manager.rs",
-                "storage/worker.rs",
-                "storage/operations/unreviewed.rs",
-            ] {
-                assert!(!operation_facility_gate(
-                    &format!("/crates/harmos/src/{owner}"),
-                    runtime
-                ));
-            }
-            for owner in [
-                "storage/catalog.rs",
-                "storage/manager.rs",
-                "storage/operations/save.rs",
-                "storage/data.rs",
-                "state/manager.rs",
-            ] {
-                let path = format!("/crates/harmos/src/{owner}");
-                for gate in [
-                    grpc,
-                    "#[cfg(feature = \"grpc-tls\")]",
-                    "#[cfg(feature = \"persistence\")]",
-                    "#[cfg(all(feature = \"grpc\", feature = \"persistence\"))]",
-                    "#[cfg(unix)]",
-                ] {
-                    assert!(!transport_facility_gate(&path, gate), "{path}: {gate}");
-                    assert!(!operation_facility_gate(&path, gate), "{path}: {gate}");
-                    assert!(!packaging_facility_gate(&path, gate), "{path}: {gate}");
-                }
-            }
-            // Runtime Shutdown Closes Transport Ingress For Both Storage Modes.
-            let lifecycle = "/crates/harmos/src/runtime/lifecycle.rs";
-            assert!(transport_facility_gate(lifecycle, grpc));
-            for gate in [
-                "#[cfg(feature = \"persistence\")]",
-                "#[cfg(all(feature = \"grpc\", feature = \"persistence\"))]",
-                "#[cfg(feature = \"grpc-tls\")]",
-                "#[cfg(unix)]",
-            ] {
-                assert!(!transport_facility_gate(lifecycle, gate));
-                assert!(!operation_facility_gate(lifecycle, gate));
-            }
-            assert!(!transport_facility_gate(
-                "/crates/harmos/src/storage/carrier.rs",
-                grpc
-            ));
-            assert!(packaging_facility_gate(
-                "/crates/harmos/src/config.rs",
-                "#[cfg(feature = \"packaging\")]"
-            ));
-            for owner in [
-                "storage/config.rs",
-                "storage/manager.rs",
-                "state/manager.rs",
-            ] {
-                let path = format!("/crates/harmos/src/{owner}");
-                assert!(!packaging_facility_gate(
-                    &path,
-                    "#[cfg(feature = \"packaging\")]"
-                ));
-            }
-            assert!(!packaging_facility_gate(
-                "/crates/harmos/src/config.rs",
-                "#[cfg(feature = \"persistence\")]"
-            ));
-            assert!(!transport_facility_gate(
-                "/examples/unreviewed/cli/src/commands/serve.rs",
-                "#[cfg(unix)]"
-            ));
-        });
+fn gates_preserve_persistence() {
+    let codec = "/crates/harmos/src/storage/codec.rs";
+    let gate = "#[cfg(feature = \"grpc\")]";
+    assert!(codec_facility_gate(
+        codec,
+        gate,
+        "impl crate::__private::Protobuf for Value {"
+    ));
+    for declaration in [
+        "impl crate::Message for Value {",
+        "impl crate::__private::PostcardValue for Value {",
+        "fn postcard_write() {}",
+        "fn persist() {}",
+        "struct Backend;",
+    ] {
+        assert!(!codec_facility_gate(codec, gate, declaration));
     }
-    {
-        scenario_runtime::check("examples_keep_contract", || {
-            // The direction is one way and the lockfile is where it is checked: contract
-            // below app below shells, contract below plugins, and nothing at all depending
-            // on a plugin. A plugin that reached the app crate would be compiling the
-            // host half of the application it is supposed to be a leaf of, and a shell
-            // that reached a plugin would be linking a leaf in order to drive it.
-            for (contract, application, shell, plugin) in [
-                (
-                    "schematic-contract",
-                    "schematic-app",
-                    "schematic-cli",
-                    "schematic-sidecar",
-                ),
-                (
-                    "schematic-contract",
-                    "schematic-app",
-                    "schematic-cli",
-                    "schematic-guest",
-                ),
-            ] {
-                let beneath = locked_dependencies(contract)
-                    .expect("the contract crate is a workspace member");
-                assert!(!beneath.contains(application));
-                assert!(!beneath.contains(shell));
-                assert!(!beneath.contains(plugin));
-                assert!(
-                    !beneath.contains("harmos"),
-                    "portable contracts exclude the host runtime"
-                );
+    assert!(!codec_facility_gate(
+        "/crates/harmos/src/storage/engine.rs",
+        gate,
+        "fn write() {}"
+    ));
+    assert!(!contract_facility_gate(codec, gate));
 
-                let host =
-                    locked_dependencies(application).expect("the app crate is a workspace member");
-                assert!(host.contains(contract));
-                assert!(!host.contains(shell));
-                assert!(!host.contains(plugin));
-
-                let above = locked_dependencies(shell).expect("the shell is a workspace member");
-                assert!(above.contains(application));
-                assert!(!above.contains(plugin));
-
-                let leaf = locked_dependencies(plugin).expect("the plugin is a workspace member");
-                assert!(leaf.contains(contract));
-                assert!(!leaf.contains(application));
-                // Native plugins author through the facade's kit; guests compile
-                // to WebAssembly and keep the host runtime out entirely.
-                let native = plugin == "schematic-sidecar";
-                assert_eq!(
-                    leaf.contains("harmos"),
-                    native,
-                    "only native plugins depend on the facade"
-                );
-                assert!(
-                    !leaf.contains("harmos-sidecar"),
-                    "native plugins reach the kit through the facade"
-                );
-            }
-        });
+    let grpc = "#[cfg(feature = \"grpc\")]";
+    assert!(transport_facility_gate("/crates/harmos/src/lib.rs", grpc));
+    assert!(transport_facility_gate(
+        "/crates/harmos-sidecar/build.rs",
+        grpc
+    ));
+    assert!(transport_facility_gate(
+        "/crates/harmos/src/operations/streaming.rs",
+        grpc
+    ));
+    assert!(!operation_facility_gate(
+        "/crates/harmos/src/grpc/envelope.rs",
+        "#[cfg(feature = \"runtime\")]"
+    ));
+    assert!(operation_facility_gate(
+        "/crates/harmos/src/grpc/server.rs",
+        "#[cfg(any(feature = \"plugin\", feature = \"plugin-guest\", feature = \"plugin-sidecar\"))]"
+    ));
+    let runtime = "#[cfg(feature = \"runtime\")]";
+    assert!(!operation_facility_gate(
+        "/crates/harmos/src/storage/operations/save.rs",
+        runtime
+    ));
+    for owner in [
+        "storage/manager.rs",
+        "storage/worker.rs",
+        "storage/operations/unreviewed.rs",
+    ] {
+        assert!(!operation_facility_gate(
+            &format!("/crates/harmos/src/{owner}"),
+            runtime
+        ));
     }
-    {
-        scenario_runtime::check("journal_ac007_crate", || {
-            probe::folds(support::Mirror::new().0);
-            let _ = probe::HISTORY_REFUSALS;
+    for owner in [
+        "storage/catalog.rs",
+        "storage/manager.rs",
+        "storage/operations/save.rs",
+        "storage/data.rs",
+        "state/manager.rs",
+    ] {
+        let path = format!("/crates/harmos/src/{owner}");
+        for gate in [
+            grpc,
+            "#[cfg(feature = \"grpc-tls\")]",
+            "#[cfg(feature = \"persistence\")]",
+            "#[cfg(all(feature = \"grpc\", feature = \"persistence\"))]",
+            "#[cfg(unix)]",
+        ] {
+            assert!(!transport_facility_gate(&path, gate), "{path}: {gate}");
+            assert!(!operation_facility_gate(&path, gate), "{path}: {gate}");
+            assert!(!packaging_facility_gate(&path, gate), "{path}: {gate}");
+        }
+    }
+    // Runtime Shutdown Closes Transport Ingress For Both Storage Modes.
+    let lifecycle = "/crates/harmos/src/runtime/lifecycle.rs";
+    assert!(transport_facility_gate(lifecycle, grpc));
+    for gate in [
+        "#[cfg(feature = \"persistence\")]",
+        "#[cfg(all(feature = \"grpc\", feature = \"persistence\"))]",
+        "#[cfg(feature = \"grpc-tls\")]",
+        "#[cfg(unix)]",
+    ] {
+        assert!(!transport_facility_gate(lifecycle, gate));
+        assert!(!operation_facility_gate(lifecycle, gate));
+    }
+    assert!(!transport_facility_gate(
+        "/crates/harmos/src/storage/carrier.rs",
+        grpc
+    ));
+    assert!(packaging_facility_gate(
+        "/crates/harmos/src/config.rs",
+        "#[cfg(feature = \"packaging\")]"
+    ));
+    for owner in [
+        "storage/config.rs",
+        "storage/manager.rs",
+        "state/manager.rs",
+    ] {
+        let path = format!("/crates/harmos/src/{owner}");
+        assert!(!packaging_facility_gate(
+            &path,
+            "#[cfg(feature = \"packaging\")]"
+        ));
+    }
+    assert!(!packaging_facility_gate(
+        "/crates/harmos/src/config.rs",
+        "#[cfg(feature = \"persistence\")]"
+    ));
+    assert!(!transport_facility_gate(
+        "/examples/unreviewed/cli/src/commands/serve.rs",
+        "#[cfg(unix)]"
+    ));
+}
 
-            let (surface, hidden) = halves(&read(&source().join("lib.rs")));
-            let handed_out: BTreeSet<String> = reexported(&surface);
-            let accepted: BTreeSet<String> = CENSUS
+#[test]
+fn examples_keep_contract() {
+    // The direction is one way and the lockfile is where it is checked: contract
+    // below app below shells, contract below plugins, and nothing at all depending
+    // on a plugin. A plugin that reached the app crate would be compiling the
+    // host half of the application it is supposed to be a leaf of, and a shell
+    // that reached a plugin would be linking a leaf in order to drive it.
+    for (contract, application, shell, plugin) in [
+        (
+            "schematic-contract",
+            "schematic-app",
+            "schematic-cli",
+            "schematic-sidecar",
+        ),
+        (
+            "schematic-contract",
+            "schematic-app",
+            "schematic-cli",
+            "schematic-guest",
+        ),
+    ] {
+        let beneath = locked_dependencies(&schematic(), contract)
+            .expect("the contract crate is a workspace member");
+        assert!(!beneath.contains(application));
+        assert!(!beneath.contains(shell));
+        assert!(!beneath.contains(plugin));
+        assert!(
+            !beneath.contains("harmos"),
+            "portable contracts exclude the host runtime"
+        );
+
+        let host = locked_dependencies(&schematic(), application)
+            .expect("the app crate is a workspace member");
+        assert!(host.contains(contract));
+        assert!(!host.contains(shell));
+        assert!(!host.contains(plugin));
+
+        let above =
+            locked_dependencies(&schematic(), shell).expect("the shell is a workspace member");
+        assert!(above.contains(application));
+        assert!(!above.contains(plugin));
+
+        let leaf =
+            locked_dependencies(&schematic(), plugin).expect("the plugin is a workspace member");
+        assert!(leaf.contains(contract));
+        assert!(!leaf.contains(application));
+        // Native plugins author through the facade's kit; guests compile
+        // to WebAssembly and keep the host runtime out entirely.
+        let native = plugin == "schematic-sidecar";
+        assert_eq!(
+            leaf.contains("harmos"),
+            native,
+            "only native plugins depend on the facade"
+        );
+        assert!(
+            !leaf.contains("harmos-sidecar"),
+            "native plugins reach the kit through the facade"
+        );
+    }
+}
+
+#[test]
+fn journal_ac007_crate() {
+    probe::folds(support::Mirror::new().0);
+    let _ = probe::HISTORY_REFUSALS;
+
+    let (surface, hidden) = halves(&read(&source().join("lib.rs")));
+    let handed_out: BTreeSet<String> = reexported(&surface);
+    let accepted: BTreeSet<String> = CENSUS
+        .iter()
+        .chain(&AUTHORING)
+        .map(|name| (*name).to_owned())
+        .collect();
+
+    assert_eq!(handed_out, accepted);
+    assert_eq!(
+        reexported(&hidden),
+        HIDDEN
+            .iter()
+            .map(|name| (*name).to_owned())
+            .collect::<BTreeSet<String>>(),
+        "the hidden authoring module drifted"
+    );
+}
+
+#[test]
+fn guest_kit_hands() {
+    let handed_out = reexported(&read(&workspace().join("crates/harmos-guest/src/lib.rs")));
+    let accepted: BTreeSet<String> = GUEST_CENSUS.iter().map(|name| (*name).to_owned()).collect();
+
+    assert_eq!(handed_out, accepted, "the guest kit's names drifted");
+}
+
+#[test]
+fn exactly_own_surface() {
+    let handed_out = reexported(&read(&workspace().join("crates/harmos-sidecar/src/lib.rs")));
+    let accepted: BTreeSet<String> = SIDECAR_KIT_CENSUS
+        .iter()
+        .map(|name| (*name).to_owned())
+        .collect();
+
+    assert_eq!(handed_out, accepted, "the sidecar kit's names drifted");
+}
+
+#[test]
+fn journal_r017_deleted() {
+    let deleted: BTreeSet<&str> = DELETED.into_iter().collect();
+    let declarations = declarations();
+    let found: Vec<String> = declarations
+        .iter()
+        .filter(|(_, declared)| deleted.contains(declared.name.as_str()))
+        .map(|(path, declared)| format!("{path}: {} {}", declared.keyword, declared.name))
+        .collect();
+
+    assert!(found.is_empty(), "deleted names came back: {found:?}");
+
+    let runtime_state: Vec<String> = declarations
+        .into_iter()
+        .filter(|(path, declared)| {
+            path.ends_with("/crates/harmos/src/runtime.rs")
+                && declared.public
+                && declared.keyword == "fn"
+                && declared.name == "state"
+        })
+        .map(|(path, declared)| format!("{path}: {} {}", declared.keyword, declared.name))
+        .collect();
+
+    assert!(
+        runtime_state.is_empty(),
+        "the Runtime::state shortcut came back: {runtime_state:?}"
+    );
+}
+
+#[test]
+fn missing_public_refused() {
+    let found: Vec<String> = declarations()
+        .into_iter()
+        .filter(|(_, declared)| declared.public)
+        .filter(|(_, declared)| UNSPEAKABLE.iter().any(|noun| declared.name.contains(noun)))
+        .map(|(path, declared)| format!("{path}: {}", declared.name))
+        .collect();
+
+    assert!(found.is_empty(), "public mechanism vocabulary: {found:?}");
+
+    // Primary durability accepts either the current or an explicit data cursor;
+    // local recovery remains a separate boundary. Keep these operations on
+    // StorageManager; journal entry waits and stream sealing retain their own
+    // contracts. New aliases or placement elsewhere fail this audit.
+    let saved: Vec<String> = declarations()
+        .into_iter()
+        .filter(|(path, _)| !path.contains("/examples/schematic/storage/"))
+        .filter(|(_, declared)| declared.public && declared.keyword == "fn")
+        .filter(|(path, declared)| {
+            !(declared.name == "seal" && path.contains("/crates/harmos/src/streams/"))
+        })
+        .filter(|(_, declared)| {
+            ["save", "flush", "persist", "checkpoint", "seal"]
                 .iter()
-                .chain(&AUTHORING)
-                .map(|name| (*name).to_owned())
-                .collect();
+                .any(|verb| {
+                    declared.name == *verb || declared.name.starts_with(&format!("{verb}_"))
+                })
+        })
+        .map(|(path, declared)| format!("{path}: {}", declared.name))
+        .collect();
 
-            assert_eq!(handed_out, accepted);
-            assert_eq!(
-                reexported(&hidden),
-                HIDDEN
+    let manager =
+        format!("{}/src/storage/manager.rs", env!("CARGO_MANIFEST_DIR")).replace('\\', "/");
+    // Retry-Protected Save Is Another Method On The Same StorageManager,
+    // Keeping Its Snapshot And Durable Outcome In The Original Worker.
+    let saving = format!("{}/src/storage/saving.rs", env!("CARGO_MANIFEST_DIR")).replace('\\', "/");
+    let expected = vec![
+        format!("{manager}: flush"),
+        format!("{manager}: flush_until"),
+        format!("{manager}: flush_recovery"),
+        format!("{saving}: save_once"),
+        // Application Document Serialization Uses The Original Adapter Checkpoint.
+        format!(
+            "{}/examples/schematic/app/src/document.rs: save",
+            workspace().display()
+        )
+        .replace('\\', "/"),
+    ];
+    assert_eq!(
+        saved, expected,
+        "framework durability stays on StorageManager; the document delegates to its adapter checkpoint"
+    );
+}
+
+#[test]
+fn domain_keeps_runtime() {
+    let downstream: BTreeSet<&str> = DOWNSTREAM.into_iter().collect();
+    let mut found = Vec::new();
+
+    for (path, text) in sources() {
+        if !path.contains("/harmos/src/state/") {
+            continue;
+        }
+        let code = code(&text);
+        for token in identifiers(&code) {
+            // Logical Recovery Owns Boot Refusals And Bounded Storage Reads.
+            // Other State Slices Still Cannot Depend On Runtime Facilities.
+            let recovery_contract = (token == "Incompatible"
+                && ["recovery.rs", "snapshot.rs", "snapshot_codec.rs"]
                     .iter()
-                    .map(|name| (*name).to_owned())
-                    .collect::<BTreeSet<String>>(),
-                "the hidden authoring module drifted"
-            );
-        });
-    }
-    {
-        scenario_runtime::check("guest_kit_hands", || {
-            let handed_out = reexported(&read(&workspace().join("crates/harmos-guest/src/lib.rs")));
-            let accepted: BTreeSet<String> =
-                GUEST_CENSUS.iter().map(|name| (*name).to_owned()).collect();
-
-            assert_eq!(handed_out, accepted, "the guest kit's names drifted");
-        });
-    }
-    {
-        scenario_runtime::check("exactly_own_surface", || {
-            let handed_out =
-                reexported(&read(&workspace().join("crates/harmos-sidecar/src/lib.rs")));
-            let accepted: BTreeSet<String> = SIDECAR_KIT_CENSUS
-                .iter()
-                .map(|name| (*name).to_owned())
-                .collect();
-
-            assert_eq!(handed_out, accepted, "the sidecar kit's names drifted");
-        });
-    }
-    {
-        scenario_runtime::check("journal_r017_deleted", || {
-            let deleted: BTreeSet<&str> = DELETED.into_iter().collect();
-            let declarations = declarations();
-            let found: Vec<String> = declarations
-                .iter()
-                .filter(|(_, declared)| deleted.contains(declared.name.as_str()))
-                .map(|(path, declared)| format!("{path}: {} {}", declared.keyword, declared.name))
-                .collect();
-
-            assert!(found.is_empty(), "deleted names came back: {found:?}");
-
-            let runtime_state: Vec<String> = declarations
-                .into_iter()
-                .filter(|(path, declared)| {
-                    path.ends_with("/crates/harmos/src/runtime.rs")
-                        && declared.public
-                        && declared.keyword == "fn"
-                        && declared.name == "state"
-                })
-                .map(|(path, declared)| format!("{path}: {} {}", declared.keyword, declared.name))
-                .collect();
-
-            assert!(
-                runtime_state.is_empty(),
-                "the Runtime::state shortcut came back: {runtime_state:?}"
-            );
-        });
-    }
-    {
-        scenario_runtime::check("missing_public_refused", || {
-            let found: Vec<String> = declarations()
-                .into_iter()
-                .filter(|(_, declared)| declared.public)
-                .filter(|(_, declared)| UNSPEAKABLE.iter().any(|noun| declared.name.contains(noun)))
-                .map(|(path, declared)| format!("{path}: {}", declared.name))
-                .collect();
-
-            assert!(found.is_empty(), "public mechanism vocabulary: {found:?}");
-
-            // Primary durability accepts either the current or an explicit data cursor;
-            // local recovery remains a separate boundary. Keep these operations on
-            // StorageManager; journal entry waits and stream sealing retain their own
-            // contracts. New aliases or placement elsewhere fail this audit.
-            let saved: Vec<String> = declarations()
-                .into_iter()
-                .filter(|(path, _)| !path.contains("/tests/support/jsonl-adapter/"))
-                .filter(|(_, declared)| declared.public && declared.keyword == "fn")
-                .filter(|(path, declared)| {
-                    !(declared.name == "seal" && path.contains("/crates/harmos/src/streams/"))
-                })
-                .filter(|(_, declared)| {
-                    ["save", "flush", "persist", "checkpoint", "seal"]
-                        .iter()
-                        .any(|verb| {
-                            declared.name == *verb || declared.name.starts_with(&format!("{verb}_"))
-                        })
-                })
-                .map(|(path, declared)| format!("{path}: {}", declared.name))
-                .collect();
-
-            let manager =
-                format!("{}/src/storage/manager.rs", env!("CARGO_MANIFEST_DIR")).replace('\\', "/");
-            // Retry-Protected Save Is Another Method On The Same StorageManager,
-            // Keeping Its Snapshot And Durable Outcome In The Original Worker.
-            let saving =
-                format!("{}/src/storage/saving.rs", env!("CARGO_MANIFEST_DIR")).replace('\\', "/");
-            let expected = vec![
-                format!("{manager}: flush"),
-                format!("{manager}: flush_until"),
-                format!("{manager}: flush_recovery"),
-                format!("{saving}: save_once"),
-                // Application Document Serialization Uses The Original Adapter Checkpoint.
-                format!(
-                    "{}/examples/schematic/app/src/document.rs: save",
-                    workspace().display()
-                )
-                .replace('\\', "/"),
-            ];
-            assert_eq!(
-                saved, expected,
-                "framework durability stays on StorageManager; the document delegates to its adapter checkpoint"
-            );
-        });
-    }
-    {
-        scenario_runtime::check("domain_keeps_runtime", || {
-            let downstream: BTreeSet<&str> = DOWNSTREAM.into_iter().collect();
-            let mut found = Vec::new();
-
-            for (path, text) in sources() {
-                if !path.contains("/harmos/src/state/") {
-                    continue;
-                }
-                let code = code(&text);
-                for token in identifiers(&code) {
-                    // Logical Recovery Owns Boot Refusals And Bounded Storage Reads.
-                    // Other State Slices Still Cannot Depend On Runtime Facilities.
-                    let recovery_contract = (token == "Incompatible"
-                        && ["recovery.rs", "snapshot.rs", "snapshot_codec.rs"]
-                            .iter()
-                            .any(|file| path.ends_with(&format!("/state/{file}"))))
-                        || (token == "ReadLimits" && path.ends_with("/state/recovery.rs"));
-                    if downstream.contains(token.as_str()) && !recovery_contract {
-                        found.push(format!("{path}: {token}"));
-                    }
-                }
-                for module in [
-                    "crate::runtime",
-                    "crate::storage::consumer",
-                    "crate::storage::attachments",
-                    "crate::evidence",
-                    "crate::storage::manager",
-                    "crate::storage::backend",
-                    "crate::storage::worker",
-                ] {
-                    if code.contains(module) {
-                        found.push(format!("{path}: {module}"));
-                    }
-                }
+                    .any(|file| path.ends_with(&format!("/state/{file}"))))
+                || (token == "ReadLimits" && path.ends_with("/state/recovery.rs"));
+            if downstream.contains(token.as_str()) && !recovery_contract {
+                found.push(format!("{path}: {token}"));
             }
-
-            assert!(
-                found.is_empty(),
-                "state uses storage contracts without owning runtime or backend machinery: {found:?}"
-            );
-        });
-    }
-    {
-        scenario_runtime::check("runtime_r015_dependency", || {
-            let mut audited = 0;
-
-            for (name, allowed) in ALLOWANCE {
-                let Some(locked) = locked_dependencies(name) else {
-                    continue;
-                };
-                let allowed: BTreeSet<&str> = allowed.iter().copied().collect();
-                let outside: Vec<&String> = locked
-                    .iter()
-                    .filter(|dependency| !allowed.contains(dependency.as_str()))
-                    .collect();
-
-                audited += 1;
-                assert!(
-                    outside.is_empty(),
-                    "{name} depends on more than the allowance: {outside:?}"
-                );
+        }
+        for module in [
+            "crate::runtime",
+            "crate::storage::consumer",
+            "crate::storage::attachments",
+            "crate::evidence",
+            "crate::storage::manager",
+            "crate::storage::backend",
+            "crate::storage::worker",
+        ] {
+            if code.contains(module) {
+                found.push(format!("{path}: {module}"));
             }
-
-            assert_eq!(
-                audited,
-                ALLOWANCE.len(),
-                "every reviewed workspace package is audited"
-            );
-        });
+        }
     }
-    {
-        scenario_runtime::check("durability_lacks_compilation", || {
-            // Memory-only and persisted runtimes share one capture, storage and recovery
-            // path. Exact facility gates below select authoring, optional transports,
-            // plugin authority, simulation execution or platform APIs. They never select
-            // a persistence implementation. Audit complete attributes so multiline cfgs
-            // remain subject to the same allowance as single-line attributes.
-            let gated: Vec<String> = sources()
+
+    assert!(
+        found.is_empty(),
+        "state uses storage contracts without owning runtime or backend machinery: {found:?}"
+    );
+}
+
+#[test]
+fn runtime_r015_dependency() {
+    let mut audited = 0;
+    let reviewed = [
+        (workspace(), workspace().join("crates"), &ALLOWANCE[..]),
+        (schematic(), schematic(), &SCHEMATIC_ALLOWANCE[..]),
+    ];
+
+    for (root, directory, allowance) in &reviewed {
+        // Inventory The Members On Disk Before Auditing Their Locked Edges
+        let named: BTreeSet<String> = allowance
+            .iter()
+            .map(|(name, _)| (*name).to_owned())
+            .collect();
+        assert_eq!(
+            named,
+            members(directory),
+            "every member under {} is reviewed, and nothing else",
+            directory.display()
+        );
+
+        for (name, allowed) in *allowance {
+            let Some(locked) = locked_dependencies(root, name) else {
+                continue;
+            };
+            let allowed: BTreeSet<&str> = allowed.iter().copied().collect();
+            let outside: Vec<&String> = locked
+                .iter()
+                .filter(|dependency| !allowed.contains(dependency.as_str()))
+                .collect();
+
+            audited += 1;
+            assert!(
+                outside.is_empty(),
+                "{name} depends on more than the allowance: {outside:?}"
+            );
+        }
+    }
+
+    assert_eq!(
+        audited,
+        ALLOWANCE.len() + SCHEMATIC_ALLOWANCE.len(),
+        "every reviewed workspace package is audited"
+    );
+}
+
+#[test]
+fn durability_lacks_compilation() {
+    // Memory-only and persisted runtimes share one capture, storage and recovery
+    // path. Exact facility gates below select authoring, optional transports,
+    // plugin authority, simulation execution or platform APIs. They never select
+    // a persistence implementation. Audit complete attributes so multiline cfgs
+    // remain subject to the same allowance as single-line attributes.
+    let gated: Vec<String> = sources()
         .into_iter()
         .flat_map(|(path, text)| {
             let code = code(&text);
@@ -2165,35 +2135,33 @@ fn contract_scenario() {
         })
         .collect();
 
-            assert!(
-                gated.is_empty(),
-                "memory-only and persisted runtimes share one code path: {gated:?}"
-            );
-        });
-    }
+    assert!(
+        gated.is_empty(),
+        "memory-only and persisted runtimes share one code path: {gated:?}"
+    );
+}
+
+#[test]
+fn sim_ac005_opt() {
+    let manifest = read(
+        &source()
+            .parent()
+            .expect("src has a crate root")
+            .join("Cargo.toml"),
+    );
+    let root = read(&source().join("lib.rs"));
+
+    // A simulation recovers through an in-memory copy, so it is a host that
+    // persists: `runtime` includes storage, and the two test-only tokio
+    // features are the rest of it.
+    assert!(manifest.contains("simulation = [\"tokio/test-util\"]"));
+    assert!(root.contains("#[cfg(feature = \"simulation\")]\npub mod simulation;"));
+
+    #[cfg(feature = "simulation")]
     {
-        scenario_runtime::check("sim_ac005_opt", || {
-            let manifest = read(
-                &source()
-                    .parent()
-                    .expect("src has a crate root")
-                    .join("Cargo.toml"),
-            );
-            let root = read(&source().join("lib.rs"));
-
-            // A simulation recovers through an in-memory copy, so it is a host that
-            // persists: `runtime` includes storage, and the two test-only tokio
-            // features are the rest of it.
-            assert!(manifest.contains("simulation = [\"tokio/test-util\"]"));
-            assert!(root.contains("#[cfg(feature = \"simulation\")]\npub mod simulation;"));
-
-            #[cfg(feature = "simulation")]
-            {
-                let _ = std::any::TypeId::of::<sim_probe::Harness>();
-                let _ = std::any::TypeId::of::<sim_probe::FaultDelivery>();
-                let _ = std::any::TypeId::of::<sim_probe::ResidentTrace>();
-                let _draw: fn() -> u64 = sim_probe::draw;
-            }
-        });
+        let _ = std::any::TypeId::of::<sim_probe::Harness>();
+        let _ = std::any::TypeId::of::<sim_probe::FaultDelivery>();
+        let _ = std::any::TypeId::of::<sim_probe::ResidentTrace>();
+        let _draw: fn() -> u64 = sim_probe::draw;
     }
 }

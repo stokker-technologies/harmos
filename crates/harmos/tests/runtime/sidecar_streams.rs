@@ -8,8 +8,6 @@
  */
 
 /* === Modules === */
-#[cfg(feature = "grpc")]
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -173,200 +171,170 @@ fn opening()
 
 /* === Tests === */
 
-#[test]
-fn contract_scenario() {
-    #[cfg(feature = "grpc")]
-    {
-        scenario_runtime::check("grpc_stream_lifecycle", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let counts = Arc::new(Counts::default());
-                    let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
-                    fixture.initialize().await.unwrap();
-                    assert_eq!(fixture.runtime.grpc().methods().len(), 4);
-                    let operations = harmos::grpc::server::Settings::default();
-                    let attached = fixture
-                        .runtime
-                        .grpc()
-                        .attach(harmos::grpc::Settings {
-                            address: "127.0.0.1:0".parse().unwrap(),
-                            operations,
-                            reflection: true,
-                            web: false,
-                            allowed_origins: Vec::new(),
-                            tls: None,
-                            connections: NonZeroUsize::new(4).unwrap(),
-                            calls_per_connection: NonZeroUsize::new(8).unwrap(),
-                            request_timeout: Duration::from_secs(2),
-                            shutdown_timeout: Duration::from_secs(2),
-                        })
-                        .await
-                        .unwrap();
-                    let address = attached.local_addr();
-                    let channel =
-                        tonic::transport::Endpoint::from_shared(format!("http://{address}"))
-                            .unwrap()
-                            .connect()
-                            .await
-                            .unwrap();
-                    let mut client = tonic::client::Grpc::new(channel);
-                    client.ready().await.unwrap();
-                    let upload: tonic::Response<harmos::operations::StreamItem<u32>> = client
-                        .client_streaming(
-                            tonic::Request::new(opening()),
-                            tonic::codegen::http::uri::PathAndQuery::from_static(
-                                "/fixture.v1.Native/Upload",
-                            ),
-                            Codec::<u32, harmos::operations::Response<InputEnvelope<u32, u32>>>::new(
-                                operations.decode,
-                                operations.encode,
-                            )
-                            .unwrap(),
-                        )
-                        .await
-                        .unwrap();
-                    assert_eq!(*upload.into_inner(), 12);
+#[cfg(feature = "grpc")]
+#[tokio::test]
+async fn grpc_stream_lifecycle() {
+    let counts = Arc::new(Counts::default());
+    let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
+    fixture.initialize().await.unwrap();
+    assert_eq!(fixture.runtime.grpc().methods().len(), 4);
+    let operations = harmos::grpc::server::Settings::default();
+    let attached = fixture
+        .runtime
+        .grpc()
+        .attach(harmos::grpc::Settings {
+            address: "127.0.0.1:0".parse().unwrap(),
+            operations,
+            reflection: true,
+            web: false,
+            allowed_origins: Vec::new(),
+            tls: None,
+            connections: NonZeroUsize::new(4).unwrap(),
+            calls_per_connection: NonZeroUsize::new(8).unwrap(),
+            request_timeout: Duration::from_secs(2),
+            shutdown_timeout: Duration::from_secs(2),
+        })
+        .await
+        .unwrap();
+    let address = attached.local_addr();
+    let channel = tonic::transport::Endpoint::from_shared(format!("http://{address}"))
+        .unwrap()
+        .connect()
+        .await
+        .unwrap();
+    let mut client = tonic::client::Grpc::new(channel);
+    client.ready().await.unwrap();
+    let upload: tonic::Response<harmos::operations::StreamItem<u32>> = client
+        .client_streaming(
+            tonic::Request::new(opening()),
+            tonic::codegen::http::uri::PathAndQuery::from_static("/fixture.v1.Native/Upload"),
+            Codec::<u32, harmos::operations::Response<InputEnvelope<u32, u32>>>::new(
+                operations.decode,
+                operations.encode,
+            )
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(*upload.into_inner(), 12);
 
-                    client.ready().await.unwrap();
-                    let mut download = client
-                        .server_streaming(
-                            tonic::Request::new(harmos::operations::Response::new(5u32)),
-                            tonic::codegen::http::uri::PathAndQuery::from_static(
-                                "/fixture.v1.Native/Download",
-                            ),
-                            Codec::<OutputEnvelope<u32, u32>, harmos::operations::Response<u32>>::new(
-                                operations.decode,
-                                operations.encode,
-                            )
-                            .unwrap(),
-                        )
-                        .await
-                        .unwrap()
-                        .into_inner();
-                    for expected in [
-                        OutputEnvelope::Item(0),
-                        OutputEnvelope::Item(5),
-                        OutputEnvelope::Response(5),
-                    ] {
-                        assert_eq!(*download.message().await.unwrap().unwrap(), expected);
-                    }
-                    assert!(download.message().await.unwrap().is_none());
-
-                    client.ready().await.unwrap();
-                    let mut exchange = client
-                        .streaming(
-                            tonic::Request::new(opening()),
-                            tonic::codegen::http::uri::PathAndQuery::from_static(
-                                "/fixture.v1.Native/Exchange",
-                            ),
-                            Codec::<OutputEnvelope<u32, u32>, harmos::operations::Response<InputEnvelope<u32, u32>>>::new(
-                                operations.decode,
-                                operations.encode,
-                            )
-                            .unwrap(),
-                        )
-                        .await
-                        .unwrap()
-                        .into_inner();
-                    for expected in [
-                        OutputEnvelope::Item(5),
-                        OutputEnvelope::Item(12),
-                        OutputEnvelope::Response(12),
-                    ] {
-                        assert_eq!(*exchange.message().await.unwrap().unwrap(), expected);
-                    }
-                    assert!(exchange.message().await.unwrap().is_none());
-                    assert_eq!(counts.prepared.load(Ordering::SeqCst), 3);
-                    assert_eq!(counts.operation_initialized.load(Ordering::SeqCst), 3);
-                    assert_eq!(counts.runs.load(Ordering::SeqCst), 3);
-                    assert_eq!(counts.stopped.load(Ordering::SeqCst), 3);
-                    assert_eq!(counts.finalized.load(Ordering::SeqCst), 3);
-                    fixture.shutdown().await.unwrap();
-                    assert!(fixture.runtime.grpc().methods().is_empty());
-                    fixture.runtime.stop().await.unwrap();
-                });
-        });
-        // A Request The Sidecar Cannot Decode Is The Caller's Fault, Not The Host's.
-        scenario_runtime::check("grpc_wrong_shape_refusal", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let counts = Arc::new(Counts::default());
-                    let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
-                    fixture.initialize().await.unwrap();
-                    let operations = harmos::grpc::server::Settings::default();
-                    let attached = fixture
-                        .runtime
-                        .grpc()
-                        .attach(harmos::grpc::Settings {
-                            address: "127.0.0.1:0".parse().unwrap(),
-                            operations,
-                            reflection: false,
-                            web: false,
-                            allowed_origins: Vec::new(),
-                            tls: None,
-                            connections: NonZeroUsize::new(4).unwrap(),
-                            calls_per_connection: NonZeroUsize::new(8).unwrap(),
-                            request_timeout: Duration::from_secs(2),
-                            shutdown_timeout: Duration::from_secs(2),
-                        })
-                        .await
-                        .unwrap();
-                    let address = attached.local_addr();
-                    let channel =
-                        tonic::transport::Endpoint::from_shared(format!("http://{address}"))
-                            .unwrap()
-                            .connect()
-                            .await
-                            .unwrap();
-                    let mut client = tonic::client::Grpc::new(channel);
-                    client.ready().await.unwrap();
-
-                    // Field 1 Carries A String Where The Declaration Expects A u32.
-                    let refused =
-                        client
-                            .server_streaming(
-                                tonic::Request::new(harmos::operations::Response::new(
-                                    "not a number".to_owned(),
-                                )),
-                                tonic::codegen::http::uri::PathAndQuery::from_static(
-                                    "/fixture.v1.Native/Download",
-                                ),
-                                Codec::<
-                                    OutputEnvelope<u32, u32>,
-                                    harmos::operations::Response<String>,
-                                >::new(
-                                    operations.decode, operations.encode
-                                )
-                                .unwrap(),
-                            )
-                            .await;
-                    let status = match refused {
-                        Ok(response) => match response.into_inner().message().await {
-                            Err(status) => status,
-                            Ok(_) => panic!("a wrong-shape request must be refused"),
-                        },
-                        Err(status) => status,
-                    };
-                    assert_eq!(status.code(), tonic::Code::InvalidArgument, "{status:?}");
-                    // The Status Details Carry The Structured Failure Unchanged
-                    let failure = harmos::Failure::decode(status.details()).unwrap();
-                    assert_eq!(status.message(), failure.cause(), "{status:?}");
-                    assert!(failure.cause().contains("wire type mismatch"), "{status:?}");
-                    assert!(failure.context().operation().is_some(), "{status:?}");
-                    assert!(failure.diagnostics().is_none(), "{status:?}");
-                    assert_eq!(counts.runs.load(Ordering::SeqCst), 0);
-
-                    fixture.shutdown().await.unwrap();
-                    fixture.runtime.stop().await.unwrap();
-                });
-        });
+    client.ready().await.unwrap();
+    let mut download = client
+        .server_streaming(
+            tonic::Request::new(harmos::operations::Response::new(5u32)),
+            tonic::codegen::http::uri::PathAndQuery::from_static("/fixture.v1.Native/Download"),
+            Codec::<OutputEnvelope<u32, u32>, harmos::operations::Response<u32>>::new(
+                operations.decode,
+                operations.encode,
+            )
+            .unwrap(),
+        )
+        .await
+        .unwrap()
+        .into_inner();
+    for expected in [
+        OutputEnvelope::Item(0),
+        OutputEnvelope::Item(5),
+        OutputEnvelope::Response(5),
+    ] {
+        assert_eq!(*download.message().await.unwrap().unwrap(), expected);
     }
+    assert!(download.message().await.unwrap().is_none());
+
+    client.ready().await.unwrap();
+    let mut exchange =
+        client
+            .streaming(
+                tonic::Request::new(opening()),
+                tonic::codegen::http::uri::PathAndQuery::from_static("/fixture.v1.Native/Exchange"),
+                Codec::<
+                    OutputEnvelope<u32, u32>,
+                    harmos::operations::Response<InputEnvelope<u32, u32>>,
+                >::new(operations.decode, operations.encode)
+                .unwrap(),
+            )
+            .await
+            .unwrap()
+            .into_inner();
+    for expected in [
+        OutputEnvelope::Item(5),
+        OutputEnvelope::Item(12),
+        OutputEnvelope::Response(12),
+    ] {
+        assert_eq!(*exchange.message().await.unwrap().unwrap(), expected);
+    }
+    assert!(exchange.message().await.unwrap().is_none());
+    assert_eq!(counts.prepared.load(Ordering::SeqCst), 3);
+    assert_eq!(counts.operation_initialized.load(Ordering::SeqCst), 3);
+    assert_eq!(counts.runs.load(Ordering::SeqCst), 3);
+    assert_eq!(counts.stopped.load(Ordering::SeqCst), 3);
+    assert_eq!(counts.finalized.load(Ordering::SeqCst), 3);
+    fixture.shutdown().await.unwrap();
+    assert!(fixture.runtime.grpc().methods().is_empty());
+    fixture.runtime.stop().await.unwrap();
+}
+
+#[cfg(feature = "grpc")]
+#[tokio::test]
+async fn grpc_wrong_shape_refusal() {
+    let counts = Arc::new(Counts::default());
+    let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
+    fixture.initialize().await.unwrap();
+    let operations = harmos::grpc::server::Settings::default();
+    let attached = fixture
+        .runtime
+        .grpc()
+        .attach(harmos::grpc::Settings {
+            address: "127.0.0.1:0".parse().unwrap(),
+            operations,
+            reflection: false,
+            web: false,
+            allowed_origins: Vec::new(),
+            tls: None,
+            connections: NonZeroUsize::new(4).unwrap(),
+            calls_per_connection: NonZeroUsize::new(8).unwrap(),
+            request_timeout: Duration::from_secs(2),
+            shutdown_timeout: Duration::from_secs(2),
+        })
+        .await
+        .unwrap();
+    let address = attached.local_addr();
+    let channel = tonic::transport::Endpoint::from_shared(format!("http://{address}"))
+        .unwrap()
+        .connect()
+        .await
+        .unwrap();
+    let mut client = tonic::client::Grpc::new(channel);
+    client.ready().await.unwrap();
+
+    // Field 1 Carries A String Where The Declaration Expects A u32.
+    let refused = client
+        .server_streaming(
+            tonic::Request::new(harmos::operations::Response::new("not a number".to_owned())),
+            tonic::codegen::http::uri::PathAndQuery::from_static("/fixture.v1.Native/Download"),
+            Codec::<OutputEnvelope<u32, u32>, harmos::operations::Response<String>>::new(
+                operations.decode,
+                operations.encode,
+            )
+            .unwrap(),
+        )
+        .await;
+    let status = match refused {
+        Ok(response) => match response.into_inner().message().await {
+            Err(status) => status,
+            Ok(_) => panic!("a wrong-shape request must be refused"),
+        },
+        Err(status) => status,
+    };
+    assert_eq!(status.code(), tonic::Code::InvalidArgument, "{status:?}");
+    // The Status Details Carry The Structured Failure Unchanged
+    let failure = harmos::Failure::decode(status.details()).unwrap();
+    assert_eq!(status.message(), failure.cause(), "{status:?}");
+    assert!(failure.cause().contains("wire type mismatch"), "{status:?}");
+    assert!(failure.context().operation().is_some(), "{status:?}");
+    assert!(failure.diagnostics().is_none(), "{status:?}");
+    assert_eq!(counts.runs.load(Ordering::SeqCst), 0);
+
+    fixture.shutdown().await.unwrap();
+    fixture.runtime.stop().await.unwrap();
 }

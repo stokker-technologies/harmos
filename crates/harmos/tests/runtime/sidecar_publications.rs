@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -954,128 +953,114 @@ async fn row(
     .unwrap();
 }
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("capture_survives_reload", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let attachments = Arc::new(AtomicUsize::new(0));
-                    let source = meter(attachments.clone());
-                    let definitions =
-                        operations::inspected(&source, serde_json::to_vec(&()).unwrap());
-                    let calls = Supervised::new(
-                        source,
-                        (|_: &Service<Bank>, _: Notice| {}) as fn(&Service<Bank>, Notice),
-                    );
-                    let rows = Arc::new(Mutex::new(Vec::new()));
-                    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-                        .register(catalog())
-                        .register(Lanes::catalog())
-                        .operation_settings(harmos::operations::Settings {
-                            preparation_bytes: Some(std::num::NonZeroUsize::new(4096).unwrap()),
-                            ..Default::default()
-                        })
-                        .attach_streams(Recorder {
-                            cursor: Cursor::ORIGIN,
-                            rows: rows.clone(),
-                        })
-                        .runtime()
-                        .await
-                        .unwrap();
-                    let mut fixture = Managed::from_runtime(
-                        runtime,
-                        definitions,
-                        calls,
-                        Lanes::NativeOpen,
-                        std::num::NonZeroUsize::new(16).unwrap(),
-                        harmos::services::POLICY,
-                    );
-                    fixture.publication().unwrap();
-                    fixture
-                        .runtime
-                        .operations
-                        .register_operation::<Sampling>(
-                            "meter-sample",
-                            Lanes::NativeOpen,
-                            Arc::new(SampleProjection {
-                                streams: fixture.runtime.streams.clone(),
-                            }),
-                        )
-                        .unwrap();
-                    fixture.initialize().await.unwrap();
-                    ready(fixture.ready().clone()).await;
-                    fixture
-                        .call_as::<PublishPulse>(PublishPulse { sample: 41 })
-                        .await
-                        .unwrap();
-                    let stream = fixture
-                        .runtime
-                        .streams
-                        .publication("meter.pulse", 1)
-                        .unwrap();
-                    assert_eq!(stream.definition().owner(), Some("meter"));
-                    assert!(
-                        !stream
-                            .definition()
-                            .schema()
-                            .unwrap()
-                            .root()
-                            .unwrap()
-                            .fields()
-                            .is_empty()
-                    );
+#[tokio::test]
+async fn capture_survives_reload() {
+    let attachments = Arc::new(AtomicUsize::new(0));
+    let source = meter(attachments.clone());
+    let definitions = operations::inspected(&source, serde_json::to_vec(&()).unwrap());
+    let calls = Supervised::new(
+        source,
+        (|_: &Service<Bank>, _: Notice| {}) as fn(&Service<Bank>, Notice),
+    );
+    let rows = Arc::new(Mutex::new(Vec::new()));
+    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
+        .register(catalog())
+        .register(Lanes::catalog())
+        .operation_settings(harmos::operations::Settings {
+            preparation_bytes: Some(std::num::NonZeroUsize::new(4096).unwrap()),
+            ..Default::default()
+        })
+        .attach_streams(Recorder {
+            cursor: Cursor::ORIGIN,
+            rows: rows.clone(),
+        })
+        .runtime()
+        .await
+        .unwrap();
+    let mut fixture = Managed::from_runtime(
+        runtime,
+        definitions,
+        calls,
+        Lanes::NativeOpen,
+        std::num::NonZeroUsize::new(16).unwrap(),
+        harmos::services::POLICY,
+    );
+    fixture.publication().unwrap();
+    fixture
+        .runtime
+        .operations
+        .register_operation::<Sampling>(
+            "meter-sample",
+            Lanes::NativeOpen,
+            Arc::new(SampleProjection {
+                streams: fixture.runtime.streams.clone(),
+            }),
+        )
+        .unwrap();
+    fixture.initialize().await.unwrap();
+    ready(fixture.ready().clone()).await;
+    fixture
+        .call_as::<PublishPulse>(PublishPulse { sample: 41 })
+        .await
+        .unwrap();
+    let stream = fixture
+        .runtime
+        .streams
+        .publication("meter.pulse", 1)
+        .unwrap();
+    assert_eq!(stream.definition().owner(), Some("meter"));
+    assert!(
+        !stream
+            .definition()
+            .schema()
+            .unwrap()
+            .root()
+            .unwrap()
+            .fields()
+            .is_empty()
+    );
 
-                    fixture.shutdown().await.unwrap();
-                    assert_eq!(stream.query(..).await.unwrap().count(), 1);
-                    fixture.initialize().await.unwrap();
-                    ready(fixture.ready().clone()).await;
-                    fixture
-                        .call_as::<PublishPulse>(PublishPulse { sample: 42 })
-                        .await
-                        .unwrap();
-                    let samples: Vec<_> = stream
-                        .query(..)
-                        .await
-                        .unwrap()
-                        .map(|row| {
-                            assert!(
-                                row.value.published_unix_micros.is_some(),
-                                "sidecar submission time must reach the retained stream"
-                            );
-                            support::Pulse::decode(row.value.payload.as_slice())
-                                .unwrap()
-                                .sample
-                        })
-                        .collect();
-                    assert_eq!(samples, [41, 42]);
-                    assert_eq!(attachments.load(Ordering::SeqCst), 2);
-                    fixture.shutdown().await.unwrap();
-                    fixture.runtime.stop().await.unwrap();
+    fixture.shutdown().await.unwrap();
+    assert_eq!(stream.query(..).await.unwrap().count(), 1);
+    fixture.initialize().await.unwrap();
+    ready(fixture.ready().clone()).await;
+    fixture
+        .call_as::<PublishPulse>(PublishPulse { sample: 42 })
+        .await
+        .unwrap();
+    let samples: Vec<_> = stream
+        .query(..)
+        .await
+        .unwrap()
+        .map(|row| {
+            assert!(
+                row.value.published_unix_micros.is_some(),
+                "sidecar submission time must reach the retained stream"
+            );
+            support::Pulse::decode(row.value.payload.as_slice())
+                .unwrap()
+                .sample
+        })
+        .collect();
+    assert_eq!(samples, [41, 42]);
+    assert_eq!(attachments.load(Ordering::SeqCst), 2);
+    fixture.shutdown().await.unwrap();
+    fixture.runtime.stop().await.unwrap();
 
-                    let recorded = rows.lock().unwrap();
-                    assert_eq!(recorded.len(), 2);
-                    assert!(recorded.iter().all(|(id, _)| id == "meter.pulse"));
-                    assert_eq!(
-                        recorded
-                            .iter()
-                            .map(|(_, bytes)| support::Pulse::decode(bytes.as_slice())
-                                .unwrap()
-                                .sample)
-                            .collect::<Vec<_>>(),
-                        [41, 42]
-                    );
-                });
-        });
-    }
-    {
-        scenario_runtime::check("demand_survives_reload", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
+    let recorded = rows.lock().unwrap();
+    assert_eq!(recorded.len(), 2);
+    assert!(recorded.iter().all(|(id, _)| id == "meter.pulse"));
+    assert_eq!(
+        recorded
+            .iter()
+            .map(|(_, bytes)| support::Pulse::decode(bytes.as_slice()).unwrap().sample)
+            .collect::<Vec<_>>(),
+        [41, 42]
+    );
+}
 
+#[tokio::test]
+async fn demand_survives_reload() {
     let gate = Gate::default();
     let seed = GateSeed::new(&gate);
     let capacity = std::num::NonZeroUsize::new(4).unwrap();
@@ -1158,415 +1143,373 @@ pub(super) fn contract_scenario() {
     drop(held);
     fixture.shutdown().await.unwrap();
     fixture.runtime.stop().await.unwrap();
+}
 
-});
-        });
-    }
-    {
-        scenario_runtime::check("batches_keep_order", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let capacity = std::num::NonZeroUsize::new(2).unwrap();
-                    let source = harmos_sidecar::PluginNative::<Batches>::new(capacity).unwrap();
-                    // A Decoded 100-Row Batch Outgrows The Usual 4 KiB Preparation Budget
-                    let runtime = assembly()
-                        .register(Lanes::catalog())
-                        .operation_settings(harmos::operations::Settings {
-                            preparation_bytes: std::num::NonZeroUsize::new(64 * 1024),
-                            ..Default::default()
-                        })
-                        .runtime()
-                        .await
-                        .unwrap();
-                    let definitions =
-                        super::operations::inspected(&source, serde_json::to_vec(&()).unwrap());
-                    let resident = harmos::sidecar::Supervised::new(
-                        source,
-                        (|_: &harmos::services::Service<crate::support::Bank>,
-                          _: harmos::sidecar::Notice| {})
-                            as fn(&harmos::services::Service<crate::support::Bank>, _),
-                    );
-                    let mut fixture = Managed::from_runtime(
-                        runtime,
-                        definitions,
-                        resident,
-                        Lanes::NativeOpen,
-                        capacity,
-                        harmos::services::POLICY,
-                    );
-                    fixture.publication().unwrap();
-                    fixture.initialize().await.unwrap();
-                    ready(fixture.ready().clone()).await;
-                    fixture.shutdown().await.unwrap();
+#[tokio::test]
+async fn batches_keep_order() {
+    let capacity = std::num::NonZeroUsize::new(2).unwrap();
+    let source = harmos_sidecar::PluginNative::<Batches>::new(capacity).unwrap();
+    // A Decoded 100-Row Batch Outgrows The Usual 4 KiB Preparation Budget
+    let runtime = assembly()
+        .register(Lanes::catalog())
+        .operation_settings(harmos::operations::Settings {
+            preparation_bytes: std::num::NonZeroUsize::new(64 * 1024),
+            ..Default::default()
+        })
+        .runtime()
+        .await
+        .unwrap();
+    let definitions = super::operations::inspected(&source, serde_json::to_vec(&()).unwrap());
+    let resident = harmos::sidecar::Supervised::new(
+        source,
+        (|_: &harmos::services::Service<crate::support::Bank>, _: harmos::sidecar::Notice| {})
+            as fn(&harmos::services::Service<crate::support::Bank>, _),
+    );
+    let mut fixture = Managed::from_runtime(
+        runtime,
+        definitions,
+        resident,
+        Lanes::NativeOpen,
+        capacity,
+        harmos::services::POLICY,
+    );
+    fixture.publication().unwrap();
+    fixture.initialize().await.unwrap();
+    ready(fixture.ready().clone()).await;
+    fixture.shutdown().await.unwrap();
 
-                    let rows = |id: &str| {
-                        let stream = fixture.runtime.streams.publication(id, 1).unwrap();
-                        async move {
-                            stream
-                                .query(..)
-                                .await
-                                .unwrap()
-                                .map(|row| {
-                                    (
-                                        support::Pulse::decode(row.value.payload.as_slice())
-                                            .unwrap()
-                                            .sample,
-                                        row.value.context.clone(),
-                                    )
-                                })
-                                .collect::<Vec<_>>()
-                        }
-                    };
-                    let a = || Some("execution-a".to_owned());
-                    let b = || Some("execution-b".to_owned());
-                    assert_eq!(
-                        rows("batches.rows").await,
-                        vec![(1, a()), (2, a()), (3, a()), (4, None), (5, b()), (6, b())]
-                    );
-                    assert_eq!(
-                        rows("batches.raw").await,
-                        vec![(1, None), (2, None), (3, None)]
-                    );
-                    let stamps = |id: &str| {
-                        let stream = fixture.runtime.streams.publication(id, 1).unwrap();
-                        async move {
-                            stream
-                                .query(..)
-                                .await
-                                .unwrap()
-                                .map(|row| {
-                                    (
-                                        support::Pulse::decode(row.value.payload.as_slice())
-                                            .unwrap()
-                                            .sample,
-                                        row.value.published_unix_micros.unwrap(),
-                                    )
-                                })
-                                .collect::<Vec<_>>()
-                        }
-                    };
-                    // 100 Distinct Stamps Exactly One Millisecond Apart
-                    assert_eq!(
-                        stamps("batches.timed").await,
-                        (0..100)
-                            .map(|sample| (sample, TIMED_BASE + 1_000 * sample as i64))
-                            .collect::<Vec<_>>()
-                    );
-                    // Pushed At Least A Millisecond Apart: Strictly Rising Stamps
-                    let clocked = stamps("batches.clocked").await;
-                    assert_eq!(
-                        clocked
-                            .iter()
-                            .map(|(sample, _)| *sample)
-                            .collect::<Vec<_>>(),
-                        (0..100).collect::<Vec<_>>()
-                    );
-                    let gaps: Vec<_> = clocked
-                        .windows(2)
-                        .map(|pair| pair[1].1 - pair[0].1)
-                        .collect();
-                    assert!(gaps.iter().all(|gap| *gap >= 1_000), "{gaps:?}");
-                    let span = clocked[99].1 - clocked[0].1;
-                    assert!((99_000..10_000_000).contains(&span), "{span}");
-                    // The Backwards Row And Everything After It Stay Unpublished
-                    assert_eq!(
-                        stamps("batches.stamped").await,
-                        vec![
-                            (1, TIMED_BASE),
-                            (2, TIMED_BASE + 1_000),
-                            (3, TIMED_BASE + 1_000),
-                            (4, TIMED_BASE),
-                        ]
-                    );
-                    fixture.runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("slow_ingest_lossless", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let capacity = std::num::NonZeroUsize::new(4).unwrap();
-                    let source = harmos_sidecar::PluginNative::<Flood>::new(capacity).unwrap();
-                    let mut fixture = Managed::attach(
-                        source,
-                        serde_json::to_vec(&()).unwrap(),
-                        Lanes::NativeOpen,
-                        capacity,
-                        vec![],
-                        std::convert::identity,
-                    )
-                    .await;
-                    // The Host's Ingest Follows Before The Producer Starts
-                    let mut feed = fixture.runtime.streams.follow(Cursor::ORIGIN);
-                    fixture.publication().unwrap();
-                    fixture.initialize().await.unwrap();
-                    ready(fixture.ready().clone()).await;
-
-                    // A Deliberately Slow Ingest: Every Batch Costs 3 ms
-                    let mut samples = Vec::new();
-                    let mut batches = 0;
-                    tokio::time::timeout(Duration::from_secs(20), async {
-                        while samples.len() < FLOOD_ROWS as usize {
-                            let batch = feed.next().await.expect("the feed stays live");
-                            assert!(
-                                batch.incomplete().is_empty(),
-                                "the window dropped an unread row"
-                            );
-                            samples.extend(
-                                batch
-                                    .publications()
-                                    .filter(|(definition, ..)| definition.id() == "flood.rows")
-                                    .map(|(_, _, row)| {
-                                        support::Pulse::decode(row.value.payload.as_slice())
-                                            .unwrap()
-                                            .sample
-                                    }),
-                            );
-                            batches += 1;
-                            tokio::time::sleep(Duration::from_millis(3)).await;
-                        }
-                    })
-                    .await
-                    .expect("every published row reaches the ingest");
-
-                    // Every Row Arrived Once, In Order, Through A Window Of 8
-                    assert_eq!(samples, (0..FLOOD_ROWS).collect::<Vec<_>>());
-                    assert!(batches > 1, "the producer was paced across ingest batches");
-                    fixture.shutdown().await.unwrap();
-                    fixture.runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("named_streams_isolated", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let capacity = std::num::NonZeroUsize::new(2).unwrap();
-                    let source = harmos_sidecar::PluginNative::<Twins>::new(capacity).unwrap();
-                    let mut fixture = Managed::attach(
-                        source,
-                        serde_json::to_vec(&()).unwrap(),
-                        Lanes::NativeOpen,
-                        capacity,
-                        vec![],
-                        std::convert::identity,
-                    )
-                    .await;
-                    fixture.publication().unwrap();
-                    fixture.initialize().await.unwrap();
-                    ready(fixture.ready().clone()).await;
-                    fixture.shutdown().await.unwrap();
-
-                    for (id, expected) in [("left", vec![10, 11]), ("right", vec![20])] {
-                        let stream = fixture
-                            .runtime
-                            .streams
-                            .publication(&format!("twins.{id}"), 1)
-                            .unwrap();
-                        let samples: Vec<_> = stream
-                            .query(..)
-                            .await
+    let rows = |id: &str| {
+        let stream = fixture.runtime.streams.publication(id, 1).unwrap();
+        async move {
+            stream
+                .query(..)
+                .await
+                .unwrap()
+                .map(|row| {
+                    (
+                        support::Pulse::decode(row.value.payload.as_slice())
                             .unwrap()
-                            .map(|row| {
-                                support::Pulse::decode(row.value.payload.as_slice())
-                                    .unwrap()
-                                    .sample
-                            })
-                            .collect();
-                        assert_eq!(samples, expected);
-                        let contexts: Vec<_> = stream
-                            .query(..)
-                            .await
-                            .unwrap()
-                            .map(|row| row.value.context.clone())
-                            .collect();
-                        assert_eq!(
-                            contexts,
-                            if id == "left" {
-                                vec![Some("execution-a".into()), Some("execution-b".into())]
-                            } else {
-                                vec![None]
-                            }
-                        );
-                        assert_eq!(stream.definition().id(), format!("twins.{id}"));
-                        assert_eq!(
-                            stream.definition().schema().unwrap(),
-                            &harmos::schema::graph::Schema::from_declaration(
-                                <support::Pulse as harmos::schema::Described>::DEFINITION,
-                                &harmos::config::SchemaSettings::default()
-                            )
-                            .unwrap()
-                        );
-                    }
-                    fixture.runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("projection_preserves_evidence", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let capacity = std::num::NonZeroUsize::new(2).unwrap();
-                    let source = harmos_sidecar::PluginNative::<Twins>::new(capacity).unwrap();
-                    let mut fixture = Managed::attach(
-                        source,
-                        serde_json::to_vec(&()).unwrap(),
-                        Lanes::NativeOpen,
-                        capacity,
-                        vec![],
-                        |resident| resident.ingest::<Left>().ingest::<Right>(),
+                            .sample,
+                        row.value.context.clone(),
                     )
-                    .await;
-                    fixture.publication().unwrap();
-                    fixture.initialize().await.unwrap();
-                    ready(fixture.ready().clone()).await;
-                    fixture.shutdown().await.unwrap();
-
-                    let projected: Vec<_> = fixture
-                        .runtime
-                        .streams
-                        .query::<support::Pulse>(..)
-                        .await
-                        .unwrap()
-                        .map(|row| row.value.sample)
-                        .collect();
-                    assert_eq!(projected, [10, 20, 11]);
-                    for (id, expected) in [("twins.left", vec![10, 11]), ("twins.right", vec![20])]
-                    {
-                        let source = fixture.runtime.streams.publication(id, 1).unwrap();
-                        assert_eq!(source.definition().owner(), Some("twins"));
-                        let retained: Vec<_> = source
-                            .query(..)
-                            .await
+                })
+                .collect::<Vec<_>>()
+        }
+    };
+    let a = || Some("execution-a".to_owned());
+    let b = || Some("execution-b".to_owned());
+    assert_eq!(
+        rows("batches.rows").await,
+        vec![(1, a()), (2, a()), (3, a()), (4, None), (5, b()), (6, b())]
+    );
+    assert_eq!(
+        rows("batches.raw").await,
+        vec![(1, None), (2, None), (3, None)]
+    );
+    let stamps = |id: &str| {
+        let stream = fixture.runtime.streams.publication(id, 1).unwrap();
+        async move {
+            stream
+                .query(..)
+                .await
+                .unwrap()
+                .map(|row| {
+                    (
+                        support::Pulse::decode(row.value.payload.as_slice())
                             .unwrap()
-                            .map(|row| {
-                                support::Pulse::decode(row.value.payload.as_slice())
-                                    .unwrap()
-                                    .sample
-                            })
-                            .collect();
-                        assert_eq!(retained, expected);
-                    }
-                    fixture.runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("shared_row_independence", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    use std::sync::atomic::Ordering::SeqCst;
-                    let counts = ObserverCounts::default();
-                    let seed = ObserverSeed::new(&counts);
-                    let source = harmos_sidecar::PluginNative::<SampledTwins>::new(
-                        std::num::NonZeroUsize::new(4).unwrap(),
+                            .sample,
+                        row.value.published_unix_micros.unwrap(),
                     )
-                    .unwrap();
-                    let mut fixture = Managed::attach(
-                        source,
-                        serde_json::to_vec(&seed.id).unwrap(),
-                        Lanes::NativeOpen,
-                        std::num::NonZeroUsize::new(4).unwrap(),
-                        vec![],
-                        std::convert::identity,
-                    )
-                    .await;
-                    fixture.publication().unwrap();
-                    fixture.initialize().await.unwrap();
-                    ready(fixture.ready().clone()).await;
-                    let runtime = &fixture.runtime;
-                    let left = runtime.streams.publication("twins.left", 1).unwrap();
-                    let right = runtime.streams.publication("twins.right", 1).unwrap();
-                    assert_eq!(left.definition().schema(), right.definition().schema());
-                    assert_eq!(counts.started[0].load(SeqCst), 0);
-                    assert_eq!(counts.started[1].load(SeqCst), 0);
+                })
+                .collect::<Vec<_>>()
+        }
+    };
+    // 100 Distinct Stamps Exactly One Millisecond Apart
+    assert_eq!(
+        stamps("batches.timed").await,
+        (0..100)
+            .map(|sample| (sample, TIMED_BASE + 1_000 * sample as i64))
+            .collect::<Vec<_>>()
+    );
+    // Pushed At Least A Millisecond Apart: Strictly Rising Stamps
+    let clocked = stamps("batches.clocked").await;
+    assert_eq!(
+        clocked
+            .iter()
+            .map(|(sample, _)| *sample)
+            .collect::<Vec<_>>(),
+        (0..100).collect::<Vec<_>>()
+    );
+    let gaps: Vec<_> = clocked
+        .windows(2)
+        .map(|pair| pair[1].1 - pair[0].1)
+        .collect();
+    assert!(gaps.iter().all(|gap| *gap >= 1_000), "{gaps:?}");
+    let span = clocked[99].1 - clocked[0].1;
+    assert!((99_000..10_000_000).contains(&span), "{span}");
+    // The Backwards Row And Everything After It Stay Unpublished
+    assert_eq!(
+        stamps("batches.stamped").await,
+        vec![
+            (1, TIMED_BASE),
+            (2, TIMED_BASE + 1_000),
+            (3, TIMED_BASE + 1_000),
+            (4, TIMED_BASE),
+        ]
+    );
+    fixture.runtime.stop().await.unwrap();
+}
 
-                    let mut left_rows = left.watch();
-                    row(&mut left_rows).await;
-                    assert_eq!(counts.started[0].load(SeqCst), 1);
-                    assert_eq!(counts.started[1].load(SeqCst), 0);
-                    assert_eq!(right.query(..).await.unwrap().count(), 0);
+#[tokio::test]
+async fn slow_ingest_lossless() {
+    let capacity = std::num::NonZeroUsize::new(4).unwrap();
+    let source = harmos_sidecar::PluginNative::<Flood>::new(capacity).unwrap();
+    let mut fixture = Managed::attach(
+        source,
+        serde_json::to_vec(&()).unwrap(),
+        Lanes::NativeOpen,
+        capacity,
+        vec![],
+        std::convert::identity,
+    )
+    .await;
+    // The Host's Ingest Follows Before The Producer Starts
+    let mut feed = fixture.runtime.streams.follow(Cursor::ORIGIN);
+    fixture.publication().unwrap();
+    fixture.initialize().await.unwrap();
+    ready(fixture.ready().clone()).await;
 
-                    let mut right_rows = right.watch();
-                    row(&mut right_rows).await;
-                    assert_eq!(counts.started[1].load(SeqCst), 1);
-                    drop(left_rows);
-                    tokio::time::timeout(Duration::from_secs(2), async {
-                        while counts.stopped[0].load(SeqCst) == 0 {
-                            tokio::time::sleep(Duration::from_millis(5)).await;
-                        }
-                    })
-                    .await
-                    .unwrap();
-                    assert_eq!(counts.stopped[1].load(SeqCst), 0);
-                    assert_eq!(counts.released.load(SeqCst), 0);
-                    assert_eq!(
-                        support::Pulse::decode(
-                            left.query(..)
-                                .await
-                                .unwrap()
-                                .next()
-                                .unwrap()
-                                .value
-                                .payload
-                                .as_slice()
-                        )
-                        .unwrap()
-                        .sample,
-                        101
-                    );
-                    assert_eq!(
-                        support::Pulse::decode(
-                            right
-                                .query(..)
-                                .await
-                                .unwrap()
-                                .next()
-                                .unwrap()
-                                .value
-                                .payload
-                                .as_slice()
-                        )
-                        .unwrap()
-                        .sample,
-                        201
-                    );
+    // A Deliberately Slow Ingest: Every Batch Costs 3 ms
+    let mut samples = Vec::new();
+    let mut batches = 0;
+    tokio::time::timeout(Duration::from_secs(20), async {
+        while samples.len() < FLOOD_ROWS as usize {
+            let batch = feed.next().await.expect("the feed stays live");
+            assert!(
+                batch.incomplete().is_empty(),
+                "the window dropped an unread row"
+            );
+            samples.extend(
+                batch
+                    .publications()
+                    .filter(|(definition, ..)| definition.id() == "flood.rows")
+                    .map(|(_, _, row)| {
+                        support::Pulse::decode(row.value.payload.as_slice())
+                            .unwrap()
+                            .sample
+                    }),
+            );
+            batches += 1;
+            tokio::time::sleep(Duration::from_millis(3)).await;
+        }
+    })
+    .await
+    .expect("every published row reaches the ingest");
 
-                    fixture.shutdown().await.unwrap();
-                    fixture.runtime.stop().await.unwrap();
-                    assert_eq!(counts.stopped[0].load(SeqCst), 1);
-                    assert_eq!(counts.stopped[1].load(SeqCst), 1);
-                    assert_eq!(counts.released.load(SeqCst), 1);
-                });
-        });
+    // Every Row Arrived Once, In Order, Through A Window Of 8
+    assert_eq!(samples, (0..FLOOD_ROWS).collect::<Vec<_>>());
+    assert!(batches > 1, "the producer was paced across ingest batches");
+    fixture.shutdown().await.unwrap();
+    fixture.runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn named_streams_isolated() {
+    let capacity = std::num::NonZeroUsize::new(2).unwrap();
+    let source = harmos_sidecar::PluginNative::<Twins>::new(capacity).unwrap();
+    let mut fixture = Managed::attach(
+        source,
+        serde_json::to_vec(&()).unwrap(),
+        Lanes::NativeOpen,
+        capacity,
+        vec![],
+        std::convert::identity,
+    )
+    .await;
+    fixture.publication().unwrap();
+    fixture.initialize().await.unwrap();
+    ready(fixture.ready().clone()).await;
+    fixture.shutdown().await.unwrap();
+
+    for (id, expected) in [("left", vec![10, 11]), ("right", vec![20])] {
+        let stream = fixture
+            .runtime
+            .streams
+            .publication(&format!("twins.{id}"), 1)
+            .unwrap();
+        let samples: Vec<_> = stream
+            .query(..)
+            .await
+            .unwrap()
+            .map(|row| {
+                support::Pulse::decode(row.value.payload.as_slice())
+                    .unwrap()
+                    .sample
+            })
+            .collect();
+        assert_eq!(samples, expected);
+        let contexts: Vec<_> = stream
+            .query(..)
+            .await
+            .unwrap()
+            .map(|row| row.value.context.clone())
+            .collect();
+        assert_eq!(
+            contexts,
+            if id == "left" {
+                vec![Some("execution-a".into()), Some("execution-b".into())]
+            } else {
+                vec![None]
+            }
+        );
+        assert_eq!(stream.definition().id(), format!("twins.{id}"));
+        assert_eq!(
+            stream.definition().schema().unwrap(),
+            &harmos::schema::graph::Schema::from_declaration(
+                <support::Pulse as harmos::schema::Described>::DEFINITION,
+                &harmos::config::SchemaSettings::default()
+            )
+            .unwrap()
+        );
     }
-    {
-        scenario_runtime::check("catalog_precedes_initialization", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
+    fixture.runtime.stop().await.unwrap();
+}
 
-    use harmos::plugin::{PluginArtifact, PluginContributions, PluginDefinition, PluginDefinitions};
+#[tokio::test]
+async fn projection_preserves_evidence() {
+    let capacity = std::num::NonZeroUsize::new(2).unwrap();
+    let source = harmos_sidecar::PluginNative::<Twins>::new(capacity).unwrap();
+    let mut fixture = Managed::attach(
+        source,
+        serde_json::to_vec(&()).unwrap(),
+        Lanes::NativeOpen,
+        capacity,
+        vec![],
+        |resident| resident.ingest::<Left>().ingest::<Right>(),
+    )
+    .await;
+    fixture.publication().unwrap();
+    fixture.initialize().await.unwrap();
+    ready(fixture.ready().clone()).await;
+    fixture.shutdown().await.unwrap();
+
+    let projected: Vec<_> = fixture
+        .runtime
+        .streams
+        .query::<support::Pulse>(..)
+        .await
+        .unwrap()
+        .map(|row| row.value.sample)
+        .collect();
+    assert_eq!(projected, [10, 20, 11]);
+    for (id, expected) in [("twins.left", vec![10, 11]), ("twins.right", vec![20])] {
+        let source = fixture.runtime.streams.publication(id, 1).unwrap();
+        assert_eq!(source.definition().owner(), Some("twins"));
+        let retained: Vec<_> = source
+            .query(..)
+            .await
+            .unwrap()
+            .map(|row| {
+                support::Pulse::decode(row.value.payload.as_slice())
+                    .unwrap()
+                    .sample
+            })
+            .collect();
+        assert_eq!(retained, expected);
+    }
+    fixture.runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn shared_row_independence() {
+    use std::sync::atomic::Ordering::SeqCst;
+    let counts = ObserverCounts::default();
+    let seed = ObserverSeed::new(&counts);
+    let source =
+        harmos_sidecar::PluginNative::<SampledTwins>::new(std::num::NonZeroUsize::new(4).unwrap())
+            .unwrap();
+    let mut fixture = Managed::attach(
+        source,
+        serde_json::to_vec(&seed.id).unwrap(),
+        Lanes::NativeOpen,
+        std::num::NonZeroUsize::new(4).unwrap(),
+        vec![],
+        std::convert::identity,
+    )
+    .await;
+    fixture.publication().unwrap();
+    fixture.initialize().await.unwrap();
+    ready(fixture.ready().clone()).await;
+    let runtime = &fixture.runtime;
+    let left = runtime.streams.publication("twins.left", 1).unwrap();
+    let right = runtime.streams.publication("twins.right", 1).unwrap();
+    assert_eq!(left.definition().schema(), right.definition().schema());
+    assert_eq!(counts.started[0].load(SeqCst), 0);
+    assert_eq!(counts.started[1].load(SeqCst), 0);
+
+    let mut left_rows = left.watch();
+    row(&mut left_rows).await;
+    assert_eq!(counts.started[0].load(SeqCst), 1);
+    assert_eq!(counts.started[1].load(SeqCst), 0);
+    assert_eq!(right.query(..).await.unwrap().count(), 0);
+
+    let mut right_rows = right.watch();
+    row(&mut right_rows).await;
+    assert_eq!(counts.started[1].load(SeqCst), 1);
+    drop(left_rows);
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while counts.stopped[0].load(SeqCst) == 0 {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(counts.stopped[1].load(SeqCst), 0);
+    assert_eq!(counts.released.load(SeqCst), 0);
+    assert_eq!(
+        support::Pulse::decode(
+            left.query(..)
+                .await
+                .unwrap()
+                .next()
+                .unwrap()
+                .value
+                .payload
+                .as_slice()
+        )
+        .unwrap()
+        .sample,
+        101
+    );
+    assert_eq!(
+        support::Pulse::decode(
+            right
+                .query(..)
+                .await
+                .unwrap()
+                .next()
+                .unwrap()
+                .value
+                .payload
+                .as_slice()
+        )
+        .unwrap()
+        .sample,
+        201
+    );
+
+    fixture.shutdown().await.unwrap();
+    fixture.runtime.stop().await.unwrap();
+    assert_eq!(counts.stopped[0].load(SeqCst), 1);
+    assert_eq!(counts.stopped[1].load(SeqCst), 1);
+    assert_eq!(counts.released.load(SeqCst), 1);
+}
+
+#[tokio::test]
+async fn catalog_precedes_initialization() {
+    use harmos::plugin::{
+        PluginArtifact, PluginContributions, PluginDefinition, PluginDefinitions,
+    };
     use std::sync::atomic::Ordering::SeqCst;
 
     for case in 0..5 {
@@ -1685,339 +1628,296 @@ pub(super) fn contract_scenario() {
             })
         ));
     }
+}
 
-});
-        });
-    }
-    {
-        scenario_runtime::check("catalog_order_admission", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    use harmos_sidecar::Attach;
-                    use std::sync::atomic::Ordering::SeqCst;
+#[tokio::test]
+async fn catalog_order_admission() {
+    use harmos_sidecar::Attach;
+    use std::sync::atomic::Ordering::SeqCst;
 
-                    let counts = ObserverCounts::default();
-                    let seed = ObserverSeed::new(&counts);
-                    let inner = harmos_sidecar::PluginNative::<SampledTwins>::new(
-                        std::num::NonZeroUsize::new(4).unwrap(),
-                    )
-                    .unwrap();
-                    let mut observers = inner.observers();
-                    observers.reverse();
-                    for observer in &mut observers {
-                        observer.streams.reverse();
-                        observer.demand_keys.reverse();
-                    }
-                    let peer = Advertised {
-                        inner,
-                        observers,
-                        attached: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
-                    };
-                    let mut fixture = Managed::attach(
-                        peer,
-                        serde_json::to_vec(&seed.id).unwrap(),
-                        Lanes::NativeOpen,
-                        std::num::NonZeroUsize::new(4).unwrap(),
-                        vec![],
-                        std::convert::identity,
-                    )
-                    .await;
-                    fixture.publication().unwrap();
-                    fixture.initialize().await.unwrap();
-                    ready(fixture.ready().clone()).await;
-                    assert_eq!(counts.initialized.load(SeqCst), 1);
-                    fixture.shutdown().await.unwrap();
-                    fixture.runtime.stop().await.unwrap();
-                });
-        });
+    let counts = ObserverCounts::default();
+    let seed = ObserverSeed::new(&counts);
+    let inner =
+        harmos_sidecar::PluginNative::<SampledTwins>::new(std::num::NonZeroUsize::new(4).unwrap())
+            .unwrap();
+    let mut observers = inner.observers();
+    observers.reverse();
+    for observer in &mut observers {
+        observer.streams.reverse();
+        observer.demand_keys.reverse();
     }
-    {
-        scenario_runtime::check("shutdown_signals_siblings", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    use std::sync::atomic::Ordering::SeqCst;
-                    let counts = ObserverCounts::default();
-                    counts.coordinated.store(true, SeqCst);
-                    let seed = ObserverSeed::new(&counts);
-                    let source = harmos_sidecar::PluginNative::<SampledTwins>::new(
-                        std::num::NonZeroUsize::new(4).unwrap(),
-                    )
-                    .unwrap();
-                    let mut fixture = Managed::attach(
-                        source,
-                        serde_json::to_vec(&seed.id).unwrap(),
-                        Lanes::NativeOpen,
-                        std::num::NonZeroUsize::new(4).unwrap(),
-                        vec![],
-                        std::convert::identity,
-                    )
-                    .await;
-                    fixture.publication().unwrap();
-                    fixture.initialize().await.unwrap();
-                    ready(fixture.ready().clone()).await;
-                    let runtime = &fixture.runtime;
-                    assert_eq!(observer_definitions(runtime).len(), 2);
-                    let mut left = runtime
-                        .streams
-                        .publication("twins.left", 1)
-                        .unwrap()
-                        .watch();
-                    let mut right = runtime
-                        .streams
-                        .publication("twins.right", 1)
-                        .unwrap()
-                        .watch();
-                    row(&mut left).await;
-                    row(&mut right).await;
-                    let mut statuses = runtime.operations.watch_residents();
-                    tokio::time::timeout(
-                        Duration::from_secs(2),
-                        statuses.wait_for(|statuses| {
-                            let observers: Vec<_> = statuses
-                                .values()
-                                .filter(|status| {
-                                    status.kind == harmos::operations::resident::Kind::Observer
-                                })
-                                .collect();
-                            observers.len() == 2
-                                && observers.iter().all(|status| {
-                                    status.lifecycle.phase()
-                                        == harmos::operations::OperationPhase::Running
-                                        && status.leases == 1
-                                })
-                        }),
-                    )
-                    .await
-                    .unwrap()
-                    .unwrap();
-                    fixture.shutdown().await.unwrap();
-                    fixture.runtime.stop().await.unwrap();
-                    assert_eq!(counts.stopped[0].load(SeqCst), 1);
-                    assert_eq!(counts.stopped[1].load(SeqCst), 1);
-                    assert_eq!(counts.released.load(SeqCst), 1);
-                    assert!(observer_definitions(&fixture.runtime).is_empty());
-                });
-        });
+    let peer = Advertised {
+        inner,
+        observers,
+        attached: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+    };
+    let mut fixture = Managed::attach(
+        peer,
+        serde_json::to_vec(&seed.id).unwrap(),
+        Lanes::NativeOpen,
+        std::num::NonZeroUsize::new(4).unwrap(),
+        vec![],
+        std::convert::identity,
+    )
+    .await;
+    fixture.publication().unwrap();
+    fixture.initialize().await.unwrap();
+    ready(fixture.ready().clone()).await;
+    assert_eq!(counts.initialized.load(SeqCst), 1);
+    fixture.shutdown().await.unwrap();
+    fixture.runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn shutdown_signals_siblings() {
+    use std::sync::atomic::Ordering::SeqCst;
+    let counts = ObserverCounts::default();
+    counts.coordinated.store(true, SeqCst);
+    let seed = ObserverSeed::new(&counts);
+    let source =
+        harmos_sidecar::PluginNative::<SampledTwins>::new(std::num::NonZeroUsize::new(4).unwrap())
+            .unwrap();
+    let mut fixture = Managed::attach(
+        source,
+        serde_json::to_vec(&seed.id).unwrap(),
+        Lanes::NativeOpen,
+        std::num::NonZeroUsize::new(4).unwrap(),
+        vec![],
+        std::convert::identity,
+    )
+    .await;
+    fixture.publication().unwrap();
+    fixture.initialize().await.unwrap();
+    ready(fixture.ready().clone()).await;
+    let runtime = &fixture.runtime;
+    assert_eq!(observer_definitions(runtime).len(), 2);
+    let mut left = runtime
+        .streams
+        .publication("twins.left", 1)
+        .unwrap()
+        .watch();
+    let mut right = runtime
+        .streams
+        .publication("twins.right", 1)
+        .unwrap()
+        .watch();
+    row(&mut left).await;
+    row(&mut right).await;
+    let mut statuses = runtime.operations.watch_residents();
+    tokio::time::timeout(
+        Duration::from_secs(2),
+        statuses.wait_for(|statuses| {
+            let observers: Vec<_> = statuses
+                .values()
+                .filter(|status| status.kind == harmos::operations::resident::Kind::Observer)
+                .collect();
+            observers.len() == 2
+                && observers.iter().all(|status| {
+                    status.lifecycle.phase() == harmos::operations::OperationPhase::Running
+                        && status.leases == 1
+                })
+        }),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    fixture.shutdown().await.unwrap();
+    fixture.runtime.stop().await.unwrap();
+    assert_eq!(counts.stopped[0].load(SeqCst), 1);
+    assert_eq!(counts.stopped[1].load(SeqCst), 1);
+    assert_eq!(counts.released.load(SeqCst), 1);
+    assert!(observer_definitions(&fixture.runtime).is_empty());
+}
+
+#[tokio::test]
+async fn stop_preserves_failure() {
+    use std::sync::atomic::Ordering::SeqCst;
+    let counts = ObserverCounts::default();
+    counts.stop_panics.store(true, SeqCst);
+    let seed = ObserverSeed::new(&counts);
+    let source =
+        harmos_sidecar::PluginNative::<SampledTwins>::new(std::num::NonZeroUsize::new(4).unwrap())
+            .unwrap();
+    let mut fixture = Managed::attach(
+        source,
+        serde_json::to_vec(&seed.id).unwrap(),
+        Lanes::NativeOpen,
+        std::num::NonZeroUsize::new(4).unwrap(),
+        vec![],
+        std::convert::identity,
+    )
+    .await;
+    fixture.publication().unwrap();
+    fixture.initialize().await.unwrap();
+    ready(fixture.ready().clone()).await;
+    let runtime = &fixture.runtime;
+    let mut left = runtime
+        .streams
+        .publication("twins.left", 1)
+        .unwrap()
+        .watch();
+    row(&mut left).await;
+    let error = fixture
+        .runtime
+        .operations
+        .stop_observers()
+        .await
+        .expect_err("native cleanup failure reaches the manager");
+    assert_eq!(counts.stop_attempts.load(SeqCst), 1);
+    assert_eq!(counts.stopped[0].load(SeqCst), 0);
+    assert_eq!(
+        counts.released.load(SeqCst),
+        0,
+        "provider survives failed observer cleanup"
+    );
+    let mut cause: &(dyn std::error::Error + 'static) = &error;
+    loop {
+        if cause
+            .to_string()
+            .contains("the observer panicked while stopping")
+        {
+            break;
+        }
+        if let Some(harmos::Error::TaskFailed { source, .. }) =
+            cause.downcast_ref::<harmos::Error>()
+        {
+            cause = source.as_ref();
+        } else if let Some(harmos::Error::PluginLifecycle { source }) =
+            cause.downcast_ref::<harmos::Error>()
+        {
+            cause = source.as_ref();
+        } else if let Some(harmos::plugin::PluginFailure::Cleanup(failures)) =
+            cause.downcast_ref::<harmos::plugin::PluginFailure>()
+        {
+            assert_eq!(failures.len(), 1);
+            cause = &failures[0].error;
+        } else {
+            cause = cause.source().expect("structured native exit is retained");
+        }
     }
-    {
-        scenario_runtime::check("stop_preserves_failure", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    use std::sync::atomic::Ordering::SeqCst;
-                    let counts = ObserverCounts::default();
-                    counts.stop_panics.store(true, SeqCst);
-                    let seed = ObserverSeed::new(&counts);
-                    let source = harmos_sidecar::PluginNative::<SampledTwins>::new(
-                        std::num::NonZeroUsize::new(4).unwrap(),
-                    )
-                    .unwrap();
-                    let mut fixture = Managed::attach(
-                        source,
-                        serde_json::to_vec(&seed.id).unwrap(),
-                        Lanes::NativeOpen,
-                        std::num::NonZeroUsize::new(4).unwrap(),
-                        vec![],
-                        std::convert::identity,
-                    )
-                    .await;
-                    fixture.publication().unwrap();
-                    fixture.initialize().await.unwrap();
-                    ready(fixture.ready().clone()).await;
-                    let runtime = &fixture.runtime;
-                    let mut left = runtime
-                        .streams
-                        .publication("twins.left", 1)
-                        .unwrap()
-                        .watch();
-                    row(&mut left).await;
-                    let error = fixture
-                        .runtime
-                        .operations
-                        .stop_observers()
-                        .await
-                        .expect_err("native cleanup failure reaches the manager");
-                    assert_eq!(counts.stop_attempts.load(SeqCst), 1);
-                    assert_eq!(counts.stopped[0].load(SeqCst), 0);
-                    assert_eq!(
-                        counts.released.load(SeqCst),
-                        0,
-                        "provider survives failed observer cleanup"
-                    );
-                    let mut cause: &(dyn std::error::Error + 'static) = &error;
-                    loop {
-                        if cause
-                            .to_string()
-                            .contains("the observer panicked while stopping")
-                        {
-                            break;
-                        }
-                        if let Some(harmos::Error::TaskFailed { source, .. }) =
-                            cause.downcast_ref::<harmos::Error>()
-                        {
-                            cause = source.as_ref();
-                        } else if let Some(harmos::Error::PluginLifecycle { source }) =
-                            cause.downcast_ref::<harmos::Error>()
-                        {
-                            cause = source.as_ref();
-                        } else if let Some(harmos::plugin::PluginFailure::Cleanup(failures)) =
-                            cause.downcast_ref::<harmos::plugin::PluginFailure>()
-                        {
-                            assert_eq!(failures.len(), 1);
-                            cause = &failures[0].error;
-                        } else {
-                            cause = cause.source().expect("structured native exit is retained");
-                        }
-                    }
-                    counts.stop_panics.store(false, SeqCst);
-                    let _ = fixture.runtime.operations.stop_observers().await;
-                    assert_eq!(counts.stop_attempts.load(SeqCst), 2);
-                    assert_eq!(counts.started[0].load(SeqCst), 1);
-                    assert_eq!(counts.stopped[0].load(SeqCst), 1);
-                    let _ = fixture.shutdown().await;
-                    let _ = fixture.runtime.stop().await;
-                    assert_eq!(counts.released.load(SeqCst), 1);
-                });
-        });
-    }
-    {
-        scenario_runtime::check("dropped_manager_recovery", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    use std::sync::atomic::Ordering::SeqCst;
-                    tokio::time::timeout(std::time::Duration::from_secs(5), async {
-                        let counts = ObserverCounts::default();
-                        counts.stop_panics.store(true, SeqCst);
-                        let seed = ObserverSeed::new(&counts);
-                        let source = harmos_sidecar::PluginNative::<SampledTwins>::new(
-                            std::num::NonZeroUsize::new(4).unwrap(),
-                        )
-                        .unwrap();
-                        let mut fixture = Managed::attach(
-                            source,
-                            serde_json::to_vec(&seed.id).unwrap(),
-                            Lanes::NativeOpen,
-                            std::num::NonZeroUsize::new(4).unwrap(),
-                            vec![],
-                            std::convert::identity,
-                        )
-                        .await;
-                        fixture.publication().unwrap();
-                        fixture.initialize().await.unwrap();
-                        ready(fixture.ready().clone()).await;
-                        let mut left = fixture
-                            .runtime
-                            .streams
-                            .publication("twins.left", 1)
-                            .unwrap()
-                            .watch();
-                        row(&mut left).await;
-                        let (runtime, cleanup) = fixture.drop_manager();
-                        cleanup.join().await.expect_err(
+    counts.stop_panics.store(false, SeqCst);
+    let _ = fixture.runtime.operations.stop_observers().await;
+    assert_eq!(counts.stop_attempts.load(SeqCst), 2);
+    assert_eq!(counts.started[0].load(SeqCst), 1);
+    assert_eq!(counts.stopped[0].load(SeqCst), 1);
+    let _ = fixture.shutdown().await;
+    let _ = fixture.runtime.stop().await;
+    assert_eq!(counts.released.load(SeqCst), 1);
+}
+
+#[tokio::test]
+async fn dropped_manager_recovery() {
+    use std::sync::atomic::Ordering::SeqCst;
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        let counts = ObserverCounts::default();
+        counts.stop_panics.store(true, SeqCst);
+        let seed = ObserverSeed::new(&counts);
+        let source = harmos_sidecar::PluginNative::<SampledTwins>::new(
+            std::num::NonZeroUsize::new(4).unwrap(),
+        )
+        .unwrap();
+        let mut fixture = Managed::attach(
+            source,
+            serde_json::to_vec(&seed.id).unwrap(),
+            Lanes::NativeOpen,
+            std::num::NonZeroUsize::new(4).unwrap(),
+            vec![],
+            std::convert::identity,
+        )
+        .await;
+        fixture.publication().unwrap();
+        fixture.initialize().await.unwrap();
+        ready(fixture.ready().clone()).await;
+        let mut left = fixture
+            .runtime
+            .streams
+            .publication("twins.left", 1)
+            .unwrap()
+            .watch();
+        row(&mut left).await;
+        let (runtime, cleanup) = fixture.drop_manager();
+        cleanup.join().await.expect_err(
             "failed original observer cleanup is diagnosable after manager destruction",
         );
-                        assert_eq!(counts.started[0].load(SeqCst), 1);
-                        assert_eq!(counts.stop_attempts.load(SeqCst), 1);
-                        assert_eq!(counts.stopped[0].load(SeqCst), 0);
-                        assert_eq!(counts.released.load(SeqCst), 0);
-                        counts.stop_panics.store(false, SeqCst);
-                        let recovered = cleanup.retry().await;
-                        assert_eq!(counts.stop_attempts.load(SeqCst), 2);
-                        assert_eq!(counts.stopped[0].load(SeqCst), 1);
-                        recovered.unwrap();
-                        assert_eq!(counts.started[0].load(SeqCst), 1);
-                        assert_eq!(counts.stop_attempts.load(SeqCst), 2);
-                        assert_eq!(counts.stopped[0].load(SeqCst), 1);
-                        assert_eq!(counts.released.load(SeqCst), 1);
-                        drop(left);
-                        let _ = runtime.stop().await;
-                    })
-                    .await
-                    .unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("explicit_artifact_grants", || {
-            assert!(
-                harmos_sidecar::Attach::observers(
-                    &harmos_sidecar::PluginNative::<Twins>::new(
-                        std::num::NonZeroUsize::new(2).unwrap()
-                    )
-                    .unwrap()
-                )
-                .is_empty(),
-                "linked observer types are not selected implicitly"
-            );
-            assert_eq!(MultiStream::STREAMS.len(), 2);
-            let source = harmos_sidecar::PluginNative::<MultiStream>::new(
-                std::num::NonZeroUsize::new(4).unwrap(),
-            )
-            .unwrap();
-            let observers = source.observers();
-            assert_eq!(observers.len(), 1);
-            assert_eq!(observers[0].streams.len(), 2);
+        assert_eq!(counts.started[0].load(SeqCst), 1);
+        assert_eq!(counts.stop_attempts.load(SeqCst), 1);
+        assert_eq!(counts.stopped[0].load(SeqCst), 0);
+        assert_eq!(counts.released.load(SeqCst), 0);
+        counts.stop_panics.store(false, SeqCst);
+        let recovered = cleanup.retry().await;
+        assert_eq!(counts.stop_attempts.load(SeqCst), 2);
+        assert_eq!(counts.stopped[0].load(SeqCst), 1);
+        recovered.unwrap();
+        assert_eq!(counts.started[0].load(SeqCst), 1);
+        assert_eq!(counts.stop_attempts.load(SeqCst), 2);
+        assert_eq!(counts.stopped[0].load(SeqCst), 1);
+        assert_eq!(counts.released.load(SeqCst), 1);
+        drop(left);
+        let _ = runtime.stop().await;
+    })
+    .await
+    .unwrap();
+}
 
-            let empty = harmos::sidecar::inventory::Declaration::inspect(
-                &<Twins as harmos_contract::plugin::Declared>::markers()
-                    .unwrap()
-                    .concat(),
-                harmos::sidecar::inventory::Facility::Sidecar,
-            )
-            .unwrap();
-            assert!(empty.observers.is_empty());
-            let selected = harmos::sidecar::inventory::Declaration::inspect(
-                &MultiStream::markers().unwrap().concat(),
-                harmos::sidecar::inventory::Facility::Sidecar,
-            )
-            .unwrap();
-            assert_eq!(selected.observers.len(), 1);
-            assert_eq!(source.observers(), selected.observers);
-            assert_eq!(selected.observers[0].id, observers[0].id);
-            assert_eq!(selected.observers[0].interval, observers[0].interval);
-            assert_eq!(
-                selected.observers[0].activation,
-                harmos::sidecar::Activation::Demand
-            );
-            assert_eq!(
-                selected.observers[0].streams,
-                MultiStream::STREAMS
-                    .iter()
-                    .map(|entry| entry.id)
-                    .collect::<Vec<_>>()
-            );
-
-            let missing: Vec<_> = MultiStream::markers()
+#[test]
+fn explicit_artifact_grants() {
+    assert!(
+        harmos_sidecar::Attach::observers(
+            &harmos_sidecar::PluginNative::<Twins>::new(std::num::NonZeroUsize::new(2).unwrap())
                 .unwrap()
-                .into_iter()
-                .filter(|marker| {
-                    !String::from_utf8_lossy(marker).contains("\"kind\":\"observers\"")
-                })
-                .collect();
-            assert!(matches!(
-                harmos::sidecar::inventory::Declaration::inspect(
-                    &missing.concat(),
-                    harmos::sidecar::inventory::Facility::Sidecar
-                ),
-                Err(harmos::sidecar::inventory::DeclarationError::ObserverInventory(_))
-            ));
-        });
-    }
+        )
+        .is_empty(),
+        "linked observer types are not selected implicitly"
+    );
+    assert_eq!(MultiStream::STREAMS.len(), 2);
+    let source =
+        harmos_sidecar::PluginNative::<MultiStream>::new(std::num::NonZeroUsize::new(4).unwrap())
+            .unwrap();
+    let observers = source.observers();
+    assert_eq!(observers.len(), 1);
+    assert_eq!(observers[0].streams.len(), 2);
+
+    let empty = harmos::sidecar::inventory::Declaration::inspect(
+        &<Twins as harmos_contract::plugin::Declared>::markers()
+            .unwrap()
+            .concat(),
+        harmos::sidecar::inventory::Facility::Sidecar,
+    )
+    .unwrap();
+    assert!(empty.observers.is_empty());
+    let selected = harmos::sidecar::inventory::Declaration::inspect(
+        &MultiStream::markers().unwrap().concat(),
+        harmos::sidecar::inventory::Facility::Sidecar,
+    )
+    .unwrap();
+    assert_eq!(selected.observers.len(), 1);
+    assert_eq!(source.observers(), selected.observers);
+    assert_eq!(selected.observers[0].id, observers[0].id);
+    assert_eq!(selected.observers[0].interval, observers[0].interval);
+    assert_eq!(
+        selected.observers[0].activation,
+        harmos::sidecar::Activation::Demand
+    );
+    assert_eq!(
+        selected.observers[0].streams,
+        MultiStream::STREAMS
+            .iter()
+            .map(|entry| entry.id)
+            .collect::<Vec<_>>()
+    );
+
+    let missing: Vec<_> = MultiStream::markers()
+        .unwrap()
+        .into_iter()
+        .filter(|marker| !String::from_utf8_lossy(marker).contains("\"kind\":\"observers\""))
+        .collect();
+    assert!(matches!(
+        harmos::sidecar::inventory::Declaration::inspect(
+            &missing.concat(),
+            harmos::sidecar::inventory::Facility::Sidecar
+        ),
+        Err(harmos::sidecar::inventory::DeclarationError::ObserverInventory(_))
+    ));
 }
 
 /* === Tests === */

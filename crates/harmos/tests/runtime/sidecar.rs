@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 #[path = "sidecar_admission.rs"]
 mod admission;
@@ -1240,501 +1239,453 @@ async fn work_facts(runtime: &Runtime<Bank>) -> Vec<SystemFact> {
         .collect()
 }
 
-fn own_contract() {
-    {
-        scenario_runtime::check("declared_publication_enters", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let mut fixture = operations::Managed::attach(
-                        meter(Arc::new(AtomicUsize::new(0))),
-                        serde_json::to_vec(&()).unwrap(),
-                        operations::Lanes::NativeOpen,
-                        NonZeroUsize::new(16).unwrap(),
-                        vec![],
-                        |resident| resident.ingest::<MeterPulse>(),
-                    )
-                    .await;
-                    fixture.publication().unwrap();
-                    fixture
-                        .runtime
-                        .operations
-                        .register_operation::<Sampling>(
-                            "meter-sample",
-                            operations::Lanes::NativeOpen,
-                            Arc::new(SampleProjection {
-                                streams: fixture.runtime.streams.clone(),
-                            }),
-                        )
-                        .unwrap();
-                    fixture.initialize().await.unwrap();
-                    publications::ready(fixture.ready().clone()).await;
-                    let runtime = &fixture.runtime;
-                    fixture
-                        .call_as::<PublishPulse>(PublishPulse { sample: 42 })
-                        .await
-                        .expect("the sidecar publishes the requested sample");
+#[tokio::test]
+async fn declared_publication_enters() {
+    let mut fixture = operations::Managed::attach(
+        meter(Arc::new(AtomicUsize::new(0))),
+        serde_json::to_vec(&()).unwrap(),
+        operations::Lanes::NativeOpen,
+        NonZeroUsize::new(16).unwrap(),
+        vec![],
+        |resident| resident.ingest::<MeterPulse>(),
+    )
+    .await;
+    fixture.publication().unwrap();
+    fixture
+        .runtime
+        .operations
+        .register_operation::<Sampling>(
+            "meter-sample",
+            operations::Lanes::NativeOpen,
+            Arc::new(SampleProjection {
+                streams: fixture.runtime.streams.clone(),
+            }),
+        )
+        .unwrap();
+    fixture.initialize().await.unwrap();
+    publications::ready(fixture.ready().clone()).await;
+    let runtime = &fixture.runtime;
+    fixture
+        .call_as::<PublishPulse>(PublishPulse { sample: 42 })
+        .await
+        .expect("the sidecar publishes the requested sample");
 
-                    let samples: Vec<u64> = runtime
-                        .streams
-                        .query::<support::Pulse>(..)
-                        .await
-                        .expect("the declared stream answers from its window")
-                        .map(|row| row.value.sample)
-                        .collect();
-                    assert_eq!(samples, [42]);
+    let samples: Vec<u64> = runtime
+        .streams
+        .query::<support::Pulse>(..)
+        .await
+        .expect("the declared stream answers from its window")
+        .map(|row| row.value.sample)
+        .collect();
+    assert_eq!(samples, [42]);
 
-                    fixture.shutdown().await.unwrap();
-                    fixture.runtime.stop().await.unwrap();
-                });
-        });
+    fixture.shutdown().await.unwrap();
+    fixture.runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn crash_spends_credit() {
+    let attachments = Arc::new(AtomicUsize::new(0));
+    let source = meter(Arc::clone(&attachments));
+    let definition = operations::inspected(&source, serde_json::to_vec(&()).unwrap())
+        .definitions()
+        .next()
+        .unwrap()
+        .clone();
+    let calls = Supervised::new(
+        source,
+        (|_: &Service<Bank>, _: Notice| {}) as fn(&Service<Bank>, Notice),
+    );
+    let policy = harmos::operations::OperationPolicy {
+        restart: harmos::operations::RestartPolicy::OnTransient {
+            credit: 2,
+            sustained_health: Duration::from_secs(30),
+            backoff: harmos::operations::Backoff::Exponential {
+                initial: Duration::from_millis(1),
+                maximum: Duration::from_millis(2),
+                jitter: harmos::operations::Jitter::Deterministic,
+            },
+        },
+        ..harmos::services::POLICY
+    };
+    let runtime = assembly()
+        .register(operations::Lanes::catalog())
+        .operation_settings(harmos::operations::Settings {
+            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+            ..Default::default()
+        })
+        .runtime()
+        .await
+        .unwrap();
+    runtime
+        .operations
+        .register_wire_operation::<harmos::sidecar::Publish<_, _, _>>(
+            "meter-publication-core",
+            operations::Lanes::NativeOpen,
+            Arc::new(calls.clone()),
+        )
+        .unwrap();
+    runtime
+        .operations
+        .register_operation::<Sampling>(
+            "meter-sample",
+            operations::Lanes::NativeOpen,
+            Arc::new(SampleProjection {
+                streams: runtime.streams.clone(),
+            }),
+        )
+        .unwrap();
+    let resident = calls.clone();
+    runtime
+        .operations
+        .register_service(
+            harmos::services::ServiceDefinition {
+                id: "meter".into(),
+                policy,
+            },
+            move |_: Arc<()>| {
+                harmos::sidecar::Managed::new(
+                    resident.clone(),
+                    definition.clone(),
+                    operations::Lanes::NativeOpen,
+                    NonZeroUsize::new(16).unwrap(),
+                    NonZeroUsize::new(4096).unwrap(),
+                )
+                .unwrap()
+            },
+        )
+        .unwrap();
+    let lease = runtime.operations.submit_resident("meter").await.unwrap();
+
+    let statuses = runtime.operations.watch_residents();
+    service_status(statuses.clone(), "meter", |status| {
+        *status == ServiceStatus::Running { credit: 2 }
+    })
+    .await;
+    let original = calls.operations().unwrap();
+    let generation = original.scope().unwrap().generation();
+    let outcome = runtime
+        .operations
+        .call_encoded(Collapse::ID, Collapse {}.encode_to_vec())
+        .await;
+    let disconnected = match &outcome {
+        Err(harmos::Error::Closing {
+            domain: "operation" | "operation plugin",
+        }) => true,
+        Err(harmos::Error::OperationFailed { operation, source }) if operation == Collapse::ID => {
+            matches!(
+                source.downcast_ref::<harmos::operations::NativeError>(),
+                Some(harmos::operations::NativeError::Transport(
+                    SidecarError::Unavailable
+                ))
+            )
+        }
+        _ => false,
+    };
+    assert!(
+        disconnected,
+        "the abandoned generation cannot answer: {outcome:?}"
+    );
+
+    service_status(statuses.clone(), "meter", |status| {
+        *status == ServiceStatus::Running { credit: 1 }
+    })
+    .await;
+    assert_eq!(
+        attachments.load(Ordering::SeqCst),
+        2,
+        "a fresh sidecar was attached for the restart"
+    );
+    assert!(
+        work_facts(&runtime).await.is_empty(),
+        "an environmental restart is silent"
+    );
+
+    assert!(
+        matches!(
+            original.scope().unwrap().ready().await,
+            Err(harmos::Error::Closing {
+                domain: "plugin scope"
+            })
+        ),
+        "the retired generation cannot admit calls"
+    );
+    assert_ne!(
+        calls.operations().unwrap().scope().unwrap().generation(),
+        generation
+    );
+    let amplified = runtime
+        .operations
+        .call_encoded(Amplify::ID, Amplify { value: 5 }.encode_to_vec())
+        .await
+        .expect("the restarted sidecar serves the same routes");
+    assert_eq!(
+        Amplified::decode(&amplified).unwrap(),
+        Amplified { value: 10 }
+    );
+    lease.release().await.unwrap();
+    runtime
+        .operations
+        .unregister_resident("meter")
+        .await
+        .unwrap();
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn oversized_exchange_survives() {
+    let mut fixture = operations::Managed::attach(
+        meter(Arc::new(AtomicUsize::new(0))),
+        serde_json::to_vec(&()).unwrap(),
+        operations::Lanes::NativeOpen,
+        NonZeroUsize::new(16).unwrap(),
+        vec![],
+        |resident| resident.ingest::<MeterPulse>(),
+    )
+    .await;
+    fixture.publication().unwrap();
+    fixture
+        .runtime
+        .operations
+        .register_operation::<Sampling>(
+            "meter-sample",
+            operations::Lanes::NativeOpen,
+            Arc::new(SampleProjection {
+                streams: fixture.runtime.streams.clone(),
+            }),
+        )
+        .unwrap();
+    fixture.initialize().await.unwrap();
+    publications::ready(fixture.ready().clone()).await;
+    let request = BudgetedRoute {
+        payload: vec![0; Frame::LIMIT],
+        reply_bytes: 0,
+        refusal_bytes: 0,
+    };
+    assert!(!Frame::request_fits::<BudgetedRoute>(&request));
+    let oversized = fixture.call_as::<BudgetedRoute>(request).await.unwrap_err();
+    assert_transport_refusal(oversized, Frame::OVERSIZED, "request");
+
+    for request in [
+        BudgetedRoute {
+            payload: Vec::new(),
+            reply_bytes: Frame::LIMIT as u32,
+            refusal_bytes: 0,
+        },
+        BudgetedRoute {
+            payload: Vec::new(),
+            reply_bytes: 0,
+            refusal_bytes: Frame::LIMIT as u32,
+        },
+    ] {
+        let refused = fixture.call_as::<BudgetedRoute>(request).await.unwrap_err();
+        assert_transport_refusal(refused, Frame::OVERSIZED, "reply");
     }
+
+    assert_eq!(
+        fixture
+            .call_as::<Amplify>(Amplify { value: 5 })
+            .await
+            .unwrap(),
+        Amplified { value: 10 },
+        "every oversize refusal leaves the same exchange available to a later call"
+    );
+
+    fixture.shutdown().await.unwrap();
+    fixture.runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn announced_exit_reason() {
+    let attachments = Arc::new(AtomicUsize::new(0));
+    let source = meter(Arc::clone(&attachments));
+    let definition = operations::definition(&source, serde_json::to_vec(&()).unwrap());
+    let resident = Supervised::new(
+        source,
+        (|_: &Service<Bank>, _: Notice| {}) as fn(&Service<Bank>, Notice),
+    );
+    let runtime = assembly()
+        .operation_settings(harmos::operations::Settings {
+            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+            ..Default::default()
+        })
+        .runtime()
+        .await
+        .unwrap();
+    runtime
+        .operations
+        .register_wire_operation::<harmos::sidecar::Publish<_, _, _>>(
+            "meter-publication-core",
+            HostLanes::Open,
+            Arc::new(resident.clone()),
+        )
+        .unwrap();
+    runtime
+        .operations
+        .register_service(
+            harmos::services::ServiceDefinition {
+                id: "meter".into(),
+                policy: harmos::services::POLICY,
+            },
+            move |_: Arc<()>| {
+                harmos::sidecar::Managed::new(
+                    resident.clone(),
+                    definition.clone(),
+                    HostLanes::Open,
+                    NonZeroUsize::new(16).unwrap(),
+                    NonZeroUsize::new(4096).unwrap(),
+                )
+                .unwrap()
+            },
+        )
+        .unwrap();
+    let _lease = runtime.operations.submit_resident("meter").await.unwrap();
+    service_status(runtime.operations.watch_residents(), "meter", |status| {
+        matches!(status, ServiceStatus::Running { .. })
+    })
+    .await;
+    let outcome = runtime
+        .operations
+        .call_encoded(
+            Finish::ID,
+            Finish {
+                reason: "the recording is complete".to_owned(),
+            }
+            .encode_to_vec(),
+        )
+        .await;
+    assert!(
+        matches!(
+            outcome,
+            Err(harmos::Error::Closing {
+                domain: "operation" | "operation plugin"
+            })
+        ),
+        "a reply from the closed generation is revoked: {outcome:?}"
+    );
+
+    let status = service_status(runtime.operations.watch_residents(), "meter", |status| {
+        matches!(status, ServiceStatus::Inactive { .. })
+    })
+    .await;
+
+    assert!(
+        matches!(
+            status,
+            ServiceStatus::Inactive {
+                cause: ServiceExit::Application(ref reason),
+                ref history,
+            } if reason == "the recording is complete" && history.is_empty()
+        ),
+        "an announced exit is the sidecar's own decision, not an outage: {status:?}"
+    );
+    assert_eq!(
+        attachments.load(Ordering::SeqCst),
+        1,
+        "a sidecar that meant to leave is not started again"
+    );
+
+    let facts = work_facts(&runtime).await;
+    assert_eq!(facts.len(), 1);
+    assert_eq!(facts[0].name, "deactivated");
+    assert!(matches!(
+        runtime.stop().await,
+        Err(harmos::Error::TaskFailed {
+            domain: "service",
+            ..
+        })
+    ));
+}
+
+#[tokio::test]
+async fn native_process_carrier() {
+    let attached = native_process().attach().await.expect("the fixture starts");
+    let (write, read, _control, _diagnostics, end) = attached.into_parts();
+    #[cfg(any(unix, windows))]
+    let (outgoing, mut incoming, driving) = {
+        let harmos_sidecar::transport::Connection {
+            sender,
+            receiver,
+            mut driver,
+        } = harmos_sidecar::transport::Connection::new((read, write), _control.unwrap());
+        (
+            sender,
+            receiver,
+            tokio::spawn(async move { driver.run().await }),
+        )
+    };
+    #[cfg(not(any(unix, windows)))]
+    let peer =
+        harmos_sidecar::grpc::Peer::connect(harmos_sidecar::grpc::Connection::new(read, write))
+            .await
+            .expect("the fixture accepts a gRPC exchange");
+    #[cfg(not(any(unix, windows)))]
+    let (outgoing, mut incoming) = peer.split();
+    outgoing
+        .send(harmos_sidecar::Frame::Call {
+            id: 1,
+            method: harmos_sidecar::Frame::REGISTER.to_owned(),
+            params: Vec::new(),
+        })
+        .await
+        .expect("the activation is sent");
+    let answer = tokio::time::timeout(Duration::from_secs(2), incoming.receive())
+        .await
+        .expect("the fixture answers")
+        .expect("the exchange remains valid");
+    #[cfg(any(unix, windows))]
+    let answer = answer.map(|received| {
+        if let Some(consumption) = received.consumption {
+            consumption.consumed().unwrap();
+        }
+        received.frame
+    });
+    assert!(matches!(
+        answer,
+        Some(harmos_sidecar::Frame::Answer { id: 1, .. })
+    ));
+    outgoing
+        .send(harmos_sidecar::Frame::Call {
+            id: 2,
+            method: "harmos.initialize".to_owned(),
+            params: b"{}".to_vec(),
+        })
+        .await
+        .expect("the retired control request is sent");
+    let refusal = tokio::time::timeout(Duration::from_secs(2), incoming.receive())
+        .await
+        .expect("the peer refuses the retired control")
+        .expect("the transport remains valid");
+    #[cfg(any(unix, windows))]
+    let refusal = refusal.map(|received| {
+        if let Some(consumption) = received.consumption {
+            consumption.consumed().unwrap();
+        }
+        received.frame
+    });
+    assert!(matches!(
+        refusal,
+        Some(harmos_sidecar::Frame::Refusal { id: 2, refusal })
+            if refusal.code() == harmos_sidecar::UNKNOWN
+    ));
+    #[cfg(any(unix, windows))]
     {
-        scenario_runtime::check("crash_spends_credit", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let attachments = Arc::new(AtomicUsize::new(0));
-                    let source = meter(Arc::clone(&attachments));
-                    let definition =
-                        operations::inspected(&source, serde_json::to_vec(&()).unwrap())
-                            .definitions()
-                            .next()
-                            .unwrap()
-                            .clone();
-                    let calls = Supervised::new(
-                        source,
-                        (|_: &Service<Bank>, _: Notice| {}) as fn(&Service<Bank>, Notice),
-                    );
-                    let policy = harmos::operations::OperationPolicy {
-                        restart: harmos::operations::RestartPolicy::OnTransient {
-                            credit: 2,
-                            sustained_health: Duration::from_secs(30),
-                            backoff: harmos::operations::Backoff::Exponential {
-                                initial: Duration::from_millis(1),
-                                maximum: Duration::from_millis(2),
-                                jitter: harmos::operations::Jitter::Deterministic,
-                            },
-                        },
-                        ..harmos::services::POLICY
-                    };
-                    let runtime = assembly()
-                        .register(operations::Lanes::catalog())
-                        .operation_settings(harmos::operations::Settings {
-                            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
-                            ..Default::default()
-                        })
-                        .runtime()
-                        .await
-                        .unwrap();
-                    runtime
-                        .operations
-                        .register_wire_operation::<harmos::sidecar::Publish<_, _, _>>(
-                            "meter-publication-core",
-                            operations::Lanes::NativeOpen,
-                            Arc::new(calls.clone()),
-                        )
-                        .unwrap();
-                    runtime
-                        .operations
-                        .register_operation::<Sampling>(
-                            "meter-sample",
-                            operations::Lanes::NativeOpen,
-                            Arc::new(SampleProjection {
-                                streams: runtime.streams.clone(),
-                            }),
-                        )
-                        .unwrap();
-                    let resident = calls.clone();
-                    runtime
-                        .operations
-                        .register_service(
-                            harmos::services::ServiceDefinition {
-                                id: "meter".into(),
-                                policy,
-                            },
-                            move |_: Arc<()>| {
-                                harmos::sidecar::Managed::new(
-                                    resident.clone(),
-                                    definition.clone(),
-                                    operations::Lanes::NativeOpen,
-                                    NonZeroUsize::new(16).unwrap(),
-                                    NonZeroUsize::new(4096).unwrap(),
-                                )
-                                .unwrap()
-                            },
-                        )
-                        .unwrap();
-                    let lease = runtime.operations.submit_resident("meter").await.unwrap();
-
-                    let statuses = runtime.operations.watch_residents();
-                    service_status(statuses.clone(), "meter", |status| {
-                        *status == ServiceStatus::Running { credit: 2 }
-                    })
-                    .await;
-                    let original = calls.operations().unwrap();
-                    let generation = original.scope().unwrap().generation();
-                    let outcome = runtime
-                        .operations
-                        .call_encoded(Collapse::ID, Collapse {}.encode_to_vec())
-                        .await;
-                    let disconnected = match &outcome {
-                        Err(harmos::Error::Closing {
-                            domain: "operation" | "operation plugin",
-                        }) => true,
-                        Err(harmos::Error::OperationFailed { operation, source })
-                            if operation == Collapse::ID =>
-                        {
-                            matches!(
-                                source.downcast_ref::<harmos::operations::NativeError>(),
-                                Some(harmos::operations::NativeError::Transport(
-                                    SidecarError::Unavailable
-                                ))
-                            )
-                        }
-                        _ => false,
-                    };
-                    assert!(
-                        disconnected,
-                        "the abandoned generation cannot answer: {outcome:?}"
-                    );
-
-                    service_status(statuses.clone(), "meter", |status| {
-                        *status == ServiceStatus::Running { credit: 1 }
-                    })
-                    .await;
-                    assert_eq!(
-                        attachments.load(Ordering::SeqCst),
-                        2,
-                        "a fresh sidecar was attached for the restart"
-                    );
-                    assert!(
-                        work_facts(&runtime).await.is_empty(),
-                        "an environmental restart is silent"
-                    );
-
-                    assert!(
-                        matches!(
-                            original.scope().unwrap().ready().await,
-                            Err(harmos::Error::Closing {
-                                domain: "plugin scope"
-                            })
-                        ),
-                        "the retired generation cannot admit calls"
-                    );
-                    assert_ne!(
-                        calls.operations().unwrap().scope().unwrap().generation(),
-                        generation
-                    );
-                    let amplified = runtime
-                        .operations
-                        .call_encoded(Amplify::ID, Amplify { value: 5 }.encode_to_vec())
-                        .await
-                        .expect("the restarted sidecar serves the same routes");
-                    assert_eq!(
-                        Amplified::decode(&amplified).unwrap(),
-                        Amplified { value: 10 }
-                    );
-                    lease.release().await.unwrap();
-                    runtime
-                        .operations
-                        .unregister_resident("meter")
-                        .await
-                        .unwrap();
-                    runtime.stop().await.unwrap();
-                });
-        });
+        outgoing.close();
+        let _ = driving.await.unwrap();
     }
-    {
-        scenario_runtime::check("oversized_exchange_survives", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let mut fixture = operations::Managed::attach(
-                        meter(Arc::new(AtomicUsize::new(0))),
-                        serde_json::to_vec(&()).unwrap(),
-                        operations::Lanes::NativeOpen,
-                        NonZeroUsize::new(16).unwrap(),
-                        vec![],
-                        |resident| resident.ingest::<MeterPulse>(),
-                    )
-                    .await;
-                    fixture.publication().unwrap();
-                    fixture
-                        .runtime
-                        .operations
-                        .register_operation::<Sampling>(
-                            "meter-sample",
-                            operations::Lanes::NativeOpen,
-                            Arc::new(SampleProjection {
-                                streams: fixture.runtime.streams.clone(),
-                            }),
-                        )
-                        .unwrap();
-                    fixture.initialize().await.unwrap();
-                    publications::ready(fixture.ready().clone()).await;
-                    let request = BudgetedRoute {
-                        payload: vec![0; Frame::LIMIT],
-                        reply_bytes: 0,
-                        refusal_bytes: 0,
-                    };
-                    assert!(!Frame::request_fits::<BudgetedRoute>(&request));
-                    let oversized = fixture.call_as::<BudgetedRoute>(request).await.unwrap_err();
-                    assert_transport_refusal(oversized, Frame::OVERSIZED, "request");
-
-                    for request in [
-                        BudgetedRoute {
-                            payload: Vec::new(),
-                            reply_bytes: Frame::LIMIT as u32,
-                            refusal_bytes: 0,
-                        },
-                        BudgetedRoute {
-                            payload: Vec::new(),
-                            reply_bytes: 0,
-                            refusal_bytes: Frame::LIMIT as u32,
-                        },
-                    ] {
-                        let refused = fixture.call_as::<BudgetedRoute>(request).await.unwrap_err();
-                        assert_transport_refusal(refused, Frame::OVERSIZED, "reply");
-                    }
-
-                    assert_eq!(
-                        fixture
-                            .call_as::<Amplify>(Amplify { value: 5 })
-                            .await
-                            .unwrap(),
-                        Amplified { value: 10 },
-                        "every oversize refusal leaves the same exchange available to a later call"
-                    );
-
-                    fixture.shutdown().await.unwrap();
-                    fixture.runtime.stop().await.unwrap();
-                });
-        });
+    drop(outgoing);
+    if let Some(mut end) = end {
+        end.settle()
+            .await
+            .expect("the original process ending joins");
     }
-    {
-        scenario_runtime::check("announced_exit_reason", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let attachments = Arc::new(AtomicUsize::new(0));
-                    let source = meter(Arc::clone(&attachments));
-                    let definition =
-                        operations::definition(&source, serde_json::to_vec(&()).unwrap());
-                    let resident = Supervised::new(
-                        source,
-                        (|_: &Service<Bank>, _: Notice| {}) as fn(&Service<Bank>, Notice),
-                    );
-                    let runtime = assembly()
-                        .operation_settings(harmos::operations::Settings {
-                            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
-                            ..Default::default()
-                        })
-                        .runtime()
-                        .await
-                        .unwrap();
-                    runtime
-                        .operations
-                        .register_wire_operation::<harmos::sidecar::Publish<_, _, _>>(
-                            "meter-publication-core",
-                            HostLanes::Open,
-                            Arc::new(resident.clone()),
-                        )
-                        .unwrap();
-                    runtime
-                        .operations
-                        .register_service(
-                            harmos::services::ServiceDefinition {
-                                id: "meter".into(),
-                                policy: harmos::services::POLICY,
-                            },
-                            move |_: Arc<()>| {
-                                harmos::sidecar::Managed::new(
-                                    resident.clone(),
-                                    definition.clone(),
-                                    HostLanes::Open,
-                                    NonZeroUsize::new(16).unwrap(),
-                                    NonZeroUsize::new(4096).unwrap(),
-                                )
-                                .unwrap()
-                            },
-                        )
-                        .unwrap();
-                    let _lease = runtime.operations.submit_resident("meter").await.unwrap();
-                    service_status(runtime.operations.watch_residents(), "meter", |status| {
-                        matches!(status, ServiceStatus::Running { .. })
-                    })
-                    .await;
-                    let outcome = runtime
-                        .operations
-                        .call_encoded(
-                            Finish::ID,
-                            Finish {
-                                reason: "the recording is complete".to_owned(),
-                            }
-                            .encode_to_vec(),
-                        )
-                        .await;
-                    assert!(
-                        matches!(
-                            outcome,
-                            Err(harmos::Error::Closing {
-                                domain: "operation" | "operation plugin"
-                            })
-                        ),
-                        "a reply from the closed generation is revoked: {outcome:?}"
-                    );
+}
 
-                    let status =
-                        service_status(runtime.operations.watch_residents(), "meter", |status| {
-                            matches!(status, ServiceStatus::Inactive { .. })
-                        })
-                        .await;
-
-                    assert!(
-                        matches!(
-                            status,
-                            ServiceStatus::Inactive {
-                                cause: ServiceExit::Application(ref reason),
-                                ref history,
-                            } if reason == "the recording is complete" && history.is_empty()
-                        ),
-                        "an announced exit is the sidecar's own decision, not an outage: {status:?}"
-                    );
-                    assert_eq!(
-                        attachments.load(Ordering::SeqCst),
-                        1,
-                        "a sidecar that meant to leave is not started again"
-                    );
-
-                    let facts = work_facts(&runtime).await;
-                    assert_eq!(facts.len(), 1);
-                    assert_eq!(facts[0].name, "deactivated");
-                    assert!(matches!(
-                        runtime.stop().await,
-                        Err(harmos::Error::TaskFailed {
-                            domain: "service",
-                            ..
-                        })
-                    ));
-                });
-        });
-    }
-    {
-        scenario_runtime::check("native_process_carrier", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let attached = native_process().attach().await.expect("the fixture starts");
-                    let (write, read, _control, _diagnostics, end) = attached.into_parts();
-                    #[cfg(any(unix, windows))]
-                    let (outgoing, mut incoming, driving) = {
-                        let harmos_sidecar::transport::Connection {
-                            sender,
-                            receiver,
-                            mut driver,
-                        } = harmos_sidecar::transport::Connection::new(
-                            (read, write),
-                            _control.unwrap(),
-                        );
-                        (
-                            sender,
-                            receiver,
-                            tokio::spawn(async move { driver.run().await }),
-                        )
-                    };
-                    #[cfg(not(any(unix, windows)))]
-                    let peer = harmos_sidecar::grpc::Peer::connect(
-                        harmos_sidecar::grpc::Connection::new(read, write),
-                    )
-                    .await
-                    .expect("the fixture accepts a gRPC exchange");
-                    #[cfg(not(any(unix, windows)))]
-                    let (outgoing, mut incoming) = peer.split();
-                    outgoing
-                        .send(harmos_sidecar::Frame::Call {
-                            id: 1,
-                            method: harmos_sidecar::Frame::REGISTER.to_owned(),
-                            params: Vec::new(),
-                        })
-                        .await
-                        .expect("the activation is sent");
-                    let answer = tokio::time::timeout(Duration::from_secs(2), incoming.receive())
-                        .await
-                        .expect("the fixture answers")
-                        .expect("the exchange remains valid");
-                    #[cfg(any(unix, windows))]
-                    let answer = answer.map(|received| {
-                        if let Some(consumption) = received.consumption {
-                            consumption.consumed().unwrap();
-                        }
-                        received.frame
-                    });
-                    assert!(matches!(
-                        answer,
-                        Some(harmos_sidecar::Frame::Answer { id: 1, .. })
-                    ));
-                    outgoing
-                        .send(harmos_sidecar::Frame::Call {
-                            id: 2,
-                            method: "harmos.initialize".to_owned(),
-                            params: b"{}".to_vec(),
-                        })
-                        .await
-                        .expect("the retired control request is sent");
-                    let refusal = tokio::time::timeout(Duration::from_secs(2), incoming.receive())
-                        .await
-                        .expect("the peer refuses the retired control")
-                        .expect("the transport remains valid");
-                    #[cfg(any(unix, windows))]
-                    let refusal = refusal.map(|received| {
-                        if let Some(consumption) = received.consumption {
-                            consumption.consumed().unwrap();
-                        }
-                        received.frame
-                    });
-                    assert!(matches!(
-                        refusal,
-                        Some(harmos_sidecar::Frame::Refusal { id: 2, refusal })
-                            if refusal.code() == harmos_sidecar::UNKNOWN
-                    ));
-                    #[cfg(any(unix, windows))]
-                    {
-                        outgoing.close();
-                        let _ = driving.await.unwrap();
-                    }
-                    drop(outgoing);
-                    if let Some(mut end) = end {
-                        end.settle()
-                            .await
-                            .expect("the original process ending joins");
-                    }
-                });
-        });
-    }
-    {
-        scenario_runtime::check("executable_change_refused", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
-
+#[tokio::test]
+async fn executable_change_refused() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("sidecar-fixture");
-    std::fs::copy(prepared_fixtures::artifact("harmos-sidecar-fixture"), &path).unwrap();
+    std::fs::copy(prepared_fixtures::binary("harmos-sidecar-fixture"), &path).unwrap();
     let source = Executable::at(&path)
         .unwrap()
         .variable("HARMOS_TEST_SIDECAR", "normal");
@@ -1766,7 +1717,10 @@ fn own_contract() {
     .unwrap();
     std::fs::write(&path, b"changed after inspection").unwrap();
     let runtime = assembly()
-        .operation_settings(harmos::operations::Settings { preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()), ..Default::default() })
+        .operation_settings(harmos::operations::Settings {
+            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+            ..Default::default()
+        })
         .runtime()
         .await
         .unwrap();
@@ -1796,11 +1750,7 @@ fn own_contract() {
             },
         )
         .unwrap();
-    let _lease = runtime
-        .operations
-        .submit_resident("meter")
-        .await
-        .unwrap();
+    let _lease = runtime.operations.submit_resident("meter").await.unwrap();
     let status = service_status(runtime.operations.watch_residents(), "meter", |status| {
         matches!(status, ServiceStatus::Inactive { .. })
     })
@@ -1818,210 +1768,185 @@ fn own_contract() {
             ..
         })
     ));
+}
 
-});
-        });
-    }
-    {
-        scenario_runtime::check("process_reports_diagnostics", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let logged = Arc::new(Mutex::new(Vec::new()));
-                    let lines = Arc::clone(&logged);
-                    let source = native_process().variable("HARMOS_TEST_DELAY_SHUTDOWN", "1");
-                    let definition = process_definition(&source);
-                    let meter =
-                        Supervised::new(source, move |_context: &Service<Bank>, notice: Notice| {
-                            if let Notice::Logged { line } = notice {
-                                lines.lock().expect("the notice lock is healthy").push(line);
-                            }
-                        });
+#[tokio::test]
+async fn process_reports_diagnostics() {
+    let logged = Arc::new(Mutex::new(Vec::new()));
+    let lines = Arc::clone(&logged);
+    let source = native_process().variable("HARMOS_TEST_DELAY_SHUTDOWN", "1");
+    let definition = process_definition(&source);
+    let meter = Supervised::new(source, move |_context: &Service<Bank>, notice: Notice| {
+        if let Notice::Logged { line } = notice {
+            lines.lock().expect("the notice lock is healthy").push(line);
+        }
+    });
 
-                    let (runtime, _lease) =
-                        process_runtime(meter, definition, harmos::services::POLICY).await;
-                    service_status(runtime.operations.watch_residents(), "meter", |status| {
-                        matches!(status, ServiceStatus::Running { .. })
-                    })
-                    .await;
+    let (runtime, _lease) = process_runtime(meter, definition, harmos::services::POLICY).await;
+    service_status(runtime.operations.watch_residents(), "meter", |status| {
+        matches!(status, ServiceStatus::Running { .. })
+    })
+    .await;
 
-                    tokio::time::timeout(Duration::from_secs(5), async {
-                        loop {
-                            if !logged
-                                .lock()
-                                .expect("the notice lock is healthy")
-                                .is_empty()
-                            {
-                                return;
-                            }
-                            tokio::time::sleep(Duration::from_millis(5)).await;
-                        }
-                    })
-                    .await
-                    .expect("the diagnostic line reaches the application");
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if !logged
+                .lock()
+                .expect("the notice lock is healthy")
+                .is_empty()
+            {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("the diagnostic line reaches the application");
 
-                    assert_eq!(
-                        logged
-                            .lock()
-                            .expect("the notice lock is healthy")
-                            .as_slice(),
-                        ["the meter is warming up".to_owned()],
-                        "standard error is the sidecar's diagnostics and the application's to route"
-                    );
-                    assert!(
-                        matches!(
-                            runtime
-                                .operations
-                                .watch_residents()
-                                .borrow()
-                                .get(&harmos::operations::resident::Key::root("meter"))
-                                .and_then(|item| item.health.as_ref()),
-                            Some(ServiceStatus::Running { .. })
-                        ),
-                        "the native exchange remains live after the diagnostic"
-                    );
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("stop_uncooperative_process", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let source = native_process().variable("HARMOS_TEST_IGNORE_CLEANUP", "1");
-                    let definition = process_definition(&source);
-                    let meter =
-                        Supervised::new(source, |_context: &Service<Bank>, _notice: Notice| {})
-                            .grace(Duration::from_millis(50));
-                    let mut ready = meter.ready();
-                    let (runtime, _lease) =
-                        process_runtime(meter, definition, harmos::services::POLICY).await;
-                    service_status(runtime.operations.watch_residents(), "meter", |status| {
-                        matches!(status, ServiceStatus::Running { .. })
-                    })
-                    .await;
+    assert_eq!(
+        logged
+            .lock()
+            .expect("the notice lock is healthy")
+            .as_slice(),
+        ["the meter is warming up".to_owned()],
+        "standard error is the sidecar's diagnostics and the application's to route"
+    );
+    assert!(
+        matches!(
+            runtime
+                .operations
+                .watch_residents()
+                .borrow()
+                .get(&harmos::operations::resident::Key::root("meter"))
+                .and_then(|item| item.health.as_ref()),
+            Some(ServiceStatus::Running { .. })
+        ),
+        "the native exchange remains live after the diagnostic"
+    );
+    runtime.stop().await.unwrap();
+}
 
-                    ready.wait_for(|ready| *ready).await.unwrap();
+#[tokio::test]
+async fn stop_uncooperative_process() {
+    let source = native_process().variable("HARMOS_TEST_IGNORE_CLEANUP", "1");
+    let definition = process_definition(&source);
+    let meter = Supervised::new(source, |_context: &Service<Bank>, _notice: Notice| {})
+        .grace(Duration::from_millis(50));
+    let mut ready = meter.ready();
+    let (runtime, _lease) = process_runtime(meter, definition, harmos::services::POLICY).await;
+    service_status(runtime.operations.watch_residents(), "meter", |status| {
+        matches!(status, ServiceStatus::Running { .. })
+    })
+    .await;
 
-                    let error = runtime.stop().await.unwrap_err();
-                    assert!(matches!(
-                        error,
-                        harmos::Error::TaskFailed {
-                            domain: "service",
-                            ..
-                        }
-                    ));
-                    let harmos::Error::TaskFailed { source, .. } = &error else {
-                        unreachable!()
-                    };
-                    let Some(harmos::Error::TaskFailed { source, .. }) =
-                        source.downcast_ref::<harmos::Error>()
-                    else {
-                        panic!("the service retains its cleanup error: {error:?}");
-                    };
-                    let Some(harmos::services::Fault::Application(
-                        harmos::sidecar::ManagedError::Lifecycle(harmos::Error::PluginLifecycle {
-                            source,
-                        }),
-                    )) = source
-                        .downcast_ref::<harmos::services::Fault<harmos::sidecar::ManagedError>>()
-                    else {
-                        panic!("the cleanup retains its lifecycle error: {error:?}");
-                    };
-                    let harmos::plugin::PluginFailure::Cleanup(failures) = source.as_ref() else {
-                        panic!("the original cleanup failure is retained: {error:?}");
-                    };
-                    assert_eq!(failures.len(), 1);
-                    let harmos::Error::TaskFailed {
-                        domain: "plugin cleanup",
-                        source,
-                    } = &failures[0].error
-                    else {
-                        panic!("the original cleanup owner is retained: {error:?}");
-                    };
-                    let Some(harmos::Error::OperationFailed { operation, source }) =
-                        source.downcast_ref::<harmos::Error>()
-                    else {
-                        panic!("the original shutdown failure is retained: {error:?}");
-                    };
-                    assert_eq!(operation, "meter.sdk.shutdown");
-                    assert!(matches!(
-                        source.downcast_ref::<harmos::operations::NativeError>(),
-                        Some(harmos::operations::NativeError::Transport(
-                            SidecarError::Unavailable
-                        ))
-                    ));
-                });
-        });
-    }
-    {
-        scenario_runtime::check("stalled_child_deadline", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let source = native_process();
-                    let definition = process_definition(&source);
-                    let meter =
-                        Supervised::new(source, |_context: &Service<Bank>, _notice: Notice| {})
-                            .grace(Duration::from_millis(50));
-                    let (runtime, _lease) =
-                        process_runtime(meter, definition, harmos::services::POLICY).await;
-                    service_status(runtime.operations.watch_residents(), "meter", |status| {
-                        matches!(status, ServiceStatus::Running { .. })
-                    })
-                    .await;
+    ready.wait_for(|ready| *ready).await.unwrap();
 
-                    // Running now means the initialized endpoint accepts calls. No startup
-                    // polling or speculative call retries are necessary for this live fixture.
-                    let refused = runtime
-                        .operations
-                        .call_encoded(Ask::ID, Ask {}.encode_to_vec())
-                        .await;
+    let error = runtime.stop().await.unwrap_err();
+    assert!(matches!(
+        error,
+        harmos::Error::TaskFailed {
+            domain: "service",
+            ..
+        }
+    ));
+    let harmos::Error::TaskFailed { source, .. } = &error else {
+        unreachable!()
+    };
+    let Some(harmos::Error::TaskFailed { source, .. }) = source.downcast_ref::<harmos::Error>()
+    else {
+        panic!("the service retains its cleanup error: {error:?}");
+    };
+    let Some(harmos::services::Fault::Application(harmos::sidecar::ManagedError::Lifecycle(
+        harmos::Error::PluginLifecycle { source },
+    ))) = source.downcast_ref::<harmos::services::Fault<harmos::sidecar::ManagedError>>()
+    else {
+        panic!("the cleanup retains its lifecycle error: {error:?}");
+    };
+    let harmos::plugin::PluginFailure::Cleanup(failures) = source.as_ref() else {
+        panic!("the original cleanup failure is retained: {error:?}");
+    };
+    assert_eq!(failures.len(), 1);
+    let harmos::Error::TaskFailed {
+        domain: "plugin cleanup",
+        source,
+    } = &failures[0].error
+    else {
+        panic!("the original cleanup owner is retained: {error:?}");
+    };
+    let Some(harmos::Error::OperationFailed { operation, source }) =
+        source.downcast_ref::<harmos::Error>()
+    else {
+        panic!("the original shutdown failure is retained: {error:?}");
+    };
+    assert_eq!(operation, "meter.sdk.shutdown");
+    assert!(matches!(
+        source.downcast_ref::<harmos::operations::NativeError>(),
+        Some(harmos::operations::NativeError::Transport(
+            SidecarError::Unavailable
+        ))
+    ));
+}
 
-                    assert!(
-                        matches!(
-                            refused,
-                            Err(harmos::Error::OperationRefused(harmos::Refusal::TimedOut))
-                        ),
-                        "the original OperationManager deadline bounds the live stalled child"
-                    );
-                    assert!(
-                        matches!(
-                            runtime
-                                .operations
-                                .watch_residents()
-                                .borrow()
-                                .get(&harmos::operations::resident::Key::root("meter"))
-                                .and_then(|item| item.health.as_ref()),
-                            Some(ServiceStatus::Running { .. })
-                        ),
-                        "a deadline refuses the caller; it does not fault the service"
-                    );
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("unopened_process_credit", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
+#[tokio::test]
+async fn stalled_child_deadline() {
+    let source = native_process();
+    let definition = process_definition(&source);
+    let meter = Supervised::new(source, |_context: &Service<Bank>, _notice: Notice| {})
+        .grace(Duration::from_millis(50));
+    let (runtime, _lease) = process_runtime(meter, definition, harmos::services::POLICY).await;
+    service_status(runtime.operations.watch_residents(), "meter", |status| {
+        matches!(status, ServiceStatus::Running { .. })
+    })
+    .await;
 
+    // Running now means the initialized endpoint accepts calls. No startup
+    // polling or speculative call retries are necessary for this live fixture.
+    let refused = runtime
+        .operations
+        .call_encoded(Ask::ID, Ask {}.encode_to_vec())
+        .await;
+
+    assert!(
+        matches!(
+            refused,
+            Err(harmos::Error::OperationRefused(harmos::Refusal::TimedOut))
+        ),
+        "the original OperationManager deadline bounds the live stalled child"
+    );
+    assert!(
+        matches!(
+            runtime
+                .operations
+                .watch_residents()
+                .borrow()
+                .get(&harmos::operations::resident::Key::root("meter"))
+                .and_then(|item| item.health.as_ref()),
+            Some(ServiceStatus::Running { .. })
+        ),
+        "a deadline refuses the caller; it does not fault the service"
+    );
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn unopened_process_credit() {
     let source = silent();
     let definition = process_definition(&source);
     let meter = Supervised::new(source, |_context: &Service<Bank>, _notice: Notice| {})
         .handshake(Duration::from_millis(50))
         .grace(Duration::from_millis(50));
-    let policy = harmos::operations::OperationPolicy { restart: harmos::operations::RestartPolicy::OnTransient { credit: 1, sustained_health: Duration::from_secs(30), backoff: harmos::operations::Backoff::Exponential { initial: Duration::from_millis(1), maximum: Duration::from_millis(2), jitter: harmos::operations::Jitter::Deterministic } }, ..harmos::services::POLICY };
+    let policy = harmos::operations::OperationPolicy {
+        restart: harmos::operations::RestartPolicy::OnTransient {
+            credit: 1,
+            sustained_health: Duration::from_secs(30),
+            backoff: harmos::operations::Backoff::Exponential {
+                initial: Duration::from_millis(1),
+                maximum: Duration::from_millis(2),
+                jitter: harmos::operations::Jitter::Deterministic,
+            },
+        },
+        ..harmos::services::POLICY
+    };
     let (runtime, _lease) = process_runtime(meter, definition, policy).await;
 
     let status = service_status(runtime.operations.watch_residents(), "meter", |status| {
@@ -2047,15 +1972,10 @@ fn own_contract() {
             ..
         })
     ));
+}
 
-});
-        });
-    }
-    {
-        scenario_runtime::check("public_private_handlers", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
-
+#[tokio::test]
+async fn public_private_handlers() {
     let capacity = NonZeroUsize::new(16).unwrap();
     let source = harmos_sidecar::PluginNative::<Gauge>::new(capacity).unwrap();
     let mut fixture = operations::Managed::attach(
@@ -2089,136 +2009,124 @@ fn own_contract() {
 
     fixture.shutdown().await.unwrap();
     fixture.runtime.stop().await.unwrap();
+}
 
-});
-        });
-    }
-    {
-        scenario_runtime::check("generated_entry_attaches", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    GAUGE_DEACTIVATED.store(false, Ordering::SeqCst);
+#[tokio::test]
+async fn generated_entry_attaches() {
+    GAUGE_DEACTIVATED.store(false, Ordering::SeqCst);
 
-                    // Bind The Original SDK Owner Before Authored Initialization
-                    let capacity = NonZeroUsize::new(16).unwrap();
-                    let source = harmos_sidecar::PluginNative::<Gauge>::new(capacity).unwrap();
-                    let mut fixture = operations::Managed::attach(
-                        source,
-                        serde_json::to_vec(&Calibration { factor: 3 }).unwrap(),
-                        operations::Lanes::NativeOpen,
-                        capacity,
-                        vec![],
-                        std::convert::identity,
-                    )
-                    .await;
-                    fixture.initialize().await.unwrap();
-                    publications::ready(fixture.ready().clone()).await;
+    // Bind The Original SDK Owner Before Authored Initialization
+    let capacity = NonZeroUsize::new(16).unwrap();
+    let source = harmos_sidecar::PluginNative::<Gauge>::new(capacity).unwrap();
+    let mut fixture = operations::Managed::attach(
+        source,
+        serde_json::to_vec(&Calibration { factor: 3 }).unwrap(),
+        operations::Lanes::NativeOpen,
+        capacity,
+        vec![],
+        std::convert::identity,
+    )
+    .await;
+    fixture.initialize().await.unwrap();
+    publications::ready(fixture.ready().clone()).await;
 
-                    assert_eq!(
-                        fixture
-                            .call_as::<GetMeasure>(Measure { value: 7 })
-                            .await
-                            .unwrap(),
-                        Measured { value: 21 },
-                        "the route answers under the configuration the entry was activated with"
-                    );
-                    let error = fixture
-                        .call_as::<GetMeasure>(Measure { value: -1 })
-                        .await
-                        .unwrap_err();
-                    let failure = error
-                        .failure()
-                        .expect("handler refusal preserves its structured failure");
-                    assert_eq!(failure.code(), harmos::operations::FailureKind::Permanent);
-                    assert_eq!(failure.cause(), "this gauge measures no negative value");
-                    assert_eq!(failure.context().operation(), Some(GetMeasure::ID));
-                    assert_eq!(
-                        error.to_string(),
-                        format!("operation `{}` failed", GetMeasure::ID),
-                        "the operation frame prints its own line, never the cause"
-                    );
+    assert_eq!(
+        fixture
+            .call_as::<GetMeasure>(Measure { value: 7 })
+            .await
+            .unwrap(),
+        Measured { value: 21 },
+        "the route answers under the configuration the entry was activated with"
+    );
+    let error = fixture
+        .call_as::<GetMeasure>(Measure { value: -1 })
+        .await
+        .unwrap_err();
+    let failure = error
+        .failure()
+        .expect("handler refusal preserves its structured failure");
+    assert_eq!(failure.code(), harmos::operations::FailureKind::Permanent);
+    assert_eq!(failure.cause(), "this gauge measures no negative value");
+    assert_eq!(failure.context().operation(), Some(GetMeasure::ID));
+    assert_eq!(
+        error.to_string(),
+        format!("operation `{}` failed", GetMeasure::ID),
+        "the operation frame prints its own line, never the cause"
+    );
 
-                    // A Nested Transport Failure Arrives As One Cause And One Operation Frame
-                    let error = fixture
-                        .call_as::<GetMeasure>(Measure { value: i64::MIN })
-                        .await
-                        .unwrap_err();
-                    let failure = error
-                        .failure()
-                        .expect("the handler failure crosses as a structured value");
-                    assert_eq!(failure.cause(), "connection reset");
-                    assert_eq!(failure.context().operation(), Some(GetMeasure::ID));
-                    assert_eq!(failure.context().step(), None);
-                    let diagnostics = failure.diagnostics().expect("origin diagnostics");
-                    assert_eq!(diagnostics.origin(), harmos::failure::Origin::Plugin);
-                    assert_eq!(
-                        diagnostics.chain().len(),
-                        3,
-                        "the full origin chain stays in diagnostics"
-                    );
-                    let rendered = std::iter::successors(
-                        Some(&error as &(dyn std::error::Error + 'static)),
-                        |error| error.source(),
-                    )
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join(": ");
-                    assert_eq!(
-                        rendered,
-                        format!("operation `{}` failed: connection reset", GetMeasure::ID),
-                        "no carrier repeats the cause or adds a frame"
-                    );
+    // A Nested Transport Failure Arrives As One Cause And One Operation Frame
+    let error = fixture
+        .call_as::<GetMeasure>(Measure { value: i64::MIN })
+        .await
+        .unwrap_err();
+    let failure = error
+        .failure()
+        .expect("the handler failure crosses as a structured value");
+    assert_eq!(failure.cause(), "connection reset");
+    assert_eq!(failure.context().operation(), Some(GetMeasure::ID));
+    assert_eq!(failure.context().step(), None);
+    let diagnostics = failure.diagnostics().expect("origin diagnostics");
+    assert_eq!(diagnostics.origin(), harmos::failure::Origin::Plugin);
+    assert_eq!(
+        diagnostics.chain().len(),
+        3,
+        "the full origin chain stays in diagnostics"
+    );
+    let rendered = std::iter::successors(
+        Some(&error as &(dyn std::error::Error + 'static)),
+        |error| error.source(),
+    )
+    .map(ToString::to_string)
+    .collect::<Vec<_>>()
+    .join(": ");
+    assert_eq!(
+        rendered,
+        format!("operation `{}` failed: connection reset", GetMeasure::ID),
+        "no carrier repeats the cause or adds a frame"
+    );
 
-                    assert_eq!(
-                        fixture
-                            .call_as::<RunEcho>("hello".to_owned())
-                            .await
-                            .unwrap(),
-                        "hello".to_owned()
-                    );
-                    assert_eq!(
-                        fixture
-                            .call_as::<RunUppercase>("hello".to_owned())
-                            .await
-                            .unwrap(),
-                        "HELLO".to_owned()
-                    );
+    assert_eq!(
+        fixture
+            .call_as::<RunEcho>("hello".to_owned())
+            .await
+            .unwrap(),
+        "hello".to_owned()
+    );
+    assert_eq!(
+        fixture
+            .call_as::<RunUppercase>("hello".to_owned())
+            .await
+            .unwrap(),
+        "HELLO".to_owned()
+    );
 
-                    assert_eq!(
-                        fixture
-                            .call_as::<StopSampling>(StopSamplingRequest {})
-                            .await
-                            .unwrap(),
-                        StopSamplingResponse {},
-                        "a route carrying nothing either way still names one message each way"
-                    );
-                    assert_eq!(
-                        fixture
-                            .call_as::<GetFactor>(GetFactorRequest {})
-                            .await
-                            .unwrap(),
-                        Measured { value: 3 },
-                        "a reply written through the crate's own alias dispatches like any other"
-                    );
+    assert_eq!(
+        fixture
+            .call_as::<StopSampling>(StopSamplingRequest {})
+            .await
+            .unwrap(),
+        StopSamplingResponse {},
+        "a route carrying nothing either way still names one message each way"
+    );
+    assert_eq!(
+        fixture
+            .call_as::<GetFactor>(GetFactorRequest {})
+            .await
+            .unwrap(),
+        Measured { value: 3 },
+        "a reply written through the crate's own alias dispatches like any other"
+    );
 
-                    fixture.shutdown().await.unwrap();
-                    fixture.runtime.stop().await.unwrap();
-                    assert!(
-                        GAUGE_DEACTIVATED.load(Ordering::SeqCst),
-                        "the local attachment runs the generated entry's awaited deactivation"
-                    );
-                });
-        });
-    }
-    {
-        scenario_runtime::check("guest_row_refused", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
+    fixture.shutdown().await.unwrap();
+    fixture.runtime.stop().await.unwrap();
+    assert!(
+        GAUGE_DEACTIVATED.load(Ordering::SeqCst),
+        "the local attachment runs the generated entry's awaited deactivation"
+    );
+}
 
+#[tokio::test]
+async fn guest_row_refused() {
     let noticed = Arc::new(AtomicUsize::new(0));
     let counter = noticed.clone();
     let source = native_process();
@@ -2234,7 +2142,10 @@ fn own_contract() {
     let (runtime, _lease) = process_runtime(
         sidecar,
         definition,
-        harmos::operations::OperationPolicy { restart: harmos::operations::RestartPolicy::Never, ..harmos::services::POLICY },
+        harmos::operations::OperationPolicy {
+            restart: harmos::operations::RestartPolicy::Never,
+            ..harmos::services::POLICY
+        },
     )
     .await;
     tokio::time::timeout(Duration::from_secs(5), async {
@@ -2278,15 +2189,10 @@ fn own_contract() {
     );
     drop(calls);
     runtime.stop().await.unwrap();
+}
 
-});
-        });
-    }
-    {
-        scenario_runtime::check("ingestion_authority_bounded", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
-
+#[tokio::test]
+async fn ingestion_authority_bounded() {
     for grants in [
         Vec::new(),
         vec![harmos_sidecar::StreamDeclaration {
@@ -2295,7 +2201,11 @@ fn own_contract() {
             id: <MeterPulse as harmos::StreamSpec>::ID.into(),
             schema: support::Pulse::VERSION + 1,
             window: support::Pulse::WINDOW,
-            row: harmos::schema::graph::Schema::from_declaration(<support::Pulse as harmos::schema::Described>::DEFINITION, &harmos::config::SchemaSettings::default()).unwrap(),
+            row: harmos::schema::graph::Schema::from_declaration(
+                <support::Pulse as harmos::schema::Described>::DEFINITION,
+                &harmos::config::SchemaSettings::default(),
+            )
+            .unwrap(),
         }],
     ] {
         let mut peer = meter(Arc::new(AtomicUsize::new(0)));
@@ -2346,15 +2256,10 @@ fn own_contract() {
         fixture.shutdown().await.unwrap();
         fixture.runtime.stop().await.unwrap();
     }
+}
 
-});
-        });
-    }
-    {
-        scenario_runtime::check("graceful_stop_joins", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor.enable_all().build().expect("scenario runtime is valid").block_on(async {
-
+#[tokio::test]
+async fn graceful_stop_joins() {
     #[derive(Clone)]
     struct Joined<S> {
         source: S,
@@ -2424,7 +2329,9 @@ fn own_contract() {
         fn observers(&self) -> Vec<harmos_sidecar::inventory::observers::Declaration> {
             self.source.observers()
         }
-        fn observer_control(&self) -> harmos_contract::Result<Option<harmos::operations::Contract>> {
+        fn observer_control(
+            &self,
+        ) -> harmos_contract::Result<Option<harmos::operations::Contract>> {
             self.source.observer_control()
         }
         fn listener_declarations(
@@ -2485,68 +2392,64 @@ fn own_contract() {
     release.notify_one();
     fixture.shutdown().await.unwrap();
     fixture.runtime.stop().await.unwrap();
+}
 
-});
-        });
-    }
-    {
-        scenario_runtime::check("inert_process_declaration", || {
-            let bytes = std::fs::read(prepared_fixtures::artifact("harmos-sidecar-fixture"))
-                .expect("the fixture executable is readable");
-            let declared = Declaration::inspect(&bytes, Facility::Sidecar)
-                .expect("the static declaration is valid");
+#[test]
+fn inert_process_declaration() {
+    let bytes = std::fs::read(prepared_fixtures::binary("harmos-sidecar-fixture"))
+        .expect("the fixture executable is readable");
+    let declared =
+        Declaration::inspect(&bytes, Facility::Sidecar).expect("the static declaration is valid");
 
-            assert_eq!(declared.id, "meter");
-            assert_eq!(declared.version.to_string(), env!("CARGO_PKG_VERSION"));
-            assert_eq!(
-                declared.description, "Exercises native sidecar supervision.",
-                "the declaration's explicit description is what a host reads off the executable"
-            );
-            assert_eq!(declared.operations.len(), 2);
-            assert_eq!(declared.operations[0].id.as_str(), "meter.ask");
-            assert_eq!(declared.operations[0].policy.timeout.as_millis(), 25);
-            assert_eq!(
-                declared.operations[0].description,
-                "An operation that never answers, so the host's deadline ends the call.",
-                "an operation's explicit description travels with it into the inventory"
-            );
-            assert_eq!(declared.operations[1].id.as_str(), "meter.echo");
-            assert_eq!(declared.operations[1].policy.timeout.as_millis(), 80);
-            assert_eq!(
-                declared.operations[1].description,
-                "Answers with what it was handed, publishing first when asked to."
-            );
-            let guest = harmos::guest::inventory::Declaration::inspect(
-                &bytes,
-                harmos::guest::inventory::Facility::Guest,
-            )
-            .expect("the co-linked guest is independently inspectable");
-            assert_eq!(guest.id, "meter");
-            assert_eq!(guest.operations.len(), 1);
-            assert_eq!(guest.operations[0].id.as_str(), "guest.echo");
-            assert_eq!(guest.operations[0].policy.timeout.as_millis(), 100);
-            assert_eq!(
-                guest
-                    .streams
-                    .iter()
-                    .map(|row| row.id.as_str())
-                    .collect::<Vec<_>>(),
-                ["foreign"]
-            );
+    assert_eq!(declared.id, "meter");
+    assert_eq!(declared.version.to_string(), env!("CARGO_PKG_VERSION"));
+    assert_eq!(
+        declared.description, "Exercises native sidecar supervision.",
+        "the declaration's explicit description is what a host reads off the executable"
+    );
+    assert_eq!(declared.operations.len(), 2);
+    assert_eq!(declared.operations[0].id.as_str(), "meter.ask");
+    assert_eq!(declared.operations[0].policy.timeout.as_millis(), 25);
+    assert_eq!(
+        declared.operations[0].description,
+        "An operation that never answers, so the host's deadline ends the call.",
+        "an operation's explicit description travels with it into the inventory"
+    );
+    assert_eq!(declared.operations[1].id.as_str(), "meter.echo");
+    assert_eq!(declared.operations[1].policy.timeout.as_millis(), 80);
+    assert_eq!(
+        declared.operations[1].description,
+        "Answers with what it was handed, publishing first when asked to."
+    );
+    let guest = harmos::guest::inventory::Declaration::inspect(
+        &bytes,
+        harmos::guest::inventory::Facility::Guest,
+    )
+    .expect("the co-linked guest is independently inspectable");
+    assert_eq!(guest.id, "meter");
+    assert_eq!(guest.operations.len(), 1);
+    assert_eq!(guest.operations[0].id.as_str(), "guest.echo");
+    assert_eq!(guest.operations[0].policy.timeout.as_millis(), 100);
+    assert_eq!(
+        guest
+            .streams
+            .iter()
+            .map(|row| row.id.as_str())
+            .collect::<Vec<_>>(),
+        ["foreign"]
+    );
 
-            // The native declaration grants this row; the co-linked guest's distinct
-            // grant cannot enter the native list. Row identifiers retain their own subset.
-            assert_eq!(
-                declared
-                    .streams
-                    .iter()
-                    .map(|stream| (stream.id.as_str(), stream.schema, stream.window))
-                    .collect::<Vec<_>>(),
-                [("meter_reading", 1, 8)],
-                "only the explicitly composed native row grants publication"
-            );
-        });
-    }
+    // The native declaration grants this row; the co-linked guest's distinct
+    // grant cannot enter the native list. Row identifiers retain their own subset.
+    assert_eq!(
+        declared
+            .streams
+            .iter()
+            .map(|stream| (stream.id.as_str(), stream.schema, stream.window))
+            .collect::<Vec<_>>(),
+        [("meter_reading", 1, 8)],
+        "only the explicitly composed native row grants publication"
+    );
 }
 
 fn process_definition(source: &Executable) -> harmos::plugin::PluginDefinition {
@@ -2626,38 +2529,15 @@ where
 }
 
 fn native_process() -> Executable {
-    Executable::at(prepared_fixtures::artifact("harmos-sidecar-fixture"))
+    Executable::at(prepared_fixtures::binary("harmos-sidecar-fixture"))
         .expect("the sidecar fixture is a file")
         .variable("HARMOS_TEST_SIDECAR", "normal")
 }
 
 fn silent() -> Executable {
-    Executable::at(prepared_fixtures::artifact("harmos-sidecar-fixture"))
+    Executable::at(prepared_fixtures::binary("harmos-sidecar-fixture"))
         .expect("the sidecar fixture is a file")
         .variable("HARMOS_TEST_SIDECAR", "silent")
 }
 
 /* === Tests === */
-
-#[test]
-fn native_contracts() {
-    own_contract();
-    core::contract_scenario();
-    journal_core::contract_scenario();
-    admission::contract_scenario();
-}
-
-#[test]
-fn native_dispatch() {
-    routing::contract_scenario();
-    graph::contract_scenario();
-    graph_cleanup::contract_scenario();
-    #[cfg(feature = "grpc")]
-    grants::contract_scenario();
-}
-
-#[test]
-fn native_publications() {
-    publications::contract_scenario();
-    listeners::contract_scenario();
-}

@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -190,488 +189,404 @@ async fn closed(storage: &StorageManager) {
     .unwrap();
 }
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("snapshot_restores_state", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    let storage = store.manager(config());
-                    let runtime = builder(policy(100))
-                        .runtime_with_storage(&storage)
-                        .await
-                        .unwrap();
-                    let who = PrincipalId::new("editor");
-                    let journal = runtime.state.as_principal(who.clone());
-                    let key = RequestKey::new("first");
-                    let receipt = journal.commit_keyed(key.clone(), deposit(5)).await.unwrap();
-                    journal.commit(deposit(6)).await.unwrap();
-                    journal.undo(who.clone(), Focus::all()).await.unwrap();
-                    harmos::records::RecordManager::new(journal.clone())
-                        .publish(Noted("tail".into()))
-                        .await
-                        .unwrap();
-                    runtime.stop().await.unwrap();
-                    assert_eq!(store.snapshot().through.sequence, 4);
-                    store.recovery.entries.lock().unwrap().clear();
+#[tokio::test]
+async fn snapshot_restores_state() {
+    let store = Store::new();
+    let storage = store.manager(config());
+    let runtime = builder(policy(100))
+        .runtime_with_storage(&storage)
+        .await
+        .unwrap();
+    let who = PrincipalId::new("editor");
+    let journal = runtime.state.as_principal(who.clone());
+    let key = RequestKey::new("first");
+    let receipt = journal.commit_keyed(key.clone(), deposit(5)).await.unwrap();
+    journal.commit(deposit(6)).await.unwrap();
+    journal.undo(who.clone(), Focus::all()).await.unwrap();
+    harmos::records::RecordManager::new(journal.clone())
+        .publish(Noted("tail".into()))
+        .await
+        .unwrap();
+    runtime.stop().await.unwrap();
+    assert_eq!(store.snapshot().through.sequence, 4);
+    store.recovery.entries.lock().unwrap().clear();
 
-                    let storage = store.manager(config());
-                    let runtime = builder(policy(100))
-                        .runtime_with_storage(&storage)
-                        .await
-                        .unwrap();
-                    assert_eq!(balance(&runtime).await, 5);
-                    assert_eq!(runtime.state.applied(), Position(4));
-                    assert_eq!(runtime.state.stored(), Position(4));
-                    let facts: Vec<_> = runtime.state.query::<Fact>(Position(2)).await.collect();
-                    assert_eq!(facts.len(), 1);
-                    assert!(facts[0].is_ok());
-                    let journal = runtime.state.as_principal(who.clone());
-                    assert_eq!(
-                        journal.commit_keyed(key, Change::Explode).await.unwrap(),
-                        receipt
-                    );
-                    journal.redo(who.clone(), Focus::all()).await.unwrap();
-                    assert_eq!(balance(&runtime).await, 11);
-                    journal.undo(who, Focus::all()).await.unwrap();
-                    assert_eq!(balance(&runtime).await, 5);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("snapshot_resumes_durable", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    let storage = store.manager(config());
-                    let runtime = builder(policy(2))
-                        .runtime_with_storage(&storage)
-                        .await
-                        .unwrap();
-                    runtime.state.commit(deposit(2)).await.unwrap();
-                    runtime.state.commit(deposit(3)).await.unwrap();
-                    tokio::time::timeout(Duration::from_secs(2), async {
-                        loop {
-                            storage.flush_recovery().await.unwrap();
-                            if store.recovery.snapshot.lock().unwrap().is_some() {
-                                break;
-                            }
-                            tokio::task::yield_now().await;
-                        }
-                    })
-                    .await
-                    .unwrap();
-                    let earlier = store.snapshot();
-                    assert_eq!(earlier.through.sequence, 2);
-                    runtime.state.commit(deposit(7)).await.unwrap();
-                    runtime.stop().await.unwrap();
-                    *store.recovery.snapshot.lock().unwrap() = Some(earlier);
-                    store
-                        .recovery
-                        .entries
-                        .lock()
-                        .unwrap()
-                        .retain(|at, _| *at > 2);
+    let storage = store.manager(config());
+    let runtime = builder(policy(100))
+        .runtime_with_storage(&storage)
+        .await
+        .unwrap();
+    assert_eq!(balance(&runtime).await, 5);
+    assert_eq!(runtime.state.applied(), Position(4));
+    assert_eq!(runtime.state.stored(), Position(4));
+    let facts: Vec<_> = runtime.state.query::<Fact>(Position(2)).await.collect();
+    assert_eq!(facts.len(), 1);
+    assert!(facts[0].is_ok());
+    let journal = runtime.state.as_principal(who.clone());
+    assert_eq!(
+        journal.commit_keyed(key, Change::Explode).await.unwrap(),
+        receipt
+    );
+    journal.redo(who.clone(), Focus::all()).await.unwrap();
+    assert_eq!(balance(&runtime).await, 11);
+    journal.undo(who, Focus::all()).await.unwrap();
+    assert_eq!(balance(&runtime).await, 5);
+    runtime.stop().await.unwrap();
+}
 
-                    let storage = store.manager(config());
-                    let runtime = builder(policy(2))
-                        .runtime_with_storage(&storage)
-                        .await
-                        .unwrap();
-                    assert_eq!(balance(&runtime).await, 12);
-                    assert_eq!(runtime.state.applied(), Position(3));
-                    assert_eq!(
-                        runtime
-                            .state
-                            .state()
-                            .read(|state| state.applications)
-                            .await
-                            .unwrap()
-                            .value,
-                        3
-                    );
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("snapshots_replay_journal", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    let storage = store.manager(config());
-                    let runtime = builder(policy(100))
-                        .runtime_with_storage(&storage)
-                        .await
-                        .unwrap();
-                    runtime.state.commit(deposit(9)).await.unwrap();
-                    runtime.stop().await.unwrap();
-                    store.recovery.snapshot.lock().unwrap().take();
-                    let storage = store.manager(config());
-                    let runtime = builder(policy(100))
-                        .runtime_with_storage(&storage)
-                        .await
-                        .unwrap();
-                    assert_eq!(balance(&runtime).await, 9);
-                    runtime.stop().await.unwrap();
-                    store
-                        .recovery
-                        .snapshot
-                        .lock()
-                        .unwrap()
-                        .as_mut()
-                        .unwrap()
-                        .payload = b"invalid snapshot".to_vec();
-                    let storage = store.manager(config());
-                    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-                        .register(catalog())
-                        .managed_state(limits())
-                        .runtime_with_storage(&storage)
-                        .await
-                        .unwrap();
-                    assert_eq!(balance(&runtime).await, 9);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("whole_groups_historical", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    let build = || {
-                        Runtime::<Model>::builder(0, ())
-                            .register(Transactions::catalog())
-                            .register(Records::catalog())
-                            .tail(1)
-                            .managed_state(limits())
-                    };
-                    let storage = store.manager(config());
-                    let runtime = build().runtime_with_storage(&storage).await.unwrap();
-                    runtime.state.commit(Add { amount: 3 }).await.unwrap();
-                    runtime.stop().await.unwrap();
-                    {
-                        let mut entries = store.recovery.entries.lock().unwrap();
-                        let first = entries.get_mut(&1).unwrap();
-                        let mut group: serde_json::Value =
-                            serde_json::from_slice(&first.payload).unwrap();
-                        group["entries"][0]["version"] = 1.into();
-                        first.payload = serde_json::to_vec(&group).unwrap();
-                    }
-                    let storage = store.manager(config());
-                    let runtime = build()
-                        .managed_snapshots(policy(100))
-                        .runtime_with_storage(&storage)
-                        .await
-                        .unwrap();
-                    assert_eq!(
-                        runtime
-                            .state
-                            .state()
-                            .read(|state| *state)
-                            .await
-                            .unwrap()
-                            .value,
-                        6
-                    );
-                    runtime.stop().await.unwrap();
-                    let snapshot: serde_json::Value =
-                        serde_json::from_slice(&store.snapshot().payload).unwrap();
-                    assert_eq!(snapshot["tail"].as_array().unwrap().len(), 2);
-                    assert_eq!(snapshot["tail"][0]["version"], 1);
-                    store.recovery.entries.lock().unwrap().clear();
-                    let storage = store.manager(config());
-                    let runtime = build()
-                        .managed_snapshots(policy(100))
-                        .runtime_with_storage(&storage)
-                        .await
-                        .unwrap();
-                    assert_eq!(
-                        runtime
-                            .state
-                            .state()
-                            .read(|state| *state)
-                            .await
-                            .unwrap()
-                            .value,
-                        6
-                    );
-                    let facts: Vec<_> = runtime
-                        .state
-                        .query::<Records>(Position::ORIGIN)
-                        .await
-                        .collect();
-                    assert_eq!(facts.len(), 1);
-                    assert!(facts[0].is_ok());
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("overflow_preserves_valid", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    let storage = store.manager(config());
-                    let mut small = policy(1);
-                    small.max_bytes = NonZeroUsize::new(1).unwrap();
-                    let runtime = builder(small).runtime_with_storage(&storage).await.unwrap();
-                    runtime.state.commit(deposit(4)).await.unwrap();
-                    runtime.stop().await.unwrap();
-                    assert!(store.recovery.snapshot.lock().unwrap().is_none());
-                    assert_eq!(storage.status().pending_bytes, 0);
-                    let storage = store.manager(config());
-                    let runtime = builder(policy(100))
-                        .runtime_with_storage(&storage)
-                        .await
-                        .unwrap();
-                    assert_eq!(balance(&runtime).await, 4);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("snapshot_failure_retryable", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    let storage = store.manager(config());
-                    let runtime = builder(policy(100))
-                        .runtime_with_storage(&storage)
-                        .await
-                        .unwrap();
-                    runtime.state.commit(deposit(4)).await.unwrap();
-                    storage.flush_recovery().await.unwrap();
-                    store
-                        .recovery
-                        .control
-                        .permanent
-                        .store(true, Ordering::SeqCst);
-                    assert!(runtime.stop().await.is_err());
-                    assert_eq!(storage.status().recovery_saved.sequence, 1);
-                    assert!(store.recovery.snapshot.lock().unwrap().is_none());
-                    assert!(storage.status().pending_bytes > 0);
-                    store
-                        .recovery
-                        .control
-                        .permanent
-                        .store(false, Ordering::SeqCst);
-                    runtime.stop().await.unwrap();
-                    assert_eq!(store.snapshot().through.sequence, 1);
-                    assert_eq!(storage.status().pending_bytes, 0);
-                });
-        });
-    }
-    {
-        scenario_runtime::check("snapshot_wait_queue", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    let mut config = config();
-                    config.request.max_pending_write_batches = NonZeroUsize::new(1).unwrap();
-                    let storage = store.manager(config);
-                    let runtime = builder(policy(1))
-                        .runtime_with_storage(&storage)
-                        .await
-                        .unwrap();
-                    runtime.state.commit(deposit(4)).await.unwrap();
-                    tokio::time::timeout(Duration::from_secs(2), runtime.stop())
-                        .await
-                        .unwrap()
-                        .unwrap();
-                    assert_eq!(store.snapshot().through.sequence, 1);
-                    assert_eq!(storage.status().pending_bytes, 0);
-                });
-        });
-    }
-    {
-        scenario_runtime::check("indexes_refuse_boot", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    for field in [
-                        "version", "schema", "position", "undo", "receipts", "tail", "boundary",
-                    ] {
-                        let store = Store::new();
-                        let storage = store.manager(config());
-                        let runtime = builder(policy(100))
-                            .runtime_with_storage(&storage)
-                            .await
-                            .unwrap();
-                        runtime
-                            .state
-                            .as_principal(PrincipalId::new("author"))
-                            .commit_keyed(RequestKey::new("key"), deposit(4))
-                            .await
-                            .unwrap();
-                        runtime.stop().await.unwrap();
-                        {
-                            let mut snapshot = store.recovery.snapshot.lock().unwrap();
-                            let snapshot = snapshot.as_mut().unwrap();
-                            let mut value: serde_json::Value =
-                                serde_json::from_slice(&snapshot.payload).unwrap();
-                            match field {
-                                "version" => value["version"] = 2.into(),
-                                "schema" => value["schema"]["id"] = "other".into(),
-                                "position" => value["position"] = 0.into(),
-                                "undo" => value["undos"][0]["inverse"]["id"] = "unknown".into(),
-                                "receipts" => {
-                                    let duplicate = value["receipts"][0].clone();
-                                    value["receipts"].as_array_mut().unwrap().push(duplicate);
-                                }
-                                "tail" => value["tail"][0]["position"] = 2.into(),
-                                "boundary" => snapshot.through.sequence += 1,
-                                _ => unreachable!(),
-                            }
-                            snapshot.payload = serde_json::to_vec(&value).unwrap();
-                        }
-                        let storage = store.manager(config());
-                        assert!(
-                            builder(policy(100))
-                                .runtime_with_storage(&storage)
-                                .await
-                                .is_err(),
-                            "{field}"
-                        );
-                        assert!(storage.status().closed);
-                        assert!(!store.data.control.open.load(Ordering::SeqCst));
-                        assert!(!store.recovery.control.open.load(Ordering::SeqCst));
-                    }
-                });
-        });
-    }
-    {
-        scenario_runtime::check("snapshot_load_releases", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    let storage = store.manager(config());
-                    let runtime = builder(policy(100))
-                        .runtime_with_storage(&storage)
-                        .await
-                        .unwrap();
-                    runtime.state.commit(deposit(4)).await.unwrap();
-                    runtime.stop().await.unwrap();
-                    store
-                        .recovery
-                        .control
-                        .block_read
-                        .store(true, Ordering::SeqCst);
-                    let storage = store.manager(config());
-                    {
-                        let opening = builder(policy(100)).runtime_with_storage(&storage);
-                        tokio::pin!(opening);
-                        tokio::select! {
-                            _ = &mut opening => panic!("snapshot load must wait"),
-                            _ = store.recovery.control.read_entered.notified() => {}
-                        }
-                        assert!(storage.status().pending_bytes > 0);
-                    }
-                    closed(&storage).await;
-                    assert_eq!(storage.status().pending_bytes, 0);
-                    assert!(!store.data.control.open.load(Ordering::SeqCst));
-                    assert!(!store.recovery.control.open.load(Ordering::SeqCst));
-                });
-        });
-    }
-    {
-        scenario_runtime::check("owner_refuse_boot", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    let mut config = config();
-                    config.request.max_pending_write_bytes = NonZeroUsize::new(256 * 1024).unwrap();
-                    let storage = store.manager(config);
-                    assert!(
-                        builder(policy(100))
-                            .runtime_with_storage(&storage)
-                            .await
-                            .is_err()
-                    );
-                    assert!(storage.status().closed);
-                    assert!(
-                        Runtime::<Bank>::builder(Ledger::default(), ())
-                            .managed_snapshots(policy(100))
-                            .runtime()
-                            .await
-                            .is_err()
-                    );
-                });
-        });
-    }
-    {
-        scenario_runtime::check("snapshot_releases_unused", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let store = Store::new();
-                    let mut settings = config();
-                    settings.request.max_pending_write_bytes =
-                        NonZeroUsize::new(1024 * 1024).unwrap();
-                    let storage = store.manager(settings);
-                    let runtime = builder(policy(1))
-                        .runtime_with_storage(&storage)
-                        .await
-                        .unwrap();
-                    runtime.state.commit(deposit(5)).await.unwrap();
+#[tokio::test]
+async fn snapshot_resumes_durable() {
+    let store = Store::new();
+    let storage = store.manager(config());
+    let runtime = builder(policy(2))
+        .runtime_with_storage(&storage)
+        .await
+        .unwrap();
+    runtime.state.commit(deposit(2)).await.unwrap();
+    runtime.state.commit(deposit(3)).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            storage.flush_recovery().await.unwrap();
+            if store.recovery.snapshot.lock().unwrap().is_some() {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let earlier = store.snapshot();
+    assert_eq!(earlier.through.sequence, 2);
+    runtime.state.commit(deposit(7)).await.unwrap();
+    runtime.stop().await.unwrap();
+    *store.recovery.snapshot.lock().unwrap() = Some(earlier);
+    store
+        .recovery
+        .entries
+        .lock()
+        .unwrap()
+        .retain(|at, _| *at > 2);
 
-                    tokio::time::timeout(Duration::from_secs(2), async {
-                        while storage.status().pending_batches < 2 {
-                            tokio::task::yield_now().await;
-                        }
-                    })
-                    .await
-                    .unwrap();
-                    assert!(storage.status().pending_bytes < 64 * 1024);
-                    assert_eq!(storage.status().recovery_saved.sequence, 0);
-                    runtime.stop().await.unwrap();
-                    assert!(!store.snapshot().payload.is_empty());
-                });
-        });
+    let storage = store.manager(config());
+    let runtime = builder(policy(2))
+        .runtime_with_storage(&storage)
+        .await
+        .unwrap();
+    assert_eq!(balance(&runtime).await, 12);
+    assert_eq!(runtime.state.applied(), Position(3));
+    assert_eq!(
+        runtime
+            .state
+            .state()
+            .read(|state| state.applications)
+            .await
+            .unwrap()
+            .value,
+        3
+    );
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn snapshots_replay_journal() {
+    let store = Store::new();
+    let storage = store.manager(config());
+    let runtime = builder(policy(100))
+        .runtime_with_storage(&storage)
+        .await
+        .unwrap();
+    runtime.state.commit(deposit(9)).await.unwrap();
+    runtime.stop().await.unwrap();
+    store.recovery.snapshot.lock().unwrap().take();
+    let storage = store.manager(config());
+    let runtime = builder(policy(100))
+        .runtime_with_storage(&storage)
+        .await
+        .unwrap();
+    assert_eq!(balance(&runtime).await, 9);
+    runtime.stop().await.unwrap();
+    store
+        .recovery
+        .snapshot
+        .lock()
+        .unwrap()
+        .as_mut()
+        .unwrap()
+        .payload = b"invalid snapshot".to_vec();
+    let storage = store.manager(config());
+    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
+        .register(catalog())
+        .managed_state(limits())
+        .runtime_with_storage(&storage)
+        .await
+        .unwrap();
+    assert_eq!(balance(&runtime).await, 9);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn whole_groups_historical() {
+    let store = Store::new();
+    let build = || {
+        Runtime::<Model>::builder(0, ())
+            .register(Transactions::catalog())
+            .register(Records::catalog())
+            .tail(1)
+            .managed_state(limits())
+    };
+    let storage = store.manager(config());
+    let runtime = build().runtime_with_storage(&storage).await.unwrap();
+    runtime.state.commit(Add { amount: 3 }).await.unwrap();
+    runtime.stop().await.unwrap();
+    {
+        let mut entries = store.recovery.entries.lock().unwrap();
+        let first = entries.get_mut(&1).unwrap();
+        let mut group: serde_json::Value = serde_json::from_slice(&first.payload).unwrap();
+        group["entries"][0]["version"] = 1.into();
+        first.payload = serde_json::to_vec(&group).unwrap();
     }
+    let storage = store.manager(config());
+    let runtime = build()
+        .managed_snapshots(policy(100))
+        .runtime_with_storage(&storage)
+        .await
+        .unwrap();
+    assert_eq!(
+        runtime
+            .state
+            .state()
+            .read(|state| *state)
+            .await
+            .unwrap()
+            .value,
+        6
+    );
+    runtime.stop().await.unwrap();
+    let snapshot: serde_json::Value = serde_json::from_slice(&store.snapshot().payload).unwrap();
+    assert_eq!(snapshot["tail"].as_array().unwrap().len(), 2);
+    assert_eq!(snapshot["tail"][0]["version"], 1);
+    store.recovery.entries.lock().unwrap().clear();
+    let storage = store.manager(config());
+    let runtime = build()
+        .managed_snapshots(policy(100))
+        .runtime_with_storage(&storage)
+        .await
+        .unwrap();
+    assert_eq!(
+        runtime
+            .state
+            .state()
+            .read(|state| *state)
+            .await
+            .unwrap()
+            .value,
+        6
+    );
+    let facts: Vec<_> = runtime
+        .state
+        .query::<Records>(Position::ORIGIN)
+        .await
+        .collect();
+    assert_eq!(facts.len(), 1);
+    assert!(facts[0].is_ok());
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn overflow_preserves_valid() {
+    let store = Store::new();
+    let storage = store.manager(config());
+    let mut small = policy(1);
+    small.max_bytes = NonZeroUsize::new(1).unwrap();
+    let runtime = builder(small).runtime_with_storage(&storage).await.unwrap();
+    runtime.state.commit(deposit(4)).await.unwrap();
+    runtime.stop().await.unwrap();
+    assert!(store.recovery.snapshot.lock().unwrap().is_none());
+    assert_eq!(storage.status().pending_bytes, 0);
+    let storage = store.manager(config());
+    let runtime = builder(policy(100))
+        .runtime_with_storage(&storage)
+        .await
+        .unwrap();
+    assert_eq!(balance(&runtime).await, 4);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn snapshot_failure_retryable() {
+    let store = Store::new();
+    let storage = store.manager(config());
+    let runtime = builder(policy(100))
+        .runtime_with_storage(&storage)
+        .await
+        .unwrap();
+    runtime.state.commit(deposit(4)).await.unwrap();
+    storage.flush_recovery().await.unwrap();
+    store
+        .recovery
+        .control
+        .permanent
+        .store(true, Ordering::SeqCst);
+    assert!(runtime.stop().await.is_err());
+    assert_eq!(storage.status().recovery_saved.sequence, 1);
+    assert!(store.recovery.snapshot.lock().unwrap().is_none());
+    assert!(storage.status().pending_bytes > 0);
+    store
+        .recovery
+        .control
+        .permanent
+        .store(false, Ordering::SeqCst);
+    runtime.stop().await.unwrap();
+    assert_eq!(store.snapshot().through.sequence, 1);
+    assert_eq!(storage.status().pending_bytes, 0);
+}
+
+#[tokio::test]
+async fn snapshot_wait_queue() {
+    let store = Store::new();
+    let mut config = config();
+    config.request.max_pending_write_batches = NonZeroUsize::new(1).unwrap();
+    let storage = store.manager(config);
+    let runtime = builder(policy(1))
+        .runtime_with_storage(&storage)
+        .await
+        .unwrap();
+    runtime.state.commit(deposit(4)).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(2), runtime.stop())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(store.snapshot().through.sequence, 1);
+    assert_eq!(storage.status().pending_bytes, 0);
+}
+
+#[tokio::test]
+async fn indexes_refuse_boot() {
+    for field in [
+        "version", "schema", "position", "undo", "receipts", "tail", "boundary",
+    ] {
+        let store = Store::new();
+        let storage = store.manager(config());
+        let runtime = builder(policy(100))
+            .runtime_with_storage(&storage)
+            .await
+            .unwrap();
+        runtime
+            .state
+            .as_principal(PrincipalId::new("author"))
+            .commit_keyed(RequestKey::new("key"), deposit(4))
+            .await
+            .unwrap();
+        runtime.stop().await.unwrap();
+        {
+            let mut snapshot = store.recovery.snapshot.lock().unwrap();
+            let snapshot = snapshot.as_mut().unwrap();
+            let mut value: serde_json::Value = serde_json::from_slice(&snapshot.payload).unwrap();
+            match field {
+                "version" => value["version"] = 2.into(),
+                "schema" => value["schema"]["id"] = "other".into(),
+                "position" => value["position"] = 0.into(),
+                "undo" => value["undos"][0]["inverse"]["id"] = "unknown".into(),
+                "receipts" => {
+                    let duplicate = value["receipts"][0].clone();
+                    value["receipts"].as_array_mut().unwrap().push(duplicate);
+                }
+                "tail" => value["tail"][0]["position"] = 2.into(),
+                "boundary" => snapshot.through.sequence += 1,
+                _ => unreachable!(),
+            }
+            snapshot.payload = serde_json::to_vec(&value).unwrap();
+        }
+        let storage = store.manager(config());
+        assert!(
+            builder(policy(100))
+                .runtime_with_storage(&storage)
+                .await
+                .is_err(),
+            "{field}"
+        );
+        assert!(storage.status().closed);
+        assert!(!store.data.control.open.load(Ordering::SeqCst));
+        assert!(!store.recovery.control.open.load(Ordering::SeqCst));
+    }
+}
+
+#[tokio::test]
+async fn snapshot_load_releases() {
+    let store = Store::new();
+    let storage = store.manager(config());
+    let runtime = builder(policy(100))
+        .runtime_with_storage(&storage)
+        .await
+        .unwrap();
+    runtime.state.commit(deposit(4)).await.unwrap();
+    runtime.stop().await.unwrap();
+    store
+        .recovery
+        .control
+        .block_read
+        .store(true, Ordering::SeqCst);
+    let storage = store.manager(config());
+    {
+        let opening = builder(policy(100)).runtime_with_storage(&storage);
+        tokio::pin!(opening);
+        tokio::select! {
+            _ = &mut opening => panic!("snapshot load must wait"),
+            _ = store.recovery.control.read_entered.notified() => {}
+        }
+        assert!(storage.status().pending_bytes > 0);
+    }
+    closed(&storage).await;
+    assert_eq!(storage.status().pending_bytes, 0);
+    assert!(!store.data.control.open.load(Ordering::SeqCst));
+    assert!(!store.recovery.control.open.load(Ordering::SeqCst));
+}
+
+#[tokio::test]
+async fn owner_refuse_boot() {
+    let store = Store::new();
+    let mut config = config();
+    config.request.max_pending_write_bytes = NonZeroUsize::new(256 * 1024).unwrap();
+    let storage = store.manager(config);
+    assert!(
+        builder(policy(100))
+            .runtime_with_storage(&storage)
+            .await
+            .is_err()
+    );
+    assert!(storage.status().closed);
+    assert!(
+        Runtime::<Bank>::builder(Ledger::default(), ())
+            .managed_snapshots(policy(100))
+            .runtime()
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
+async fn snapshot_releases_unused() {
+    let store = Store::new();
+    let mut settings = config();
+    settings.request.max_pending_write_bytes = NonZeroUsize::new(1024 * 1024).unwrap();
+    let storage = store.manager(settings);
+    let runtime = builder(policy(1))
+        .runtime_with_storage(&storage)
+        .await
+        .unwrap();
+    runtime.state.commit(deposit(5)).await.unwrap();
+
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while storage.status().pending_batches < 2 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(storage.status().pending_bytes < 64 * 1024);
+    assert_eq!(storage.status().recovery_saved.sequence, 0);
+    runtime.stop().await.unwrap();
+    assert!(!store.snapshot().payload.is_empty());
 }
 
 /* === Tests === */

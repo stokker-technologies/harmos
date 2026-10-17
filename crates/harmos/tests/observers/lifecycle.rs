@@ -8,7 +8,6 @@
  */
 
 /* === Modules === */
-use crate::scenario_runtime;
 
 /* === Re-Exports === */
 
@@ -155,339 +154,227 @@ async fn count(value: &AtomicUsize, minimum: usize) {
     .expect("observer advances");
 }
 
-pub(super) fn contract_scenario() {
-    {
-        scenario_runtime::check("readiness_follows_lifecycle", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let resources = Resources::new();
-                    let mut task = Observing::start(activity::<Watch<0>>(&resources));
-                    count(&resources.attempts, 1).await;
-                    assert!(!task.is_ready());
-                    resources.initialization.add_permits(1);
-                    task.ready().await;
-                    count(&resources.ticks, 2).await;
-                    assert!(task.is_observing());
+#[tokio::test]
+async fn readiness_follows_lifecycle() {
+    let resources = Resources::new();
+    let mut task = Observing::start(activity::<Watch<0>>(&resources));
+    count(&resources.attempts, 1).await;
+    assert!(!task.is_ready());
+    resources.initialization.add_permits(1);
+    task.ready().await;
+    count(&resources.ticks, 2).await;
+    assert!(task.is_observing());
 
-                    assert!(task.interrupt().await.is_none());
-                    let activity = task.activity();
-                    assert!(activity.is_initialized());
-                    {
-                        let stopping = activity.stop();
-                        tokio::pin!(stopping);
-                        assert!(
-                            tokio::time::timeout(Duration::from_millis(20), &mut stopping)
-                                .await
-                                .is_err()
-                        );
-                        resources.cleanup.add_permits(1);
-                        stopping.await.unwrap();
-                    }
-                    activity.cleanup().await.unwrap();
-                    assert_eq!(resources.dropped.load(Ordering::SeqCst), 1);
-                    assert!(!activity.is_initialized());
-                    activity.stop().await.unwrap();
-                    activity.cleanup().await.unwrap();
-                    assert_eq!(resources.stops.load(Ordering::SeqCst), 1);
-                    assert_eq!(resources.finalizations.load(Ordering::SeqCst), 1);
-                });
-        });
-    }
+    assert!(task.interrupt().await.is_none());
+    let activity = task.activity();
+    assert!(activity.is_initialized());
     {
-        scenario_runtime::check("cancelled_initialization_unready", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let resources = Resources::new();
-                    let mut task = Observing::start(activity::<Watch<0>>(&resources));
-                    count(&resources.attempts, 1).await;
-                    assert_eq!(resources.acquired.load(Ordering::SeqCst), 1);
-                    // Initialization owns its partial acquisition; interrupting it
-                    // drops that owner without running stop or cleanup.
-                    assert!(task.interrupt().await.is_none());
-                    assert_eq!(resources.dropped.load(Ordering::SeqCst), 1);
-                    assert_eq!(resources.acquired.load(Ordering::SeqCst), 0);
-                    let activity = task.activity();
-                    assert!(!activity.is_initialized());
-                    activity.stop().await.unwrap();
-                    activity.cleanup().await.unwrap();
-                    assert_eq!(resources.stops.load(Ordering::SeqCst), 0);
-                    assert_eq!(resources.finalizations.load(Ordering::SeqCst), 0);
-                    assert_eq!(resources.ticks.load(Ordering::SeqCst), 0);
-                    assert_eq!(resources.dropped.load(Ordering::SeqCst), 1);
-                    assert_eq!(resources.acquired.load(Ordering::SeqCst), 0);
-                });
-        });
+        let stopping = activity.stop();
+        tokio::pin!(stopping);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), &mut stopping)
+                .await
+                .is_err()
+        );
+        resources.cleanup.add_permits(1);
+        stopping.await.unwrap();
     }
+    activity.cleanup().await.unwrap();
+    assert_eq!(resources.dropped.load(Ordering::SeqCst), 1);
+    assert!(!activity.is_initialized());
+    activity.stop().await.unwrap();
+    activity.cleanup().await.unwrap();
+    assert_eq!(resources.stops.load(Ordering::SeqCst), 1);
+    assert_eq!(resources.finalizations.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn cancelled_initialization_unready() {
+    let resources = Resources::new();
+    let mut task = Observing::start(activity::<Watch<0>>(&resources));
+    count(&resources.attempts, 1).await;
+    assert_eq!(resources.acquired.load(Ordering::SeqCst), 1);
+    // Initialization owns its partial acquisition; interrupting it
+    // drops that owner without running stop or cleanup.
+    assert!(task.interrupt().await.is_none());
+    assert_eq!(resources.dropped.load(Ordering::SeqCst), 1);
+    assert_eq!(resources.acquired.load(Ordering::SeqCst), 0);
+    let activity = task.activity();
+    assert!(!activity.is_initialized());
+    activity.stop().await.unwrap();
+    activity.cleanup().await.unwrap();
+    assert_eq!(resources.stops.load(Ordering::SeqCst), 0);
+    assert_eq!(resources.finalizations.load(Ordering::SeqCst), 0);
+    assert_eq!(resources.ticks.load(Ordering::SeqCst), 0);
+    assert_eq!(resources.dropped.load(Ordering::SeqCst), 1);
+    assert_eq!(resources.acquired.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn binding_panic_cause() {
+    let resources = Resources::new();
+    let refused = Instance::<Arc<Resources>, ()>::of::<Watch<0>>()
+        .with_context::<()>(|_| panic!("binding refused"))
+        .activate(Arc::new(resources.clone()), ());
+    assert!(matches!(refused, Err(ObserverError::BindingPanicked)));
+    assert_eq!(resources.attempts.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn callback_panic_cleanup() {
+    let resources = Resources::new();
+    resources.initialization.add_permits(1);
+    let mut task = Observing::start(activity::<Watch<1>>(&resources));
+    let failure = tokio::time::timeout(Duration::from_secs(3), task.ended())
+        .await
+        .expect("a panicked callback ends observation");
+    assert!(matches!(failure, Some(ObserverError::CallbackPanicked)));
+    assert_eq!(resources.dropped.load(Ordering::SeqCst), 0);
+    let activity = task.activity();
+    assert!(activity.is_initialized());
+    resources.cleanup.add_permits(1);
+    activity.stop().await.unwrap();
+    activity.cleanup().await.unwrap();
+    assert_eq!(resources.dropped.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn cleanup_panic_recovery() {
+    stop_recovery::<2>(|failure| matches!(failure, ObserverError::StopPanicked)).await;
+}
+
+#[tokio::test]
+async fn cleanup_refusal_recovery() {
+    stop_recovery::<7>(|failure| matches!(failure, ObserverError::StopFailed(_))).await;
+}
+
+#[tokio::test]
+async fn finalization_refusal_retries() {
+    finalization_recovery::<5>(|failure| matches!(failure, ObserverError::CleanupFailed(_))).await;
+}
+
+#[tokio::test]
+async fn finalization_panic_retries() {
+    finalization_recovery::<6>(|failure| matches!(failure, ObserverError::CleanupPanicked)).await;
+}
+
+#[tokio::test]
+async fn slow_cleanup_settles() {
+    let resources = Resources::new();
+    resources.initialization.add_permits(1);
+    let mut task = Observing::start(activity::<Watch<0>>(&resources));
+    task.ready().await;
+    assert!(task.interrupt().await.is_none());
+    let activity = task.activity();
     {
-        scenario_runtime::check("binding_panic_cause", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let resources = Resources::new();
-                    let refused = Instance::<Arc<Resources>, ()>::of::<Watch<0>>()
-                        .with_context::<()>(|_| panic!("binding refused"))
-                        .activate(Arc::new(resources.clone()), ());
-                    assert!(matches!(refused, Err(ObserverError::BindingPanicked)));
-                    assert_eq!(resources.attempts.load(Ordering::SeqCst), 0);
-                });
-        });
+        let stopping = activity.stop();
+        tokio::pin!(stopping);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(1200), &mut stopping)
+                .await
+                .is_err(),
+            "a slow stop keeps the observer owned"
+        );
+        assert_eq!(resources.dropped.load(Ordering::SeqCst), 0);
+        resources.cleanup.add_permits(1);
+        stopping.await.unwrap();
     }
-    {
-        scenario_runtime::check("callback_panic_cleanup", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let resources = Resources::new();
-                    resources.initialization.add_permits(1);
-                    let mut task = Observing::start(activity::<Watch<1>>(&resources));
-                    let failure = tokio::time::timeout(Duration::from_secs(3), task.ended())
-                        .await
-                        .expect("a panicked callback ends observation");
-                    assert!(matches!(failure, Some(ObserverError::CallbackPanicked)));
-                    assert_eq!(resources.dropped.load(Ordering::SeqCst), 0);
-                    let activity = task.activity();
-                    assert!(activity.is_initialized());
-                    resources.cleanup.add_permits(1);
-                    activity.stop().await.unwrap();
-                    activity.cleanup().await.unwrap();
-                    assert_eq!(resources.dropped.load(Ordering::SeqCst), 1);
-                });
-        });
-    }
-    {
-        scenario_runtime::check("cleanup_panic_recovery", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    stop_recovery::<2>(|failure| matches!(failure, ObserverError::StopPanicked))
-                        .await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("cleanup_refusal_recovery", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    stop_recovery::<7>(|failure| matches!(failure, ObserverError::StopFailed(_)))
-                        .await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("finalization_refusal_retries", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    finalization_recovery::<5>(|failure| {
-                        matches!(failure, ObserverError::CleanupFailed(_))
-                    })
-                    .await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("finalization_panic_retries", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    finalization_recovery::<6>(|failure| {
-                        matches!(failure, ObserverError::CleanupPanicked)
-                    })
-                    .await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("slow_cleanup_settles", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let resources = Resources::new();
-                    resources.initialization.add_permits(1);
-                    let mut task = Observing::start(activity::<Watch<0>>(&resources));
-                    task.ready().await;
-                    assert!(task.interrupt().await.is_none());
-                    let activity = task.activity();
-                    {
-                        let stopping = activity.stop();
-                        tokio::pin!(stopping);
-                        assert!(
-                            tokio::time::timeout(Duration::from_millis(1200), &mut stopping)
-                                .await
-                                .is_err(),
-                            "a slow stop keeps the observer owned"
-                        );
-                        assert_eq!(resources.dropped.load(Ordering::SeqCst), 0);
-                        resources.cleanup.add_permits(1);
-                        stopping.await.unwrap();
-                    }
-                    assert!(activity.is_initialized());
-                    activity.cleanup().await.unwrap();
-                    assert!(!activity.is_initialized());
-                    assert_eq!(resources.stops.load(Ordering::SeqCst), 1);
-                    assert_eq!(resources.dropped.load(Ordering::SeqCst), 1);
-                });
-        });
-    }
-    {
-        scenario_runtime::check("dropped_task_cleanup", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    // Dropping a bare activity skips stop and cleanup; the host owns
-                    // them, so a dropped lease still stops and cleans up the observer.
-                    let runtime = super::runtime().await;
-                    let manager = &runtime.operations;
-                    manager
-                        .register_native_observer(
-                            Instance::<Arc<Resources>, ()>::of::<Watch<0>>(),
-                            |_| (),
-                        )
-                        .unwrap();
-                    let resources = Resources::new();
-                    resources.initialization.add_permits(1);
-                    let lease = manager
-                        .submit_with_resources_at("lifecycle", Arc::new(resources.clone()))
-                        .await
-                        .unwrap();
-                    let key = super::key(manager, &lease);
-                    phase(manager, &key, RUNNING).await;
-                    drop(lease);
-                    phase(manager, &key, STOPPING).await;
-                    let mut states = manager.watch_residents();
-                    assert!(
-                        tokio::time::timeout(
-                            Duration::from_millis(1200),
-                            states.wait_for(|states| {
-                                states
-                                    .get(&key)
-                                    .is_some_and(|state| state.lifecycle.phase().is_terminal())
-                            }),
-                        )
-                        .await
-                        .is_err(),
-                        "dropping a lease must retain cleanup until it completes"
-                    );
-                    assert_eq!(resources.dropped.load(Ordering::SeqCst), 0);
-                    resources.cleanup.add_permits(1);
-                    phase(manager, &key, STOPPED).await;
-                    assert_eq!(resources.dropped.load(Ordering::SeqCst), 1);
-                    assert_eq!(resources.stops.load(Ordering::SeqCst), 1);
-                    assert_eq!(resources.finalizations.load(Ordering::SeqCst), 1);
-                    runtime.stop().await.unwrap();
-                });
-        });
-    }
-    {
-        scenario_runtime::check("cancelled_retry_skips_cleanup", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let resources = Resources::new();
-                    let mut task = Observing::start(activity::<Watch<3>>(&resources));
-                    count(&resources.attempts, 1).await;
-                    // A refused initialization already released its partial owner.
-                    assert!(task.interrupt().await.is_none());
-                    let activity = task.activity();
-                    activity.stop().await.unwrap();
-                    activity.cleanup().await.unwrap();
-                    assert!(!activity.is_initialized());
-                    let attempts = resources.attempts.load(Ordering::SeqCst);
-                    assert!(attempts >= 1);
-                    assert_eq!(resources.ticks.load(Ordering::SeqCst), 0);
-                    assert_eq!(resources.acquired.load(Ordering::SeqCst), 0);
-                    assert_eq!(resources.dropped.load(Ordering::SeqCst), attempts);
-                    assert_eq!(resources.stops.load(Ordering::SeqCst), 0);
-                });
-        });
-    }
-    {
-        scenario_runtime::check("initialization_refusal_retries", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    initialization_retry::<3>().await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("initialization_panic_retries", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    initialization_retry::<4>().await;
-                });
-        });
-    }
-    {
-        scenario_runtime::check("cancellation_wakes_cadence", || {
-            let mut scenario_executor = tokio::runtime::Builder::new_current_thread();
-            scenario_executor
-                .enable_all()
-                .build()
-                .expect("scenario runtime is valid")
-                .block_on(async {
-                    let resources = Resources::new();
-                    resources.initialization.add_permits(1);
-                    resources.cleanup.add_permits(1);
-                    let mut task = Observing::start(activity::<Watch<0, 10_000>>(&resources));
-                    task.ready().await;
-                    assert_eq!(resources.ticks.load(Ordering::SeqCst), 0);
-                    tokio::time::timeout(Duration::from_secs(1), task.shutdown())
-                        .await
-                        .expect("interruption must wake the cadence wait")
-                        .unwrap();
-                    assert_eq!(resources.ticks.load(Ordering::SeqCst), 0);
-                    assert_eq!(resources.stops.load(Ordering::SeqCst), 1);
-                    assert_eq!(resources.finalizations.load(Ordering::SeqCst), 1);
-                    assert_eq!(resources.dropped.load(Ordering::SeqCst), 1);
-                    assert!(!task.activity().is_initialized());
-                    assert!(!task.is_observing());
-                });
-        });
-    }
+    assert!(activity.is_initialized());
+    activity.cleanup().await.unwrap();
+    assert!(!activity.is_initialized());
+    assert_eq!(resources.stops.load(Ordering::SeqCst), 1);
+    assert_eq!(resources.dropped.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn dropped_task_cleanup() {
+    // Dropping a bare activity skips stop and cleanup; the host owns
+    // them, so a dropped lease still stops and cleans up the observer.
+    let runtime = super::runtime().await;
+    let manager = &runtime.operations;
+    manager
+        .register_native_observer(Instance::<Arc<Resources>, ()>::of::<Watch<0>>(), |_| ())
+        .unwrap();
+    let resources = Resources::new();
+    resources.initialization.add_permits(1);
+    let lease = manager
+        .submit_with_resources_at("lifecycle", Arc::new(resources.clone()))
+        .await
+        .unwrap();
+    let key = super::key(manager, &lease);
+    phase(manager, &key, RUNNING).await;
+    drop(lease);
+    phase(manager, &key, STOPPING).await;
+    let mut states = manager.watch_residents();
+    assert!(
+        tokio::time::timeout(
+            Duration::from_millis(1200),
+            states.wait_for(|states| {
+                states
+                    .get(&key)
+                    .is_some_and(|state| state.lifecycle.phase().is_terminal())
+            }),
+        )
+        .await
+        .is_err(),
+        "dropping a lease must retain cleanup until it completes"
+    );
+    assert_eq!(resources.dropped.load(Ordering::SeqCst), 0);
+    resources.cleanup.add_permits(1);
+    phase(manager, &key, STOPPED).await;
+    assert_eq!(resources.dropped.load(Ordering::SeqCst), 1);
+    assert_eq!(resources.stops.load(Ordering::SeqCst), 1);
+    assert_eq!(resources.finalizations.load(Ordering::SeqCst), 1);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn cancelled_retry_skips_cleanup() {
+    let resources = Resources::new();
+    let mut task = Observing::start(activity::<Watch<3>>(&resources));
+    count(&resources.attempts, 1).await;
+    // A refused initialization already released its partial owner.
+    assert!(task.interrupt().await.is_none());
+    let activity = task.activity();
+    activity.stop().await.unwrap();
+    activity.cleanup().await.unwrap();
+    assert!(!activity.is_initialized());
+    let attempts = resources.attempts.load(Ordering::SeqCst);
+    assert!(attempts >= 1);
+    assert_eq!(resources.ticks.load(Ordering::SeqCst), 0);
+    assert_eq!(resources.acquired.load(Ordering::SeqCst), 0);
+    assert_eq!(resources.dropped.load(Ordering::SeqCst), attempts);
+    assert_eq!(resources.stops.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn initialization_refusal_retries() {
+    initialization_retry::<3>().await;
+}
+
+#[tokio::test]
+async fn initialization_panic_retries() {
+    initialization_retry::<4>().await;
+}
+
+#[tokio::test]
+async fn cancellation_wakes_cadence() {
+    let resources = Resources::new();
+    resources.initialization.add_permits(1);
+    resources.cleanup.add_permits(1);
+    let mut task = Observing::start(activity::<Watch<0, 10_000>>(&resources));
+    task.ready().await;
+    assert_eq!(resources.ticks.load(Ordering::SeqCst), 0);
+    tokio::time::timeout(Duration::from_secs(1), task.shutdown())
+        .await
+        .expect("interruption must wake the cadence wait")
+        .unwrap();
+    assert_eq!(resources.ticks.load(Ordering::SeqCst), 0);
+    assert_eq!(resources.stops.load(Ordering::SeqCst), 1);
+    assert_eq!(resources.finalizations.load(Ordering::SeqCst), 1);
+    assert_eq!(resources.dropped.load(Ordering::SeqCst), 1);
+    assert!(!task.activity().is_initialized());
+    assert!(!task.is_observing());
 }
 
 async fn stop_recovery<const MODE: u8>(expected: fn(&ObserverError) -> bool) {

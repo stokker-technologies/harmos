@@ -95,45 +95,9 @@ schematic-contract = { path = "../contract", features = ["grpc"] }
 
 # === Dev Dependencies ===
 
-[dev-dependencies]
-# Local
-schematic-guest = { path = "../guest" }
-
-# Git
-
-# Error Handling
-
-# Logging
-
-# Utilities
-
-# Serialization
-
-# Configuration
-
-# Filesystem
-
-# Parsing
-
-# Concurrency
-
-# Async
-
-# Networking
-
-# Storage
-
-# UI
-
-# Testing
-
 # === Target Dependencies ===
 
 # === Test Targets ===
-
-[[test]]
-name = "operations"
-path = "tests/operations/main.rs"
 
 # === Bench Targets ===
 
