@@ -139,32 +139,6 @@ all = "warn"
 
 # === Profiles ===
 
-# Guest Tests Compile Real Components With The Native JIT Compiler.
-[profile.dev.package.cranelift-codegen]
-opt-level = 3
-
-[profile.dev.package.cranelift-frontend]
-opt-level = 3
-
-[profile.dev.package.regalloc2]
-opt-level = 3
-
-[profile.dev.package.wasmtime]
-opt-level = 3
-
-[profile.dev.package.wasmtime-environ]
-opt-level = 3
-
-[profile.dev.package.wasmtime-internal-cranelift]
-opt-level = 3
-
-# Artifact Admission Scans And Hashes Full Executables, Including Debug Builds.
-[profile.dev.package.memchr]
-opt-level = 3
-
-[profile.dev.package.sha2]
-opt-level = 3
-
 # === Patches ===
 
 # === Other ===
