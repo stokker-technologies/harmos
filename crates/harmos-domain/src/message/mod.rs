@@ -48,7 +48,7 @@ macro_rules! postcard_product {
     ($ty:ty { $($field:ident: $field_ty:ty),* $(,)? } $(, validate = $validate:expr)?) => {
         #[allow(unused_variables)]
         impl $crate::__private::PostcardValue for $ty {
-            fn write(&self, bytes: &mut Vec<u8>) {
+            fn write(&self, bytes: &mut ::std::vec::Vec<u8>) {
                 $(<$field_ty as $crate::__private::PostcardValue>::write(&self.$field, bytes);)*
             }
             fn size(&self) -> usize {
