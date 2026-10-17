@@ -58,7 +58,8 @@ def main() -> None:
     os.environ["CARGO_TARGET_DIR"] = str(TARGET)
     before = archive.tree(ROOT)
     receipt = archive.build(ROOT, profile, ["--all-features"])
-    workspace = _messages(receipt)
+    # The Workspace Capture Must Still Match Its Receipt Before Anything Is Staged Beside It.
+    _messages(receipt)
     # The Archive Holds Test Targets Only; The Authoring Tool Binary Is Its Own Capture, Beside
     # The Facade Library The Authoring Stories Link (Nothing Under Test Depends On It).
     tooling = archive.compile(ROOT, profile, ["-p", "cargo-harmos", "-p", "harmos", "--all-features"])
