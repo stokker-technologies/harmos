@@ -1,4 +1,4 @@
-<!-- Generated from .agents/GUIDANCE.md; edit .agents/GUIDANCE.md and run `stkr project update` -->
+<!-- Rendered by stkr project update from .agents/GUIDANCE.md; sha256:7cb387f9f1d03be8bb14c46be7db6b1b85d496e233877da8f89073bdcc8ea0c5 -->
 
 # Project Guidance
 

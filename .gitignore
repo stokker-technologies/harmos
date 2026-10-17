@@ -61,3 +61,7 @@ __pycache__/
 /.tmp/
 /.stkr/tests/
 /.stkr/benchmarks/
+
+# BEGIN Stkr CI
+/.cache/
+# END Stkr CI

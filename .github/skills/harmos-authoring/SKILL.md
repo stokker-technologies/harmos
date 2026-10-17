@@ -2,7 +2,7 @@
 name: harmos-authoring
 description: Author Harmos operations, plugins, streaming endpoints, and generated transport contracts.
 ---
-<!-- Generated from .agents/skills/harmos-authoring/SKILL.md; edit .agents/skills/harmos-authoring/SKILL.md and run `stkr project update` -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-authoring/SKILL.md; sha256:fd9e0559f06e7270368302303354df45b8b6b5c7f39e63ec4251f35051958b24 -->
 
 # Harmos Authoring
 

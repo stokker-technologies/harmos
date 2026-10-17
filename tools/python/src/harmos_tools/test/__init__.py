@@ -1,3 +1,4 @@
+# Rendered by stkr project update from templates/python/test/__init__.py; sha256:b2015f408d788181e629e53051aea099048fcb254a7f2081df7cefe5a1ced6ac
 # ***
 #
 # Harmos
@@ -6,7 +7,7 @@
 #
 # ***
 
-"""Test Flow Scripts"""
+"""Hub-Rendered Test Evidence Runner: Lanes, Archives, Reports And Benchmarks"""
 
 # === Imports === #
 

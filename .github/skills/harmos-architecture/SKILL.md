@@ -2,7 +2,7 @@
 name: harmos-architecture
 description: Design Harmos application boundaries, operation ownership, resources, and runtime composition.
 ---
-<!-- Generated from .agents/skills/harmos-architecture/SKILL.md; edit .agents/skills/harmos-architecture/SKILL.md and run `stkr project update` -->
+<!-- Rendered by stkr project update from .agents/skills/harmos-architecture/SKILL.md; sha256:dd08628f87c4964db702587627100e094c4071580a482e31f71b9125b89fdd2e -->
 
 # Harmos Architecture
 
