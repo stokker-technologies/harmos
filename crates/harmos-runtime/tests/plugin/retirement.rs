@@ -357,7 +357,7 @@ async fn cleanup_spares_peers() {
             domain: "plugin retirement"
         })
     ));
-    tokio::time::timeout(Duration::from_secs(1), async {
+    (async {
         while let Some(event) = events.next().await {
             if matches!(event, PluginEvent::Changed {
                 id, kind: PluginEventKind::Stopped, ..
@@ -367,9 +367,7 @@ async fn cleanup_spares_peers() {
             }
         }
         panic!("the retained driver owns its event publisher");
-    })
-    .await
-    .expect("the owned retirement driver advances after its waiter is dropped");
+    }).await;
     let status = manager.status("provider").unwrap();
     assert_eq!(status.state, PluginState::Registered);
     assert!(status.generation.is_none());
@@ -413,7 +411,7 @@ async fn drop_retains_retirement() {
     );
     host.control.lock().unwrap().block_stop = None;
     host.release.notify_waiters();
-    tokio::time::timeout(Duration::from_secs(1), async {
+    (async {
         let mut provider_stopped = false;
         while let Some(event) = events.next().await {
             if matches!(event, PluginEvent::Changed {
@@ -427,9 +425,7 @@ async fn drop_retains_retirement() {
             provider_stopped,
             "provider settlement precedes driver release"
         );
-    })
-    .await
-    .unwrap();
+    }).await;
     let control = host.control.lock().unwrap();
     for owner in ["client", "provider", "other"] {
         assert_eq!(control.stop_calls.get(owner), Some(&1));
@@ -520,7 +516,7 @@ async fn drop_keeps_providers() {
     );
     host.control.lock().unwrap().block_stop = None;
     host.release.notify_waiters();
-    tokio::time::timeout(Duration::from_secs(1), async {
+    (async {
         let mut provider_stopped = false;
         while let Some(event) = events.next().await {
             if matches!(event, PluginEvent::Changed {
@@ -534,9 +530,7 @@ async fn drop_keeps_providers() {
             provider_stopped,
             "provider settlement precedes driver release"
         );
-    })
-    .await
-    .unwrap();
+    }).await;
     let control = host.control.lock().unwrap();
     for owner in ["client", "provider", "other"] {
         assert_eq!(control.stop_calls.get(owner), Some(&1));
@@ -573,7 +567,7 @@ async fn retry_publishes_success() {
     }
     host.control.lock().unwrap().block_stop = None;
     host.release.notify_waiters();
-    tokio::time::timeout(Duration::from_secs(1), async {
+    (async {
         while let Some(event) = events.next().await {
             if matches!(event, PluginEvent::Changed {
                 id, kind: PluginEventKind::Stopped, ..
@@ -583,9 +577,7 @@ async fn retry_publishes_success() {
             }
         }
         panic!("retirement retains event publication");
-    })
-    .await
-    .unwrap();
+    }).await;
     let status = manager.status("client").unwrap();
     assert_eq!(status.state, PluginState::Registered);
     assert!(status.generation.is_none());

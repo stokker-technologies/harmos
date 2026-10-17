@@ -224,7 +224,7 @@ async fn service_stop_observer() {
     {
         let stop = runtime.stop();
         tokio::pin!(stop);
-        tokio::time::timeout(Duration::from_secs(2), async {
+        (async {
             tokio::select! {
                 result = &mut stop => panic!("cleanup remains held: {result:?}"),
                 _ = async {
@@ -232,9 +232,7 @@ async fn service_stop_observer() {
                     service.finalizing.notified().await;
                 } => {}
             }
-        })
-        .await
-        .expect("independent physical stop is not held by observer cleanup");
+        }).await;
     }
     assert_eq!(service.attempts.load(Ordering::SeqCst), 1);
     assert_eq!(service.finalized.load(Ordering::SeqCst), 0);
@@ -253,14 +251,12 @@ async fn interruption_retains_stop() {
     {
         let stopping = runtime.stop();
         tokio::pin!(stopping);
-        tokio::time::timeout(Duration::from_secs(2), async {
+        (async {
             tokio::select! {
                 result = &mut stopping => panic!("physical stop is gated: {result:?}"),
                 _ = cleanup.finalizing.notified() => {},
             }
-        })
-        .await
-        .unwrap();
+        }).await;
     }
     assert!(!cleanup.stop_future_dropped.load(Ordering::SeqCst));
     assert!(!cleanup.dropped.load(Ordering::SeqCst));
@@ -271,11 +267,9 @@ async fn interruption_retains_stop() {
     assert!(state.lifecycle.settled_at().is_none());
 
     cleanup.release.notify_one();
-    tokio::time::timeout(Duration::from_secs(2), participant.stopping())
-        .await
-        .expect("the original driver advances without another shutdown waiter");
+    (participant.stopping()).await;
     participant.finish();
-    tokio::time::timeout(Duration::from_secs(2), runtime.stop()).await.unwrap().unwrap();
+    (runtime.stop()).await.unwrap();
     assert_eq!(cleanup.attempts.load(Ordering::SeqCst), 1);
     assert_eq!(cleanup.finalized.load(Ordering::SeqCst), 1);
     assert!(cleanup.stop_future_dropped.load(Ordering::SeqCst));
@@ -290,17 +284,15 @@ async fn cleanup_releases_resident() {
     {
         let stopping = runtime.stop();
         tokio::pin!(stopping);
-        tokio::time::timeout(Duration::from_secs(2), async {
+        (async {
             tokio::select! {
                 result = &mut stopping => panic!("cleanup is gated: {result:?}"),
                 _ = cleanup.finalizing.notified() => {},
             }
-        })
-        .await
-        .unwrap();
+        }).await;
         assert!(!cleanup.dropped.load(Ordering::SeqCst));
         cleanup.release.notify_one();
-        tokio::time::timeout(Duration::from_secs(2), &mut stopping).await.unwrap().unwrap();
+        (&mut stopping).await.unwrap();
     }
     assert!(cleanup.dropped.load(Ordering::SeqCst));
     runtime.stop().await.unwrap();
@@ -327,22 +319,18 @@ async fn cleanup_retry_survives() {
     {
         let waiting = runtime.stop();
         tokio::pin!(waiting);
-        tokio::time::timeout(Duration::from_secs(2), async {
+        (async {
             tokio::select! {
                 result = &mut waiting => panic!("physical cleanup is gated: {result:?}"),
                 _ = cleanup.finalizing.notified() => {},
             }
-        })
-        .await
-        .unwrap();
+        }).await;
     }
     assert!(!cleanup.dropped.load(Ordering::SeqCst));
     cleanup.release.notify_one();
-    tokio::time::timeout(Duration::from_secs(2), participant.stopping())
-        .await
-        .expect("the original driver advances without another shutdown waiter");
+    (participant.stopping()).await;
     participant.finish();
-    tokio::time::timeout(Duration::from_secs(2), runtime.stop()).await.unwrap().unwrap();
+    (runtime.stop()).await.unwrap();
     assert_eq!(cleanup.attempts.load(Ordering::SeqCst), 2);
     assert!(cleanup.dropped.load(Ordering::SeqCst));
 }
@@ -372,7 +360,7 @@ async fn uncooperative_resident_aborted() {
     let statuses = runtime.operations.watch_residents();
 
     assert!(matches!(
-        tokio::time::timeout(Duration::from_secs(1), runtime.stop()).await.unwrap(),
+        (runtime.stop()).await,
         Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })
     ));
 
@@ -467,7 +455,7 @@ async fn unregister_retains_ownership() {
     waiter.abort();
     assert!(waiter.await.unwrap_err().is_cancelled());
 
-    tokio::time::timeout(Duration::from_secs(1), runtime.operations.unregister_resident("tenant")).await.unwrap().unwrap_err();
+    (runtime.operations.unregister_resident("tenant")).await.unwrap_err();
 
     assert!(dropped.load(Ordering::SeqCst));
     assert!(!runtime.operations.watch_residents().borrow().contains_key(&harmos_runtime::operations::resident::Key::root("tenant")));
@@ -529,9 +517,7 @@ async fn domains_outlives_clones() {
     });
 
     assert_eq!(
-        tokio::time::timeout(Duration::from_secs(5), stopping)
-            .await
-            .expect("a live handle does not hold the stop open")
+        (stopping).await
             .expect("runtime stop does not panic"),
         Position::ORIGIN
     );

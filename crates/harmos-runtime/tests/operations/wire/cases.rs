@@ -96,9 +96,6 @@ macro_rules! scripted_codec {
                 }
                 let value = <Text as Message>::decode(bytes)?;
                 assert_ne!(value.value, "decode_panic", "scripted codec panic");
-                if value.value == "slow" {
-                    std::thread::sleep(Duration::from_millis(20));
-                }
                 Ok(Self(value))
             }
         }

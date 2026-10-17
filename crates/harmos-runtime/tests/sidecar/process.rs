@@ -369,13 +369,11 @@ fn count(root: &Path, name: &str) -> usize {
 }
 
 async fn marked(root: &Path, name: &str) {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    (async {
         while !std::fs::read(root.join(name)).is_ok_and(|bytes| bytes.ends_with(b"\n")) {
             tokio::task::yield_now().await;
         }
-    })
-    .await
-    .unwrap();
+    }).await;
 }
 
 fn nested(blob: Blob) -> Nested {

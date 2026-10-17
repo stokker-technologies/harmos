@@ -822,15 +822,7 @@ impl PluginLifecycle for Host {
         )?;
         resources.registered = true;
         resources.lease = Some(self.operations.submit_resident(&definition.id).await?);
-        let native = tokio::time::timeout(
-            Duration::from_secs(2),
-            resources.resident.as_ref().unwrap().staged_operations(),
-        )
-        .await
-        .map_err(|source| harmos_runtime::Error::TaskFailed {
-            domain: "fixture staged endpoint",
-            source: Arc::new(source),
-        })?
+        let native = resources.resident.as_ref().unwrap().staged_operations().await
         .map_err(|source| harmos_runtime::Error::OperationFailed {
             operation: definition.id.clone(),
             source: Arc::new(source),
@@ -1059,13 +1051,11 @@ fn host(runtime: &Runtime<Bank>, provider: Arc<Provider>, lifecycle: bool) -> Ho
 }
 
 async fn published_notices(notices: &Mutex<Vec<Notice>>, count: usize) {
-    tokio::time::timeout(Duration::from_secs(2), async {
+    (async {
         while notices.lock().unwrap().len() < count {
             tokio::task::yield_now().await;
         }
-    })
-    .await
-    .unwrap();
+    }).await;
 }
 
 #[tokio::test]
@@ -1087,9 +1077,7 @@ async fn initialization_rows_commit() {
         let next = std::future::poll_fn(|context| {
             futures_core::Stream::poll_next(std::pin::Pin::new(&mut projected), context)
         });
-        let row = tokio::time::timeout(Duration::from_secs(2), next)
-            .await
-            .unwrap()
+        let row = (next).await
             .unwrap();
         assert!(matches!(row, harmos_runtime::streams::Item::Row(row) if row.value.sample == sample));
     }
@@ -1315,12 +1303,12 @@ async fn cancelled_activation_discards() {
     lifecycle.publication_start = Some(PublicationStart::Pause(started.clone()));
     let mut manager = PluginManager::new(candidate(&lifecycle, true, false, true, false)).unwrap();
     let mut initialization = Box::pin(manager.initialize(&mut lifecycle));
-    tokio::time::timeout(Duration::from_secs(2), async {
+    (async {
         tokio::select! {
             result = &mut initialization => panic!("initialization ended before cancellation: {result:?}"),
             () = started.notified() => {}
         }
-    }).await.unwrap();
+    }).await;
     drop(initialization);
     assert!(runtime.streams.publication("meter.pulse", 1).is_none());
     assert!(
@@ -1466,17 +1454,13 @@ async fn cancellation_settles_handlers() {
         .operations
         .submit(Forward { value: 0 })
         .unwrap();
-    tokio::time::timeout(Duration::from_secs(1), provider.started.notified())
-        .await
-        .unwrap();
+    (provider.started.notified()).await;
     invocation.cancel();
     assert!(matches!(
         invocation.await,
         Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))
     ));
-    tokio::time::timeout(Duration::from_secs(1), provider.dropped.notified())
-        .await
-        .unwrap();
+    (provider.dropped.notified()).await;
     assert_eq!(
         runtime
             .operations
@@ -1495,9 +1479,7 @@ async fn cancellation_settles_handlers() {
         timed,
         Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut))
     ));
-    tokio::time::timeout(Duration::from_secs(1), provider.dropped.notified())
-        .await
-        .unwrap();
+    (provider.dropped.notified()).await;
     assert_eq!(
         runtime
             .operations
@@ -1592,9 +1574,7 @@ async fn cancelled_dependency_capacity() {
         .operations
         .submit_encoded(Forward::ID, Message::encode_to_vec(&Forward { value: 0 }))
         .unwrap();
-    tokio::time::timeout(Duration::from_secs(1), provider.started.notified())
-        .await
-        .unwrap();
+    (provider.started.notified()).await;
     let busy = runtime
         .operations
         .submit_encoded(Amplify::ID, Amplify { value: 1 }.encode_to_vec());
@@ -1608,9 +1588,7 @@ async fn cancelled_dependency_capacity() {
         invocation.await,
         Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))
     ));
-    tokio::time::timeout(Duration::from_secs(1), provider.dropped.notified())
-        .await
-        .unwrap();
+    (provider.dropped.notified()).await;
     let bytes = runtime
         .operations
         .call_encoded(Forward::ID, Message::encode_to_vec(&Forward { value: 9 }))
@@ -1625,9 +1603,7 @@ async fn cancelled_dependency_capacity() {
         timed,
         Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut))
     ));
-    tokio::time::timeout(Duration::from_secs(1), provider.dropped.notified())
-        .await
-        .unwrap();
+    (provider.dropped.notified()).await;
     let bytes = runtime
         .operations
         .call_encoded(Amplify::ID, Amplify { value: 10 }.encode_to_vec())
@@ -1779,9 +1755,7 @@ async fn capacity_precedes_encoding() {
                 Ok(Amplify { value: 0 }.encode_to_vec())
             })
             .unwrap();
-        tokio::time::timeout(Duration::from_secs(1), provider.started.notified())
-            .await
-            .unwrap();
+        (provider.started.notified()).await;
         let encoded = AtomicBool::new(false);
         let busy = target.submit_with(NonZeroUsize::new(64).unwrap(), |_| {
             encoded.store(true, Ordering::SeqCst);

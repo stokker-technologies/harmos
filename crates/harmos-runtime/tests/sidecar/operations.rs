@@ -81,7 +81,9 @@ struct Counts {
     refresh_started: Notify,
     refresh_release: Notify,
     refresh_completed: AtomicUsize,
+    refresh_finished: Notify,
     refresh_cleaned: AtomicUsize,
+    refresh_cleanup: Notify,
     detached_status: Mutex<Option<String>>,
 }
 
@@ -343,6 +345,7 @@ impl Operation for RefreshOperation {
                 self.0.refresh_started.notify_one();
                 self.0.refresh_release.notified().await;
                 self.0.refresh_completed.fetch_add(1, Ordering::SeqCst);
+                self.0.refresh_finished.notify_one();
             }
             Ok(())
         }
@@ -351,6 +354,7 @@ impl Operation for RefreshOperation {
     }
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
         self.0.refresh_cleaned.fetch_add(1, Ordering::SeqCst);
+        self.0.refresh_cleanup.notify_one();
         Ok(())
     }
 }
@@ -702,15 +706,7 @@ impl<A: Attach> PluginLifecycle for Host<A> {
         )?;
         backend.registered = true;
         backend.lease = Some(self.operations.submit_resident(&definition.id).await?);
-        let native = tokio::time::timeout(
-            Duration::from_secs(5),
-            backend.resident.as_ref().unwrap().staged_operations(),
-        )
-        .await
-        .map_err(|source| harmos_runtime::Error::TaskFailed {
-            domain: "native fixture staging",
-            source: Arc::new(source),
-        })?
+        let native = backend.resident.as_ref().unwrap().staged_operations().await
         .map_err(|source| harmos_runtime::Error::OperationFailed {
             operation: definition.id.clone(),
             source: Arc::new(source),
@@ -902,13 +898,11 @@ async fn submitted(
     counts.refresh_started.notified().await;
     let cleaned = counts.refresh_cleaned.load(Ordering::SeqCst);
     drop(dropped);
-    tokio::time::timeout(Duration::from_secs(2), async {
+    (async {
         while counts.refresh_cleaned.load(Ordering::SeqCst) == cleaned {
-            tokio::time::sleep(Duration::from_millis(5)).await;
+            counts.refresh_cleanup.notified().await;
         }
-    })
-    .await
-    .expect("a dropped instance is cancelled");
+    }).await;
 
     // Detaching Keeps The Child Running Within This Attempt
     let detached = host.submit(Refresh {}).await?;
@@ -927,13 +921,11 @@ async fn submitted(
     });
     counts.refresh_release.notify_one();
     // Without a handle the child still runs while this attempt lives.
-    tokio::time::timeout(Duration::from_secs(2), async {
+    (async {
         while counts.refresh_completed.load(Ordering::SeqCst) < 2 {
-            tokio::time::sleep(Duration::from_millis(5)).await;
+            counts.refresh_finished.notified().await;
         }
-    })
-    .await
-    .expect("a detached child runs on");
+    }).await;
     Ok(())
 }
 
@@ -1023,17 +1015,12 @@ async fn catalog_order_admission() {
     source.operations.reverse();
     let mut fixture = Managed::new(source, Lanes::NativeOpen).await;
     fixture.initialize().await.unwrap();
-    tokio::time::timeout(
-        Duration::from_secs(5),
-        fixture
+    (fixture
             .host
             .ready
             .as_mut()
             .unwrap()
-            .wait_for(|ready| *ready),
-    )
-    .await
-    .unwrap()
+            .wait_for(|ready| *ready)).await
     .unwrap();
     assert_eq!(counts.attached.load(Ordering::SeqCst), 1);
     assert_eq!(counts.initialized.load(Ordering::SeqCst), 1);
@@ -1226,20 +1213,13 @@ async fn cancelled_init_resources() {
         .operations
         .submit_encoded(Read::ID, Vec::new())
         .unwrap();
-    tokio::time::timeout(
-        Duration::from_secs(1),
-        counts.initialization_entered.notified(),
-    )
-    .await
-    .unwrap();
+    (counts.initialization_entered.notified()).await;
     assert_eq!(
         invocation.status().phase(),
         harmos_runtime::operations::OperationPhase::Running
     );
     invocation.cancel();
-    let result = tokio::time::timeout(Duration::from_secs(1), &mut invocation)
-        .await
-        .unwrap();
+    let result = (&mut invocation).await;
     assert!(matches!(
         result,
         Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))

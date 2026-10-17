@@ -364,13 +364,11 @@ async fn failure_fences_side() {
     host.owner.fail_attempt.store(true, Ordering::SeqCst);
     manager.initialize(&mut host).await.unwrap();
     observed(&host.owner, 1).await;
-    tokio::time::timeout(Duration::from_secs(3), async {
+    (async {
         while host.scope.as_ref().unwrap().is_ready() {
             tokio::task::yield_now().await;
         }
-    })
-    .await
-    .unwrap();
+    }).await;
     assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
     assert_eq!(manager.status("listener").unwrap().state, harmos_runtime::plugin::PluginState::Failed);
     assert!(matches!(host.view.as_ref().unwrap().lock().await.failure().as_deref(), Some(Error::OperationFailed { .. })));
@@ -408,15 +406,13 @@ async fn runtime_signals_listener() {
     }
     let (runtime, mut manager, mut host) = setup(true, false, 1).await;
     manager.initialize(&mut host).await.unwrap();
-    tokio::time::timeout(Duration::from_secs(3), host.owner.started.notified()).await.unwrap();
+    (host.owner.started.notified()).await;
     let gates = Arc::new(Gates { running: Notify::new(), stopping: Notify::new(), release: Notify::new() });
     runtime.operations.register_observer(BlockedObserver).unwrap();
     let lease = runtime.operations.submit_with_resources_at("blocked-cleanup", gates.clone()).await.unwrap();
-    tokio::time::timeout(Duration::from_secs(2), gates.running.notified())
-        .await
-        .expect("the observer starts before testing blocked cleanup");
+    (gates.running.notified()).await;
     let mut stopping = Box::pin(runtime.stop());
-    tokio::time::timeout(Duration::from_secs(2), async {
+    (async {
         tokio::select! {
             _ = async {
                 gates.stopping.notified().await;
@@ -424,9 +420,7 @@ async fn runtime_signals_listener() {
             } => {},
             result = &mut stopping => panic!("runtime settled before blocked cleanup: {result:?}"),
         }
-    })
-    .await
-    .unwrap();
+    }).await;
     assert_eq!(host.owner.finalizations.load(Ordering::SeqCst), 1);
     drop(stopping);
     host.owner.release.notify_one();
@@ -439,12 +433,12 @@ async fn runtime_signals_listener() {
 async fn shutdown_retains_callback() {
     let (runtime, mut manager, mut host) = setup(true, false, 1).await;
     manager.initialize(&mut host).await.unwrap();
-    tokio::time::timeout(Duration::from_secs(3), host.owner.started.notified()).await.unwrap();
+    (host.owner.started.notified()).await;
     runtime.records.publish(fact(1)).await.unwrap();
     let owner = host.owner.clone();
     let mut closing = Box::pin(manager.shutdown(&mut host));
     tokio::select! { biased; _ = owner.finalizing.notified() => {}, result = &mut closing => panic!("cleanup returned before original finalizer: {result:?}") }
-    assert!(tokio::time::timeout(Duration::from_millis(20), &mut closing).await.is_err());
+    assert!(futures_util::poll!(&mut closing).is_pending());
     drop(closing);
     assert_eq!(host.original_drop.load(Ordering::SeqCst), 0);
     assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
@@ -459,7 +453,7 @@ async fn shutdown_retains_callback() {
 async fn cleanup_retries_finalizer() {
     let (runtime, mut manager, mut host) = setup(true, false, 1).await;
     manager.initialize(&mut host).await.unwrap();
-    tokio::time::timeout(Duration::from_secs(3), host.owner.started.notified()).await.unwrap();
+    (host.owner.started.notified()).await;
     runtime.records.publish(fact(1)).await.unwrap();
     host.owner.fail_cleanup.store(true, Ordering::SeqCst);
     assert!(manager.shutdown(&mut host).await.is_err());

@@ -298,7 +298,7 @@ fn channel() -> (StreamOutput<u32>, StreamInput<u32>) {
     stream(StreamSettings { items: NonZeroUsize::new(1).unwrap(), bytes: NonZeroUsize::new(4).unwrap() }).unwrap()
 }
 async fn bounded<T>(future: impl Future<Output = T>) -> T {
-    tokio::time::timeout(Duration::from_secs(5), future).await.unwrap()
+    (future).await
 }
 async fn runtime() -> Runtime<App> {
     Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap()

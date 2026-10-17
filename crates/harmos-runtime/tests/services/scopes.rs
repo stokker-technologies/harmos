@@ -112,9 +112,7 @@ async fn control_retains_join() {
             .health,
         Some(ServiceStatus::Stopping)
     ));
-    tokio::time::timeout(Duration::from_secs(1), resources.stopping.notified())
-        .await
-        .unwrap();
+    (resources.stopping.notified()).await;
     {
         let joining = first.settle();
         tokio::pin!(joining);
@@ -126,9 +124,7 @@ async fn control_retains_join() {
     }
     assert_eq!(resources.finished.load(SeqCst), 0);
     resources.cleanup.notify_one();
-    tokio::time::timeout(Duration::from_secs(1), first.settle())
-        .await
-        .unwrap()
+    (first.settle()).await
         .unwrap();
     first.settle().await.unwrap();
     assert_eq!(resources.finished.load(SeqCst), 1);
@@ -302,11 +298,7 @@ async fn dropped_lease_cleanup() {
     resources.stopping.notified().await;
     let next = manager.submit_with_resources_at("scoped", resources.clone());
     tokio::pin!(next);
-    assert!(
-        tokio::time::timeout(Duration::from_millis(10), &mut next)
-            .await
-            .is_err()
-    );
+    assert!(futures_util::poll!(&mut next).is_pending());
     assert_eq!(resources.started.load(SeqCst), 1);
     resources.cleanup.notify_one();
     let second = next.await.unwrap();

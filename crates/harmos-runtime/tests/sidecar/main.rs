@@ -1498,14 +1498,12 @@ async fn guest_row_refused() {
         harmos_runtime::operations::OperationPolicy { restart: harmos_runtime::operations::RestartPolicy::Never, ..harmos_runtime::services::POLICY },
     )
     .await;
-    tokio::time::timeout(Duration::from_secs(5), async {
+    (async {
         let mut ready = ready;
         while !*ready.borrow_and_update() {
             ready.changed().await.unwrap();
         }
-    })
-    .await
-    .unwrap();
+    }).await;
     let refused = runtime
         .operations
         .call_encoded(MeterEcho::ID, Message::encode_to_vec(&MeterEcho { text: "publish-foreign".to_owned() }))

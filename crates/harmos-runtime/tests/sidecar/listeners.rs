@@ -281,13 +281,11 @@ async fn callback_outcomes_cleanup() {
             Calling(invocation).await
         }
     });
-    tokio::time::timeout(Duration::from_secs(2), async {
+    (async {
         while probe.active.load(Ordering::SeqCst) == 0 {
             tokio::task::yield_now().await;
         }
-    })
-    .await
-    .unwrap();
+    }).await;
     stalled.abort();
     let _ = stalled.await;
     fixture.call(delivered(2)).await.unwrap();

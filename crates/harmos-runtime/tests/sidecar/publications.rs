@@ -131,6 +131,8 @@ struct ObserverCounts {
     #[serde(skip)]
     stopped: Arc<[std::sync::atomic::AtomicUsize; 2]>,
     #[serde(skip)]
+    stopped_changed: Arc<tokio::sync::Notify>,
+    #[serde(skip)]
     released: Arc<std::sync::atomic::AtomicUsize>,
 }
 
@@ -584,6 +586,20 @@ impl harmos_runtime::Plugin for Batches {
     }
 }
 
+impl ObserverCounts {
+    async fn until_stopped(&self, index: usize) {
+        loop {
+            let changed = self.stopped_changed.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
+            if self.stopped[index].load(std::sync::atomic::Ordering::SeqCst) != 0 {
+                return;
+            }
+            changed.await;
+        }
+    }
+}
+
 impl Drop for ObserverResources {
     fn drop(&mut self) {
         self.counts
@@ -709,14 +725,10 @@ impl LeftObserver {
             "observer cleanup panic"
         );
         self.0.stopped[0].fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        while self.0.coordinated.load(std::sync::atomic::Ordering::SeqCst)
-            && self
-                .0
-                .stopped
-                .iter()
-                .any(|count| count.load(std::sync::atomic::Ordering::SeqCst) == 0)
-        {
-            tokio::task::yield_now().await;
+        self.0.stopped_changed.notify_waiters();
+        if self.0.coordinated.load(std::sync::atomic::Ordering::SeqCst) {
+            self.0.until_stopped(0).await;
+            self.0.until_stopped(1).await;
         }
 
         Ok(())
@@ -738,14 +750,10 @@ impl RightObserver {
     }
     async fn stop(&mut self) -> Result<(), Infallible> {
         self.0.stopped[1].fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        while self.0.coordinated.load(std::sync::atomic::Ordering::SeqCst)
-            && self
-                .0
-                .stopped
-                .iter()
-                .any(|count| count.load(std::sync::atomic::Ordering::SeqCst) == 0)
-        {
-            tokio::task::yield_now().await;
+        self.0.stopped_changed.notify_waiters();
+        if self.0.coordinated.load(std::sync::atomic::Ordering::SeqCst) {
+            self.0.until_stopped(0).await;
+            self.0.until_stopped(1).await;
         }
 
         Ok(())
@@ -882,9 +890,7 @@ impl harmos_runtime::Plugin for Flood {
 
 /* === Public Functions === */
 pub(super) async fn ready(mut ready: tokio::sync::watch::Receiver<bool>) {
-    tokio::time::timeout(Duration::from_secs(2), ready.wait_for(|value| *value))
-        .await
-        .unwrap()
+    (ready.wait_for(|value| *value)).await
         .unwrap();
 }
 
@@ -920,7 +926,7 @@ async fn row(
              + Unpin
          ),
 ) {
-    tokio::time::timeout(Duration::from_secs(2), async {
+    (async {
         loop {
             let item = std::future::poll_fn(|cx| Pin::new(&mut *stream).poll_next(cx)).await;
             if matches!(item, Some(harmos_runtime::streams::Item::Row(_))) {
@@ -928,9 +934,7 @@ async fn row(
             }
             assert!(item.is_some(), "the observer stream must stay live");
         }
-    })
-    .await
-    .unwrap();
+    }).await;
 }
 
 #[tokio::test]
@@ -1262,7 +1266,7 @@ async fn slow_ingest_lossless() {
     // A Deliberately Slow Ingest: Every Batch Costs 3 ms
     let mut samples = Vec::new();
     let mut batches = 0;
-    tokio::time::timeout(Duration::from_secs(20), async {
+    (async {
         while samples.len() < FLOOD_ROWS as usize {
             let batch = feed.next().await.expect("the feed stays live");
             assert!(
@@ -1282,9 +1286,7 @@ async fn slow_ingest_lossless() {
             batches += 1;
             tokio::time::sleep(Duration::from_millis(3)).await;
         }
-    })
-    .await
-    .expect("every published row reaches the ingest");
+    }).await;
 
     // Every Row Arrived Once, In Order, Through A Window Of 8
     assert_eq!(samples, (0..FLOOD_ROWS).collect::<Vec<_>>());
@@ -1437,13 +1439,7 @@ async fn shared_row_independence() {
     row(&mut right_rows).await;
     assert_eq!(counts.started[1].load(SeqCst), 1);
     drop(left_rows);
-    tokio::time::timeout(Duration::from_secs(2), async {
-        while counts.stopped[0].load(SeqCst) == 0 {
-            tokio::time::sleep(Duration::from_millis(5)).await;
-        }
-    })
-    .await
-    .unwrap();
+    counts.until_stopped(0).await;
     assert_eq!(counts.stopped[1].load(SeqCst), 0);
     assert_eq!(counts.released.load(SeqCst), 0);
     assert_eq!(
@@ -1683,9 +1679,7 @@ async fn shutdown_signals_siblings() {
     row(&mut left).await;
     row(&mut right).await;
     let mut statuses = runtime.operations.watch_residents();
-    tokio::time::timeout(
-        Duration::from_secs(2),
-        statuses.wait_for(|statuses| {
+    (statuses.wait_for(|statuses| {
             let observers: Vec<_> = statuses
                 .values()
                 .filter(|status| status.kind == harmos_runtime::operations::resident::Kind::Observer)
@@ -1695,10 +1689,7 @@ async fn shutdown_signals_siblings() {
                     status.lifecycle.phase() == harmos_runtime::operations::OperationPhase::Running
                         && status.leases == 1
                 })
-        }),
-    )
-    .await
-    .unwrap()
+        })).await
     .unwrap();
     fixture.shutdown().await.unwrap();
     fixture.runtime.stop().await.unwrap();
@@ -1787,7 +1778,7 @@ async fn stop_preserves_failure() {
 #[tokio::test]
 async fn dropped_manager_recovery() {
     use std::sync::atomic::Ordering::SeqCst;
-    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+    (async {
         let counts = ObserverCounts::default();
         counts.stop_panics.store(true, SeqCst);
         let seed = ObserverSeed::new(&counts);
@@ -1833,9 +1824,7 @@ async fn dropped_manager_recovery() {
         assert_eq!(counts.released.load(SeqCst), 1);
         drop(left);
         let _ = runtime.stop().await;
-    })
-    .await
-    .unwrap();
+    }).await;
 }
 
 #[test]

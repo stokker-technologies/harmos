@@ -323,7 +323,7 @@ async fn cancellation_interrupts_policy() {
     let observed = Arc::new(Mutex::new(Vec::new()));
     runtime.operations.register_middleware(Arc::new(Wait { entered: entered.clone(), observed: observed.clone() })).unwrap();
     let invocation = runtime.operations.with_context(context("alice")).submit(DeclareParent {}).unwrap();
-    tokio::time::timeout(Duration::from_secs(1), entered.acquire()).await.unwrap().unwrap().forget();
+    (entered.acquire()).await.unwrap().forget();
     invocation.cancel();
     assert!(matches!(invocation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
     {

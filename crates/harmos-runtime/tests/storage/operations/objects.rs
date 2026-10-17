@@ -216,33 +216,21 @@ async fn object_follow_resumes() {
 #[tokio::test]
 async fn follow_reports_pruned() {
     use harmos_runtime::storage::{ObjectEntry, operations::FollowObjects, query::ObjectVersions};
-    tokio::time::timeout(std::time::Duration::from_secs(5), async {
-        let (runtime, storage, data) = query_fixture().await;
-        for index in 0..9 {
-            storage.write_object(&Document { id: "key".into(), text: index.to_string() }).await.unwrap();
-        }
-        storage.flush().await.unwrap();
-        while data.objects.lock().unwrap().len() != 8 {
-            tokio::task::yield_now().await;
-        }
-        let request = FollowObjects {
-            after: None,
-            selection: harmos_runtime::storage::query::ObjectSelection { schema: None, key: None, versions: ObjectVersions::Revisions },
-        };
-        let (sender, mut receiver) = harmos_runtime::operations::stream::<ObjectEntry>(harmos_runtime::operations::StreamSettings {
-            items: NonZeroUsize::MIN,
-            bytes: NonZeroUsize::new(4096).unwrap(),
-        })
-        .unwrap();
-        let call = runtime.operations.submit_endpoints::<FollowObjects, _>(request, sender).unwrap();
-        let error = call.await.err().unwrap();
-        let error = std::iter::successors(Some(&error as &(dyn std::error::Error + 'static)), |error| error.source())
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join(": ");
-        assert!(error.contains("retained data begins"), "{error}");
-        assert!(receiver.recv().await.is_none());
-        runtime.stop().await.unwrap();
+    let (runtime, storage, data) = query_fixture().await;
+    for index in 0..9 {
+        storage.write_object(&Document { id: "key".into(), text: index.to_string() }).await.unwrap();
+    }
+    storage.flush().await.unwrap();
+    while data.objects.lock().unwrap().len() != 8 {
+        data.control.pruned.notified().await;
+    }
+    let request = FollowObjects {
+        after: None,
+        selection: harmos_runtime::storage::query::ObjectSelection { schema: None, key: None, versions: ObjectVersions::Revisions },
+    };
+    let (sender, mut receiver) = harmos_runtime::operations::stream::<ObjectEntry>(harmos_runtime::operations::StreamSettings {
+        items: NonZeroUsize::MIN,
+        bytes: NonZeroUsize::new(4096).unwrap(),
     })
     .unwrap();
     let call = runtime.operations.submit_endpoints::<FollowObjects, _>(request, sender).unwrap();

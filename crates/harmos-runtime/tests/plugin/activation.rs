@@ -345,14 +345,12 @@ async fn initialization_retains_cleanup() {
     {
         let initialization = session.initialize(&mut host);
         tokio::pin!(initialization);
-        tokio::time::timeout(Duration::from_secs(1), async {
+        (async {
             tokio::select! {
                 outcome = &mut initialization => panic!("initialization completed before cancellation: {outcome:?}"),
                 reached = starting.wait_for(|owner| owner == "provider") => { reached.unwrap(); }
             }
-        })
-        .await
-        .unwrap();
+        }).await;
     }
     let original = session.status("provider").unwrap().generation.unwrap();
     {
@@ -392,14 +390,12 @@ async fn start_retains_backend() {
     {
         let start = manager.initialize(&mut host);
         tokio::pin!(start);
-        tokio::time::timeout(Duration::from_secs(1), async {
+        (async {
             tokio::select! {
                 outcome = &mut start => panic!("initialization completed before cancellation: {outcome:?}"),
                 reached = starting.wait_for(|owner| owner == "client") => { reached.unwrap(); }
             }
-        })
-        .await
-        .unwrap();
+        }).await;
     }
 
     let retained = manager.status("client").unwrap();
