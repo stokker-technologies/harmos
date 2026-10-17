@@ -353,8 +353,10 @@ impl Reservation {
                 }
             }
             attempt => {
-                if !matches!(&attempt, Attempt::Wait) {
-                    if let Some(waiting) = waiting { waiting.leave(state); }
+                if !matches!(&attempt, Attempt::Wait)
+                    && let Some(waiting) = waiting
+                {
+                    waiting.leave(state);
                 }
                 attempt
             }

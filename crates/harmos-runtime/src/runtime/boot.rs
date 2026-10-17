@@ -33,6 +33,7 @@ use crate::{Application, Result};
 type StartupFuture<A> =
     Pin<Box<dyn Future<Output = std::result::Result<Runtime<A>, super::Incompatible>> + Send>>;
 type CleanupFuture = Pin<Box<dyn Future<Output = Result<()>> + Send>>;
+type ReconcileFuture = Pin<Box<dyn Future<Output = Result<()>> + Send>>;
 type InitializeFuture = Pin<
     Box<
         dyn Future<Output = std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>>
@@ -44,7 +45,7 @@ pub(super) type Reconciliation<A> = Box<
     dyn FnOnce(
             super::StateManager<A>,
             StorageManager<crate::storage::ErasedCatalog>,
-        ) -> crate::storage::StorageFuture<'static, ()>
+        ) -> ReconcileFuture
         + Send,
 >;
 

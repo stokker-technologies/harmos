@@ -102,7 +102,6 @@ pub fn inspect(path: &Path) -> Result<Inspection, Error> {
         Facility::Sidecar
     };
     let declaration = Declaration::inspect(&bytes, facility)?;
-    let hash = Sha256::digest(&bytes);
     Ok(Inspection {
         id: declaration.id,
         version: declaration.version.to_string(),
@@ -113,9 +112,21 @@ pub fn inspect(path: &Path) -> Result<Inspection, Error> {
             .iter()
             .map(|operation| operation.id.to_string())
             .collect(),
-        sha256: hash.iter().map(|byte| format!("{byte:02x}")).collect(),
+        sha256: digest(&bytes),
         facility: if guest { "guest" } else { "sidecar" },
     })
+}
+
+/// Lowercase hexadecimal SHA-256 of `bytes`, the one digest form every stamp and marker uses.
+pub fn digest(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let hash = Sha256::digest(bytes);
+    let mut encoded = String::with_capacity(hash.len() * 2);
+    for byte in hash {
+        encoded.push(char::from(HEX[usize::from(byte >> 4)]));
+        encoded.push(char::from(HEX[usize::from(byte & 0x0f)]));
+    }
+    encoded
 }
 
 /* === Private Functions === */

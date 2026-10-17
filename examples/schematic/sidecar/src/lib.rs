@@ -52,7 +52,7 @@ impl harmos_sidecar::operations::lifecycle::Policy for Plugin {
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos_sidecar::plugin(id = "schematic-tools", provides = schematic_domain::operations::Native, requires = schematic_domain::operations::Requires, streams = schematic_domain::model::schematic::progress::Streams)]
+#[harmos_sidecar::plugin(id = "schematic-tools", provides = schematic_domain::operations::Native, requires = schematic_domain::operations::Requires, streams(schematic_domain::model::schematic::progress::AnalysisProgress))]
 impl harmos_sidecar::Plugin for Plugin {
     type Config = ();
     type Error = Error;

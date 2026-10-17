@@ -9,7 +9,7 @@
 
 /* === Re-Exports === */
 pub(crate) use harmos_storage::encoded_size;
-pub use harmos_storage::{ErasedCatalog, StorageMetrics};
+pub use harmos_storage::ErasedCatalog;
 
 /* === Imports === */
 use std::sync::{Arc, Mutex};

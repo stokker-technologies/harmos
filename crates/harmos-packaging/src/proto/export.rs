@@ -238,7 +238,7 @@ impl Artifacts {
     }
 
     pub(super) fn write(&self, root: &Path) -> Result<PathBuf, ExportError> {
-        std::fs::create_dir_all(&root)?;
+        std::fs::create_dir_all(root)?;
         let previous = match std::fs::read_to_string(root.join("manifest.txt")) {
             Ok(manifest) => manifest,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),

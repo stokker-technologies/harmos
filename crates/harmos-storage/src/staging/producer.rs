@@ -225,7 +225,7 @@ impl StorageFile {
         self.wait(Await::Aborted).await
     }
 
-    async fn wait(&self, goal: Await) -> Result<()> {
+    pub(super) async fn wait(&self, goal: Await) -> Result<()> {
         let mut changed = self.manager.inner.changed.subscribe();
         loop {
             self.check_generation()?;

@@ -24,7 +24,6 @@ mod embedded {
 use std::path::{Path, PathBuf};
 
 // Third Party Imports
-use sha2::{Digest, Sha256};
 
 // Local Imports
 use harmos_packaging::Error;
@@ -85,10 +84,10 @@ pub fn run(arguments: Arguments) -> Result<(), Error> {
         let mut chars = part.chars();
         chars.next().map(|first| first.to_ascii_uppercase().to_string() + chars.as_str()).unwrap_or_default()
     }).collect::<Vec<_>>().join(" ");
-    if let Some(revision) = &project.harmos_rev {
-        if revision.len() != 40 || !revision.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-            return Err(Error::Settings("--harmos-rev requires the full published Git revision".into()));
-        }
+    if let Some(revision) = &project.harmos_rev
+        && (revision.len() != 40 || !revision.bytes().all(|byte| byte.is_ascii_hexdigit()))
+    {
+        return Err(Error::Settings("--harmos-rev requires the full published Git revision".into()));
     }
     let local = project.harmos_path.as_ref().map(std::fs::canonicalize).transpose()?;
     if let Some(root) = &local {
@@ -102,8 +101,9 @@ pub fn run(arguments: Arguments) -> Result<(), Error> {
     for (name, bytes) in files {
         let original = std::str::from_utf8(bytes).map_err(|_| Error::Settings("template is not UTF-8".into()))?;
         let mut text = original.replace("__PACKAGE_NAME__", package).replace("__RUST_MODULE__", &module).replace("__PRODUCT_NAME__", &title);
-        if *name == "Cargo.toml" {
-            if let Some(root) = &local {
+        if *name == "Cargo.toml"
+            && let Some(root) = &local
+        {
                 let mut lines = Vec::new();
                 for line in text.lines() {
                     let mut line = line.to_owned();
@@ -117,7 +117,6 @@ pub fn run(arguments: Arguments) -> Result<(), Error> {
                     lines.push(line);
                 }
                 text = lines.join("\n") + "\n";
-            }
         }
         text = text.replace("__HARMOS_REVISION__", project.harmos_rev.as_deref().unwrap_or(""));
         prepared.push((*name, finalize_marker(&text)));
@@ -142,8 +141,10 @@ fn finalize_marker(text: &str) -> String {
     let text = text.replace("\r\n", "\n");
     let mut start = 0usize;
     if text.starts_with("#!") { start = text.find('\n').map_or(text.len(), |end| end + 1); }
-    if text.starts_with("---\n") {
-        if let Some(end) = text[4..].find("\n---\n") { start = 4 + end + 5; }
+    if let Some(rest) = text.strip_prefix("---\n")
+        && let Some(end) = rest.find("\n---\n")
+    {
+        start = 4 + end + 5;
     }
     let end = text[start..].find('\n').map_or(text.len(), |offset| start + offset + 1);
     let line = &text[start..end];
@@ -151,7 +152,7 @@ fn finalize_marker(text: &str) -> String {
     let Some((prefix, _)) = line.split_once("; sha256:") else { return text };
     let mut body = text.clone();
     body.replace_range(start..end, "");
-    let digest = format!("{:x}", Sha256::digest(body.as_bytes()));
+    let digest = harmos_packaging::digest(body.as_bytes());
     let closing = if line.trim_end().ends_with("-->") { " -->" } else { "" };
     format!("{}{prefix}; sha256:{digest}{closing}\n{}", &text[..start], &text[end..])
 }

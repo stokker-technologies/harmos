@@ -27,7 +27,7 @@ mod objects;
 pub mod query;
 mod queue;
 mod receipts;
-mod schema;
+mod schema_encoding;
 mod selection;
 mod snapshot;
 mod staging;

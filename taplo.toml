@@ -16,7 +16,7 @@ exclude = [
   ".venv/**",
   "vendor/**",
   "Cargo.lock",
-  "crates/cargo-dokime/templates/**",
+  "crates/cargo-harmos/templates/**",
   "crates/harmos-macros/tests/fixtures/metadata/manifest.toml",
 ]
 

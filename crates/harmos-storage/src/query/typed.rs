@@ -25,7 +25,7 @@ use tokio::sync::OwnedSemaphorePermit;
 // Local Imports
 use super::reader::{query_slot, retry};
 use super::{ObjectSelection, ObjectVersions, RecordSelection};
-use crate::catalog::Contains;
+use harmos_domain::catalog::Contains;
 use crate::storage::backend::ScanPage;
 use crate::storage::capacity::{Held, Pool, Refusal, Reservation};
 use crate::storage::manager::{ENTRY_OVERHEAD, Inner};

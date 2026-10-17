@@ -40,10 +40,6 @@ pub struct AnalysisProgress {
 
 
 /* === Enums === */
-#[harmos_domain::catalog]
-pub enum Streams {
-    Progress(AnalysisProgress),
-}
 
 
 /* === Traits === */

@@ -26,7 +26,8 @@ use super::backend::ScanPage;
 use super::capacity::{Attempt, Held, Pool, Refusal, Reservation};
 use super::config::SCAN_ROWS;
 use super::manager::{Domain, ENTRY_OVERHEAD, Inner, State, encoded_size};
-use super::selection::Entry;
+pub use super::selection::Entry;
+use super::selection::Queued;
 use super::snapshot::Snapshot;
 use super::{StorageCursor, StorageManager};
 use crate::{Error, Result};
@@ -39,7 +40,7 @@ static NEXT_FOLLOWER: AtomicU64 = AtomicU64::new(1);
 
 /* === Structs === */
 /// An open subscription: saved history first, then accepted entries as they arrive.
-pub(super) struct Follower<T: Entry> {
+pub struct Follower<T: Entry> {
     inner: Arc<Inner>,
     id: u64,
     held: Held,
@@ -51,7 +52,7 @@ pub(super) struct Follower<T: Entry> {
 }
 
 /// One delivered page; its entries stay charged until the page drops.
-pub(super) struct FollowPage<T> {
+pub struct FollowPage<T> {
     entries: Vec<T>,
     _charge: Reservation,
 }
@@ -73,7 +74,7 @@ enum Failure {
 /* === Implementations === */
 impl<C> StorageManager<C> {
     /// Open a live subscription for one entry kind after `after`.
-    pub(super) async fn follow<T: Entry>(
+    pub async fn follow<T: Entry>(
         &self,
         after: Option<&StorageCursor>,
         selection: T::Selection,
@@ -124,16 +125,16 @@ impl<C> StorageManager<C> {
 }
 
 impl<T: Entry> Follower<T> {
-    pub(super) fn saved_boundary(&self) -> &StorageCursor {
+    pub fn saved_boundary(&self) -> &StorageCursor {
         &self.saved
     }
 
-    pub(super) fn accepted_boundary(&self) -> &StorageCursor {
+    pub fn accepted_boundary(&self) -> &StorageCursor {
         &self.accepted
     }
 
     /// The next nonempty page, waiting for newly accepted entries when caught up.
-    pub(super) async fn next(&mut self) -> Result<FollowPage<T>> {
+    pub async fn next(&mut self) -> Result<FollowPage<T>> {
         loop {
             if let Some(page) = self.next_history().await? {
                 return Ok(page);
@@ -230,7 +231,7 @@ impl<T: Entry> Drop for Follower<T> {
 }
 
 impl<T> FollowPage<T> {
-    pub(super) fn entries(&self) -> &[T] {
+    pub fn entries(&self) -> &[T] {
         &self.entries
     }
 }
@@ -335,7 +336,7 @@ fn find<T: Entry>(state: &mut State, id: u64, selection: &T::Selection) -> Resul
         if pending.operation.sequence() <= cursor {
             continue;
         }
-        let entries = T::pending(&pending.operation);
+        let entries = T::pending(Queued::new(&pending.operation));
         let start = entries.partition_point(|entry| entry.position().sequence <= cursor);
         if entries[start..]
             .iter()
@@ -377,7 +378,7 @@ fn copy<T: Entry>(
         if pending.operation.sequence() <= cursor {
             continue;
         }
-        let values = T::pending(&pending.operation);
+        let values = T::pending(Queued::new(&pending.operation));
         let start = values.partition_point(|entry| entry.position().sequence <= cursor);
         for entry in &values[start..] {
             if entries.len() >= SCAN_ROWS.get() {

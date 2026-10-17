@@ -17,9 +17,9 @@ use std::collections::BTreeMap;
 use std::io::{self, Write};
 use std::ops::Range;
 // Third Party Imports
-use sha2::{Digest, Sha256};
 // Local Imports
 use super::{Error, Facility, Limits, Manifest, invalid};
+use crate::digest;
 
 /* === Constants === */
 
@@ -53,16 +53,6 @@ impl Write for Bounded {
 }
 
 /* === Public Functions === */
-pub(super) fn digest(bytes: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let hash = Sha256::digest(bytes);
-    let mut encoded = String::with_capacity(hash.len() * 2);
-    for byte in hash {
-        encoded.push(char::from(HEX[usize::from(byte >> 4)]));
-        encoded.push(char::from(HEX[usize::from(byte & 0x0f)]));
-    }
-    encoded
-}
 
 pub(super) fn path(path: &str) -> Result<(), Error> {
     // A deliberately small USTAR/Windows/Unix intersection: no extensions or

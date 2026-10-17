@@ -23,7 +23,7 @@ use std::process::{Command, Stdio};
 
 // Third Party Imports
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
+use crate::digest;
 
 // Local Imports
 use super::{BuildCancellation, Error, metadata::Metadata, process::Process};
@@ -338,9 +338,9 @@ fn finish_build(
         ));
     }
     #[cfg(feature = "guest")]
-    let mut components = BTreeMap::new();
+    let mut components: BTreeMap<PathBuf, Vec<u8>> = BTreeMap::new();
     #[cfg(not(feature = "guest"))]
-    let components = BTreeMap::new();
+    let components: BTreeMap<PathBuf, Vec<u8>> = BTreeMap::new();
     // Cargo Emits Core Modules; Consumers Receive Ready-To-Load Components.
     #[cfg(feature = "guest")]
     for artifact in &mut artifacts {
@@ -534,10 +534,6 @@ pub fn package_with_cancellation(
         packages.push(PackageOutput { producer, path, sha256 });
     }
     Ok(packages)
-}
-
-fn digest(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
 }
 
 fn safe_name(name: &str) -> Result<(), Error> {

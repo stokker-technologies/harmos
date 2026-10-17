@@ -13,14 +13,14 @@ version = { workspace = true }
 [[bin]]
 name = "harmos-sidecar-catalog-fixture"
 path = "tests/fixtures/catalog_sidecar.rs"
-required-features = ["kit"]
+required-features = ["kit", "derive"]
 test = false
 bench = false
 
 [[bin]]
 name = "harmos-sidecar-throughput-fixture"
 path = "tests/fixtures/throughput_sidecar.rs"
-required-features = ["kit"]
+required-features = ["kit", "derive"]
 test = false
 bench = false
 

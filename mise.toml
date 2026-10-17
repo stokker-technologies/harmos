@@ -113,7 +113,7 @@ run = "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harm
 
 [tasks."check:examples"]
 description = "Check / Example Crate Boundaries"
-run = "{{vars.cargo_guard}}cargo check --locked -p schematic-domain -p schematic-app -p schematic-cli -p schematic-guest -p schematic-sidecar -p jsonl-adapter -p harmos-observer-fixture -p harmos-lifecycle-fixture --all-targets"
+run = "{{vars.cargo_guard}}cargo check --locked -p schematic-domain -p schematic-app -p schematic-cli -p schematic-guest -p schematic-sidecar -p schematic-storage --all-targets"
 
 
 # === === Tasks | Stats === === #
@@ -140,19 +140,19 @@ description = "Lint / Authoring"
 run = "{{vars.cargo_guard}}cargo clippy --locked -p harmos-macros --all-targets -- -D warnings"
 
 [tasks."format:python"]
-run = "uv run --locked --project tools/python ruff format --config tools/python/pyproject.toml tools/python crates/harmos-domain/src/bindings/python crates/harmos-domain/tests/grpc/python.py"
+run = "uv run --locked --project tools/python ruff format --config tools/python/pyproject.toml tools/python crates/harmos-packaging/src/python crates/harmos-packaging/tests/grpc/python.py"
 
 [tasks."format:python:check"]
-run = "uv run --locked --project tools/python ruff format --check --config tools/python/pyproject.toml tools/python crates/harmos-domain/src/bindings/python crates/harmos-domain/tests/grpc/python.py"
+run = "uv run --locked --project tools/python ruff format --check --config tools/python/pyproject.toml tools/python crates/harmos-packaging/src/python crates/harmos-packaging/tests/grpc/python.py"
 
 [tasks."lint:python"]
-run = "uv run --locked --project tools/python ruff check --config tools/python/pyproject.toml tools/python crates/harmos-domain/src/bindings/python crates/harmos-domain/tests/grpc/python.py"
+run = "uv run --locked --project tools/python ruff check --config tools/python/pyproject.toml tools/python crates/harmos-packaging/src/python crates/harmos-packaging/tests/grpc/python.py"
 
 [tasks."build:workspace:dev"]
 run = "{{vars.cargo_guard}}cargo build --locked --workspace --timings"
 
 [tasks."check:types:python"]
-run = "uv run --locked --project tools/python --group test ty check --project tools/python --extra-search-path crates/harmos-domain/src/bindings tools/python crates/harmos-domain/src/bindings/python"
+run = "uv run --locked --project tools/python --group test ty check --project tools/python --extra-search-path crates/harmos-packaging/src tools/python crates/harmos-packaging/src/python"
 
 # === Tasks | Continuous Integration === #
 
@@ -207,26 +207,29 @@ run = [
   "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features plugin-sidecar",
   "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features plugin-guest",
   "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features grpc",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features reflection",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features bindings-proto",
   "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features signal",
   "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features signal-fft",
   "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features simulation",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features packaging",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features packaging-sidecar",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos --no-default-features --features packaging-guest",
   "{{vars.cargo_guard}}cargo check --locked -p cargo-harmos --no-default-features",
   "{{vars.cargo_guard}}cargo check --locked -p cargo-harmos --no-default-features --features sidecar",
   "{{vars.cargo_guard}}cargo check --locked -p cargo-harmos --no-default-features --features guest",
   "{{vars.cargo_guard}}cargo check --locked -p cargo-harmos --no-default-features --features sidecar,guest",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos-bundle",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos-packaging --no-default-features",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos-packaging --no-default-features --features bindings-proto",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos-packaging --no-default-features --features bindings-python",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos-packaging --no-default-features --features sidecar",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos-packaging --no-default-features --features guest",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-domain --no-default-features",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos-sdk --no-default-features",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos-sdk --no-default-features --features streaming",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos-sdk --no-default-features --features grpc",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos-storage --no-default-features --all-targets",
+  "{{vars.cargo_guard}}cargo check --locked -p harmos-storage --no-default-features --features fft --all-targets",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-guest --no-default-features --features kit,derive,streaming",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos-guest --no-default-features --features componentize",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-sidecar --no-default-features",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-sidecar --no-default-features --features transport --all-targets",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-sidecar --no-default-features --features kit --lib",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos-signal --no-default-features --all-targets",
-  "{{vars.cargo_guard}}cargo check --locked -p harmos-signal --no-default-features --features fft --all-targets",
 ]
 
 

@@ -116,8 +116,6 @@ pub use harmos_domain::{
     RowMetadata, Storable, StreamField, StreamSpec, Value, ValueError, btree_map_memory,
 };
 // Contract Namespaces The Host Does Not Extend, Re-Exported Whole.
-#[cfg(feature = "plugin")]
-pub(crate) use harmos_packaging::bundle;
 
 // `message` Names Both The Contract Module And Its Same-Named Attribute.
 pub use harmos_domain::{artifacts, catalog, failure, listeners, message, schema};

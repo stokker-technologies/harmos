@@ -26,6 +26,9 @@ use crate::Identified;
 /* === Macros === */
 
 /* === Type Aliases === */
+/// Record members a transaction contributes, each with its optional system fact.
+pub type PreparedMembers = Vec<(Option<SystemFact>, Prepared)>;
+
 /* === Structs === */
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -283,7 +286,7 @@ impl Records {
     pub fn collect<S, T: super::Transaction<S> + CatalogCodec>(
         transaction: &T,
         state: &S,
-    ) -> Result<(Prepared, Vec<(Option<SystemFact>, Prepared)>), PreparationError> {
+    ) -> Result<(Prepared, PreparedMembers), PreparationError> {
         let prepared = Prepared::encode(transaction)?;
         let mut out = Self::default();
         out.reserve(prepared.bytes()?)?;

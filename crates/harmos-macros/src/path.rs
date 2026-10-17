@@ -41,9 +41,10 @@ impl HarmosPath {
         for package in [
             "harmos",
             "dokime",
+            // The Host Runtime Hosts Guest And Sidecar Kits; It Resolves Before Them.
+            "harmos-runtime",
             "harmos-guest",
             "harmos-sidecar",
-            "harmos-runtime",
             "harmos-sdk",
             "harmos-domain",
         ] {

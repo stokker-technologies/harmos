@@ -31,7 +31,6 @@ pub struct SchemaSettings {
     pub preparation_work: std::num::NonZeroUsize,
 }
 
-#[cfg(feature = "streaming")]
 #[derive(Clone, Copy, Debug)]
 pub struct StreamSettings {
     pub items: std::num::NonZeroUsize,

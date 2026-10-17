@@ -20,7 +20,7 @@ pub use harmos_domain::config::*;
 #[cfg(feature = "plugin-guest")]
 use std::num::NonZeroU64;
 use std::num::NonZeroUsize;
-#[cfg(any(feature = "grpc", feature = "plugin", feature = "packaging"))]
+#[cfg(any(feature = "grpc", feature = "plugin"))]
 use std::time::Duration;
 
 // Third Party Imports

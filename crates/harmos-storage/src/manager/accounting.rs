@@ -41,7 +41,4 @@ impl<C> StorageManager<C> {
             .await
             .map_err(Refusal::into_error)
     }
-
-    /// The schema registered under `key` in the current saved image.
-
 }
