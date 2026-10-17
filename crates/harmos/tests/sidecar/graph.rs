@@ -35,11 +35,11 @@ use tokio::io::{AsyncRead, ReadBuf};
 use tokio::sync::Notify;
 // Local Imports
 use super::{HostLanes, assembly, operations, service_status};
-use crate::witness::Witness;
 use crate::support::Bank;
+use crate::witness::Witness;
+use harmos::operations::OperationDeclaration;
 use harmos::operations::OperationPolicy;
 use harmos::sidecar::{Attach, Attached, Notice, Refusal, Supervised, Supervisor};
-use harmos::operations::OperationDeclaration;
 use harmos::{Message, Runtime, services::Service, services::ServiceStatus};
 use harmos_sidecar::attach::{End, Ending};
 
@@ -129,9 +129,7 @@ impl harmos::Plugin for Independent {
     type Error = Refusal;
     type Resources = Witness;
     fn prepare(key: String) -> Result<Self, Refusal> {
-        Ok(Self {
-            resources: Witness::find(&key).ok_or_else(|| Refusal::of("the story witness is gone"))?,
-        })
+        Ok(Self { resources: Witness::find(&key).ok_or_else(|| Refusal::of("the story witness is gone"))? })
     }
     async fn initialize(&mut self, _: &Supervisor) -> Result<(), Refusal> {
         self.resources.mark("initialized");
@@ -140,10 +138,7 @@ impl harmos::Plugin for Independent {
     fn resources(&self) -> Arc<Witness> {
         self.resources.clone()
     }
-    fn bind_operations(
-        &self,
-        _: &mut harmos::operations::WireTable<Supervisor>,
-    ) -> Result<(), harmos::operations::ServingError> {
+    fn bind_operations(&self, _: &mut harmos::operations::WireTable<Supervisor>) -> Result<(), harmos::operations::ServingError> {
         Ok(())
     }
     async fn stop(&mut self, _: &Supervisor) -> Result<(), Refusal> {
@@ -157,11 +152,7 @@ impl harmos::Plugin for Independent {
 }
 
 impl AsyncRead for CutRead {
-    fn poll_read(
-        self: Pin<&mut Self>,
-        context: &mut Context<'_>,
-        buffer: &mut ReadBuf<'_>,
-    ) -> Poll<std::io::Result<()>> {
+    fn poll_read(self: Pin<&mut Self>, context: &mut Context<'_>, buffer: &mut ReadBuf<'_>) -> Poll<std::io::Result<()>> {
         let reader = self.get_mut();
         if reader.closed || reader.cut.as_mut().poll(context).is_ready() {
             reader.closed = true;
@@ -190,9 +181,7 @@ impl End for GatedEnding {
             }
             if self.gate.fail.load(Ordering::SeqCst) {
                 self.gate.failures.fetch_add(1, Ordering::SeqCst);
-                return Err(std::io::Error::other(
-                    "original fixture ending remains failed",
-                ));
+                return Err(std::io::Error::other("original fixture ending remains failed"));
             }
             self.original.settle().await?;
             self.gate.joined.store(true, Ordering::SeqCst);
@@ -210,19 +199,13 @@ impl Attach for Joined {
     fn operations(&self) -> harmos_domain::Result<Vec<harmos::operations::Definition>> {
         forwarded!(self, operations)
     }
-    fn operation_contracts(
-        &self,
-    ) -> harmos_domain::Result<Option<Vec<harmos::operations::Contract>>> {
+    fn operation_contracts(&self) -> harmos_domain::Result<Option<Vec<harmos::operations::Contract>>> {
         forwarded!(self, operation_contracts)
     }
-    fn required_contracts(
-        &self,
-    ) -> harmos_domain::Result<Option<Vec<harmos_domain::inventory::contracts::Required>>> {
+    fn required_contracts(&self) -> harmos_domain::Result<Option<Vec<harmos_domain::inventory::contracts::Required>>> {
         forwarded!(self, required_contracts)
     }
-    fn sdk_lifecycle(
-        &self,
-    ) -> harmos_domain::Result<Option<[harmos::operations::lifecycle::Descriptor; 2]>> {
+    fn sdk_lifecycle(&self) -> harmos_domain::Result<Option<[harmos::operations::lifecycle::Descriptor; 2]>> {
         forwarded!(self, sdk_lifecycle)
     }
     fn publications(&self) -> Vec<harmos_sidecar::StreamDeclaration> {
@@ -231,12 +214,10 @@ impl Attach for Joined {
     fn observers(&self) -> Vec<harmos_domain::inventory::observers::Declaration> {
         forwarded!(self, observers)
     }
-    fn observer_control(&self) -> harmos_domain::Result<Option<harmos::operations::Contract>> {
-        forwarded!(self, observer_control)
+    fn observe_contract(&self) -> harmos_domain::Result<Option<harmos::operations::Contract>> {
+        forwarded!(self, observe_contract)
     }
-    fn listener_declarations(
-        &self,
-    ) -> harmos_domain::Result<Option<Vec<harmos_domain::listeners::Definition>>> {
+    fn listener_declarations(&self) -> harmos_domain::Result<Option<Vec<harmos_domain::listeners::Definition>>> {
         forwarded!(self, listener_declarations)
     }
     async fn attach(&self) -> Result<Attached, Self::Error> {
@@ -254,11 +235,7 @@ impl Attach for Joined {
             waiting: None,
         });
         let cut = self.gate.cut.clone();
-        let read = CutRead {
-            original: read,
-            cut: Box::pin(async move { cut.notified().await }),
-            closed: false,
-        };
+        let read = CutRead { original: read, cut: Box::pin(async move { cut.notified().await }), closed: false };
         let mut attached = Attached::new(write, read).ending(ending);
         if let Some(control) = control {
             attached = attached.control(control);
@@ -273,21 +250,17 @@ impl Attach for Joined {
 impl Fixture {
     async fn new() -> Self {
         let fixture = Self::start(false).await;
-        service_status(
-            fixture.runtime.operations.watch_residents(),
-            "local-graph",
-            |status| matches!(status, ServiceStatus::Running { .. }),
-        )
+        service_status(fixture.runtime.operations.watch_residents(), "local-graph", |status| {
+            matches!(status, ServiceStatus::Running { .. })
+        })
         .await;
         fixture
     }
 
     // Submit The Graph Without Awaiting Admission; `held` Holds The Client's Initialization.
     async fn start(held: bool) -> Self {
-        let marks: BTreeMap<_, _> = ["process-provider", "process-client", "process-independent"]
-            .into_iter()
-            .map(|owner| (owner, Witness::open()))
-            .collect();
+        let marks: BTreeMap<_, _> =
+            ["process-provider", "process-client", "process-independent"].into_iter().map(|owner| (owner, Witness::open())).collect();
         if held {
             marks["process-client"].mark("hold-initialization");
         }
@@ -296,18 +269,9 @@ impl Fixture {
         let client = Arc::new(Gate::default());
         let independent = Arc::new(Gate::default());
         let sources = [
-            Joined {
-                source: Source::Provider(harmos_sidecar::PluginNative::new(capacity).unwrap()),
-                gate: provider.clone(),
-            },
-            Joined {
-                source: Source::Client(harmos_sidecar::PluginNative::new(capacity).unwrap()),
-                gate: client.clone(),
-            },
-            Joined {
-                source: Source::Independent(harmos_sidecar::PluginNative::new(capacity).unwrap()),
-                gate: independent.clone(),
-            },
+            Joined { source: Source::Provider(harmos_sidecar::PluginNative::new(capacity).unwrap()), gate: provider.clone() },
+            Joined { source: Source::Client(harmos_sidecar::PluginNative::new(capacity).unwrap()), gate: client.clone() },
+            Joined { source: Source::Independent(harmos_sidecar::PluginNative::new(capacity).unwrap()), gate: independent.clone() },
         ];
         let definitions = sources
             .iter()
@@ -316,17 +280,12 @@ impl Fixture {
                 operations::definition(source, serde_json::to_vec(key).unwrap())
             })
             .collect::<Vec<_>>();
-        let encoding_bytes = definitions
-            .iter()
-            .map(|definition| definition.configuration.len() * 2)
-            .max()
-            .unwrap()
-            + std::mem::size_of::<harmos::operations::lifecycle::InitializeRequest>()
+        let encoding_bytes = definitions.iter().map(|definition| definition.configuration.len() * 2).max().unwrap()
+            + std::mem::size_of::<harmos::operations::lifecycle::Initialize>()
             + 84;
         assert!(encoding_bytes <= 512);
         let definitions = harmos::plugin::PluginDefinitions::new(definitions, []).unwrap();
-        let residents =
-            sources.map(|source| Supervised::new(source, notices as fn(&Service<Bank>, Notice)));
+        let residents = sources.map(|source| Supervised::new(source, notices as fn(&Service<Bank>, Notice)));
         let runtime = assembly()
             .operation_settings(harmos::operations::Settings {
                 preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
@@ -357,19 +316,8 @@ impl Fixture {
                 },
             )
             .unwrap();
-        let lease = runtime
-            .operations
-            .submit_resident("local-graph")
-            .await
-            .unwrap();
-        Self {
-            runtime,
-            _lease: lease,
-            marks,
-            client,
-            provider,
-            independent,
-        }
+        let lease = runtime.operations.submit_resident("local-graph").await.unwrap();
+        Self { runtime, _lease: lease, marks, client, provider, independent }
     }
     fn marks(&self, owner: &str) -> &Witness {
         &self.marks[owner]
@@ -412,13 +360,9 @@ async fn cancelled_stop_retains() {
     assert!(!fixture.client.joined.load(Ordering::SeqCst));
     assert!(!fixture.provider.joined.load(Ordering::SeqCst));
     assert!(!fixture.marks("process-provider").seen("shutdown"));
-    assert_eq!(
-        fixture.marks("process-provider").count("read-finalized-2"),
-        1
-    );
+    assert_eq!(fixture.marks("process-provider").count("read-finalized-2"), 1);
     fixture.client.release.notify_one();
-    fixture.runtime.stop().await
-        .unwrap();
+    fixture.runtime.stop().await.unwrap();
     fixture.settled();
 }
 
@@ -427,13 +371,7 @@ async fn failed_ending_retires() {
     let fixture = Fixture::new().await;
     fixture.client.fail.store(true, Ordering::SeqCst);
     let result = fixture.runtime.stop().await;
-    assert!(matches!(
-        result,
-        Err(harmos::Error::TaskFailed {
-            domain: "service",
-            ..
-        })
-    ));
+    assert!(matches!(result, Err(harmos::Error::TaskFailed { domain: "service", .. })));
     assert!(!fixture.client.joined.load(Ordering::SeqCst));
     assert!(!fixture.provider.joined.load(Ordering::SeqCst));
     assert!(!fixture.marks("process-provider").seen("shutdown"));
@@ -442,21 +380,14 @@ async fn failed_ending_retires() {
     let failures = fixture.client.failures.load(Ordering::SeqCst);
     assert!(failures > 0);
     let result = fixture.runtime.stop().await;
-    assert!(matches!(
-        result,
-        Err(harmos::Error::TaskFailed {
-            domain: "service",
-            ..
-        })
-    ));
+    assert!(matches!(result, Err(harmos::Error::TaskFailed { domain: "service", .. })));
     assert!(fixture.client.failures.load(Ordering::SeqCst) > failures);
     assert_eq!(fixture.client.starts.load(Ordering::SeqCst), 1);
     assert_eq!(fixture.marks("process-independent").count("cleaned"), 1);
     assert!(!fixture.marks("process-provider").seen("shutdown"));
     let failures = fixture.client.failures.load(Ordering::SeqCst);
     fixture.client.fail.store(false, Ordering::SeqCst);
-    fixture.runtime.stop().await
-        .unwrap();
+    fixture.runtime.stop().await.unwrap();
     fixture.settled();
     assert_eq!(fixture.client.failures.load(Ordering::SeqCst), failures);
 }
@@ -466,27 +397,17 @@ async fn unrelated_failure_retires() {
     let fixture = Fixture::new().await;
     fixture.independent.fail.store(true, Ordering::SeqCst);
     let result = fixture.runtime.stop().await;
-    assert!(matches!(
-        result,
-        Err(harmos::Error::TaskFailed {
-            domain: "service",
-            ..
-        })
-    ));
+    assert!(matches!(result, Err(harmos::Error::TaskFailed { domain: "service", .. })));
     assert!(!fixture.independent.joined.load(Ordering::SeqCst));
     assert!(fixture.client.joined.load(Ordering::SeqCst));
     assert!(fixture.provider.joined.load(Ordering::SeqCst));
-    assert_eq!(
-        fixture.marks("process-provider").count("read-finalized-2"),
-        1
-    );
+    assert_eq!(fixture.marks("process-provider").count("read-finalized-2"), 1);
     for owner in ["process-client", "process-provider"] {
         assert_eq!(fixture.marks(owner).count("shutdown"), 1);
         assert_eq!(fixture.marks(owner).count("cleaned"), 1);
     }
     fixture.independent.fail.store(false, Ordering::SeqCst);
-    fixture.runtime.stop().await
-        .unwrap();
+    fixture.runtime.stop().await.unwrap();
     fixture.settled();
 }
 
@@ -510,40 +431,21 @@ async fn eof_retains_child() {
         }
         assert!(!fixture.provider.joined.load(Ordering::SeqCst));
         assert!(!fixture.client.joined.load(Ordering::SeqCst));
-        assert!(
-            !fixture.marks("process-client").seen("dependency-shutdown")
-        );
+        assert!(!fixture.marks("process-client").seen("dependency-shutdown"));
         // Cancel Only The Wait; The Same Original Child And Ending Remain Owned.
     }
     fixture.provider.fail.store(true, Ordering::SeqCst);
     fixture.provider.release.notify_one();
     let failed = fixture.runtime.stop().await;
-    assert!(matches!(
-        failed,
-        Err(harmos::Error::TaskFailed {
-            domain: "service",
-            ..
-        })
-    ));
+    assert!(matches!(failed, Err(harmos::Error::TaskFailed { domain: "service", .. })));
     assert!(fixture.provider.failures.load(Ordering::SeqCst) > 0);
     assert!(!fixture.provider.joined.load(Ordering::SeqCst));
     assert!(!fixture.client.joined.load(Ordering::SeqCst));
     fixture.provider.fail.store(false, Ordering::SeqCst);
     for _ in 0..3 {
         let result = fixture.runtime.stop().await;
-        assert!(
-            result.is_ok()
-                || matches!(
-                    result,
-                    Err(harmos::Error::TaskFailed {
-                        domain: "service",
-                        ..
-                    })
-                )
-        );
-        if fixture.provider.joined.load(Ordering::SeqCst)
-            && fixture.client.joined.load(Ordering::SeqCst)
-        {
+        assert!(result.is_ok() || matches!(result, Err(harmos::Error::TaskFailed { domain: "service", .. })));
+        if fixture.provider.joined.load(Ordering::SeqCst) && fixture.client.joined.load(Ordering::SeqCst) {
             break;
         }
     }
@@ -570,38 +472,19 @@ async fn dependency_precedes_admission() {
     client.marked("dependency-initialized").await;
     assert_eq!(provider.count("initialized"), 1);
     assert_eq!(provider.count("read-finalized-1"), 1);
-    let status = service_status(
-        fixture.runtime.operations.watch_residents(),
-        "local-graph",
-        |_| true,
-    )
-    .await;
+    let status = service_status(fixture.runtime.operations.watch_residents(), "local-graph", |_| true).await;
     assert_eq!(status, ServiceStatus::Starting);
     assert!(matches!(
-        fixture
-            .runtime
-            .operations
-            .submit_encoded(Probe::ID, Step { phase: 3 }.encode_to_vec()),
-        Err(harmos::Error::NotReady {
-            domain: "operation plugin"
-        }),
+        fixture.runtime.operations.submit_encoded(Probe::ID, Step { phase: 3 }.encode_to_vec()),
+        Err(harmos::Error::NotReady { domain: "operation plugin" }),
     ));
     assert!(!client.seen("probe-initialized"));
 
     // Released Initialization Admits Ordinary Calls
     client.mark("release-initialization");
-    service_status(
-        fixture.runtime.operations.watch_residents(),
-        "local-graph",
-        |status| matches!(status, ServiceStatus::Running { .. }),
-    )
-    .await;
-    let response = fixture
-        .runtime
-        .operations
-        .call_encoded(Probe::ID, Step { phase: 3 }.encode_to_vec())
-        .await
-        .unwrap();
+    service_status(fixture.runtime.operations.watch_residents(), "local-graph", |status| matches!(status, ServiceStatus::Running { .. }))
+        .await;
+    let response = fixture.runtime.operations.call_encoded(Probe::ID, Step { phase: 3 }.encode_to_vec()).await.unwrap();
     assert_eq!(Step::decode(&response).unwrap().phase, 3);
     assert_eq!(client.count("probe-initialized"), 1);
     assert_eq!(client.count("probe-finalized"), 1);

@@ -21,19 +21,15 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 // Local Imports
-use harmos::operations::{
-    Context, Operation, OperationDeclaration, OperationPolicy, PluginRegistration, RestartPolicy,
-    RetryPolicy, Visibility, WireDeclaration, WireOperation,
-};
+use harmos::operations::{Context, Operation, OperationPolicy, PluginRegistration, RestartPolicy, RetryPolicy, WireDeclaration};
 use harmos::plugin::{
-    PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions,
-    PluginEndpoint, PluginLifecycle, PluginLifecycleAuthority, PluginManager, PluginScope,
-    PluginTransition, Router,
+    PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
+    PluginLifecycleAuthority, PluginManager, PluginScope, PluginTransition, Router,
 };
 use harmos::schema::{Described, Field};
 use harmos::streams::PluginListenerRegistration;
 use harmos::{Error, Message, MessageError, Result, Runtime};
-use harmos_domain::listeners::{Context as DeliveryContext, Delivery, Source};
+use harmos_domain::listeners::{Context as DeliveryContext, Delivery, Listener, Source};
 
 /* === Constants === */
 
@@ -59,6 +55,7 @@ struct WireFact {
 
 struct Model;
 
+// Each Callback Over The Same Row Is Its Own Listener.
 struct Heard<const FIRST: bool>;
 
 struct Owner {
@@ -107,8 +104,8 @@ enum Rows {
 
 #[harmos::catalog]
 enum Callbacks {
-    First(Heard<true>),
-    Second(Heard<false>),
+    First(Delivery<Heard<true>>),
+    Second(Delivery<Heard<false>>),
 }
 
 #[harmos::lanes]
@@ -131,11 +128,7 @@ enum Failed {
 impl Fact {
     const DEFINITION: (&'static str, u32, usize) = ("listener.samples", 1, 512);
     fn definition() -> harmos::streams::Definition {
-        harmos::__private::stream_definition::<Self>(
-            Self::DEFINITION.0,
-            Self::DEFINITION.1,
-            Self::DEFINITION.2,
-        )
+        harmos::__private::stream_definition::<Self>(Self::DEFINITION.0, Self::DEFINITION.1, Self::DEFINITION.2)
     }
 }
 
@@ -174,10 +167,7 @@ impl Message for Fact {
         WireFact { value: self.value }.encoded_len()
     }
     fn decode(bytes: &[u8]) -> std::result::Result<Self, MessageError> {
-        Ok(Self {
-            value: WireFact::decode(bytes)?.value,
-            dropped: Arc::new(AtomicUsize::new(0)),
-        })
+        Ok(Self { value: WireFact::decode(bytes)?.value, dropped: Arc::new(AtomicUsize::new(0)) })
     }
 }
 
@@ -189,25 +179,15 @@ impl harmos::Application for Model {
     type Resources = ();
 }
 
-impl<const FIRST: bool> OperationDeclaration for Heard<FIRST> {
-    type Request = Delivery<WireFact>;
-    type Response = ();
-    const ID: &'static str = if FIRST {
-        "listener.heard-z"
-    } else {
-        "listener.heard-a"
-    };
-    const VISIBILITY: Visibility = Visibility::Shared;
+impl<const FIRST: bool> Listener for Heard<FIRST> {
+    type Row = WireFact;
+    const CALLBACK: &'static str = if FIRST { "listener.heard-z" } else { "listener.heard-a" };
     const POLICY: OperationPolicy = OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(1),
         retries: RetryPolicy::Never,
         restart: RestartPolicy::Never,
     };
-}
-
-impl<const FIRST: bool> WireOperation for Heard<FIRST> {
-    const VERSION: u32 = 1;
 }
 
 #[harmos::catalog]
@@ -224,32 +204,19 @@ struct Hearing<const FIRST: bool> {
 impl<const FIRST: bool> Operation for Hearing<FIRST> {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
-    type Declaration = Heard<FIRST>;
+    type Declaration = Delivery<Heard<FIRST>>;
     type Resources = Owner;
     type Error = Failed;
-    async fn initialize<'ctx>(
-        resources: Arc<Owner>,
-        _: Self::Context<'ctx>,
-    ) -> std::result::Result<Self, Failed> {
-        Ok(Self {
-            resources,
-            wait_cleanup: false,
-        })
+    async fn initialize<'ctx>(resources: Arc<Owner>, _: Self::Context<'ctx>) -> std::result::Result<Self, Failed> {
+        Ok(Self { resources, wait_cleanup: false })
     }
     async fn run<'a>(
-        &mut self,
-        _: Self::Context<'a>,
-        request: &mut Delivery<WireFact>,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, _: Self::Context<'a>, request: &mut Delivery<Heard<FIRST>>, _endpoints: &mut Self::Endpoints,
     ) -> std::result::Result<harmos::operations::Response<()>, Failed> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             self.wait_cleanup = FIRST && request.row().value == 0 && self.resources.block;
             assert!(matches!(request.context(), DeliveryContext::Stream { .. }));
-            self.resources.seen.lock().unwrap().push((
-                FIRST,
-                request.row().value,
-                request.context(),
-            ));
+            self.resources.seen.lock().unwrap().push((FIRST, request.row().value, request.context()));
             self.resources.observed.notify_one();
             if FIRST && request.row().value == 0 {
                 if self.resources.reenter {
@@ -286,78 +253,40 @@ impl PluginLifecycle for Host {
     type Sidecar = Resources;
     type Embedded = Resources;
     fn prepare(&mut self, _: &PluginDefinition) -> Result<Backends> {
-        Ok(PluginBackend::Embedded(Resources {
-            owner: Some(self.owner.clone()),
-            managed: self.managed,
-            ..Resources::default()
-        }))
+        Ok(PluginBackend::Embedded(Resources { owner: Some(self.owner.clone()), managed: self.managed, ..Resources::default() }))
     }
     async fn fence(&mut self, _: PluginTransition, _: &[PluginDefinition]) -> Result<()> {
         Ok(())
     }
     async fn start(
-        &mut self,
-        _: &PluginDefinition,
-        router: &Router,
-        _: &PluginLifecycleAuthority<'_>,
-        backend: &mut Backends,
+        &mut self, _: &PluginDefinition, router: &Router, _: &PluginLifecycleAuthority<'_>, backend: &mut Backends,
     ) -> Result<()> {
-        let PluginBackend::Embedded(resources) = backend else {
-            unreachable!()
-        };
+        let PluginBackend::Embedded(resources) = backend else { unreachable!() };
         resources.endpoint = Some(router.enter("listener").unwrap());
         let scope = resources.endpoint.as_ref().unwrap().scope().unwrap();
         self.scope = Some(scope.clone());
         resources.operations = Some(self.operations.stage_plugin(scope, |bindings| {
-            bindings.register_wire_operations::<ImplementedCallbacks, _>(
-                Lanes::Open,
-                self.owner.clone(),
-            )
+            bindings.register_wire_operations::<ImplementedCallbacks, _>(Lanes::Open, self.owner.clone())
         })?);
         if self.managed {
-            resources.streams = Some(
-                self.owner
-                    .streams
-                    .stage_plugin(scope, [publication()])
-                    .await
-                    .unwrap(),
-            );
+            resources.streams = Some(self.owner.streams.stage_plugin(scope, [publication()]).await.unwrap());
             self.lease = Some(resources.streams.as_ref().unwrap().leases()[0].clone());
             let original = scope.publication("listener.samples", 1).unwrap();
             assert!(Arc::ptr_eq(&original, self.lease.as_ref().unwrap()));
-            assert!(matches!(
-                scope.publication("listener.samples", 2),
-                Err(Error::InvalidInput {
-                    field: "publication stream",
-                    ..
-                })
-            ));
+            assert!(matches!(scope.publication("listener.samples", 2), Err(Error::InvalidInput { field: "publication stream", .. })));
         }
         if !self.skip_sources {
-            let original = Arc::new(tokio::sync::Mutex::new(
-                self.owner
-                    .streams
-                    .stage_listeners(scope, &self.operations, |bindings| {
-                        if self.managed {
-                            bindings.publication("listener.samples", 1, 0)
-                        } else {
-                            bindings.stream::<Fact>(0)
-                        }
-                    })?,
-            ));
+            let original = Arc::new(tokio::sync::Mutex::new(self.owner.streams.stage_listeners(scope, &self.operations, |bindings| {
+                if self.managed { bindings.publication("listener.samples", 1, 0) } else { bindings.stream::<Fact>(0) }
+            })?));
             self.view = Some(original.clone());
             resources.listeners = Some(original);
         }
         // The Same Scope Still Blocks Delivery Until PluginManager Commits.
         if let Some(streams) = &resources.streams {
-            streams.leases()[0]
-                .stage_derived_row(publication_row(0), 0)
-                .unwrap();
+            streams.leases()[0].stage_derived_row(publication_row(0), 0).unwrap();
         } else {
-            self.owner.streams.publish(Fact {
-                value: 0,
-                dropped: self.original_drop.clone(),
-            });
+            self.owner.streams.publish(Fact { value: 0, dropped: self.original_drop.clone() });
         }
         tokio::task::yield_now().await;
         assert!(self.owner.seen.lock().unwrap().is_empty());
@@ -366,47 +295,23 @@ impl PluginLifecycle for Host {
             self.view.take();
         }
         if self.fail_start {
-            return Err(Error::InvalidInput {
-                field: "listener fixture",
-                reason: "failed original setup",
-            });
+            return Err(Error::InvalidInput { field: "listener fixture", reason: "failed original setup" });
         }
         Ok(())
     }
-    async fn stop(
-        _: &PluginDefinition,
-        _: &PluginLifecycleAuthority<'_>,
-        backend: &mut Backends,
-    ) -> Result<()> {
-        let PluginBackend::Embedded(resources) = backend else {
-            unreachable!()
-        };
+    async fn stop(_: &PluginDefinition, _: &PluginLifecycleAuthority<'_>, backend: &mut Backends) -> Result<()> {
+        let PluginBackend::Embedded(resources) = backend else { unreachable!() };
         if let Some(registration) = &mut resources.listeners {
             registration.lock().await.shutdown().await?;
-        } else if let Some(scope) = resources
-            .endpoint
-            .as_ref()
-            .and_then(|endpoint| endpoint.scope())
-        {
-            resources
-                .owner
-                .as_ref()
-                .unwrap()
-                .streams
-                .shutdown_listeners_for(scope)
-                .await?;
+        } else if let Some(scope) = resources.endpoint.as_ref().and_then(|endpoint| endpoint.scope()) {
+            resources.owner.as_ref().unwrap().streams.shutdown_listeners_for(scope).await?;
         }
         if let Some(registration) = &mut resources.operations {
             registration.shutdown().await?;
         }
         if resources.managed {
             let scope = resources.endpoint.as_ref().unwrap().scope().unwrap();
-            assert!(matches!(
-                scope.publication("listener.samples", 1),
-                Err(Error::Closing {
-                    domain: "publication generation"
-                })
-            ));
+            assert!(matches!(scope.publication("listener.samples", 1), Err(Error::Closing { domain: "publication generation" })));
         }
         resources.streams.take();
         resources.endpoint.take();
@@ -418,19 +323,12 @@ impl PluginLifecycle for Host {
 
 /* === Private Functions === */
 fn fact(value: u32) -> Fact {
-    Fact {
-        value,
-        dropped: Arc::new(AtomicUsize::new(0)),
-    }
+    Fact { value, dropped: Arc::new(AtomicUsize::new(0)) }
 }
 
 fn publication() -> harmos_domain::StreamDeclaration {
     harmos_domain::StreamDeclaration {
-        metadata: harmos::Metadata::new(
-            harmos::Identifier::new("listener.samples").unwrap(),
-            "Samples",
-            None,
-        ),
+        metadata: harmos::Metadata::new(harmos::Identifier::new("listener.samples").unwrap(), "Samples", None),
         row_metadata: vec![],
         id: "listener.samples".into(),
         schema: 1,
@@ -444,24 +342,14 @@ fn publication() -> harmos_domain::StreamDeclaration {
 }
 
 fn publication_row(value: u32) -> harmos::streams::PublicationRow {
-    harmos::streams::PublicationRow {
-        payload: WireFact { value }.encode_to_vec(),
-        published_unix_micros: None,
-        context: None,
-    }
+    harmos::streams::PublicationRow { payload: WireFact { value }.encode_to_vec(), published_unix_micros: None, context: None }
 }
 
 fn candidate(managed: bool) -> PluginDefinitions {
     let mut listeners = Vec::new();
     for (id, callback) in [
-        (
-            "listener.first",
-            WireDeclaration::of::<Heard<true>>().contract().unwrap(),
-        ),
-        (
-            "listener.second",
-            WireDeclaration::of::<Heard<false>>().contract().unwrap(),
-        ),
+        ("listener.first", WireDeclaration::of::<Delivery<Heard<true>>>().contract().unwrap()),
+        ("listener.second", WireDeclaration::of::<Delivery<Heard<false>>>().contract().unwrap()),
     ] {
         listeners.push(
             harmos_domain::listeners::Definition::new(
@@ -484,9 +372,7 @@ fn candidate(managed: bool) -> PluginDefinitions {
         [PluginDefinition {
             id: "listener".into(),
             version: "1.0.0".parse().unwrap(),
-            artifact: PluginArtifact::Embedded {
-                revision: "native".into(),
-            },
+            artifact: PluginArtifact::Embedded { revision: "native".into() },
             requires: vec![],
             configuration: b"null".to_vec(),
             contributions: PluginContributions {
@@ -501,28 +387,13 @@ fn candidate(managed: bool) -> PluginDefinitions {
     .unwrap()
 }
 
-async fn setup(
-    block: bool,
-    reenter: bool,
-    tail: usize,
-) -> (
-    Runtime<Model>,
-    PluginManager<Resources, Resources, Resources>,
-    Host,
-) {
+async fn setup(block: bool, reenter: bool, tail: usize) -> (Runtime<Model>, PluginManager<Resources, Resources, Resources>, Host) {
     setup_source(block, reenter, tail, false).await
 }
 
 async fn setup_source(
-    block: bool,
-    reenter: bool,
-    tail: usize,
-    managed: bool,
-) -> (
-    Runtime<Model>,
-    PluginManager<Resources, Resources, Resources>,
-    Host,
-) {
+    block: bool, reenter: bool, tail: usize, managed: bool,
+) -> (Runtime<Model>, PluginManager<Resources, Resources, Resources>, Host) {
     let runtime = Runtime::<Model>::builder((), ())
         .register(if managed { vec![] } else { Rows::catalog() })
         .register(Lanes::catalog())
@@ -560,11 +431,7 @@ async fn setup_source(
         original_drop: Arc::new(AtomicUsize::new(0)),
         view: None,
     };
-    (
-        runtime,
-        PluginManager::new(candidate(managed)).unwrap(),
-        host,
-    )
+    (runtime, PluginManager::new(candidate(managed)).unwrap(), host)
 }
 
 async fn observed(owner: &Owner, count: usize) {
@@ -595,38 +462,10 @@ async fn reentrancy_preserve_logical() {
     assert_eq!(
         *host.owner.seen.lock().unwrap(),
         [
-            (
-                true,
-                0,
-                DeliveryContext::Stream {
-                    sequence: 1,
-                    missed: 0
-                }
-            ),
-            (
-                false,
-                0,
-                DeliveryContext::Stream {
-                    sequence: 1,
-                    missed: 0
-                }
-            ),
-            (
-                true,
-                9,
-                DeliveryContext::Stream {
-                    sequence: 2,
-                    missed: 0
-                }
-            ),
-            (
-                false,
-                9,
-                DeliveryContext::Stream {
-                    sequence: 2,
-                    missed: 0
-                }
-            )
+            (true, 0, DeliveryContext::Stream { sequence: 1, missed: 0 }),
+            (false, 0, DeliveryContext::Stream { sequence: 1, missed: 0 }),
+            (true, 9, DeliveryContext::Stream { sequence: 2, missed: 0 }),
+            (false, 9, DeliveryContext::Stream { sequence: 2, missed: 0 })
         ]
     );
     manager.shutdown(&mut host).await.unwrap();
@@ -656,24 +495,9 @@ async fn failure_fences_side() {
     observed(&host.owner, 1).await;
     fenced(&host).await;
     assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
-    assert_eq!(
-        manager.status("listener").unwrap().state,
-        harmos::plugin::PluginState::Failed
-    );
-    assert!(matches!(
-        host.view
-            .as_ref()
-            .unwrap()
-            .lock()
-            .await
-            .failure()
-            .as_deref(),
-        Some(Error::OperationFailed { .. })
-    ));
-    assert!(matches!(
-        runtime.operations.definition(Heard::<false>::ID),
-        Err(Error::Closing { .. })
-    ));
+    assert_eq!(manager.status("listener").unwrap().state, harmos::plugin::PluginState::Failed);
+    assert!(matches!(host.view.as_ref().unwrap().lock().await.failure().as_deref(), Some(Error::OperationFailed { .. })));
+    assert!(matches!(runtime.operations.definition(Heard::<false>::CALLBACK), Err(Error::Closing { .. })));
     manager.shutdown(&mut host).await.unwrap();
     runtime.stop().await.unwrap();
 }
@@ -696,11 +520,7 @@ async fn runtime_signals_listener() {
                 demand_keys: vec![],
             })
         }
-        async fn run(
-            &self,
-            gates: Arc<Gates>,
-            mut activation: harmos::observers::ObserverActivation,
-        ) -> Result<()> {
+        async fn run(&self, gates: Arc<Gates>, mut activation: harmos::observers::ObserverActivation) -> Result<()> {
             activation.ready();
             gates.running.notify_one();
             activation.stopping().await;
@@ -712,20 +532,9 @@ async fn runtime_signals_listener() {
     let (runtime, mut manager, mut host) = setup(true, false, 1).await;
     manager.initialize(&mut host).await.unwrap();
     host.owner.started.notified().await;
-    let gates = Arc::new(Gates {
-        running: Notify::new(),
-        stopping: Notify::new(),
-        release: Notify::new(),
-    });
-    runtime
-        .operations
-        .register_observer(BlockedObserver)
-        .unwrap();
-    let lease = runtime
-        .operations
-        .submit_with_resources_at("blocked-cleanup", gates.clone())
-        .await
-        .unwrap();
+    let gates = Arc::new(Gates { running: Notify::new(), stopping: Notify::new(), release: Notify::new() });
+    runtime.operations.register_observer(BlockedObserver).unwrap();
+    let lease = runtime.operations.submit_with_resources_at("blocked-cleanup", gates.clone()).await.unwrap();
     gates.running.notified().await;
     let mut stopping = Box::pin(runtime.stop());
     tokio::select! {
@@ -754,10 +563,7 @@ async fn shutdown_retains_callback() {
     let owner = host.owner.clone();
     let mut closing = Box::pin(manager.shutdown(&mut host));
     tokio::select! { biased; _ = owner.finalizing.notified() => {}, result = &mut closing => panic!("cleanup returned before original finalizer: {result:?}") }
-    let pending = std::future::poll_fn(|context| {
-        std::task::Poll::Ready(closing.as_mut().poll(context).is_pending())
-    })
-    .await;
+    let pending = std::future::poll_fn(|context| std::task::Poll::Ready(closing.as_mut().poll(context).is_pending())).await;
     assert!(pending, "shutdown waits on the held finalizer");
     drop(closing);
     assert_eq!(host.original_drop.load(Ordering::SeqCst), 0);
@@ -807,13 +613,7 @@ async fn pages_deliver_native() {
     // more row's first callback proves every earlier page settled.
     runtime.streams.publish(fact(261));
     observed(&host.owner, 523).await;
-    let frontier = host
-        .view
-        .as_ref()
-        .unwrap()
-        .lock()
-        .await
-        .frontier("listener.samples", 1);
+    let frontier = host.view.as_ref().unwrap().lock().await.frontier("listener.samples", 1);
     assert!(matches!(frontier, Some(261 | 262)));
     {
         let seen = host.owner.seen.lock().unwrap();
@@ -821,22 +621,8 @@ async fn pages_deliver_native() {
             assert_eq!(
                 *pair,
                 [
-                    (
-                        true,
-                        value as u32,
-                        DeliveryContext::Stream {
-                            sequence: value as u64 + 1,
-                            missed: 0
-                        }
-                    ),
-                    (
-                        false,
-                        value as u32,
-                        DeliveryContext::Stream {
-                            sequence: value as u64 + 1,
-                            missed: 0
-                        }
-                    )
+                    (true, value as u32, DeliveryContext::Stream { sequence: value as u64 + 1, missed: 0 }),
+                    (false, value as u32, DeliveryContext::Stream { sequence: value as u64 + 1, missed: 0 })
                 ]
             );
         }
@@ -858,39 +644,9 @@ async fn overwrite_reports_logical() {
     observed(&host.owner, 1026).await;
     {
         let seen = host.owner.seen.lock().unwrap();
-        assert_eq!(
-            seen[2],
-            (
-                true,
-                9,
-                DeliveryContext::Stream {
-                    sequence: 10,
-                    missed: 8
-                }
-            )
-        );
-        assert_eq!(
-            seen[3],
-            (
-                false,
-                9,
-                DeliveryContext::Stream {
-                    sequence: 10,
-                    missed: 8
-                }
-            )
-        );
-        assert_eq!(
-            seen.last(),
-            Some(&(
-                false,
-                520,
-                DeliveryContext::Stream {
-                    sequence: 521,
-                    missed: 0
-                }
-            ))
-        );
+        assert_eq!(seen[2], (true, 9, DeliveryContext::Stream { sequence: 10, missed: 8 }));
+        assert_eq!(seen[3], (false, 9, DeliveryContext::Stream { sequence: 10, missed: 8 }));
+        assert_eq!(seen.last(), Some(&(false, 520, DeliveryContext::Stream { sequence: 521, missed: 0 })));
     }
     assert!(host.scope.as_ref().unwrap().is_ready());
     manager.shutdown(&mut host).await.unwrap();
@@ -923,20 +679,8 @@ async fn codec_panic_fences() {
     observed(&host.owner, 2).await;
     runtime.streams.publish(fact(u32::MAX));
     fenced(&host).await;
-    assert!(matches!(
-        host.view
-            .as_ref()
-            .unwrap()
-            .lock()
-            .await
-            .failure()
-            .as_deref(),
-        Some(Error::OperationPanicked { .. })
-    ));
-    assert_eq!(
-        manager.status("listener").unwrap().state,
-        harmos::plugin::PluginState::Failed
-    );
+    assert!(matches!(host.view.as_ref().unwrap().lock().await.failure().as_deref(), Some(Error::OperationPanicked { .. })));
+    assert_eq!(manager.status("listener").unwrap().state, harmos::plugin::PluginState::Failed);
     assert_eq!(host.owner.seen.lock().unwrap().len(), 2);
     manager.shutdown(&mut host).await.unwrap();
     runtime.stop().await.unwrap();
@@ -952,34 +696,9 @@ async fn source_preserves_staged() {
     observed(&host.owner, 4).await;
     assert_eq!(
         host.owner.seen.lock().unwrap()[2..],
-        [
-            (
-                true,
-                5,
-                DeliveryContext::Stream {
-                    sequence: 5,
-                    missed: 3
-                }
-            ),
-            (
-                false,
-                5,
-                DeliveryContext::Stream {
-                    sequence: 5,
-                    missed: 3
-                }
-            ),
-        ]
+        [(true, 5, DeliveryContext::Stream { sequence: 5, missed: 3 }), (false, 5, DeliveryContext::Stream { sequence: 5, missed: 3 }),]
     );
-    assert_eq!(
-        host.view
-            .as_ref()
-            .unwrap()
-            .lock()
-            .await
-            .frontier("listener.samples", 1),
-        Some(5)
-    );
+    assert_eq!(host.view.as_ref().unwrap().lock().await.frontier("listener.samples", 1), Some(5));
     manager.shutdown(&mut host).await.unwrap();
     assert!(lease.admit_row(publication_row(6), 6, 0).is_err());
     runtime.stop().await.unwrap();

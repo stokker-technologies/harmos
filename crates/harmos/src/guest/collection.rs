@@ -61,6 +61,33 @@ impl Drop for Cleanup {
 }
 
 /* === Public Functions === */
+// Validate a guest's catalog registrations, sorted by namespace: at most 256
+// distinct artifact namespaces with nonzero schemas, 16 MiB in total.
+pub fn validate(mut entries: Vec<Registration>) -> Result<Vec<Registration>, Error> {
+    if entries.len() > 256 {
+        return Err(invalid("catalog exceeds 256 namespaces"));
+    }
+    let mut namespaces = BTreeSet::new();
+    let mut size = 0usize;
+    for entry in &entries {
+        if !harmos_domain::artifact_subset(&entry.namespace)
+            || entry.schema == 0
+            || !namespaces.insert(entry.namespace.clone())
+        {
+            return Err(invalid(
+                "catalog has an invalid or duplicate namespace/schema",
+            ));
+        }
+        size = size
+            .checked_add(entry.namespace.len())
+            .and_then(|size| size.checked_add(entry.payload.len()))
+            .filter(|size| *size <= 16 * 1024 * 1024)
+            .ok_or_else(|| invalid("catalog exceeds 16 MiB"))?;
+    }
+    entries.sort_by(|left, right| left.namespace.cmp(&right.namespace));
+    Ok(entries)
+}
+
 pub async fn registrations(bytes: &[u8]) -> Result<Vec<Registration>, Error> {
     let runtime = Runtime::<Collection>::builder((), ())
         .runtime()
@@ -85,30 +112,7 @@ pub async fn registrations(bytes: &[u8]) -> Result<Vec<Registration>, Error> {
                 crate::config::PluginGuestSettings::default(),
             )))
             .await?;
-        let entries = guest.registrations();
-        let mut namespaces = BTreeSet::new();
-        let mut size = 0usize;
-        if entries.len() > 256 {
-            return Err(invalid("catalog exceeds 256 namespaces"));
-        }
-        for entry in entries {
-            if !harmos_domain::artifact_subset(&entry.namespace)
-                || entry.schema == 0
-                || !namespaces.insert(&entry.namespace)
-            {
-                return Err(invalid(
-                    "catalog has an invalid or duplicate namespace/schema",
-                ));
-            }
-            size = size
-                .checked_add(entry.namespace.len())
-                .and_then(|size| size.checked_add(entry.payload.len()))
-                .filter(|size| *size <= 16 * 1024 * 1024)
-                .ok_or_else(|| invalid("catalog exceeds 16 MiB"))?;
-        }
-        let mut entries = entries.to_vec();
-        entries.sort_by(|left, right| left.namespace.cmp(&right.namespace));
-        Ok(entries)
+        validate(guest.registrations().to_vec())
     }
     .await;
     let runtime = cleanup

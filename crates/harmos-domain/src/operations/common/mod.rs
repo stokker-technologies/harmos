@@ -12,6 +12,7 @@ mod authored;
 mod catalog;
 mod context;
 mod contract;
+mod direction;
 mod grpc;
 pub mod instance;
 mod key;
@@ -30,13 +31,9 @@ pub use catalog::{AuthoredDeclarations, Declarations, Entry};
 pub use context::{
     CallContext, CallValue, ContextError, ContextValue, PORTABLE_BYTES, PORTABLE_VALUES,
 };
-pub use contract::{
-    AuthoredContracts, Codec, Contract, ContractError, Contracts, WireDeclaration, WireOperation,
-    WireVisitor,
-};
+pub use contract::{AuthoredContracts, Codec, Contract, ContractError, Contracts, WireDeclaration};
+pub use direction::{Direction, NoStream, Stream, item_types};
 pub use grpc::Grpc;
-#[cfg(feature = "grpc")]
-pub use grpc::GrpcVisitor;
 pub use instance::Instance;
 pub use key::{CacheKey, CacheKeyError, MAX_CACHE_KEY_BYTES};
 pub use policy::{
@@ -53,7 +50,7 @@ pub use serving::{
 pub use serving::{WireEndpoints, WireStreamLimits, WireStreams};
 #[cfg(feature = "streaming")]
 pub use streaming::{StreamInput, StreamItem, StreamOutput, StreamPermit, StreamSettings, stream};
-pub use surface::{Callable, Host};
+pub use surface::Host;
 
 /* === Imports === */
 // Standard Library Imports
@@ -68,6 +65,51 @@ use crate::Identifier;
 pub const UNBOUNDED: std::time::Duration = std::time::Duration::from_secs(1 << 32);
 
 /* === Macros === */
+// Declare An Operation On Its Request Type. Fields Keep This Order; Optional
+// Ones May Be Omitted. Absent Streams Are `NoStream`.
+#[macro_export]
+macro_rules! declare {
+    ($ty:ty {
+        id: $id:expr,
+        version: $version:expr,
+        policy: $policy:expr,
+        response: $response:ty
+        $(, input: $input:ty)?
+        $(, output: $output:ty)?
+        $(, description: $description:expr)?
+        $(, visibility: $visibility:expr)?
+        $(, replay: $replay:expr)?
+        $(, grpc: ($package:expr, $service:expr, $method:expr))?
+        $(, grant: $grant:expr)?
+        $(, key: $key:expr)?
+        $(,)?
+    }) => {
+        impl $crate::operations::OperationDeclaration for $ty {
+            type Response = $response;
+            type Input = $crate::declare!(@direction $($input)?);
+            type Output = $crate::declare!(@direction $($output)?);
+            const ID: &'static str = $id;
+            const VERSION: u32 = $version;
+            const POLICY: $crate::operations::OperationPolicy = $policy;
+            $(const DESCRIPTION: &'static str = $description;)?
+            $(const VISIBILITY: $crate::operations::Visibility = $visibility;)?
+            $(const REPLAY: $crate::operations::ReplaySafety = $replay;)?
+            // A Build Whose Messages Carry No Protobuf Codec Declares No Method.
+            $crate::__private::with_protobuf! {
+                $(const GRPC: ::core::option::Option<$crate::operations::Grpc> =
+                    ::core::option::Option::Some($crate::operations::Grpc::new($package, $service, $method));)?
+            }
+            $(fn grant(&self) -> ::core::option::Option<$crate::plugin::Grant> {
+                ($grant)(self)
+            })?
+            $(fn key(&self) -> ::core::option::Option<$crate::operations::CacheKey> {
+                ($key)(self)
+            })?
+        }
+    };
+    (@direction) => { $crate::operations::NoStream };
+    (@direction $item:ty) => { $crate::operations::Stream<$item> };
+}
 
 /* === Type Aliases === */
 
@@ -103,43 +145,33 @@ pub enum Visibility {
 }
 
 /* === Traits === */
-pub trait OperationDeclaration: Send + Sync + 'static {
-    type Request: Send + 'static;
-    type Response: Send + Sync + 'static;
+// The Operation Is Its Request Type. `declare!` (Through `#[operation]`) Is The
+// Only Writer Of This Impl; Every Bound A Projection Needs Is Named Here, So One
+// Generic Walk Serves The Catalog, gRPC, Descriptor Export And Bindings.
+pub trait OperationDeclaration: crate::Portable {
+    type Response: crate::Portable;
+    type Input: Direction;
+    type Output: Direction;
 
     const ID: &'static str;
+    const VERSION: u32;
     const POLICY: OperationPolicy;
     const DESCRIPTION: &'static str = "";
     const VISIBILITY: Visibility = Visibility::Private;
     const REPLAY: ReplaySafety = ReplaySafety::Unknown;
+    const GRPC: Option<Grpc> = None;
 
-    fn endpoint_types() -> (Option<std::any::TypeId>, Option<std::any::TypeId>) {
-        (None, None)
-    }
-
-    fn visit_wire<V: WireVisitor>(_visitor: V) -> Option<V::Entry> {
+    fn grant(&self) -> Option<crate::plugin::Grant> {
         None
     }
 
-    fn grant(_request: &Self::Request) -> Option<crate::plugin::Grant> {
-        None
-    }
-
-    fn key(_request: &Self::Request) -> Option<CacheKey> {
+    fn key(&self) -> Option<CacheKey> {
         None
     }
 }
 
 pub trait Declares {
     type Declaration: OperationDeclaration;
-}
-
-pub trait InputDeclaration: OperationDeclaration {
-    type Item: Send + 'static;
-}
-
-pub trait OutputDeclaration: OperationDeclaration {
-    type Item: Send + 'static;
 }
 
 /* === Implementations === */

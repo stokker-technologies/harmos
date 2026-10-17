@@ -19,7 +19,8 @@ use std::sync::Arc;
 
 // Local Imports
 use crate::Error;
-use schematic_domain::operations::schematic::validate::{Request, Response};
+use schematic_domain::operations::ValidateSchematic;
+use schematic_domain::operations::schematic::validate::Validation;
 
 /* === Constants === */
 
@@ -28,15 +29,15 @@ use schematic_domain::operations::schematic::validate::{Request, Response};
 /* === Type Aliases === */
 
 /* === Structs === */
-pub(crate) struct ValidateSchematic;
+pub(crate) struct Validating;
 
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
-#[harmos::operation(declaration = schematic_domain::operations::ValidateSchematic)]
-impl ValidateSchematic {
+#[harmos::operation]
+impl Validating {
     async fn initialize(_: Arc<()>, _: &harmos::sidecar::Supervisor) -> Self {
         Self
     }
@@ -45,8 +46,8 @@ impl ValidateSchematic {
     async fn run(
         &mut self,
         _context: &harmos::sidecar::Supervisor,
-        request: &mut Request,
-    ) -> Result<Response, Error> {
+        request: &mut ValidateSchematic,
+    ) -> Result<Validation, Error> {
         let symbols: std::collections::BTreeSet<_> =
             request.schematic.symbols.iter().copied().collect();
         let mut diagnostics = Vec::new();
@@ -61,7 +62,7 @@ impl ValidateSchematic {
                 ));
             }
         }
-        Ok(Response { diagnostics })
+        Ok(Validation { diagnostics })
     }
 }
 

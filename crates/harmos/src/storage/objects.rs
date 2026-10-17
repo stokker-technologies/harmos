@@ -23,8 +23,9 @@ use super::{
     ObjectVersion, ObjectVersionToken, StorageManager, StorageSchema, StoredObject,
 };
 use crate::catalog::Contains;
-use crate::storage::catalog::{decode_admitted, invalid, object_key, object_schema};
 use crate::{Error, MemorySize, Result};
+use harmos_domain::model::storage::catalog::{decode_admitted, object_schema};
+use harmos_domain::model::storage::object_key;
 
 /* === Constants === */
 
@@ -114,7 +115,8 @@ impl<C> ObjectGroup<'_, C> {
             return Err(invalid("object group contains too many objects"));
         }
         // Catalog Identity Construction And Verification Share The Original Claim.
-        if self.allowance - self.used < crate::storage::catalog::LOOKUP_MEMORY_BYTES {
+        if self.allowance - self.used < harmos_domain::model::storage::catalog::LOOKUP_MEMORY_BYTES
+        {
             return Err(invalid("object catalog lookup exceeds allowance"));
         }
         let definition = (self.manager.inner.object_definition)(&value.schema)?;
@@ -393,5 +395,8 @@ impl<C> StorageManager<C> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+pub(super) fn invalid(reason: &'static str) -> crate::Error {
+    harmos_domain::model::storage::invalid(reason).into()
+}
 
 /* === Tests === */

@@ -57,6 +57,12 @@ pub enum Error {
     ResourceExhausted { resource: &'static str },
     #[error("positions belong to different store histories")]
     DifferentHistory,
+    #[error("{operation} found a corrupt stored value: {source}")]
+    Corrupt {
+        operation: &'static str,
+        #[source]
+        source: crate::MessageError,
+    },
 }
 
 /* === Traits === */

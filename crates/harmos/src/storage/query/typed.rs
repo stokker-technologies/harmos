@@ -32,7 +32,6 @@ use crate::catalog::Contains;
 use crate::storage::arrow::{RetainedMemory, resident_bytes};
 use crate::storage::backend::ScanPage;
 use crate::storage::capacity::{Held, Pool, Refusal, Reservation};
-use crate::storage::catalog::{decode_admitted, object_key, object_schema};
 use crate::storage::manager::{ENTRY_OVERHEAD, Inner};
 use crate::storage::memory::MemoryBank;
 use crate::storage::selection::Entry;
@@ -42,6 +41,8 @@ use crate::storage::{
     StorageSchema, StoredObject, StoredRecord,
 };
 use crate::{BackendFailure, Error, MemorySize, Message, Result};
+use harmos_domain::model::storage::catalog::{decode_admitted, object_schema};
+use harmos_domain::model::storage::object_key;
 
 /* === Constants === */
 

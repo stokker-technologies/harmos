@@ -17,7 +17,7 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use super::host::{Operations, OperationsRequest, OperationsResponse};
+use super::host::{Operations, OperationsResponse};
 use super::{Context, Operation};
 use crate::{Error, Result};
 
@@ -50,7 +50,7 @@ impl Operation for Discovery {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        request: &mut OperationsRequest,
+        request: &mut Operations,
         _: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<OperationsResponse>> {
         let result: ::core::result::Result<OperationsResponse, Self::Error> =

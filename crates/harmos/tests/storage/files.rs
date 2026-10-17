@@ -51,14 +51,8 @@ fn metadata(id: &str, bytes: &[u8]) -> FileMetadata {
     }
 }
 
-fn whole(file: &harmos::storage::FileReference) -> harmos::storage::ReadFile {
-    harmos::storage::ReadFile {
-        file: file.clone(),
-        range: harmos::storage::ByteRange {
-            offset: 0,
-            limit: None,
-        },
-    }
+fn whole(file: &harmos::storage::FileReference) -> harmos::storage::operations::ReadFile {
+    harmos::storage::operations::ReadFile { file: file.clone(), range: harmos::storage::ByteRange { offset: 0, limit: None } }
 }
 
 #[tokio::test]
@@ -67,20 +61,8 @@ async fn file_chunks_bounded() {
     policy.response.batch_bytes = NonZeroUsize::new(31).unwrap();
     let f = Fixture::new(policy).await;
     let bytes: Vec<_> = (0..8192).map(|n| (n % 251) as u8).collect();
-    let reference = f
-        .storage
-        .write_file(metadata("large", &bytes), &bytes)
-        .await
-        .unwrap();
-    assert!(
-        f.data
-            .control
-            .chunk_sizes
-            .lock()
-            .unwrap()
-            .iter()
-            .all(|n| *n <= 31)
-    );
+    let reference = f.storage.write_file(metadata("large", &bytes), &bytes).await.unwrap();
+    assert!(f.data.control.chunk_sizes.lock().unwrap().iter().all(|n| *n <= 31));
     let mut reader = f.storage.read_file(whole(&reference)).await.unwrap();
     let mut actual = Vec::new();
     while let Some(batch) = reader.next().await.unwrap() {
@@ -96,35 +78,22 @@ async fn file_chunks_bounded() {
 async fn file_awaits_flush() {
     let f = Fixture::new(config()).await;
     let bytes = b"unsaved bytes";
-    let reference = f
-        .storage
-        .write_file(metadata("unsaved", bytes), bytes)
-        .await
-        .unwrap();
+    let reference = f.storage.write_file(metadata("unsaved", bytes), bytes).await.unwrap();
     assert_eq!(f.storage.status().saved.sequence, 0);
     let mut durable = f
         .storage
-        .query(harmos::storage::query::Query {
+        .query(harmos::storage::operations::Query {
             at: f.storage.cursor_saved(),
-            source: harmos::storage::query::Source::Files(harmos::storage::query::FileSelection {
-                scope: None,
-                item: None,
-            }),
+            source: harmos::storage::query::Source::Files(harmos::storage::query::FileSelection { scope: None, item: None }),
             transforms: Vec::new(),
             slice: harmos::storage::query::RowSlice::default(),
         })
         .await
         .unwrap();
-    assert!(matches!(
-        durable.next().await.unwrap(),
-        Some(harmos::storage::query::QueryArrow::Schema(_))
-    ));
+    assert!(matches!(durable.next().await.unwrap(), Some(harmos::storage::query::QueryArrow::Schema(_))));
     assert!(durable.next().await.unwrap().is_none());
     f.storage.flush().await.unwrap();
-    assert_eq!(
-        f.storage.status().saved.sequence,
-        reference.position.sequence
-    );
+    assert_eq!(f.storage.status().saved.sequence, reference.position.sequence);
     drop(durable);
     f.finish().await;
 }
@@ -134,15 +103,8 @@ async fn chunk_retries_offset() {
     let f = Fixture::new(config()).await;
     f.data.control.chunk_failures.store(1, Ordering::SeqCst);
     let bytes = b"one chunk";
-    let reference = f
-        .storage
-        .write_file(metadata("retry", bytes), bytes)
-        .await
-        .unwrap();
-    assert_eq!(
-        f.data.control.chunk_offsets.lock().unwrap().as_slice(),
-        &[0, 0]
-    );
+    let reference = f.storage.write_file(metadata("retry", bytes), bytes).await.unwrap();
+    assert_eq!(f.data.control.chunk_offsets.lock().unwrap().as_slice(), &[0, 0]);
     assert_eq!(reference.length, bytes.len() as u64);
     let mut reader = f.storage.read_file(whole(&reference)).await.unwrap();
     assert_eq!(reader.next().await.unwrap().unwrap().bytes, bytes);
@@ -154,25 +116,13 @@ async fn chunk_retries_offset() {
 async fn finish_retries_position() {
     let f = Fixture::new(config()).await;
     let bytes = b"finished once";
-    let mut file = f
-        .storage
-        .create_file(metadata("finish", bytes))
-        .await
-        .unwrap();
+    let mut file = f.storage.create_file(metadata("finish", bytes)).await.unwrap();
     file.write_all(bytes).await.unwrap();
     // An Uncertain Publication Is Retried At The Same Position.
     f.data.control.finish_failures.store(1, Ordering::SeqCst);
     let reference = file.finish().await.unwrap();
     assert_eq!(reference.position.sequence, 1);
-    assert!(
-        f.data
-            .control
-            .finish_positions
-            .lock()
-            .unwrap()
-            .iter()
-            .all(|position| *position == 1)
-    );
+    assert!(f.data.control.finish_positions.lock().unwrap().iter().all(|position| *position == 1));
     assert_eq!(f.data.blobs.lock().unwrap().len(), 1);
     assert!(f.data.files.lock().unwrap().is_empty());
     file.abort().await.unwrap();
@@ -205,11 +155,7 @@ async fn cancelled_create_cleans() {
 #[tokio::test]
 async fn abort_failure_retryable() {
     let f = Fixture::new(config()).await;
-    let mut file = f
-        .storage
-        .create_file(metadata("abort", b"x"))
-        .await
-        .unwrap();
+    let mut file = f.storage.create_file(metadata("abort", b"x")).await.unwrap();
     f.data.control.fail_abort.store(true, Ordering::SeqCst);
     assert!(file.abort().await.is_err());
     assert!(f.storage.close().await.is_err());
@@ -223,19 +169,9 @@ async fn abort_failure_retryable() {
 #[tokio::test]
 async fn integrity_failure_unpublished() {
     let f = Fixture::new(config()).await;
-    let mut file = f
-        .storage
-        .create_file(metadata("bad", b"right"))
-        .await
-        .unwrap();
+    let mut file = f.storage.create_file(metadata("bad", b"right")).await.unwrap();
     file.write_all(b"wrong").await.unwrap();
-    assert!(matches!(
-        file.finish().await,
-        Err(Error::InvalidInput {
-            field: "file integrity",
-            ..
-        })
-    ));
+    assert!(matches!(file.finish().await, Err(Error::InvalidInput { field: "file integrity", .. })));
     file.abort().await.unwrap();
     assert_eq!(f.storage.status().accepted.sequence, 0);
     assert!(f.data.files.lock().unwrap().is_empty());
@@ -247,11 +183,7 @@ async fn integrity_failure_unpublished() {
 async fn failed_chunk_retryable() {
     let f = Fixture::new(config()).await;
     let bytes = b"immutable bytes";
-    let reference = f
-        .storage
-        .write_file(metadata("read", bytes), bytes)
-        .await
-        .unwrap();
+    let reference = f.storage.write_file(metadata("read", bytes), bytes).await.unwrap();
     let mut reader = f.storage.read_file(whole(&reference)).await.unwrap();
     f.data.control.corrupt_file.store(true, Ordering::SeqCst);
     assert!(reader.next().await.is_err());
@@ -266,11 +198,7 @@ async fn failed_chunk_retryable() {
 async fn cancelled_chunk_aborts() {
     let f = Fixture::new(config()).await;
     let bytes = b"cancelled chunk";
-    let mut file = f
-        .storage
-        .create_file(metadata("chunk", bytes))
-        .await
-        .unwrap();
+    let mut file = f.storage.create_file(metadata("chunk", bytes)).await.unwrap();
     f.data.control.block_chunk.store(true, Ordering::SeqCst);
     {
         let write = file.write_all(bytes);
@@ -294,11 +222,7 @@ async fn cancelled_chunk_aborts() {
 async fn cancelled_finish_drained() {
     let f = Fixture::new(config()).await;
     let bytes = b"sealed bytes";
-    let mut file = f
-        .storage
-        .create_file(metadata("sealed", bytes))
-        .await
-        .unwrap();
+    let mut file = f.storage.create_file(metadata("sealed", bytes)).await.unwrap();
     file.write_all(bytes).await.unwrap();
     f.data.control.block_finish.store(true, Ordering::SeqCst);
     {
@@ -327,11 +251,7 @@ async fn budget_bounds_chunks() {
     policy.request.max_pending_write_bytes = NonZeroUsize::new(20_000).unwrap();
     let f = Fixture::new(policy).await;
     let bytes = vec![42; 100_000];
-    let mut file = f
-        .storage
-        .create_file(metadata("bounded", &bytes))
-        .await
-        .unwrap();
+    let mut file = f.storage.create_file(metadata("bounded", &bytes)).await.unwrap();
     let base = f.storage.status().pending_bytes;
     f.data.control.block_chunk.store(true, Ordering::SeqCst);
     {
@@ -361,11 +281,7 @@ async fn stages_flush_immediately() {
     // The Paused Clock Proves No Stage Waits For The Periodic Flush Timer.
     let started = tokio::time::Instant::now();
     write(&f.storage, "before-create").await;
-    let mut file = f
-        .storage
-        .create_file(metadata("file", b"body"))
-        .await
-        .unwrap();
+    let mut file = f.storage.create_file(metadata("file", b"body")).await.unwrap();
     assert_eq!(f.storage.status().saved.sequence, 1);
     write(&f.storage, "before-chunk").await;
     file.write_all(b"body").await.unwrap();
@@ -382,11 +298,7 @@ async fn stages_flush_immediately() {
 #[tokio::test]
 async fn forged_reference_refused() {
     let f = Fixture::new(config()).await;
-    let file = f
-        .storage
-        .write_file(metadata("verified", b"abc"), b"abc")
-        .await
-        .unwrap();
+    let file = f.storage.write_file(metadata("verified", b"abc"), b"abc").await.unwrap();
     for saved in [false, true] {
         if saved {
             f.storage.flush().await.unwrap();
@@ -401,10 +313,7 @@ async fn forged_reference_refused() {
                 4 => forged.position.history.epoch = Identifier::new("other").unwrap(),
                 _ => forged.position.sequence = 0,
             }
-            assert!(
-                f.storage.read_file(whole(&forged)).await.is_err(),
-                "saved={saved}, field={field}"
-            );
+            assert!(f.storage.read_file(whole(&forged)).await.is_err(), "saved={saved}, field={field}");
         }
         let mut reader = f.storage.read_file(whole(&file)).await.unwrap();
         assert_eq!(reader.next().await.unwrap().unwrap().bytes, b"abc");
@@ -417,11 +326,7 @@ async fn forged_reference_refused() {
 async fn reader_keeps_reference() {
     let f = Fixture::new(config()).await;
     f.data.control.block_release.store(true, Ordering::SeqCst);
-    let file = f
-        .storage
-        .write_file(metadata("owned", b"abc"), b"abc")
-        .await
-        .unwrap();
+    let file = f.storage.write_file(metadata("owned", b"abc"), b"abc").await.unwrap();
     let mut reader = f.storage.read_file(whole(&file)).await.unwrap();
     f.storage.flush().await.unwrap();
     assert_eq!(f.storage.status().pending_bytes, 0);

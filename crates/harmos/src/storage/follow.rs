@@ -12,7 +12,6 @@
 /* === Modules === */
 
 /* === Re-Exports === */
-pub use harmos_domain::model::storage::{File, Objects, Records, Stream};
 
 /* === Imports === */
 // Standard Library Imports

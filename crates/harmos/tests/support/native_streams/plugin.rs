@@ -22,10 +22,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 
 // Local Imports
-use harmos::operations::{
-    Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility,
-    WireOperation, WireTable,
-};
+use harmos::operations::{Operation, OperationPolicy, RestartPolicy, RetryPolicy, WireTable};
 use harmos::sidecar::{Refusal, Supervisor};
 use harmos_domain::listeners::{Context as DeliveryContext, Delivery};
 
@@ -68,8 +65,16 @@ pub struct Receiver {
     state: Arc<State>,
 }
 
-pub struct Consume;
-pub struct Progress;
+#[harmos::message]
+#[harmos::operation(
+    id = "consumption.progress",
+    version = 1,
+    policy = POLICY,
+    response = Acknowledged,
+)]
+pub struct Progress {
+    pub expected: u64,
+}
 
 struct Consumption {
     state: Arc<State>,
@@ -79,13 +84,18 @@ struct Reporting {
     state: Arc<State>,
 }
 
-#[harmos::listener(id = "consumption.listener", stream = Payload, callback = Consume)]
+#[harmos::listener(
+    id = "consumption.listener",
+    stream = Payload,
+    callback = "consumption.consume",
+    policy = POLICY
+)]
 pub struct Listener;
 
 /* === Enums === */
 #[harmos::catalog]
 pub enum Callbacks {
-    Consume(Consume),
+    Consume(Delivery<Listener>),
     Progress(Progress),
 }
 
@@ -134,28 +144,8 @@ impl harmos::Plugin for Receiver {
     }
 }
 
-impl OperationDeclaration for Consume {
-    type Request = Delivery<Payload>;
-    type Response = ();
-    const ID: &'static str = "consumption.consume";
-    const VISIBILITY: Visibility = Visibility::Shared;
-    const POLICY: OperationPolicy = POLICY;
-}
-impl WireOperation for Consume {
-    const VERSION: u32 = 1;
-}
-impl OperationDeclaration for Progress {
-    type Request = u64;
-    type Response = Acknowledged;
-    const ID: &'static str = "consumption.progress";
-    const POLICY: OperationPolicy = POLICY;
-}
-impl WireOperation for Progress {
-    const VERSION: u32 = 1;
-}
-
 impl Operation for Consumption {
-    type Declaration = Consume;
+    type Declaration = Delivery<Listener>;
     type Resources = State;
     type Error = Refusal;
     type Endpoints = ();
@@ -166,7 +156,7 @@ impl Operation for Consumption {
     async fn run<'a>(
         &mut self,
         _: Self::Context<'a>,
-        row: &mut Delivery<Payload>,
+        row: &mut Delivery<Listener>,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<()>, Refusal> {
         let result: ::core::result::Result<(), Self::Error> = async move {
@@ -204,14 +194,14 @@ impl Operation for Reporting {
     async fn run<'a>(
         &mut self,
         _: Self::Context<'a>,
-        expected: &mut u64,
+        request: &mut Progress,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Acknowledged>, Refusal> {
         let result: ::core::result::Result<Acknowledged, Self::Error> = async move {
             loop {
                 let changed = self.state.changed.notified();
                 let rows = self.state.rows.load(Ordering::SeqCst);
-                if rows >= *expected {
+                if rows >= request.expected {
                     return Ok(Acknowledged {
                         process_id: std::process::id(),
                         rows,

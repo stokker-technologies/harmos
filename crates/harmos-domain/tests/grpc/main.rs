@@ -54,17 +54,37 @@ struct Payload {
     optional: Option<u32>,
     values: Vec<i64>,
 }
-#[harmos_macros::operation(request = Payload, response = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Read"))]
-struct Read;
+#[harmos_domain::message(harmos_path = ::harmos_domain)]
+#[harmos_macros::operation(harmos_path = ::harmos_domain, response = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Read"))]
+struct Read {
+    text: String,
+    optional: Option<u32>,
+    values: Vec<i64>,
+}
 
-#[harmos_macros::operation(request = Payload, response = Payload, input = Payload, output = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Exchange"))]
-struct Exchange;
+#[harmos_domain::message(harmos_path = ::harmos_domain)]
+#[harmos_macros::operation(harmos_path = ::harmos_domain, response = Payload, input = Payload, output = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Exchange"))]
+struct Exchange {
+    text: String,
+    optional: Option<u32>,
+    values: Vec<i64>,
+}
 
-#[harmos_macros::operation(request = Payload, response = Payload, input = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Upload"))]
-struct Upload;
+#[harmos_domain::message(harmos_path = ::harmos_domain)]
+#[harmos_macros::operation(harmos_path = ::harmos_domain, response = Payload, input = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Upload"))]
+struct Upload {
+    text: String,
+    optional: Option<u32>,
+    values: Vec<i64>,
+}
 
-#[harmos_macros::operation(request = Payload, response = Payload, output = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Download"))]
-struct Download;
+#[harmos_domain::message(harmos_path = ::harmos_domain)]
+#[harmos_macros::operation(harmos_path = ::harmos_domain, response = Payload, output = Payload, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Shapes", method = "Download"))]
+struct Download {
+    text: String,
+    optional: Option<u32>,
+    values: Vec<i64>,
+}
 
 #[harmos_macros::catalog(harmos_path = ::harmos_domain)]
 enum Routes {
@@ -74,6 +94,7 @@ enum Routes {
     Download(Download),
 }
 #[harmos_domain::message(harmos_path = ::harmos_domain)]
+#[harmos_macros::operation(harmos_path = ::harmos_domain, id = "annotate", response = Annotated, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Portable", method = "Annotate"))]
 #[derive(Clone, PartialEq)]
 struct Annotated {
     identifier: harmos_domain::Identifier,
@@ -83,15 +104,13 @@ struct Annotated {
     values: Vec<harmos_domain::Value>,
 }
 
-#[harmos_macros::operation(request = Annotated, response = Annotated, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Portable", method = "Annotate"))]
-struct Annotate;
-
 #[harmos_macros::catalog(harmos_path = ::harmos_domain)]
 enum Portable {
-    Annotate(Annotate),
+    Annotate(Annotated),
 }
 
 #[harmos_domain::message(harmos_path = ::harmos_domain)]
+#[harmos_macros::operation(harmos_path = ::harmos_domain, id = "wrap", response = Delivered, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Boxed", method = "Wrap"))]
 #[derive(Clone, PartialEq)]
 struct Envelope {
     inner: Box<Annotated>,
@@ -105,12 +124,9 @@ enum Delivered {
     Boxed(Box<Annotated>),
 }
 
-#[harmos_macros::operation(request = Envelope, response = Delivered, policy = POLICY, version = 1, grpc(package = "test.v1", service = "Boxed", method = "Wrap"))]
-struct Wrap;
-
 #[harmos_macros::catalog(harmos_path = ::harmos_domain)]
 enum Boxed {
-    Wrap(Wrap),
+    Wrap(Envelope),
 }
 
 fn annotated() -> Annotated {

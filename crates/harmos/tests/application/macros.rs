@@ -69,9 +69,7 @@ mod sheet {
 
     impl Invert<Sheet> for Rename {
         fn invert(&self, before: &Sheet) -> Self {
-            Self {
-                to: before.title.clone(),
-            }
+            Self { to: before.title.clone() }
         }
     }
 
@@ -121,9 +119,7 @@ mod sheet {
     }
 
     pub fn rename(title: &str) -> Rename {
-        Rename {
-            to: title.to_owned(),
-        }
+        Rename { to: title.to_owned() }
     }
 }
 
@@ -213,21 +209,11 @@ mod unified_plugins {
     use std::time::Duration;
 
     use harmos::__private::{PluginDeclared, PluginInventory};
-    use harmos::operations::{
-        Contracts, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, ServingError,
-        WireOperation, WireTable, lifecycle,
-    };
+    use harmos::operations::{Contracts, OperationPolicy, RestartPolicy, RetryPolicy, ServingError, WireDeclaration, WireTable, lifecycle};
 
-    struct Echo;
-    impl OperationDeclaration for Echo {
-        type Request = ();
-        type Response = ();
-        const ID: &'static str = "fixture.unified.echo";
-        const POLICY: OperationPolicy = POLICY;
-    }
-    impl WireOperation for Echo {
-        const VERSION: u32 = 3;
-    }
+    #[harmos::message]
+    #[harmos::operation(id = "fixture.unified.echo", version = 3, response = (), policy = POLICY)]
+    struct Echo {}
 
     #[harmos::catalog]
     enum Leaves {
@@ -252,8 +238,7 @@ mod unified_plugins {
         value: u64,
     }
 
-    const PROJECTED: &[PluginInventory::publications::Entry] =
-        &[PluginInventory::publications::Entry::of::<Extra>()];
+    const PROJECTED: &[PluginInventory::publications::Entry] = &[PluginInventory::publications::Entry::of::<Extra>()];
     const POLICY: OperationPolicy = OperationPolicy {
         timeout: Duration::from_secs(15),
         attempt_timeout: Duration::from_secs(5),
@@ -300,22 +285,10 @@ mod unified_plugins {
         }
     }
 
-    struct ObserverObserve;
-    impl OperationDeclaration for ObserverObserve {
-        type Request = harmos::operations::observers::Control;
-        type Response = ();
-        const ID: &'static str = "fixture.unified.observer-observe";
-        const POLICY: OperationPolicy = harmos::operations::observers::POLICY;
-        const VISIBILITY: harmos::operations::Visibility = harmos::operations::Visibility::Host;
-    }
-    impl WireOperation for ObserverObserve {
-        const VERSION: u32 = 2;
-    }
     #[harmos::catalog]
     enum ObserverOperations {
         #[nested]
         Selected(Selected),
-        Observe(ObserverObserve),
     }
 
     struct CustomHost;
@@ -330,10 +303,7 @@ mod unified_plugins {
         async fn initialize(_: &()) -> Result<Self, Infallible> {
             panic!("metadata inspection must not initialize callback resources")
         }
-        async fn observe(
-            &mut self,
-            _: &harmos::sidecar::ObserverContext<'_, (), CustomHost>,
-        ) -> Result<(), Infallible> {
+        async fn observe(&mut self, _: &harmos::sidecar::ObserverContext<'_, (), CustomHost>) -> Result<(), Infallible> {
             panic!("metadata inspection must not start a callback")
         }
     }
@@ -367,7 +337,6 @@ mod unified_plugins {
             harmos::operations::lifecycle::Status: scope("reading", "power")
         ),
         observers = ObserverCatalog,
-        observer_control = ObserverObserve,
         context = harmos::sidecar::Supervisor,
         config = SdkInitialization,
         restart = "never"
@@ -392,11 +361,8 @@ mod unified_plugins {
         assert!(initialization.settings.is_empty());
         assert!(initialization.snapshot.is_empty());
         let markers = SdkAuthored::markers().unwrap();
-        let declaration = harmos::sidecar::inventory::Declaration::inspect(
-            &markers.concat(),
-            harmos::sidecar::inventory::Facility::Sidecar,
-        )
-        .unwrap();
+        let declaration =
+            harmos::sidecar::inventory::Declaration::inspect(&markers.concat(), harmos::sidecar::inventory::Facility::Sidecar).unwrap();
         assert_eq!(declaration.id, SdkAuthored::ID);
         let required = &declaration.contracts.requires;
         assert_eq!(required.len(), 2);
@@ -414,14 +380,8 @@ mod unified_plugins {
         );
         // A grant names the operation it permits and, for a scoped
         // operation, the stream; the retired kinded shape is refused.
-        assert_eq!(
-            serde_json::to_string(&required[1].grants[0]).unwrap(),
-            r#"{"operation":"host.operations.status","scope":"reading"}"#
-        );
-        assert!(
-            serde_json::from_str::<harmos_domain::plugin::Grant>(r#"{"survey":"reading"}"#)
-                .is_err()
-        );
+        assert_eq!(serde_json::to_string(&required[1].grants[0]).unwrap(), r#"{"operation":"host.operations.status","scope":"reading"}"#);
+        assert!(serde_json::from_str::<harmos_domain::plugin::Grant>(r#"{"survey":"reading"}"#).is_err());
         assert_eq!(declaration.config, "SdkInitialization");
         let provides = Contracts::of::<ObserverOperations>().unwrap();
         assert_eq!(declaration.contracts.provides, provides);
@@ -435,55 +395,33 @@ mod unified_plugins {
             }
         );
         assert_eq!(declaration.observers.len(), 1);
-        assert_eq!(
-            declaration.observers[0].id,
-            "fixture.unified.inert-observer"
-        );
+        assert_eq!(declaration.observers[0].id, "fixture.unified.inert-observer");
         let inert = <InertObserver as harmos_domain::inventory::observers::Declared>::ENTRY;
         let physical = <harmos::sidecar::__private::ObserverInventory<CustomHost> as harmos::catalog::Member<InertObserver>>::ENTRY;
         assert_eq!(inert.id, physical.id);
         assert_eq!(inert.interval, physical.interval);
         assert_eq!(inert.streams.len(), physical.streams.len());
-        let control = declaration.observer_control().unwrap().clone();
-        assert_eq!(control, provides[1]);
-        assert_eq!(control.version(), 2);
+        // The Observe Control Is Built In, Never An Authored Provision.
+        let control = WireDeclaration::of::<harmos::operations::observers::Control>().contract().unwrap();
+        assert_eq!(control.operation().id.as_str(), "harmos.observe");
+        assert!(!provides.contains(&control));
     }
 
     #[test]
     fn contributions_carry_inert() {
         use harmos_domain::inventory::{Declaration, Facility};
-        let declaration = Declaration::inspect(
-            &Contributing::markers().unwrap().concat(),
-            Facility::Sidecar,
-        )
-        .unwrap();
-        let namespaces = declaration
-            .sections
-            .iter()
-            .map(|section| section.namespace.as_ref())
-            .collect::<Vec<_>>();
+        let declaration = Declaration::inspect(&Contributing::markers().unwrap().concat(), Facility::Sidecar).unwrap();
+        let namespaces = declaration.sections.iter().map(|section| section.namespace.as_ref()).collect::<Vec<_>>();
         assert_eq!(namespaces, ["dokime.catalog", "studio.panels"]);
         let catalog = declaration.section("dokime.catalog").unwrap();
-        assert_eq!(
-            catalog.decode::<serde_json::Value>().unwrap()["kinds"][0],
-            "bench"
-        );
+        assert_eq!(catalog.decode::<serde_json::Value>().unwrap()["kinds"][0], "bench");
         // A Host That Does Not Own A Namespace Simply Never Asks For It
         assert!(declaration.section("unknown.host").is_none());
         let mut registrar = harmos_domain::Registrar::new();
         <Contributing as harmos::Plugin>::register(&mut registrar).unwrap();
-        let registered = registrar
-            .finish()
-            .into_iter()
-            .map(|registration| (registration.namespace, registration.schema))
-            .collect::<Vec<_>>();
-        assert_eq!(
-            registered,
-            [
-                ("dokime.catalog".to_owned(), 1),
-                ("studio.panels".to_owned(), 2)
-            ]
-        );
+        let registered =
+            registrar.finish().into_iter().map(|registration| (registration.namespace, registration.schema)).collect::<Vec<_>>();
+        assert_eq!(registered, [("dokime.catalog".to_owned(), 1), ("studio.panels".to_owned(), 2)]);
         harmos::sidecar::PluginNative::<Contributing>::new(std::num::NonZeroUsize::new(1).unwrap())
             .expect("the native owner accepts the inspected sections");
     }
@@ -493,10 +431,7 @@ mod unified_plugins {
         let mut parts: Vec<serde_json::Value> = Listening::markers()
             .unwrap()
             .into_iter()
-            .map(|marker| {
-                serde_json::from_slice(&marker[harmos_domain::PREFIX.len()..marker.len() - 1])
-                    .unwrap()
-            })
+            .map(|marker| serde_json::from_slice(&marker[harmos_domain::PREFIX.len()..marker.len() - 1]).unwrap())
             .collect();
         let bytes = |parts: &[serde_json::Value]| {
             let mut bytes = Vec::new();
@@ -507,81 +442,29 @@ mod unified_plugins {
             }
             bytes
         };
-        parts
-            .iter_mut()
-            .find(|part| part["kind"] == "listeners")
-            .unwrap()["listeners"][0]["callback"]["version"] = 5.into();
-        assert!(
-            harmos::sidecar::inventory::Declaration::inspect(
-                &bytes(&parts),
-                harmos::sidecar::inventory::Facility::Sidecar
-            )
-            .is_err()
-        );
-        parts
-            .iter_mut()
-            .find(|part| part["kind"] == "listeners")
-            .unwrap()["listeners"][0]["callback"]["version"] = 4.into();
-        parts
-            .iter_mut()
-            .find(|part| part["kind"] == "contracts")
-            .unwrap()["provides"] = serde_json::json!([]);
-        assert!(
-            harmos::sidecar::inventory::Declaration::inspect(
-                &bytes(&parts),
-                harmos::sidecar::inventory::Facility::Sidecar
-            )
-            .is_err()
-        );
+        parts.iter_mut().find(|part| part["kind"] == "listeners").unwrap()["listeners"][0]["callback"]["version"] = 2.into();
+        assert!(harmos::sidecar::inventory::Declaration::inspect(&bytes(&parts), harmos::sidecar::inventory::Facility::Sidecar).is_err());
+        parts.iter_mut().find(|part| part["kind"] == "listeners").unwrap()["listeners"][0]["callback"]["version"] = 1.into();
+        parts.iter_mut().find(|part| part["kind"] == "contracts").unwrap()["provides"] = serde_json::json!([]);
+        assert!(harmos::sidecar::inventory::Declaration::inspect(&bytes(&parts), harmos::sidecar::inventory::Facility::Sidecar).is_err());
     }
 
     #[test]
     fn listener_inventory_inert() {
-        let bytes: Vec<_> = Listening::markers()
-            .unwrap()
-            .into_iter()
-            .flatten()
-            .copied()
-            .collect();
-        let declaration = harmos::sidecar::inventory::Declaration::inspect(
-            &bytes,
-            harmos::sidecar::inventory::Facility::Sidecar,
-        )
-        .unwrap();
+        let bytes: Vec<_> = Listening::markers().unwrap().into_iter().flatten().copied().collect();
+        let declaration = harmos::sidecar::inventory::Declaration::inspect(&bytes, harmos::sidecar::inventory::Facility::Sidecar).unwrap();
         let selected = declaration.listeners;
-        assert_eq!(
-            selected,
-            harmos::listeners::Declarations::of::<Audience>().unwrap()
-        );
+        assert_eq!(selected, harmos::listeners::Declarations::of::<Audience>().unwrap());
         assert_eq!(selected[0].callback(), &declaration.contracts.provides[0]);
-        assert_eq!(selected[0].callback().version(), 4);
-        let guest_markers: Vec<_> = ListeningGuest::markers()
-            .unwrap()
-            .into_iter()
-            .flatten()
-            .copied()
-            .collect();
-        let guest = harmos::guest::inventory::Declaration::inspect(
-            &guest_markers,
-            harmos::guest::inventory::Facility::Guest,
-        )
-        .unwrap();
+        assert_eq!(selected[0].callback().version(), 1);
+        let guest_markers: Vec<_> = ListeningGuest::markers().unwrap().into_iter().flatten().copied().collect();
+        let guest = harmos::guest::inventory::Declaration::inspect(&guest_markers, harmos::guest::inventory::Facility::Guest).unwrap();
         assert_eq!(&guest.listeners, &selected);
         assert_eq!(guest.listeners[0].callback(), &guest.contracts.provides[0]);
 
-        let guest_markers: Vec<_> = Guest::markers()
-            .unwrap()
-            .into_iter()
-            .flatten()
-            .copied()
-            .collect();
+        let guest_markers: Vec<_> = Guest::markers().unwrap().into_iter().flatten().copied().collect();
         assert_eq!(
-            harmos::guest::inventory::Declaration::inspect(
-                &guest_markers,
-                harmos::guest::inventory::Facility::Guest
-            )
-            .unwrap()
-            .listeners,
+            harmos::guest::inventory::Declaration::inspect(&guest_markers, harmos::guest::inventory::Facility::Guest).unwrap().listeners,
             Vec::new()
         );
     }
@@ -589,15 +472,8 @@ mod unified_plugins {
     #[test]
     fn context_selects_native() {
         inspect::<Native>("sidecar", 2, 1);
-        let native =
-            harmos::sidecar::PluginNative::<Native>::new(std::num::NonZeroUsize::new(1).unwrap())
-                .unwrap();
-        assert_eq!(
-            harmos::sidecar::Attach::operation_contracts(&native)
-                .unwrap()
-                .unwrap(),
-            Contracts::of::<Selected>().unwrap()
-        );
+        let native = harmos::sidecar::PluginNative::<Native>::new(std::num::NonZeroUsize::new(1).unwrap()).unwrap();
+        assert_eq!(harmos::sidecar::Attach::operation_contracts(&native).unwrap().unwrap(), Contracts::of::<Selected>().unwrap());
         let required = harmos::sidecar::Attach::required_contracts(&native)
             .unwrap()
             .unwrap()
@@ -659,9 +535,7 @@ mod unified_plugins {
         const NAMESPACE: &'static str = "dokime.catalog";
         const SECTION: harmos_domain::inventory::Section =
             harmos_domain::inventory::Section::new(Self::NAMESPACE, r#"{"kinds":["bench"]}"#);
-        fn register(
-            registrar: &mut harmos_domain::Registrar,
-        ) -> Result<(), harmos_domain::RegistrationError> {
+        fn register(registrar: &mut harmos_domain::Registrar) -> Result<(), harmos_domain::RegistrationError> {
             registrar.register(Self::NAMESPACE, 1, &["bench"])
         }
     }
@@ -669,11 +543,8 @@ mod unified_plugins {
     struct Panels;
     impl harmos_domain::plugin::Contribution for Panels {
         const NAMESPACE: &'static str = "studio.panels";
-        const SECTION: harmos_domain::inventory::Section =
-            harmos_domain::inventory::Section::new(Self::NAMESPACE, "[]");
-        fn register(
-            registrar: &mut harmos_domain::Registrar,
-        ) -> Result<(), harmos_domain::RegistrationError> {
+        const SECTION: harmos_domain::inventory::Section = harmos_domain::inventory::Section::new(Self::NAMESPACE, "[]");
+        fn register(registrar: &mut harmos_domain::Registrar) -> Result<(), harmos_domain::RegistrationError> {
             registrar.register(Self::NAMESPACE, 2, &Vec::<String>::new())
         }
     }
@@ -715,18 +586,12 @@ mod unified_plugins {
         }
     }
 
-    struct Heard;
-    impl OperationDeclaration for Heard {
-        type Request = harmos::listeners::Delivery<Row>;
-        type Response = ();
-        const ID: &'static str = "fixture.unified.heard";
-        const POLICY: OperationPolicy = POLICY;
-        const VISIBILITY: harmos::operations::Visibility = harmos::operations::Visibility::Shared;
-    }
-    impl WireOperation for Heard {
-        const VERSION: u32 = 4;
-    }
-    #[harmos::listener(id = "fixture.row-listener", stream = Row, callback = Heard)]
+    #[harmos::listener(
+        id = "fixture.row-listener",
+        stream = Row,
+        callback = "fixture.unified.heard",
+        policy = POLICY
+    )]
     struct RowListener;
     #[harmos::catalog]
     enum Audience {
@@ -734,7 +599,7 @@ mod unified_plugins {
     }
     #[harmos::catalog]
     enum Callbacks {
-        Heard(Heard),
+        Heard(harmos::listeners::Delivery<RowListener>),
     }
 
     struct Listening;
@@ -826,17 +691,10 @@ mod unified_plugins {
         assert_eq!(contracts.provides, Contracts::of::<Selected>().unwrap());
         assert_eq!(contracts.requires.len(), requires);
         if requires != 0 {
-            let required = contracts
-                .requires
-                .iter()
-                .map(|required| required.contract.clone())
-                .collect::<Vec<_>>();
+            let required = contracts.requires.iter().map(|required| required.contract.clone()).collect::<Vec<_>>();
             assert_eq!(required, contracts.provides);
         }
-        assert_eq!(
-            contracts.lifecycle[0].action(),
-            lifecycle::Action::Initialize
-        );
+        assert_eq!(contracts.lifecycle[0].action(), lifecycle::Action::Initialize);
         assert_eq!(contracts.lifecycle[1].action(), lifecycle::Action::Shutdown);
         assert_eq!(contracts.lifecycle[0].contract().operation().policy, POLICY);
         assert_eq!(contracts.lifecycle[1].contract().operation().policy, POLICY);
@@ -844,22 +702,16 @@ mod unified_plugins {
 
         let inspected = match facility {
             "sidecar" => {
-                let declaration = harmos::sidecar::inventory::Declaration::inspect(
-                    &bytes,
-                    harmos::sidecar::inventory::Facility::Sidecar,
-                )
-                .unwrap();
+                let declaration =
+                    harmos::sidecar::inventory::Declaration::inspect(&bytes, harmos::sidecar::inventory::Facility::Sidecar).unwrap();
                 assert_eq!(declaration.restart(), None);
                 assert_eq!(declaration.operations.len(), contracts.provides.len());
                 assert_eq!(declaration.streams.len(), streams);
                 declaration.contracts
             }
             "guest" => {
-                let declaration = harmos::guest::inventory::Declaration::inspect(
-                    &bytes,
-                    harmos::guest::inventory::Facility::Guest,
-                )
-                .unwrap();
+                let declaration =
+                    harmos::guest::inventory::Declaration::inspect(&bytes, harmos::guest::inventory::Facility::Guest).unwrap();
                 assert_eq!(declaration.operations.len(), contracts.provides.len());
                 assert_eq!(declaration.streams.len(), streams);
                 declaration.contracts
@@ -880,10 +732,7 @@ use std::collections::BTreeMap;
 // Local Imports
 use self::sheet::{Change, Erase, Fact, Noted, Rename, Sheet, Studio, Untitled};
 use crate::support;
-use harmos::{
-    Error, Runtime, runtime::Registration, state::Focus, state::Kind, state::Position,
-    state::Transaction,
-};
+use harmos::{Error, Runtime, runtime::Registration, state::Focus, state::Kind, state::Position, state::Transaction};
 
 /* === Constants === */
 
@@ -910,10 +759,7 @@ async fn product_commits_refuses() {
 
     // A leaf-typed commit, as the target API spells it: the catalog aggregates
     // into the application's own error, so the extraction is the reflexive one.
-    let first = handle
-        .commit(sheet::rename("draft"))
-        .await
-        .expect("accepted");
+    let first = handle.commit(sheet::rename("draft")).await.expect("accepted");
     assert_eq!(title(&runtime).await, "draft");
 
     let refused = handle.commit(Rename { to: String::new() }).await;
@@ -923,18 +769,12 @@ async fn product_commits_refuses() {
     // The table the registration carries makes the change that declared an
     // inverse undoable and the one that declared itself irreversible a
     // barrier, exactly as the hand-written function does.
-    handle
-        .undo(support::alice(), Focus::all())
-        .await
-        .expect("a rename comes back");
+    handle.undo(support::alice(), Focus::all()).await.expect("a rename comes back");
     assert_eq!(title(&runtime).await, "origin");
 
     handle.commit(Erase).await.expect("accepted");
     assert!(
-        matches!(
-            handle.undo(support::alice(), Focus::all()).await,
-            Err(Error::NothingToUndo)
-        ),
+        matches!(handle.undo(support::alice(), Focus::all()).await, Err(Error::NothingToUndo)),
         "an erase declared itself irreversible, so it is a barrier"
     );
 }
@@ -964,10 +804,7 @@ async fn runtime_ac001_generated() {
     // The stamped identity is the permanent wire name, not the Rust type name.
     assert_eq!(Rename::DEFINITION, (Kind::Transaction, "sheet.rename", 2));
     assert_eq!(Rename::HISTORY, [(Kind::Transaction, "sheet.rename", 1)]);
-    assert!(
-        Erase::HISTORY.is_empty(),
-        "a definition with no earlier version declares none"
-    );
+    assert!(Erase::HISTORY.is_empty(), "a definition with no earlier version declares none");
     assert_eq!(sheet::RenameV1::VERSION, 1);
 
     // The generated conversions and dispatch are ordinary Rust the application
@@ -995,17 +832,9 @@ async fn runtime_ac001_generated() {
 async fn runtime_ac001_macro() {
     let runtime = studio().await;
 
-    let noted = runtime
-        .records
-        .publish(Noted("exported".to_owned()))
-        .await
-        .expect("a fact cannot be refused");
-    let facts: Vec<Fact> = runtime
-        .state
-        .query::<Fact>(Position::ORIGIN)
-        .await
-        .map(|entry| entry.expect("the tail holds it").value)
-        .collect();
+    let noted = runtime.records.publish(Noted("exported".to_owned())).await.expect("a fact cannot be refused");
+    let facts: Vec<Fact> =
+        runtime.state.query::<Fact>(Position::ORIGIN).await.map(|entry| entry.expect("the tail holds it").value).collect();
 
     assert_eq!(noted.position, Position(1));
     assert_eq!(facts, vec![Fact::Noted(Noted("exported".to_owned()))]);
@@ -1024,11 +853,7 @@ async fn derived_aggregate_writer() {
     // Catalog-typed commits are the shape every application can always write:
     // the aggregated error is the catalog's own, so the extraction is
     // reflexive.
-    runtime
-        .state
-        .commit(Step::from(Up(10)))
-        .await
-        .expect("accepted");
+    runtime.state.commit(Step::from(Up(10))).await.expect("accepted");
     let refused = runtime.state.commit(Step::from(Down(40))).await;
 
     assert!(
@@ -1041,37 +866,16 @@ async fn derived_aggregate_writer() {
         "the transaction was refused: the tally would go negative",
         "the generated aggregation displays its variant transparently"
     );
-    assert_eq!(
-        runtime
-            .state
-            .state()
-            .read(|tally| tally.total)
-            .await
-            .expect("reads are open")
-            .value,
-        10
-    );
+    assert_eq!(runtime.state.state().read(|tally| tally.total).await.expect("reads are open").value, 10);
 
     // `Up` and `Down` declare each other, so undoing one commits the other —
     // a pair across two definition types, checked mutual where each is
     // declared and derived through the table the registration carried.
     let handle = runtime.state.as_principal(support::alice());
     handle.commit(Step::from(Up(7))).await.expect("accepted");
-    handle
-        .undo(support::alice(), Focus::all())
-        .await
-        .expect("an up comes back as a down");
+    handle.undo(support::alice(), Focus::all()).await.expect("an up comes back as a down");
 
-    assert_eq!(
-        runtime
-            .state
-            .state()
-            .read(|tally| tally.total)
-            .await
-            .expect("reads are open")
-            .value,
-        10
-    );
+    assert_eq!(runtime.state.state().read(|tally| tally.total).await.expect("reads are open").value, 10);
 }
 
 #[test]
@@ -1092,33 +896,19 @@ fn catalog_projects_borrowed() {
 
     let first = Facts::First(First("first".to_owned()));
     let projected = harmos::state::RecordProjection::<First>::project(&first).unwrap();
-    let Facts::First(original) = &first else {
-        unreachable!("the selected record variant")
-    };
+    let Facts::First(original) = &first else { unreachable!("the selected record variant") };
     assert!(std::ptr::eq(projected, original));
     assert!(harmos::state::RecordProjection::<Second>::project(&first).is_none());
 
     let second = Facts::Second(Second("second".to_owned()));
     assert!(harmos::state::RecordProjection::<First>::project(&second).is_none());
-    assert_eq!(
-        harmos::state::RecordProjection::<Second>::project(&second)
-            .unwrap()
-            .0,
-        "second",
-    );
+    assert_eq!(harmos::state::RecordProjection::<Second>::project(&second).unwrap().0, "second",);
 
     let single = sheet::Fact::Noted(sheet::Noted("single".to_owned()));
-    assert_eq!(
-        harmos::state::RecordProjection::<sheet::Noted>::project(&single)
-            .unwrap()
-            .0,
-        "single",
-    );
+    assert_eq!(harmos::state::RecordProjection::<sheet::Noted>::project(&single).unwrap().0, "single",);
 }
 
-fn definitions_of<A: harmos::Application>(
-    catalog: impl Registration<A>,
-) -> Vec<(Kind, harmos::DefinitionId, u32)> {
+fn definitions_of<A: harmos::Application>(catalog: impl Registration<A>) -> Vec<(Kind, harmos::DefinitionId, u32)> {
     match catalog.register() {
         harmos::runtime::Catalog::Transactions { definitions, .. } => definitions,
         harmos::runtime::Catalog::Streams(_) | harmos::runtime::Catalog::Lanes(_) => {
@@ -1130,10 +920,7 @@ fn definitions_of<A: harmos::Application>(
 async fn studio() -> Runtime<Studio> {
     // A sheet that already has a name, so undoing back to it is a change the
     // application's own `check` accepts.
-    let origin = Sheet {
-        title: "origin".to_owned(),
-        applications: 0,
-    };
+    let origin = Sheet { title: "origin".to_owned(), applications: 0 };
 
     Runtime::<Studio>::builder(origin, ())
         .register(Change::catalog())
@@ -1144,13 +931,7 @@ async fn studio() -> Runtime<Studio> {
 }
 
 async fn title(runtime: &Runtime<Studio>) -> String {
-    runtime
-        .state
-        .state()
-        .read(|sheet| sheet.title.clone())
-        .await
-        .expect("reads are open")
-        .value
+    runtime.state.state().read(|sheet| sheet.title.clone()).await.expect("reads are open").value
 }
 
 /* === Tests === */

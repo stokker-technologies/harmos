@@ -64,6 +64,7 @@ struct Free {
 }
 
 /* === Enums === */
+#[harmos::message]
 enum Mode {
     Leaf,
     HandleCycle,
@@ -71,14 +72,23 @@ enum Mode {
     FullLane,
 }
 
-#[harmos::operation(request = Mode, response = usize, id = "scoped.parent", policy = POLICY)]
-struct ParentContract;
+#[harmos::message]
+#[harmos::operation(response = u64, id = "scoped.parent", version = 1, policy = POLICY)]
+struct ParentContract {
+    mode: Mode,
+}
 
-#[harmos::operation(request = bool, response = usize, id = "scoped.bound", policy = POLICY)]
-struct BoundContract;
+#[harmos::message]
+#[harmos::operation(response = u64, id = "scoped.bound", version = 1, policy = POLICY)]
+struct BoundContract {
+    hold: bool,
+}
 
-#[harmos::operation(request = bool, response = usize, id = "scoped.free", policy = POLICY)]
-struct FreeContract;
+#[harmos::message]
+#[harmos::operation(response = u64, id = "scoped.free", version = 1, policy = POLICY)]
+struct FreeContract {
+    wait: bool,
+}
 
 #[harmos::catalog]
 enum Operations {
@@ -103,33 +113,31 @@ impl Operation for Parent {
     }
 
     async fn run<'ctx>(
-        &mut self,
-        context: Self::Context<'ctx>,
-        mode: &mut Mode,
-        _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos::operations::Response<usize>, Error> {
-        let result: ::core::result::Result<usize, Self::Error> = async move {
-        match mode {
-            Mode::Leaf => Ok(7),
-            Mode::HandleCycle => {
-                assert!(matches!(context.submit_as::<ParentContract>(Mode::Leaf),
+        &mut self, context: Self::Context<'ctx>, request: &mut ParentContract, _endpoints: &mut Self::Endpoints,
+    ) -> Result<harmos::operations::Response<u64>, Error> {
+        let result: ::core::result::Result<u64, Self::Error> = async move {
+            match request.mode {
+                Mode::Leaf => Ok(7),
+                Mode::HandleCycle => {
+                    assert!(matches!(context.submit(ParentContract { mode: Mode::Leaf }),
                     Err(Error::OperationLaneCycle { parent, child }) if parent == self.trace.lane && child == self.trace.lane));
-                let free = context.submit_as::<FreeContract>(false)?.await?;
-                assert_eq!(*free, 1);
-                Ok(7)
-            }
-            Mode::PropagateCycle => {
-                let answer = context.submit_as::<ParentContract>(Mode::Leaf)?.await?;
-                Ok(*answer)
-            }
-            Mode::FullLane => {
-                let _queued = context.submit_as::<BoundContract>(false)?;
-                let _free = context.submit_as::<FreeContract>(true)?;
-                self.trace.free_started.notified().await;
-                Ok(self.trace.queued_runs.load(Ordering::SeqCst))
+                    let free = context.submit(FreeContract { wait: false })?.await?;
+                    assert_eq!(*free, 1);
+                    Ok(7)
+                }
+                Mode::PropagateCycle => {
+                    let answer = context.submit(ParentContract { mode: Mode::Leaf })?.await?;
+                    Ok(*answer)
+                }
+                Mode::FullLane => {
+                    let _queued = context.submit(BoundContract { hold: false })?;
+                    let _free = context.submit(FreeContract { wait: true })?;
+                    self.trace.free_started.notified().await;
+                    Ok(u64::try_from(self.trace.queued_runs.load(Ordering::SeqCst)).expect("run counts fit in u64"))
+                }
             }
         }
-            }.await;
+        .await;
         result.map(::core::convert::Into::into)
     }
 }
@@ -141,21 +149,15 @@ impl Operation for Bound {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    async fn initialize<'ctx>(
-        trace: Arc<Trace>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(trace: Arc<Trace>, _: Self::Context<'ctx>) -> Result<Self, Self::Error> {
         Ok(Self { trace })
     }
 
     async fn run<'ctx>(
-        &mut self,
-        _context: Self::Context<'ctx>,
-        hold: &mut bool,
-        _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos::operations::Response<usize>, Self::Error> {
-        let result: ::core::result::Result<usize, Self::Error> = async move {
-            if *hold {
+        &mut self, _context: Self::Context<'ctx>, request: &mut BoundContract, _endpoints: &mut Self::Endpoints,
+    ) -> Result<harmos::operations::Response<u64>, Self::Error> {
+        let result: ::core::result::Result<u64, Self::Error> = async move {
+            if request.hold {
                 self.trace.bound_started.notify_one();
                 self.trace.release.notified().await;
             } else {
@@ -175,22 +177,16 @@ impl Operation for Free {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    async fn initialize<'ctx>(
-        trace: Arc<Trace>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(trace: Arc<Trace>, _: Self::Context<'ctx>) -> Result<Self, Self::Error> {
         Ok(Self { trace })
     }
 
     async fn run<'ctx>(
-        &mut self,
-        _context: Self::Context<'ctx>,
-        wait: &mut bool,
-        _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos::operations::Response<usize>, Self::Error> {
-        let result: ::core::result::Result<usize, Self::Error> = async move {
+        &mut self, _context: Self::Context<'ctx>, request: &mut FreeContract, _endpoints: &mut Self::Endpoints,
+    ) -> Result<harmos::operations::Response<u64>, Self::Error> {
+        let result: ::core::result::Result<u64, Self::Error> = async move {
             self.trace.free_started.notify_one();
-            if *wait {
+            if request.wait {
                 std::future::pending::<()>().await;
             }
             Ok(1)
@@ -219,23 +215,10 @@ async fn runtime(parent_lane: Lanes) -> (Runtime<App>, Arc<Trace>) {
         release: Notify::new(),
         free_started: Notify::new(),
     });
-    let runtime = Runtime::<App>::builder((), ())
-        .register(Lanes::catalog())
-        .runtime()
-        .await
-        .unwrap();
-    runtime
-        .operations
-        .register_operation::<Parent>("app", parent_lane, trace.clone())
-        .unwrap();
-    runtime
-        .operations
-        .register_operation::<Bound>("app", Lanes::Serial, trace.clone())
-        .unwrap();
-    runtime
-        .operations
-        .register_operation::<Free>("app", Lanes::Open, trace.clone())
-        .unwrap();
+    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
+    runtime.operations.register_operation::<Parent>("app", parent_lane, trace.clone()).unwrap();
+    runtime.operations.register_operation::<Bound>("app", Lanes::Serial, trace.clone()).unwrap();
+    runtime.operations.register_operation::<Free>("app", Lanes::Open, trace.clone()).unwrap();
     (runtime, trace)
 }
 
@@ -245,12 +228,7 @@ async fn runtime(parent_lane: Lanes) -> (Runtime<App>, Arc<Trace>) {
 async fn ancestor_cycles_rejected() {
     for lane in [Lanes::Serial, Lanes::Concurrent] {
         let (runtime, trace) = runtime(lane).await;
-        let answer = runtime
-            .operations
-            .submit_as::<ParentContract>(Mode::HandleCycle)
-            .unwrap()
-            .await
-            .unwrap();
+        let answer = runtime.operations.submit(ParentContract { mode: Mode::HandleCycle }).unwrap().await.unwrap();
         assert_eq!(*answer, 7);
         assert_eq!(trace.parent_constructions.load(Ordering::SeqCst), 1);
         assert!(trace.free_dropped.load(Ordering::SeqCst));
@@ -261,15 +239,8 @@ async fn ancestor_cycles_rejected() {
 #[tokio::test]
 async fn refusal_survives_parent() {
     let (runtime, trace) = runtime(Lanes::Serial).await;
-    let error = runtime
-        .operations
-        .submit_as::<ParentContract>(Mode::PropagateCycle)
-        .unwrap()
-        .await
-        .unwrap_err();
-    let Error::OperationFailed { source, .. } = error else {
-        panic!("expected parent failure")
-    };
+    let error = runtime.operations.submit(ParentContract { mode: Mode::PropagateCycle }).unwrap().await.unwrap_err();
+    let Error::OperationFailed { source, .. } = error else { panic!("expected parent failure") };
     assert!(
         matches!(source.downcast_ref::<Error>(), Some(Error::OperationLaneCycle { parent, child }) if *parent == "Serial" && *child == "Serial")
     );
@@ -280,14 +251,9 @@ async fn refusal_survives_parent() {
 #[tokio::test]
 async fn child_settles_another() {
     let (runtime, trace) = runtime(Lanes::Concurrent).await;
-    let blocker = runtime.operations.submit_as::<BoundContract>(true).unwrap();
+    let blocker = runtime.operations.submit(BoundContract { hold: true }).unwrap();
     trace.bound_started.notified().await;
-    let answer = runtime
-        .operations
-        .submit_as::<ParentContract>(Mode::FullLane)
-        .unwrap()
-        .await
-        .unwrap();
+    let answer = runtime.operations.submit(ParentContract { mode: Mode::FullLane }).unwrap().await.unwrap();
     assert_eq!(*answer, 0);
     assert!(trace.free_dropped.load(Ordering::SeqCst));
     assert_eq!(trace.queued_runs.load(Ordering::SeqCst), 0);
@@ -295,9 +261,5 @@ async fn child_settles_another() {
     trace.release.notify_one();
     assert_eq!(*blocker.await.unwrap(), 7);
     runtime.stop().await.unwrap();
-    assert_eq!(
-        trace.queued_runs.load(Ordering::SeqCst),
-        0,
-        "the cancelled child never runs after capacity returns"
-    );
+    assert_eq!(trace.queued_runs.load(Ordering::SeqCst), 0, "the cancelled child never runs after capacity returns");
 }

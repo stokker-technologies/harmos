@@ -70,10 +70,11 @@ enum Lanes {
     Unbounded,
 }
 
+#[harmos::message]
 #[harmos::operation(
-        request = (),
         response = (),
         id = "lanes.measure",
+        version = 1,
         policy = OperationPolicy {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
@@ -81,7 +82,7 @@ enum Lanes {
             restart: RestartPolicy::Never,
         },
     )]
-struct MeasureContract;
+struct MeasureContract {}
 
 #[harmos::catalog]
 enum Operations {
@@ -108,7 +109,7 @@ impl Operation for Measure {
     async fn run<'ctx>(
         &mut self,
         _context: Self::Context<'ctx>,
-        _request: &mut (),
+        _request: &mut MeasureContract,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<()>, Self::Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
@@ -147,7 +148,7 @@ async fn assert_admission(lane: Lanes, count: usize, admitted: usize) {
         .register_operation::<Measure>("app", lane, gauge.clone())
         .unwrap();
     let instances: Vec<_> = (0..count)
-        .map(|_| runtime.operations.submit_as::<MeasureContract>(()).unwrap())
+        .map(|_| runtime.operations.submit(MeasureContract {}).unwrap())
         .collect();
 
     for _ in 0..admitted {

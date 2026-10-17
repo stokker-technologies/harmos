@@ -38,7 +38,26 @@ type Resident = Supervised<Bank, Attachment, NoticeHandler>;
 type Backends = PluginBackend<(), Resources, ()>;
 
 /* === Structs === */
-struct Forward<const ALLOWED: bool>;
+macro_rules! forward {
+    ($name:ident, $id:literal) => {
+        #[harmos::message]
+        #[harmos::operation(id = $id, version = 1, policy = Amplify::POLICY, response = Amplified)]
+        #[derive(Clone, PartialEq)]
+        struct $name {
+            value: i64,
+        }
+
+        impl Forwarded for $name {
+            fn value(&self) -> i64 {
+                self.value
+            }
+        }
+    };
+}
+
+forward!(Forward, "caller.forward");
+
+forward!(UnauthorizedForward, "unauthorized.forward");
 
 struct Dependent {
     resources: Arc<()>,
@@ -86,7 +105,28 @@ struct UnauthorizedEndpoint {
 
 struct Forwarder;
 
-struct Retry;
+#[harmos::message]
+#[harmos::operation(
+    id = "provider.retry",
+    version = 1,
+    policy = OperationPolicy {
+        timeout: Duration::from_secs(2),
+        attempt_timeout: Duration::from_millis(500),
+        retries: RetryPolicy::OnTransient {
+            max_retries: 1,
+            backoff: harmos::operations::Backoff::Fixed {
+                delay: Duration::from_millis(1),
+                jitter: harmos::operations::Jitter::None,
+            },
+        },
+        restart: RestartPolicy::Never,
+    },
+    response = Amplified,
+)]
+#[derive(Clone, PartialEq)]
+struct Retry {
+    value: i64,
+}
 
 #[derive(Clone)]
 struct Attachment {
@@ -152,25 +192,21 @@ enum ProviderOperations {
 
 #[harmos::catalog]
 enum CallerOperations {
-    Forward(Forward<true>),
+    Forward(Forward),
 }
 
 #[harmos::catalog]
 enum UnauthorizedOperations {
-    Forward(Forward<false>),
+    Forward(UnauthorizedForward),
 }
 
 /* === Traits === */
+// The Two Forwarding Operations Share One Handler Body.
+trait Forwarded: OperationDeclaration<Response = Amplified> {
+    fn value(&self) -> i64;
+}
 
 /* === Implementations === */
-impl harmos::operations::WireOperation for Retry {
-    const VERSION: u32 = 1;
-}
-
-impl<const ALLOWED: bool> harmos::operations::WireOperation for Forward<ALLOWED> {
-    const VERSION: u32 = 1;
-}
-
 impl Drop for ProviderSeed {
     fn drop(&mut self) {
         PROVIDER_SEEDS.lock().unwrap().remove(&self.id);
@@ -246,7 +282,7 @@ impl harmos::Plugin for CallerEndpoint {
         &self,
         table: &mut WireTable<Supervisor>,
     ) -> Result<(), harmos::operations::ServingError> {
-        table.bind_operation::<Forwarding<true>>(self.resources.clone())
+        table.bind_operation::<Forwarding<Forward>>(self.resources.clone())
     }
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Refusal> {
         Ok(())
@@ -283,7 +319,7 @@ impl harmos::Plugin for UnauthorizedEndpoint {
         &self,
         table: &mut WireTable<Supervisor>,
     ) -> Result<(), harmos::operations::ServingError> {
-        table.bind_operation::<Forwarding<false>>(self.resources.clone())
+        table.bind_operation::<Forwarding<UnauthorizedForward>>(self.resources.clone())
     }
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Refusal> {
         Ok(())
@@ -401,12 +437,12 @@ impl harmos::Plugin for Dependent {
     }
     async fn initialize(&mut self, context: &Self::Context) -> Result<(), Refusal> {
         context
-            .call_as::<Amplify>(Amplify { value: 11 })
+            .call(Amplify { value: 11 })
             .await
             .map_err(Refusal::from)?;
         if self.notify {
             context
-                .call_as::<Sample>(Sample { value: 99 })
+                .call(Sample { value: 99 })
                 .await
                 .map_err(Refusal::from)?;
         }
@@ -423,7 +459,7 @@ impl harmos::Plugin for Dependent {
     }
     async fn stop(&mut self, context: &Self::Context) -> Result<(), Refusal> {
         context
-            .call_as::<Amplify>(Amplify { value: 22 })
+            .call(Amplify { value: 22 })
             .await
             .expect("provider remains available through cleanup");
         Ok(())
@@ -431,17 +467,6 @@ impl harmos::Plugin for Dependent {
     async fn cleanup(&mut self) -> Result<(), Refusal> {
         Ok(())
     }
-}
-
-impl<const ALLOWED: bool> OperationDeclaration for Forward<ALLOWED> {
-    type Request = Amplify;
-    type Response = Amplified;
-    const ID: &'static str = if ALLOWED {
-        "caller.forward"
-    } else {
-        "unauthorized.forward"
-    };
-    const POLICY: OperationPolicy = Amplify::POLICY;
 }
 
 impl Drop for DroppedHandler {
@@ -488,24 +513,6 @@ impl harmos::operations::Operation for Amplifying {
     }
 }
 
-impl OperationDeclaration for Retry {
-    type Request = Amplify;
-    type Response = Amplified;
-    const ID: &'static str = "provider.retry";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(2),
-        attempt_timeout: Duration::from_millis(500),
-        retries: RetryPolicy::OnTransient {
-            max_retries: 1,
-            backoff: harmos::operations::Backoff::Fixed {
-                delay: Duration::from_millis(1),
-                jitter: harmos::operations::Jitter::None,
-            },
-        },
-        restart: RestartPolicy::Never,
-    };
-}
-
 struct Retrying {
     resources: Arc<Provider>,
 }
@@ -526,7 +533,7 @@ impl harmos::operations::Operation for Retrying {
     async fn run<'ctx>(
         &mut self,
         _: Self::Context<'ctx>,
-        request: &mut Amplify,
+        request: &mut Retry,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Amplified>, Refusal> {
         let result: ::core::result::Result<Amplified, Self::Error> = async move {
@@ -554,12 +561,13 @@ impl harmos::operations::Operation for Retrying {
     }
 }
 
-struct Forwarding<const ALLOWED: bool> {
+struct Forwarding<F> {
     _resources: Arc<Forwarder>,
+    forwarded: std::marker::PhantomData<fn() -> F>,
 }
 
-impl<const ALLOWED: bool> harmos::operations::Operation for Forwarding<ALLOWED> {
-    type Declaration = Forward<ALLOWED>;
+impl<F: Forwarded> harmos::operations::Operation for Forwarding<F> {
+    type Declaration = F;
     type Resources = Forwarder;
     type Error = Refusal;
     type Endpoints = ();
@@ -570,16 +578,19 @@ impl<const ALLOWED: bool> harmos::operations::Operation for Forwarding<ALLOWED> 
     ) -> Result<Self, Refusal> {
         Ok(Self {
             _resources: resources,
+            forwarded: std::marker::PhantomData,
         })
     }
     async fn run<'ctx>(
         &mut self,
         host: Self::Context<'ctx>,
-        request: &mut Amplify,
+        request: &mut F,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Amplified>, Refusal> {
         let result: ::core::result::Result<Amplified, Self::Error> = async move {
-            host.call(request.clone())
+            host.call(Amplify {
+                value: request.value(),
+            })
                 .await
                 .map(harmos::operations::Response::into_owned)
                 .map_err(|error| match error {
@@ -1378,7 +1389,7 @@ async fn dependency_original_manager() {
     assert_eq!(
         runtime
             .operations
-            .call_as::<Forward<true>>(Amplify { value: 7 })
+            .call(Forward { value: 7 })
             .await
             .unwrap()
             .value,
@@ -1386,7 +1397,7 @@ async fn dependency_original_manager() {
     );
     let denied = runtime
         .operations
-        .call_as::<Forward<false>>(Amplify { value: 7 })
+        .call(UnauthorizedForward { value: 7 })
         .await
         .unwrap_err();
     let harmos::Error::OperationFailed { source, .. } = denied else {
@@ -1398,7 +1409,7 @@ async fn dependency_original_manager() {
     assert_eq!(
         runtime
             .operations
-            .call_as::<Forward<true>>(Amplify { value: 8 })
+            .call(Forward { value: 8 })
             .await
             .unwrap()
             .value,
@@ -1522,20 +1533,20 @@ async fn dependency_admission_revocation() {
     for (value, expected) in [(7, 21), (8, 24)] {
         let bytes = runtime
             .operations
-            .call_encoded(Forward::<true>::ID, Amplify { value }.encode_to_vec())
+            .call_encoded(Forward::ID, Message::encode_to_vec(&Forward { value }))
             .await
             .unwrap();
         assert_eq!(Amplified::decode(bytes.as_slice()).unwrap().value, expected);
     }
     let denied = runtime
         .operations
-        .call_encoded(Forward::<false>::ID, Amplify { value: 7 }.encode_to_vec())
+        .call_encoded(UnauthorizedForward::ID, Message::encode_to_vec(&UnauthorizedForward { value: 7 }))
         .await
         .unwrap_err();
     let harmos::Error::OperationFailed { operation, source } = denied else {
         panic!("the original native error must survive")
     };
-    assert_eq!(operation, Forward::<false>::ID);
+    assert_eq!(operation, UnauthorizedForward::ID);
     assert!(
         matches!(source.downcast_ref::<NativeError>(), Some(NativeError::Remote(failure)) if failure.cause().contains("may not invoke"))
     );
@@ -1579,7 +1590,7 @@ async fn cancelled_dependency_capacity() {
     manager.initialize(&mut lifecycle).await.unwrap();
     let invocation = runtime
         .operations
-        .submit_encoded(Forward::<true>::ID, Amplify { value: 0 }.encode_to_vec())
+        .submit_encoded(Forward::ID, Message::encode_to_vec(&Forward { value: 0 }))
         .unwrap();
     tokio::time::timeout(Duration::from_secs(1), provider.started.notified())
         .await
@@ -1602,7 +1613,7 @@ async fn cancelled_dependency_capacity() {
         .unwrap();
     let bytes = runtime
         .operations
-        .call_encoded(Forward::<true>::ID, Amplify { value: 9 }.encode_to_vec())
+        .call_encoded(Forward::ID, Message::encode_to_vec(&Forward { value: 9 }))
         .await
         .unwrap();
     assert_eq!(Amplified::decode(bytes.as_slice()).unwrap().value, 9);
@@ -1675,7 +1686,7 @@ async fn retry_retained_finalization() {
     manager.initialize(&mut lifecycle).await.unwrap();
     let result = runtime
         .operations
-        .call_encoded(Retry::ID, Amplify { value: 1 }.encode_to_vec())
+        .call_encoded(Retry::ID, Message::encode_to_vec(&Retry { value: 1 }))
         .await
         .unwrap();
     assert_eq!(Amplified::decode(result.as_slice()).unwrap().value, 3);
@@ -1694,7 +1705,7 @@ async fn retry_retained_finalization() {
     provider.fail_cleanup.store(true, Ordering::SeqCst);
     let failed = runtime
         .operations
-        .call_encoded(Retry::ID, Amplify { value: 1 }.encode_to_vec())
+        .call_encoded(Retry::ID, Message::encode_to_vec(&Retry { value: 1 }))
         .await;
     assert!(
         matches!(failed, Err(harmos::Error::OperationFinalization { operation, .. }) if operation == Retry::ID)
@@ -1756,7 +1767,7 @@ async fn capacity_precedes_encoding() {
         }
         initialized.unwrap();
         let native = lifecycle.previous_native.as_ref().unwrap();
-        let contract = harmos::operations::WireDeclaration::of::<Forward<true>>()
+        let contract = harmos::operations::WireDeclaration::of::<Forward>()
             .contract()
             .unwrap();
         let target = runtime
@@ -1785,7 +1796,7 @@ async fn capacity_precedes_encoding() {
         if !dynamic {
             let busy = runtime
                 .operations
-                .submit_as::<Forward<true>>(Amplify { value: 1 })
+                .submit(Forward { value: 1 })
                 .unwrap()
                 .await;
             assert!(
@@ -1809,7 +1820,7 @@ async fn capacity_precedes_encoding() {
         if !dynamic {
             let response = runtime
                 .operations
-                .call_as::<Forward<true>>(Amplify { value: 11 })
+                .call(Forward { value: 11 })
                 .await
                 .unwrap();
             assert_eq!(response.value, 11);

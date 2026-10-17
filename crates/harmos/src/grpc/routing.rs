@@ -26,8 +26,6 @@ use tonic::{body::Body, codegen::http};
 
 // Local Imports
 use super::server;
-use crate::operations::{GrpcVisitor, InputDeclaration, OutputDeclaration, WireOperation};
-use crate::{MemorySize, Protobuf};
 
 /* === Constants === */
 
@@ -38,8 +36,6 @@ pub(crate) type Handler =
     fn(server::Authority, server::Settings, http::Request<Body>) -> server::HttpFuture;
 
 /* === Structs === */
-pub(crate) struct Project;
-
 #[derive(Clone)]
 pub(super) struct Router {
     operations: crate::operations::OperationManager,
@@ -104,46 +100,20 @@ where
     }
 }
 
-impl GrpcVisitor for Project {
-    type Entry = Handler;
-    fn unary<O: WireOperation>(self) -> Handler
-    where
-        O::Request: Protobuf + MemorySize,
-        O::Response: Protobuf,
-    {
-        server::unary::<O>
-    }
-
-    fn upload<O: WireOperation + InputDeclaration>(self) -> Handler
-    where
-        O::Request: Protobuf + MemorySize,
-        O::Response: Protobuf,
-        O::Item: Protobuf + MemorySize,
-    {
-        server::upload::<O>
-    }
-
-    fn download<O: WireOperation + OutputDeclaration>(self) -> Handler
-    where
-        O::Request: Protobuf + MemorySize,
-        O::Response: Protobuf,
-        O::Item: Protobuf + MemorySize,
-    {
-        server::download::<O>
-    }
-
-    fn exchange<O: WireOperation + InputDeclaration + OutputDeclaration>(self) -> Handler
-    where
-        O::Request: Protobuf + MemorySize,
-        O::Response: Protobuf,
-        <O as InputDeclaration>::Item: Protobuf + MemorySize,
-        <O as OutputDeclaration>::Item: Protobuf + MemorySize,
-    {
-        server::exchange::<O>
+/* === Public Functions === */
+// The gRPC handler of one declaration, selected by the directions it streams.
+pub(crate) fn handler<O: crate::operations::OperationDeclaration>() -> Handler {
+    use crate::operations::Direction;
+    match (
+        <O::Input as Direction>::STREAMED,
+        <O::Output as Direction>::STREAMED,
+    ) {
+        (false, false) => server::unary::<O>,
+        (true, false) => server::upload::<O>,
+        (false, true) => server::download::<O>,
+        (true, true) => server::exchange::<O>,
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

@@ -19,7 +19,7 @@ use arrow_schema::{DataType, Field, Fields, Schema};
 use harmos::operations::StreamSettings;
 use harmos::storage::arrow::ArrowBatch;
 use harmos::storage::operations::{WriteRecords, WriteStreams};
-use harmos::storage::writes::{DataBatch, WriteReceipt, WriteRequest};
+use harmos::storage::writes::{DataBatch, WriteReceipt};
 use harmos::{Identifier, MemorySize, Message};
 
 // Local Imports
@@ -34,10 +34,7 @@ use super::{Fixture, Lanes, config};
 /* === Implementations === */
 /* === Public Functions === */
 pub(super) fn settings() -> StreamSettings {
-    StreamSettings {
-        items: NonZeroUsize::new(4).unwrap(),
-        bytes: NonZeroUsize::new(1024 * 1024).unwrap(),
-    }
+    StreamSettings { items: NonZeroUsize::new(4).unwrap(), bytes: NonZeroUsize::new(1024 * 1024).unwrap() }
 }
 
 pub(super) fn batch(sequence: u64, destination: &str) -> DataBatch {
@@ -45,35 +42,20 @@ pub(super) fn batch(sequence: u64, destination: &str) -> DataBatch {
     let payload = StructArray::new(fields, vec![Arc::new(UInt64Array::from(vec![7, 11]))], None);
     let items = vec!["first", "second"];
     let data = envelope(payload, &items, &[0, 1]);
-    DataBatch {
-        sequence,
-        destination: Identifier::new(destination).unwrap(),
-        schema: super::super::schema(),
-        data: data.into(),
-    }
+    DataBatch { sequence, destination: Identifier::new(destination).unwrap(), schema: super::super::schema(), data: data.into() }
 }
 
 pub(super) fn envelope(payload: StructArray, items: &[&str], sequences: &[u64]) -> ArrowBatch {
-    let metadata_fields: Fields = vec![
-        Field::new("item", DataType::Utf8, false),
-        Field::new("sequence", DataType::UInt64, false),
-    ]
-    .into();
+    let metadata_fields: Fields = vec![Field::new("item", DataType::Utf8, false), Field::new("sequence", DataType::UInt64, false)].into();
     let metadata = StructArray::new(
         metadata_fields,
-        vec![
-            Arc::new(StringArray::from(items.to_vec())),
-            Arc::new(UInt64Array::from(sequences.to_vec())),
-        ],
+        vec![Arc::new(StringArray::from(items.to_vec())), Arc::new(UInt64Array::from(sequences.to_vec()))],
         None,
     );
-    let fields = vec![
-        Field::new("_storage", metadata.data_type().clone(), false),
-        Field::new("payload", payload.data_type().clone(), false),
-    ];
+    let fields =
+        vec![Field::new("_storage", metadata.data_type().clone(), false), Field::new("payload", payload.data_type().clone(), false)];
     let columns: Vec<ArrayRef> = vec![Arc::new(metadata), Arc::new(payload)];
-    ArrowBatch::try_new(RecordBatch::try_new(Arc::new(Schema::new(fields)), columns).unwrap())
-        .unwrap()
+    ArrowBatch::try_new(RecordBatch::try_new(Arc::new(Schema::new(fields)), columns).unwrap()).unwrap()
 }
 
 pub(super) async fn seed(f: &Fixture) {
@@ -86,34 +68,18 @@ pub(super) async fn seed(f: &Fixture) {
             cardinality: harmos::schema::Cardinality::Required,
         }]],
     };
-    f.storage
-        .write_schema(&super::super::schema(), &graph)
-        .await
-        .unwrap();
+    f.storage.write_schema(&super::super::schema(), &graph).await.unwrap();
     f.storage.flush().await.unwrap();
 }
 
 #[tokio::test]
 async fn record_exchange_receipts() {
     let f = Fixture::new(config()).await;
-    harmos::storage::operations::register(
-        &f.runtime.operations,
-        "storage",
-        Lanes::Open,
-        Arc::new(f.storage.clone()),
-    )
-    .unwrap();
+    harmos::storage::operations::register(&f.runtime.operations, "storage", Lanes::Open, Arc::new(f.storage.clone())).unwrap();
     seed(&f).await;
-    let mut records = f
-        .runtime
-        .operations
-        .exchange::<WriteRecords>(WriteRequest { scope: None }, settings(), settings())
-        .unwrap();
+    let mut records = f.runtime.operations.exchange::<WriteRecords>(WriteRecords { scope: None }, settings(), settings()).unwrap();
     let first = batch(1, "bench");
-    records
-        .send_with(first.memory_size(), || Ok(first))
-        .await
-        .unwrap();
+    records.send_with(first.memory_size(), || Ok(first)).await.unwrap();
     records.finish_input();
     let mut accepted = None;
     let mut durable = None;
@@ -139,21 +105,11 @@ async fn record_exchange_receipts() {
 #[tokio::test]
 async fn cancelled_exchange_retains() {
     let f = Fixture::new(config()).await;
-    harmos::storage::operations::register(
-        &f.runtime.operations,
-        "storage",
-        Lanes::Open,
-        Arc::new(f.storage.clone()),
-    )
-    .unwrap();
+    harmos::storage::operations::register(&f.runtime.operations, "storage", Lanes::Open, Arc::new(f.storage.clone())).unwrap();
     seed(&f).await;
 
     // Cancelling Delivery Does Not Retract Storage-Owned Samples.
-    let mut stream = f
-        .runtime
-        .operations
-        .exchange::<WriteStreams>(WriteRequest { scope: None }, settings(), settings())
-        .unwrap();
+    let mut stream = f.runtime.operations.exchange::<WriteStreams>(WriteStreams { scope: None }, settings(), settings()).unwrap();
     let first = batch(1, "voltage");
     stream.send(first).await.unwrap();
     let accepted = loop {

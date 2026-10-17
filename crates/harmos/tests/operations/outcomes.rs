@@ -28,9 +28,7 @@ use super::{
     app::App,
     support::{Bank, Ledger, catalog},
 };
-use harmos::operations::{
-    Backoff, Context, FailureKind, Jitter, Operation, OperationPolicy, RestartPolicy, RetryPolicy,
-};
+use harmos::operations::{Backoff, Context, FailureKind, Jitter, Operation, OperationPolicy, RestartPolicy, RetryPolicy};
 use harmos::{Error, Refusal, Runtime, state::FactSource, state::Position, state::SystemFact};
 
 /* === Constants === */
@@ -57,9 +55,10 @@ struct Compute {
 struct Parent;
 
 /* === Enums === */
+#[harmos::message]
 #[derive(Clone, Copy)]
 enum Mode {
-    Value(usize),
+    Value(u64),
     Reject,
     Wait,
     Retry,
@@ -75,10 +74,11 @@ enum Failed {
     Child(#[from] Error),
 }
 
+#[harmos::message]
 #[harmos::operation(
-        request = Mode,
-        response = usize,
+        response = u64,
         id = "outcomes.compute",
+        version = 1,
         policy = OperationPolicy {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
@@ -89,12 +89,15 @@ enum Failed {
             restart: RestartPolicy::Never,
         },
     )]
-struct ComputeContract;
+struct ComputeContract {
+    mode: Mode,
+}
 
+#[harmos::message]
 #[harmos::operation(
-        request = Mode,
-        response = usize,
+        response = u64,
         id = "outcomes.parent",
+        version = 1,
         policy = OperationPolicy {
             timeout: Duration::from_secs(3),
             attempt_timeout: Duration::from_secs(3),
@@ -102,7 +105,9 @@ struct ComputeContract;
             restart: RestartPolicy::Never,
         },
     )]
-struct ParentContract;
+struct ParentContract {
+    mode: Mode,
+}
 
 #[harmos::catalog]
 enum Operations {
@@ -120,16 +125,10 @@ impl Operation for Compute {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    async fn initialize<'ctx>(
-        counts: Arc<Counts>,
-        _context: Self::Context<'ctx>,
-    ) -> Exported<Self> {
+    async fn initialize<'ctx>(counts: Arc<Counts>, _context: Self::Context<'ctx>) -> Exported<Self> {
         let constructed: Exported<Self> = async move {
             counts.constructed.fetch_add(1, Ordering::SeqCst);
-            Ok(Self {
-                attempts: 0,
-                counts,
-            })
+            Ok(Self { attempts: 0, counts })
         }
         .await;
         let mut operation = constructed?;
@@ -144,20 +143,17 @@ impl Operation for Compute {
     }
 
     async fn run<'ctx>(
-        &mut self,
-        context: Self::Context<'ctx>,
-        mode: &mut Mode,
-        _endpoints: &mut Self::Endpoints,
-    ) -> Exported<harmos::operations::Response<usize>> {
-        let result: ::core::result::Result<usize, Self::Error> = async move {
+        &mut self, context: Self::Context<'ctx>, request: &mut ComputeContract, _endpoints: &mut Self::Endpoints,
+    ) -> Exported<harmos::operations::Response<u64>> {
+        let result: ::core::result::Result<u64, Self::Error> = async move {
             assert_eq!(context.attempt(), self.attempts);
             self.attempts += 1;
-            match mode {
-                Mode::Value(value) => Ok(*value),
+            match request.mode {
+                Mode::Value(value) => Ok(value),
                 Mode::Reject => Err(Failed::Instrument),
                 Mode::Wait => std::future::pending().await,
                 Mode::Retry if self.attempts < 3 => Err(Failed::Backlog),
-                Mode::Retry => Ok(self.attempts),
+                Mode::Retry => Ok(u64::try_from(self.attempts).expect("attempts fit in u64")),
             }
         }
         .await;
@@ -189,13 +185,10 @@ impl Operation for Parent {
     }
 
     async fn run<'ctx>(
-        &mut self,
-        context: Self::Context<'ctx>,
-        mode: &mut Mode,
-        _endpoints: &mut Self::Endpoints,
-    ) -> Answered<harmos::operations::Response<usize>> {
-        let result: ::core::result::Result<usize, Self::Error> = async move {
-            let answer = context.submit_as::<ComputeContract>(*mode)?.await?;
+        &mut self, context: Self::Context<'ctx>, request: &mut ParentContract, _endpoints: &mut Self::Endpoints,
+    ) -> Answered<harmos::operations::Response<u64>> {
+        let result: ::core::result::Result<u64, Self::Error> = async move {
+            let answer = context.submit(ComputeContract { mode: request.mode })?.await?;
             Ok(*answer)
         }
         .await;
@@ -207,20 +200,10 @@ impl Operation for Parent {
 
 /* === Private Functions === */
 async fn runtime() -> (Runtime<App>, Arc<Counts>) {
-    let runtime = Runtime::<App>::builder((), ())
-        .register(Lanes::catalog())
-        .runtime()
-        .await
-        .unwrap();
+    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
     let counts = Arc::new(Counts::default());
-    runtime
-        .operations
-        .register_operation::<Compute>("app", Lanes::Open, counts.clone())
-        .unwrap();
-    runtime
-        .operations
-        .register_operation::<Parent>("app", Lanes::Serial, Arc::new(()))
-        .unwrap();
+    runtime.operations.register_operation::<Compute>("app", Lanes::Open, counts.clone()).unwrap();
+    runtime.operations.register_operation::<Parent>("app", Lanes::Serial, Arc::new(())).unwrap();
     (runtime, counts)
 }
 
@@ -229,102 +212,43 @@ async fn runtime() -> (Runtime<App>, Arc<Counts>) {
 #[tokio::test]
 async fn aliases_preserve_values() {
     let (runtime, _) = runtime().await;
-    let root = runtime
-        .operations
-        .submit_as::<ComputeContract>(Mode::Value(4))
-        .unwrap()
-        .await
-        .unwrap();
+    let root = runtime.operations.submit(ComputeContract { mode: Mode::Value(4) }).unwrap().await.unwrap();
     assert_eq!(*root, 4);
-    let child = runtime
-        .operations
-        .submit_as::<ParentContract>(Mode::Value(9))
-        .unwrap()
-        .await
-        .unwrap();
+    let child = runtime.operations.submit(ParentContract { mode: Mode::Value(9) }).unwrap().await.unwrap();
     assert_eq!(*child, 9);
-    let error = runtime
-        .operations
-        .submit_as::<ComputeContract>(Mode::Reject)
-        .unwrap()
-        .await
-        .unwrap_err();
-    let Error::OperationFailed { operation, source } = error else {
-        panic!("expected authored failure")
-    };
+    let error = runtime.operations.submit(ComputeContract { mode: Mode::Reject }).unwrap().await.unwrap_err();
+    let Error::OperationFailed { operation, source } = error else { panic!("expected authored failure") };
     assert_eq!(operation, "outcomes.compute");
-    assert!(matches!(
-        source.downcast_ref::<Failed>(),
-        Some(Failed::Instrument)
-    ));
+    assert!(matches!(source.downcast_ref::<Failed>(), Some(Failed::Instrument)));
     runtime.stop().await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
 async fn deadlines_remain_distinct() {
     let (runtime, _) = runtime().await;
-    let elapsed = runtime
-        .operations
-        .submit_as::<ComputeContract>(Mode::Wait)
-        .unwrap()
-        .await;
-    assert!(matches!(
-        elapsed,
-        Err(Error::OperationRefused(Refusal::TimedOut))
-    ));
+    let elapsed = runtime.operations.submit(ComputeContract { mode: Mode::Wait }).unwrap().await;
+    assert!(matches!(elapsed, Err(Error::OperationRefused(Refusal::TimedOut))));
 
-    let error = runtime
-        .operations
-        .submit_as::<ParentContract>(Mode::Reject)
-        .unwrap()
-        .await
-        .unwrap_err();
-    let Error::OperationFailed { operation, source } = error else {
-        panic!("expected parent failure")
-    };
+    let error = runtime.operations.submit(ParentContract { mode: Mode::Reject }).unwrap().await.unwrap_err();
+    let Error::OperationFailed { operation, source } = error else { panic!("expected parent failure") };
     assert_eq!(operation, "outcomes.parent");
-    let Some(Failed::Child(Error::OperationFailed { operation, source })) =
-        source.downcast_ref::<Failed>()
-    else {
+    let Some(Failed::Child(Error::OperationFailed { operation, source })) = source.downcast_ref::<Failed>() else {
         panic!("expected original child failure")
     };
     assert_eq!(operation, "outcomes.compute");
-    assert!(matches!(
-        source.downcast_ref::<Failed>(),
-        Some(Failed::Instrument)
-    ));
+    assert!(matches!(source.downcast_ref::<Failed>(), Some(Failed::Instrument)));
 
-    let error = runtime
-        .operations
-        .submit_as::<ParentContract>(Mode::Wait)
-        .unwrap()
-        .await
-        .unwrap_err();
-    let Error::OperationFailed { source, .. } = error else {
-        panic!("expected parent failure")
-    };
-    assert!(matches!(
-        source.downcast_ref::<Failed>(),
-        Some(Failed::Child(Error::OperationRefused(Refusal::TimedOut)))
-    ));
+    let error = runtime.operations.submit(ParentContract { mode: Mode::Wait }).unwrap().await.unwrap_err();
+    let Error::OperationFailed { source, .. } = error else { panic!("expected parent failure") };
+    assert!(matches!(source.downcast_ref::<Failed>(), Some(Failed::Child(Error::OperationRefused(Refusal::TimedOut)))));
     runtime.stop().await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
 async fn child_retries_reuse() {
     let (runtime, counts) = runtime().await;
-    let root = runtime
-        .operations
-        .submit_as::<ComputeContract>(Mode::Retry)
-        .unwrap()
-        .await
-        .unwrap();
-    let child = runtime
-        .operations
-        .submit_as::<ParentContract>(Mode::Retry)
-        .unwrap()
-        .await
-        .unwrap();
+    let root = runtime.operations.submit(ComputeContract { mode: Mode::Retry }).unwrap().await.unwrap();
+    let child = runtime.operations.submit(ParentContract { mode: Mode::Retry }).unwrap().await.unwrap();
     assert_eq!((*root, *child), (3, 3));
     assert_eq!(counts.constructed.load(Ordering::SeqCst), 2);
     assert_eq!(counts.initialized.load(Ordering::SeqCst), 2);
@@ -341,19 +265,9 @@ async fn failure_never_emit() {
         .runtime()
         .await
         .unwrap();
-    let error = runtime
-        .operations
-        .submit_as::<ComputeContract>(Mode::Reject)
-        .unwrap()
-        .await
-        .unwrap_err();
-    let Error::OperationFailed { source, .. } = error else {
-        panic!("expected authored failure")
-    };
-    assert!(matches!(
-        source.downcast_ref::<Failed>(),
-        Some(Failed::Instrument)
-    ));
+    let error = runtime.operations.submit(ComputeContract { mode: Mode::Reject }).unwrap().await.unwrap_err();
+    let Error::OperationFailed { source, .. } = error else { panic!("expected authored failure") };
+    assert!(matches!(source.downcast_ref::<Failed>(), Some(Failed::Instrument)));
     let facts: Vec<_> = runtime
         .state
         .query::<SystemFact>(Position::ORIGIN)

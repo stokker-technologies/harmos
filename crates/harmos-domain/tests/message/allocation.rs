@@ -72,6 +72,11 @@ struct Leaf {
     payload: Vec<u8>,
 }
 
+// The Listeners Whose Deliveries Carry One Leaf Or One Selection.
+struct Leaves;
+
+struct Selections;
+
 #[message(harmos_path = ::harmos_domain)]
 #[derive(PartialEq)]
 struct Selection {
@@ -120,6 +125,20 @@ enum Choice {
 /* === Traits === */
 
 /* === Implementations === */
+impl harmos_domain::listeners::Listener for Selections {
+    type Row = Selection;
+    const CALLBACK: &'static str = "allocation.selections";
+    const POLICY: harmos_domain::operations::OperationPolicy =
+        harmos_domain::operations::host::POLICY;
+}
+
+impl harmos_domain::listeners::Listener for Leaves {
+    type Row = Leaf;
+    const CALLBACK: &'static str = "allocation.leaves";
+    const POLICY: harmos_domain::operations::OperationPolicy =
+        harmos_domain::operations::host::POLICY;
+}
+
 // A Pass-Through Allocator Measures Only This Test Thread's Encoding Buffers
 #[allow(
     unsafe_code,
@@ -243,9 +262,9 @@ fn peak_fits_preflight() {
             let context = Context::Record {
                 position: Position(7),
             };
-            let budget = Delivery::encoding_memory_bytes(context, &row).unwrap();
+            let budget = harmos_domain::listeners::encoding_memory_bytes(context, &row).unwrap();
             let (encoded, measured) =
-                measure(|| Delivery::encode_borrowed(context, &row, budget).unwrap());
+                measure(|| harmos_domain::listeners::encode_borrowed(context, &row, budget).unwrap());
             assert_eq!(measured.allocations, 2, "{measured:?}");
             assert!(measured.peak <= budget, "{measured:?}, budget {budget}");
             assert_eq!(
@@ -254,7 +273,7 @@ fn peak_fits_preflight() {
             );
             assert_eq!(
                 encoded,
-                harmos_domain::Message::encode_to_vec(&Delivery::new(context, row).unwrap())
+                harmos_domain::Message::encode_to_vec(&Delivery::<Selections>::new(context, row).unwrap())
             );
         }
 
@@ -364,14 +383,14 @@ fn listener_decode_borrows() {
             let context = Context::Record {
                 position: Position(7),
             };
-            let encoding = Delivery::encoding_memory_bytes(context, &row).unwrap();
-            let encoded = Delivery::encode_borrowed(context, &row, encoding).unwrap();
+            let encoding = harmos_domain::listeners::encoding_memory_bytes(context, &row).unwrap();
+            let encoded = harmos_domain::listeners::encode_borrowed(context, &row, encoding).unwrap();
             let (bound, inspected) = measure(|| {
-                <Delivery<Leaf> as harmos_domain::Message>::decoding_memory(&encoded).unwrap()
+                <Delivery<Leaves> as harmos_domain::Message>::decoding_memory(&encoded).unwrap()
             });
             assert_eq!(inspected.allocations, 0, "{inspected:?}");
             let (decoded, allocated) =
-                measure(|| <Delivery<Leaf> as harmos_domain::Message>::decode(&encoded).unwrap());
+                measure(|| <Delivery<Leaves> as harmos_domain::Message>::decode(&encoded).unwrap());
             assert_eq!(decoded.row(), &row);
             assert_eq!(allocated.allocations, 1, "{allocated:?}");
             assert!(allocated.peak <= bound, "{allocated:?}, bound {bound}");
@@ -382,11 +401,11 @@ fn context_refuses_allocations() {
             // Record Context With An Invalid Zero Journal Position
             let bytes = [0, 0, 0];
             let (refused, inspected) =
-                measure(|| <Delivery<Leaf> as harmos_domain::Message>::decoding_memory(&bytes));
+                measure(|| <Delivery<Leaves> as harmos_domain::Message>::decoding_memory(&bytes));
             assert!(refused.is_err());
             assert_eq!(inspected.allocations, 0, "{inspected:?}");
             let (refused, decoded) =
-                measure(|| <Delivery<Leaf> as harmos_domain::Message>::decode(&bytes));
+                measure(|| <Delivery<Leaves> as harmos_domain::Message>::decode(&bytes));
             assert!(refused.is_err());
             assert_eq!(decoded.allocations, 0, "{decoded:?}");
         }

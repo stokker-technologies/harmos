@@ -22,10 +22,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 
 // Local Imports
-use harmos::operations::{
-    Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility,
-    WireOperation, WireTable,
-};
+use harmos::operations::{Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireTable};
 use harmos::plugin::{PluginArtifact, PluginContributions, PluginDefinition};
 use harmos::sidecar::{Attach, Notice, Refusal, Supervised, Supervisor};
 use harmos::{Message, Runtime, services::Service, services::ServiceStatus};
@@ -61,7 +58,14 @@ pub struct Sample {
 
 // One Producer Run: `rows` Rows In Calls Of `batch` Rows Each.
 #[harmos::message]
-pub struct Burst {
+#[harmos::operation(
+    id = "publication.publish",
+    version = 1,
+    policy = POLICY,
+    response = Timings,
+    visibility = Visibility::Shared,
+)]
+pub struct Publish {
     pub rows: u32,
     pub batch: u32,
 }
@@ -73,8 +77,6 @@ pub struct Timings {
 }
 
 pub struct Producer;
-
-pub struct Publish;
 
 struct Publishing;
 
@@ -121,10 +123,7 @@ impl harmos::Plugin for Producer {
     fn resources(&self) -> Arc<()> {
         Arc::new(())
     }
-    fn bind_operations(
-        &self,
-        table: &mut WireTable<Supervisor>,
-    ) -> Result<(), harmos::operations::ServingError> {
+    fn bind_operations(&self, table: &mut WireTable<Supervisor>) -> Result<(), harmos::operations::ServingError> {
         table.bind_operation::<Publishing>(self.resources())
     }
     async fn stop(&mut self, _: &Supervisor) -> Result<(), Refusal> {
@@ -133,18 +132,6 @@ impl harmos::Plugin for Producer {
     async fn cleanup(&mut self) -> Result<(), Refusal> {
         Ok(())
     }
-}
-
-impl OperationDeclaration for Publish {
-    type Request = Burst;
-    type Response = Timings;
-    const ID: &'static str = "publication.publish";
-    const VISIBILITY: Visibility = Visibility::Shared;
-    const POLICY: OperationPolicy = POLICY;
-}
-
-impl WireOperation for Publish {
-    const VERSION: u32 = 1;
 }
 
 impl Operation for Publishing {
@@ -157,17 +144,12 @@ impl Operation for Publishing {
         Ok(Self)
     }
     async fn run<'a>(
-        &mut self,
-        host: Self::Context<'a>,
-        burst: &mut Burst,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, host: Self::Context<'a>, burst: &mut Publish, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Timings>, Refusal> {
         let result: ::core::result::Result<Timings, Self::Error> = async move {
             let publisher = host.publisher::<Producer>();
             let size = burst.batch.max(1) as usize;
-            let rows: Vec<_> = (0..u64::from(burst.rows))
-                .map(|value| Sample { value })
-                .collect();
+            let rows: Vec<_> = (0..u64::from(burst.rows)).map(|value| Sample { value }).collect();
             let mut calls = Vec::with_capacity(rows.len().div_ceil(size) * 8);
             let mut batch = publisher.batch::<Sample>();
             for chunk in rows.chunks(size) {
@@ -178,15 +160,9 @@ impl Operation for Publishing {
                 }
                 let started = Instant::now();
                 if size == 1 {
-                    publisher
-                        .publish_on_context::<Sample>(&chunk[0], Some("bench"))
-                        .await
-                        .map_err(Refusal::from)?;
+                    publisher.publish_on_context::<Sample>(&chunk[0], Some("bench")).await.map_err(Refusal::from)?;
                 } else {
-                    publisher
-                        .publish_batch_on_context::<Sample>(&batch, Some("bench"))
-                        .await
-                        .map_err(Refusal::from)?;
+                    publisher.publish_batch_on_context::<Sample>(&batch, Some("bench")).await.map_err(Refusal::from)?;
                 }
                 let elapsed = u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX);
                 calls.extend_from_slice(&elapsed.to_le_bytes());
@@ -200,12 +176,7 @@ impl Operation for Publishing {
 
 impl Timings {
     pub fn durations(&self) -> Vec<Duration> {
-        self.calls
-            .as_chunks::<8>()
-            .0
-            .iter()
-            .map(|bytes| Duration::from_nanos(u64::from_le_bytes(*bytes)))
-            .collect()
+        self.calls.as_chunks::<8>().0.iter().map(|bytes| Duration::from_nanos(u64::from_le_bytes(*bytes))).collect()
     }
 }
 
@@ -216,9 +187,7 @@ impl Fixture {
         let definition = PluginDefinition {
             id: source.owner().into(),
             version: "1.0.0".parse().unwrap(),
-            artifact: PluginArtifact::LocalSidecar {
-                revision: "publication".into(),
-            },
+            artifact: PluginArtifact::LocalSidecar { revision: "publication".into() },
             configuration: serde_json::to_vec(&()).unwrap(),
             requires: vec![],
             contributions: PluginContributions {
@@ -228,7 +197,6 @@ impl Fixture {
                 lifecycle: source.sdk_lifecycle().unwrap(),
                 streams: source.publications(),
                 observers: source.observers(),
-                observer_control: source.observer_control().unwrap(),
                 listeners: source.listener_declarations().unwrap().unwrap(),
                 ..PluginContributions::default()
             },
@@ -245,11 +213,7 @@ impl Fixture {
             .unwrap();
         runtime
             .operations
-            .register_wire_operation::<harmos::sidecar::Publish<_, _, _>>(
-                "native-publication",
-                Lanes::Open,
-                Arc::new(resident.clone()),
-            )
+            .register_wire_operation::<harmos::sidecar::Publish<_, _, _>>("native-publication", Lanes::Open, Arc::new(resident.clone()))
             .unwrap();
         runtime
             .operations
@@ -273,40 +237,26 @@ impl Fixture {
                 },
             )
             .unwrap();
-        let lease = runtime
-            .operations
-            .submit_resident("producer")
-            .await
-            .unwrap();
+        let lease = runtime.operations.submit_resident("producer").await.unwrap();
         let mut statuses = runtime.operations.watch_residents();
         loop {
-                let status = statuses
-                    .borrow_and_update()
-                    .get(&harmos::operations::resident::Key::root("producer"))
-                    .and_then(|item| item.health.clone());
-                match status {
-                    Some(ServiceStatus::Running { .. }) => break,
-                    Some(ServiceStatus::Stopped) => {
-                        panic!("producer failed to start: {status:?}")
-                    }
-                    _ => {}
+            let status =
+                statuses.borrow_and_update().get(&harmos::operations::resident::Key::root("producer")).and_then(|item| item.health.clone());
+            match status {
+                Some(ServiceStatus::Running { .. }) => break,
+                Some(ServiceStatus::Stopped) => {
+                    panic!("producer failed to start: {status:?}")
                 }
+                _ => {}
+            }
             statuses.changed().await.unwrap();
         }
-        Self {
-            runtime,
-            _lease: lease,
-        }
+        Self { runtime, _lease: lease }
     }
 
     // Publish `rows` rows in calls of `batch` rows; answers each call's latency.
     pub async fn publish(&self, rows: u32, batch: u32) -> Vec<Duration> {
-        let bytes = self
-            .runtime
-            .operations
-            .call_encoded(Publish::ID, Burst { rows, batch }.encode_to_vec())
-            .await
-            .unwrap();
+        let bytes = self.runtime.operations.call_encoded(Publish::ID, Burst { rows, batch }.encode_to_vec()).await.unwrap();
         Timings::decode(&bytes).unwrap().durations()
     }
 }

@@ -127,7 +127,8 @@ pub(crate) async fn saved_records<C>(
     storage: &StorageManager<C>,
     schema: &SchemaKey,
 ) -> Vec<(u64, Identifier)> {
-    use harmos::storage::query::{Query, QueryArrow, RecordSelection, RowSlice, Source};
+    use harmos::storage::operations::Query;
+    use harmos::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
     let mut reader = storage
         .query(Query {
             at: storage.cursor_saved(),

@@ -20,10 +20,7 @@
 // Local Imports
 use super::{Cancel, InstanceState, Status, Watch};
 use crate::operations::instance::{self, Id, Outcome, Phase};
-use crate::operations::{
-    OperationDeclaration, OperationPolicy, OutputDeclaration, Visibility, WireOperation,
-};
-use crate::schema::Described;
+use crate::operations::{OperationPolicy, Visibility};
 
 /* === Constants === */
 // A watch lasts until its instance settles or the caller cancels it.
@@ -34,6 +31,36 @@ const WATCH_POLICY: OperationPolicy = OperationPolicy {
 };
 
 /* === Macros === */
+crate::declare!(Status {
+    id: "host.operations.status",
+    version: 1,
+    policy: crate::operations::host::POLICY,
+    response: InstanceState,
+    description: "Report the status of an operation instance the caller submitted",
+    visibility: Visibility::Shared,
+    grpc: ("harmos.host.v1", "Operations", "Status"),
+});
+
+crate::declare!(Cancel {
+    id: "host.operations.cancel",
+    version: 1,
+    policy: crate::operations::host::POLICY,
+    response: InstanceState,
+    description: "Request cancellation of an operation instance the caller submitted",
+    visibility: Visibility::Shared,
+    grpc: ("harmos.host.v1", "Operations", "Cancel"),
+});
+
+crate::declare!(Watch {
+    id: "host.operations.watch",
+    version: 1,
+    policy: WATCH_POLICY,
+    response: InstanceState,
+    output: InstanceState,
+    description: "Stream the status changes of an operation instance the caller submitted until it settles",
+    visibility: Visibility::Shared,
+    grpc: ("harmos.host.v1", "Operations", "Watch"),
+});
 
 /* === Type Aliases === */
 
@@ -65,90 +92,6 @@ impl Cancel {
         Self {
             instance: instance.value(),
         }
-    }
-}
-
-impl OperationDeclaration for Status {
-    type Request = Self;
-    type Response = InstanceState;
-    const ID: &'static str = "host.operations.status";
-    const POLICY: OperationPolicy = crate::operations::host::POLICY;
-    const VISIBILITY: Visibility = Visibility::Shared;
-    const DESCRIPTION: &'static str =
-        "Report the status of an operation instance the caller submitted";
-}
-
-impl WireOperation for Status {
-    const VERSION: u32 = 1;
-    #[cfg(feature = "grpc")]
-    const GRPC: Option<crate::operations::Grpc> = Some(crate::operations::Grpc::new(
-        "harmos.host.v1",
-        "Operations",
-        "Status",
-    ));
-
-    #[cfg(feature = "grpc")]
-    fn visit_grpc<V: crate::operations::GrpcVisitor>(visitor: V) -> Option<V::Entry> {
-        Some(visitor.unary::<Self>())
-    }
-}
-
-impl OperationDeclaration for Cancel {
-    type Request = Self;
-    type Response = InstanceState;
-    const ID: &'static str = "host.operations.cancel";
-    const POLICY: OperationPolicy = crate::operations::host::POLICY;
-    const VISIBILITY: Visibility = Visibility::Shared;
-    const DESCRIPTION: &'static str =
-        "Request cancellation of an operation instance the caller submitted";
-}
-
-impl WireOperation for Cancel {
-    const VERSION: u32 = 1;
-    #[cfg(feature = "grpc")]
-    const GRPC: Option<crate::operations::Grpc> = Some(crate::operations::Grpc::new(
-        "harmos.host.v1",
-        "Operations",
-        "Cancel",
-    ));
-
-    #[cfg(feature = "grpc")]
-    fn visit_grpc<V: crate::operations::GrpcVisitor>(visitor: V) -> Option<V::Entry> {
-        Some(visitor.unary::<Self>())
-    }
-}
-
-impl OperationDeclaration for Watch {
-    type Request = Self;
-    type Response = InstanceState;
-    const ID: &'static str = "host.operations.watch";
-    const POLICY: OperationPolicy = WATCH_POLICY;
-    const VISIBILITY: Visibility = Visibility::Shared;
-    const DESCRIPTION: &'static str =
-        "Stream the status changes of an operation instance the caller submitted until it settles";
-
-    fn endpoint_types() -> (Option<std::any::TypeId>, Option<std::any::TypeId>) {
-        (None, Some(std::any::TypeId::of::<InstanceState>()))
-    }
-}
-
-impl OutputDeclaration for Watch {
-    type Item = InstanceState;
-}
-
-impl WireOperation for Watch {
-    const VERSION: u32 = 1;
-    const OUTPUT: Option<crate::schema::declaration::Definition> = Some(InstanceState::DEFINITION);
-    #[cfg(feature = "grpc")]
-    const GRPC: Option<crate::operations::Grpc> = Some(crate::operations::Grpc::new(
-        "harmos.host.v1",
-        "Operations",
-        "Watch",
-    ));
-
-    #[cfg(feature = "grpc")]
-    fn visit_grpc<V: crate::operations::GrpcVisitor>(visitor: V) -> Option<V::Entry> {
-        Some(visitor.download::<Self>())
     }
 }
 

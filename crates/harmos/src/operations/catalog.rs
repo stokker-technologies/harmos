@@ -20,7 +20,6 @@ use std::sync::Arc;
 // Local Imports
 use super::{Bindings, Context, Operation};
 use crate::catalog::{Member, Visitor};
-use crate::operations::{OperationDeclaration, WireOperation};
 use crate::schema::Described;
 use crate::{Message, Result};
 
@@ -67,9 +66,8 @@ impl<T, R> Member<T> for WireImplementations<R>
 where
     R: Send + Sync + 'static,
     T: for<'ctx> Operation<Resources = R, Context<'ctx> = Context<'ctx>>,
-    T::Declaration: WireOperation,
-    <T::Declaration as OperationDeclaration>::Request: Message + Described,
-    <T::Declaration as OperationDeclaration>::Response: Message + Described,
+    T::Declaration: crate::operations::OperationDeclaration,
+    T::Declaration: Message + Described,
 {
     const ENTRY: Binding<R> = Binding {
         register: register_owned_wire::<T>,
@@ -108,9 +106,8 @@ fn register_owned_wire<T>(
 ) -> Result<()>
 where
     T: for<'ctx> Operation<Context<'ctx> = Context<'ctx>>,
-    T::Declaration: WireOperation,
-    <T::Declaration as OperationDeclaration>::Request: Message + Described,
-    <T::Declaration as OperationDeclaration>::Response: Message + Described,
+    T::Declaration: crate::operations::OperationDeclaration,
+    T::Declaration: Message + Described,
 {
     bindings.register_owned_wire_at::<T>(lane, resources)
 }

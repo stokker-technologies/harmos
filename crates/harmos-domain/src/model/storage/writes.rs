@@ -23,9 +23,6 @@ use crate::{Identifier, MemorySize};
 /* === Constants === */
 
 /* === Macros === */
-crate::model::storage::codec::product!(WriteRequest {
-    scope: crate::model::storage::codec::Optional<crate::model::storage::codec::Id> => 1,
-});
 crate::model::storage::codec::product!(DataBatch {
     sequence: crate::model::storage::codec::Unsigned => 1,
     destination: crate::model::storage::codec::Id => 2,
@@ -52,11 +49,6 @@ crate::model::storage::codec::variants!(WriteReceipt {
 /* === Type Aliases === */
 
 /* === Structs === */
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WriteRequest {
-    pub scope: Option<Identifier>,
-}
-
 #[derive(Clone, Debug)]
 pub struct DataBatch {
     pub sequence: u64,
@@ -87,16 +79,6 @@ pub enum WriteReceipt {
 /* === Traits === */
 
 /* === Implementations === */
-impl MemorySize for WriteRequest {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(
-            self.scope
-                .memory_size()
-                .saturating_sub(std::mem::size_of_val(&self.scope)),
-        )
-    }
-}
-
 impl MemorySize for DataBatch {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()

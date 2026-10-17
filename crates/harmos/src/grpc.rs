@@ -280,10 +280,10 @@ impl Opening {
 
 /* === Public Functions === */
 
-pub fn stream<O: crate::operations::OutputDeclaration>(
+pub fn stream<O: crate::operations::OperationDeclaration>(
     instance: crate::operations::OperationInstance<O>,
-    items: crate::operations::StreamInput<O::Item>,
-) -> ResponseStream<O, O::Item> {
+    items: crate::operations::StreamInput<<O::Output as crate::operations::Direction>::Item>,
+) -> ResponseStream<O, <O::Output as crate::operations::Direction>::Item> {
     ResponseStream {
         pending: Box::pin(response(instance)),
         items: Some(items.into_receiver()),
@@ -293,16 +293,15 @@ pub fn stream<O: crate::operations::OutputDeclaration>(
 
 pub fn exchange<O, S>(
     instance: crate::operations::OperationInstance<O>,
-    input: crate::operations::StreamOutput<<O as crate::operations::InputDeclaration>::Item>,
+    input: crate::operations::StreamOutput<<O::Input as crate::operations::Direction>::Item>,
     incoming: S,
-    output: crate::operations::StreamInput<<O as crate::operations::OutputDeclaration>::Item>,
-) -> ResponseStream<O, <O as crate::operations::OutputDeclaration>::Item, InputError>
+    output: crate::operations::StreamInput<<O::Output as crate::operations::Direction>::Item>,
+) -> ResponseStream<O, <O::Output as crate::operations::Direction>::Item, InputError>
 where
-    O: crate::operations::InputDeclaration + crate::operations::OutputDeclaration,
-    <O as crate::operations::InputDeclaration>::Item: crate::MemorySize,
+    O: crate::operations::OperationDeclaration,
     S: Stream<
             Item = Result<
-                crate::operations::StreamItem<<O as crate::operations::InputDeclaration>::Item>,
+                crate::operations::StreamItem<<O::Input as crate::operations::Direction>::Item>,
                 tonic::Status,
             >,
         > + Send

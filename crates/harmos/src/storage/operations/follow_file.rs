@@ -23,7 +23,6 @@ use std::sync::Arc;
 // Local Imports
 
 use crate::operations::{Context, Operation, StreamOutput};
-use crate::storage::follow::File;
 use crate::storage::{FileBatch, FileProgress};
 
 use crate::storage::StorageManager;
@@ -64,7 +63,7 @@ impl<C: 'static> Operation for Handler<C> {
     async fn run<'a>(
         &mut self,
         _: Self::Context<'a>,
-        request: &mut File,
+        request: &mut FollowFile,
         output: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<FileProgress>> {
         let mut follower = self

@@ -101,7 +101,28 @@ struct Endpoint {
     counts: Arc<Counts>,
 }
 
-struct Read;
+#[harmos::message]
+#[harmos::operation(
+    id = "fixture.read",
+    version = 1,
+    policy = OperationPolicy {
+        timeout: Duration::from_secs(2),
+        attempt_timeout: Duration::from_millis(500),
+        retries: RetryPolicy::OnTransient {
+            max_retries: 1,
+            backoff: harmos::operations::Backoff::Fixed {
+                delay: Duration::from_millis(1),
+                jitter: harmos::operations::Jitter::None,
+            },
+        },
+        restart: RestartPolicy::Never,
+    },
+    response = (),
+    description = "Reads a device",
+    visibility = Visibility::Shared,
+    grpc(package = "fixture.v1", service = "Native", method = "Read"),
+)]
+struct Read {}
 
 struct ReadOperation {
     counts: Arc<Counts>,
@@ -110,7 +131,9 @@ struct ReadOperation {
 
 struct RefreshOperation(Arc<Counts>);
 
-struct Refresh;
+#[harmos::message]
+#[harmos::operation(id = "fixture.refresh", version = 1, policy = Read::POLICY, response = ())]
+struct Refresh {}
 
 #[derive(Clone)]
 struct Advertised<S> {
@@ -179,44 +202,6 @@ impl Drop for Seed {
     }
 }
 
-impl harmos::operations::WireOperation for Read {
-    const VERSION: u32 = 1;
-    #[cfg(feature = "grpc")]
-    const GRPC: Option<harmos::operations::Grpc> = Some(harmos::operations::Grpc::new(
-        "fixture.v1",
-        "Native",
-        "Read",
-    ));
-    #[cfg(feature = "grpc")]
-    fn visit_grpc<V: harmos::operations::GrpcVisitor>(visitor: V) -> Option<V::Entry> {
-        Some(visitor.unary::<Self>())
-    }
-}
-
-impl harmos::operations::WireOperation for Refresh {
-    const VERSION: u32 = 1;
-}
-
-impl OperationDeclaration for Read {
-    type Request = ();
-    type Response = ();
-    const ID: &'static str = "fixture.read";
-    const DESCRIPTION: &'static str = "Reads a device";
-    const VISIBILITY: Visibility = Visibility::Shared;
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(2),
-        attempt_timeout: Duration::from_millis(500),
-        retries: RetryPolicy::OnTransient {
-            max_retries: 1,
-            backoff: harmos::operations::Backoff::Fixed {
-                delay: Duration::from_millis(1),
-                jitter: harmos::operations::Jitter::None,
-            },
-        },
-        restart: RestartPolicy::Never,
-    };
-}
-
 impl harmos::operations::ContextValue for Tenant {
     const KEY: &'static str = "fixture.tenant";
 }
@@ -257,10 +242,7 @@ impl Operation for ReadOperation {
                 return Err(std::io::Error::other("partial initialization failed"));
             }
             if operation.counts.initialization_child.load(Ordering::SeqCst) {
-                context
-                    .call_as::<Refresh>(())
-                    .await
-                    .map_err(std::io::Error::other)?;
+                context.call(Refresh {}).await.map_err(std::io::Error::other)?;
                 *operation.counts.initialization_saved.lock().unwrap() = Some(context.clone());
             }
             Ok(())
@@ -272,7 +254,7 @@ impl Operation for ReadOperation {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        _request: &mut (),
+        _request: &mut Read,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<()>, Self::Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
@@ -283,7 +265,7 @@ impl Operation for ReadOperation {
             }
             let initialized = self.counts.initialization_saved.lock().unwrap().take();
             if let Some(initialized) = initialized {
-                if initialized.call_as::<Refresh>(()).await.is_ok() {
+                if initialized.call(Refresh {}).await.is_ok() {
                     return Err(std::io::Error::other(
                         "initialization context remained active",
                     ));
@@ -305,16 +287,13 @@ impl Operation for ReadOperation {
             if self.counts.call_child.load(Ordering::SeqCst) {
                 let previous = self.counts.saved.lock().unwrap().take();
                 if let Some(previous) = previous {
-                    if previous.call_as::<Refresh>(()).await.is_ok() {
+                    if previous.call(Refresh {}).await.is_ok() {
                         return Err(std::io::Error::other("expired attempt admitted a child"));
                     }
                     self.counts.stale_refused.fetch_add(1, Ordering::SeqCst);
                 }
                 *self.counts.saved.lock().unwrap() = Some(context.clone());
-                context
-                    .call_as::<Refresh>(())
-                    .await
-                    .map_err(std::io::Error::other)?;
+                context.call(Refresh {}).await.map_err(std::io::Error::other)?;
             }
             if self.attempts == 1 {
                 return Err(std::io::Error::other("one transient failure"));
@@ -355,7 +334,7 @@ impl Operation for RefreshOperation {
     async fn run<'ctx>(
         &mut self,
         _: Self::Context<'ctx>,
-        _request: &mut (),
+        _request: &mut Refresh,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<()>, Self::Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
@@ -374,13 +353,6 @@ impl Operation for RefreshOperation {
         self.0.refresh_cleaned.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
-}
-
-impl OperationDeclaration for Refresh {
-    type Request = ();
-    type Response = ();
-    const ID: &'static str = "fixture.refresh";
-    const POLICY: OperationPolicy = Read::POLICY;
 }
 
 impl harmos::operations::lifecycle::Policy for Endpoint {
@@ -597,11 +569,9 @@ impl<A: Attach> Managed<A> {
             )
     }
 
-    pub(crate) async fn call_as<O>(&self, request: O::Request) -> harmos::Result<O::Response>
+    pub(crate) async fn call<O>(&self, request: O) -> harmos::Result<O::Response>
     where
-        O: harmos::operations::WireOperation,
-        O::Request: harmos::Message + harmos::schema::Described,
-        O::Response: harmos::Message + harmos::schema::Described,
+        O: OperationDeclaration,
     {
         self.call_in::<O>(harmos::operations::CallContext::default(), request)
             .await
@@ -610,12 +580,10 @@ impl<A: Attach> Managed<A> {
     pub(crate) async fn call_in<O>(
         &self,
         context: harmos::operations::CallContext,
-        request: O::Request,
+        request: O,
     ) -> harmos::Result<O::Response>
     where
-        O: harmos::operations::WireOperation,
-        O::Request: harmos::Message + harmos::schema::Described,
-        O::Response: harmos::Message + harmos::schema::Described,
+        O: OperationDeclaration,
     {
         let contract = harmos::operations::WireDeclaration::of::<O>()
             .contract()
@@ -761,7 +729,7 @@ impl<A: Attach> PluginLifecycle for Host<A> {
                 &definition.configuration,
                 std::num::NonZeroUsize::new(
                     2 * definition.configuration.len()
-                        + std::mem::size_of::<harmos::operations::lifecycle::InitializeRequest>()
+                        + std::mem::size_of::<harmos::operations::lifecycle::Initialize>()
                         + 64
                         + 20,
                 )
@@ -863,8 +831,8 @@ impl<S: Attach> Attach for Advertised<S> {
     fn observers(&self) -> Vec<harmos_domain::inventory::observers::Declaration> {
         self.source.observers()
     }
-    fn observer_control(&self) -> harmos_domain::Result<Option<harmos::operations::Contract>> {
-        self.source.observer_control()
+    fn observe_contract(&self) -> harmos_domain::Result<Option<harmos::operations::Contract>> {
+        self.source.observe_contract()
     }
     fn listener_declarations(
         &self,
@@ -899,7 +867,6 @@ pub(crate) fn definition<A: Attach>(source: &A, configuration: Vec<u8>) -> Plugi
             lifecycle: source.sdk_lifecycle().unwrap(),
             streams: source.publications(),
             observers: source.observers(),
-            observer_control: source.observer_control().unwrap(),
             listeners: source.listener_declarations().unwrap().unwrap_or_default(),
             ..PluginContributions::default()
         },
@@ -918,7 +885,7 @@ async fn submitted(
     use harmos::operations::{Host, Instance};
 
     // Status, Then Join
-    let joined = host.submit_as::<Refresh>(()).await?;
+    let joined = host.submit(Refresh {}).await?;
     counts.refresh_started.notified().await;
     let status = joined.status().await?;
     assert_eq!(status.phase, Phase::Running);
@@ -926,12 +893,12 @@ async fn submitted(
     joined.join().await?;
 
     // Cancel, Then Join
-    let cancelled = host.submit_as::<Refresh>(()).await?;
+    let cancelled = host.submit(Refresh {}).await?;
     counts.refresh_started.notified().await;
     assert!(Instance::cancel_and_join(cancelled).await.is_err());
 
     // Dropping The Handle Releases The Child
-    let dropped = host.submit_as::<Refresh>(()).await?;
+    let dropped = host.submit(Refresh {}).await?;
     counts.refresh_started.notified().await;
     let cleaned = counts.refresh_cleaned.load(Ordering::SeqCst);
     drop(dropped);
@@ -944,7 +911,7 @@ async fn submitted(
     .expect("a dropped instance is cancelled");
 
     // Detaching Keeps The Child Running Within This Attempt
-    let detached = host.submit_as::<Refresh>(()).await?;
+    let detached = host.submit(Refresh {}).await?;
     counts.refresh_started.notified().await;
     let id = Instance::detach(detached);
     // Built-ins are ordinary requirements: an undeclared caller is refused.

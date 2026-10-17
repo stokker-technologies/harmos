@@ -21,7 +21,6 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use super::FileMutation;
 
 use crate::operations::{Context, Operation};
 use crate::storage::FileReference;
@@ -64,7 +63,7 @@ impl<C: 'static> Operation for Handler<C> {
     async fn run<'a>(
         &mut self,
         _: Self::Context<'a>,
-        request: &mut FileMutation,
+        request: &mut FinishFile,
         _: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<FileReference>> {
         let result: ::core::result::Result<FileReference, Self::Error> = async move {

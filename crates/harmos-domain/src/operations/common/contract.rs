@@ -93,82 +93,17 @@ pub enum ContractError {
 }
 
 /* === Traits === */
-pub trait WireOperation: OperationDeclaration {
-    const VERSION: u32;
-    const GRPC: Option<super::Grpc> = None;
-
-    #[cfg(feature = "grpc")]
-    fn visit_grpc<V: super::GrpcVisitor>(_visitor: V) -> Option<V::Entry> {
-        None
-    }
-
-    const INPUT: Option<SchemaDefinition> = None;
-    const OUTPUT: Option<SchemaDefinition> = None;
-}
-
-pub trait WireVisitor: Sized {
-    type Entry;
-    fn wire<O>(self) -> Self::Entry
-    where
-        O: WireOperation,
-        O::Request: crate::Message + Described,
-        O::Response: crate::Message + Described;
-    fn unary<O>(self) -> Self::Entry
-    where
-        O: WireOperation,
-        O::Request: crate::Message + Described,
-        O::Response: crate::Message + Described,
-    {
-        self.wire::<O>()
-    }
-
-    fn upload<O>(self) -> Self::Entry
-    where
-        O: WireOperation + super::InputDeclaration,
-        O::Request: crate::Message + Described,
-        O::Response: crate::Message + Described,
-        O::Item: crate::Message + crate::MemorySize,
-    {
-        self.wire::<O>()
-    }
-
-    fn download<O>(self) -> Self::Entry
-    where
-        O: WireOperation + super::OutputDeclaration,
-        O::Request: crate::Message + Described,
-        O::Response: crate::Message + Described,
-        O::Item: crate::Message + crate::MemorySize,
-    {
-        self.wire::<O>()
-    }
-
-    fn exchange<O>(self) -> Self::Entry
-    where
-        O: WireOperation + super::InputDeclaration + super::OutputDeclaration,
-        O::Request: crate::Message + Described,
-        O::Response: crate::Message + Described,
-        <O as super::InputDeclaration>::Item: crate::Message + crate::MemorySize,
-        <O as super::OutputDeclaration>::Item: crate::Message + crate::MemorySize,
-    {
-        self.wire::<O>()
-    }
-}
 
 /* === Implementations === */
 impl WireDeclaration {
-    pub const fn of<O>() -> Self
-    where
-        O: WireOperation,
-        O::Request: Described,
-        O::Response: Described,
-    {
+    pub const fn of<O: OperationDeclaration>() -> Self {
         Self {
             operation: Entry::of::<O>(),
             version: O::VERSION,
-            request: O::Request::DEFINITION,
-            response: O::Response::DEFINITION,
-            input: O::INPUT,
-            output: O::OUTPUT,
+            request: O::DEFINITION,
+            response: <O::Response as Described>::DEFINITION,
+            input: direction::<O::Input>(),
+            output: direction::<O::Output>(),
             grpc: O::GRPC,
         }
     }
@@ -278,21 +213,31 @@ impl Contract {
         action: crate::operations::lifecycle::Action,
         policy: super::OperationPolicy,
     ) -> Result<Self, ContractError> {
-        use crate::operations::lifecycle::{Action, InitializeRequest};
-        let (id, request) = match action {
-            Action::Initialize => ("harmos.initialize", InitializeRequest::DEFINITION),
-            Action::Shutdown => ("harmos.shutdown", <()>::DEFINITION),
-        };
+        use crate::operations::lifecycle::{Action, Initialize, Shutdown};
+        match action {
+            Action::Initialize => Self::reserved::<Initialize>(policy),
+            Action::Shutdown => Self::reserved::<Shutdown>(policy),
+        }
+    }
+
+    // The Contract Of A Built-In Operation Under The Reserved `harmos.` Namespace,
+    // Which Ordinary Declarations Cannot Claim.
+    pub(crate) fn reserved<O: OperationDeclaration>(
+        policy: super::OperationPolicy,
+    ) -> Result<Self, ContractError> {
         policy.validate().map_err(crate::Error::from)?;
         let operation = Definition {
-            id: crate::Identifier::new(id).map_err(crate::Error::from)?,
-            description: String::new(),
+            id: crate::Identifier::new(O::ID).map_err(crate::Error::from)?,
+            description: O::DESCRIPTION.to_owned(),
             policy,
-            visibility: super::Visibility::Private,
-            replay: super::ReplaySafety::Unknown,
+            visibility: O::VISIBILITY,
+            replay: O::REPLAY,
         };
         let schema = Schema::from_declarations(
-            &[("request", request), ("response", <()>::DEFINITION)],
+            &[
+                ("request", O::DEFINITION),
+                ("response", <O::Response as Described>::DEFINITION),
+            ],
             &SchemaSettings::default(),
         )
         .map_err(|source| ContractError::Schema {
@@ -300,7 +245,7 @@ impl Contract {
             direction: "contract",
             source: source.into(),
         })?;
-        Self::canonical(operation, 1, Codec::Postcard, schema)
+        Self::canonical(operation, O::VERSION, Codec::Postcard, schema)
     }
 
     pub fn operation(&self) -> &Definition {
@@ -391,13 +336,7 @@ impl Visitor for Contracts {
     type Entry = WireDeclaration;
 }
 
-impl<M> Member<M> for Contracts
-where
-    M: super::Declares,
-    M::Declaration: WireOperation,
-    <M::Declaration as OperationDeclaration>::Request: Described,
-    <M::Declaration as OperationDeclaration>::Response: Described,
-{
+impl<M: super::Declares> Member<M> for Contracts {
     const ENTRY: WireDeclaration = WireDeclaration::of::<M::Declaration>();
 }
 
@@ -405,13 +344,7 @@ impl Visitor for AuthoredContracts {
     type Entry = WireDeclaration;
 }
 
-impl<T> Member<T> for AuthoredContracts
-where
-    T: super::Operation,
-    T::Declaration: WireOperation,
-    <T::Declaration as OperationDeclaration>::Request: Described,
-    <T::Declaration as OperationDeclaration>::Response: Described,
-{
+impl<T: super::Operation> Member<T> for AuthoredContracts {
     const ENTRY: WireDeclaration = WireDeclaration::of::<T::Declaration>();
 }
 
@@ -459,6 +392,14 @@ impl Contracts {
 /* === Public Functions === */
 
 /* === Private Functions === */
+const fn direction<D: super::Direction>() -> Option<SchemaDefinition> {
+    if D::STREAMED {
+        Some(<D::Item as Described>::DEFINITION)
+    } else {
+        None
+    }
+}
+
 fn append(
     declaration: &WireDeclaration,
     ids: &mut BTreeSet<crate::Identifier>,

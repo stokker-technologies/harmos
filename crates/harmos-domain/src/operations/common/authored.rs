@@ -70,7 +70,7 @@ pub trait Operation: Send + Sized + 'static {
     fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        request: &mut <Self::Declaration as OperationDeclaration>::Request,
+        request: &mut Self::Declaration,
         endpoints: &mut Self::Endpoints,
     ) -> impl Future<
         Output = Result<

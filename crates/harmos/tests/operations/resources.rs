@@ -47,10 +47,11 @@ struct Read {
 }
 
 /* === Enums === */
+#[harmos::message]
 #[harmos::operation(
-        request = bool,
-        response = (String, usize),
+        response = Reading,
         id = "resources.read",
+        version = 1,
         policy = OperationPolicy {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
@@ -58,7 +59,16 @@ struct Read {
             restart: RestartPolicy::Never,
         },
     )]
-struct ReadContract;
+struct ReadContract {
+    nested: bool,
+}
+
+// The Device A Read Saw And How Many Reads Preceded It.
+#[harmos::message]
+struct Reading {
+    device: String,
+    seen: u64,
+}
 
 #[harmos::catalog]
 enum Operations {
@@ -75,23 +85,14 @@ impl Operation for Read {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    async fn initialize<'ctx>(
-        resources: Arc<Bench>,
-        context: Self::Context<'ctx>,
-    ) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(resources: Arc<Bench>, context: Self::Context<'ctx>) -> Result<Self, Self::Error> {
         let constructed: Result<Self, Self::Error> = async move { Ok(Self { resources }) }.await;
         let mut operation = constructed?;
         let started: Result<(), Error> = async {
             let operation = &mut operation;
             let scope = context.scope();
-            assert!(Arc::ptr_eq(
-                &operation.resources,
-                scope.resources::<App<Arc<Bench>>>()
-            ));
-            operation
-                .resources
-                .initialized
-                .fetch_add(1, Ordering::SeqCst);
+            assert!(Arc::ptr_eq(&operation.resources, scope.resources::<App<Arc<Bench>>>()));
+            operation.resources.initialized.fetch_add(1, Ordering::SeqCst);
             Ok(())
         }
         .await;
@@ -100,19 +101,16 @@ impl Operation for Read {
     }
 
     async fn run<'ctx>(
-        &mut self,
-        context: Self::Context<'ctx>,
-        nested: &mut bool,
-        _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos::operations::Response<(String, usize)>, Error> {
-        let result: ::core::result::Result<(String, usize), Self::Error> = async move {
-            let seen = self.resources.reads.fetch_add(1, Ordering::SeqCst);
-            if *nested {
-                let child = context.submit_as::<ReadContract>(false)?.await?;
-                assert_eq!(child.0, self.resources.device);
-                assert_eq!(child.1, seen + 1);
+        &mut self, context: Self::Context<'ctx>, request: &mut ReadContract, _endpoints: &mut Self::Endpoints,
+    ) -> Result<harmos::operations::Response<Reading>, Error> {
+        let result: ::core::result::Result<Reading, Self::Error> = async move {
+            let seen = u64::try_from(self.resources.reads.fetch_add(1, Ordering::SeqCst)).expect("read counts fit in u64");
+            if request.nested {
+                let child = context.submit(ReadContract { nested: false })?.await?;
+                assert_eq!(child.device, self.resources.device);
+                assert_eq!(child.seen, seen + 1);
             }
-            Ok((self.resources.device.clone(), seen))
+            Ok(Reading { device: self.resources.device.clone(), seen })
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -144,34 +142,14 @@ async fn child_own_resources() {
         initialized: AtomicUsize::new(0),
         finalized: AtomicUsize::new(0),
     });
-    let runtime = Runtime::<App<Arc<Bench>>>::builder((), resources.clone())
-        .register(Lanes::catalog())
-        .runtime()
-        .await
-        .unwrap();
-    runtime
-        .operations
-        .register_operation::<Read>("app", Lanes::Open, resources.clone())
-        .unwrap();
+    let runtime = Runtime::<App<Arc<Bench>>>::builder((), resources.clone()).register(Lanes::catalog()).runtime().await.unwrap();
+    runtime.operations.register_operation::<Read>("app", Lanes::Open, resources.clone()).unwrap();
 
-    let parent = runtime
-        .operations
-        .submit_as::<ReadContract>(true)
-        .unwrap()
-        .await
-        .unwrap();
-    assert_eq!(parent.0, "sim://rig-a");
-    assert_eq!(parent.1, 0);
-    let following = runtime
-        .operations
-        .submit_as::<ReadContract>(false)
-        .unwrap()
-        .await
-        .unwrap();
-    assert_eq!(
-        following.1, 2,
-        "parent, child and following attempt share one value"
-    );
+    let parent = runtime.operations.submit(ReadContract { nested: true }).unwrap().await.unwrap();
+    assert_eq!(parent.device, "sim://rig-a");
+    assert_eq!(parent.seen, 0);
+    let following = runtime.operations.submit(ReadContract { nested: false }).unwrap().await.unwrap();
+    assert_eq!(following.seen, 2, "parent, child and following attempt share one value");
     assert_eq!(resources.initialized.load(Ordering::SeqCst), 3);
     assert_eq!(resources.finalized.load(Ordering::SeqCst), 3);
     runtime.stop().await.unwrap();

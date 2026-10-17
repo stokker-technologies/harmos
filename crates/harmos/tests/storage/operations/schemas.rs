@@ -19,10 +19,9 @@ use std::sync::Arc;
 use harmos::Identifier;
 use harmos::schema::Cardinality;
 use harmos::schema::graph::{Field, Kind, Schema};
-use harmos::storage::operations::{Query, WriteSchema, WriteSchemaRequest};
-use harmos::storage::query::{
-    Query as QueryRequest, QueryArrow, RowSlice, SchemaSelection, Source,
-};
+use harmos::storage::operations::Query as QueryRequest;
+use harmos::storage::operations::{Query, WriteSchema};
+use harmos::storage::query::{QueryArrow, RowSlice, SchemaSelection, Source};
 use harmos::storage::{MutationId, SchemaInput, SchemaKey};
 
 // Local Imports
@@ -54,12 +53,7 @@ fn schema(name: &str) -> SchemaInput {
                     kind: Kind::Message { definition: 1 },
                 }],
                 vec![
-                    Field {
-                        name: Cow::Borrowed("value"),
-                        tag: 1,
-                        cardinality: Cardinality::Required,
-                        kind: Kind::F64,
-                    },
+                    Field { name: Cow::Borrowed("value"), tag: 1, cardinality: Cardinality::Required, kind: Kind::F64 },
                     Field {
                         name: Cow::Borrowed("next"),
                         tag: 2,
@@ -72,24 +66,15 @@ fn schema(name: &str) -> SchemaInput {
     )
     .unwrap()
 }
-fn request(f: &Fixture, name: &str) -> WriteSchemaRequest {
-    WriteSchemaRequest {
-        mutation: MutationId {
-            window: f.storage.mutation_window().unwrap().id,
-            key: Identifier::new(name).unwrap(),
-        },
+fn request(f: &Fixture, name: &str) -> WriteSchema {
+    WriteSchema {
+        mutation: MutationId { window: f.storage.mutation_window().unwrap().id, key: Identifier::new(name).unwrap() },
         schema: schema(name),
     }
 }
 async fn setup() -> Fixture {
     let f = Fixture::new(config()).await;
-    harmos::storage::operations::register(
-        &f.runtime.operations,
-        "storage",
-        Lanes::Open,
-        Arc::new(f.storage.clone()),
-    )
-    .unwrap();
+    harmos::storage::operations::register(&f.runtime.operations, "storage", Lanes::Open, Arc::new(f.storage.clone())).unwrap();
     f
 }
 
@@ -98,50 +83,26 @@ async fn setup() -> Fixture {
 async fn schema_registry_roundtrip() {
     let f = setup().await;
     let request = request(&f, "nested");
-    let accepted = f
-        .runtime
-        .operations
-        .call_as::<WriteSchema>(request.clone())
-        .await
-        .unwrap();
-    let repeated = f
-        .runtime
-        .operations
-        .call_as::<WriteSchema>(request.clone())
-        .await
-        .unwrap();
+    let accepted = f.runtime.operations.call(request.clone()).await.unwrap();
+    let repeated = f.runtime.operations.call(request.clone()).await.unwrap();
     assert_eq!(*accepted, *repeated);
     assert_eq!(f.storage.cursor_accepted(), *accepted);
     let mut conflict = request.clone();
     conflict.schema.key.version = NonZeroU32::new(2).unwrap();
-    assert!(
-        f.runtime
-            .operations
-            .call_as::<WriteSchema>(conflict)
-            .await
-            .is_err()
-    );
+    assert!(f.runtime.operations.call(conflict).await.is_err());
     let at = f.storage.flush().await.unwrap();
     let query = QueryRequest {
         at: at.clone(),
-        source: Source::Schemas(SchemaSelection {
-            schema: Some(request.schema.key.clone()),
-        }),
+        source: Source::Schemas(SchemaSelection { schema: Some(request.schema.key.clone()) }),
         transforms: vec![],
-        slice: RowSlice {
-            offset: 0,
-            limit: None,
-        },
+        slice: RowSlice { offset: 0, limit: None },
     };
     let mut response = f
         .runtime
         .operations
         .download::<Query>(
             query,
-            harmos::operations::StreamSettings {
-                items: NonZeroUsize::MIN,
-                bytes: NonZeroUsize::new(64 * 1024).unwrap(),
-            },
+            harmos::operations::StreamSettings { items: NonZeroUsize::MIN, bytes: NonZeroUsize::new(64 * 1024).unwrap() },
         )
         .unwrap();
     let mut announced = false;
@@ -162,15 +123,7 @@ async fn schema_registry_roundtrip() {
     assert_eq!(completed.at, at);
     assert_eq!(completed.rows, 1);
     assert_eq!(rows, 1);
-    let persisted = f
-        .data
-        .schemas
-        .lock()
-        .unwrap()
-        .values()
-        .next()
-        .unwrap()
-        .clone();
+    let persisted = f.data.schemas.lock().unwrap().values().next().unwrap().clone();
     assert_eq!(persisted.schema, *request.schema.graph());
     let encoded = serde_json::to_value(&persisted).unwrap();
     let decoded: harmos::storage::StorageSchema = serde_json::from_value(encoded).unwrap();

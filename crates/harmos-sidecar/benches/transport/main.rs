@@ -24,7 +24,7 @@ use std::time::{Duration, Instant};
 use tokio::io::{duplex, split};
 // Local Imports
 use capacity::{Case, MIB, Observation, Settings, WARMUP_MIB};
-use harmos_domain::operations::lifecycle::{Initialize, InitializeRequest, Shutdown};
+use harmos_domain::operations::lifecycle::{Initialize, Shutdown};
 use harmos_sidecar::Message;
 use harmos_sidecar::operations::{OperationDeclaration, WIRE_METHOD, WireAnswer, WireCommand};
 use harmos_sidecar::transport;
@@ -460,7 +460,7 @@ async fn throughput_case(
                         .expect("typed child envelope");
                 assert_eq!(call.operation, "host.publish");
                 assert_eq!(call.generation_context, Some([2; 32]));
-                let row = harmos_domain::operations::streams::Publication::decode(&call.payload)
+                let row = harmos_domain::operations::streams::Publish::decode(&call.payload)
                     .expect("typed publication");
                 calls += 1;
                 if row.stream == Done::ID {
@@ -625,13 +625,13 @@ async fn latency(label: &str, first_id: u64, outgoing: &Sender, incoming: &mut R
 
 async fn sdk(outgoing: &Sender, incoming: &mut Receiver, id: u64, initialize: bool) {
     let (operation, payload) = if initialize {
-        let request = InitializeRequest {
+        let request = Initialize {
             config_json: b"null".to_vec(),
             generation_context: vec![2; 32],
         };
-        (Initialize::<TransportPlugin>::ID, request.encode_to_vec())
+        (Initialize::ID, request.encode_to_vec())
     } else {
-        (Shutdown::<TransportPlugin>::ID, Vec::new())
+        (Shutdown::ID, Vec::new())
     };
     phase(
         outgoing,

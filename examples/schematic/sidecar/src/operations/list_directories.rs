@@ -20,7 +20,8 @@ use std::sync::Arc;
 // Local Imports
 use crate::Error;
 use harmos::sidecar::Supervisor;
-use schematic_domain::operations::directories::list_directories::{Request, Response};
+use schematic_domain::operations::ListDirectories;
+use schematic_domain::operations::directories::list_directories::Directories;
 
 /* === Constants === */
 
@@ -29,21 +30,21 @@ use schematic_domain::operations::directories::list_directories::{Request, Respo
 /* === Type Aliases === */
 
 /* === Structs === */
-pub(crate) struct ListDirectories;
+pub(crate) struct Listing;
 
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
-#[harmos::operation(declaration = schematic_domain::operations::ListDirectories)]
-impl ListDirectories {
+#[harmos::operation]
+impl Listing {
     async fn initialize(_: Arc<()>, _: &Supervisor) -> Self {
         Self
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn run(&mut self, _: &Supervisor, _: &mut Request) -> Result<Response, Error> {
+    async fn run(&mut self, _: &Supervisor, _: &mut ListDirectories) -> Result<Directories, Error> {
         // Native Filesystem Access: The Guest Has No Such Access.
         let entries = std::fs::read_dir(".")?;
         let mut directories = Vec::new();
@@ -58,7 +59,7 @@ impl ListDirectories {
             }
         }
         directories.sort();
-        Ok(Response { directories })
+        Ok(Directories { directories })
     }
 }
 

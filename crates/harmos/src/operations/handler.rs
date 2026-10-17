@@ -376,7 +376,7 @@ impl Context<'_> {
     pub fn submit_at<O: OperationDeclaration>(
         &self,
         id: &str,
-        request: O::Request,
+        request: O,
     ) -> Result<OperationInstance<O>> {
         self.operations.admit_at::<O, ()>(
             id,
@@ -388,24 +388,7 @@ impl Context<'_> {
         )
     }
 
-    // The declaration is its own request; `submit_as::<O>` names a separate one.
-    pub fn submit<O: OperationDeclaration<Request = O>>(
-        &self,
-        request: O,
-    ) -> Result<OperationInstance<O>> {
-        self.submit_as::<O>(request)
-    }
-
-    pub async fn call<O: OperationDeclaration<Request = O>>(
-        &self,
-        request: O,
-    ) -> Result<crate::operations::Response<O::Response>> {
-        self.call_as::<O>(request).await
-    }
-    pub fn submit_as<O: OperationDeclaration>(
-        &self,
-        request: O::Request,
-    ) -> Result<OperationInstance<O>> {
+    pub fn submit<O: OperationDeclaration>(&self, request: O) -> Result<OperationInstance<O>> {
         self.operations.submit_scoped::<O, ()>(
             (request.into(), ()),
             &self.scope,
@@ -417,7 +400,7 @@ impl Context<'_> {
 
     pub fn submit_endpoints<O: OperationDeclaration, P: Send + 'static>(
         &self,
-        request: O::Request,
+        request: O,
         endpoints: P,
     ) -> Result<OperationInstance<O>> {
         self.operations.submit_scoped::<O, P>(
@@ -431,7 +414,7 @@ impl Context<'_> {
 
     pub fn submit_charged<O: OperationDeclaration, P: Send + 'static>(
         &self,
-        request: super::StreamItem<O::Request>,
+        request: super::StreamItem<O>,
         endpoints: P,
     ) -> Result<OperationInstance<O>> {
         self.operations.submit_scoped::<O, P>(
@@ -445,7 +428,7 @@ impl Context<'_> {
 
     pub fn submit_caused<O: OperationDeclaration>(
         &self,
-        request: O::Request,
+        request: O,
         cause: Position,
     ) -> Result<OperationInstance<O>> {
         self.operations.submit_scoped::<O, ()>(
@@ -459,17 +442,17 @@ impl Context<'_> {
 
     pub async fn call_caused<O: OperationDeclaration>(
         &self,
-        request: O::Request,
+        request: O,
         cause: Position,
     ) -> Result<crate::operations::Response<O::Response>> {
         self.submit_caused::<O>(request, cause)?.await
     }
 
-    pub async fn call_as<O: OperationDeclaration>(
+    pub async fn call<O: OperationDeclaration>(
         &self,
-        request: O::Request,
+        request: O,
     ) -> Result<crate::operations::Response<O::Response>> {
-        self.submit_as::<O>(request)?.await
+        self.submit(request)?.await
     }
 }
 

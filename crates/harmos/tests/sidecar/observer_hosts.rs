@@ -27,9 +27,7 @@ use std::time::Duration;
 use super::operations::{Lanes, Managed};
 use super::support::Pulse;
 use harmos::Message;
-use harmos::operations::{
-    OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireOperation,
-};
+use harmos::operations::{OperationPolicy, RestartPolicy, RetryPolicy};
 use harmos::sidecar::inventory::publications;
 use harmos::sidecar::{
     Observer, ObserverAttachment, ObserverCaller, ObserverContext, ObserverHost, ObserverPublisher,
@@ -73,7 +71,6 @@ struct Bridge {
     attachment: Arc<ObserverAttachment<Settings, Host>>,
 }
 
-struct Observe;
 
 struct Host(Publisher<Bridge>);
 
@@ -89,11 +86,6 @@ struct Watch<const N: u64>(Arc<State>);
 enum Observers {
     First(Watch<0>),
     Second(Watch<1>),
-}
-
-#[harmos::catalog]
-enum Operations {
-    Observe(Observe),
 }
 
 /* === Traits === */
@@ -115,18 +107,6 @@ impl Drop for Seed {
     }
 }
 
-impl OperationDeclaration for Observe {
-    type Request = harmos_domain::observers::Control;
-    type Response = ();
-    const ID: &'static str = "custom.observer.observe";
-    const VISIBILITY: Visibility = Visibility::Host;
-    const POLICY: OperationPolicy = harmos_domain::observers::POLICY;
-}
-
-impl WireOperation for Observe {
-    const VERSION: u32 = 1;
-}
-
 const LIFECYCLE: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_millis(500),
@@ -139,7 +119,7 @@ impl harmos::operations::lifecycle::Policy for Bridge {
     const SHUTDOWN_POLICY: OperationPolicy = LIFECYCLE;
 }
 
-#[harmos::plugin(id = "custom-host", provides = Operations, requires(harmos::operations::streams::Publish),  observers = Observers, observer_control = Observe, streams(Published))]
+#[harmos::plugin(id = "custom-host", provides = (), requires(harmos::operations::streams::Publish),  observers = Observers, streams(Published))]
 impl harmos::Plugin for Bridge {
     type Config = usize;
     type Resources = Settings;
@@ -179,7 +159,7 @@ impl harmos::Plugin for Bridge {
         &self,
         table: &mut harmos::operations::WireTable<Supervisor>,
     ) -> Result<(), harmos::operations::ServingError> {
-        self.attachment.bind::<Observe>(table)
+        self.attachment.bind(table)
     }
     fn attachment(&self) -> Option<Arc<dyn harmos_domain::plugin::Attachment<Supervisor>>> {
         Some(self.attachment.clone())
@@ -274,7 +254,7 @@ impl<const N: u64> Observer<Host> for Watch<N> {
         &mut self,
         ctx: &ObserverContext<'_, Settings, Host>,
     ) -> Result<(), PublishError> {
-        let value = ctx.call_as::<ReadValue>(N).await?;
+        let value = ctx.call(N).await?;
         ctx.publish(Pulse { sample: value }).await
     }
 

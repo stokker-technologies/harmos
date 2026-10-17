@@ -21,8 +21,8 @@ mod typed;
 /* === Re-Exports === */
 pub use accumulate::{Accumulator, Scratch};
 pub use harmos_domain::model::storage::query::{
-    FileSelection, ObjectSelection, ObjectVersions, Query, QueryCompletion, QueryOutput,
-    RecordSelection, RowSlice, SchemaSelection, Source, StreamSelection, scalar,
+    FileSelection, ObjectSelection, ObjectVersions, QueryCompletion, QueryOutput, RecordSelection,
+    RowSlice, SchemaSelection, Source, StreamSelection, scalar,
 };
 pub(in crate::storage) use reader::schema_at;
 pub use reader::{QueryArrow, QueryReader};

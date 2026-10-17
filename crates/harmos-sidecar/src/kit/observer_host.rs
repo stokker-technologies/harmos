@@ -82,10 +82,8 @@ impl<R> ObserverHost<R> for Supervisor {
 impl<R: Sync, C> ObserverCaller<R, C> for Supervisor
 where
     C: harmos_domain::operations::OperationDeclaration,
-    C::Request: Message,
-    C::Response: Message,
 {
-    type Request = C::Request;
+    type Request = C;
     type Response = C::Response;
     type Error = CallError;
 

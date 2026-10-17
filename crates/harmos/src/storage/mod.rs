@@ -16,7 +16,6 @@ mod batch;
 mod batching;
 mod capacity;
 pub(crate) mod capture;
-pub(crate) mod catalog;
 pub mod config;
 pub(crate) mod consumer;
 mod deletion;
@@ -41,9 +40,6 @@ mod worker;
 pub mod writes;
 
 /* === Re-Exports === */
-pub use crate::storage::catalog::{
-    ObjectCatalog, ObjectDefinition, ObjectDefinitions, StoredObject,
-};
 pub use attachments::{Horizon, Payload, Recovery, Source};
 pub use backend::{
     BackendSnapshot, ReadLimits, ScanPage, StorageBackend, StorageBackends, StorageFuture,
@@ -58,13 +54,13 @@ pub use file_reads::FileReader;
 pub use harmos_domain::model::storage::files;
 pub use harmos_domain::model::storage::{
     ByteRange, FileBatch, FileCompletion, FileMetadata, FilePhase, FileProducer, FileProgress,
-    FileReference, FileSession, MutationId, MutationWindow, ObjectEntry, ObjectKey, ObjectPoint,
-    ObjectReceipt, ObjectRetention, ObjectRevision, ObjectValue, ObjectVersion, ObjectVersionToken,
-    PayloadEncoding, ReadFile, RecordInput, RecordWrite, RecoveryPosition, SchemaInfo, SchemaInput,
-    SchemaKey, StagedFile, StorageCursor, StorageInfo, StoreHistory, StoredRecord, StoredRow,
-    StreamInput, StreamWrite,
+    FileReference, FileSession, MutationId, MutationWindow, ObjectCatalog, ObjectDefinition,
+    ObjectDefinitions, ObjectEntry, ObjectKey, ObjectPoint, ObjectReceipt, ObjectRetention,
+    ObjectRevision, ObjectValue, ObjectVersion, ObjectVersionToken, PayloadEncoding, RecordInput,
+    RecordWrite, RecoveryPosition, SchemaInfo, SchemaInput, SchemaKey, StagedFile, StorageCursor,
+    StorageInfo, StoreHistory, StoredObject, StoredRecord, StoredRow, StreamInput, StreamWrite,
 };
-pub use manager::{ErasedCatalog, StorageManager, StorageStatus};
+pub use manager::{ErasedCatalog, StorageManager, StorageMetrics};
 pub use objects::ObjectGroup;
 pub use query::{ObjectRead, ObjectReader, QueryReader, RecordRead, RecordReader};
 pub use receipts::{MutationReceipt, MutationValue};

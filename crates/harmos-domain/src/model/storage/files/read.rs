@@ -17,16 +17,11 @@
 // Standard Library Imports
 // Third Party Imports
 // Local Imports
-use super::FileReference;
 use crate::{Error, MemorySize, Result};
 
 /* === Constants === */
 
 /* === Macros === */
-crate::model::storage::codec::product!(ReadFile {
-    file: crate::model::storage::codec::Nested<FileReference> => 1,
-    range: crate::model::storage::codec::Nested<ByteRange> => 2,
-});
 crate::model::storage::codec::product!(ByteRange {
     offset: crate::model::storage::codec::Unsigned => 1,
     limit: crate::model::storage::codec::Optional<crate::model::storage::codec::Unsigned> => 2,
@@ -42,11 +37,6 @@ crate::model::storage::codec::product!(FileCompletion {
 /* === Type Aliases === */
 
 /* === Structs === */
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ReadFile {
-    pub file: FileReference,
-    pub range: ByteRange,
-}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ByteRange {
     pub offset: u64,
@@ -79,15 +69,6 @@ impl ByteRange {
                 field: "file byte range",
                 reason: "byte range overflow",
             })
-    }
-}
-impl MemorySize for ReadFile {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(
-            self.file
-                .memory_size()
-                .saturating_sub(std::mem::size_of::<FileReference>()),
-        )
     }
 }
 impl MemorySize for ByteRange {

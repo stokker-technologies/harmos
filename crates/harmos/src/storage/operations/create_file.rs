@@ -12,7 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
-use harmos_domain::operations::storage::{CreateFile, CreateFileRequest};
+use harmos_domain::operations::storage::CreateFile;
 
 // Standard Library Imports
 
@@ -63,7 +63,7 @@ impl<C: 'static> Operation for Handler<C> {
     async fn run<'a>(
         &mut self,
         _: Self::Context<'a>,
-        request: &mut CreateFileRequest,
+        request: &mut CreateFile,
         _: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<FileProducer>> {
         let result: ::core::result::Result<FileProducer, Self::Error> = async move {

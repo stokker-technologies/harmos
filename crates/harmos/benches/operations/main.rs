@@ -47,8 +47,12 @@ struct Signals {
     stopped: mpsc::Sender<Instant>,
 }
 
+// Waiting Dispatches Hold Their Run Until Cancelled And Report Each Stop.
+struct Waiting(Option<Arc<Signals>>);
+
 struct Dispatching {
-    waiting: Option<Arc<Signals>>,
+    signals: Arc<Waiting>,
+    waiting: bool,
 }
 
 /* === Enums === */
@@ -58,10 +62,11 @@ enum Lanes {
     Open,
 }
 
+#[harmos::message]
 #[harmos::operation(
-        request = Option<Arc<Signals>>,
-        response = usize,
+        response = u64,
         id = "bench.dispatch",
+        version = 1,
         policy = OperationPolicy {
             timeout: Duration::from_secs(30),
             attempt_timeout: Duration::from_secs(30),
@@ -69,7 +74,9 @@ enum Lanes {
             restart: RestartPolicy::Never,
         },
     )]
-struct Dispatch;
+struct Dispatch {
+    wait: bool,
+}
 
 #[harmos::catalog]
 enum Operations {
@@ -81,24 +88,30 @@ enum Operations {
 /* === Implementations === */
 impl Operation for Dispatching {
     type Declaration = Dispatch;
-    type Resources = ();
+    type Resources = Waiting;
     type Error = Infallible;
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, Self::Error> {
-        Ok(Self { waiting: None })
+    async fn initialize<'ctx>(
+        signals: Arc<Waiting>,
+        _: Self::Context<'ctx>,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self {
+            signals,
+            waiting: false,
+        })
     }
 
     async fn run<'ctx>(
         &mut self,
         _: Self::Context<'ctx>,
-        waiting: &mut Option<Arc<Signals>>,
+        request: &mut Dispatch,
         _endpoints: &mut Self::Endpoints,
-    ) -> Result<harmos::operations::Response<usize>, Self::Error> {
-        let result: ::core::result::Result<usize, Self::Error> = async move {
-            self.waiting = waiting.clone();
-            if let Some(signals) = &self.waiting {
+    ) -> Result<harmos::operations::Response<u64>, Self::Error> {
+        let result: ::core::result::Result<u64, Self::Error> = async move {
+            self.waiting = request.wait;
+            if let (true, Some(signals)) = (self.waiting, &self.signals.0) {
                 signals.running.add_permits(1);
                 std::future::pending::<()>().await;
             }
@@ -109,7 +122,7 @@ impl Operation for Dispatching {
     }
 
     async fn stop(&mut self) -> Result<(), Self::Error> {
-        if let Some(signals) = &self.waiting {
+        if let (true, Some(signals)) = (self.waiting, &self.signals.0) {
             signals.stopped.try_send(Instant::now()).unwrap();
         }
         Ok(())
@@ -123,10 +136,10 @@ impl Operation for Dispatching {
 /* === Public Functions === */
 
 /* === Private Functions === */
-async fn runtime() -> Runtime<App> {
+async fn runtime(signals: Option<Arc<Signals>>) -> Runtime<App> {
     Runtime::<App>::builder((), ())
         .register(Lanes::catalog())
-        .operation::<Dispatching>("benchmark", Lanes::Open, Arc::new(()))
+        .operation::<Dispatching>("benchmark", Lanes::Open, Arc::new(Waiting(signals)))
         .runtime()
         .await
         .unwrap()
@@ -134,19 +147,14 @@ async fn runtime() -> Runtime<App> {
 
 // Startup And Admission Are Outside Both Cancellation Measurements.
 async fn cancellation(load: u32) -> Cancellation {
-    let runtime = runtime().await;
     let (stopped, mut receipts) = mpsc::channel(load as usize);
     let signals = Arc::new(Signals {
         running: Semaphore::new(0),
         stopped,
     });
+    let runtime = runtime(Some(signals.clone())).await;
     let instances: Vec<_> = (0..load)
-        .map(|_| {
-            runtime
-                .operations
-                .submit_as::<Dispatch>(Some(signals.clone()))
-                .unwrap()
-        })
+        .map(|_| runtime.operations.submit(Dispatch { wait: true }).unwrap())
         .collect();
     tokio::time::timeout(Duration::from_secs(5), signals.running.acquire_many(load))
         .await
@@ -185,7 +193,7 @@ fn benchmarks(c: &mut Criterion) {
         .enable_all()
         .build()
         .unwrap();
-    let runtime = executor.block_on(runtime());
+    let runtime = executor.block_on(runtime(None));
     let mut dispatch = c.benchmark_group("operations/dispatch");
     dispatch.throughput(Throughput::Elements(1));
     dispatch.bench_function("submit_to_join", |b| {
@@ -193,7 +201,7 @@ fn benchmarks(c: &mut Criterion) {
             executor.block_on(async {
                 let started = Instant::now();
                 for _ in 0..iterations {
-                    let instance = runtime.operations.submit_as::<Dispatch>(None).unwrap();
+                    let instance = runtime.operations.submit(Dispatch { wait: false }).unwrap();
                     let result = instance.join().await.unwrap();
                     assert_eq!(*std::hint::black_box(result), 42);
                 }

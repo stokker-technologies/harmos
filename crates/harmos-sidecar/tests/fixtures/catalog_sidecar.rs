@@ -62,8 +62,8 @@ static LISTENERS: [u8; listeners::encoded_len("sidecar", Catalog::ID, &[])] =
     listeners::encode("sidecar", Catalog::ID, &[]);
 
 #[used]
-static OBSERVERS: [u8; observers::encoded_tree_len("sidecar", Catalog::ID, &[], &[])] =
-    observers::encode_tree("sidecar", Catalog::ID, &[], &[]);
+static OBSERVERS: [u8; observers::encoded_tree_len("sidecar", Catalog::ID, &[])] =
+    observers::encode_tree("sidecar", Catalog::ID, &[]);
 
 /* === Macros === */
 
@@ -71,25 +71,23 @@ static OBSERVERS: [u8; observers::encoded_tree_len("sidecar", Catalog::ID, &[], 
 
 /* === Structs === */
 struct Catalog;
-struct Read;
+#[harmos_sidecar::message(harmos_path = ::harmos_sidecar)]
+#[harmos_sidecar::operation(
+    harmos_path = ::harmos_sidecar,
+    id = "read",
+    version = 1,
+    response = (),
+    policy = Catalog::INITIALIZATION_POLICY,
+    grpc(package = "fixture.v1", service = "Native", method = "Read"),
+)]
+#[derive(Clone, PartialEq)]
+struct Read {}
 
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
-impl harmos_domain::operations::OperationDeclaration for Read {
-    type Request = ();
-    type Response = ();
-    const ID: &'static str = "read";
-    const POLICY: OperationPolicy = Catalog::INITIALIZATION_POLICY;
-}
-impl harmos_domain::operations::WireOperation for Read {
-    const VERSION: u32 = 1;
-    const GRPC: Option<harmos_domain::operations::Grpc> = Some(
-        harmos_domain::operations::Grpc::new("fixture.v1", "Native", "Read"),
-    );
-}
 impl lifecycle::Policy for Catalog {
     const INITIALIZATION_POLICY: OperationPolicy = OperationPolicy {
         timeout: std::time::Duration::from_secs(30),

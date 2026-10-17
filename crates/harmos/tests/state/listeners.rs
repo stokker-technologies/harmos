@@ -20,19 +20,15 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 // Local Imports
-use harmos::operations::{
-    Context, Operation, OperationDeclaration, OperationPolicy, PluginRegistration, RestartPolicy,
-    RetryPolicy, Visibility, WireDeclaration, WireOperation,
-};
+use harmos::operations::{Context, Operation, OperationPolicy, PluginRegistration, RestartPolicy, RetryPolicy, WireDeclaration};
 use harmos::plugin::{
-    PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions,
-    PluginEndpoint, PluginLifecycle, PluginLifecycleAuthority, PluginManager, PluginScope,
-    PluginTransition, Router,
+    PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
+    PluginLifecycleAuthority, PluginManager, PluginScope, PluginTransition, Router,
 };
 use harmos::records::PluginListenerRegistration;
 use harmos::schema::{Described, Field};
 use harmos::{Error, Message, MessageError, Result, Runtime, state::Position};
-use harmos_domain::listeners::{Context as DeliveryContext, Delivery, Source};
+use harmos_domain::listeners::{Context as DeliveryContext, Delivery, Listener, Source};
 
 /* === Constants === */
 
@@ -57,6 +53,7 @@ struct WireFact {
 
 struct Model;
 
+// Each Callback Over The Same Row Is Its Own Listener.
 struct Heard<const FIRST: bool>;
 
 struct Owner {
@@ -91,8 +88,8 @@ enum Rows {
 
 #[harmos::catalog]
 enum Callbacks {
-    First(Heard<true>),
-    Second(Heard<false>),
+    First(Delivery<Heard<true>>),
+    Second(Delivery<Heard<false>>),
 }
 
 #[harmos::lanes]
@@ -127,9 +124,7 @@ impl Message for Fact {
         WireFact { value: self.value }.encoded_len()
     }
     fn decode(bytes: &[u8]) -> std::result::Result<Self, MessageError> {
-        Ok(Self {
-            value: WireFact::decode(bytes)?.value,
-        })
+        Ok(Self { value: WireFact::decode(bytes)?.value })
     }
 }
 
@@ -141,25 +136,15 @@ impl harmos::Application for Model {
     type Resources = ();
 }
 
-impl<const FIRST: bool> OperationDeclaration for Heard<FIRST> {
-    type Request = Delivery<WireFact>;
-    type Response = ();
-    const ID: &'static str = if FIRST {
-        "listener.heard-z"
-    } else {
-        "listener.heard-a"
-    };
-    const VISIBILITY: Visibility = Visibility::Shared;
+impl<const FIRST: bool> Listener for Heard<FIRST> {
+    type Row = WireFact;
+    const CALLBACK: &'static str = if FIRST { "listener.heard-z" } else { "listener.heard-a" };
     const POLICY: OperationPolicy = OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(1),
         retries: RetryPolicy::Never,
         restart: RestartPolicy::Never,
     };
-}
-
-impl<const FIRST: bool> WireOperation for Heard<FIRST> {
-    const VERSION: u32 = 1;
 }
 
 #[harmos::catalog]
@@ -175,30 +160,18 @@ struct Hearing<const FIRST: bool> {
 impl<const FIRST: bool> Operation for Hearing<FIRST> {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
-    type Declaration = Heard<FIRST>;
+    type Declaration = Delivery<Heard<FIRST>>;
     type Resources = Owner;
     type Error = Failed;
-    async fn initialize<'ctx>(
-        resources: Arc<Owner>,
-        _: Self::Context<'ctx>,
-    ) -> std::result::Result<Self, Failed> {
+    async fn initialize<'ctx>(resources: Arc<Owner>, _: Self::Context<'ctx>) -> std::result::Result<Self, Failed> {
         Ok(Self { resources })
     }
     async fn run<'a>(
-        &mut self,
-        _: Self::Context<'a>,
-        request: &mut Delivery<WireFact>,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, _: Self::Context<'a>, request: &mut Delivery<Heard<FIRST>>, _endpoints: &mut Self::Endpoints,
     ) -> std::result::Result<harmos::operations::Response<()>, Failed> {
         let result: ::core::result::Result<(), Self::Error> = async move {
-            let DeliveryContext::Record { position } = request.context() else {
-                panic!("original record coordinate")
-            };
-            self.resources
-                .seen
-                .lock()
-                .unwrap()
-                .push((FIRST, request.row().value, position));
+            let DeliveryContext::Record { position } = request.context() else { panic!("original record coordinate") };
+            self.resources.seen.lock().unwrap().push((FIRST, request.row().value, position));
             self.resources.observed.notify_one();
             if FIRST && request.row().value == 0 {
                 if self.resources.reenter {
@@ -227,32 +200,21 @@ impl PluginLifecycle for Host {
         Ok(())
     }
     async fn start(
-        &mut self,
-        _: &PluginDefinition,
-        router: &Router,
-        _: &PluginLifecycleAuthority<'_>,
-        backend: &mut Backends,
+        &mut self, _: &PluginDefinition, router: &Router, _: &PluginLifecycleAuthority<'_>, backend: &mut Backends,
     ) -> Result<()> {
-        let PluginBackend::Embedded(resources) = backend else {
-            unreachable!()
-        };
+        let PluginBackend::Embedded(resources) = backend else { unreachable!() };
         resources.endpoint = Some(router.enter("listener").unwrap());
         let scope = resources.endpoint.as_ref().unwrap().scope().unwrap();
         self.scope = Some(scope.clone());
         resources.operations = Some(self.operations.stage_plugin(scope, |bindings| {
-            bindings.register_wire_operations::<ImplementedCallbacks, _>(
-                Lanes::Open,
-                self.owner.clone(),
-            )
+            bindings.register_wire_operations::<ImplementedCallbacks, _>(Lanes::Open, self.owner.clone())
         })?);
-        let original = Arc::new(tokio::sync::Mutex::new(
-            self.owner.records.stage_listeners(
-                scope,
-                &self.operations,
-                Position::ORIGIN,
-                |bindings| bindings.record::<Fact>(),
-            )?,
-        ));
+        let original = Arc::new(tokio::sync::Mutex::new(self.owner.records.stage_listeners(
+            scope,
+            &self.operations,
+            Position::ORIGIN,
+            |bindings| bindings.record::<Fact>(),
+        )?));
         self.view = Some(original.clone());
         resources.listeners = Some(original);
 
@@ -262,14 +224,8 @@ impl PluginLifecycle for Host {
         assert!(self.owner.seen.lock().unwrap().is_empty());
         Ok(())
     }
-    async fn stop(
-        _: &PluginDefinition,
-        _: &PluginLifecycleAuthority<'_>,
-        backend: &mut Backends,
-    ) -> Result<()> {
-        let PluginBackend::Embedded(resources) = backend else {
-            unreachable!()
-        };
+    async fn stop(_: &PluginDefinition, _: &PluginLifecycleAuthority<'_>, backend: &mut Backends) -> Result<()> {
+        let PluginBackend::Embedded(resources) = backend else { unreachable!() };
         if let Some(registration) = &mut resources.listeners {
             registration.lock().await.shutdown().await?;
         }
@@ -291,14 +247,8 @@ fn fact(value: u32) -> Fact {
 fn candidate() -> PluginDefinitions {
     let mut listeners = Vec::new();
     for (id, callback) in [
-        (
-            "listener.first",
-            WireDeclaration::of::<Heard<true>>().contract().unwrap(),
-        ),
-        (
-            "listener.second",
-            WireDeclaration::of::<Heard<false>>().contract().unwrap(),
-        ),
+        ("listener.first", WireDeclaration::of::<Delivery<Heard<true>>>().contract().unwrap()),
+        ("listener.second", WireDeclaration::of::<Delivery<Heard<false>>>().contract().unwrap()),
     ] {
         listeners.push(
             harmos_domain::listeners::Definition::new(
@@ -321,9 +271,7 @@ fn candidate() -> PluginDefinitions {
         [PluginDefinition {
             id: "listener".into(),
             version: "1.0.0".parse().unwrap(),
-            artifact: PluginArtifact::Embedded {
-                revision: "native".into(),
-            },
+            artifact: PluginArtifact::Embedded { revision: "native".into() },
             requires: vec![],
             configuration: b"null".to_vec(),
             contributions: PluginContributions {
@@ -337,15 +285,7 @@ fn candidate() -> PluginDefinitions {
     .unwrap()
 }
 
-async fn setup(
-    block: bool,
-    reenter: bool,
-    tail: usize,
-) -> (
-    Runtime<Model>,
-    PluginManager<Resources, Resources, Resources>,
-    Host,
-) {
+async fn setup(block: bool, reenter: bool, tail: usize) -> (Runtime<Model>, PluginManager<Resources, Resources, Resources>, Host) {
     let runtime = Runtime::<Model>::builder((), ())
         .register(Rows::catalog())
         .register(Lanes::catalog())
@@ -366,12 +306,7 @@ async fn setup(
         block,
         reenter,
     });
-    let host = Host {
-        operations: runtime.operations.clone(),
-        owner,
-        scope: None,
-        view: None,
-    };
+    let host = Host { operations: runtime.operations.clone(), owner, scope: None, view: None };
     (runtime, PluginManager::new(candidate()).unwrap(), host)
 }
 
@@ -402,14 +337,141 @@ async fn reentrancy_preserve_positions() {
     observed(&host.owner, 4).await;
     assert_eq!(
         *host.owner.seen.lock().unwrap(),
-        [
-            (true, 0, Position(1)),
-            (false, 0, Position(1)),
-            (true, 9, Position(2)),
-            (false, 9, Position(2))
-        ]
+        [(true, 0, Position(1)), (false, 0, Position(1)), (true, 9, Position(2)), (false, 9, Position(2))]
     );
     manager.shutdown(&mut host).await.unwrap();
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn sources_never_commit() {
+    for mode in 0..3 {
+        let (runtime, mut manager, mut host) = setup(false, false, 8).await;
+        host.skip_sources = mode == 0;
+        host.drop_before_commit = mode == 1;
+        host.fail_start = mode == 2;
+        assert!(manager.initialize(&mut host).await.is_err());
+        assert!(!host.scope.as_ref().unwrap().is_ready());
+        assert!(host.owner.seen.lock().unwrap().is_empty());
+        manager.shutdown(&mut host).await.unwrap();
+        runtime.stop().await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn failure_fences_side() {
+    let (runtime, mut manager, mut host) = setup(false, false, 8).await;
+    host.owner.fail_attempt.store(true, Ordering::SeqCst);
+    manager.initialize(&mut host).await.unwrap();
+    observed(&host.owner, 1).await;
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while host.scope.as_ref().unwrap().is_ready() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
+    assert_eq!(manager.status("listener").unwrap().state, harmos::plugin::PluginState::Failed);
+    assert!(matches!(host.view.as_ref().unwrap().lock().await.failure().as_deref(), Some(Error::OperationFailed { .. })));
+    assert!(matches!(runtime.operations.definition(Heard::<false>::CALLBACK), Err(Error::Closing { .. })));
+    manager.shutdown(&mut host).await.unwrap();
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn runtime_signals_listener() {
+    struct BlockedObserver;
+    struct Gates {
+        running: Notify,
+        stopping: Notify,
+        release: Notify,
+    }
+    impl harmos::observers::ObserverBackend for BlockedObserver {
+        type Resources = Gates;
+        fn definition(&self) -> harmos::Result<harmos::observers::ObserverDefinition> {
+            Ok(harmos::observers::ObserverDefinition {
+                id: "blocked-cleanup".into(),
+                interval: Duration::from_secs(10),
+                streams: vec![],
+                demand_keys: vec![],
+            })
+        }
+        async fn run(&self, gates: Arc<Gates>, mut activation: harmos::observers::ObserverActivation) -> Result<()> {
+            activation.ready();
+            gates.running.notify_one();
+            activation.stopping().await;
+            gates.stopping.notify_one();
+            gates.release.notified().await;
+            Ok(())
+        }
+    }
+    let (runtime, mut manager, mut host) = setup(true, false, 1).await;
+    manager.initialize(&mut host).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(3), host.owner.started.notified()).await.unwrap();
+    let gates = Arc::new(Gates { running: Notify::new(), stopping: Notify::new(), release: Notify::new() });
+    runtime.operations.register_observer(BlockedObserver).unwrap();
+    let lease = runtime.operations.submit_with_resources_at("blocked-cleanup", gates.clone()).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(2), gates.running.notified())
+        .await
+        .expect("the observer starts before testing blocked cleanup");
+    let mut stopping = Box::pin(runtime.stop());
+    tokio::time::timeout(Duration::from_secs(2), async {
+        tokio::select! {
+            _ = async {
+                gates.stopping.notified().await;
+                host.owner.finalizing.notified().await;
+            } => {},
+            result = &mut stopping => panic!("runtime settled before blocked cleanup: {result:?}"),
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(host.owner.finalizations.load(Ordering::SeqCst), 1);
+    drop(stopping);
+    host.owner.release.notify_one();
+    gates.release.notify_one();
+    runtime.stop().await.unwrap();
+    drop(lease);
+}
+
+#[tokio::test]
+async fn shutdown_retains_callback() {
+    let (runtime, mut manager, mut host) = setup(true, false, 1).await;
+    manager.initialize(&mut host).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(3), host.owner.started.notified()).await.unwrap();
+    runtime.records.publish(fact(1)).await.unwrap();
+    let owner = host.owner.clone();
+    let mut closing = Box::pin(manager.shutdown(&mut host));
+    tokio::select! { biased; _ = owner.finalizing.notified() => {}, result = &mut closing => panic!("cleanup returned before original finalizer: {result:?}") }
+    assert!(tokio::time::timeout(Duration::from_millis(20), &mut closing).await.is_err());
+    drop(closing);
+    assert_eq!(host.original_drop.load(Ordering::SeqCst), 0);
+    assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
+    host.owner.release.notify_one();
+    manager.shutdown(&mut host).await.unwrap();
+    assert_eq!(host.owner.finalizations.load(Ordering::SeqCst), 1);
+    assert_eq!(host.original_drop.load(Ordering::SeqCst), 1);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn cleanup_retries_finalizer() {
+    let (runtime, mut manager, mut host) = setup(true, false, 1).await;
+    manager.initialize(&mut host).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(3), host.owner.started.notified()).await.unwrap();
+    runtime.records.publish(fact(1)).await.unwrap();
+    host.owner.fail_cleanup.store(true, Ordering::SeqCst);
+    assert!(manager.shutdown(&mut host).await.is_err());
+    assert_eq!(host.original_drop.load(Ordering::SeqCst), 0);
+    let before = host.owner.finalizations.load(Ordering::SeqCst);
+    assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
+    host.owner.fail_cleanup.store(false, Ordering::SeqCst);
+    host.owner.release.notify_one();
+    manager.shutdown(&mut host).await.unwrap();
+    assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
+    assert_eq!(host.owner.finalizations.load(Ordering::SeqCst), before + 1);
+    assert_eq!(host.original_drop.load(Ordering::SeqCst), 1);
     runtime.stop().await.unwrap();
 }
 
@@ -433,13 +495,7 @@ async fn pages_deliver_native() {
     {
         let seen = host.owner.seen.lock().unwrap();
         for (value, pair) in seen.as_chunks::<2>().0.iter().enumerate() {
-            assert_eq!(
-                *pair,
-                [
-                    (true, value as u32, Position(value as u64 + 1)),
-                    (false, value as u32, Position(value as u64 + 1))
-                ]
-            );
+            assert_eq!(*pair, [(true, value as u32, Position(value as u64 + 1)), (false, value as u32, Position(value as u64 + 1))]);
         }
     }
     manager.shutdown(&mut host).await.unwrap();
@@ -455,24 +511,9 @@ async fn gap_fences_generation() {
     runtime.records.publish(fact(2)).await.unwrap();
     host.owner.resume.notify_one();
     fenced(&host).await;
-    assert!(matches!(
-        host.view
-            .as_ref()
-            .unwrap()
-            .lock()
-            .await
-            .failure()
-            .as_deref(),
-        Some(Error::BeyondTail)
-    ));
-    assert_eq!(
-        manager.status("listener").unwrap().state,
-        harmos::plugin::PluginState::Failed
-    );
-    assert_eq!(
-        *host.owner.seen.lock().unwrap(),
-        [(true, 0, Position(1)), (false, 0, Position(1))]
-    );
+    assert!(matches!(host.view.as_ref().unwrap().lock().await.failure().as_deref(), Some(Error::BeyondTail)));
+    assert_eq!(manager.status("listener").unwrap().state, harmos::plugin::PluginState::Failed);
+    assert_eq!(*host.owner.seen.lock().unwrap(), [(true, 0, Position(1)), (false, 0, Position(1))]);
     manager.shutdown(&mut host).await.unwrap();
     runtime.stop().await.unwrap();
 }

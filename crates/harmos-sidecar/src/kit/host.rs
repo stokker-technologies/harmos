@@ -251,12 +251,11 @@ impl Supervisor {
     // its instance id and stays owned by the attempt.
     pub(super) async fn child_call<O>(
         &self,
-        request: &O::Request,
+        request: &O,
         submit: bool,
     ) -> Result<Vec<u8>, CallError>
     where
         O: OperationDeclaration,
-        O::Request: Message,
     {
         if self.operation_context.is_none() && self.generation_context.is_none() {
             return Err(CallError::Unavailable);
@@ -327,12 +326,9 @@ impl Supervisor {
 
     fn child<O: OperationDeclaration>(
         &self,
-        request: &O::Request,
+        request: &O,
         submit: bool,
-    ) -> Result<Vec<u8>, CallError>
-    where
-        O::Request: Message,
-    {
+    ) -> Result<Vec<u8>, CallError> {
         if self.operation_context.is_none() && self.generation_context.is_none() {
             return Err(CallError::Unavailable);
         }
@@ -345,7 +341,7 @@ impl Supervisor {
                 limit: Frame::LIMIT,
             });
         }
-        let payload = request.encode_to_vec();
+        let payload = harmos_domain::Message::encode_to_vec(request);
         let command = harmos_domain::operations::WireChildCall {
             context,
             generation_context: self.generation_context,
@@ -508,7 +504,7 @@ impl Supervisor {
         rows: &[S::Row],
         stamps: &[Option<i64>],
         context: Option<&str>,
-        send: impl FnOnce(harmos_domain::operations::streams::Publication) -> Result<(), E>,
+        send: impl FnOnce(harmos_domain::operations::streams::Publish) -> Result<(), E>,
     ) -> Result<usize, E>
     where
         S::Row: Message,
@@ -573,7 +569,7 @@ impl Supervisor {
             *next += 1;
         }
         let taken = deltas.len() + 1;
-        send(harmos_domain::operations::streams::Publication {
+        send(harmos_domain::operations::streams::Publish {
             stream: S::ID.to_owned(),
             schema: S::VERSION,
             sequence: Some(first),

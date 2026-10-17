@@ -28,7 +28,7 @@ use crate::{
     Application, Error, Message, Result, state::CatalogCodec, state::Position, state::Record,
     state::RecordProjection, state::Recorded,
 };
-use harmos_domain::listeners::{Context, Delivery, Source};
+use harmos_domain::listeners::{Context, Source};
 
 /* === Constants === */
 const PAGE_ROWS: usize = 64;
@@ -384,16 +384,18 @@ where
         });
     }
     let bytes =
-        Delivery::encoding_memory_bytes(context, row).map_err(|source| Error::OperationFailed {
-            operation: callback.contract().operation().id.to_string(),
-            source: Arc::new(source),
+        harmos_domain::listeners::encoding_memory_bytes(context, row).map_err(|source| {
+            Error::OperationFailed {
+                operation: callback.contract().operation().id.to_string(),
+                source: Arc::new(source),
+            }
         })?;
     let bytes = NonZeroUsize::new(bytes).ok_or(Error::ResourceExhausted {
         resource: "record callback encoding",
     })?;
     callback
         .submit_with(bytes, |budget| {
-            Delivery::encode_borrowed(context, row, budget).map_err(|source| {
+            harmos_domain::listeners::encode_borrowed(context, row, budget).map_err(|source| {
                 Error::OperationFailed {
                     operation: callback.contract().operation().id.to_string(),
                     source: Arc::new(source),

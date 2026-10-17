@@ -82,18 +82,12 @@ impl Operation for Ping {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    async fn initialize<'ctx>(
-        _resources: Arc<()>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(_resources: Arc<()>, _: Self::Context<'ctx>) -> Result<Self, Self::Error> {
         Ok(Self)
     }
 
     async fn run<'ctx>(
-        &mut self,
-        _: Self::Context<'ctx>,
-        _request: &mut (),
-        _endpoints: &mut Self::Endpoints,
+        &mut self, _: Self::Context<'ctx>, _request: &mut (), _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<usize>, Self::Error> {
         let result: ::core::result::Result<usize, Self::Error> = async move { Ok(42) }.await;
         result.map(::core::convert::Into::into)
@@ -104,18 +98,11 @@ impl Operation for Ping {
 
 /* === Private Functions === */
 async fn service_status(
-    mut services: tokio::sync::watch::Receiver<
-        BTreeMap<harmos::operations::resident::Key, harmos::operations::resident::Snapshot>,
-    >,
-    name: &str,
-    wanted: impl Fn(&ServiceStatus) -> bool,
+    mut services: tokio::sync::watch::Receiver<BTreeMap<harmos::operations::resident::Key, harmos::operations::resident::Snapshot>>,
+    name: &str, wanted: impl Fn(&ServiceStatus) -> bool,
 ) -> ServiceStatus {
     services
-        .wait_for(|all| {
-            all.get(&harmos::operations::resident::Key::root(name))
-                .and_then(|item| item.health.as_ref())
-                .is_some_and(&wanted)
-        })
+        .wait_for(|all| all.get(&harmos::operations::resident::Key::root(name)).and_then(|item| item.health.as_ref()).is_some_and(&wanted))
         .await
         .expect("the runtime keeps the status sender open")
         .get(&harmos::operations::resident::Key::root(name))
@@ -124,9 +111,7 @@ async fn service_status(
 }
 
 fn assembly() -> harmos::Builder<Bank> {
-    Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .register(Lanes::catalog())
+    Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).register(Lanes::catalog())
 }
 
 async fn resident(mut context: Service<Bank>) -> Result<(), Fault<&'static str>> {
@@ -137,37 +122,22 @@ async fn resident(mut context: Service<Bank>) -> Result<(), Fault<&'static str>>
 
 #[tokio::test]
 async fn handle_shares_manager() {
-    let runtime = assembly()
-        .service("boot", resident)
-        .runtime()
-        .await
-        .unwrap();
+    let runtime = assembly().service("boot", resident).runtime().await.unwrap();
     let manager = runtime.handle().operations;
     manager
-        .register_service(
-            harmos::services::ServiceDefinition {
-                id: "dynamic".into(),
-                policy: harmos::services::POLICY,
-            },
-            |_: Arc<()>| resident,
-        )
+        .register_service(harmos::services::ServiceDefinition { id: "dynamic".into(), policy: harmos::services::POLICY }, |_: Arc<()>| {
+            resident
+        })
         .unwrap();
     let dynamic = manager.submit_resident("dynamic").await.unwrap();
     assert_eq!(runtime.operations.residents().len(), 2);
-    assert_eq!(
-        runtime.operations.resident_key(dynamic.id()),
-        Some(harmos::operations::resident::Key::root("dynamic"))
-    );
+    assert_eq!(runtime.operations.resident_key(dynamic.id()), Some(harmos::operations::resident::Key::root("dynamic")));
     runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
 async fn duplicate_service_refused() {
-    let runtime = assembly()
-        .service("boot", resident)
-        .runtime()
-        .await
-        .unwrap();
+    let runtime = assembly().service("boot", resident).runtime().await.unwrap();
     assert!(matches!(
         runtime.operations.register_service(
             harmos::services::ServiceDefinition {
@@ -183,29 +153,12 @@ async fn duplicate_service_refused() {
 
 #[tokio::test]
 async fn shutdown_preserves_work() {
-    let runtime = assembly()
-        .service("boot", resident)
-        .runtime()
-        .await
-        .unwrap();
+    let runtime = assembly().service("boot", resident).runtime().await.unwrap();
     let manager = runtime.operations.clone();
     manager.shutdown_residents().await.unwrap();
-    assert!(matches!(
-        manager.submit_resident("late").await,
-        Err(Error::Closing { .. })
-    ));
-    runtime
-        .operations
-        .register_operation::<Ping>("service", Lanes::Open, Arc::new(()))
-        .unwrap();
-    assert_eq!(
-        *runtime
-            .operations
-            .call_as::<PingContract>(())
-            .await
-            .unwrap(),
-        42
-    );
+    assert!(matches!(manager.submit_resident("late").await, Err(Error::Closing { .. })));
+    runtime.operations.register_operation::<Ping>("service", Lanes::Open, Arc::new(())).unwrap();
+    assert_eq!(*runtime.operations.call(()).await.unwrap(), 42);
     runtime.stop().await.unwrap();
 }
 
@@ -215,16 +168,10 @@ async fn admission_rejects_reserved() {
     for name in ["", "artifact"] {
         assert!(matches!(
             runtime.operations.register_service(
-                harmos::services::ServiceDefinition {
-                    id: name.into(),
-                    policy: harmos::services::POLICY
-                },
+                harmos::services::ServiceDefinition { id: name.into(), policy: harmos::services::POLICY },
                 |_: Arc<()>| resident
             ),
-            Err(Error::InvalidInput {
-                field: "service name",
-                ..
-            })
+            Err(Error::InvalidInput { field: "service name", .. })
         ));
     }
     assert!(runtime.operations.residents().is_empty());
@@ -247,10 +194,7 @@ async fn shutdown_join_started() {
             barrier.wait().await;
             let id = format!("resident-{index}");
             manager.register_service(
-                harmos::services::ServiceDefinition {
-                    id: id.clone(),
-                    policy: harmos::services::POLICY,
-                },
+                harmos::services::ServiceDefinition { id: id.clone(), policy: harmos::services::POLICY },
                 move |_: Arc<()>| {
                     let entered = entered.clone();
                     let exited = exited.clone();
@@ -278,17 +222,8 @@ async fn shutdown_join_started() {
             Err(error) => panic!("unexpected admission: {error:?}"),
         }
     }
-    assert_eq!(
-        entered.load(Ordering::SeqCst),
-        exited.load(Ordering::SeqCst)
-    );
-    assert!(
-        runtime
-            .operations
-            .residents()
-            .values()
-            .all(|instance| instance.health == Some(ServiceStatus::Stopped))
-    );
+    assert_eq!(entered.load(Ordering::SeqCst), exited.load(Ordering::SeqCst));
+    assert!(runtime.operations.residents().values().all(|instance| instance.health == Some(ServiceStatus::Stopped)));
     runtime.stop().await.unwrap();
 }
 
@@ -315,10 +250,7 @@ async fn concurrent_shutdowns_join() {
         .runtime()
         .await
         .unwrap();
-    service_status(runtime.operations.watch_residents(), "boot", |status| {
-        matches!(status, ServiceStatus::Running { .. })
-    })
-    .await;
+    service_status(runtime.operations.watch_residents(), "boot", |status| matches!(status, ServiceStatus::Running { .. })).await;
     let first = runtime.operations.shutdown_residents();
     tokio::pin!(first);
     tokio::select! {
@@ -334,10 +266,7 @@ async fn concurrent_shutdowns_join() {
     first.unwrap();
     second.unwrap();
     assert_eq!(
-        runtime
-            .operations
-            .resident(&harmos::operations::resident::Key::root("boot"))
-            .and_then(|item| item.health),
+        runtime.operations.resident(&harmos::operations::resident::Key::root("boot")).and_then(|item| item.health),
         Some(ServiceStatus::Stopped)
     );
     runtime.stop().await.unwrap();

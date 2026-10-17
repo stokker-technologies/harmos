@@ -20,8 +20,9 @@ use std::sync::Arc;
 // Local Imports
 use crate::Error;
 use harmos_guest::MemorySize;
+use schematic_domain::operations::AnalyzeSchematic;
+use schematic_domain::operations::schematic::analyze::Analysis;
 use schematic_domain::operations::schematic::analyze::Finding;
-use schematic_domain::operations::schematic::analyze::{Request, Response};
 
 /* === Constants === */
 
@@ -30,15 +31,15 @@ use schematic_domain::operations::schematic::analyze::{Request, Response};
 /* === Type Aliases === */
 
 /* === Structs === */
-pub(crate) struct AnalyzeSchematic;
+pub(crate) struct Analyzing;
 
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
-#[harmos_guest::operation(declaration = schematic_domain::operations::AnalyzeSchematic, output = Finding)]
-impl AnalyzeSchematic {
+#[harmos_guest::operation]
+impl Analyzing {
     async fn initialize(_: Arc<()>, _: &harmos_guest::Context) -> Self {
         Self
     }
@@ -47,9 +48,9 @@ impl AnalyzeSchematic {
     async fn run(
         &mut self,
         _context: &harmos_guest::Context,
-        request: &mut Request,
+        request: &mut AnalyzeSchematic,
         output: &mut harmos_guest::operations::StreamOutput<Finding>,
-    ) -> Result<Response, Error> {
+    ) -> Result<Analysis, Error> {
         let findings = [
             format!("{} symbols", request.schematic.symbols.len()),
             format!("{} connections", request.schematic.connections.len()),
@@ -60,7 +61,7 @@ impl AnalyzeSchematic {
             let bytes = finding.memory_size();
             output.send_with(bytes, || Ok(finding)).await?;
         }
-        Ok(Response { checked: 3 })
+        Ok(Analysis { checked: 3 })
     }
 }
 

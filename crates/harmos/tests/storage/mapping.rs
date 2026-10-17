@@ -15,7 +15,8 @@ use std::sync::Arc;
 
 // Third Party Imports
 use arrow_array::{Array, Float64Array, ListArray, StructArray, UInt32Array};
-use harmos::storage::query::{Query, QueryArrow, RecordSelection, RowSlice, Source};
+use harmos::storage::operations::Query;
+use harmos::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
 use harmos::storage::*;
 use harmos::{Identifier, Message, Runtime};
 

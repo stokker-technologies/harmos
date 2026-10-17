@@ -28,8 +28,7 @@ use super::{HostLanes, assembly, operations, service_status};
 use crate::support::Bank;
 use crate::witness::Witness;
 use harmos::operations::{
-    Context, Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy,
-    Visibility, WireOperation, WireTable,
+    Context, Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireOperation, WireTable,
 };
 use harmos::sidecar::{Notice, Refusal, Supervised, Supervisor};
 use harmos::{Runtime, services::Service, services::ServiceStatus};
@@ -178,24 +177,14 @@ impl harmos::Plugin for Process {
         Arc::clone(&self.marks)
     }
 
-    fn bind_operations(
-        &self,
-        table: &mut WireTable<Supervisor>,
-    ) -> Result<(), harmos::operations::ServingError> {
+    fn bind_operations(&self, table: &mut WireTable<Supervisor>) -> Result<(), harmos::operations::ServingError> {
         table.bind_operations::<Implemented, _>(self.resources())
     }
 
     async fn stop(&mut self, context: &Supervisor) -> Result<(), Refusal> {
         if self.marks.seen("shutdown-publication") {
-            let receipt = Blob {
-                id: 47,
-                data: b"shutdown".to_vec(),
-            };
-            context
-                .publisher::<Process>()
-                .publish_on::<Blob>(&receipt)
-                .await
-                .map_err(Refusal::from)?;
+            let receipt = Blob { id: 47, data: b"shutdown".to_vec() };
+            context.publisher::<Process>().publish_on::<Blob>(&receipt).await.map_err(Refusal::from)?;
             self.marks.mark("shutdown-publication-acknowledged");
         }
         self.marks.mark("shutdown");
@@ -217,26 +206,16 @@ impl Operation for Echoing {
 
     async fn initialize<'ctx>(marks: Arc<Witness>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
         marks.mark("echo-initialized");
-        Ok(Self {
-            marks,
-            id: None,
-            run_started: false,
-        })
+        Ok(Self { marks, id: None, run_started: false })
     }
 
     async fn run<'ctx>(
-        &mut self,
-        host: Self::Context<'ctx>,
-        request: &mut Blob,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, host: Self::Context<'ctx>, request: &mut Blob, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Blob>, Refusal> {
         self.id = Some(request.id);
         self.marks.mark(&format!("echo-prepared-{}", request.id));
         self.marks.mark(&format!("echo-started-{}", request.id));
-        let _work = Work {
-            marks: &self.marks,
-            id: request.id,
-        };
+        let _work = Work { marks: &self.marks, id: request.id };
         self.run_started = true;
         if request.id == ABANDON {
             host.abandon();
@@ -273,17 +252,11 @@ impl Operation for Publishing {
     }
 
     async fn run<'ctx>(
-        &mut self,
-        host: Self::Context<'ctx>,
-        request: &mut Blob,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, host: Self::Context<'ctx>, request: &mut Blob, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Blob>, Refusal> {
         self.id = Some(request.id);
         self.marks.mark(&format!("nested-prepared-{}", request.id));
-        host.publisher::<Process>()
-            .publish_on::<Blob>(&*request)
-            .await
-            .map_err(Refusal::from)?;
+        host.publisher::<Process>().publish_on::<Blob>(&*request).await.map_err(Refusal::from)?;
         Ok(request.clone().into())
     }
 
@@ -303,37 +276,19 @@ impl Operation for CallbackPublication {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    async fn initialize<'ctx>(
-        owner: Arc<Callback>,
-        context: Self::Context<'ctx>,
-    ) -> harmos::Result<Self> {
+    async fn initialize<'ctx>(owner: Arc<Callback>, context: Self::Context<'ctx>) -> harmos::Result<Self> {
         let resident = Arc::clone(&owner.resident);
         let publication = harmos::sidecar::Publish::initialize(resident, context).await?;
         Ok(Self { owner, publication })
     }
 
     async fn run<'ctx>(
-        &mut self,
-        context: Self::Context<'ctx>,
-        request: &mut harmos::operations::streams::Publication,
-        endpoints: &mut Self::Endpoints,
+        &mut self, context: Self::Context<'ctx>, request: &mut harmos::operations::streams::Publication, endpoints: &mut Self::Endpoints,
     ) -> harmos::Result<harmos::operations::Response<()>> {
         self.owner.calls.fetch_add(1, Ordering::SeqCst);
-        let id = self
-            .owner
-            .echo
-            .forced()
-            .unwrap_or_else(|| request.sequence.unwrap());
-        let echoed = context
-            .call_as::<Echo>(Blob {
-                id,
-                data: request.payload.clone(),
-            })
-            .await?;
-        assert_eq!(
-            echoed.data, request.payload,
-            "the original connection carried the nested response"
-        );
+        let id = self.owner.echo.forced().unwrap_or_else(|| request.sequence.unwrap());
+        let echoed = context.call_as::<Echo>(Blob { id, data: request.payload.clone() }).await?;
+        assert_eq!(echoed.data, request.payload, "the original connection carried the nested response");
         self.publication.run(context, request, endpoints).await
     }
 }
@@ -359,9 +314,7 @@ impl Fixture {
         let resident: Resident = Supervised::new(source, notices as fn(&Service<Bank>, Notice));
         let runtime = assembly()
             .operation_settings(harmos::operations::Settings {
-                preparation_bytes: Some(
-                    NonZeroUsize::new(harmos_sidecar::Frame::LIMIT * 4).unwrap(),
-                ),
+                preparation_bytes: Some(NonZeroUsize::new(harmos_sidecar::Frame::LIMIT * 4).unwrap()),
                 ..Default::default()
             })
             .runtime()
@@ -374,11 +327,7 @@ impl Fixture {
             .register_wire_operation::<CallbackPublication>(
                 "process-core",
                 HostLanes::Open,
-                Arc::new(Callback {
-                    resident: Arc::new(resident.clone()),
-                    echo: Arc::clone(&echo),
-                    calls: Arc::clone(&calls),
-                }),
+                Arc::new(Callback { resident: Arc::new(resident.clone()), echo: Arc::clone(&echo), calls: Arc::clone(&calls) }),
             )
             .unwrap();
         runtime
@@ -386,10 +335,7 @@ impl Fixture {
             .register_service(
                 harmos::services::ServiceDefinition {
                     id: "process".into(),
-                    policy: OperationPolicy {
-                        restart: RestartPolicy::Never,
-                        ..harmos::services::POLICY
-                    },
+                    policy: OperationPolicy { restart: RestartPolicy::Never, ..harmos::services::POLICY },
                 },
                 move |_: Arc<()>| {
                     harmos::sidecar::Managed::new_catalog::<Operations>(
@@ -404,17 +350,8 @@ impl Fixture {
             )
             .unwrap();
         let lease = runtime.operations.submit_resident("process").await.unwrap();
-        service_status(runtime.operations.watch_residents(), "process", |status| {
-            matches!(status, ServiceStatus::Running { .. })
-        })
-        .await;
-        Self {
-            runtime,
-            _lease: lease,
-            marks,
-            echo,
-            calls,
-        }
+        service_status(runtime.operations.watch_residents(), "process", |status| matches!(status, ServiceStatus::Running { .. })).await;
+        Self { runtime, _lease: lease, marks, echo, calls }
     }
 
     async fn finish(self) {
@@ -429,11 +366,26 @@ impl Fixture {
 /* === Private Functions === */
 fn notices(_: &Service<Bank>, _: Notice) {}
 
+fn count(root: &Path, name: &str) -> usize {
+    std::fs::read_to_string(root.join(name)).unwrap().lines().count()
+}
+
+async fn marked(root: &Path, name: &str) {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !std::fs::read(root.join(name)).is_ok_and(|bytes| bytes.ends_with(b"\n")) {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+}
+
+fn nested(blob: Blob) -> Nested {
+    Nested { blob }
+}
+
 fn blob(id: u64, bytes: usize) -> Blob {
-    Blob {
-        id,
-        data: vec![42; bytes],
-    }
+    Blob { id, data: vec![42; bytes] }
 }
 
 #[tokio::test]
@@ -441,28 +393,14 @@ async fn nested_calls_reenter() {
     let fixture = Fixture::new().await;
     let request = blob(41, 256 * 1024);
 
-    let result = fixture
-        .runtime
-        .operations
-        .call_as::<Nested>(request.clone())
-        .await
-        .unwrap();
+    let result = fixture.runtime.operations.call_as::<Nested>(request.clone()).await.unwrap();
 
     assert_eq!(*result, request);
     assert_eq!(fixture.calls.load(Ordering::SeqCst), 1);
-    for mark in [
-        "echo-prepared-1",
-        "echo-dropped-1",
-        "echo-finalized-1",
-        "nested-finalized-41",
-    ] {
+    for mark in ["echo-prepared-1", "echo-dropped-1", "echo-finalized-1", "nested-finalized-41"] {
         assert_eq!(fixture.marks.count(mark), 1, "{mark}");
     }
-    let rows = fixture
-        .runtime
-        .streams
-        .publication("process.receipt", 1)
-        .unwrap();
+    let rows = fixture.runtime.streams.publication("process.receipt", 1).unwrap();
     assert_eq!(rows.query(..).await.unwrap().count(), 1);
     fixture.finish().await;
 }
@@ -471,11 +409,7 @@ async fn nested_calls_reenter() {
 async fn cancellation_settles_slots() {
     let fixture = Fixture::new().await;
     fixture.echo.store(Some(PENDING));
-    let pending = fixture
-        .runtime
-        .operations
-        .submit_as::<Nested>(blob(42, 512))
-        .unwrap();
+    let pending = fixture.runtime.operations.submit_as::<Nested>(blob(42, 512)).unwrap();
 
     // Cancelling The Outer Call Settles The Nested Slot It Holds
     fixture.marks.marked("echo-started-0").await;
@@ -489,15 +423,7 @@ async fn cancellation_settles_slots() {
 
     // The Settled Slots Serve The Next Call
     fixture.echo.store(None);
-    assert_eq!(
-        *fixture
-            .runtime
-            .operations
-            .call_as::<Nested>(blob(43, 512))
-            .await
-            .unwrap(),
-        blob(43, 512)
-    );
+    assert_eq!(*fixture.runtime.operations.call_as::<Nested>(blob(43, 512)).await.unwrap(), blob(43, 512));
     assert_eq!(fixture.calls.load(Ordering::SeqCst), 2);
     fixture.finish().await;
 }
@@ -506,44 +432,22 @@ async fn cancellation_settles_slots() {
 async fn deadline_settles_nested() {
     let fixture = Fixture::new().await;
     fixture.echo.store(Some(PENDING));
-    let pending = fixture
-        .runtime
-        .operations
-        .submit_as::<Nested>(blob(48, 512))
-        .unwrap();
+    let pending = fixture.runtime.operations.submit_as::<Nested>(blob(48, 512)).unwrap();
     fixture.marks.marked("echo-started-0").await;
 
     // The Original Operation Deadline Settles The Pending Nested Call
     let result = pending.await;
-    assert!(matches!(
-        result,
-        Err(harmos::Error::OperationRefused(harmos::Refusal::TimedOut))
-    ));
+    assert!(matches!(result, Err(harmos::Error::OperationRefused(harmos::Refusal::TimedOut))));
     fixture.marks.marked("echo-finalized-0").await;
     fixture.marks.marked("nested-finalized-48").await;
-    for mark in [
-        "echo-prepared-0",
-        "echo-dropped-0",
-        "echo-finalized-0",
-        "nested-initialized",
-        "nested-finalized-48",
-        "started",
-    ] {
+    for mark in ["echo-prepared-0", "echo-dropped-0", "echo-finalized-0", "nested-initialized", "nested-finalized-48", "started"] {
         assert_eq!(fixture.marks.count(mark), 1, "{mark}");
     }
     assert_eq!(fixture.calls.load(Ordering::SeqCst), 1);
 
     // The Deadline Refuses One Caller; The Service Serves The Next
     fixture.echo.store(None);
-    assert_eq!(
-        *fixture
-            .runtime
-            .operations
-            .call_as::<Nested>(blob(49, 512))
-            .await
-            .unwrap(),
-        blob(49, 512)
-    );
+    assert_eq!(*fixture.runtime.operations.call_as::<Nested>(blob(49, 512)).await.unwrap(), blob(49, 512));
     assert_eq!(fixture.calls.load(Ordering::SeqCst), 2);
     fixture.finish().await;
 }
@@ -554,18 +458,10 @@ async fn disconnect_no_replay() {
     fixture.echo.store(Some(ABANDON));
 
     // The Abandoned Generation Fails The Call In Flight
-    let outcome = fixture
-        .runtime
-        .operations
-        .call_as::<Nested>(blob(46, 512))
-        .await;
+    let outcome = fixture.runtime.operations.call_as::<Nested>(blob(46, 512)).await;
     assert!(outcome.is_err());
-    service_status(
-        fixture.runtime.operations.watch_residents(),
-        "process",
-        |status| matches!(status, ServiceStatus::Inactive { .. }),
-    )
-    .await;
+    service_status(fixture.runtime.operations.watch_residents(), "process", |status| matches!(status, ServiceStatus::Inactive { .. }))
+        .await;
 
     // Nothing Replays The Call On Another Generation
     assert_eq!(fixture.marks.count("started"), 1);
@@ -595,13 +491,7 @@ async fn shutdown_sdk_publication() {
         assert_eq!(publication.wire_sequence(), 1);
         assert_eq!(publication.sequence(), 1);
         assert_eq!(publication.missed(), 0);
-        assert_eq!(
-            <Blob as harmos::Message>::decode(publication.payload()).unwrap(),
-            Blob {
-                id: 47,
-                data: b"shutdown".to_vec()
-            }
-        );
+        assert_eq!(<Blob as harmos::Message>::decode(publication.payload()).unwrap(), Blob { id: 47, data: b"shutdown".to_vec() });
         notices.fetch_add(1, Ordering::SeqCst);
     });
     let calls = resident.clone();
@@ -615,21 +505,14 @@ async fn shutdown_sdk_publication() {
         .unwrap();
     runtime
         .operations
-        .register_wire_operation::<harmos::sidecar::Publish<_, _, _>>(
-            "shutdown-core",
-            HostLanes::Open,
-            Arc::new(resident.clone()),
-        )
+        .register_wire_operation::<harmos::sidecar::Publish<_, _, _>>("shutdown-core", HostLanes::Open, Arc::new(resident.clone()))
         .unwrap();
     runtime
         .operations
         .register_service(
             harmos::services::ServiceDefinition {
                 id: "process".into(),
-                policy: OperationPolicy {
-                    restart: RestartPolicy::Never,
-                    ..harmos::services::POLICY
-                },
+                policy: OperationPolicy { restart: RestartPolicy::Never, ..harmos::services::POLICY },
             },
             move |_: Arc<()>| {
                 harmos::sidecar::Managed::new_catalog::<Operations>(
@@ -644,10 +527,7 @@ async fn shutdown_sdk_publication() {
         )
         .unwrap();
     let _lease = runtime.operations.submit_resident("process").await.unwrap();
-    service_status(runtime.operations.watch_residents(), "process", |status| {
-        matches!(status, ServiceStatus::Running { .. })
-    })
-    .await;
+    service_status(runtime.operations.watch_residents(), "process", |status| matches!(status, ServiceStatus::Running { .. })).await;
     let native = calls.operations().unwrap();
     let scope = native.scope().unwrap();
     *expected.lock().unwrap() = Some(scope.generation().get());
@@ -663,14 +543,7 @@ async fn shutdown_sdk_publication() {
 
     // The Retired Generation Refuses Later Publication
     assert!(scope.publication("process.receipt", 1).is_err());
-    let late = Blob {
-        id: 48,
-        data: b"late".to_vec(),
-    };
-    assert!(
-        background
-            .publish(harmos::Message::encode_to_vec(&late), 0)
-            .is_err()
-    );
+    let late = Blob { id: 48, data: b"late".to_vec() };
+    assert!(background.publish(harmos::Message::encode_to_vec(&late), 0).is_err());
     assert_eq!(delivered.load(Ordering::SeqCst), 1);
 }

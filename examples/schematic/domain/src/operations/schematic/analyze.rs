@@ -32,21 +32,9 @@ pub struct Finding {
 }
 
 #[harmos_domain::message]
-#[derive(Clone, Debug, PartialEq)]
-pub struct Request {
-    pub schematic: crate::model::Snapshot,
-}
-
-#[harmos_domain::message]
-#[derive(Clone, Debug, PartialEq)]
-pub struct Response {
-    pub checked: u32,
-}
-
 #[harmos_domain::operation(
     id = "schematic.analyze",
-    request = Request,
-    response = Response,
+    response = Analysis,
     output = Finding,
     policy = crate::operations::POLICY,
     visibility = harmos_domain::operations::Visibility::Shared,
@@ -54,7 +42,16 @@ pub struct Response {
     version = 1,
     grpc(package = "schematic.v1", service = "Schematic", method = "Analyze"),
 )]
-pub struct AnalyzeSchematic;
+#[derive(Clone, Debug, PartialEq)]
+pub struct AnalyzeSchematic {
+    pub schematic: crate::model::Snapshot,
+}
+
+#[harmos_domain::message]
+#[derive(Clone, Debug, PartialEq)]
+pub struct Analysis {
+    pub checked: u32,
+}
 
 /* === Enums === */
 

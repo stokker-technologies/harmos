@@ -272,7 +272,7 @@ impl<R: Sync, H> ObserverContext<'_, R, H> {
         self.host.publish_on(self, row).await
     }
 
-    pub async fn call_as<C>(&self, request: H::Request) -> Result<H::Response, H::Error>
+    pub async fn call<C>(&self, request: H::Request) -> Result<H::Response, H::Error>
     where
         H: ObserverCaller<R, C>,
     {

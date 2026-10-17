@@ -27,8 +27,8 @@ use tokio::sync::Notify;
 // Local Imports
 use super::{Lanes, app::App};
 use harmos::operations::{
-    Backoff, Context, FailureKind, Jitter, Operation, OperationInstanceId,
-    OperationPhase, OperationPolicy, ReplaySafety, RestartPolicy, RetryPolicy,
+    Backoff, Context, FailureKind, Jitter, Operation, OperationInstanceId, OperationPhase, OperationPolicy, ReplaySafety, RestartPolicy,
+    RetryPolicy,
 };
 use harmos::{Error, Refusal, Runtime};
 
@@ -72,19 +72,24 @@ struct Read {
     attempts: usize,
 }
 
-struct Answer(usize);
+#[harmos::message]
+struct Answer {
+    value: u64,
+}
 
 /* === Enums === */
+#[harmos::message]
 enum Mode {
     Complete,
     WaitRun,
     PanicRun,
 }
 
+#[harmos::message]
 #[harmos::operation(
-        request = Mode,
         response = Answer,
         id = "authored.read",
+        version = 1,
         policy = OperationPolicy {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
@@ -96,7 +101,9 @@ enum Mode {
         },
         replay = ReplaySafety::Idempotent,
     )]
-struct ReadContract;
+struct ReadContract {
+    mode: Mode,
+}
 
 #[harmos::catalog]
 enum Operations {
@@ -113,20 +120,13 @@ impl Operation for Read {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    async fn initialize<'ctx>(
-        resources: Arc<Resources>,
-        context: Self::Context<'ctx>,
-    ) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(resources: Arc<Resources>, context: Self::Context<'ctx>) -> Result<Self, Self::Error> {
         let constructed: Result<Self, Self::Error> = async move {
             resources.0.constructed.fetch_add(1, Ordering::SeqCst);
             if resources.0.fail_new.load(Ordering::SeqCst) {
                 return Err(std::io::Error::other("inert resource refusal"));
             }
-            Ok(Self {
-                trace: resources.0.clone(),
-                phase: Cell::new(0),
-                attempts: 0,
-            })
+            Ok(Self { trace: resources.0.clone(), phase: Cell::new(0), attempts: 0 })
         }
         .await;
         let mut operation = constructed?;
@@ -150,10 +150,7 @@ impl Operation for Read {
     }
 
     async fn run<'ctx>(
-        &mut self,
-        context: Self::Context<'ctx>,
-        mode: &mut Mode,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, context: Self::Context<'ctx>, request: &mut ReadContract, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Answer>, Self::Error> {
         let result: ::core::result::Result<Answer, Self::Error> = async move {
             self.trace.ran.fetch_add(1, Ordering::SeqCst);
@@ -165,7 +162,7 @@ impl Operation for Read {
             match mode {
                 Mode::WaitRun => std::future::pending().await,
                 Mode::PanicRun => panic!("authored run panicked"),
-                _ => Ok(Answer(42)),
+                _ => Ok(Answer { value: 42 }),
             }
         }
         .await;
@@ -213,17 +210,14 @@ impl Drop for Read {
 /* === Public Functions === */
 
 /* === Private Functions === */
+fn cache_key(request: &ReadContract) -> Option<CacheKey> {
+    matches!(request.mode, Mode::Cache).then(|| CacheKey::new(vec![42]).unwrap())
+}
+
 async fn runtime() -> (Runtime<App>, Arc<Trace>) {
-    let runtime = Runtime::<App>::builder((), ())
-        .register(Lanes::catalog())
-        .runtime()
-        .await
-        .unwrap();
+    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
     let trace = Arc::new(Trace::default());
-    runtime
-        .operations
-        .register_operation::<Read>("app", Lanes::Serial, Arc::new(Resources(trace.clone())))
-        .unwrap();
+    runtime.operations.register_operation::<Read>("app", Lanes::Serial, Arc::new(Resources(trace.clone()))).unwrap();
     (runtime, trace)
 }
 
@@ -236,26 +230,16 @@ fn count(value: &AtomicUsize) -> usize {
 #[tokio::test]
 async fn lazy_construction_lifecycle() {
     let (runtime, trace) = runtime().await;
-    let mut instance = runtime
-        .operations
-        .submit_as::<ReadContract>(Mode::Complete)
-        .unwrap();
+    let mut instance = runtime.operations.submit(ReadContract { mode: Mode::Complete }).unwrap();
     // Construction waits for the first attempt's initialization.
     assert_eq!(count(&trace.constructed), 0);
     assert_eq!(count(&trace.initialized), 0);
-    assert_eq!((&mut instance).await.unwrap().0, 42);
+    assert_eq!((&mut instance).await.unwrap().value, 42);
     assert_eq!(count(&trace.initialized), 1);
     assert_eq!(count(&trace.stopped), 1);
     assert_eq!(count(&trace.finalized), 1);
     assert_eq!(count(&trace.dropped), 1);
-    assert!(
-        trace
-            .ids
-            .lock()
-            .unwrap()
-            .iter()
-            .all(|id| *id == instance.id())
-    );
+    assert!(trace.ids.lock().unwrap().iter().all(|id| *id == instance.id()));
     assert_eq!(instance.status().phase(), OperationPhase::Settled);
     runtime.stop().await.unwrap();
 }
@@ -267,20 +251,11 @@ async fn init_failure_skips_stop() {
     // A failed initialization owns no instance, so a failing
     // stop cannot retain one.
     trace.fail_stop.store(true, Ordering::SeqCst);
-    let mut instance = runtime
-        .operations
-        .submit_as::<ReadContract>(Mode::Complete)
-        .unwrap();
-    assert!(matches!(
-        (&mut instance).await,
-        Err(Error::OperationFailed { .. })
-    ));
+    let mut instance = runtime.operations.submit_as::<ReadContract>(Mode::Complete).unwrap();
+    assert!(matches!((&mut instance).await, Err(Error::OperationFailed { .. })));
     instance.settle().await.unwrap();
     assert_eq!(instance.status().phase(), OperationPhase::Settled);
-    assert_eq!(
-        instance.status().outcome(),
-        Some(harmos::operations::OperationOutcome::Failed)
-    );
+    assert_eq!(instance.status().outcome(), Some(harmos::operations::OperationOutcome::Failed));
     // The transient failure is not retried and the partial owner
     // is dropped without cleanup.
     assert_eq!(count(&trace.initialized), 1);
@@ -295,18 +270,12 @@ async fn init_failure_skips_stop() {
 async fn cancel_interrupts_initialize() {
     let (runtime, trace) = runtime().await;
     trace.wait_initialize.store(true, Ordering::SeqCst);
-    let instance = runtime
-        .operations
-        .submit_as::<ReadContract>(Mode::Complete)
-        .unwrap();
+    let instance = runtime.operations.submit(ReadContract { mode: Mode::Complete }).unwrap();
     trace.initializing.notified().await;
     assert_eq!(instance.status().phase(), OperationPhase::Initializing);
     assert!(instance.status().started_at().is_some());
     instance.cancel();
-    assert!(matches!(
-        instance.join().await,
-        Err(Error::OperationRefused(Refusal::Cancelled))
-    ));
+    assert!(matches!(instance.join().await, Err(Error::OperationRefused(Refusal::Cancelled))));
     assert_eq!(count(&trace.ran), 0);
     // A failed initialization drops its partial owner without cleanup.
     assert_eq!(count(&trace.stopped), 0);
@@ -319,16 +288,10 @@ async fn cancel_interrupts_initialize() {
 async fn initialization_uses_total() {
     let (runtime, trace) = runtime().await;
     trace.wait_initialize.store(true, Ordering::SeqCst);
-    let instance = runtime
-        .operations
-        .submit_as::<ReadContract>(Mode::Complete)
-        .unwrap();
+    let instance = runtime.operations.submit(ReadContract { mode: Mode::Complete }).unwrap();
     trace.initializing.notified().await;
     tokio::time::advance(Duration::from_secs(2)).await;
-    assert!(matches!(
-        instance.join().await,
-        Err(Error::OperationRefused(Refusal::TimedOut))
-    ));
+    assert!(matches!(instance.join().await, Err(Error::OperationRefused(Refusal::TimedOut))));
     assert_eq!(count(&trace.initialized), 1);
     assert_eq!(count(&trace.ran), 0);
     assert_eq!(count(&trace.stopped), 0);
@@ -340,10 +303,7 @@ async fn initialization_uses_total() {
 async fn stop_failure_retained() {
     let (runtime, trace) = runtime().await;
     trace.fail_stop.store(true, Ordering::SeqCst);
-    let mut instance = runtime
-        .operations
-        .submit_as::<ReadContract>(Mode::Complete)
-        .unwrap();
+    let mut instance = runtime.operations.submit(ReadContract { mode: Mode::Complete }).unwrap();
     assert!((&mut instance).await.is_err());
     // A failed stop retains the owner with its cleanup pending.
     assert_eq!(instance.status().phase(), OperationPhase::Stopping);
@@ -386,10 +346,7 @@ async fn stop_failure_retained() {
 async fn cleanup_failure_retried() {
     let (runtime, trace) = runtime().await;
     trace.fail_finalize.store(true, Ordering::SeqCst);
-    let mut instance = runtime
-        .operations
-        .submit_as::<ReadContract>(Mode::Complete)
-        .unwrap();
+    let mut instance = runtime.operations.submit(ReadContract { mode: Mode::Complete }).unwrap();
     assert!((&mut instance).await.is_err());
     assert_eq!(instance.status().phase(), OperationPhase::Finalizing);
     assert_eq!(count(&trace.stopped), 1);
@@ -408,14 +365,8 @@ async fn refusal_never_start() {
     let (runtime, trace) = runtime().await;
     trace.fail_new.store(true, Ordering::SeqCst);
     // A refused construction fails the instance before any work.
-    let instance = runtime
-        .operations
-        .submit_as::<ReadContract>(Mode::Complete)
-        .unwrap();
-    assert!(matches!(
-        instance.join().await,
-        Err(Error::OperationFailed { .. })
-    ));
+    let instance = runtime.operations.submit(ReadContract { mode: Mode::Complete }).unwrap();
+    assert!(matches!(instance.join().await, Err(Error::OperationFailed { .. })));
     runtime.stop().await.unwrap();
     assert_eq!(count(&trace.initialized), 0);
     assert_eq!(count(&trace.stopped), 0);
@@ -425,14 +376,8 @@ async fn refusal_never_start() {
 #[tokio::test]
 async fn panic_stops_finalizes() {
     let (runtime, trace) = runtime().await;
-    let instance = runtime
-        .operations
-        .submit_as::<ReadContract>(Mode::PanicRun)
-        .unwrap();
-    assert!(matches!(
-        instance.join().await,
-        Err(Error::OperationPanicked { .. })
-    ));
+    let instance = runtime.operations.submit(ReadContract { mode: Mode::PanicRun }).unwrap();
+    assert!(matches!(instance.join().await, Err(Error::OperationPanicked { .. })));
     assert_eq!(count(&trace.initialized), 1);
     assert_eq!(count(&trace.ran), 1);
     assert_eq!(count(&trace.stopped), 1);
@@ -451,28 +396,17 @@ async fn dropped_response_retains() {
     for polled in [false, true] {
         let (runtime, trace) = runtime().await;
         trace.block_finalize.store(true, Ordering::SeqCst);
-        let instance = runtime
-            .operations
-            .submit_as::<ReadContract>(Mode::WaitRun)
-            .unwrap();
+        let instance = runtime.operations.submit_as::<ReadContract>(Mode::WaitRun).unwrap();
         let id = instance.id();
         // Only a constructed instance has cleanup to retain.
         trace.running.notified().await;
         let mut response = Box::pin(harmos::grpc::response(instance));
         if polled {
-            assert!(
-                response
-                    .as_mut()
-                    .poll(&mut TaskContext::from_waker(Waker::noop()))
-                    .is_pending()
-            );
+            assert!(response.as_mut().poll(&mut TaskContext::from_waker(Waker::noop())).is_pending());
         }
         drop(response);
         trace.finalizing.notified().await;
-        let status = runtime
-            .operations
-            .status(id)
-            .expect("same running instance is retained");
+        let status = runtime.operations.status(id).expect("same running instance is retained");
         assert!(status.cancellation_requested());
         assert_eq!(status.phase(), OperationPhase::Finalizing);
         assert_eq!(count(&trace.constructed), 1);
@@ -492,22 +426,14 @@ async fn response_awaits_cleanup() {
     use std::task::{Context as TaskContext, Waker};
     let (runtime, trace) = runtime().await;
     trace.block_finalize.store(true, Ordering::SeqCst);
-    let instance = runtime
-        .operations
-        .submit_as::<ReadContract>(Mode::Complete)
-        .unwrap();
+    let instance = runtime.operations.submit(ReadContract { mode: Mode::Complete }).unwrap();
     let id = instance.id();
     let mut response = Box::pin(harmos::grpc::response(instance));
     trace.finalizing.notified().await;
-    assert!(
-        response
-            .as_mut()
-            .poll(&mut TaskContext::from_waker(Waker::noop()))
-            .is_pending()
-    );
+    assert!(response.as_mut().poll(&mut TaskContext::from_waker(Waker::noop())).is_pending());
     assert_eq!(count(&trace.dropped), 0);
     trace.release.notify_one();
-    assert_eq!(response.await.unwrap().0, 42);
+    assert_eq!(response.await.unwrap().value, 42);
     assert!(runtime.operations.status(id).is_none());
     assert_eq!(count(&trace.dropped), 1);
     runtime.stop().await.unwrap();
@@ -518,22 +444,12 @@ async fn response_awaits_cleanup() {
 async fn response_keeps_owner() {
     let (runtime, trace) = runtime().await;
     trace.fail_finalize.store(true, Ordering::SeqCst);
-    let instance = runtime
-        .operations
-        .submit_as::<ReadContract>(Mode::Complete)
-        .unwrap();
+    let instance = runtime.operations.submit(ReadContract { mode: Mode::Complete }).unwrap();
     let id = instance.id();
     assert!(harmos::grpc::response(instance).await.is_err());
-    let status = runtime
-        .operations
-        .status(id)
-        .expect("failed cleanup retains its owner");
+    let status = runtime.operations.status(id).expect("failed cleanup retains its owner");
     assert!(status.cleanup_pending());
-    assert_eq!(
-        count(&trace.finalized),
-        1,
-        "RPC delivery does not retry cleanup"
-    );
+    assert_eq!(count(&trace.finalized), 1, "RPC delivery does not retry cleanup");
     assert_eq!(count(&trace.dropped), 0);
     trace.fail_finalize.store(false, Ordering::SeqCst);
     runtime.stop().await.unwrap();
@@ -542,15 +458,38 @@ async fn response_keeps_owner() {
     assert_eq!(count(&trace.dropped), 1);
 }
 
+#[cfg(feature = "grpc")]
+#[tokio::test]
+async fn run_retains_instance() {
+    use std::future::Future;
+    use std::task::{Context as TaskContext, Waker};
+    let (runtime, trace) = runtime().await;
+    trace.block_finalize.store(true, Ordering::SeqCst);
+    let instance = runtime.operations.submit(ReadContract { mode: Mode::WaitRun }).unwrap();
+    let id = instance.id();
+    let mut response = Box::pin(harmos::grpc::response(instance));
+    trace.running.notified().await;
+    assert!(response.as_mut().poll(&mut TaskContext::from_waker(Waker::noop())).is_pending());
+    drop(response);
+    trace.finalizing.notified().await;
+    let status = runtime.operations.status(id).expect("same running instance is retained");
+    assert!(status.cancellation_requested());
+    assert_eq!(status.phase(), OperationPhase::Finalizing);
+    assert_eq!(count(&trace.ran), 1);
+    assert_eq!(count(&trace.stopped), 1);
+    assert_eq!(count(&trace.dropped), 0);
+    trace.release.notify_one();
+    runtime.stop().await.unwrap();
+    assert_eq!(count(&trace.constructed), 1);
+    assert_eq!(count(&trace.dropped), 1);
+}
+
 mod listed {
 
     use std::sync::Arc;
     use std::time::Duration;
 
-    use harmos::operations::{
-        AuthoredDeclarations, Context, Contracts, Declarations, OperationPolicy, RestartPolicy,
-        RetryPolicy,
-    };
+    use harmos::operations::{AuthoredDeclarations, Context, Contracts, Declarations, OperationPolicy, RestartPolicy, RetryPolicy};
 
     const POLICY: OperationPolicy = OperationPolicy {
         timeout: Duration::from_secs(1),
@@ -559,30 +498,57 @@ mod listed {
         restart: RestartPolicy::Never,
     };
 
+    #[harmos::message]
+    #[harmos::operation(id = "authored.doubling", version = 1, response = u32, policy = POLICY)]
+    pub struct DoublingDeclaration {
+        value: u32,
+    }
+
+    #[harmos::message]
+    #[harmos::operation(
+        id = "authored.inferred_owned",
+        version = 1,
+        response = u32,
+        policy = POLICY
+    )]
+    struct InferredOwnedDeclaration {
+        value: u32,
+    }
+
+    #[harmos::message]
+    #[harmos::operation(
+        id = "authored.cached_owner",
+        version = 1,
+        response = u32,
+        policy = POLICY,
+        key = owner_key
+    )]
+    struct CachedOwnerDeclaration {
+        value: u32,
+    }
+
     pub struct Doubling;
 
-    #[harmos::operation(id = "authored.doubling", version = 1, policy = POLICY)]
+    #[harmos::operation]
     impl Doubling {
         pub async fn initialize(_: Arc<()>, _: Context<'_>) -> Self {
             Self
         }
 
-        async fn run(&mut self, _: Context<'_>, value: &u32) -> Result<u32, harmos::Error> {
-            Ok(value * 2)
+        async fn run(&mut self, _: Context<'_>, request: &mut DoublingDeclaration) -> Result<u32, harmos::Error> {
+            Ok(request.value * 2)
         }
     }
 
     struct InferredOwned(Arc<u32>);
 
-    #[harmos::operation(id = "authored.inferred_owned", version = 1, policy = POLICY)]
+    #[harmos::operation]
     impl InferredOwned {
         async fn initialize(owner: Arc<u32>, _: Context<'_>) -> Self {
             Self(owner)
         }
         async fn run(
-            &mut self,
-            _: Context<'_>,
-            _: &u32,
+            &mut self, _: Context<'_>, _: &mut InferredOwnedDeclaration,
         ) -> Result<harmos::operations::Response<u32>, harmos::Error> {
             Ok(harmos::operations::Response::from_owner(self.0.clone()))
         }
@@ -590,16 +556,12 @@ mod listed {
 
     struct DeclaredOwned(Arc<u32>);
 
-    #[harmos::operation(declaration = DoublingDeclaration)]
+    #[harmos::operation]
     impl DeclaredOwned {
         async fn initialize(owner: Arc<u32>, _: Context<'_>) -> Self {
             Self(owner)
         }
-        async fn run(
-            &mut self,
-            _: Context<'_>,
-            _: &u32,
-        ) -> Result<harmos::operations::Response<u32>, harmos::Error> {
+        async fn run(&mut self, _: Context<'_>, _: &mut DoublingDeclaration) -> Result<harmos::operations::Response<u32>, harmos::Error> {
             Ok(harmos::operations::Response::from_owner(self.0.clone()))
         }
     }
@@ -613,32 +575,25 @@ mod listed {
 
     impl std::borrow::Borrow<u32> for BorrowOwner {
         fn borrow(&self) -> &u32 {
-            self.borrowed
-                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            self.operations
-                .upgrade()
-                .unwrap()
-                .definition("authored.cached_owner")
-                .unwrap();
+            self.borrowed.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.operations.upgrade().unwrap().definition("authored.cached_owner").unwrap();
             &self.value
         }
     }
 
     struct CachedOwner(Arc<BorrowOwner>);
 
-    fn owner_key(request: &u32) -> Option<harmos::operations::CacheKey> {
-        Some(harmos::operations::CacheKey::new(request.to_le_bytes().to_vec()).unwrap())
+    fn owner_key(request: &CachedOwnerDeclaration) -> Option<harmos::operations::CacheKey> {
+        Some(harmos::operations::CacheKey::new(request.value.to_le_bytes().to_vec()).unwrap())
     }
 
-    #[harmos::operation(id = "authored.cached_owner", version = 1, policy = POLICY, key = owner_key)]
+    #[harmos::operation]
     impl CachedOwner {
         async fn initialize(owner: Arc<BorrowOwner>, _: Context<'_>) -> Self {
             Self(owner)
         }
         async fn run(
-            &mut self,
-            _: Context<'_>,
-            _: &u32,
+            &mut self, _: Context<'_>, _: &mut CachedOwnerDeclaration,
         ) -> Result<harmos::operations::Response<u32>, harmos::Error> {
             self.0.ran.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Ok(harmos::operations::Response::from_owner(self.0.clone()))
@@ -665,20 +620,9 @@ mod listed {
             ran: std::sync::atomic::AtomicUsize::new(0),
             operations: Arc::downgrade(&observed),
         });
-        runtime
-            .operations
-            .register_operation::<CachedOwner>("owner", crate::fixture::Lanes::Open, owner.clone())
-            .unwrap();
-        let first = runtime
-            .operations
-            .call_as::<CachedOwnerDeclaration>(0)
-            .await
-            .unwrap();
-        let cached = runtime
-            .operations
-            .call_as::<CachedOwnerDeclaration>(0)
-            .await
-            .unwrap();
+        runtime.operations.register_operation::<CachedOwner>("owner", crate::fixture::Lanes::Open, owner.clone()).unwrap();
+        let first = runtime.operations.call(CachedOwnerDeclaration { value: 0 }).await.unwrap();
+        let cached = runtime.operations.call(CachedOwnerDeclaration { value: 0 }).await.unwrap();
         assert!(first.ptr_eq(&cached));
         assert_eq!(owner.ran.load(std::sync::atomic::Ordering::SeqCst), 1);
         assert_eq!(owner.borrowed.load(std::sync::atomic::Ordering::SeqCst), 0);
@@ -696,41 +640,17 @@ mod listed {
     async fn macro_retains_owner() {
         let runtime = crate::fixture::runtime().await;
         let original = Arc::new(7_u32);
-        runtime
-            .operations
-            .register_operation::<InferredOwned>(
-                "owner",
-                crate::fixture::Lanes::Open,
-                original.clone(),
-            )
-            .unwrap();
-        runtime
-            .operations
-            .register_operation::<DeclaredOwned>(
-                "owner",
-                crate::fixture::Lanes::Open,
-                original.clone(),
-            )
-            .unwrap();
-        let inferred = runtime
-            .operations
-            .call_as::<InferredOwnedDeclaration>(0)
-            .await
-            .unwrap();
-        let declared = runtime
-            .operations
-            .call_as::<DoublingDeclaration>(0)
-            .await
-            .unwrap();
+        runtime.operations.register_operation::<InferredOwned>("owner", crate::fixture::Lanes::Open, original.clone()).unwrap();
+        runtime.operations.register_operation::<DeclaredOwned>("owner", crate::fixture::Lanes::Open, original.clone()).unwrap();
+        let inferred = runtime.operations.call(InferredOwnedDeclaration { value: 0 }).await.unwrap();
+        let declared = runtime.operations.call(DoublingDeclaration { value: 0 }).await.unwrap();
         assert_eq!(*inferred, 7_u32);
         assert_eq!(*declared, 7_u32);
         assert!(std::ptr::eq(inferred.as_ref(), original.as_ref()));
         assert!(inferred.ptr_eq(&declared));
         drop((inferred, declared));
         runtime.stop().await.unwrap();
-        let recovered = harmos::operations::Response::from_owner(original)
-            .try_unwrap()
-            .unwrap();
+        let recovered = harmos::operations::Response::from_owner(original).try_unwrap().unwrap();
         assert_eq!(recovered, 7);
     }
 

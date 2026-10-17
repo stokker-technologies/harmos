@@ -26,10 +26,7 @@ use tokio::sync::Notify;
 
 // Local Imports
 use super::{Lanes, app::App};
-use harmos::operations::{
-    Context, Operation, OperationOutcome, OperationPhase, OperationPolicy, RestartPolicy,
-    RetryPolicy, Settings,
-};
+use harmos::operations::{Context, Operation, OperationOutcome, OperationPhase, OperationPolicy, RestartPolicy, RetryPolicy, Settings};
 use harmos::{Error, Refusal, Runtime};
 
 /* === Constants === */
@@ -39,7 +36,19 @@ use harmos::{Error, Refusal, Runtime};
 /* === Type Aliases === */
 
 /* === Structs === */
-struct Request {
+// The Hold Request Carries A Shared Notification, So It Stays In Process.
+#[harmos::operation(
+    response = (),
+    id = "queue.hold",
+    version = 1,
+    policy = OperationPolicy {
+        timeout: Duration::from_secs(2),
+        attempt_timeout: Duration::from_secs(1),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    },
+)]
+struct HoldContract {
     blocked: bool,
     started: Arc<Notify>,
 }
@@ -56,18 +65,6 @@ struct Counts {
 }
 
 /* === Enums === */
-#[harmos::operation(
-        request = Request,
-        response = (),
-        id = "queue.hold",
-        policy = OperationPolicy {
-            timeout: Duration::from_secs(2),
-            attempt_timeout: Duration::from_secs(1),
-            retries: RetryPolicy::Never,
-            restart: RestartPolicy::Never,
-        },
-    )]
-struct HoldContract;
 
 #[harmos::catalog]
 enum Operations {
@@ -77,6 +74,14 @@ enum Operations {
 /* === Traits === */
 
 /* === Implementations === */
+super::in_process!(HoldContract);
+
+impl harmos::MemorySize for HoldContract {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+    }
+}
+
 impl Operation for Hold {
     type Declaration = HoldContract;
     type Resources = Counts;
@@ -84,19 +89,13 @@ impl Operation for Hold {
     type Context<'a> = Context<'a>;
     type Error = std::io::Error;
 
-    async fn initialize<'ctx>(
-        counts: Arc<Counts>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(counts: Arc<Counts>, _: Self::Context<'ctx>) -> Result<Self, Self::Error> {
         counts.constructed.fetch_add(1, Ordering::SeqCst);
         Ok(Self { counts })
     }
 
     async fn run<'ctx>(
-        &mut self,
-        _: Self::Context<'ctx>,
-        request: &mut Request,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, _: Self::Context<'ctx>, request: &mut HoldContract, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<()>, Self::Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             request.started.notify_one();
@@ -110,11 +109,7 @@ impl Operation for Hold {
     }
 
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
-        if self.counts.fail_cleanup.load(Ordering::SeqCst) {
-            Err(std::io::Error::other("retained queued resource"))
-        } else {
-            Ok(())
-        }
+        if self.counts.fail_cleanup.load(Ordering::SeqCst) { Err(std::io::Error::other("retained queued resource")) } else { Ok(()) }
     }
 }
 
@@ -140,11 +135,8 @@ async fn runtime() -> Runtime<App> {
         .unwrap()
 }
 
-fn request(blocked: bool) -> Request {
-    Request {
-        blocked,
-        started: Arc::new(Notify::new()),
-    }
+fn request(blocked: bool) -> HoldContract {
+    HoldContract { blocked, started: Arc::new(Notify::new()) }
 }
 
 /* === Tests === */
@@ -153,26 +145,15 @@ fn request(blocked: bool) -> Request {
 async fn queue_refuses_construction() {
     let runtime = runtime().await;
     let counts = Arc::new(Counts::default());
-    runtime
-        .operations
-        .register_operation::<Hold>("app", Lanes::Serial, counts.clone())
-        .unwrap();
+    runtime.operations.register_operation::<Hold>("app", Lanes::Serial, counts.clone()).unwrap();
     let first_request = request(true);
     let started = first_request.started.clone();
-    let first = runtime
-        .operations
-        .submit_as::<HoldContract>(first_request)
-        .unwrap();
+    let first = runtime.operations.submit(first_request).unwrap();
     started.notified().await;
-    let second = runtime
-        .operations
-        .submit_as::<HoldContract>(request(true))
-        .unwrap();
+    let second = runtime.operations.submit_as::<HoldContract>(request(true)).unwrap();
     assert!(matches!(
         runtime.operations.submit_as::<HoldContract>(request(false)),
-        Err(Error::ResourceExhausted {
-            resource: "operation admission queue"
-        })
+        Err(Error::ResourceExhausted { resource: "operation admission queue" })
     ));
 
     runtime.stop().await.unwrap();
@@ -183,23 +164,14 @@ async fn queue_refuses_construction() {
 async fn queued_cancel_unbuilt() {
     let runtime = runtime().await;
     let counts = Arc::new(Counts::default());
-    runtime
-        .operations
-        .register_operation::<Hold>("app", Lanes::Serial, counts.clone())
-        .unwrap();
+    runtime.operations.register_operation::<Hold>("app", Lanes::Serial, counts.clone()).unwrap();
     let first_request = request(true);
     let started = first_request.started.clone();
-    let first = runtime
-        .operations
-        .submit_as::<HoldContract>(first_request)
-        .unwrap();
+    let first = runtime.operations.submit(first_request).unwrap();
     started.notified().await;
     let second_request = request(false);
     counts.fail_cleanup.store(true, Ordering::SeqCst);
-    let mut second = runtime
-        .operations
-        .submit_as::<HoldContract>(second_request)
-        .unwrap();
+    let mut second = runtime.operations.submit_as::<HoldContract>(second_request).unwrap();
     assert_eq!(second.status().phase(), OperationPhase::Queued);
     second.cancel();
     second.cancel();
@@ -207,10 +179,7 @@ async fn queued_cancel_unbuilt() {
     assert_eq!(second.status().phase(), OperationPhase::Stopping);
     // A cancelled queued instance never initialized, so it owns
     // nothing to clean up and releases its queue slot at once.
-    assert!(matches!(
-        (&mut second).await,
-        Err(Error::OperationRefused(Refusal::Cancelled))
-    ));
+    assert!(matches!((&mut second).await, Err(Error::OperationRefused(Refusal::Cancelled))));
     assert_eq!(second.status().phase(), OperationPhase::Settled);
     assert_eq!(second.status().outcome(), Some(OperationOutcome::Cancelled));
     assert!(second.status().started_at().is_none());
@@ -219,20 +188,11 @@ async fn queued_cancel_unbuilt() {
     assert_eq!(counts.constructed.load(Ordering::SeqCst), 1);
     assert_eq!(counts.drops.load(Ordering::SeqCst), 0);
     counts.fail_cleanup.store(false, Ordering::SeqCst);
-    let third = runtime
-        .operations
-        .submit_as::<HoldContract>(request(false))
-        .unwrap();
+    let third = runtime.operations.submit(request(false)).unwrap();
     third.cancel();
-    assert!(matches!(
-        third.join().await,
-        Err(Error::OperationRefused(Refusal::Cancelled))
-    ));
+    assert!(matches!(third.join().await, Err(Error::OperationRefused(Refusal::Cancelled))));
     first.cancel();
-    assert!(matches!(
-        first.join().await,
-        Err(Error::OperationRefused(Refusal::Cancelled))
-    ));
+    assert!(matches!(first.join().await, Err(Error::OperationRefused(Refusal::Cancelled))));
     assert_eq!(counts.drops.load(Ordering::SeqCst), 1);
     runtime.stop().await.unwrap();
 }
@@ -241,15 +201,9 @@ async fn queued_cancel_unbuilt() {
 async fn instances_leave_lookup() {
     let runtime = runtime().await;
     let counts = Arc::new(Counts::default());
-    runtime
-        .operations
-        .register_operation::<Hold>("app", Lanes::Serial, counts.clone())
-        .unwrap();
+    runtime.operations.register_operation::<Hold>("app", Lanes::Serial, counts.clone()).unwrap();
     for _ in 0..64 {
-        let instance = runtime
-            .operations
-            .submit_as::<HoldContract>(request(false))
-            .unwrap();
+        let instance = runtime.operations.submit(request(false)).unwrap();
         let id = instance.id();
         instance.join().await.unwrap();
         assert!(runtime.operations.status(id).is_none());
@@ -262,15 +216,9 @@ async fn instances_leave_lookup() {
 async fn thread_submission_works() {
     let runtime = runtime().await;
     let counts = Arc::new(Counts::default());
-    runtime
-        .operations
-        .register_operation::<Hold>("app", Lanes::Serial, counts.clone())
-        .unwrap();
+    runtime.operations.register_operation::<Hold>("app", Lanes::Serial, counts.clone()).unwrap();
     let operations = runtime.operations.clone();
-    let instance = std::thread::spawn(move || operations.submit_as::<HoldContract>(request(false)))
-        .join()
-        .unwrap()
-        .unwrap();
+    let instance = std::thread::spawn(move || operations.submit(request(false))).join().unwrap().unwrap();
     instance.join().await.unwrap();
     assert_eq!(counts.constructed.load(Ordering::SeqCst), 1);
     assert_eq!(counts.drops.load(Ordering::SeqCst), 1);

@@ -21,7 +21,7 @@ use std::sync::{Arc, atomic::Ordering};
 // Local Imports
 use super::{Fixture, config, metadata};
 use harmos::Identifier;
-use harmos::storage::operations::{FileMutation, ResumeFile};
+use harmos::storage::operations::ResumeFile;
 use harmos::storage::{MutationId, StorageManager};
 
 /* === Constants === */
@@ -42,10 +42,7 @@ use harmos::storage::{MutationId, StorageManager};
 
 /* === Private Functions === */
 fn identity(storage: &StorageManager, key: &str) -> MutationId {
-    MutationId {
-        window: storage.mutation_window().unwrap().id,
-        key: Identifier::new(key).unwrap(),
-    }
+    MutationId { window: storage.mutation_window().unwrap().id, key: Identifier::new(key).unwrap() }
 }
 
 /* === Tests === */
@@ -60,25 +57,29 @@ async fn resume_receipt_replays() {
     let first = f.storage.resume_file_once(&id, &token).await.unwrap();
     assert_eq!(first.length, 6);
     assert_eq!(first.session.generation, 2);
-    assert_eq!(
-        f.storage.resume_file_once(&id, &token).await.unwrap(),
-        first
-    );
+    assert_eq!(f.storage.resume_file_once(&id, &token).await.unwrap(), first);
     assert!(file.write_all(b"stale").await.is_err());
     let mut later = f.storage.resume_file(&first.session).await.unwrap();
     later.write_all(b"tail").await.unwrap();
-    assert_eq!(
-        f.storage.resume_file_once(&id, &token).await.unwrap(),
-        first
-    );
-    assert!(
-        f.storage
-            .resume_file_once(&id, later.session().unwrap())
-            .await
-            .is_err()
-    );
+    assert_eq!(f.storage.resume_file_once(&id, &token).await.unwrap(), first);
+    assert!(f.storage.resume_file_once(&id, later.session().unwrap()).await.is_err());
     assert_eq!(later.session().unwrap().generation, 3);
     later.abort().await.unwrap();
+    f.finish().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn operation_retries_three() {
+    let f = Fixture::new(config()).await;
+    harmos::storage::operations::register(&f.runtime.operations, "storage", crate::operations::Lanes::Open, Arc::new(f.storage.clone()))
+        .unwrap();
+    let file = f.storage.produce_file(metadata("retry")).await.unwrap();
+    let request = ResumeFile { mutation: identity(&f.storage, "resume"), session: file.session().unwrap().clone() };
+    f.data.control.fence_failures.store(3, Ordering::SeqCst);
+    let first = f.runtime.operations.call(request.clone()).await.unwrap();
+    assert_eq!(first.session.generation, 2);
+    assert_eq!(f.data.control.fence_failures.load(Ordering::SeqCst), 0);
+    assert_eq!(*f.runtime.operations.call(request).await.unwrap(), *first);
     f.finish().await;
 }
 
@@ -98,21 +99,14 @@ async fn cancelled_resume_replays() {
     f.data.control.fence_release.notify_one();
     let result = f.storage.resume_file_once(&id, &token).await.unwrap();
     assert_eq!(result.session.generation, 2);
-    assert_eq!(
-        f.storage.resume_file_once(&id, &token).await.unwrap(),
-        result
-    );
+    assert_eq!(f.storage.resume_file_once(&id, &token).await.unwrap(), result);
     f.finish().await;
 }
 
 #[tokio::test]
 async fn duplicate_resumes_share() {
     let f = Fixture::new(config()).await;
-    let file = f
-        .storage
-        .produce_file(metadata("concurrent"))
-        .await
-        .unwrap();
+    let file = f.storage.produce_file(metadata("concurrent")).await.unwrap();
     let token = file.session().unwrap().clone();
     let id = identity(&f.storage, "shared");
     f.data.control.block_fence.store(true, Ordering::SeqCst);
@@ -140,42 +134,15 @@ async fn duplicate_resumes_share() {
 #[tokio::test(start_paused = true)]
 async fn budgets_never_multiply() {
     let f = Fixture::new(config()).await;
-    harmos::storage::operations::register(
-        &f.runtime.operations,
-        "storage",
-        crate::operations::Lanes::Open,
-        Arc::new(f.storage.clone()),
-    )
-    .unwrap();
-    let file = f
-        .storage
-        .produce_file(metadata("retry-budget"))
-        .await
+    harmos::storage::operations::register(&f.runtime.operations, "storage", crate::operations::Lanes::Open, Arc::new(f.storage.clone()))
         .unwrap();
-    let request = FileMutation {
-        mutation: identity(&f.storage, "resume"),
-        session: file.session().unwrap().clone(),
-    };
+    let file = f.storage.produce_file(metadata("retry-budget")).await.unwrap();
+    let request = ResumeFile { mutation: identity(&f.storage, "resume"), session: file.session().unwrap().clone() };
     f.data.control.fence_failures.store(5, Ordering::SeqCst);
-    assert!(
-        f.runtime
-            .operations
-            .call_as::<ResumeFile>(request.clone())
-            .await
-            .is_err()
-    );
+    assert!(f.runtime.operations.call(request.clone()).await.is_err());
     assert_eq!(f.data.control.fence_failures.load(Ordering::SeqCst), 1);
     f.data.control.fence_failures.store(0, Ordering::SeqCst);
-    assert_eq!(
-        f.runtime
-            .operations
-            .call_as::<ResumeFile>(request)
-            .await
-            .unwrap()
-            .session
-            .generation,
-        2
-    );
+    assert_eq!(f.runtime.operations.call(request).await.unwrap().session.generation, 2);
     f.finish().await;
 }
 
@@ -192,17 +159,9 @@ async fn ledger_evicts_receipts() {
     for index in 0..2048 {
         let name = format!("small-{index}");
         let create = identity(&f.storage, &format!("create-{index}"));
-        let producer = f
-            .storage
-            .create_file_once(&create, &metadata(&name))
-            .await
-            .unwrap();
+        let producer = f.storage.create_file_once(&create, &metadata(&name)).await.unwrap();
         let finish = identity(&f.storage, &format!("finish-{index}"));
-        let reference = f
-            .storage
-            .finish_file_once(&finish, &producer.session)
-            .await
-            .unwrap();
+        let reference = f.storage.finish_file_once(&finish, &producer.session).await.unwrap();
         assert_eq!(reference.length, 0);
         last = Some((finish, producer.session, reference));
     }
@@ -211,9 +170,6 @@ async fn ledger_evicts_receipts() {
 
     // The Newest Receipt Still Answers Its Retry With The Original Outcome.
     let (finish, session, reference) = last.unwrap();
-    assert_eq!(
-        f.storage.finish_file_once(&finish, &session).await.unwrap(),
-        reference
-    );
+    assert_eq!(f.storage.finish_file_once(&finish, &session).await.unwrap(), reference);
     f.finish().await;
 }

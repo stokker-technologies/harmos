@@ -22,7 +22,7 @@ use super::caller::Source;
 use super::manager::{Entry, Submission};
 use super::wire::EncodedInput;
 use super::{EncodedInvocation, OperationManager};
-use crate::operations::lifecycle::{Action, InitializeRequest};
+use crate::operations::lifecycle::{Action, Initialize};
 use crate::plugin::{PluginKind, PluginLifecycleAuthority, PluginLifecyclePhase, PluginScope};
 
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
@@ -37,8 +37,9 @@ use crate::{Error, Message, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+// The Erased Lifecycle Request Forwarded To A Guest As Its Original Bytes.
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-pub(super) struct Encoded;
+pub(super) struct Encoded(pub(super) Vec<u8>);
 
 #[must_use = "retain SDK entries through original invocation settlement"]
 pub struct PluginSdkRegistration {
@@ -53,9 +54,70 @@ pub struct PluginSdkRegistration {
 
 /* === Implementations === */
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
+impl crate::Message for Encoded {
+    fn encode_to_vec(&self) -> Vec<u8> {
+        self.0.clone()
+    }
+
+    fn encoded_len(&self) -> usize {
+        self.0.len()
+    }
+
+    fn decoding_memory(bytes: &[u8]) -> std::result::Result<usize, crate::MessageError> {
+        std::mem::size_of::<Self>()
+            .checked_add(bytes.len())
+            .ok_or_else(|| crate::MessageError::borrowed("forwarded request size overflows"))
+    }
+
+    fn decode(bytes: &[u8]) -> std::result::Result<Self, crate::MessageError> {
+        Ok(Self(bytes.to_vec()))
+    }
+}
+
+#[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
+harmos_domain::with_protobuf! {
+impl harmos_domain::Protobuf for Encoded {
+    fn encode_to_vec(&self) -> Vec<u8> {
+        self.0.clone()
+    }
+
+    fn encoded_len(&self) -> usize {
+        self.0.len()
+    }
+
+    fn decoding_memory(bytes: &[u8]) -> std::result::Result<usize, crate::MessageError> {
+        <Self as crate::Message>::decoding_memory(bytes)
+    }
+
+    fn decode(bytes: &[u8]) -> std::result::Result<Self, crate::MessageError> {
+        <Self as crate::Message>::decode(bytes)
+    }
+}
+}
+
+#[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
+impl crate::schema::Described for Encoded {
+    const NAME: &'static str = "harmos::sdk_encoded";
+    const FIELDS: &'static [crate::schema::declaration::Field] = &[];
+    const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
+        { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
+}
+
+#[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
+impl crate::MemorySize for Encoded {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>().saturating_add(self.0.capacity())
+    }
+}
+
+// This Adapter Is Never Declared Or Registered By Its Static Identity.
+#[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 impl OperationDeclaration for Encoded {
-    type Request = Vec<u8>;
     type Response = Vec<u8>;
+    type Input = crate::operations::NoStream;
+    type Output = crate::operations::NoStream;
+    const VERSION: u32 = 1;
     const ID: &'static str = "";
     const POLICY: OperationPolicy = OperationPolicy {
         timeout: std::time::Duration::ZERO,
@@ -137,9 +199,7 @@ impl PluginSdkRegistration {
             let peak = config_json
                 .len()
                 .checked_mul(2)
-                .and_then(|bytes| {
-                    bytes.checked_add(std::mem::size_of::<InitializeRequest>() + 64 + 20)
-                })
+                .and_then(|bytes| bytes.checked_add(std::mem::size_of::<Initialize>() + 64 + 20))
                 .ok_or(Error::ResourceExhausted {
                     resource: "SDK encoding memory",
                 })?;
@@ -148,7 +208,7 @@ impl PluginSdkRegistration {
                     resource: "SDK encoding memory",
                 });
             }
-            let request = InitializeRequest {
+            let request = Initialize {
                 config_json: config_json.to_vec(),
                 generation_context: generation_context.to_vec(),
             };

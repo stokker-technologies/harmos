@@ -28,8 +28,9 @@ use super::capacity::{Held, Pool, Refusal, Reservation};
 use super::manager::{ENTRY_OVERHEAD, Inner, Operation, encoded_size};
 use super::query::FileSelection;
 use super::snapshot::Snapshot;
-use super::{FileBatch, FileCompletion, FileReference, ReadFile, StorageManager};
+use super::{FileBatch, FileCompletion, FileReference, StorageManager};
 use crate::{BackendFailure, Error, Result};
+use harmos_domain::operations::storage::ReadFile;
 
 /* === Constants === */
 

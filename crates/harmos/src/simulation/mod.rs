@@ -357,9 +357,9 @@ where
         Ok(())
     }
 
-    pub fn submit_as<O: crate::operations::OperationDeclaration>(
+    pub fn submit<O: crate::operations::OperationDeclaration>(
         &mut self,
-        request: O::Request,
+        request: O,
     ) -> crate::Result<crate::operations::OperationInstance<O>> {
         let runtime = self.runtime.as_ref().ok_or(Error::Closing {
             domain: "simulated runtime",
@@ -367,7 +367,7 @@ where
         let operations = runtime.operations.clone();
         let handle = self
             .executor
-            .block_on(async move { operations.submit_as::<O>(request) });
+            .block_on(async move { operations.submit(request) });
         self.executor.drive();
         handle
     }

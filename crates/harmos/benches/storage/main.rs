@@ -323,7 +323,7 @@ async fn measure(mode: &str, count: usize, repetition: Option<usize>) -> Duratio
     let flush_recovery_ms = begin.elapsed().as_secs_f64() * 1_000.0;
     let begin = Instant::now();
     let mut reader = storage
-        .query(harmos::storage::query::Query {
+        .query(harmos::storage::operations::Query {
             at: storage.cursor_saved(),
             source: harmos::storage::query::Source::Records(
                 harmos::storage::query::RecordSelection {

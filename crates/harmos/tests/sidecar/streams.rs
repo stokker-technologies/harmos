@@ -26,9 +26,7 @@ use super::{Counts, Read};
 use super::{Lanes, Managed, source};
 #[cfg(feature = "grpc")]
 use harmos::grpc::{Codec, InputEnvelope, OutputEnvelope};
-use harmos::operations::{
-    Operation, StreamInput, StreamOutput, StreamSettings, WireStreamLimits, WireTable,
-};
+use harmos::operations::{Operation, StreamInput, StreamOutput, StreamSettings, WireStreamLimits, WireTable};
 
 /* === Constants === */
 
@@ -42,19 +40,13 @@ macro_rules! serving {
             type Error = harmos::Error;
             type Endpoints = $endpoints;
             type Context<'a> = &'a harmos::sidecar::Supervisor;
-            async fn initialize<'a>(
-                counts: Arc<Counts>,
-                _: Self::Context<'a>,
-            ) -> Result<Self, Self::Error> {
+            async fn initialize<'a>(counts: Arc<Counts>, _: Self::Context<'a>) -> Result<Self, Self::Error> {
                 counts.prepared.fetch_add(1, Ordering::SeqCst);
                 counts.operation_initialized.fetch_add(1, Ordering::SeqCst);
                 Ok(Self(counts))
             }
             async fn run<'a>(
-                &mut self,
-                _: Self::Context<'a>,
-                $request: &mut u32,
-                $ports: &mut Self::Endpoints,
+                &mut self, _: Self::Context<'a>, $request: &mut $declaration, $ports: &mut Self::Endpoints,
             ) -> Result<harmos::operations::Response<u32>, Self::Error> {
                 let result: ::core::result::Result<u32, Self::Error> = async move {
                     self.0.runs.fetch_add(1, Ordering::SeqCst);
@@ -80,17 +72,42 @@ macro_rules! serving {
 /* === Structs === */
 
 /* === Enums === */
-#[harmos::operation(request = u32, response = u32, input = u32, policy = Read::POLICY, version = 1,
-        grpc(package = "fixture.v1", service = "Native", method = "Upload"))]
-pub(super) struct Upload;
+#[harmos::message]
+#[harmos::operation(
+    version = 1,
+    policy = Read::POLICY,
+    response = u32,
+    input = u32,
+    grpc(package = "fixture.v1", service = "Native", method = "Upload"),
+)]
+pub(super) struct Upload {
+    pub(super) value: u32,
+}
 
-#[harmos::operation(request = u32, response = u32, output = u32, policy = Read::POLICY, version = 1,
-        grpc(package = "fixture.v1", service = "Native", method = "Download"))]
-pub(super) struct Download;
+#[harmos::message]
+#[harmos::operation(
+    version = 1,
+    policy = Read::POLICY,
+    response = u32,
+    output = u32,
+    grpc(package = "fixture.v1", service = "Native", method = "Download"),
+)]
+pub(super) struct Download {
+    pub(super) value: u32,
+}
 
-#[harmos::operation(request = u32, response = u32, input = u32, output = u32, policy = Read::POLICY, version = 1,
-        grpc(package = "fixture.v1", service = "Native", method = "Exchange"))]
-pub(super) struct Exchange;
+#[harmos::message]
+#[harmos::operation(
+    version = 1,
+    policy = Read::POLICY,
+    response = u32,
+    input = u32,
+    output = u32,
+    grpc(package = "fixture.v1", service = "Native", method = "Exchange"),
+)]
+pub(super) struct Exchange {
+    pub(super) value: u32,
+}
 
 #[harmos::catalog]
 pub(super) enum Operations {
@@ -112,56 +129,39 @@ enum Implemented {
 
 /* === Implementations === */
 serving!(Uploading, Upload, StreamInput<u32>, request, input, {
-    let mut total = *request;
+    let mut total = request.value;
     while let Some(item) = input.recv().await {
         total += *item;
     }
     Ok(total)
 });
 serving!(Downloading, Download, StreamOutput<u32>, request, output, {
-    for value in [0, *request] {
+    for value in [0, request.value] {
         output.send_with(4, || Ok(value)).await?;
     }
-    Ok(*request)
+    Ok(request.value)
 });
-serving!(
-    Exchanging,
-    Exchange,
-    (StreamInput<u32>, StreamOutput<u32>),
-    request,
-    ports,
-    {
-        let mut total = *request;
-        while let Some(item) = ports.0.recv().await {
-            total += *item;
-            ports.1.send_with(4, || Ok(total)).await?;
-        }
-        Ok(total)
+serving!(Exchanging, Exchange, (StreamInput<u32>, StreamOutput<u32>), request, ports, {
+    let mut total = request.value;
+    while let Some(item) = ports.0.recv().await {
+        total += *item;
+        ports.1.send_with(4, || Ok(total)).await?;
     }
-);
+    Ok(total)
+});
 
 /* === Public Functions === */
 pub(super) fn bind(
-    table: &mut WireTable<harmos::sidecar::Supervisor>,
-    counts: Arc<Counts>,
+    table: &mut WireTable<harmos::sidecar::Supervisor>, counts: Arc<Counts>,
 ) -> Result<(), harmos::operations::ServingError> {
-    let direction = StreamSettings {
-        items: NonZeroUsize::MIN,
-        bytes: NonZeroUsize::new(64).unwrap(),
-    };
-    let limits = WireStreamLimits {
-        input: direction,
-        output: direction,
-    };
+    let direction = StreamSettings { items: NonZeroUsize::MIN, bytes: NonZeroUsize::new(64).unwrap() };
+    let limits = WireStreamLimits { input: direction, output: direction };
     table.bind_streaming_operations::<Implemented, _>(counts, limits)
 }
 
 /* === Private Functions === */
 #[cfg(feature = "grpc")]
-fn opening()
--> impl futures_core::Stream<Item = harmos::operations::Response<InputEnvelope<u32, u32>>>
-+ Send
-+ 'static {
+fn opening() -> impl futures_core::Stream<Item = harmos::operations::Response<InputEnvelope<u32, u32>>> + Send + 'static {
     futures_util::stream::iter([
         harmos::operations::Response::new(InputEnvelope::Request(5)),
         harmos::operations::Response::new(InputEnvelope::Item(0)),
@@ -197,22 +197,14 @@ async fn grpc_stream_lifecycle() {
         .await
         .unwrap();
     let address = attached.local_addr();
-    let channel = tonic::transport::Endpoint::from_shared(format!("http://{address}"))
-        .unwrap()
-        .connect()
-        .await
-        .unwrap();
+    let channel = tonic::transport::Endpoint::from_shared(format!("http://{address}")).unwrap().connect().await.unwrap();
     let mut client = tonic::client::Grpc::new(channel);
     client.ready().await.unwrap();
     let upload: tonic::Response<harmos::operations::StreamItem<u32>> = client
         .client_streaming(
             tonic::Request::new(opening()),
             tonic::codegen::http::uri::PathAndQuery::from_static("/fixture.v1.Native/Upload"),
-            Codec::<u32, harmos::operations::Response<InputEnvelope<u32, u32>>>::new(
-                operations.decode,
-                operations.encode,
-            )
-            .unwrap(),
+            Codec::<u32, harmos::operations::Response<InputEnvelope<u32, u32>>>::new(operations.decode, operations.encode).unwrap(),
         )
         .await
         .unwrap();
@@ -223,7 +215,22 @@ async fn grpc_stream_lifecycle() {
         .server_streaming(
             tonic::Request::new(harmos::operations::Response::new(5u32)),
             tonic::codegen::http::uri::PathAndQuery::from_static("/fixture.v1.Native/Download"),
-            Codec::<OutputEnvelope<u32, u32>, harmos::operations::Response<u32>>::new(
+            Codec::<OutputEnvelope<u32, u32>, harmos::operations::Response<u32>>::new(operations.decode, operations.encode).unwrap(),
+        )
+        .await
+        .unwrap()
+        .into_inner();
+    for expected in [OutputEnvelope::Item(0), OutputEnvelope::Item(5), OutputEnvelope::Response(5)] {
+        assert_eq!(*download.message().await.unwrap().unwrap(), expected);
+    }
+    assert!(download.message().await.unwrap().is_none());
+
+    client.ready().await.unwrap();
+    let mut exchange = client
+        .streaming(
+            tonic::Request::new(opening()),
+            tonic::codegen::http::uri::PathAndQuery::from_static("/fixture.v1.Native/Exchange"),
+            Codec::<OutputEnvelope<u32, u32>, harmos::operations::Response<InputEnvelope<u32, u32>>>::new(
                 operations.decode,
                 operations.encode,
             )
@@ -232,35 +239,7 @@ async fn grpc_stream_lifecycle() {
         .await
         .unwrap()
         .into_inner();
-    for expected in [
-        OutputEnvelope::Item(0),
-        OutputEnvelope::Item(5),
-        OutputEnvelope::Response(5),
-    ] {
-        assert_eq!(*download.message().await.unwrap().unwrap(), expected);
-    }
-    assert!(download.message().await.unwrap().is_none());
-
-    client.ready().await.unwrap();
-    let mut exchange =
-        client
-            .streaming(
-                tonic::Request::new(opening()),
-                tonic::codegen::http::uri::PathAndQuery::from_static("/fixture.v1.Native/Exchange"),
-                Codec::<
-                    OutputEnvelope<u32, u32>,
-                    harmos::operations::Response<InputEnvelope<u32, u32>>,
-                >::new(operations.decode, operations.encode)
-                .unwrap(),
-            )
-            .await
-            .unwrap()
-            .into_inner();
-    for expected in [
-        OutputEnvelope::Item(5),
-        OutputEnvelope::Item(12),
-        OutputEnvelope::Response(12),
-    ] {
+    for expected in [OutputEnvelope::Item(5), OutputEnvelope::Item(12), OutputEnvelope::Response(12)] {
         assert_eq!(*exchange.message().await.unwrap().unwrap(), expected);
     }
     assert!(exchange.message().await.unwrap().is_none());
@@ -299,11 +278,7 @@ async fn grpc_wrong_shape_refusal() {
         .await
         .unwrap();
     let address = attached.local_addr();
-    let channel = tonic::transport::Endpoint::from_shared(format!("http://{address}"))
-        .unwrap()
-        .connect()
-        .await
-        .unwrap();
+    let channel = tonic::transport::Endpoint::from_shared(format!("http://{address}")).unwrap().connect().await.unwrap();
     let mut client = tonic::client::Grpc::new(channel);
     client.ready().await.unwrap();
 
@@ -312,11 +287,7 @@ async fn grpc_wrong_shape_refusal() {
         .server_streaming(
             tonic::Request::new(harmos::operations::Response::new("not a number".to_owned())),
             tonic::codegen::http::uri::PathAndQuery::from_static("/fixture.v1.Native/Download"),
-            Codec::<OutputEnvelope<u32, u32>, harmos::operations::Response<String>>::new(
-                operations.decode,
-                operations.encode,
-            )
-            .unwrap(),
+            Codec::<OutputEnvelope<u32, u32>, harmos::operations::Response<String>>::new(operations.decode, operations.encode).unwrap(),
         )
         .await;
     let status = match refused {

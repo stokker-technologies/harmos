@@ -12,17 +12,17 @@
 mod support;
 
 mod admission;
-pub(crate) mod operations;
-mod routing;
-mod listeners;
+mod consumption;
 #[cfg(feature = "grpc")]
 mod grants;
-mod publications;
-mod process;
-mod consumption;
 mod graph;
+mod listeners;
 mod observer_demand;
 mod observer_hosts;
+pub(crate) mod operations;
+mod process;
+mod publications;
+mod routing;
 #[path = "../support/witness.rs"]
 mod witness;
 
@@ -34,22 +34,25 @@ mod visibility {
         pub value: i64,
     }
     #[harmos::message]
+    #[harmos::operation(
+        id = "gauge.scale-privately",
+        version = 1,
+        policy = GAUGE_POLICY,
+        response = Scale,
+    )]
     #[derive(Clone, PartialEq)]
-    pub struct ScalePubliclyRequest {}
-    pub struct ScalePrivately;
-    pub struct ScalePublicly;
-    impl OperationDeclaration for ScalePrivately {
-        type Request = Scale;
-        type Response = Scale;
-        const ID: &'static str = "gauge.scale-privately";
-        const POLICY: OperationPolicy = GAUGE_POLICY;
+    pub struct ScalePrivately {
+        pub value: i64,
     }
-    impl OperationDeclaration for ScalePublicly {
-        type Request = ScalePubliclyRequest;
-        type Response = Scale;
-        const ID: &'static str = "gauge.scale-publicly";
-        const POLICY: OperationPolicy = GAUGE_POLICY;
-    }
+    #[harmos::message]
+    #[harmos::operation(
+        id = "gauge.scale-publicly",
+        version = 1,
+        policy = GAUGE_POLICY,
+        response = Scale,
+    )]
+    #[derive(Clone, PartialEq)]
+    pub struct ScalePublicly {}
     pub(super) struct ScalingPrivately {
         resources: Arc<GaugeResources>,
     }
@@ -60,24 +63,14 @@ mod visibility {
         type Error = Refusal;
         type Endpoints = ();
         type Context<'a> = &'a Supervisor;
-        async fn initialize<'ctx>(
-            resources: Arc<GaugeResources>,
-            _: Self::Context<'ctx>,
-        ) -> Result<Self, Refusal> {
+        async fn initialize<'ctx>(resources: Arc<GaugeResources>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
             Ok(Self { resources })
         }
         async fn run<'ctx>(
-            &mut self,
-            _: Self::Context<'ctx>,
-            request: &mut Scale,
-            _endpoints: &mut Self::Endpoints,
+            &mut self, _: Self::Context<'ctx>, request: &mut ScalePrivately, _endpoints: &mut Self::Endpoints,
         ) -> Result<harmos::operations::Response<Scale>, Refusal> {
-            let result: ::core::result::Result<Scale, Self::Error> = async move {
-                Ok(Scale {
-                    value: request.value * self.resources.factor,
-                })
-            }
-            .await;
+            let result: ::core::result::Result<Scale, Self::Error> =
+                async move { Ok(Scale { value: request.value * self.resources.factor }) }.await;
             result.map(::core::convert::Into::into)
         }
     }
@@ -91,24 +84,13 @@ mod visibility {
         type Error = Refusal;
         type Endpoints = ();
         type Context<'a> = &'a Supervisor;
-        async fn initialize<'ctx>(
-            resources: Arc<GaugeResources>,
-            _: Self::Context<'ctx>,
-        ) -> Result<Self, Refusal> {
+        async fn initialize<'ctx>(resources: Arc<GaugeResources>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
             Ok(Self { resources })
         }
         async fn run<'ctx>(
-            &mut self,
-            _: Self::Context<'ctx>,
-            _request: &mut ScalePubliclyRequest,
-            _endpoints: &mut Self::Endpoints,
+            &mut self, _: Self::Context<'ctx>, _request: &mut ScalePublicly, _endpoints: &mut Self::Endpoints,
         ) -> Result<harmos::operations::Response<Scale>, Refusal> {
-            let result: ::core::result::Result<Scale, Self::Error> = async move {
-                Ok(Scale {
-                    value: self.resources.factor,
-                })
-            }
-            .await;
+            let result: ::core::result::Result<Scale, Self::Error> = async move { Ok(Scale { value: self.resources.factor }) }.await;
             result.map(::core::convert::Into::into)
         }
     }
@@ -127,13 +109,10 @@ use std::time::Duration;
 use support::{Bank, Ledger, catalog, streams};
 // Local Imports
 use harmos::Message;
-use harmos::operations::{
-    OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireTable,
-};
+use harmos::operations::{OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireTable};
 use harmos::sidecar::{Frame, Notice, SidecarError, Supervised};
 use harmos::{
-    Runtime, services::Service, services::ServiceExit, services::ServiceStatus, state::FactSource,
-    state::Position, state::SystemFact,
+    Runtime, services::Service, services::ServiceExit, services::ServiceStatus, state::FactSource, state::Position, state::SystemFact,
 };
 use harmos_sidecar::{Attach, Refusal, Supervisor};
 
@@ -152,6 +131,18 @@ const GAUGE_POLICY: OperationPolicy = OperationPolicy {
 
 /* === Structs === */
 #[harmos::message]
+#[harmos::operation(
+    id = "meter.amplify",
+    version = 1,
+    policy = OperationPolicy {
+        timeout: Duration::from_secs(2),
+        attempt_timeout: Duration::from_secs(2),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    },
+    response = Amplified,
+    visibility = Visibility::Shared,
+)]
 #[derive(Clone, PartialEq)]
 struct Amplify {
     value: i64,
@@ -164,34 +155,122 @@ struct Amplified {
 }
 
 #[harmos::message]
+#[harmos::operation(
+    id = "meter.sample",
+    version = 1,
+    policy = OperationPolicy {
+        timeout: Duration::from_secs(2),
+        attempt_timeout: Duration::from_secs(2),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    },
+    response = (),
+    visibility = Visibility::Host,
+)]
 #[derive(Clone, PartialEq, Eq)]
 struct Sample {
     value: u64,
 }
 
 #[harmos::message]
+#[harmos::operation(
+    id = "meter.emit",
+    version = 1,
+    policy = OperationPolicy {
+        timeout: Duration::from_secs(2),
+        attempt_timeout: Duration::from_secs(2),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    },
+    response = (),
+    visibility = Visibility::Shared,
+)]
 #[derive(Clone, PartialEq)]
 struct Emit {
     value: u64,
 }
 
 #[harmos::message]
+#[harmos::operation(
+    id = "meter.publish-pulse",
+    version = 1,
+    policy = OperationPolicy {
+        timeout: Duration::from_secs(2),
+        attempt_timeout: Duration::from_secs(2),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    },
+    response = (),
+    visibility = Visibility::Shared,
+)]
 #[derive(Clone, PartialEq)]
 struct PublishPulse {
     sample: u64,
 }
 
 #[harmos::message]
+#[harmos::operation(
+    id = "meter.collapse",
+    version = 1,
+    policy = OperationPolicy {
+        timeout: Duration::from_secs(2),
+        attempt_timeout: Duration::from_secs(2),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    },
+    response = (),
+    visibility = Visibility::Shared,
+)]
 #[derive(Clone, PartialEq)]
 struct Collapse {}
 
 #[harmos::message]
+#[harmos::operation(
+    id = "meter.finish",
+    version = 1,
+    policy = OperationPolicy {
+        timeout: Duration::from_secs(2),
+        attempt_timeout: Duration::from_secs(2),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    },
+    response = (),
+    visibility = Visibility::Shared,
+)]
 #[derive(Clone, PartialEq)]
 struct Finish {
     reason: String,
 }
 
 #[harmos::message]
+#[harmos::operation(
+    id = "meter.ask",
+    version = 1,
+    policy = OperationPolicy {
+        timeout: Duration::from_millis(25),
+        attempt_timeout: Duration::from_millis(25),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    },
+    response = (),
+    description = "An operation that never answers, so the host's deadline ends the call.",
+)]
+#[derive(Clone, PartialEq)]
+struct Ask {}
+
+#[harmos::message]
+#[harmos::operation(
+    id = "meter.budgeted",
+    version = 1,
+    policy = OperationPolicy {
+        timeout: Duration::from_secs(2),
+        attempt_timeout: Duration::from_secs(2),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    },
+    response = BudgetedReply,
+    visibility = Visibility::Shared,
+)]
 #[derive(Clone, PartialEq)]
 struct BudgetedRoute {
     payload: Vec<u8>,
@@ -224,8 +303,14 @@ struct Calibration {
 }
 
 #[harmos::message]
+#[harmos::operation(
+    id = "gauge.get-measure",
+    version = 1,
+    policy = GAUGE_POLICY,
+    response = Measured,
+)]
 #[derive(Clone, PartialEq)]
-pub(crate) struct Measure {
+pub(crate) struct GetMeasure {
     value: i64,
 }
 
@@ -245,26 +330,44 @@ struct GaugeResources {
 }
 
 #[harmos::message]
+#[harmos::operation(
+    id = "gauge.stop-sampling",
+    version = 1,
+    policy = GAUGE_POLICY,
+    response = StopSamplingResponse,
+)]
 #[derive(Clone, PartialEq)]
-pub(crate) struct StopSamplingRequest {}
+pub(crate) struct StopSampling {}
 
 #[harmos::message]
 #[derive(Clone, PartialEq)]
 pub(crate) struct StopSamplingResponse {}
 
 #[harmos::message]
+#[harmos::operation(id = "gauge.get-factor", version = 1, policy = GAUGE_POLICY, response = Measured)]
 #[derive(Clone, PartialEq)]
-pub(crate) struct GetFactorRequest {}
-
-struct GetMeasure;
+pub(crate) struct GetFactor {}
 
 struct RunEcho;
 
 struct RunUppercase;
 
-struct StopSampling;
+#[harmos::message]
+#[harmos::operation(id = "gauge.run-echo", version = 1, policy = GAUGE_POLICY, response = String)]
+struct RunEcho {
+    text: String,
+}
 
-struct GetFactor;
+#[harmos::message]
+#[harmos::operation(
+    id = "gauge.run-uppercase",
+    version = 1,
+    policy = GAUGE_POLICY,
+    response = String,
+)]
+struct RunUppercase {
+    text: String,
+}
 
 struct MeterHandler;
 
@@ -428,9 +531,7 @@ impl harmos::Plugin for Joinable {
     type Error = Refusal;
     type Resources = ();
     fn prepare(_: ()) -> Result<Self, Self::Error> {
-        Ok(Self {
-            resources: Arc::new(()),
-        })
+        Ok(Self { resources: Arc::new(()) })
     }
     async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())
@@ -438,10 +539,7 @@ impl harmos::Plugin for Joinable {
     fn resources(&self) -> Arc<()> {
         self.resources.clone()
     }
-    fn bind_operations(
-        &self,
-        _: &mut WireTable<Self::Context>,
-    ) -> Result<(), harmos::operations::ServingError> {
+    fn bind_operations(&self, _: &mut WireTable<Self::Context>) -> Result<(), harmos::operations::ServingError> {
         Ok(())
     }
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -465,12 +563,7 @@ impl harmos::Plugin for Gauge {
     type Error = Refusal;
     type Resources = GaugeResources;
     fn prepare(config: Calibration) -> Result<Self, Self::Error> {
-        Ok(Self {
-            resources: Arc::new(GaugeResources {
-                factor: config.factor,
-                stopped: AtomicUsize::new(0),
-            }),
-        })
+        Ok(Self { resources: Arc::new(GaugeResources { factor: config.factor, stopped: AtomicUsize::new(0) }) })
     }
     async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         Ok(())
@@ -478,10 +571,7 @@ impl harmos::Plugin for Gauge {
     fn resources(&self) -> Arc<GaugeResources> {
         self.resources.clone()
     }
-    fn bind_operations(
-        &self,
-        table: &mut WireTable<Supervisor>,
-    ) -> Result<(), harmos::operations::ServingError> {
+    fn bind_operations(&self, table: &mut WireTable<Supervisor>) -> Result<(), harmos::operations::ServingError> {
         table.bind_operation::<Measuring>(self.resources())?;
         table.bind_operation::<Echoing>(self.resources())?;
         table.bind_operation::<Uppercasing>(self.resources())?;
@@ -498,41 +588,6 @@ impl harmos::Plugin for Gauge {
         GAUGE_DEACTIVATED.store(true, Ordering::SeqCst);
         Ok(())
     }
-}
-
-impl OperationDeclaration for GetMeasure {
-    type Request = Measure;
-    type Response = Measured;
-    const ID: &'static str = "gauge.get-measure";
-    const POLICY: OperationPolicy = GAUGE_POLICY;
-}
-
-impl harmos::operations::WireOperation for GetMeasure {
-    const VERSION: u32 = 1;
-}
-
-impl harmos::operations::WireOperation for RunEcho {
-    const VERSION: u32 = 1;
-}
-
-impl harmos::operations::WireOperation for RunUppercase {
-    const VERSION: u32 = 1;
-}
-
-impl harmos::operations::WireOperation for StopSampling {
-    const VERSION: u32 = 1;
-}
-
-impl harmos::operations::WireOperation for GetFactor {
-    const VERSION: u32 = 1;
-}
-
-impl harmos::operations::WireOperation for visibility::ScalePrivately {
-    const VERSION: u32 = 1;
-}
-
-impl harmos::operations::WireOperation for visibility::ScalePublicly {
-    const VERSION: u32 = 1;
 }
 
 struct Measuring {
@@ -559,32 +614,23 @@ impl harmos::operations::Operation for Measuring {
     type Error = MeasureError;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    async fn initialize<'ctx>(
-        resources: Arc<GaugeResources>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, MeasureError> {
+    async fn initialize<'ctx>(resources: Arc<GaugeResources>, _: Self::Context<'ctx>) -> Result<Self, MeasureError> {
         Ok(Self { resources })
     }
     async fn run<'ctx>(
-        &mut self,
-        _: Self::Context<'ctx>,
-        request: &mut Measure,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, _: Self::Context<'ctx>, request: &mut GetMeasure, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Measured>, MeasureError> {
         let result: ::core::result::Result<Measured, Self::Error> = async move {
             let _ = &request;
             if request.value == i64::MIN {
-                let reset =
-                    std::io::Error::new(std::io::ErrorKind::ConnectionReset, "connection reset");
+                let reset = std::io::Error::new(std::io::ErrorKind::ConnectionReset, "connection reset");
                 return Err(MeasureError::Probe(ProbeTransport(reset)));
             }
             if request.value < 0 {
                 let refusal = Refusal::of("this gauge measures no negative value");
                 return Err(MeasureError::Refused(refusal));
             }
-            Ok(Measured {
-                value: request.value * self.resources.factor,
-            })
+            Ok(Measured { value: request.value * self.resources.factor })
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -608,34 +654,15 @@ impl harmos::operations::Operation for Echoing {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    async fn initialize<'ctx>(
-        resources: Arc<GaugeResources>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Refusal> {
-        Ok(Self {
-            _resources: resources,
-        })
+    async fn initialize<'ctx>(resources: Arc<GaugeResources>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
+        Ok(Self { _resources: resources })
     }
     async fn run<'ctx>(
-        &mut self,
-        _: Self::Context<'ctx>,
-        request: &mut String,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, _: Self::Context<'ctx>, request: &mut RunEcho, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<String>, Refusal> {
-        let result: ::core::result::Result<String, Self::Error> = async move {
-            let _ = &request;
-            Ok(request.clone())
-        }
-        .await;
+        let result: ::core::result::Result<String, Self::Error> = async move { Ok(request.text.clone()) }.await;
         result.map(::core::convert::Into::into)
     }
-}
-
-impl OperationDeclaration for RunUppercase {
-    type Request = String;
-    type Response = String;
-    const ID: &'static str = "gauge.run-uppercase";
-    const POLICY: OperationPolicy = GAUGE_POLICY;
 }
 
 struct Uppercasing {
@@ -648,34 +675,15 @@ impl harmos::operations::Operation for Uppercasing {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    async fn initialize<'ctx>(
-        resources: Arc<GaugeResources>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Refusal> {
-        Ok(Self {
-            _resources: resources,
-        })
+    async fn initialize<'ctx>(resources: Arc<GaugeResources>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
+        Ok(Self { _resources: resources })
     }
     async fn run<'ctx>(
-        &mut self,
-        _: Self::Context<'ctx>,
-        request: &mut String,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, _: Self::Context<'ctx>, request: &mut RunUppercase, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<String>, Refusal> {
-        let result: ::core::result::Result<String, Self::Error> = async move {
-            let _ = &request;
-            Ok(request.to_uppercase())
-        }
-        .await;
+        let result: ::core::result::Result<String, Self::Error> = async move { Ok(request.text.to_uppercase()) }.await;
         result.map(::core::convert::Into::into)
     }
-}
-
-impl OperationDeclaration for StopSampling {
-    type Request = StopSamplingRequest;
-    type Response = StopSamplingResponse;
-    const ID: &'static str = "gauge.stop-sampling";
-    const POLICY: OperationPolicy = GAUGE_POLICY;
 }
 
 struct StoppingSampling {
@@ -688,17 +696,11 @@ impl harmos::operations::Operation for StoppingSampling {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    async fn initialize<'ctx>(
-        resources: Arc<GaugeResources>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(resources: Arc<GaugeResources>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
         Ok(Self { resources })
     }
     async fn run<'ctx>(
-        &mut self,
-        _: Self::Context<'ctx>,
-        request: &mut StopSamplingRequest,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, _: Self::Context<'ctx>, request: &mut StopSampling, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<StopSamplingResponse>, Refusal> {
         let result: ::core::result::Result<StopSamplingResponse, Self::Error> = async move {
             let _ = &request;
@@ -708,13 +710,6 @@ impl harmos::operations::Operation for StoppingSampling {
         .await;
         result.map(::core::convert::Into::into)
     }
-}
-
-impl OperationDeclaration for GetFactor {
-    type Request = GetFactorRequest;
-    type Response = Measured;
-    const ID: &'static str = "gauge.get-factor";
-    const POLICY: OperationPolicy = GAUGE_POLICY;
 }
 
 struct ReadingFactor {
@@ -727,23 +722,15 @@ impl harmos::operations::Operation for ReadingFactor {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    async fn initialize<'ctx>(
-        resources: Arc<GaugeResources>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(resources: Arc<GaugeResources>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
         Ok(Self { resources })
     }
     async fn run<'ctx>(
-        &mut self,
-        _: Self::Context<'ctx>,
-        request: &mut GetFactorRequest,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, _: Self::Context<'ctx>, request: &mut GetFactor, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Measured>, Refusal> {
         let result: ::core::result::Result<Measured, Self::Error> = async move {
             let _ = &request;
-            Ok(Measured {
-                value: self.resources.factor,
-            })
+            Ok(Measured { value: self.resources.factor })
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -760,27 +747,17 @@ impl harmos::operations::Operation for Amplifying {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    async fn initialize<'ctx>(
-        resources: Arc<MeterHandler>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Refusal> {
-        Ok(Self {
-            _resources: resources,
-        })
+    async fn initialize<'ctx>(resources: Arc<MeterHandler>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
+        Ok(Self { _resources: resources })
     }
     async fn run<'ctx>(
-        &mut self,
-        _: Self::Context<'ctx>,
-        request: &mut Amplify,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, _: Self::Context<'ctx>, request: &mut Amplify, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Amplified>, Refusal> {
         let result: ::core::result::Result<Amplified, Self::Error> = async move {
             if request.value < 0 {
                 return Err(Refusal::of("this meter measures no negative value"));
             }
-            Ok(Amplified {
-                value: request.value * 2,
-            })
+            Ok(Amplified { value: request.value * 2 })
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -797,27 +774,15 @@ impl harmos::operations::Operation for Emitting {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    async fn initialize<'ctx>(
-        resources: Arc<MeterHandler>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Refusal> {
-        Ok(Self {
-            _resources: resources,
-        })
+    async fn initialize<'ctx>(resources: Arc<MeterHandler>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
+        Ok(Self { _resources: resources })
     }
     async fn run<'ctx>(
-        &mut self,
-        host: Self::Context<'ctx>,
-        request: &mut Emit,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, host: Self::Context<'ctx>, request: &mut Emit, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<()>, Refusal> {
-        let result: ::core::result::Result<(), Self::Error> = async move {
-            host.publisher::<Meter>()
-                .publish_on::<MeterPulse>(&support::pulse(request.value))
-                .await
-                .map_err(Refusal::from)
-        }
-        .await;
+        let result: ::core::result::Result<(), Self::Error> =
+            async move { host.publisher::<Meter>().publish_on::<MeterPulse>(&support::pulse(request.value)).await.map_err(Refusal::from) }
+                .await;
         result.map(::core::convert::Into::into)
     }
 }
@@ -832,27 +797,15 @@ impl harmos::operations::Operation for PublishingPulse {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    async fn initialize<'ctx>(
-        resources: Arc<MeterHandler>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Refusal> {
-        Ok(Self {
-            _resources: resources,
-        })
+    async fn initialize<'ctx>(resources: Arc<MeterHandler>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
+        Ok(Self { _resources: resources })
     }
     async fn run<'ctx>(
-        &mut self,
-        host: Self::Context<'ctx>,
-        request: &mut PublishPulse,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, host: Self::Context<'ctx>, request: &mut PublishPulse, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<()>, Refusal> {
-        let result: ::core::result::Result<(), Self::Error> = async move {
-            host.publisher::<Meter>()
-                .publish_on::<MeterPulse>(&support::pulse(request.sample))
-                .await
-                .map_err(Refusal::from)
-        }
-        .await;
+        let result: ::core::result::Result<(), Self::Error> =
+            async move { host.publisher::<Meter>().publish_on::<MeterPulse>(&support::pulse(request.sample)).await.map_err(Refusal::from) }
+                .await;
         result.map(::core::convert::Into::into)
     }
 }
@@ -867,19 +820,11 @@ impl harmos::operations::Operation for Collapsing {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    async fn initialize<'ctx>(
-        resources: Arc<MeterHandler>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Refusal> {
-        Ok(Self {
-            _resources: resources,
-        })
+    async fn initialize<'ctx>(resources: Arc<MeterHandler>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
+        Ok(Self { _resources: resources })
     }
     async fn run<'ctx>(
-        &mut self,
-        host: Self::Context<'ctx>,
-        request: &mut Collapse,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, host: Self::Context<'ctx>, request: &mut Collapse, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<()>, Refusal> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             let _ = (&request, &host);
@@ -901,19 +846,11 @@ impl harmos::operations::Operation for Finishing {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    async fn initialize<'ctx>(
-        resources: Arc<MeterHandler>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Refusal> {
-        Ok(Self {
-            _resources: resources,
-        })
+    async fn initialize<'ctx>(resources: Arc<MeterHandler>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
+        Ok(Self { _resources: resources })
     }
     async fn run<'ctx>(
-        &mut self,
-        host: Self::Context<'ctx>,
-        request: &mut Finish,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, host: Self::Context<'ctx>, request: &mut Finish, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<()>, Refusal> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             let _ = (&request, &host);
@@ -935,39 +872,22 @@ impl harmos::operations::Operation for BudgetedCall {
     type Error = Refusal;
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
-    async fn initialize<'ctx>(
-        resources: Arc<MeterHandler>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Refusal> {
-        Ok(Self {
-            _resources: resources,
-        })
+    async fn initialize<'ctx>(resources: Arc<MeterHandler>, _: Self::Context<'ctx>) -> Result<Self, Refusal> {
+        Ok(Self { _resources: resources })
     }
     async fn run<'ctx>(
-        &mut self,
-        host: Self::Context<'ctx>,
-        request: &mut BudgetedRoute,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, host: Self::Context<'ctx>, request: &mut BudgetedRoute, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<BudgetedReply>, Refusal> {
         let result: ::core::result::Result<BudgetedReply, Self::Error> = async move {
             let _ = (&request, &host);
             if request.refusal_bytes > 0 {
-                return Err(Refusal::new(
-                    -42,
-                    "x".repeat(request.refusal_bytes as usize),
-                ));
+                return Err(Refusal::new(-42, "x".repeat(request.refusal_bytes as usize)));
             }
-            Ok(BudgetedReply {
-                payload: vec![0; request.reply_bytes as usize],
-            })
+            Ok(BudgetedReply { payload: vec![0; request.reply_bytes as usize] })
         }
         .await;
         result.map(::core::convert::Into::into)
     }
-}
-
-impl harmos::operations::WireOperation for Sample {
-    const VERSION: u32 = 1;
 }
 
 struct Sampling {
@@ -980,22 +900,14 @@ impl harmos::operations::Operation for Sampling {
     type Error = harmos::Error;
     type Endpoints = ();
     type Context<'a> = harmos::operations::Context<'a>;
-    async fn initialize<'ctx>(
-        resources: Arc<SampleProjection>,
-        _: Self::Context<'ctx>,
-    ) -> harmos::Result<Self> {
+    async fn initialize<'ctx>(resources: Arc<SampleProjection>, _: Self::Context<'ctx>) -> harmos::Result<Self> {
         Ok(Self { resources })
     }
     async fn run<'ctx>(
-        &mut self,
-        _: Self::Context<'ctx>,
-        request: &mut Sample,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, _: Self::Context<'ctx>, request: &mut Sample, _endpoints: &mut Self::Endpoints,
     ) -> harmos::Result<harmos::operations::Response<()>> {
         let result: ::core::result::Result<(), Self::Error> = async move {
-            self.resources
-                .streams
-                .publish(support::pulse(request.value));
+            self.resources.streams.publish(support::pulse(request.value));
             Ok(())
         }
         .await;
@@ -1020,9 +932,7 @@ impl harmos::Plugin for Meter {
     type Resources = MeterHandler;
     type Error = Refusal;
     fn prepare(_: ()) -> Result<Self, Self::Error> {
-        Ok(Self {
-            resources: Arc::new(MeterHandler),
-        })
+        Ok(Self { resources: Arc::new(MeterHandler) })
     }
     async fn initialize(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
         Ok(())
@@ -1030,10 +940,7 @@ impl harmos::Plugin for Meter {
     fn resources(&self) -> Arc<MeterHandler> {
         self.resources.clone()
     }
-    fn bind_operations(
-        &self,
-        table: &mut WireTable<Supervisor>,
-    ) -> Result<(), harmos::operations::ServingError> {
+    fn bind_operations(&self, table: &mut WireTable<Supervisor>) -> Result<(), harmos::operations::ServingError> {
         table.bind_operation::<Amplifying>(self.resources())?;
         table.bind_operation::<Emitting>(self.resources())?;
         table.bind_operation::<PublishingPulse>(self.resources())?;
@@ -1049,22 +956,6 @@ impl harmos::Plugin for Meter {
     }
 }
 
-impl harmos::operations::WireOperation for Emit {
-    const VERSION: u32 = 1;
-}
-
-impl harmos::operations::WireOperation for Collapse {
-    const VERSION: u32 = 1;
-}
-
-impl harmos::operations::WireOperation for Finish {
-    const VERSION: u32 = 1;
-}
-
-impl harmos::operations::WireOperation for BudgetedRoute {
-    const VERSION: u32 = 1;
-}
-
 impl Attach for MeterSource {
     type Error = std::io::Error;
     fn owner(&self) -> &str {
@@ -1073,35 +964,25 @@ impl Attach for MeterSource {
     fn operations(&self) -> harmos_domain::Result<Vec<harmos::operations::Definition>> {
         self.source.operations()
     }
-    fn operation_contracts(
-        &self,
-    ) -> harmos_domain::Result<Option<Vec<harmos::operations::Contract>>> {
+    fn operation_contracts(&self) -> harmos_domain::Result<Option<Vec<harmos::operations::Contract>>> {
         self.source.operation_contracts()
     }
-    fn required_contracts(
-        &self,
-    ) -> harmos_domain::Result<Option<Vec<harmos_domain::inventory::contracts::Required>>> {
+    fn required_contracts(&self) -> harmos_domain::Result<Option<Vec<harmos_domain::inventory::contracts::Required>>> {
         self.source.required_contracts()
     }
-    fn sdk_lifecycle(
-        &self,
-    ) -> harmos_domain::Result<Option<[harmos::operations::lifecycle::Descriptor; 2]>> {
+    fn sdk_lifecycle(&self) -> harmos_domain::Result<Option<[harmos::operations::lifecycle::Descriptor; 2]>> {
         self.source.sdk_lifecycle()
     }
     fn publications(&self) -> Vec<harmos_sidecar::StreamDeclaration> {
-        self.publications
-            .clone()
-            .unwrap_or_else(|| self.source.publications())
+        self.publications.clone().unwrap_or_else(|| self.source.publications())
     }
     fn observers(&self) -> Vec<harmos_sidecar::inventory::observers::Declaration> {
         self.source.observers()
     }
-    fn observer_control(&self) -> harmos_domain::Result<Option<harmos::operations::Contract>> {
-        self.source.observer_control()
+    fn observe_contract(&self) -> harmos_domain::Result<Option<harmos::operations::Contract>> {
+        self.source.observe_contract()
     }
-    fn listener_declarations(
-        &self,
-    ) -> harmos_domain::Result<Option<Vec<harmos_domain::listeners::Definition>>> {
+    fn listener_declarations(&self) -> harmos_domain::Result<Option<Vec<harmos_domain::listeners::Definition>>> {
         self.source.listener_declarations()
     }
     async fn attach(&self) -> Result<harmos_sidecar::Attached, Self::Error> {
@@ -1114,24 +995,15 @@ impl Attach for MeterSource {
 
 /* === Private Functions === */
 fn meter(attachments: Arc<AtomicUsize>) -> MeterSource {
-    MeterSource {
-        source: harmos_sidecar::PluginNative::new(NonZeroUsize::new(16).unwrap()).unwrap(),
-        attachments,
-        publications: None,
-    }
+    MeterSource { source: harmos_sidecar::PluginNative::new(NonZeroUsize::new(16).unwrap()).unwrap(), attachments, publications: None }
 }
 
 fn assembly() -> harmos::Builder<Bank> {
-    Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .register(streams())
-        .register(HostLanes::catalog())
+    Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).register(streams()).register(HostLanes::catalog())
 }
 
 fn assert_transport_refusal(error: harmos::Error, code: i64, detail: &str) {
-    let harmos::Error::OperationFailed { source, .. } = error else {
-        panic!("transport refusal preserves its operation cause: {error}")
-    };
+    let harmos::Error::OperationFailed { source, .. } = error else { panic!("transport refusal preserves its operation cause: {error}") };
     assert!(
         matches!(source.downcast_ref::<harmos::operations::NativeError>(),
         Some(harmos::operations::NativeError::Transport(SidecarError::Refused { code: actual, failure }))
@@ -1142,26 +1014,15 @@ fn assert_transport_refusal(error: harmos::Error, code: i64, detail: &str) {
 
 // Await The Resident Status Change The Story Names; The Lane Deadline Ends A Hang.
 async fn service_status(
-    mut services: tokio::sync::watch::Receiver<
-        BTreeMap<harmos::operations::resident::Key, harmos::operations::resident::Snapshot>,
-    >,
-    name: &str,
-    wanted: impl Fn(&ServiceStatus) -> bool,
+    mut services: tokio::sync::watch::Receiver<BTreeMap<harmos::operations::resident::Key, harmos::operations::resident::Snapshot>>,
+    name: &str, wanted: impl Fn(&ServiceStatus) -> bool,
 ) -> ServiceStatus {
     let key = harmos::operations::resident::Key::root(name);
     let snapshot = services
-        .wait_for(|items| {
-            items
-                .get(&key)
-                .and_then(|item| item.health.as_ref())
-                .is_some_and(&wanted)
-        })
+        .wait_for(|items| items.get(&key).and_then(|item| item.health.as_ref()).is_some_and(&wanted))
         .await
         .expect("the runtime keeps the status sender open");
-    snapshot
-        .get(&key)
-        .and_then(|item| item.health.clone())
-        .expect("the awaited status is present")
+    snapshot.get(&key).and_then(|item| item.health.clone()).expect("the awaited status is present")
 }
 
 async fn work_facts(runtime: &Runtime<Bank>) -> Vec<SystemFact> {
@@ -1193,18 +1054,13 @@ async fn declared_publication_enters() {
         .register_operation::<Sampling>(
             "meter-sample",
             operations::Lanes::NativeOpen,
-            Arc::new(SampleProjection {
-                streams: fixture.runtime.streams.clone(),
-            }),
+            Arc::new(SampleProjection { streams: fixture.runtime.streams.clone() }),
         )
         .unwrap();
     fixture.initialize().await.unwrap();
     publications::ready(fixture.ready().clone()).await;
     let runtime = &fixture.runtime;
-    fixture
-        .call_as::<PublishPulse>(PublishPulse { sample: 42 })
-        .await
-        .expect("the sidecar publishes the requested sample");
+    fixture.call(PublishPulse { sample: 42 }).await.expect("the sidecar publishes the requested sample");
 
     let samples: Vec<u64> = runtime
         .streams
@@ -1223,15 +1079,8 @@ async fn declared_publication_enters() {
 async fn crash_spends_credit() {
     let attachments = Arc::new(AtomicUsize::new(0));
     let source = meter(Arc::clone(&attachments));
-    let definition = operations::inspected(&source, serde_json::to_vec(&()).unwrap())
-        .definitions()
-        .next()
-        .unwrap()
-        .clone();
-    let calls = Supervised::new(
-        source,
-        (|_: &Service<Bank>, _: Notice| {}) as fn(&Service<Bank>, Notice),
-    );
+    let definition = operations::inspected(&source, serde_json::to_vec(&()).unwrap()).definitions().next().unwrap().clone();
+    let calls = Supervised::new(source, (|_: &Service<Bank>, _: Notice| {}) as fn(&Service<Bank>, Notice));
     let policy = harmos::operations::OperationPolicy {
         restart: harmos::operations::RestartPolicy::OnTransient {
             credit: 2,
@@ -1266,105 +1115,59 @@ async fn crash_spends_credit() {
         .register_operation::<Sampling>(
             "meter-sample",
             operations::Lanes::NativeOpen,
-            Arc::new(SampleProjection {
-                streams: runtime.streams.clone(),
-            }),
+            Arc::new(SampleProjection { streams: runtime.streams.clone() }),
         )
         .unwrap();
     let resident = calls.clone();
     runtime
         .operations
-        .register_service(
-            harmos::services::ServiceDefinition {
-                id: "meter".into(),
-                policy,
-            },
-            move |_: Arc<()>| {
-                harmos::sidecar::Managed::new(
-                    resident.clone(),
-                    definition.clone(),
-                    operations::Lanes::NativeOpen,
-                    NonZeroUsize::new(16).unwrap(),
-                    NonZeroUsize::new(4096).unwrap(),
-                )
-                .unwrap()
-            },
-        )
+        .register_service(harmos::services::ServiceDefinition { id: "meter".into(), policy }, move |_: Arc<()>| {
+            harmos::sidecar::Managed::new(
+                resident.clone(),
+                definition.clone(),
+                operations::Lanes::NativeOpen,
+                NonZeroUsize::new(16).unwrap(),
+                NonZeroUsize::new(4096).unwrap(),
+            )
+            .unwrap()
+        })
         .unwrap();
     let lease = runtime.operations.submit_resident("meter").await.unwrap();
 
     let statuses = runtime.operations.watch_residents();
-    service_status(statuses.clone(), "meter", |status| {
-        *status == ServiceStatus::Running { credit: 2 }
-    })
-    .await;
+    service_status(statuses.clone(), "meter", |status| *status == ServiceStatus::Running { credit: 2 }).await;
     let original = calls.operations().unwrap();
     let generation = original.scope().unwrap().generation();
-    let outcome = runtime
-        .operations
-        .call_encoded(Collapse::ID, Collapse {}.encode_to_vec())
-        .await;
+    let outcome = runtime.operations.call_encoded(Collapse::ID, Collapse {}.encode_to_vec()).await;
     let disconnected = match &outcome {
-        Err(harmos::Error::Closing {
-            domain: "operation" | "operation plugin",
-        }) => true,
+        Err(harmos::Error::Closing { domain: "operation" | "operation plugin" }) => true,
         Err(harmos::Error::OperationFailed { operation, source }) if operation == Collapse::ID => {
             matches!(
                 source.downcast_ref::<harmos::operations::NativeError>(),
-                Some(harmos::operations::NativeError::Transport(
-                    SidecarError::Unavailable
-                ))
+                Some(harmos::operations::NativeError::Transport(SidecarError::Unavailable))
             )
         }
         _ => false,
     };
-    assert!(
-        disconnected,
-        "the abandoned generation cannot answer: {outcome:?}"
-    );
+    assert!(disconnected, "the abandoned generation cannot answer: {outcome:?}");
 
-    service_status(statuses.clone(), "meter", |status| {
-        *status == ServiceStatus::Running { credit: 1 }
-    })
-    .await;
-    assert_eq!(
-        attachments.load(Ordering::SeqCst),
-        2,
-        "a fresh sidecar was attached for the restart"
-    );
-    assert!(
-        work_facts(&runtime).await.is_empty(),
-        "an environmental restart is silent"
-    );
+    service_status(statuses.clone(), "meter", |status| *status == ServiceStatus::Running { credit: 1 }).await;
+    assert_eq!(attachments.load(Ordering::SeqCst), 2, "a fresh sidecar was attached for the restart");
+    assert!(work_facts(&runtime).await.is_empty(), "an environmental restart is silent");
 
     assert!(
-        matches!(
-            original.scope().unwrap().ready().await,
-            Err(harmos::Error::Closing {
-                domain: "plugin scope"
-            })
-        ),
+        matches!(original.scope().unwrap().ready().await, Err(harmos::Error::Closing { domain: "plugin scope" })),
         "the retired generation cannot admit calls"
     );
-    assert_ne!(
-        calls.operations().unwrap().scope().unwrap().generation(),
-        generation
-    );
+    assert_ne!(calls.operations().unwrap().scope().unwrap().generation(), generation);
     let amplified = runtime
         .operations
         .call_encoded(Amplify::ID, Amplify { value: 5 }.encode_to_vec())
         .await
         .expect("the restarted sidecar serves the same routes");
-    assert_eq!(
-        Amplified::decode(&amplified).unwrap(),
-        Amplified { value: 10 }
-    );
+    assert_eq!(Amplified::decode(&amplified).unwrap(), Amplified { value: 10 });
     lease.release().await.unwrap();
-    runtime
-        .operations
-        .unregister_resident("meter")
-        .await
-        .unwrap();
+    runtime.operations.unregister_resident("meter").await.unwrap();
     runtime.stop().await.unwrap();
 }
 
@@ -1386,43 +1189,26 @@ async fn oversized_exchange_survives() {
         .register_operation::<Sampling>(
             "meter-sample",
             operations::Lanes::NativeOpen,
-            Arc::new(SampleProjection {
-                streams: fixture.runtime.streams.clone(),
-            }),
+            Arc::new(SampleProjection { streams: fixture.runtime.streams.clone() }),
         )
         .unwrap();
     fixture.initialize().await.unwrap();
     publications::ready(fixture.ready().clone()).await;
-    let request = BudgetedRoute {
-        payload: vec![0; Frame::LIMIT],
-        reply_bytes: 0,
-        refusal_bytes: 0,
-    };
+    let request = BudgetedRoute { payload: vec![0; Frame::LIMIT], reply_bytes: 0, refusal_bytes: 0 };
     assert!(!Frame::request_fits::<BudgetedRoute>(&request));
-    let oversized = fixture.call_as::<BudgetedRoute>(request).await.unwrap_err();
+    let oversized = fixture.call(request).await.unwrap_err();
     assert_transport_refusal(oversized, Frame::OVERSIZED, "request");
 
     for request in [
-        BudgetedRoute {
-            payload: Vec::new(),
-            reply_bytes: Frame::LIMIT as u32,
-            refusal_bytes: 0,
-        },
-        BudgetedRoute {
-            payload: Vec::new(),
-            reply_bytes: 0,
-            refusal_bytes: Frame::LIMIT as u32,
-        },
+        BudgetedRoute { payload: Vec::new(), reply_bytes: Frame::LIMIT as u32, refusal_bytes: 0 },
+        BudgetedRoute { payload: Vec::new(), reply_bytes: 0, refusal_bytes: Frame::LIMIT as u32 },
     ] {
-        let refused = fixture.call_as::<BudgetedRoute>(request).await.unwrap_err();
+        let refused = fixture.call(request).await.unwrap_err();
         assert_transport_refusal(refused, Frame::OVERSIZED, "reply");
     }
 
     assert_eq!(
-        fixture
-            .call_as::<Amplify>(Amplify { value: 5 })
-            .await
-            .unwrap(),
+        fixture.call(Amplify { value: 5 }).await.unwrap(),
         Amplified { value: 10 },
         "every oversize refusal leaves the same exchange available to a later call"
     );
@@ -1436,10 +1222,7 @@ async fn announced_exit_reason() {
     let attachments = Arc::new(AtomicUsize::new(0));
     let source = meter(Arc::clone(&attachments));
     let definition = operations::definition(&source, serde_json::to_vec(&()).unwrap());
-    let resident = Supervised::new(
-        source,
-        (|_: &Service<Bank>, _: Notice| {}) as fn(&Service<Bank>, Notice),
-    );
+    let resident = Supervised::new(source, (|_: &Service<Bank>, _: Notice| {}) as fn(&Service<Bank>, Notice));
     let runtime = assembly()
         .operation_settings(harmos::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
@@ -1450,60 +1233,32 @@ async fn announced_exit_reason() {
         .unwrap();
     runtime
         .operations
-        .register_wire_operation::<harmos::sidecar::Publish<_, _, _>>(
-            "meter-publication-core",
-            HostLanes::Open,
-            Arc::new(resident.clone()),
-        )
+        .register_wire_operation::<harmos::sidecar::Publish<_, _, _>>("meter-publication-core", HostLanes::Open, Arc::new(resident.clone()))
         .unwrap();
     runtime
         .operations
-        .register_service(
-            harmos::services::ServiceDefinition {
-                id: "meter".into(),
-                policy: harmos::services::POLICY,
-            },
-            move |_: Arc<()>| {
-                harmos::sidecar::Managed::new(
-                    resident.clone(),
-                    definition.clone(),
-                    HostLanes::Open,
-                    NonZeroUsize::new(16).unwrap(),
-                    NonZeroUsize::new(4096).unwrap(),
-                )
-                .unwrap()
-            },
-        )
+        .register_service(harmos::services::ServiceDefinition { id: "meter".into(), policy: harmos::services::POLICY }, move |_: Arc<()>| {
+            harmos::sidecar::Managed::new(
+                resident.clone(),
+                definition.clone(),
+                HostLanes::Open,
+                NonZeroUsize::new(16).unwrap(),
+                NonZeroUsize::new(4096).unwrap(),
+            )
+            .unwrap()
+        })
         .unwrap();
     let _lease = runtime.operations.submit_resident("meter").await.unwrap();
-    service_status(runtime.operations.watch_residents(), "meter", |status| {
-        matches!(status, ServiceStatus::Running { .. })
-    })
-    .await;
-    let outcome = runtime
-        .operations
-        .call_encoded(
-            Finish::ID,
-            Finish {
-                reason: "the recording is complete".to_owned(),
-            }
-            .encode_to_vec(),
-        )
-        .await;
+    service_status(runtime.operations.watch_residents(), "meter", |status| matches!(status, ServiceStatus::Running { .. })).await;
+    let outcome =
+        runtime.operations.call_encoded(Finish::ID, Finish { reason: "the recording is complete".to_owned() }.encode_to_vec()).await;
     assert!(
-        matches!(
-            outcome,
-            Err(harmos::Error::Closing {
-                domain: "operation" | "operation plugin"
-            })
-        ),
+        matches!(outcome, Err(harmos::Error::Closing { domain: "operation" | "operation plugin" })),
         "a reply from the closed generation is revoked: {outcome:?}"
     );
 
-    let status = service_status(runtime.operations.watch_residents(), "meter", |status| {
-        matches!(status, ServiceStatus::Inactive { .. })
-    })
-    .await;
+    let status =
+        service_status(runtime.operations.watch_residents(), "meter", |status| matches!(status, ServiceStatus::Inactive { .. })).await;
 
     assert!(
         matches!(
@@ -1515,63 +1270,33 @@ async fn announced_exit_reason() {
         ),
         "an announced exit is the sidecar's own decision, not an outage: {status:?}"
     );
-    assert_eq!(
-        attachments.load(Ordering::SeqCst),
-        1,
-        "a sidecar that meant to leave is not started again"
-    );
+    assert_eq!(attachments.load(Ordering::SeqCst), 1, "a sidecar that meant to leave is not started again");
 
     let facts = work_facts(&runtime).await;
     assert_eq!(facts.len(), 1);
     assert_eq!(facts[0].name, "deactivated");
-    assert!(matches!(
-        runtime.stop().await,
-        Err(harmos::Error::TaskFailed {
-            domain: "service",
-            ..
-        })
-    ));
+    assert!(matches!(runtime.stop().await, Err(harmos::Error::TaskFailed { domain: "service", .. })));
 }
 
 #[tokio::test]
 async fn retired_control_refused() {
-    let attached = meter(Arc::new(AtomicUsize::new(0)))
-        .attach()
-        .await
-        .expect("the in-process sidecar attaches");
+    let attached = meter(Arc::new(AtomicUsize::new(0))).attach().await.expect("the in-process sidecar attaches");
     let (write, read, control, _diagnostics, end) = attached.into_parts();
-    let harmos_sidecar::transport::Connection {
-        sender: outgoing,
-        receiver: mut incoming,
-        mut driver,
-    } = harmos_sidecar::transport::Connection::new(
-        (read, write),
-        control.expect("the in-process attachment carries a control channel"),
-    );
+    let harmos_sidecar::transport::Connection { sender: outgoing, receiver: mut incoming, mut driver } =
+        harmos_sidecar::transport::Connection::new((read, write), control.expect("the in-process attachment carries a control channel"));
     let driving = tokio::spawn(async move { driver.run().await });
 
     // Activation Answers On The Same Exchange
     outgoing
-        .send(harmos_sidecar::Frame::Call {
-            id: 1,
-            method: harmos_sidecar::Frame::REGISTER.to_owned(),
-            params: Vec::new(),
-        })
+        .send(harmos_sidecar::Frame::Call { id: 1, method: harmos_sidecar::Frame::REGISTER.to_owned(), params: Vec::new() })
         .await
         .expect("the activation is sent");
     let answer = received(incoming.receive().await.expect("the exchange remains valid"));
-    assert!(matches!(
-        answer,
-        Some(harmos_sidecar::Frame::Answer { id: 1, .. })
-    ));
+    assert!(matches!(answer, Some(harmos_sidecar::Frame::Answer { id: 1, .. })));
 
     // The Retired Control Method Is Refused As Unknown
     outgoing
-        .send(harmos_sidecar::Frame::Call {
-            id: 2,
-            method: "harmos.initialize".to_owned(),
-            params: b"{}".to_vec(),
-        })
+        .send(harmos_sidecar::Frame::Call { id: 2, method: "harmos.initialize".to_owned(), params: b"{}".to_vec() })
         .await
         .expect("the retired control request is sent");
     let refusal = received(incoming.receive().await.expect("the transport remains valid"));
@@ -1589,9 +1314,7 @@ async fn retired_control_refused() {
     }
 }
 
-fn received(
-    received: Option<harmos_sidecar::transport::Received>,
-) -> Option<harmos_sidecar::Frame> {
+fn received(received: Option<harmos_sidecar::transport::Received>) -> Option<harmos_sidecar::Frame> {
     received.map(|received| {
         if let Some(consumption) = received.consumption {
             consumption.consumed().unwrap();
@@ -1617,18 +1340,12 @@ async fn public_private_handlers() {
     publications::ready(fixture.ready().clone()).await;
 
     assert_eq!(
-        fixture
-            .call_as::<visibility::ScalePrivately>(visibility::Scale { value: 4 })
-            .await
-            .unwrap(),
+        fixture.call(visibility::ScalePrivately { value: 4 }).await.unwrap(),
         visibility::Scale { value: 20 },
         "a private method's route is still named and dispatched from outside          the module it was written in"
     );
     assert_eq!(
-        fixture
-            .call_as::<visibility::ScalePublicly>(visibility::ScalePubliclyRequest {})
-            .await
-            .unwrap(),
+        fixture.call(visibility::ScalePublicly {}).await.unwrap(),
         visibility::Scale { value: 5 },
         "and a `pub` method's carrier reaches outside the module with it"
     );
@@ -1657,20 +1374,12 @@ async fn generated_entry_attaches() {
     publications::ready(fixture.ready().clone()).await;
 
     assert_eq!(
-        fixture
-            .call_as::<GetMeasure>(Measure { value: 7 })
-            .await
-            .unwrap(),
+        fixture.call(GetMeasure { value: 7 }).await.unwrap(),
         Measured { value: 21 },
         "the route answers under the configuration the entry was activated with"
     );
-    let error = fixture
-        .call_as::<GetMeasure>(Measure { value: -1 })
-        .await
-        .unwrap_err();
-    let failure = error
-        .failure()
-        .expect("handler refusal preserves its structured failure");
+    let error = fixture.call(GetMeasure { value: -1 }).await.unwrap_err();
+    let failure = error.failure().expect("handler refusal preserves its structured failure");
     assert_eq!(failure.code(), harmos::operations::FailureKind::Permanent);
     assert_eq!(failure.cause(), "this gauge measures no negative value");
     assert_eq!(failure.context().operation(), Some(GetMeasure::ID));
@@ -1681,74 +1390,95 @@ async fn generated_entry_attaches() {
     );
 
     // A Nested Transport Failure Arrives As One Cause And One Operation Frame
-    let error = fixture
-        .call_as::<GetMeasure>(Measure { value: i64::MIN })
-        .await
-        .unwrap_err();
-    let failure = error
-        .failure()
-        .expect("the handler failure crosses as a structured value");
+    let error = fixture.call(GetMeasure { value: i64::MIN }).await.unwrap_err();
+    let failure = error.failure().expect("the handler failure crosses as a structured value");
     assert_eq!(failure.cause(), "connection reset");
     assert_eq!(failure.context().operation(), Some(GetMeasure::ID));
     assert_eq!(failure.context().step(), None);
     let diagnostics = failure.diagnostics().expect("origin diagnostics");
     assert_eq!(diagnostics.origin(), harmos::failure::Origin::Plugin);
-    assert_eq!(
-        diagnostics.chain().len(),
-        3,
-        "the full origin chain stays in diagnostics"
-    );
-    let rendered = std::iter::successors(
-        Some(&error as &(dyn std::error::Error + 'static)),
-        |error| error.source(),
-    )
-    .map(ToString::to_string)
-    .collect::<Vec<_>>()
-    .join(": ");
+    assert_eq!(diagnostics.chain().len(), 3, "the full origin chain stays in diagnostics");
+    let rendered = std::iter::successors(Some(&error as &(dyn std::error::Error + 'static)), |error| error.source())
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(": ");
     assert_eq!(
         rendered,
         format!("operation `{}` failed: connection reset", GetMeasure::ID),
         "no carrier repeats the cause or adds a frame"
     );
 
-    assert_eq!(
-        fixture
-            .call_as::<RunEcho>("hello".to_owned())
-            .await
-            .unwrap(),
-        "hello".to_owned()
-    );
-    assert_eq!(
-        fixture
-            .call_as::<RunUppercase>("hello".to_owned())
-            .await
-            .unwrap(),
-        "HELLO".to_owned()
-    );
+    assert_eq!(fixture.call(RunEcho { text: "hello".to_owned() }).await.unwrap(), "hello".to_owned());
+    assert_eq!(fixture.call(RunUppercase { text: "hello".to_owned() }).await.unwrap(), "HELLO".to_owned());
 
     assert_eq!(
-        fixture
-            .call_as::<StopSampling>(StopSamplingRequest {})
-            .await
-            .unwrap(),
+        fixture.call(StopSampling {}).await.unwrap(),
         StopSamplingResponse {},
         "a route carrying nothing either way still names one message each way"
     );
     assert_eq!(
-        fixture
-            .call_as::<GetFactor>(GetFactorRequest {})
-            .await
-            .unwrap(),
+        fixture.call(GetFactor {}).await.unwrap(),
         Measured { value: 3 },
         "a reply written through the crate's own alias dispatches like any other"
     );
 
     fixture.shutdown().await.unwrap();
     fixture.runtime.stop().await.unwrap();
+    assert!(GAUGE_DEACTIVATED.load(Ordering::SeqCst), "the local attachment runs the generated entry's awaited deactivation");
+}
+
+#[tokio::test]
+async fn guest_row_refused() {
+    let noticed = Arc::new(AtomicUsize::new(0));
+    let counter = noticed.clone();
+    let source = native_process();
+    let definition = process_definition(&source);
+    let sidecar = Supervised::new(source, move |_context: &Service<Bank>, notice: Notice| {
+        if matches!(notice, Notice::Published { .. }) {
+            counter.fetch_add(1, Ordering::SeqCst);
+        }
+    })
+    .grace(Duration::from_millis(20));
+    let ready = sidecar.ready();
+    let calls = sidecar.clone();
+    let (runtime, _lease) = process_runtime(
+        sidecar,
+        definition,
+        harmos::operations::OperationPolicy { restart: harmos::operations::RestartPolicy::Never, ..harmos::services::POLICY },
+    )
+    .await;
+    tokio::time::timeout(Duration::from_secs(5), async {
+        let mut ready = ready;
+        while !*ready.borrow_and_update() {
+            ready.changed().await.unwrap();
+        }
+    })
+    .await
+    .unwrap();
+    let refused = runtime
+        .operations
+        .call_encoded(MeterEcho::ID, Message::encode_to_vec(&MeterEcho { text: "publish-foreign".to_owned() }))
+        .await
+        .unwrap_err();
+    let harmos::Error::OperationFailed { source, .. } = refused else { panic!("the real host returns its publication refusal: {refused}") };
     assert!(
-        GAUGE_DEACTIVATED.load(Ordering::SeqCst),
-        "the local attachment runs the generated entry's awaited deactivation"
+        matches!(source.downcast_ref::<harmos::operations::NativeError>(),
+        Some(harmos::operations::NativeError::Remote(failure))
+            if failure.code() == harmos::operations::FailureKind::Permanent
+                && failure.cause().contains("stream or schema differs from the frozen generation inventory")),
+        "{source}"
     );
+    assert!(
+        matches!(
+            runtime.operations.resident(&harmos::operations::resident::Key::root("meter")).and_then(|instance| instance.health),
+            Some(ServiceStatus::Running { .. })
+        ),
+        "a refused publication keeps the original carrier usable"
+    );
+    assert!(runtime.streams.publication("foreign", 1).is_none());
+    assert_eq!(noticed.load(Ordering::SeqCst), 0, "ungranted bytes never reach the notice fallback");
+    drop(calls);
+    runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -1786,33 +1516,17 @@ async fn ingestion_authority_bounded() {
             .register_operation::<Sampling>(
                 "meter-sample",
                 operations::Lanes::NativeOpen,
-                Arc::new(SampleProjection {
-                    streams: fixture.runtime.streams.clone(),
-                }),
+                Arc::new(SampleProjection { streams: fixture.runtime.streams.clone() }),
             )
             .unwrap();
         fixture.initialize().await.unwrap();
         publications::ready(fixture.ready().clone()).await;
-        let refused = fixture
-            .call_as::<PublishPulse>(PublishPulse { sample: 42 })
-            .await
-            .unwrap_err();
-        assert!(
-            matches!(refused, harmos::Error::OperationFailed { source, .. }
+        let refused = fixture.call(PublishPulse { sample: 42 }).await.unwrap_err();
+        assert!(matches!(refused, harmos::Error::OperationFailed { source, .. }
             if matches!(source.downcast_ref::<harmos::operations::NativeError>(),
                 Some(harmos::operations::NativeError::Remote(failure))
-                if failure.cause().contains("stream or schema differs from the frozen generation inventory")))
-        );
-        assert_eq!(
-            fixture
-                .runtime
-                .streams
-                .query::<support::Pulse>(..)
-                .await
-                .unwrap()
-                .count(),
-            0
-        );
+                if failure.cause().contains("stream or schema differs from the frozen generation inventory"))));
+        assert_eq!(fixture.runtime.streams.query::<support::Pulse>(..).await.unwrap().count(), 0);
         fixture.shutdown().await.unwrap();
         fixture.runtime.stop().await.unwrap();
     }
@@ -1835,10 +1549,7 @@ async fn graceful_stop_joins() {
         released: bool,
     }
     impl harmos_sidecar::attach::End for GatedEnding {
-        fn settle(
-            &mut self,
-        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = std::io::Result<()>> + Send + '_>>
-        {
+        fn settle(&mut self) -> std::pin::Pin<Box<dyn std::future::Future<Output = std::io::Result<()>> + Send + '_>> {
             Box::pin(async move {
                 if !self.joined {
                     self.original.settle().await?;
@@ -1866,20 +1577,13 @@ async fn graceful_stop_joins() {
         fn operations(&self) -> harmos_domain::Result<Vec<harmos::operations::Definition>> {
             self.source.operations()
         }
-        fn operation_contracts(
-            &self,
-        ) -> harmos_domain::Result<Option<Vec<harmos::operations::Contract>>> {
+        fn operation_contracts(&self) -> harmos_domain::Result<Option<Vec<harmos::operations::Contract>>> {
             self.source.operation_contracts()
         }
-        fn required_contracts(
-            &self,
-        ) -> harmos_domain::Result<Option<Vec<harmos_domain::inventory::contracts::Required>>>
-        {
+        fn required_contracts(&self) -> harmos_domain::Result<Option<Vec<harmos_domain::inventory::contracts::Required>>> {
             self.source.required_contracts()
         }
-        fn sdk_lifecycle(
-            &self,
-        ) -> harmos_domain::Result<Option<[harmos::operations::lifecycle::Descriptor; 2]>> {
+        fn sdk_lifecycle(&self) -> harmos_domain::Result<Option<[harmos::operations::lifecycle::Descriptor; 2]>> {
             self.source.sdk_lifecycle()
         }
         fn publications(&self) -> Vec<harmos_sidecar::StreamDeclaration> {
@@ -1888,17 +1592,14 @@ async fn graceful_stop_joins() {
         fn observers(&self) -> Vec<harmos_sidecar::inventory::observers::Declaration> {
             self.source.observers()
         }
-        fn observer_control(&self) -> harmos_domain::Result<Option<harmos::operations::Contract>> {
-            self.source.observer_control()
+        fn observe_contract(&self) -> harmos_domain::Result<Option<harmos::operations::Contract>> {
+            self.source.observe_contract()
         }
-        fn listener_declarations(
-            &self,
-        ) -> harmos_domain::Result<Option<Vec<harmos_domain::listeners::Definition>>> {
+        fn listener_declarations(&self) -> harmos_domain::Result<Option<Vec<harmos_domain::listeners::Definition>>> {
             self.source.listener_declarations()
         }
         async fn attach(&self) -> Result<harmos_sidecar::Attached, Self::Error> {
-            let (write, read, control, diagnostics, original) =
-                self.source.attach().await?.into_parts();
+            let (write, read, control, diagnostics, original) = self.source.attach().await?.into_parts();
             let receipt = harmos_sidecar::attach::Ending::new(GatedEnding {
                 original: original.expect("the SDK retains its original physical ending"),
                 ending: self.ending.clone(),

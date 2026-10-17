@@ -10,7 +10,7 @@
 /* === Modules === */
 
 /* === Re-Exports === */
-pub use crate::identity::DefinitionId;
+pub use harmos_domain::DefinitionId;
 
 /* === Imports === */
 // Standard Library Imports

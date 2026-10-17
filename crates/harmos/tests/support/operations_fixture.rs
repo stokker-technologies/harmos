@@ -33,18 +33,55 @@ pub(crate) use support::{Bank, Ledger, catalog};
 /* === Constants === */
 
 /* === Macros === */
+// In-Process Fixture Values Carry Shared Notifications, So They Never Cross A
+// Process Boundary: Their Codec Refuses And Encoding Them Is A Defect.
+macro_rules! in_process {
+    ($($ty:ty),* $(,)?) => {$(
+        impl harmos::Message for $ty {
+            fn encode_to_vec(&self) -> Vec<u8> {
+                unreachable!("in-process fixture values are never encoded")
+            }
+            fn encoded_len(&self) -> usize {
+                unreachable!("in-process fixture values are never encoded")
+            }
+            fn decoding_memory(_: &[u8]) -> ::core::result::Result<usize, harmos::MessageError> {
+                Err(harmos::MessageError::borrowed("in-process fixture values are never decoded"))
+            }
+            fn decode(_: &[u8]) -> ::core::result::Result<Self, harmos::MessageError> {
+                Err(harmos::MessageError::borrowed("in-process fixture values are never decoded"))
+            }
+        }
+
+        #[cfg(feature = "grpc")]
+        impl harmos::Protobuf for $ty {
+            fn encode_to_vec(&self) -> Vec<u8> {
+                unreachable!("in-process fixture values are never encoded")
+            }
+            fn encoded_len(&self) -> usize {
+                unreachable!("in-process fixture values are never encoded")
+            }
+            fn decode(_: &[u8]) -> ::core::result::Result<Self, harmos::MessageError> {
+                Err(harmos::MessageError::borrowed("in-process fixture values are never decoded"))
+            }
+        }
+
+        impl harmos::schema::Described for $ty {
+            const NAME: &'static str = concat!(module_path!(), "::", stringify!($ty));
+            const FIELDS: &'static [harmos::schema::Field] = &[];
+            const MARKER: &'static [u8] = &harmos::schema::declaration::encode::<
+                { harmos::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+            >(Self::NAME, Self::FIELDS);
+        }
+    )*};
+}
+pub(crate) use in_process;
 
 /* === Type Aliases === */
+pub(crate) type Request = Compute;
 
 /* === Structs === */
-pub(crate) struct Compute;
-
-pub(crate) struct Slow;
-
-pub(crate) struct Parent;
-
 // Owned request/state/response deliberately implement neither Clone nor serde.
-pub(crate) struct Request {
+pub(crate) struct Compute {
     pub(crate) value: usize,
     pub(crate) failures: usize,
     pub(crate) failure: FailureKind,
@@ -52,6 +89,10 @@ pub(crate) struct Request {
     pub(crate) keyed: bool,
     pub(crate) gate: Option<(Arc<Notify>, Arc<Notify>)>,
 }
+
+pub(crate) struct Slow(pub(crate) Compute);
+
+pub(crate) struct Parent(pub(crate) Compute);
 
 pub(crate) struct State {
     pub(crate) attempts: usize,
@@ -120,7 +161,9 @@ pub(crate) enum Failed {
 /* === Traits === */
 
 /* === Implementations === */
-impl harmos::MemorySize for Request {
+in_process!(Compute, Slow, Parent, Response);
+
+impl harmos::MemorySize for Compute {
     fn memory_size(&self) -> usize {
         // Shared Notification Resources Have No Charged Fixture Policy.
         if self.gate.is_some() {
@@ -130,10 +173,30 @@ impl harmos::MemorySize for Request {
     }
 }
 
+impl harmos::MemorySize for Slow {
+    fn memory_size(&self) -> usize {
+        self.0.memory_size()
+    }
+}
+
+impl harmos::MemorySize for Parent {
+    fn memory_size(&self) -> usize {
+        self.0.memory_size()
+    }
+}
+
+impl harmos::MemorySize for Response {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+    }
+}
+
 impl OperationDeclaration for Compute {
-    type Request = Request;
     type Response = Response;
+    type Input = harmos::operations::NoStream;
+    type Output = harmos::operations::NoStream;
     const ID: &'static str = "test.compute";
+    const VERSION: u32 = 1;
     const POLICY: OperationPolicy = OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(1),
@@ -146,16 +209,18 @@ impl OperationDeclaration for Compute {
         },
         restart: RestartPolicy::Never,
     };
-    fn key(request: &Request) -> Option<CacheKey> {
-        (request.keyed && request.valid)
-            .then(|| CacheKey::new(request.value.to_le_bytes().to_vec()).unwrap())
+    fn key(&self) -> Option<CacheKey> {
+        (self.keyed && self.valid)
+            .then(|| CacheKey::new(self.value.to_le_bytes().to_vec()).unwrap())
     }
 }
 
 impl OperationDeclaration for Slow {
-    type Request = Request;
     type Response = Response;
+    type Input = harmos::operations::NoStream;
+    type Output = harmos::operations::NoStream;
     const ID: &'static str = "test.slow";
+    const VERSION: u32 = 1;
     const POLICY: OperationPolicy = OperationPolicy {
         timeout: Duration::from_millis(50),
         attempt_timeout: Duration::from_millis(10),
@@ -166,9 +231,11 @@ impl OperationDeclaration for Slow {
 
 impl OperationDeclaration for Parent {
     const VISIBILITY: harmos::operations::Visibility = harmos::operations::Visibility::Shared;
-    type Request = Request;
     type Response = Response;
+    type Input = harmos::operations::NoStream;
+    type Output = harmos::operations::NoStream;
     const ID: &'static str = "test.parent";
+    const VERSION: u32 = 1;
     const POLICY: OperationPolicy = Compute::POLICY;
 }
 
@@ -261,9 +328,10 @@ impl Operation for SlowCall {
     async fn run<'ctx>(
         &mut self,
         _: Self::Context<'ctx>,
-        request: &mut Request,
+        request: &mut Slow,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Response>, Failed> {
+        let request = &request.0;
         let result: ::core::result::Result<Response, Self::Error> = async move {
             self.owner.runs.fetch_add(1, Ordering::SeqCst);
             // The Attempt Outlives Every Deadline; Only The Policy Ends It.
@@ -293,11 +361,11 @@ impl Operation for ParentCall {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        request: &mut Request,
+        request: &mut Parent,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Response>, Failed> {
         let result: ::core::result::Result<Response, Self::Error> = async move {
-            let response = context.call_as::<Compute>(request.take()).await?;
+            let response = context.call(request.0.take()).await?;
             Ok(Response {
                 value: response.value,
                 attempts: response.attempts,

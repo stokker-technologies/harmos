@@ -17,9 +17,8 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use harmos::operations::{
-    OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireOperation,
-};
+use harmos::operations::{OperationPolicy, RestartPolicy, RetryPolicy, Visibility};
+use harmos::sidecar::Refusal;
 
 /* === Constants === */
 pub const POLICY: OperationPolicy = OperationPolicy {
@@ -40,9 +39,31 @@ pub struct Step {
     pub phase: u64,
 }
 
-pub struct Read;
+#[harmos::message]
+#[harmos::operation(
+    id = "process.graph.read",
+    version = 1,
+    policy = POLICY,
+    response = Step,
+    visibility = Visibility::Shared,
+)]
+#[derive(Clone, PartialEq)]
+pub struct Read {
+    pub phase: u64,
+}
 
-pub struct Probe;
+#[harmos::message]
+#[harmos::operation(
+    id = "process.graph.probe",
+    version = 1,
+    policy = POLICY,
+    response = Step,
+    visibility = Visibility::Host,
+)]
+#[derive(Clone, PartialEq)]
+pub struct Probe {
+    pub phase: u64,
+}
 
 /* === Enums === */
 #[harmos::catalog]
@@ -58,28 +79,11 @@ pub enum Queries {
 /* === Traits === */
 
 /* === Implementations === */
-impl OperationDeclaration for Read {
-    type Request = Step;
-    type Response = Step;
-    const ID: &'static str = "process.graph.read";
-    const POLICY: OperationPolicy = POLICY;
-    const VISIBILITY: Visibility = Visibility::Shared;
-}
-
-impl WireOperation for Read {
-    const VERSION: u32 = 1;
-}
-
-impl OperationDeclaration for Probe {
-    type Request = Step;
-    type Response = Step;
-    const ID: &'static str = "process.graph.probe";
-    const POLICY: OperationPolicy = POLICY;
-    const VISIBILITY: Visibility = Visibility::Host;
-}
-
-impl WireOperation for Probe {
-    const VERSION: u32 = 1;
+impl Marks {
+    pub fn mark(&self, name: &str) -> Result<(), Refusal> {
+        let mut file = std::fs::OpenOptions::new().create(true).append(true).open(self.root.join(name)).map_err(Refusal::of)?;
+        file.write_all(b"1\n").map_err(Refusal::of)
+    }
 }
 
 /* === Public Functions === */

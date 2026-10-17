@@ -42,7 +42,6 @@ struct Declaration {
     requires: Required,
     listeners: Type,
     observers: Type,
-    observer_control: Option<Type>,
     contributions: Vec<Type>,
     streams: Vec<Path>,
     stream_entries: Option<Expr>,
@@ -88,7 +87,6 @@ fn declaration(attribute: TokenStream) -> Result<Declaration, Error> {
     let mut requires = None;
     let mut listeners = None;
     let mut observers = None;
-    let mut observer_control = None;
     let mut contributions = None;
     let mut streams = None;
     let mut stream_entries = None;
@@ -191,20 +189,6 @@ fn declaration(attribute: TokenStream) -> Result<Declaration, Error> {
                     "observers",
                 )?;
             }
-            Meta::NameValue(named) if named.path.is_ident("observer_control") => {
-                set_once(
-                    &mut observer_control,
-                    syn::parse2::<Type>(named.value.to_token_stream())?,
-                    named.span(),
-                    "observer_control",
-                )?;
-            }
-            Meta::List(list) if list.path.is_ident("observer_controls") => {
-                return Err(Error::new(
-                    list.span(),
-                    "observer_controls(Start, Stop) was replaced by `observer_control = Observe`: one Host control declared with observers::POLICY runs each observer until the host cancels it",
-                ));
-            }
             Meta::List(list) if list.path.is_ident("contributions") => {
                 let listed =
                     list.parse_args_with(Punctuated::<Type, Token![,]>::parse_terminated)?;
@@ -256,7 +240,7 @@ fn declaration(attribute: TokenStream) -> Result<Declaration, Error> {
             other => {
                 return Err(Error::new(
                     other.span(),
-                    "a plugin declares `id`, `provides`, `requires` (a catalog or a granted list), optional `description`, `contributions(Contribution, ...)`, typed `listeners` and `observers`, `observer_control = Observe`, `streams(Row, ...)`, `stream_entries`, native `restart`, paired SDK `context` and `config`, and `harmos_path`",
+                    "a plugin declares `id`, `provides`, `requires` (a catalog or a granted list), optional `description`, `contributions(Contribution, ...)`, typed `listeners` and `observers`, `streams(Row, ...)`, `stream_entries`, native `restart`, paired SDK `context` and `config`, and `harmos_path`",
                 ));
             }
         }
@@ -289,7 +273,6 @@ fn declaration(attribute: TokenStream) -> Result<Declaration, Error> {
         })?,
         listeners: listeners.unwrap_or_else(|| syn::parse_quote!(())),
         observers: observers.unwrap_or_else(|| syn::parse_quote!(())),
-        observer_control,
         contributions: contributions.unwrap_or_default(),
         streams: streams.unwrap_or_default(),
         stream_entries,
@@ -444,7 +427,6 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
     let rows = &declared.streams;
     let audience = &declared.listeners;
     let observed = &declared.observers;
-    let controls = declared.observer_control.iter();
     let projected = declared
         .stream_entries
         .as_ref()
@@ -514,8 +496,6 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
                     #inventory::observers::Descriptors,
                     #inventory::observers::Entry
                 >>::ENTRIES;
-            const OBSERVER_CONTROL: &'static [#harmos::operations::WireDeclaration] =
-                &[#(#harmos::operations::WireDeclaration::of::<#controls>()),*];
             const STREAMS: &'static [#entry] = #streams;
             const CONTRIBUTIONS: &'static [#inventory::Section] = &[
                 #(<#contributed as #harmos::__private::PluginContribution>::SECTION),*
@@ -577,20 +557,13 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
         static #observers: &[u8] = {
             const FACILITY: &str = #facility;
             const ENTRIES: &[#harmos::catalog::Node<#inventory::observers::Entry>] = <#name as #declarations>::OBSERVERS;
-            const CONTROLS: &[#harmos::operations::WireDeclaration] = <#name as #declarations>::OBSERVER_CONTROL;
             #inventory::publications::require_tree_subset(ENTRIES, <#name as #declarations>::STREAMS);
-            const _: () = assert!(
-                (#harmos::catalog::count(ENTRIES) == 0 && CONTROLS.is_empty())
-                    || (#harmos::catalog::count(ENTRIES) > 0 && CONTROLS.len() == 1),
-                "nonempty observers require one actual `observer_control = Observe` leaf"
-            );
             const _: () = if FACILITY.as_bytes()[0] == b'g' {
                 assert!(#harmos::catalog::count(ENTRIES) == 0, "guest observer callbacks are unsupported");
-                assert!(CONTROLS.is_empty(), "guest observer controls are unsupported");
             };
-            const LENGTH: usize = #inventory::observers::encoded_tree_len(FACILITY, #id, ENTRIES, CONTROLS);
+            const LENGTH: usize = #inventory::observers::encoded_tree_len(FACILITY, #id, ENTRIES);
             #[used]
-            static MARKER: [u8; LENGTH] = #inventory::observers::encode_tree(FACILITY, #id, ENTRIES, CONTROLS);
+            static MARKER: [u8; LENGTH] = #inventory::observers::encode_tree(FACILITY, #id, ENTRIES);
             &MARKER
         };
 

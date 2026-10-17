@@ -227,7 +227,7 @@ impl OperationManager {
     #[cfg(feature = "grpc")]
     pub(crate) fn submit_external_charged<O: OperationDeclaration, P: Send + 'static>(
         &self,
-        request: super::StreamItem<O::Request>,
+        request: super::StreamItem<O>,
         endpoints: P,
     ) -> Result<OperationInstance<O>> {
         self.admit::<O, P>(
@@ -367,11 +367,6 @@ impl OperationManager {
     ) -> Result<()>
     where
         T: for<'ctx> super::Operation<Context<'ctx> = Context<'ctx>>,
-        T::Declaration: crate::operations::WireOperation,
-        <T::Declaration as OperationDeclaration>::Request:
-            crate::Message + crate::schema::Described,
-        <T::Declaration as OperationDeclaration>::Response:
-            crate::Message + crate::schema::Described,
     {
         self.register_with(owner, |bindings| {
             bindings.register_wire_operation::<T>(lane, resources)
@@ -387,11 +382,6 @@ impl OperationManager {
     ) -> Result<()>
     where
         T: for<'ctx> super::Operation<Context<'ctx> = Context<'ctx>>,
-        T::Declaration: crate::operations::WireOperation,
-        <T::Declaration as OperationDeclaration>::Request:
-            crate::Message + crate::schema::Described,
-        <T::Declaration as OperationDeclaration>::Response:
-            crate::Message + crate::schema::Described,
     {
         self.register_with(owner, |bindings| {
             bindings.register_wire_contract::<T>(contract, lane, resources)
@@ -418,7 +408,9 @@ impl OperationManager {
         definition
             .validate()
             .map_err(|source| Error::OperationDeclaration { source })?;
-        if <T::Endpoints as super::EndpointSet>::item_types() != T::Declaration::endpoint_types() {
+        if <T::Endpoints as super::EndpointSet>::item_types()
+            != super::item_types::<T::Declaration>()
+        {
             return Err(Error::InvalidInput {
                 field: "operation endpoint types",
                 reason: "authored endpoints do not match declared stream item types",
@@ -655,7 +647,7 @@ impl OperationManager {
     pub fn submit_from<O: OperationDeclaration>(
         &self,
         owner: &str,
-        request: O::Request,
+        request: O,
     ) -> Result<OperationInstance<O>> {
         let submitted = executor::now();
         let entry = self.capture_provider(O::ID, Some(owner))?;
@@ -767,30 +759,13 @@ impl OperationManager {
         self.entry(id).map(|entry| entry.owner.clone())
     }
 
-    // The declaration is its own request; `submit_as::<O>` names a separate one.
-    pub fn submit<O: OperationDeclaration<Request = O>>(
-        &self,
-        request: O,
-    ) -> Result<OperationInstance<O>> {
-        self.submit_as::<O>(request)
-    }
-
-    pub async fn call<O: OperationDeclaration<Request = O>>(
-        &self,
-        request: O,
-    ) -> Result<crate::operations::Response<O::Response>> {
-        self.call_as::<O>(request).await
-    }
-    pub fn submit_as<O: OperationDeclaration>(
-        &self,
-        request: O::Request,
-    ) -> Result<OperationInstance<O>> {
+    pub fn submit<O: OperationDeclaration>(&self, request: O) -> Result<OperationInstance<O>> {
         self.admit::<O, ()>((request.into(), ()), None, &[], &Source::Host, None)
     }
 
     pub fn submit_endpoints<O: OperationDeclaration, P: Send + 'static>(
         &self,
-        request: O::Request,
+        request: O,
         endpoints: P,
     ) -> Result<OperationInstance<O>> {
         self.admit::<O, P>((request.into(), endpoints), None, &[], &Source::Host, None)
@@ -798,7 +773,7 @@ impl OperationManager {
 
     pub fn submit_charged<O: OperationDeclaration, P: Send + 'static>(
         &self,
-        request: super::StreamItem<O::Request>,
+        request: super::StreamItem<O>,
         endpoints: P,
     ) -> Result<OperationInstance<O>> {
         self.admit::<O, P>(
@@ -813,21 +788,21 @@ impl OperationManager {
     pub fn submit_at<O: OperationDeclaration>(
         &self,
         id: &str,
-        request: O::Request,
+        request: O,
     ) -> Result<OperationInstance<O>> {
         self.admit_at::<O, ()>(id, (request.into(), ()), None, &[], &Source::Host, None)
     }
 
-    pub async fn call_as<O: OperationDeclaration>(
+    pub async fn call<O: OperationDeclaration>(
         &self,
-        request: O::Request,
+        request: O,
     ) -> Result<crate::operations::Response<O::Response>> {
-        self.submit_as::<O>(request)?.await
+        self.submit(request)?.await
     }
 
     pub fn submit_caused<O: OperationDeclaration>(
         &self,
-        request: O::Request,
+        request: O,
         cause: Position,
     ) -> Result<OperationInstance<O>> {
         self.admit::<O, ()>((request.into(), ()), None, &[], &Source::Host, Some(cause))
@@ -835,7 +810,7 @@ impl OperationManager {
 
     pub async fn call_caused<O: OperationDeclaration>(
         &self,
-        request: O::Request,
+        request: O,
         cause: Position,
     ) -> Result<crate::operations::Response<O::Response>> {
         self.submit_caused::<O>(request, cause)?.await
@@ -848,7 +823,7 @@ impl OperationManager {
     ))]
     pub(super) fn submit_by<O: OperationDeclaration, P: Send + 'static>(
         &self,
-        input: (super::binding::Request<O::Request>, P),
+        input: (super::binding::Request<O>, P),
         source: &Source,
     ) -> Result<OperationInstance<O>> {
         self.admit::<O, P>(input, None, &[], source, None)
@@ -856,7 +831,7 @@ impl OperationManager {
 
     pub(super) fn submit_scoped<O: OperationDeclaration, P: Send + 'static>(
         &self,
-        input: (super::binding::Request<O::Request>, P),
+        input: (super::binding::Request<O>, P),
         scope: &Scope<'_>,
         admission: &Admission,
         source: &Source,
@@ -867,7 +842,7 @@ impl OperationManager {
 
     fn admit<O: OperationDeclaration, P: Send + 'static>(
         &self,
-        input: (super::binding::Request<O::Request>, P),
+        input: (super::binding::Request<O>, P),
         scope: Option<&Scope<'_>>,
         ancestors: &[&'static str],
         source: &Source,
@@ -879,7 +854,7 @@ impl OperationManager {
     pub(super) fn admit_at<O: OperationDeclaration, P: Send + 'static>(
         &self,
         id: &str,
-        input: (super::binding::Request<O::Request>, P),
+        input: (super::binding::Request<O>, P),
         scope: Option<&Scope<'_>>,
         ancestors: &[&'static str],
         source: &Source,
@@ -904,7 +879,7 @@ impl OperationManager {
 
     pub(super) fn admit_entry<O: OperationDeclaration, P: Send + 'static>(
         &self,
-        (mut request, endpoints): (super::binding::Request<O::Request>, P),
+        (mut request, endpoints): (super::binding::Request<O>, P),
         scope: Option<&Scope<'_>>,
         ancestors: &[&'static str],
         source: &Source,

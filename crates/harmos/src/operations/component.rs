@@ -28,9 +28,7 @@ use crate::guest::Error as GuestError;
 use crate::guest::host::session::Endpoint;
 use crate::operations::{
     Declarations, Definition, FailureKind, OperationDeclaration, WireAnswer, WireCommand,
-    WireOperation,
 };
-use crate::schema::Described;
 use crate::{Error, Identifier, Message, operations::Lane};
 
 /* === Constants === */
@@ -69,12 +67,6 @@ struct SdkOperation {
 struct SdkBinding {
     component: Arc<Component>,
     definition: Definition,
-}
-
-struct Project<'a, 'b> {
-    bindings: &'a mut super::Bindings<'b>,
-    lane: &'static str,
-    resources: Arc<Component>,
 }
 
 /* === Enums === */
@@ -137,66 +129,6 @@ impl ComponentError {
     }
 }
 
-impl super::WireVisitor for Project<'_, '_> {
-    type Entry = crate::Result<()>;
-    fn wire<O>(self) -> Self::Entry
-    where
-        O: WireOperation,
-        O::Request: Message + Described,
-        O::Response: Message + Described,
-    {
-        self.bindings
-            .register_owned_wire_at::<ComponentOperation<O, ()>>(self.lane, self.resources)
-    }
-
-    fn upload<O>(self) -> Self::Entry
-    where
-        O: WireOperation + crate::operations::InputDeclaration,
-        O::Request: Message + Described,
-        O::Response: Message + Described,
-        O::Item: Message + crate::MemorySize,
-    {
-        self.bindings
-            .register_owned_wire_at::<ComponentOperation<O, super::StreamInput<O::Item>>>(
-                self.lane,
-                self.resources,
-            )
-    }
-
-    fn download<O>(self) -> Self::Entry
-    where
-        O: WireOperation + crate::operations::OutputDeclaration,
-        O::Request: Message + Described,
-        O::Response: Message + Described,
-        O::Item: Message + crate::MemorySize,
-    {
-        self.bindings
-            .register_owned_wire_at::<ComponentOperation<O, super::StreamOutput<O::Item>>>(
-                self.lane,
-                self.resources,
-            )
-    }
-
-    fn exchange<O>(self) -> Self::Entry
-    where
-        O: WireOperation
-            + crate::operations::InputDeclaration
-            + crate::operations::OutputDeclaration,
-        O::Request: Message + Described,
-        O::Response: Message + Described,
-        <O as crate::operations::InputDeclaration>::Item: Message + crate::MemorySize,
-        <O as crate::operations::OutputDeclaration>::Item: Message + crate::MemorySize,
-    {
-        self.bindings.register_owned_wire_at::<ComponentOperation<
-            O,
-            (
-                super::StreamInput<<O as crate::operations::InputDeclaration>::Item>,
-                super::StreamOutput<<O as crate::operations::OutputDeclaration>::Item>,
-            ),
-        >>(self.lane, self.resources)
-    }
-}
-
 impl super::StreamPeer for Component {
     type Error = ComponentError;
     async fn stream_phase(
@@ -220,8 +152,6 @@ impl<O, E> Operation for ComponentOperation<O, E>
 where
     O: OperationDeclaration,
     E: super::StreamEndpoints,
-    O::Request: Message,
-    O::Response: Message,
 {
     type Declaration = O;
     type Resources = Component;
@@ -245,7 +175,7 @@ where
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        request: &mut O::Request,
+        request: &mut O,
         endpoints: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<O::Response>, ComponentError> {
         let result: ::core::result::Result<O::Response, Self::Error> = async move {
@@ -261,7 +191,7 @@ where
                 }
                 let state = ComponentState {
                     initialized: false,
-                    payload: Some(request.encode_to_vec()),
+                    payload: Some(crate::Message::encode_to_vec(request)),
                     invocation: None,
                     operation: definition.id,
                 };
@@ -333,9 +263,7 @@ impl Visitor for ComponentBindings {
 
 impl<O> Member<O> for ComponentBindings
 where
-    O: WireOperation,
-    O::Request: Message + Described,
-    O::Response: Message + Described,
+    O: crate::operations::OperationDeclaration,
 {
     const ENTRY: super::Binding<Component> = super::Binding {
         register: register::<O>,
@@ -569,7 +497,7 @@ impl Operation for SdkOperation {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        payload: &mut Vec<u8>,
+        payload: &mut super::sdk::Encoded,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<Vec<u8>>, ComponentError> {
         let result: ::core::result::Result<Vec<u8>, Self::Error> = async {
@@ -595,7 +523,7 @@ impl Operation for SdkOperation {
                 }
                 let state = ComponentState {
                     initialized: false,
-                    payload: Some(std::mem::take(payload)),
+                    payload: Some(std::mem::take(&mut payload.0)),
                     invocation: None,
                     operation: binding.definition.id.clone(),
                 };
@@ -652,18 +580,30 @@ fn register<O>(
     component: Arc<Component>,
 ) -> crate::Result<()>
 where
-    O: WireOperation,
-    O::Request: Message + Described,
-    O::Response: Message + Described,
+    O: crate::operations::OperationDeclaration,
 {
-    if let Some(projected) = O::visit_wire(Project {
-        bindings,
-        lane,
-        resources: Arc::clone(&component),
-    }) {
-        projected
-    } else {
-        bindings.register_owned_wire_at::<ComponentOperation<O>>(lane, component)
+    use crate::operations::Direction;
+    type In<O> = super::StreamInput<
+        <<O as crate::operations::OperationDeclaration>::Input as Direction>::Item,
+    >;
+    type Out<O> = super::StreamOutput<
+        <<O as crate::operations::OperationDeclaration>::Output as Direction>::Item,
+    >;
+    match (
+        <O::Input as Direction>::STREAMED,
+        <O::Output as Direction>::STREAMED,
+    ) {
+        (false, false) => {
+            bindings.register_owned_wire_at::<ComponentOperation<O, ()>>(lane, component)
+        }
+        (true, false) => {
+            bindings.register_owned_wire_at::<ComponentOperation<O, In<O>>>(lane, component)
+        }
+        (false, true) => {
+            bindings.register_owned_wire_at::<ComponentOperation<O, Out<O>>>(lane, component)
+        }
+        (true, true) => bindings
+            .register_owned_wire_at::<ComponentOperation<O, (In<O>, Out<O>)>>(lane, component),
     }
 }
 
@@ -679,7 +619,7 @@ fn sdk_dispatch(
         (Some(parent.scope), parent.ancestors)
     });
     let invocation = operations.admit_entry::<super::sdk::Encoded, ()>(
-        (input.payload.into(), ()),
+        (super::sdk::Encoded(input.payload).into(), ()),
         scope,
         ancestors,
         &source,

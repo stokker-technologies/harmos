@@ -188,10 +188,7 @@ impl Router {
             )
             .with_operations(&definition.contributions.operations)
             .with_wire_contracts(&definition.contributions.wire_contracts)
-            .with_observers(
-                &definition.contributions.observers,
-                definition.contributions.observer_control.as_ref(),
-            )
+            .with_observers(&definition.contributions.observers)
             .with_streams(&definition.contributions.streams)
             .with_listeners(&definition.contributions.listeners)
             .with_lifecycle(definition.contributions.lifecycle.as_ref());

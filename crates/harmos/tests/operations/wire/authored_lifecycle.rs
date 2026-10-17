@@ -42,11 +42,18 @@
 use harmos::operations::*;
 use harmos::operations::{Backoff, Jitter, OperationPolicy, RestartPolicy, RetryPolicy};
 use std::sync::Arc;
-use std::{cell::Cell, sync::Mutex, time::Duration};
+use std::{sync::Mutex, time::Duration};
 
+// The Request Carries The Shared Event Log, So It Stays In Process.
 struct Request {
-    value: Cell<u32>,
+    value: u32,
     events: Arc<Mutex<Vec<&'static str>>>,
+}
+crate::in_process!(Request);
+impl harmos::MemorySize for Request {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+    }
 }
 impl Drop for Request {
     fn drop(&mut self) {
@@ -59,20 +66,18 @@ enum LifecycleLanes {
     Owned,
 }
 
-struct Declaration;
-impl OperationDeclaration for Declaration {
-    type Request = Request;
+impl OperationDeclaration for Request {
     type Response = u32;
+    type Input = NoStream;
+    type Output = NoStream;
     const ID: &'static str = "borrowed.request";
+    const VERSION: u32 = 1;
     const POLICY: OperationPolicy = OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_secs(1),
         retries: RetryPolicy::OnTransient {
             max_retries: 1,
-            backoff: Backoff::Fixed {
-                delay: Duration::from_millis(1),
-                jitter: Jitter::None,
-            },
+            backoff: Backoff::Fixed { delay: Duration::from_millis(1), jitter: Jitter::None },
         },
         restart: RestartPolicy::Never,
     };
@@ -82,22 +87,16 @@ struct Read {
     address: Option<usize>,
 }
 impl Operation for Read {
-    type Declaration = Declaration;
+    type Declaration = Request;
     type Resources = Mutex<Vec<&'static str>>;
     type Error = std::io::Error;
     type Context<'a> = Context<'a>;
     type Endpoints = ();
 
-    async fn initialize<'ctx>(
-        events: Arc<Self::Resources>,
-        _context: Self::Context<'ctx>,
-    ) -> std::io::Result<Self> {
+    async fn initialize<'ctx>(events: Arc<Self::Resources>, _context: Self::Context<'ctx>) -> std::io::Result<Self> {
         let constructed: std::io::Result<Self> = async move {
             events.lock().unwrap().push("new");
-            Ok(Self {
-                events,
-                address: None,
-            })
+            Ok(Self { events, address: None })
         }
         .await;
         let mut operation = constructed?;
@@ -111,10 +110,7 @@ impl Operation for Read {
         Ok(operation)
     }
     async fn run<'a>(
-        &mut self,
-        _: Self::Context<'a>,
-        request: &mut Request,
-        _: &mut Self::Endpoints,
+        &mut self, _: Self::Context<'a>, request: &mut Request, _: &mut Self::Endpoints,
     ) -> std::io::Result<harmos::operations::Response<u32>> {
         let result: ::core::result::Result<u32, Self::Error> = async move {
             self.events.lock().unwrap().push("run");
@@ -123,11 +119,11 @@ impl Operation for Read {
                 assert_eq!(original, address);
             }
             self.address = Some(address);
-            request.value.set(request.value.get() + 1);
-            if request.value.get() == 20 {
+            request.value += 1;
+            if request.value == 20 {
                 return Err(std::io::Error::other("retry"));
             }
-            Ok(request.value.get())
+            Ok(request.value)
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -149,39 +145,18 @@ impl Operation for Read {
 
 #[tokio::test(start_paused = true)]
 async fn request_outlives_cleanup() {
-    let runtime =
-        harmos::Runtime::<crate::probe::Editor>::builder(crate::probe::Sheet::default(), ())
-            .register(LifecycleLanes::catalog())
-            .runtime()
-            .await
-            .unwrap();
+    let runtime = harmos::Runtime::<crate::probe::Editor>::builder(crate::probe::Sheet::default(), ())
+        .register(LifecycleLanes::catalog())
+        .runtime()
+        .await
+        .unwrap();
     let events = Arc::new(Mutex::new(Vec::new()));
-    runtime
-        .operations
-        .register_operation::<Read>("owner", LifecycleLanes::Owned, events.clone())
-        .unwrap();
-    let request = Request {
-        value: Cell::new(19),
-        events: events.clone(),
-    };
-    let call = runtime
-        .operations
-        .submit_as::<Declaration>(request)
-        .unwrap();
+    runtime.operations.register_operation::<Read>("owner", LifecycleLanes::Owned, events.clone()).unwrap();
+    let request = Request { value: 19, events: events.clone() };
+    let call = runtime.operations.submit(request).unwrap();
     assert_eq!(*call.join().await.unwrap(), 21);
     runtime.stop().await.unwrap();
-    assert_eq!(
-        *events.lock().unwrap(),
-        [
-            "new",
-            "initialize",
-            "run",
-            "run",
-            "stop",
-            "finalize",
-            "request dropped"
-        ]
-    );
+    assert_eq!(*events.lock().unwrap(), ["new", "initialize", "run", "run", "stop", "finalize", "request dropped"]);
 }
 
 #[tokio::test(start_paused = true)]
@@ -190,40 +165,22 @@ async fn transfer_blocks_retry() {
         num::NonZeroUsize,
         sync::atomic::{AtomicUsize, Ordering},
     };
-    let runtime =
-        harmos::Runtime::<crate::probe::Editor>::builder(crate::probe::Sheet::default(), ())
-            .register(LifecycleLanes::catalog())
-            .runtime()
-            .await
-            .unwrap();
-    let runs = Arc::new(AtomicUsize::new(0));
-    runtime
-        .operations
-        .register_operation::<Streaming>("owner", LifecycleLanes::Owned, runs.clone())
+    let runtime = harmos::Runtime::<crate::probe::Editor>::builder(crate::probe::Sheet::default(), ())
+        .register(LifecycleLanes::catalog())
+        .runtime()
+        .await
         .unwrap();
-    let settings = harmos::operations::StreamSettings {
-        items: NonZeroUsize::new(2).unwrap(),
-        bytes: NonZeroUsize::new(8).unwrap(),
-    };
+    let runs = Arc::new(AtomicUsize::new(0));
+    runtime.operations.register_operation::<Streaming>("owner", LifecycleLanes::Owned, runs.clone()).unwrap();
+    let settings = harmos::operations::StreamSettings { items: NonZeroUsize::new(2).unwrap(), bytes: NonZeroUsize::new(8).unwrap() };
     for mode in [0, 1, 2, 3] {
         runs.store(0, Ordering::SeqCst);
         let (send, input) = harmos::operations::stream::<u32>(settings).unwrap();
         let (output, mut receive) = harmos::operations::stream::<u32>(settings).unwrap();
-        let instance = runtime
-            .operations
-            .submit_endpoints::<StreamingDeclaration, _>(mode, (input, output))
-            .unwrap();
+        let instance = runtime.operations.submit_endpoints(StreamingDeclaration { mode }, (input, output)).unwrap();
         if mode == 2 {
             // The input item arrives while the failed attempt waits to retry.
-            drop(
-                instance
-                    .subscribe()
-                    .wait_for(|status| {
-                        status.phase() == harmos::operations::OperationPhase::RetryWaiting
-                    })
-                    .await
-                    .unwrap(),
-            );
+            drop(instance.subscribe().wait_for(|status| status.phase() == harmos::operations::OperationPhase::RetryWaiting).await.unwrap());
             send.send_with(4, || Ok(9)).await.unwrap();
         }
         assert!(instance.join().await.is_err());
@@ -235,27 +192,34 @@ async fn transfer_blocks_retry() {
     runtime.stop().await.unwrap();
 }
 
+#[harmos::message]
+#[harmos::operation(
+    harmos_path = harmos,
+    id = "streaming",
+    version = 1,
+    response = (),
+    policy = Request::POLICY,
+    input = u32,
+    output = u32
+)]
+struct StreamingDeclaration {
+    mode: u32,
+}
 struct Streaming(Arc<std::sync::atomic::AtomicUsize>, bool);
-#[harmos::operation(harmos_path = harmos, policy = Declaration::POLICY, input = u32, output = u32)]
+#[harmos::operation(harmos_path = harmos)]
 impl Streaming {
     async fn initialize(resources: Arc<std::sync::atomic::AtomicUsize>, _: Context<'_>) -> Self {
         Self(resources, false)
     }
     async fn run(
-        &mut self,
-        _: Context<'_>,
-        mode: &u32,
-        _: &mut harmos::operations::StreamInput<u32>,
+        &mut self, _: Context<'_>, request: &mut StreamingDeclaration, _: &mut harmos::operations::StreamInput<u32>,
         output: &mut harmos::operations::StreamOutput<u32>,
     ) -> std::result::Result<(), std::io::Error> {
         self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         // Provider Transfer May Be Known Before Any Local Item Is Delivered.
-        self.1 = *mode == 3;
-        if *mode == 1 {
-            output
-                .send_with(4, || Ok(7))
-                .await
-                .map_err(std::io::Error::other)?;
+        self.1 = request.mode == 3;
+        if request.mode == 1 {
+            output.send_with(4, || Ok(7)).await.map_err(std::io::Error::other)?;
         }
         Err(std::io::Error::other("transient stream failure"))
     }

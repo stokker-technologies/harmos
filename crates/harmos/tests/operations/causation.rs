@@ -46,14 +46,23 @@ struct Descend;
 struct Family;
 
 /* === Enums === */
-#[harmos::operation(request = String, response = (), id = "causation.note", policy = POLICY)]
-struct NoteContract;
+#[harmos::message]
+#[harmos::operation(response = (), id = "causation.note", version = 1, policy = POLICY)]
+struct NoteContract {
+    label: String,
+}
 
-#[harmos::operation(request = String, response = (), id = "causation.descend", policy = POLICY)]
-struct DescendContract;
+#[harmos::message]
+#[harmos::operation(response = (), id = "causation.descend", version = 1, policy = POLICY)]
+struct DescendContract {
+    label: String,
+}
 
-#[harmos::operation(request = Position, response = (), id = "causation.family", policy = POLICY)]
-struct FamilyContract;
+#[harmos::message]
+#[harmos::operation(response = (), id = "causation.family", version = 1, policy = POLICY)]
+struct FamilyContract {
+    cause: u64,
+}
 
 #[harmos::catalog]
 enum Operations {
@@ -78,17 +87,10 @@ impl Operation for Note {
     }
 
     async fn run<'ctx>(
-        &mut self,
-        context: Self::Context<'ctx>,
-        request: &mut String,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, context: Self::Context<'ctx>, request: &mut NoteContract, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<()>, Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
-            context
-                .scope()
-                .records::<Bank>()
-                .publish(Noted(request.clone()))
-                .await?;
+            context.scope().records::<Bank>().publish(Noted(request.label.clone())).await?;
             Ok(())
         }
         .await;
@@ -108,20 +110,11 @@ impl Operation for Descend {
     }
 
     async fn run<'ctx>(
-        &mut self,
-        context: Self::Context<'ctx>,
-        request: &mut String,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, context: Self::Context<'ctx>, request: &mut DescendContract, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<()>, Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
-            context
-                .scope()
-                .records::<Bank>()
-                .publish(Noted(request.clone()))
-                .await?;
-            context
-                .submit_as::<NoteContract>(format!("{}-child", *request))?
-                .await?;
+            context.scope().records::<Bank>().publish(Noted(request.label.clone())).await?;
+            context.submit(NoteContract { label: format!("{}-child", request.label) })?.await?;
             Ok(())
         }
         .await;
@@ -141,23 +134,12 @@ impl Operation for Family {
     }
 
     async fn run<'ctx>(
-        &mut self,
-        context: Self::Context<'ctx>,
-        request: &mut Position,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, context: Self::Context<'ctx>, request: &mut FamilyContract, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<()>, Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
-            context
-                .scope()
-                .records::<Bank>()
-                .publish(Noted("parent".to_owned()))
-                .await?;
-            context
-                .submit_as::<DescendContract>("inherited".to_owned())?
-                .await?;
-            context
-                .submit_caused::<DescendContract>("rerooted".to_owned(), *request)?
-                .await?;
+            context.scope().records::<Bank>().publish(Noted("parent".to_owned())).await?;
+            context.submit(DescendContract { label: "inherited".to_owned() })?.await?;
+            context.submit_caused(DescendContract { label: "rerooted".to_owned() }, Position(request.cause))?.await?;
             Ok(())
         }
         .await;
@@ -169,24 +151,10 @@ impl Operation for Family {
 
 /* === Private Functions === */
 async fn runtime() -> Runtime<Bank> {
-    let runtime = Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .register(Lanes::catalog())
-        .runtime()
-        .await
-        .unwrap();
-    runtime
-        .operations
-        .register_operation::<Family>("app", Lanes::Serial, Arc::new(()))
-        .unwrap();
-    runtime
-        .operations
-        .register_operation::<Descend>("app", Lanes::Concurrent, Arc::new(()))
-        .unwrap();
-    runtime
-        .operations
-        .register_operation::<Note>("app", Lanes::Open, Arc::new(()))
-        .unwrap();
+    let runtime = Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).register(Lanes::catalog()).runtime().await.unwrap();
+    runtime.operations.register_operation::<Family>("app", Lanes::Serial, Arc::new(())).unwrap();
+    runtime.operations.register_operation::<Descend>("app", Lanes::Concurrent, Arc::new(())).unwrap();
+    runtime.operations.register_operation::<Note>("app", Lanes::Open, Arc::new(())).unwrap();
     runtime
 }
 
@@ -195,20 +163,12 @@ async fn runtime() -> Runtime<Bank> {
 #[tokio::test]
 async fn children_inherit_cause() {
     let runtime = runtime().await;
-    let causing = runtime
-        .state
-        .commit(support::deposit(5))
-        .await
-        .expect("the causing deposit lands");
-    let other = runtime
-        .state
-        .commit(support::deposit(7))
-        .await
-        .expect("the second cause lands");
+    let causing = runtime.state.commit(support::deposit(5)).await.expect("the causing deposit lands");
+    let other = runtime.state.commit(support::deposit(7)).await.expect("the second cause lands");
 
     runtime
         .operations
-        .submit_caused::<FamilyContract>(other.position, causing.position)
+        .submit_caused(FamilyContract { cause: other.position.0 }, causing.position)
         .unwrap()
         .await
         .expect("every generation records its fact");
@@ -227,41 +187,21 @@ async fn children_inherit_cause() {
     let root = Some(CausationId(causing.position));
     let other = Some(CausationId(other.position));
     assert_eq!(noted.get("parent"), Some(&root));
-    assert_eq!(
-        noted.get("inherited"),
-        Some(&root),
-        "a submitted child inherits the cause its parent's attempt carries"
-    );
-    assert_eq!(
-        noted.get("inherited-child"),
-        Some(&root),
-        "inheritance chains: a default-lane grandchild is in the same family"
-    );
-    assert_eq!(
-        noted.get("rerooted"),
-        Some(&other),
-        "a child that named its own cause re-roots itself"
-    );
-    assert_eq!(
-        noted.get("rerooted-child"),
-        Some(&other),
-        "and everything beneath it inherits the cause it re-rooted onto"
-    );
+    assert_eq!(noted.get("inherited"), Some(&root), "a submitted child inherits the cause its parent's attempt carries");
+    assert_eq!(noted.get("inherited-child"), Some(&root), "inheritance chains: a default-lane grandchild is in the same family");
+    assert_eq!(noted.get("rerooted"), Some(&other), "a child that named its own cause re-roots itself");
+    assert_eq!(noted.get("rerooted-child"), Some(&other), "and everything beneath it inherits the cause it re-rooted onto");
     runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
 async fn caused_submit_records() {
     let runtime = runtime().await;
-    let receipt = runtime
-        .state
-        .commit(support::deposit(5))
-        .await
-        .expect("the causing deposit lands");
+    let receipt = runtime.state.commit(support::deposit(5)).await.expect("the causing deposit lands");
 
     runtime
         .operations
-        .submit_caused::<NoteContract>("answered".to_owned(), receipt.position)
+        .submit_caused(NoteContract { label: "answered".to_owned() }, receipt.position)
         .unwrap()
         .await
         .expect("the caused job records its fact");

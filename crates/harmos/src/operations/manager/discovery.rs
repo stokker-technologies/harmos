@@ -23,7 +23,7 @@ use serde::Serialize;
 use super::{Entry, OperationManager};
 use crate::operations::Contract;
 use crate::operations::caller::Source;
-use crate::operations::host::{OperationsRequest, OperationsResponse};
+use crate::operations::host::{Operations, OperationsResponse};
 use crate::{Error, Identifier, Result};
 use harmos_domain::plugin::Grant;
 
@@ -76,7 +76,7 @@ impl OperationManager {
     pub(in crate::operations) fn discover(
         &self,
         source: &Source,
-        request: &OperationsRequest,
+        request: &Operations,
     ) -> Result<OperationsResponse> {
         let origin = source.check()?;
         let rows = request.rows.unwrap_or(64);

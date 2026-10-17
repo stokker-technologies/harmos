@@ -25,20 +25,14 @@ use std::time::Duration;
 use super::operations::{Lanes, Managed};
 use harmos::operations::OperationPhase;
 use harmos::operations::resident::{Key, Kind, Snapshot};
-use harmos::operations::{
-    OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireOperation,
-};
-use harmos::sidecar::{
-    Attach, DemandKey, ObserverAttachment, ObserverContext, PublicationError, PublishError,
-    Publisher, Supervisor,
-};
+use harmos::operations::{OperationPolicy, RestartPolicy, RetryPolicy};
+use harmos::sidecar::{Attach, DemandKey, ObserverAttachment, ObserverContext, PublicationError, PublishError, Publisher, Supervisor};
 
 /* === Constants === */
 const RECORD: DemandKey = DemandKey::new("fixture.record", "sample");
 const AUXILIARY: DemandKey = DemandKey::new("fixture", "auxiliary");
 static NEXT_SEED: AtomicUsize = AtomicUsize::new(1);
-static SEEDS: Mutex<std::collections::BTreeMap<usize, Weak<Counts>>> =
-    Mutex::new(std::collections::BTreeMap::new());
+static SEEDS: Mutex<std::collections::BTreeMap<usize, Weak<Counts>>> = Mutex::new(std::collections::BTreeMap::new());
 
 /* === Macros === */
 
@@ -77,8 +71,6 @@ struct Producer {
     attachment: Arc<ObserverAttachment<Resources, Publisher<Producer>>>,
 }
 
-struct Observe;
-
 struct RecordOnly(Arc<Counts>);
 
 struct Mixed(Arc<Counts>);
@@ -88,11 +80,6 @@ struct Mixed(Arc<Counts>);
 enum Observers {
     RecordOnly(RecordOnly),
     Mixed(Mixed),
-}
-
-#[harmos::catalog]
-enum Operations {
-    Observe(Observe),
 }
 
 /* === Traits === */
@@ -114,18 +101,6 @@ impl Drop for Seed {
     }
 }
 
-impl OperationDeclaration for Observe {
-    type Request = harmos_domain::observers::Control;
-    type Response = ();
-    const ID: &'static str = "demand.observer.observe";
-    const VISIBILITY: Visibility = Visibility::Host;
-    const POLICY: OperationPolicy = harmos_domain::observers::POLICY;
-}
-
-impl WireOperation for Observe {
-    const VERSION: u32 = 1;
-}
-
 const LIFECYCLE: OperationPolicy = OperationPolicy {
     timeout: Duration::from_secs(2),
     attempt_timeout: Duration::from_millis(500),
@@ -138,7 +113,7 @@ impl harmos::operations::lifecycle::Policy for Producer {
     const SHUTDOWN_POLICY: OperationPolicy = LIFECYCLE;
 }
 
-#[harmos::plugin(id = "demand-authoring", provides = Operations, requires(harmos::operations::streams::Publish),  observers = Observers, observer_control = Observe, streams(Row))]
+#[harmos::plugin(id = "demand-authoring", provides = (), requires(harmos::operations::streams::Publish),  observers = Observers, streams(Row))]
 impl harmos::Plugin for Producer {
     type Config = usize;
     type Resources = Resources;
@@ -150,20 +125,13 @@ impl harmos::Plugin for Producer {
             .unwrap()
             .remove(&id)
             .and_then(|counts| counts.upgrade())
-            .ok_or_else(|| {
-                harmos::sidecar::Refusal::of("original fixture resources unavailable")
-            })?;
+            .ok_or_else(|| harmos::sidecar::Refusal::of("original fixture resources unavailable"))?;
         counts.prepared.fetch_add(1, SeqCst);
         counts.progress.send_replace(());
         let resources = Arc::new(Resources { counts });
-        let attachment = ObserverAttachment::from_catalog::<Observers>(
-            resources.clone(),
-            <Self as harmos_domain::plugin::Declared>::STREAMS,
-        )?;
-        Ok(Self {
-            resources,
-            attachment,
-        })
+        let attachment =
+            ObserverAttachment::from_catalog::<Observers>(resources.clone(), <Self as harmos_domain::plugin::Declared>::STREAMS)?;
+        Ok(Self { resources, attachment })
     }
     async fn initialize(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
         self.resources.counts.initialized.fetch_add(1, SeqCst);
@@ -173,11 +141,8 @@ impl harmos::Plugin for Producer {
     fn resources(&self) -> Arc<Resources> {
         self.resources.clone()
     }
-    fn bind_operations(
-        &self,
-        table: &mut harmos::operations::WireTable<Supervisor>,
-    ) -> Result<(), harmos::operations::ServingError> {
-        self.attachment.bind::<Observe>(table)
+    fn bind_operations(&self, table: &mut harmos::operations::WireTable<Supervisor>) -> Result<(), harmos::operations::ServingError> {
+        self.attachment.bind(table)
     }
     fn attachment(&self) -> Option<Arc<dyn harmos_domain::plugin::Attachment<Supervisor>>> {
         Some(self.attachment.clone())
@@ -187,36 +152,23 @@ impl harmos::Plugin for Producer {
     }
     async fn cleanup(&mut self) -> Result<(), Self::Error> {
         for index in 0..2 {
-            assert_eq!(
-                self.resources.counts.started[index].load(SeqCst),
-                self.resources.counts.stopped[index].load(SeqCst)
-            );
+            assert_eq!(self.resources.counts.started[index].load(SeqCst), self.resources.counts.stopped[index].load(SeqCst));
         }
         Ok(())
     }
 }
 
-#[harmos::observer(
-    id = "demand.record-only",
-    interval_ms = 5,
-    activation = "demand",
-    demand_keys(RECORD)
-)]
+#[harmos::observer(id = "demand.record-only", interval_ms = 5, activation = "demand", demand_keys(RECORD))]
 impl RecordOnly {
     async fn initialize(resources: &Resources) -> Result<Self, Infallible> {
         resources.counts.started[0].fetch_add(1, SeqCst);
         resources.counts.progress.send_replace(());
         Ok(Self(resources.counts.clone()))
     }
-    async fn observe(
-        &mut self,
-        ctx: &ObserverContext<'_, Resources, Publisher<Producer>>,
-    ) -> Result<(), Infallible> {
+    async fn observe(&mut self, ctx: &ObserverContext<'_, Resources, Publisher<Producer>>) -> Result<(), Infallible> {
         assert!(matches!(
             ctx.publish_on::<Row>(&Row { sample: 0 }).await,
-            Err(PublishError::Publication(
-                PublicationError::Undeclared { .. }
-            ))
+            Err(PublishError::Publication(PublicationError::Undeclared { .. }))
         ));
         ctx.resources().counts.rejected.fetch_add(1, SeqCst);
         ctx.resources().counts.progress.send_replace(());
@@ -232,23 +184,14 @@ impl RecordOnly {
     }
 }
 
-#[harmos::observer(
-    id = "demand.mixed",
-    interval_ms = 5,
-    activation = "demand",
-    streams(Row),
-    demand_keys(RECORD, AUXILIARY)
-)]
+#[harmos::observer(id = "demand.mixed", interval_ms = 5, activation = "demand", streams(Row), demand_keys(RECORD, AUXILIARY))]
 impl Mixed {
     async fn initialize(resources: &Resources) -> Result<Self, Infallible> {
         resources.counts.started[1].fetch_add(1, SeqCst);
         resources.counts.progress.send_replace(());
         Ok(Self(resources.counts.clone()))
     }
-    async fn observe(
-        &mut self,
-        ctx: &ObserverContext<'_, Resources, Publisher<Producer>>,
-    ) -> Result<(), Infallible> {
+    async fn observe(&mut self, ctx: &ObserverContext<'_, Resources, Publisher<Producer>>) -> Result<(), Infallible> {
         ctx.publish_on::<Row>(&Row { sample: 1 }).await.unwrap();
         ctx.resources().counts.observed[1].fetch_add(1, SeqCst);
         ctx.resources().counts.progress.send_replace(());
@@ -265,24 +208,12 @@ impl Mixed {
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn observers(
-    runtime: &harmos::Runtime<crate::support::Bank>,
-) -> std::collections::BTreeMap<Key, Snapshot> {
-    runtime
-        .operations
-        .residents()
-        .into_iter()
-        .filter(|(_, status)| status.kind == Kind::Observer)
-        .collect()
+fn observers(runtime: &harmos::Runtime<crate::support::Bank>) -> std::collections::BTreeMap<Key, Snapshot> {
+    runtime.operations.residents().into_iter().filter(|(_, status)| status.kind == Kind::Observer).collect()
 }
 
 async fn until(counts: &Counts, predicate: impl Fn() -> bool) {
-    counts
-        .progress
-        .subscribe()
-        .wait_for(|_| predicate())
-        .await
-        .expect("observer demand converges");
+    counts.progress.subscribe().wait_for(|_| predicate()).await.expect("observer demand converges");
 }
 
 #[tokio::test]
@@ -309,10 +240,7 @@ async fn demand_survives_reload() {
     assert!(!SEEDS.lock().unwrap().contains_key(&seed.id));
     assert_eq!(counts.prepared.load(SeqCst), 1);
     until(&counts, || counts.observed.iter().all(|count| count.load(SeqCst) > 0)).await;
-    assert!(
-        counts.rejected.load(SeqCst) > 0,
-        "record demand grants no stream publication"
-    );
+    assert!(counts.rejected.load(SeqCst) > 0, "record demand grants no stream publication");
     assert_eq!(counts.initialized.load(SeqCst), 1);
     assert_eq!(counts.started[0].load(SeqCst), 1);
     assert_eq!(counts.started[1].load(SeqCst), 1);
@@ -321,11 +249,7 @@ async fn demand_survives_reload() {
 
     let second = demands.hold(&RECORD.name()).unwrap();
     let auxiliary = demands.hold(&AUXILIARY.name()).unwrap();
-    let stream = fixture
-        .runtime
-        .streams
-        .publication("demand.row", 1)
-        .unwrap();
+    let stream = fixture.runtime.streams.publication("demand.row", 1).unwrap();
     let rows = stream.watch();
     drop(first);
     let before = counts.observed[0].load(SeqCst);
@@ -349,14 +273,8 @@ async fn demand_survives_reload() {
     let mut statuses = fixture.runtime.operations.watch_residents();
     statuses
         .wait_for(|values| {
-            let observers: Vec<_> = values
-                .values()
-                .filter(|status| status.kind == Kind::Observer)
-                .collect();
-            observers.len() == 2
-                && observers
-                    .iter()
-                    .all(|status| status.lifecycle.phase() == OperationPhase::Stopped)
+            let observers: Vec<_> = values.values().filter(|status| status.kind == Kind::Observer).collect();
+            observers.len() == 2 && observers.iter().all(|status| status.lifecycle.phase() == OperationPhase::Stopped)
         })
         .await
         .unwrap();
@@ -364,31 +282,16 @@ async fn demand_survives_reload() {
     let held = demands.hold(&RECORD.name()).unwrap();
     until(&counts, || counts.started.iter().all(|count| count.load(SeqCst) == 2)).await;
     fixture.shutdown().await.unwrap();
-    assert!(
-        fixture
-            .runtime
-            .operations
-            .resident_definitions()
-            .iter()
-            .all(|definition| definition.kind() != Kind::Observer)
-    );
+    assert!(fixture.runtime.operations.resident_definitions().iter().all(|definition| definition.kind() != Kind::Observer));
     assert_eq!(counts.stopped[0].load(SeqCst), 2);
     assert_eq!(counts.stopped[1].load(SeqCst), 2);
     let replacement_seed = Seed::new(&counts);
-    fixture
-        .reload(serde_json::to_vec(&replacement_seed.id).unwrap())
-        .await
-        .unwrap();
+    fixture.reload(serde_json::to_vec(&replacement_seed.id).unwrap()).await.unwrap();
     assert_eq!(counts.prepared.load(SeqCst), 2);
     until(&counts, || counts.started.iter().all(|count| count.load(SeqCst) == 3)).await;
     assert_eq!(counts.initialized.load(SeqCst), 2);
     let replacement = observers(&fixture.runtime);
-    assert!(
-        replacement
-            .keys()
-            .all(|key| !first_statuses.contains_key(key)),
-        "reload gets fresh resource scopes"
-    );
+    assert!(replacement.keys().all(|key| !first_statuses.contains_key(key)), "reload gets fresh resource scopes");
     drop(held);
     fixture.shutdown().await.unwrap();
     fixture.runtime.stop().await.unwrap();
@@ -400,24 +303,15 @@ async fn demand_survives_reload() {
 fn catalog_keys_isolated() {
     let counts = Arc::new(Counts::default());
     let seed = Seed::new(&counts);
-    let declaration =
-        harmos_sidecar::PluginNative::<Producer>::new(std::num::NonZeroUsize::new(2).unwrap())
-            .unwrap();
+    let declaration = harmos_sidecar::PluginNative::<Producer>::new(std::num::NonZeroUsize::new(2).unwrap()).unwrap();
     assert!(SEEDS.lock().unwrap().contains_key(&seed.id));
     assert_eq!(counts.prepared.load(SeqCst), 0);
     let observers = declaration.observers();
-    harmos::sidecar::inventory::observers::validate(&observers, &declaration.publications())
-        .unwrap();
-    let record = observers
-        .iter()
-        .find(|observer| observer.id == "demand.record-only")
-        .unwrap();
+    harmos::sidecar::inventory::observers::validate(&observers, &declaration.publications()).unwrap();
+    let record = observers.iter().find(|observer| observer.id == "demand.record-only").unwrap();
     assert!(record.streams.is_empty());
     assert_eq!(record.demand_keys, [RECORD.name()]);
-    let mixed = observers
-        .iter()
-        .find(|observer| observer.id == "demand.mixed")
-        .unwrap();
+    let mixed = observers.iter().find(|observer| observer.id == "demand.mixed").unwrap();
     assert_eq!(mixed.streams, ["demand.row"]);
     assert_eq!(mixed.demand_keys, [RECORD.name(), AUXILIARY.name()]);
 }

@@ -22,10 +22,9 @@ use std::time::Duration;
 use super::operations::{Calling, Lanes, Managed};
 use harmos::Message;
 use harmos::operations::{
-    Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility,
-    WireOperation, WireTable,
+    Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, WireTable,
 };
-use harmos_domain::listeners::{Context as DeliveryContext, Delivery};
+use harmos_domain::listeners::{Context as DeliveryContext, Delivery, Listener};
 use harmos_sidecar::{Refusal, Supervisor};
 
 /* === Constants === */
@@ -36,6 +35,8 @@ static SEEDS: Mutex<std::collections::BTreeMap<usize, Weak<Probe>>> =
 /* === Macros === */
 
 /* === Type Aliases === */
+// The Callback Operation Is The Delivery Of Its Listener.
+type Observe = Delivery<Observed>;
 
 /* === Structs === */
 #[derive(Default)]
@@ -53,7 +54,8 @@ struct Receiver {
     probe: Arc<Probe>,
 }
 
-struct Observe;
+// The Listener Declaration Whose Delivery Is The Callback Request.
+struct Observed;
 
 struct InFlight<'a>(&'a Probe);
 
@@ -142,21 +144,15 @@ impl harmos::Plugin for Receiver {
     }
 }
 
-impl OperationDeclaration for Observe {
-    type Request = Delivery<Observation>;
-    type Response = ();
-    const ID: &'static str = "probe.observe";
-    const VISIBILITY: Visibility = Visibility::Host;
+impl Listener for Observed {
+    type Row = Observation;
+    const CALLBACK: &'static str = "probe.observe";
     const POLICY: OperationPolicy = OperationPolicy {
         timeout: Duration::from_secs(2),
         attempt_timeout: Duration::from_millis(100),
         retries: RetryPolicy::Never,
         restart: RestartPolicy::Never,
     };
-}
-
-impl WireOperation for Observe {
-    const VERSION: u32 = 1;
 }
 
 struct Observing {
@@ -178,7 +174,7 @@ impl Operation for Observing {
     async fn run<'a>(
         &mut self,
         _: Self::Context<'a>,
-        request: &mut Delivery<Observation>,
+        request: &mut Observe,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<()>, Refusal> {
         let result: ::core::result::Result<(), Self::Error> = async move {
@@ -209,7 +205,7 @@ impl Operation for Observing {
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn delivered(value: u32) -> Delivery<Observation> {
+fn delivered(value: u32) -> Observe {
     Delivery::new(
         DeliveryContext::Record {
             position: harmos::state::Position(1),

@@ -24,10 +24,7 @@ use super::{
     support::{Bank, Noted},
 };
 use harmos::operations::{Context, Operation, OperationPolicy, RestartPolicy, RetryPolicy};
-use harmos::{
-    Error, Refusal, services::Fault, services::ServiceExit, services::ServiceStatus,
-    state::Position,
-};
+use harmos::{Error, Refusal, services::Fault, services::ServiceExit, services::ServiceStatus, state::Position};
 
 /* === Constants === */
 
@@ -93,21 +90,12 @@ impl Operation for Ordered {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    async fn initialize<'ctx>(
-        sequence: Arc<Sequence>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Self::Error> {
-        Ok(Self {
-            running: false,
-            sequence,
-        })
+    async fn initialize<'ctx>(sequence: Arc<Sequence>, _: Self::Context<'ctx>) -> Result<Self, Self::Error> {
+        Ok(Self { running: false, sequence })
     }
 
     async fn run<'ctx>(
-        &mut self,
-        _context: Self::Context<'ctx>,
-        running: &mut bool,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, _context: Self::Context<'ctx>, running: &mut bool, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<()>, Self::Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             self.running = *running;
@@ -135,10 +123,7 @@ impl Operation for Ordered {
 impl harmos::services::Resident<super::Bank> for Owned {
     type Error = std::io::Error;
 
-    async fn run(
-        &mut self,
-        mut context: harmos::services::Service<super::Bank>,
-    ) -> Result<(), Fault<Self::Error>> {
+    async fn run(&mut self, mut context: harmos::services::Service<super::Bank>) -> Result<(), Fault<Self::Error>> {
         context.ready();
         self.0.running.notify_one();
         context.stopping().await;
@@ -159,10 +144,7 @@ impl harmos::services::Resident<super::Bank> for Owned {
 impl harmos::services::Resident<Bank> for PhysicalStop {
     type Error = std::io::Error;
 
-    async fn run(
-        &mut self,
-        mut context: harmos::services::Service<Bank>,
-    ) -> Result<(), Fault<Self::Error>> {
+    async fn run(&mut self, mut context: harmos::services::Service<Bank>) -> Result<(), Fault<Self::Error>> {
         context.ready();
         self.0.running.notify_one();
         context.stopping().await;
@@ -223,11 +205,7 @@ async fn service_stop_observer() {
                 demand_keys: vec![],
             })
         }
-        async fn run(
-            &self,
-            gates: Arc<Cleanup>,
-            mut activation: harmos::observers::ObserverActivation,
-        ) -> harmos::Result<()> {
+        async fn run(&self, gates: Arc<Cleanup>, mut activation: harmos::observers::ObserverActivation) -> harmos::Result<()> {
             activation.ready();
             gates.running.notify_one();
             activation.stopping().await;
@@ -238,18 +216,10 @@ async fn service_stop_observer() {
     }
     let service = Arc::new(Cleanup::default());
     let observer = Arc::new(Cleanup::default());
-    let runtime = assembly()
-        .service("independent", PhysicalStop(service.clone()))
-        .runtime()
-        .await
-        .unwrap();
+    let runtime = assembly().service("independent", PhysicalStop(service.clone())).runtime().await.unwrap();
     service.running.notified().await;
     runtime.operations.register_observer(Blocked).unwrap();
-    let _lease = runtime
-        .operations
-        .submit_with_resources_at("blocked-observer", observer.clone())
-        .await
-        .unwrap();
+    let _lease = runtime.operations.submit_with_resources_at("blocked-observer", observer.clone()).await.unwrap();
     observer.running.notified().await;
     {
         let stop = runtime.stop();
@@ -277,11 +247,7 @@ async fn service_stop_observer() {
 #[tokio::test]
 async fn interruption_retains_stop() {
     let cleanup = Arc::new(Cleanup::default());
-    let runtime = assembly()
-        .service("physical-stop", PhysicalStop(cleanup.clone()))
-        .runtime()
-        .await
-        .unwrap();
+    let runtime = assembly().service("physical-stop", PhysicalStop(cleanup.clone())).runtime().await.unwrap();
     cleanup.running.notified().await;
     let mut participant = runtime.stop_participant();
     {
@@ -300,15 +266,8 @@ async fn interruption_retains_stop() {
     assert!(!cleanup.dropped.load(Ordering::SeqCst));
     assert_eq!(cleanup.finalized.load(Ordering::SeqCst), 0);
     let statuses = runtime.operations.residents();
-    let state = statuses
-        .iter()
-        .find(|(key, _)| key.definition == "physical-stop")
-        .unwrap()
-        .1;
-    assert_eq!(
-        state.lifecycle.phase(),
-        harmos::operations::OperationPhase::Stopping
-    );
+    let state = statuses.iter().find(|(key, _)| key.definition == "physical-stop").unwrap().1;
+    assert_eq!(state.lifecycle.phase(), harmos::operations::OperationPhase::Stopping);
     assert!(state.lifecycle.settled_at().is_none());
 
     cleanup.release.notify_one();
@@ -316,10 +275,7 @@ async fn interruption_retains_stop() {
         .await
         .expect("the original driver advances without another shutdown waiter");
     participant.finish();
-    tokio::time::timeout(Duration::from_secs(2), runtime.stop())
-        .await
-        .unwrap()
-        .unwrap();
+    tokio::time::timeout(Duration::from_secs(2), runtime.stop()).await.unwrap().unwrap();
     assert_eq!(cleanup.attempts.load(Ordering::SeqCst), 1);
     assert_eq!(cleanup.finalized.load(Ordering::SeqCst), 1);
     assert!(cleanup.stop_future_dropped.load(Ordering::SeqCst));
@@ -329,11 +285,7 @@ async fn interruption_retains_stop() {
 #[tokio::test]
 async fn cleanup_releases_resident() {
     let cleanup = Arc::new(Cleanup::default());
-    let runtime = assembly()
-        .service("owned", Owned(cleanup.clone()))
-        .runtime()
-        .await
-        .unwrap();
+    let runtime = assembly().service("owned", Owned(cleanup.clone())).runtime().await.unwrap();
     cleanup.running.notified().await;
     {
         let stopping = runtime.stop();
@@ -348,10 +300,7 @@ async fn cleanup_releases_resident() {
         .unwrap();
         assert!(!cleanup.dropped.load(Ordering::SeqCst));
         cleanup.release.notify_one();
-        tokio::time::timeout(Duration::from_secs(2), &mut stopping)
-            .await
-            .unwrap()
-            .unwrap();
+        tokio::time::timeout(Duration::from_secs(2), &mut stopping).await.unwrap().unwrap();
     }
     assert!(cleanup.dropped.load(Ordering::SeqCst));
     runtime.stop().await.unwrap();
@@ -362,21 +311,14 @@ async fn cleanup_releases_resident() {
 async fn cleanup_retry_survives() {
     let cleanup = Arc::new(Cleanup::default());
     cleanup.failed.store(true, Ordering::SeqCst);
-    let runtime = assembly()
-        .service("owned", Owned(Arc::clone(&cleanup)))
-        .runtime()
-        .await
-        .unwrap();
+    let runtime = assembly().service("owned", Owned(Arc::clone(&cleanup))).runtime().await.unwrap();
     cleanup.running.notified().await;
     let mut participant = runtime.stop_participant();
     let failure = runtime.stop().await.unwrap_err();
-    let failure = std::iter::successors(
-        Some(&failure as &(dyn std::error::Error + 'static)),
-        |error| error.source(),
-    )
-    .map(ToString::to_string)
-    .collect::<Vec<_>>()
-    .join(": ");
+    let failure = std::iter::successors(Some(&failure as &(dyn std::error::Error + 'static)), |error| error.source())
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(": ");
     assert!(failure.contains("physical cleanup failed"), "{failure}");
     assert!(!cleanup.dropped.load(Ordering::SeqCst));
     assert_eq!(cleanup.attempts.load(Ordering::SeqCst), 1);
@@ -400,10 +342,7 @@ async fn cleanup_retry_survives() {
         .await
         .expect("the original driver advances without another shutdown waiter");
     participant.finish();
-    tokio::time::timeout(Duration::from_secs(2), runtime.stop())
-        .await
-        .unwrap()
-        .unwrap();
+    tokio::time::timeout(Duration::from_secs(2), runtime.stop()).await.unwrap().unwrap();
     assert_eq!(cleanup.attempts.load(Ordering::SeqCst), 2);
     assert!(cleanup.dropped.load(Ordering::SeqCst));
 }
@@ -413,26 +352,19 @@ async fn uncooperative_resident_aborted() {
     let entered = Arc::new(Notify::new());
     let dropped = Arc::new(AtomicBool::new(false));
     let runtime = assembly()
-        .service_with(
-            "stalled",
-            harmos::operations::OperationPolicy {
-                timeout: Duration::from_millis(10),
-                ..harmos::services::POLICY
-            },
-            {
+        .service_with("stalled", harmos::operations::OperationPolicy { timeout: Duration::from_millis(10), ..harmos::services::POLICY }, {
+            let entered = entered.clone();
+            let dropped = dropped.clone();
+            move |_context| {
                 let entered = entered.clone();
                 let dropped = dropped.clone();
-                move |_context| {
-                    let entered = entered.clone();
-                    let dropped = dropped.clone();
-                    async move {
-                        let _guard = Dropped(dropped);
-                        entered.notify_one();
-                        std::future::pending::<Result<(), Fault<&str>>>().await
-                    }
+                async move {
+                    let _guard = Dropped(dropped);
+                    entered.notify_one();
+                    std::future::pending::<Result<(), Fault<&str>>>().await
                 }
-            },
-        )
+            }
+        })
         .runtime()
         .await
         .unwrap();
@@ -440,28 +372,14 @@ async fn uncooperative_resident_aborted() {
     let statuses = runtime.operations.watch_residents();
 
     assert!(matches!(
-        tokio::time::timeout(Duration::from_secs(1), runtime.stop())
-            .await
-            .unwrap(),
-        Err(harmos::Error::TaskFailed {
-            domain: "service",
-            ..
-        })
+        tokio::time::timeout(Duration::from_secs(1), runtime.stop()).await.unwrap(),
+        Err(harmos::Error::TaskFailed { domain: "service", .. })
     ));
 
-    assert!(
-        dropped.load(Ordering::SeqCst),
-        "shutdown joined cancellation before returning"
-    );
+    assert!(dropped.load(Ordering::SeqCst), "shutdown joined cancellation before returning");
     assert!(matches!(
-        statuses
-            .borrow()
-            .get(&harmos::operations::resident::Key::root("stalled"))
-            .and_then(|item| item.health.as_ref()),
-        Some(ServiceStatus::Inactive {
-            cause: ServiceExit::StopTimedOut,
-            ..
-        })
+        statuses.borrow().get(&harmos::operations::resident::Key::root("stalled")).and_then(|item| item.health.as_ref()),
+        Some(ServiceStatus::Inactive { cause: ServiceExit::StopTimedOut, .. })
     ));
 }
 
@@ -470,28 +388,21 @@ async fn cleanup_finish_within() {
     let entered = Arc::new(Notify::new());
     let cleaned = Arc::new(AtomicBool::new(false));
     let runtime = assembly()
-        .service_with(
-            "cleanup",
-            harmos::operations::OperationPolicy {
-                timeout: Duration::from_millis(50),
-                ..harmos::services::POLICY
-            },
-            {
+        .service_with("cleanup", harmos::operations::OperationPolicy { timeout: Duration::from_millis(50), ..harmos::services::POLICY }, {
+            let entered = entered.clone();
+            let cleaned = cleaned.clone();
+            move |mut context: harmos::services::Service<super::Bank>| {
                 let entered = entered.clone();
                 let cleaned = cleaned.clone();
-                move |mut context: harmos::services::Service<super::Bank>| {
-                    let entered = entered.clone();
-                    let cleaned = cleaned.clone();
-                    async move {
-                        entered.notify_one();
-                        context.stopping().await;
-                        tokio::time::sleep(Duration::from_millis(20)).await;
-                        cleaned.store(true, Ordering::SeqCst);
-                        Ok::<(), Fault<&str>>(())
-                    }
+                async move {
+                    entered.notify_one();
+                    context.stopping().await;
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                    cleaned.store(true, Ordering::SeqCst);
+                    Ok::<(), Fault<&str>>(())
                 }
-            },
-        )
+            }
+        })
         .runtime()
         .await
         .unwrap();
@@ -502,10 +413,7 @@ async fn cleanup_finish_within() {
 
     assert!(cleaned.load(Ordering::SeqCst));
     assert!(matches!(
-        statuses
-            .borrow()
-            .get(&harmos::operations::resident::Key::root("cleanup"))
-            .and_then(|item| item.health.as_ref()),
+        statuses.borrow().get(&harmos::operations::resident::Key::root("cleanup")).and_then(|item| item.health.as_ref()),
         Some(ServiceStatus::Stopped)
     ));
 }
@@ -521,10 +429,7 @@ async fn unregister_retains_ownership() {
         .register_service(
             harmos::services::ServiceDefinition {
                 id: "tenant".into(),
-                policy: harmos::operations::OperationPolicy {
-                    timeout: Duration::from_millis(10),
-                    ..harmos::services::POLICY
-                },
+                policy: harmos::operations::OperationPolicy { timeout: Duration::from_millis(10), ..harmos::services::POLICY },
             },
             {
                 let entered = entered.clone();
@@ -555,33 +460,17 @@ async fn unregister_retains_ownership() {
     let waiter = tokio::spawn({
         let runtime = runtime.clone();
         async move {
-            runtime
-                .operations
-                .unregister_resident("tenant")
-                .await
-                .unwrap_err();
+            runtime.operations.unregister_resident("tenant").await.unwrap_err();
         }
     });
     stopping.notified().await;
     waiter.abort();
     assert!(waiter.await.unwrap_err().is_cancelled());
 
-    tokio::time::timeout(
-        Duration::from_secs(1),
-        runtime.operations.unregister_resident("tenant"),
-    )
-    .await
-    .unwrap()
-    .unwrap_err();
+    tokio::time::timeout(Duration::from_secs(1), runtime.operations.unregister_resident("tenant")).await.unwrap().unwrap_err();
 
     assert!(dropped.load(Ordering::SeqCst));
-    assert!(
-        !runtime
-            .operations
-            .watch_residents()
-            .borrow()
-            .contains_key(&harmos::operations::resident::Key::root("tenant"))
-    );
+    assert!(!runtime.operations.watch_residents().borrow().contains_key(&harmos::operations::resident::Key::root("tenant")));
     runtime.stop().await.unwrap();
 }
 
@@ -590,72 +479,41 @@ async fn domains_outlives_clones() {
     let events = Arc::new(Mutex::new(Vec::new()));
     let service_events = Arc::clone(&events);
     let started = Arc::new(Notify::new());
-    let sequence = Arc::new(Sequence {
-        events: events.clone(),
-        started: started.clone(),
-    });
+    let sequence = Arc::new(Sequence { events: events.clone(), started: started.clone() });
     let runtime = assembly()
         .operation::<Ordered>("app", Lanes::Serial, sequence)
-        .service(
-            "resident",
-            move |mut context: harmos::services::Service<Bank>| {
-                let events = Arc::clone(&service_events);
-                async move {
-                    context.ready();
-                    assert!(context.rest(Duration::from_secs(60)).await);
-                    events
-                        .lock()
-                        .expect("event lock is healthy")
-                        .push("service");
-                    Ok::<(), Fault<&'static str>>(())
-                }
-            },
-        )
+        .service("resident", move |mut context: harmos::services::Service<Bank>| {
+            let events = Arc::clone(&service_events);
+            async move {
+                context.ready();
+                assert!(context.rest(Duration::from_secs(60)).await);
+                events.lock().expect("event lock is healthy").push("service");
+                Ok::<(), Fault<&'static str>>(())
+            }
+        })
         .runtime()
         .await
         .expect("the work declarations are valid");
-    service_status(runtime.operations.watch_residents(), "resident", |status| {
-        matches!(status, ServiceStatus::Running { .. })
-    })
-    .await;
+    service_status(runtime.operations.watch_residents(), "resident", |status| matches!(status, ServiceStatus::Running { .. })).await;
 
-    let running = runtime
-        .operations
-        .submit_as::<OrderedContract>(true)
-        .unwrap();
+    let running = runtime.operations.submit(true).unwrap();
     started.notified().await;
-    let queued = runtime
-        .operations
-        .submit_as::<OrderedContract>(false)
-        .unwrap();
+    let queued = runtime.operations.submit(false).unwrap();
 
     let mut participant = runtime.stop_participant();
     let participant_events = Arc::clone(&events);
     let host = tokio::spawn(async move {
         participant.stopping().await;
-        participant_events
-            .lock()
-            .expect("event lock is healthy")
-            .push("participant");
+        participant_events.lock().expect("event lock is healthy").push("participant");
         participant.finish();
     });
     runtime.stop().await.unwrap();
     host.await.expect("the host participant does not panic");
-    assert!(matches!(
-        running.await,
-        Err(Error::OperationRefused(Refusal::Cancelled))
-    ));
-    assert!(matches!(
-        queued.await,
-        Err(Error::OperationRefused(Refusal::Cancelled))
-    ));
+    assert!(matches!(running.await, Err(Error::OperationRefused(Refusal::Cancelled))));
+    assert!(matches!(queued.await, Err(Error::OperationRefused(Refusal::Cancelled))));
     let trace = events.lock().expect("event lock is healthy").clone();
     assert!(
-        matches!(
-            trace.as_slice(),
-            ["job-start", "job-end", "service", "participant"]
-                | ["job-start", "service", "job-end", "participant"]
-        ),
+        matches!(trace.as_slice(), ["job-start", "job-end", "service", "participant"] | ["job-start", "service", "job-end", "participant"]),
         "unexpected shutdown trace: {trace:?}"
     );
 
@@ -678,17 +536,10 @@ async fn domains_outlives_clones() {
         Position::ORIGIN
     );
     assert!(
-        matches!(
-            retained.records.publish(Noted("after".to_owned())).await,
-            Err(harmos::Error::Unavailable)
-        ),
+        matches!(retained.records.publish(Noted("after".to_owned())).await, Err(harmos::Error::Unavailable)),
         "a sealed journal refuses a late write rather than leaving it hanging"
     );
-    assert_eq!(
-        runtime.stop().await.unwrap(),
-        Position::ORIGIN,
-        "a repeat stop reports the frontier the first one observed"
-    );
+    assert_eq!(runtime.stop().await.unwrap(), Position::ORIGIN, "a repeat stop reports the frontier the first one observed");
 }
 
 /* === Tests === */

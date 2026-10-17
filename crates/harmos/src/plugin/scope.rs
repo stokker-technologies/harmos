@@ -45,7 +45,7 @@ pub struct PluginScope {
     required_contracts: Arc<Option<Vec<harmos_domain::inventory::contracts::Required>>>,
     required_providers: Arc<BTreeMap<String, String>>,
     observers: Arc<[harmos_domain::inventory::observers::Declaration]>,
-    observer_control: Arc<Option<crate::operations::Contract>>,
+    observe_contract: Arc<Option<crate::operations::Contract>>,
     streams: Arc<[harmos_domain::StreamDeclaration]>,
     listeners: Arc<[harmos_domain::listeners::Definition]>,
     lifecycle: Arc<Option<[harmos_domain::operations::lifecycle::Descriptor; 2]>>,
@@ -147,7 +147,7 @@ impl PluginScope {
             required_contracts: Arc::new(None),
             required_providers: Arc::new(BTreeMap::new()),
             observers: Arc::from([]),
-            observer_control: Arc::new(None),
+            observe_contract: Arc::new(None),
             streams: Arc::from([]),
             listeners: Arc::from([]),
             lifecycle: Arc::new(None),
@@ -205,10 +205,12 @@ impl PluginScope {
     pub(super) fn with_observers(
         mut self,
         observers: &[harmos_domain::inventory::observers::Declaration],
-        control: Option<&crate::operations::Contract>,
     ) -> Self {
         self.observers = Arc::from(observers.to_vec());
-        self.observer_control = Arc::new(control.cloned());
+        // A Sidecar That Declares Observers Serves The Built-In Observe Control.
+        self.observe_contract = Arc::new((!observers.is_empty()).then(|| {
+            harmos_domain::observers::contract().expect("the built-in observe control is valid")
+        }));
         self
     }
 
@@ -218,8 +220,8 @@ impl PluginScope {
     }
 
     #[cfg(feature = "plugin-sidecar")]
-    pub(crate) fn observer_control(&self) -> Option<&crate::operations::Contract> {
-        self.observer_control.as_ref().as_ref()
+    pub(crate) fn observe_contract(&self) -> Option<&crate::operations::Contract> {
+        self.observe_contract.as_ref().as_ref()
     }
 
     pub(super) fn with_wire_contracts(mut self, contracts: &[crate::operations::Contract]) -> Self {

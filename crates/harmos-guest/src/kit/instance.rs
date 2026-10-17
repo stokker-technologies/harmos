@@ -31,8 +31,8 @@ use harmos_domain::Message;
 use harmos_domain::operations::instance::{Id, Status};
 use harmos_domain::operations::lifecycle::InstanceState;
 use harmos_domain::operations::{
-    CallContext, Callable, ContextError, ContextValue, Host, Instance, Response, WireChildAction,
-    WireChildCall, WireChildControl,
+    CallContext, ContextError, ContextValue, Host, Instance, OperationDeclaration, Response,
+    WireChildAction, WireChildCall, WireChildControl,
 };
 
 /* === Constants === */
@@ -68,9 +68,9 @@ impl Context {
             })
     }
 
-    async fn child_call<O: Callable>(
+    async fn child_call<O: OperationDeclaration>(
         &self,
-        request: &O::Request,
+        request: &O,
         submit: bool,
     ) -> Result<Vec<u8>, OperationRefusal> {
         let context = self.calling_context()?;
@@ -79,7 +79,7 @@ impl Context {
             generation_context: self.generation_context,
             values: self.call.portable(),
             operation: O::ID.to_owned(),
-            payload: request.encode_to_vec(),
+            payload: harmos_domain::Message::encode_to_vec(request),
             submit,
         };
         let payload = call.encode().map_err(OperationRefusal::of)?;
@@ -119,7 +119,7 @@ impl Context {
     }
 }
 
-impl<O: Callable> OperationInstance<O> {
+impl<O: OperationDeclaration> OperationInstance<O> {
     pub fn id(&self) -> Id {
         self.id
     }
@@ -175,7 +175,7 @@ impl<O> Drop for OperationInstance<O> {
     }
 }
 
-impl<O: Callable> Instance<O> for OperationInstance<O> {
+impl<O: OperationDeclaration> Instance<O> for OperationInstance<O> {
     type Error = OperationRefusal;
 
     fn id(&self) -> Id {
@@ -201,7 +201,7 @@ impl<O: Callable> Instance<O> for OperationInstance<O> {
 
 impl Host for Context {
     type Error = OperationRefusal;
-    type Instance<O: Callable> = OperationInstance<O>;
+    type Instance<O: OperationDeclaration> = OperationInstance<O>;
 
     fn context(&self) -> &CallContext {
         Context::context(self)
@@ -211,9 +211,9 @@ impl Host for Context {
         Context::with_value(self, value)
     }
 
-    async fn submit_as<O: Callable>(
+    async fn submit<O: OperationDeclaration>(
         &self,
-        request: O::Request,
+        request: O,
     ) -> Result<OperationInstance<O>, OperationRefusal> {
         let bytes = self.child_call::<O>(&request, true).await?;
         let id = u64::decode(&bytes).map_err(OperationRefusal::of)?;
@@ -226,9 +226,12 @@ impl Host for Context {
     }
 
     // Resident resources live in the host process; a guest cannot lend them.
-    async fn submit_with_resources<O: Callable<Response = ()>, R: Send + Sync + 'static>(
+    async fn submit_with_resources<
+        O: OperationDeclaration<Response = ()>,
+        R: Send + Sync + 'static,
+    >(
         &self,
-        _: O::Request,
+        _: O,
         _: std::sync::Arc<R>,
     ) -> Result<OperationInstance<O>, OperationRefusal> {
         Err(OperationRefusal::of(format!(
@@ -237,9 +240,9 @@ impl Host for Context {
         )))
     }
 
-    async fn call_as<O: Callable>(
+    async fn call<O: OperationDeclaration>(
         &self,
-        request: O::Request,
+        request: O,
     ) -> Result<Response<O::Response>, OperationRefusal> {
         let bytes = self.child_call::<O>(&request, false).await?;
         let response = O::Response::decode(&bytes).map_err(OperationRefusal::of)?;

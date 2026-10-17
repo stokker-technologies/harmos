@@ -36,13 +36,7 @@ use plugin::{Progress, Receiver};
 /* === Type Aliases === */
 type Resident<T> = Supervised<Model, T, fn(&Service<Model>, Notice)>;
 type Managed<T> = harmos::sidecar::Managed<Model, T, fn(&Service<Model>, Notice), Lanes>;
-type Constructor<T> = fn(
-    Resident<T>,
-    PluginDefinition,
-    Lanes,
-    NonZeroUsize,
-    NonZeroUsize,
-) -> harmos::Result<Managed<T>>;
+type Constructor<T> = fn(Resident<T>, PluginDefinition, Lanes, NonZeroUsize, NonZeroUsize) -> harmos::Result<Managed<T>>;
 
 /* === Structs === */
 pub struct Model;
@@ -81,9 +75,7 @@ impl Fixture {
         let source = harmos_sidecar::PluginNative::<Receiver>::new(capacity).unwrap();
         Self::attached(
             source,
-            PluginArtifact::LocalSidecar {
-                revision: "stream-consumption".into(),
-            },
+            PluginArtifact::LocalSidecar { revision: "stream-consumption".into() },
             "1.0.0".parse().unwrap(),
             harmos::sidecar::Managed::new,
         )
@@ -101,21 +93,10 @@ impl Fixture {
             directory: None,
             environment: Default::default(),
         };
-        Self::attached(
-            source,
-            artifact,
-            version,
-            harmos::sidecar::Managed::new_executable,
-        )
-        .await
+        Self::attached(source, artifact, version, harmos::sidecar::Managed::new_executable).await
     }
 
-    async fn attached<T: Attach>(
-        source: T,
-        artifact: PluginArtifact,
-        version: semver::Version,
-        construct: Constructor<T>,
-    ) -> Self {
+    async fn attached<T: Attach>(source: T, artifact: PluginArtifact, version: semver::Version, construct: Constructor<T>) -> Self {
         let capacity = NonZeroUsize::new(8).unwrap();
         let definition = PluginDefinition {
             id: source.owner().into(),
@@ -130,7 +111,6 @@ impl Fixture {
                 lifecycle: source.sdk_lifecycle().unwrap(),
                 streams: source.publications(),
                 observers: source.observers(),
-                observer_control: source.observer_control().unwrap(),
                 listeners: source.listener_declarations().unwrap().unwrap(),
                 ..PluginContributions::default()
             },
@@ -157,51 +137,31 @@ impl Fixture {
                     },
                 },
                 move |_: Arc<()>| {
-                    construct(
-                        resident.clone(),
-                        definition.clone(),
-                        Lanes::Open,
-                        capacity,
-                        NonZeroUsize::new(4096).unwrap(),
-                    )
-                    .unwrap()
-                    .stream_listeners(|_, bindings| bindings.stream::<Payload>(0))
+                    construct(resident.clone(), definition.clone(), Lanes::Open, capacity, NonZeroUsize::new(4096).unwrap())
+                        .unwrap()
+                        .stream_listeners(|_, bindings| bindings.stream::<Payload>(0))
                 },
             )
             .unwrap();
-        let lease = runtime
-            .operations
-            .submit_resident("consumer")
-            .await
-            .unwrap();
+        let lease = runtime.operations.submit_resident("consumer").await.unwrap();
         let mut statuses = runtime.operations.watch_residents();
         loop {
-                let status = statuses
-                    .borrow_and_update()
-                    .get(&harmos::operations::resident::Key::root("consumer"))
-                    .and_then(|item| item.health.clone());
-                match status {
-                    Some(ServiceStatus::Running { .. }) => break,
-                    Some(ServiceStatus::Stopped) => {
-                        panic!("consumer failed to start: {status:?}")
-                    }
-                    _ => {}
+            let status =
+                statuses.borrow_and_update().get(&harmos::operations::resident::Key::root("consumer")).and_then(|item| item.health.clone());
+            match status {
+                Some(ServiceStatus::Running { .. }) => break,
+                Some(ServiceStatus::Stopped) => {
+                    panic!("consumer failed to start: {status:?}")
                 }
+                _ => {}
+            }
             statuses.changed().await.unwrap();
         }
-        Self {
-            runtime,
-            _lease: lease,
-        }
+        Self { runtime, _lease: lease }
     }
 
     pub async fn acknowledged(&self, rows: u64) -> Acknowledged {
-        let bytes = self
-            .runtime
-            .operations
-            .call_encoded(Progress::ID, rows.encode_to_vec())
-            .await
-            .unwrap();
+        let bytes = self.runtime.operations.call_encoded(Progress::ID, rows.encode_to_vec()).await.unwrap();
         Acknowledged::decode(&bytes).unwrap()
     }
 }

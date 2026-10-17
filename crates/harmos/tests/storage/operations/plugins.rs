@@ -22,23 +22,20 @@ use std::sync::Arc;
 use super::{Fixture, Lanes, config};
 use harmos::Aggregate;
 use harmos::Message;
-use harmos::operations::{OperationDeclaration, OperationManager, WireDeclaration, WireOperation};
+use harmos::operations::{OperationDeclaration, OperationManager, WireDeclaration};
 use harmos::plugin::{
-    PluginArtifact, PluginBackend, PluginCaller, PluginContributions, PluginDefinition,
-    PluginDefinitions, PluginEndpoint, PluginLifecycle, PluginLifecycleAuthority, PluginManager,
-    PluginTransition, Router,
+    PluginArtifact, PluginBackend, PluginCaller, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
+    PluginLifecycleAuthority, PluginManager, PluginTransition, Router,
 };
 use harmos::storage::operations::{Query, WriteRecords};
 use harmos::storage::query::transform::{
     Transform,
     aggregate::{Aggregate as AggregateTransform, Measure},
 };
-use harmos::storage::query::{
-    Query as QueryRequest, QueryArrow, RecordSelection, RowSlice, Source,
-};
+use harmos::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
 
 use harmos::storage::SchemaKey;
-use harmos::storage::writes::{WriteReceipt, WriteRequest};
+use harmos::storage::writes::WriteReceipt;
 use harmos::{Error, Identifier, Result};
 use harmos_domain::inventory::contracts::Required;
 use harmos_domain::plugin::Grant;
@@ -79,26 +76,17 @@ impl PluginLifecycle for Host {
     }
 
     async fn start(
-        &mut self,
-        definition: &PluginDefinition,
-        router: &Router,
-        _: &PluginLifecycleAuthority<'_>,
-        backend: &mut Backends,
+        &mut self, definition: &PluginDefinition, router: &Router, _: &PluginLifecycleAuthority<'_>, backend: &mut Backends,
     ) -> Result<()> {
         let endpoint = router.enter(&definition.id).unwrap();
-        self.callers
-            .insert(definition.id.clone(), endpoint.caller());
+        self.callers.insert(definition.id.clone(), endpoint.caller());
         if let PluginBackend::Embedded(slot) = backend {
             *slot = Some(endpoint);
         }
         Ok(())
     }
 
-    async fn stop(
-        _: &PluginDefinition,
-        _: &PluginLifecycleAuthority<'_>,
-        backend: &mut Backends,
-    ) -> Result<()> {
+    async fn stop(_: &PluginDefinition, _: &PluginLifecycleAuthority<'_>, backend: &mut Backends) -> Result<()> {
         if let PluginBackend::Embedded(slot) = backend {
             slot.take();
         }
@@ -111,54 +99,31 @@ impl PluginLifecycle for Host {
 /* === Private Functions === */
 fn required<O>(grants: Vec<Grant>) -> Required
 where
-    O: WireOperation,
-    O::Request: harmos::schema::Described,
-    O::Response: harmos::schema::Described,
+    O: OperationDeclaration,
 {
-    Required {
-        contract: WireDeclaration::of::<O>().contract().unwrap(),
-        grants,
-    }
+    Required { contract: WireDeclaration::of::<O>().contract().unwrap(), grants }
 }
 
 fn plugin(id: &str, required: Vec<Required>) -> PluginDefinition {
     PluginDefinition {
         id: id.into(),
         version: "1.0.0".parse().unwrap(),
-        artifact: PluginArtifact::Embedded {
-            revision: "fixture".into(),
-        },
+        artifact: PluginArtifact::Embedded { revision: "fixture".into() },
         requires: Vec::new(),
         configuration: b"null".to_vec(),
-        contributions: PluginContributions {
-            required_contracts: Some(required),
-            ..PluginContributions::default()
-        },
+        contributions: PluginContributions { required_contracts: Some(required), ..PluginContributions::default() },
     }
 }
 
-fn query(fixture: &Fixture, schema: SchemaKey) -> QueryRequest {
-    QueryRequest {
+fn query(fixture: &Fixture, schema: SchemaKey) -> Query {
+    Query {
         at: fixture.storage.cursor_saved(),
-        source: Source::Records(RecordSelection {
-            schema,
-            scope: None,
-            item: None,
-            source_start: None,
-            source_end: None,
-        }),
+        source: Source::Records(RecordSelection { schema, scope: None, item: None, source_start: None, source_end: None }),
         transforms: vec![Transform::Aggregate(AggregateTransform {
             groups: vec![],
-            measures: vec![Measure {
-                field: "payload.value".into(),
-                statistic: Aggregate::Count,
-                name: "count".into(),
-            }],
+            measures: vec![Measure { field: "payload.value".into(), statistic: Aggregate::Count, name: "count".into() }],
         })],
-        slice: RowSlice {
-            offset: 0,
-            limit: None,
-        },
+        slice: RowSlice { offset: 0, limit: None },
     }
 }
 
@@ -170,25 +135,11 @@ async fn seed(fixture: &Fixture, values: &[u64]) {
         cardinality: harmos::schema::Cardinality::Required,
     };
     let schema = super::super::schema();
-    fixture
-        .storage
-        .write_schema(
-            &schema,
-            &harmos::schema::graph::Schema {
-                root: 0,
-                definitions: vec![vec![field]],
-            },
-        )
-        .await
-        .unwrap();
+    fixture.storage.write_schema(&schema, &harmos::schema::graph::Schema { root: 0, definitions: vec![vec![field]] }).await.unwrap();
     for (index, value) in values.iter().enumerate() {
         let payload = value.encode_to_vec();
         let item = Identifier::new(format!("value{index}")).unwrap();
-        fixture
-            .storage
-            .write_records(&[super::super::record(&schema, &item, &payload)])
-            .await
-            .unwrap();
+        fixture.storage.write_records(&[super::super::record(&schema, &item, &payload)]).await.unwrap();
     }
     fixture.storage.flush().await.unwrap();
 }
@@ -198,57 +149,23 @@ async fn seed(fixture: &Fixture, values: &[u64]) {
 #[tokio::test]
 async fn write_grants_enforced() {
     let fixture = Fixture::new(config()).await;
-    harmos::storage::operations::register(
-        &fixture.runtime.operations,
-        "storage",
-        Lanes::Open,
-        Arc::new(fixture.storage.clone()),
-    )
-    .unwrap();
-    let mut host = Host {
-        operations: fixture.runtime.operations.clone(),
-        callers: BTreeMap::new(),
-    };
+    harmos::storage::operations::register(&fixture.runtime.operations, "storage", Lanes::Open, Arc::new(fixture.storage.clone())).unwrap();
+    let mut host = Host { operations: fixture.runtime.operations.clone(), callers: BTreeMap::new() };
     let definitions = PluginDefinitions::new(
-        [
-            plugin(
-                "writer",
-                vec![required::<WriteRecords>(vec![Grant::of(
-                    WriteRecords::ID,
-                    "bench",
-                )])],
-            ),
-            plugin("bystander", Vec::new()),
-        ],
+        [plugin("writer", vec![required::<WriteRecords>(vec![Grant::of(WriteRecords::ID, "bench")])]), plugin("bystander", Vec::new())],
         [],
     )
     .unwrap();
     assert_eq!(definitions.host_requirements().count(), 1);
     let mut manager = PluginManager::new(definitions).unwrap();
     manager.initialize(&mut host).await.unwrap();
-    let writer = fixture
-        .runtime
-        .operations
-        .caller(&host.callers["writer"])
-        .unwrap();
-    let bystander = fixture
-        .runtime
-        .operations
-        .caller(&host.callers["bystander"])
-        .unwrap();
+    let writer = fixture.runtime.operations.caller(&host.callers["writer"]).unwrap();
+    let bystander = fixture.runtime.operations.caller(&host.callers["bystander"]).unwrap();
 
     super::writes::seed(&fixture).await;
-    let mut exchange = writer
-        .exchange::<WriteRecords>(
-            WriteRequest { scope: None },
-            super::writes::settings(),
-            super::writes::settings(),
-        )
-        .unwrap();
-    exchange
-        .send(super::writes::batch(1, "bench"))
-        .await
-        .unwrap();
+    let mut exchange =
+        writer.exchange::<WriteRecords>(WriteRecords { scope: None }, super::writes::settings(), super::writes::settings()).unwrap();
+    exchange.send(super::writes::batch(1, "bench")).await.unwrap();
     let cursor = loop {
         let receipt = exchange.next().await.unwrap().unwrap();
         if let WriteReceipt::Durable(receipt) = &*receipt {
@@ -256,10 +173,7 @@ async fn write_grants_enforced() {
         }
     };
     // A Second Destination On The Same Invocation Needs Its Own Grant.
-    exchange
-        .send(super::writes::batch(2, "other"))
-        .await
-        .unwrap();
+    exchange.send(super::writes::batch(2, "other")).await.unwrap();
     exchange.finish_input();
     while exchange.next().await.unwrap().is_some() {}
     let failure = exchange.join().await.unwrap_err();
@@ -274,11 +188,7 @@ async fn write_grants_enforced() {
     assert_eq!(fixture.data.records.lock().unwrap().len(), 2);
     assert_eq!(fixture.storage.cursor_accepted(), *cursor);
     assert!(matches!(
-        bystander.exchange::<WriteRecords>(
-            WriteRequest { scope: None },
-            super::writes::settings(),
-            super::writes::settings()
-        ),
+        bystander.exchange::<WriteRecords>(WriteRecords { scope: None }, super::writes::settings(), super::writes::settings()),
         Err(Error::OperationUnauthorized { .. })
     ));
 
@@ -290,63 +200,25 @@ async fn write_grants_enforced() {
 async fn query_grants_enforced() {
     let fixture = Fixture::new(config()).await;
     seed(&fixture, &[9_007_199_254_740_993, 9_007_199_254_740_995]).await;
-    harmos::storage::operations::register(
-        &fixture.runtime.operations,
-        "storage",
-        Lanes::Open,
-        Arc::new(fixture.storage.clone()),
-    )
-    .unwrap();
-    let mut host = Host {
-        operations: fixture.runtime.operations.clone(),
-        callers: BTreeMap::new(),
-    };
+    harmos::storage::operations::register(&fixture.runtime.operations, "storage", Lanes::Open, Arc::new(fixture.storage.clone())).unwrap();
+    let mut host = Host { operations: fixture.runtime.operations.clone(), callers: BTreeMap::new() };
     let schema = super::super::schema();
-    let other = SchemaKey {
-        id: Identifier::new("other").unwrap(),
-        version: NonZeroU32::MIN,
-        ..schema.clone()
-    };
-    let survey = |schema: &SchemaKey| {
-        Grant::of(
-            Query::ID,
-            query(&fixture, schema.clone()).source.grant_scope(),
-        )
-    };
-    let definitions = PluginDefinitions::new(
-        [
-            plugin("reducer", vec![required::<Query>(vec![survey(&schema)])]),
-            plugin("bystander", Vec::new()),
-        ],
-        [],
-    )
-    .unwrap();
+    let other = SchemaKey { id: Identifier::new("other").unwrap(), version: NonZeroU32::MIN, ..schema.clone() };
+    let survey = |schema: &SchemaKey| Grant::of(Query::ID, query(&fixture, schema.clone()).source.grant_scope());
+    let definitions =
+        PluginDefinitions::new([plugin("reducer", vec![required::<Query>(vec![survey(&schema)])]), plugin("bystander", Vec::new())], [])
+            .unwrap();
     let mut manager = PluginManager::new(definitions).unwrap();
     manager.initialize(&mut host).await.unwrap();
-    let reducer = fixture
-        .runtime
-        .operations
-        .caller(&host.callers["reducer"])
-        .unwrap();
-    let bystander = fixture
-        .runtime
-        .operations
-        .caller(&host.callers["bystander"])
-        .unwrap();
+    let reducer = fixture.runtime.operations.caller(&host.callers["reducer"]).unwrap();
+    let bystander = fixture.runtime.operations.caller(&host.callers["bystander"]).unwrap();
 
-    let mut collected = reducer
-        .download::<Query>(query(&fixture, schema.clone()), super::writes::settings())
-        .unwrap();
+    let mut collected = reducer.download::<Query>(query(&fixture, schema.clone()), super::writes::settings()).unwrap();
     let mut count = None;
     while let Some(output) = collected.next().await.unwrap() {
         if let QueryArrow::Batch(batch) = &QueryArrow::try_from(&*output).unwrap() {
-            let values = batch
-                .as_record_batch()
-                .column_by_name("count")
-                .unwrap()
-                .as_any()
-                .downcast_ref::<arrow_array::UInt64Array>()
-                .unwrap();
+            let values =
+                batch.as_record_batch().column_by_name("count").unwrap().as_any().downcast_ref::<arrow_array::UInt64Array>().unwrap();
             count = Some(values.value(0));
         }
     }
@@ -362,10 +234,7 @@ async fn query_grants_enforced() {
         source_end: None,
         after: 0,
     });
-    assert!(matches!(
-        reducer.download::<Query>(cross_kind, super::writes::settings()),
-        Err(Error::OperationUnauthorized { .. })
-    ));
+    assert!(matches!(reducer.download::<Query>(cross_kind, super::writes::settings()), Err(Error::OperationUnauthorized { .. })));
 
     assert!(matches!(
         reducer.download::<Query>(query(&fixture, other), super::writes::settings()),

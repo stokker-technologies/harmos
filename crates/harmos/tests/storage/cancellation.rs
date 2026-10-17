@@ -105,7 +105,7 @@ async fn cancelled_query_releases() {
     let (_data, storage, runtime) = start(directory.path()).await;
     let accepted = storage.cursor_accepted();
     // Cancelling A Queued Query Releases Its Admission Slot.
-    let query = || harmos::storage::query::Query {
+    let query = || harmos::storage::operations::Query {
         at: accepted.clone(),
         source: harmos::storage::query::Source::Files(harmos::storage::query::FileSelection {
             scope: None,

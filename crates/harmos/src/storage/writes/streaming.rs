@@ -19,9 +19,7 @@ use std::collections::VecDeque;
 use crate::operations::{Context, StreamInput, StreamOutput};
 use crate::storage::StorageManager;
 use crate::storage::arrow::ArrowBatch;
-use crate::storage::writes::{
-    BatchReceipt, DataBatch, WriteCompletion, WriteReceipt, WriteRequest,
-};
+use crate::storage::writes::{BatchReceipt, DataBatch, WriteCompletion, WriteReceipt};
 use crate::{Error, MemorySize, Result};
 
 /* === Constants === */
@@ -86,7 +84,7 @@ impl MemorySize for DecodedBatch {
 pub(crate) async fn exchange<C>(
     storage: &StorageManager<C>,
     ctx: &Context<'_>,
-    request: &WriteRequest,
+    scope: Option<&crate::Identifier>,
     endpoints: &mut (StreamInput<DataBatch>, StreamOutput<WriteReceipt>),
     kind: WriteKind,
     operation: &'static str,
@@ -136,9 +134,9 @@ pub(crate) async fn exchange<C>(
                 let grant = harmos_domain::plugin::Grant::of(operation, batch.destination.as_str().to_owned());
                 ctx.admit_stream_grant(&grant)?;
                 let admitted = match kind {
-                    WriteKind::Streams => storage.admit_arrow_streams(request.scope.as_ref(), &batch).await?,
-                    WriteKind::Records => storage.admit_arrow_records(request.scope.as_ref(), &batch).await?,
-                    WriteKind::Objects => storage.admit_arrow_objects(request.scope.as_ref(), &batch).await?,
+                    WriteKind::Streams => storage.admit_arrow_streams(scope, &batch).await?,
+                    WriteKind::Records => storage.admit_arrow_records(scope, &batch).await?,
+                    WriteKind::Objects => storage.admit_arrow_objects(scope, &batch).await?,
                 };
                 let receipt = BatchReceipt { sequence, cursor: admitted };
                 previous = Some(sequence);

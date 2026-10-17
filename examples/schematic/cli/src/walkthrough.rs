@@ -25,10 +25,7 @@ use crate::Result;
 use harmos::{state::Focus, state::PrincipalId};
 use schematic_app::domain::{
     model,
-    operations::{
-        ProposeRoute, ValidateSchematic,
-        schematic::{propose, validate},
-    },
+    operations::{ProposeRoute, ValidateSchematic},
 };
 use schematic_app::state::{NetId, NetName, PinRef, Point, Rotation, SymbolId};
 use schematic_app::transactions::net::{ApplyRoute, ConnectPins};
@@ -162,25 +159,22 @@ async fn edit(runtime: &app::Runtime, advanced: bool, native: bool) -> Result<()
         symbols,
         connections,
     };
-    let validation = validate::Request {
+    let validation = ValidateSchematic {
         schematic: schematic.clone(),
     };
-    let validation = runtime
-        .operations
-        .call_as::<ValidateSchematic>(validation)
-        .await?;
+    let validation = runtime.operations.call(validation).await?;
     println!("Validation: {} diagnostics", validation.diagnostics.len());
 
     let from = snapshot.symbol(SymbolId(1)).position;
     let to = snapshot.symbol(SymbolId(2)).position;
-    let request = propose::Request {
+    let request = ProposeRoute {
         from: model::Point {
             x: from.x,
             y: from.y,
         },
         to: model::Point { x: to.x, y: to.y },
     };
-    let proposed = runtime.operations.call_as::<ProposeRoute>(request).await?;
+    let proposed = runtime.operations.call(request).await?;
     let points = proposed
         .points
         .iter()

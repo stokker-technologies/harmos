@@ -46,18 +46,9 @@ fn io(stream: DuplexStream) -> Io {
 async fn buffered_exit_precedes() {
     let (data, mut peer_data) = tokio::io::duplex(1024);
     let (control, _peer_control) = tokio::io::duplex(64);
-    let Connection {
-        sender: _sender,
-        mut receiver,
-        mut driver,
-    } = Connection::new(io(data), io(control));
-    let exit = Frame::Push {
-        method: "exiting".to_owned(),
-        params: b"recording complete".to_vec(),
-    };
-    transport::write(&mut peer_data, &Packet::Frame(exit.clone()))
-        .await
-        .unwrap();
+    let Connection { sender: _sender, mut receiver, mut driver } = Connection::new(io(data), io(control));
+    let exit = Frame::Push { method: "exiting".to_owned(), params: b"recording complete".to_vec() };
+    transport::write(&mut peer_data, &Packet::Frame(exit.clone())).await.unwrap();
     drop(peer_data);
 
     // Observe EOF Before Consuming The Already Buffered Protocol Frame.
@@ -72,31 +63,13 @@ async fn buffered_exit_precedes() {
 async fn blocked_data_control() {
     let (data, mut peer_data) = tokio::io::duplex(8);
     let (control, mut peer_control) = tokio::io::duplex(64);
-    let Connection {
-        sender,
-        receiver,
-        mut driver,
-    } = Connection::new(io(data), io(control));
+    let Connection { sender, receiver, mut driver } = Connection::new(io(data), io(control));
     let task = tokio::spawn(async move { driver.run().await });
-    sender
-        .send(Frame::Answer {
-            id: 1,
-            result: vec![1; 65536],
-        })
-        .await
-        .unwrap();
+    sender.send(Frame::Answer { id: 1, result: vec![1; 65536] }).await.unwrap();
     let mut first = [0];
     peer_data.read_exact(&mut first).await.unwrap();
     sender.send(Frame::Cancel { id: 99 }).await.unwrap();
-    assert_eq!(
-        transport::read(&mut peer_control, Role::Control)
-            .await
-            .unwrap(),
-        Some(Packet::Cancellation {
-            id: 99,
-            preceding: 1
-        })
-    );
+    assert_eq!(transport::read(&mut peer_control, Role::Control).await.unwrap(), Some(Packet::Cancellation { id: 99, preceding: 1 }));
     sender.close();
     task.await.unwrap().unwrap();
     drop(receiver);
@@ -106,33 +79,15 @@ async fn blocked_data_control() {
 async fn credit_requires_consumption() {
     let (data, mut peer_data) = tokio::io::duplex(1024);
     let (control, mut peer_control) = tokio::io::duplex(64);
-    let Connection {
-        sender,
-        mut receiver,
-        mut driver,
-    } = Connection::new(io(data), io(control));
+    let Connection { sender, mut receiver, mut driver } = Connection::new(io(data), io(control));
     let task = tokio::spawn(async move { driver.run().await });
-    let packet = Packet::Frame(Frame::Answer {
-        id: 7,
-        result: vec![42],
-    });
+    let packet = Packet::Frame(Frame::Answer { id: 7, result: vec![42] });
     transport::write(&mut peer_data, &packet).await.unwrap();
     let received = receiver.receive().await.unwrap().unwrap();
-    assert_eq!(
-        received.frame,
-        Frame::Answer {
-            id: 7,
-            result: vec![42]
-        }
-    );
+    assert_eq!(received.frame, Frame::Answer { id: 7, result: vec![42] });
     // A Pending Control Read Proves Queueing Alone Has Not Returned Credit.
     let mut pending = Box::pin(transport::read(&mut peer_control, Role::Control));
-    assert!(
-        pending
-            .as_mut()
-            .poll(&mut std::task::Context::from_waker(std::task::Waker::noop()))
-            .is_pending()
-    );
+    assert!(pending.as_mut().poll(&mut std::task::Context::from_waker(std::task::Waker::noop())).is_pending());
     drop(received.frame);
     received.consumption.unwrap().consumed().unwrap();
     assert_eq!(pending.await.unwrap(), Some(Packet::Credit(4096)));
@@ -147,44 +102,20 @@ async fn credit_requires_consumption() {
 async fn cancelled_borrow_resumes() {
     let (data, peer_data) = tokio::io::duplex(8);
     let (control, peer_control) = tokio::io::duplex(64);
-    let Connection {
-        sender,
-        receiver,
-        mut driver,
-    } = Connection::new(io(data), io(control));
-    sender
-        .send(Frame::Answer {
-            id: 5,
-            result: vec![3; 128],
-        })
-        .await
-        .unwrap();
+    let Connection { sender, receiver, mut driver } = Connection::new(io(data), io(control));
+    sender.send(Frame::Answer { id: 5, result: vec![3; 128] }).await.unwrap();
     {
         let mut first_run = Box::pin(driver.run());
-        assert!(
-            first_run
-                .as_mut()
-                .poll(&mut std::task::Context::from_waker(std::task::Waker::noop()))
-                .is_pending()
-        );
+        assert!(first_run.as_mut().poll(&mut std::task::Context::from_waker(std::task::Waker::noop())).is_pending());
     }
     let mut peer_data = peer_data;
     let (result, packet) = tokio::join!(driver.run(), async {
-        let packet = transport::read(&mut peer_data, Role::Data)
-            .await
-            .unwrap()
-            .unwrap();
+        let packet = transport::read(&mut peer_data, Role::Data).await.unwrap().unwrap();
         sender.close();
         packet
     });
     result.unwrap();
-    assert_eq!(
-        packet,
-        Packet::Frame(Frame::Answer {
-            id: 5,
-            result: vec![3; 128]
-        })
-    );
+    assert_eq!(packet, Packet::Frame(Frame::Answer { id: 5, result: vec![3; 128] }));
     driver.run().await.unwrap();
     drop((receiver, peer_control));
 }
@@ -193,25 +124,13 @@ async fn cancelled_borrow_resumes() {
 async fn consumed_credit_recycles() {
     let (left_data, right_data) = tokio::io::duplex(65536);
     let (left_control, right_control) = tokio::io::duplex(64);
-    let Connection {
-        sender: left,
-        receiver: left_receiver,
-        driver: mut left_driver,
-    } = Connection::new(io(left_data), io(left_control));
-    let Connection {
-        sender: right,
-        receiver: mut right_receiver,
-        driver: mut right_driver,
-    } = Connection::new(io(right_data), io(right_control));
+    let Connection { sender: left, receiver: left_receiver, driver: mut left_driver } = Connection::new(io(left_data), io(left_control));
+    let Connection { sender: right, receiver: mut right_receiver, driver: mut right_driver } =
+        Connection::new(io(right_data), io(right_control));
     let left_task = tokio::spawn(async move { left_driver.run().await });
     let right_task = tokio::spawn(async move { right_driver.run().await });
     for id in 0..40 {
-        left.send(Frame::Answer {
-            id,
-            result: vec![id as u8; 1024 * 1024],
-        })
-        .await
-        .unwrap();
+        left.send(Frame::Answer { id, result: vec![id as u8; 1024 * 1024] }).await.unwrap();
         let received = right_receiver.receive().await.unwrap().unwrap();
         let Frame::Answer { id: actual, result } = received.frame else {
             panic!("unexpected frame");
@@ -233,15 +152,9 @@ async fn consumed_credit_recycles() {
 async fn unearned_credit_closes() {
     let (data, mut peer_data) = tokio::io::duplex(8);
     let (control, mut peer_control) = tokio::io::duplex(64);
-    let Connection {
-        sender,
-        receiver,
-        mut driver,
-    } = Connection::new(io(data), io(control));
+    let Connection { sender, receiver, mut driver } = Connection::new(io(data), io(control));
     let task = tokio::spawn(async move { driver.run().await });
-    transport::write(&mut peer_control, &Packet::Credit(1))
-        .await
-        .unwrap();
+    transport::write(&mut peer_control, &Packet::Credit(1)).await.unwrap();
     assert!(task.await.unwrap().is_err());
     let mut byte = [0];
     assert_eq!(peer_data.read(&mut byte).await.unwrap(), 0);
@@ -254,36 +167,12 @@ async fn unearned_credit_closes() {
 async fn cancellation_queue_order() {
     let (data, mut peer_data) = tokio::io::duplex(1024);
     let (control, mut peer_control) = tokio::io::duplex(64);
-    let Connection {
-        sender,
-        mut receiver,
-        mut driver,
-    } = Connection::new(io(data), io(control));
+    let Connection { sender, mut receiver, mut driver } = Connection::new(io(data), io(control));
     let task = tokio::spawn(async move { driver.run().await });
-    transport::write(
-        &mut peer_control,
-        &Packet::Cancellation {
-            id: 9,
-            preceding: 2,
-        },
-    )
-    .await
-    .unwrap();
-    assert_eq!(
-        receiver.receive().await.unwrap().unwrap().frame,
-        Frame::Cancel { id: 9 }
-    );
+    transport::write(&mut peer_control, &Packet::Cancellation { id: 9, preceding: 2 }).await.unwrap();
+    assert_eq!(receiver.receive().await.unwrap().unwrap().frame, Frame::Cancel { id: 9 });
     for (id, cancelled) in [(40, false), (9, true)] {
-        transport::write(
-            &mut peer_data,
-            &Packet::Frame(Frame::Call {
-                id,
-                method: "test".into(),
-                params: vec![],
-            }),
-        )
-        .await
-        .unwrap();
+        transport::write(&mut peer_data, &Packet::Frame(Frame::Call { id, method: "test".into(), params: vec![] })).await.unwrap();
         let received = receiver.receive().await.unwrap().unwrap();
         assert_eq!(received.cancelled, cancelled);
         drop(received.frame);
@@ -291,16 +180,8 @@ async fn cancellation_queue_order() {
     }
     // Late Cancellations Cannot Accumulate Tombstones After Their Watermark.
     for id in 0..300 {
-        transport::write(
-            &mut peer_control,
-            &Packet::Cancellation { id, preceding: 2 },
-        )
-        .await
-        .unwrap();
-        assert_eq!(
-            receiver.receive().await.unwrap().unwrap().frame,
-            Frame::Cancel { id }
-        );
+        transport::write(&mut peer_control, &Packet::Cancellation { id, preceding: 2 }).await.unwrap();
+        assert_eq!(receiver.receive().await.unwrap().unwrap().frame, Frame::Cancel { id });
     }
     sender.close();
     task.await.unwrap().unwrap();
@@ -310,33 +191,13 @@ async fn cancellation_queue_order() {
 async fn future_cancellations_refused() {
     let (data, _peer_data) = tokio::io::duplex(8);
     let (control, mut peer_control) = tokio::io::duplex(64);
-    let Connection {
-        sender,
-        mut receiver,
-        mut driver,
-    } = Connection::new(io(data), io(control));
+    let Connection { sender, mut receiver, mut driver } = Connection::new(io(data), io(control));
     let task = tokio::spawn(async move { driver.run().await });
     for id in 0..256 {
-        transport::write(
-            &mut peer_control,
-            &Packet::Cancellation {
-                id,
-                preceding: u64::MAX,
-            },
-        )
-        .await
-        .unwrap();
+        transport::write(&mut peer_control, &Packet::Cancellation { id, preceding: u64::MAX }).await.unwrap();
         assert!(receiver.receive().await.unwrap().is_some());
     }
-    transport::write(
-        &mut peer_control,
-        &Packet::Cancellation {
-            id: 256,
-            preceding: u64::MAX,
-        },
-    )
-    .await
-    .unwrap();
+    transport::write(&mut peer_control, &Packet::Cancellation { id: 256, preceding: u64::MAX }).await.unwrap();
     assert!(receiver.receive().await.is_err());
     assert!(task.await.unwrap().is_err());
     assert!(sender.send(Frame::Cancel { id: 1 }).await.is_err());
@@ -348,7 +209,7 @@ async fn binary_sdk_lifecycle() {
     use harmos_sidecar::Message;
     use harmos_sidecar::operations::{
         OperationDeclaration, WireAnswer, WireCommand,
-        lifecycle::{Initialize, InitializeRequest, Shutdown},
+        lifecycle::{Initialize, Shutdown},
     };
     use std::num::NonZeroUsize;
     let (host_data, sdk_data) = tokio::io::duplex(65536);
@@ -358,47 +219,19 @@ async fn binary_sdk_lifecycle() {
         io(sdk_data),
         io(sdk_control),
     ));
-    let Connection {
-        sender,
-        mut receiver,
-        mut driver,
-    } = Connection::new(io(host_data), io(host_control));
+    let Connection { sender, mut receiver, mut driver } = Connection::new(io(host_data), io(host_control));
     let driving = tokio::spawn(async move { driver.run().await });
-    let initialization = InitializeRequest {
-        config_json: b"null".to_vec(),
-        generation_context: Vec::new(),
-    };
-    binary_invoke(
-        &sender,
-        &mut receiver,
-        1,
-        Initialize::<TransportPlugin>::ID,
-        initialization.encode_to_vec(),
-    )
-    .await;
-    let request = Echo {
-        nonce: 7,
-        payload: vec![42; 65536],
-    };
+    let initialization = InitializeRequest { config_json: b"null".to_vec(), generation_context: Vec::new() };
+    binary_invoke(&sender, &mut receiver, 1, Initialize::<TransportPlugin>::ID, initialization.encode_to_vec()).await;
+    let request = Echo { nonce: 7, payload: vec![42; 65536] };
     let result = binary_invoke(&sender, &mut receiver, 2, Echo::ID, request.encode_to_vec()).await;
     assert_eq!(Echo::decode(&result).unwrap(), request);
-    binary_invoke(
-        &sender,
-        &mut receiver,
-        3,
-        Shutdown::<TransportPlugin>::ID,
-        Vec::new(),
-    )
-    .await;
+    binary_invoke(&sender, &mut receiver, 3, Shutdown::<TransportPlugin>::ID, Vec::new()).await;
     assert!(matches!(
         binary_phase(
             &sender,
             &mut receiver,
-            WireCommand::Prepare {
-                invocation: 4,
-                operation: Echo::ID.into(),
-                payload: request.encode_to_vec()
-            }
+            WireCommand::Prepare { invocation: 4, operation: Echo::ID.into(), payload: request.encode_to_vec() }
         )
         .await,
         WireAnswer::Failed { .. }
@@ -415,44 +248,20 @@ async fn cancelled_call_skipped() {
     use std::num::NonZeroUsize;
     let (mut peer_data, sdk_data) = tokio::io::duplex(65536);
     let (mut peer_control, sdk_control) = tokio::io::duplex(64);
-    let mut sdk = Box::pin(harmos_sidecar::serve_plugin_channels::<TransportPlugin>(
-        NonZeroUsize::new(8).unwrap(),
-        io(sdk_data),
-        io(sdk_control),
-    ));
-    transport::write(
-        &mut peer_control,
-        &Packet::Cancellation {
-            id: 77,
-            preceding: 1,
-        },
-    )
-    .await
-    .unwrap();
+    let mut sdk =
+        Box::pin(harmos_sidecar::serve_plugin_channels::<TransportPlugin>(NonZeroUsize::new(8).unwrap(), io(sdk_data), io(sdk_control)));
+    transport::write(&mut peer_control, &Packet::Cancellation { id: 77, preceding: 1 }).await.unwrap();
     // Drive Control While The Data Pipe Is Empty, Without Sleeps Or Wall-Clock Guesses.
     for _ in 0..2 {
-        assert!(
-            sdk.as_mut()
-                .poll(&mut std::task::Context::from_waker(std::task::Waker::noop()))
-                .is_pending()
-        );
+        assert!(sdk.as_mut().poll(&mut std::task::Context::from_waker(std::task::Waker::noop())).is_pending());
     }
     let task = tokio::spawn(sdk);
     for id in [77, 88] {
-        transport::write(
-            &mut peer_data,
-            &Packet::Frame(Frame::Call {
-                id,
-                method: Frame::REGISTER.into(),
-                params: Vec::new(),
-            }),
-        )
-        .await
-        .unwrap();
+        transport::write(&mut peer_data, &Packet::Frame(Frame::Call { id, method: Frame::REGISTER.into(), params: Vec::new() }))
+            .await
+            .unwrap();
     }
-    let Some(Packet::Frame(Frame::Answer { id: 88, .. })) =
-        transport::read(&mut peer_data, Role::Data).await.unwrap()
-    else {
+    let Some(Packet::Frame(Frame::Answer { id: 88, .. })) = transport::read(&mut peer_data, Role::Data).await.unwrap() else {
         panic!("cancelled registration must not produce an answer");
     };
     drop((peer_data, peer_control));
@@ -460,19 +269,10 @@ async fn cancelled_call_skipped() {
 }
 
 async fn binary_phase(
-    sender: &transport::Sender,
-    receiver: &mut transport::Receiver,
-    command: harmos_sidecar::operations::WireCommand,
+    sender: &transport::Sender, receiver: &mut transport::Receiver, command: harmos_sidecar::operations::WireCommand,
 ) -> harmos_sidecar::operations::WireAnswer {
     use harmos_sidecar::operations::{WIRE_METHOD, WireAnswer};
-    sender
-        .send(Frame::Call {
-            id: 1,
-            method: WIRE_METHOD.into(),
-            params: command.encode().unwrap(),
-        })
-        .await
-        .unwrap();
+    sender.send(Frame::Call { id: 1, method: WIRE_METHOD.into(), params: command.encode().unwrap() }).await.unwrap();
     let received = receiver.receive().await.unwrap().unwrap();
     let Frame::Answer { id: 1, result } = received.frame else {
         panic!("phase was not answered");
@@ -484,46 +284,21 @@ async fn binary_phase(
 }
 
 async fn binary_invoke(
-    sender: &transport::Sender,
-    receiver: &mut transport::Receiver,
-    invocation: u64,
-    operation: &str,
-    payload: Vec<u8>,
+    sender: &transport::Sender, receiver: &mut transport::Receiver, invocation: u64, operation: &str, payload: Vec<u8>,
 ) -> Vec<u8> {
     use harmos_sidecar::operations::{WireAnswer, WireCommand};
     for command in [
-        WireCommand::Prepare {
-            invocation,
-            operation: operation.into(),
-            payload,
-        },
-        WireCommand::Initialize {
-            invocation,
-            context: [0; 32],
-        },
+        WireCommand::Prepare { invocation, operation: operation.into(), payload },
+        WireCommand::Initialize { invocation, context: [0; 32] },
     ] {
-        assert!(matches!(
-            binary_phase(sender, receiver, command).await,
-            WireAnswer::Ready { .. }
-        ));
+        assert!(matches!(binary_phase(sender, receiver, command).await, WireAnswer::Ready { .. }));
     }
-    let WireAnswer::Ready { payload } = binary_phase(
-        sender,
-        receiver,
-        WireCommand::Attempt {
-            invocation,
-            context: [0; 32],
-            values: Vec::new(),
-        },
-    )
-    .await
+    let WireAnswer::Ready { payload } =
+        binary_phase(sender, receiver, WireCommand::Attempt { invocation, context: [0; 32], values: Vec::new() }).await
     else {
         panic!("attempt failed");
     };
-    assert!(matches!(
-        binary_phase(sender, receiver, WireCommand::Finalize { invocation }).await,
-        WireAnswer::Ready { .. }
-    ));
+    assert!(matches!(binary_phase(sender, receiver, WireCommand::Finalize { invocation }).await, WireAnswer::Ready { .. }));
     payload
 }
 

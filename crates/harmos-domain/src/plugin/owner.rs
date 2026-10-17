@@ -40,12 +40,12 @@ pub struct Owner<P: Plugin> {
     retirement: Mutex<Retirement<P>>,
 }
 
-struct Initialize<P: Plugin> {
+struct Initializing<P: Plugin> {
     owner: Arc<Owner<P>>,
     state: Option<State<P>>,
 }
 
-struct Shutdown<P: Plugin> {
+struct ShuttingDown<P: Plugin> {
     owner: Arc<Owner<P>>,
     state: Option<State<P>>,
 }
@@ -187,7 +187,7 @@ impl<P: Plugin> Owner<P> {
         });
         {
             let mut bindings = table.lock().map_err(|_| Error::Poisoned)?;
-            lifecycle::Catalog::<P>::bind::<Initialize<P>, Shutdown<P>, _>(
+            lifecycle::bind::<P, Initializing<P>, ShuttingDown<P>, _>(
                 &mut bindings,
                 Arc::clone(&owner),
             )
@@ -281,10 +281,7 @@ impl<P: Plugin> Drop for RetirementLoan<P> {
 }
 
 impl<P: Plugin> Owner<P> {
-    fn prepare_initialize(
-        &self,
-        request: &lifecycle::InitializeRequest,
-    ) -> Result<State<P>, Error<P>> {
+    fn prepare_initialize(&self, request: &lifecycle::Initialize) -> Result<State<P>, Error<P>> {
         let generation_context = if request.generation_context.is_empty() {
             None
         } else {
@@ -402,8 +399,8 @@ impl<P: Plugin> Owner<P> {
     }
 }
 
-impl<P: Plugin> Operation for Initialize<P> {
-    type Declaration = lifecycle::Initialize<P>;
+impl<P: Plugin> Operation for Initializing<P> {
+    type Declaration = lifecycle::Initialize;
     type Resources = Owner<P>;
     type Error = Error<P>;
     type Endpoints = ();
@@ -419,7 +416,7 @@ impl<P: Plugin> Operation for Initialize<P> {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        request: &mut lifecycle::InitializeRequest,
+        request: &mut lifecycle::Initialize,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<()>, Error<P>> {
         let result: ::core::result::Result<(), Self::Error> = async move {
@@ -442,8 +439,8 @@ impl<P: Plugin> Operation for Initialize<P> {
     }
 }
 
-impl<P: Plugin> Operation for Shutdown<P> {
-    type Declaration = lifecycle::Shutdown<P>;
+impl<P: Plugin> Operation for ShuttingDown<P> {
+    type Declaration = lifecycle::Shutdown;
     type Resources = Owner<P>;
     type Error = Error<P>;
     type Endpoints = ();
@@ -459,7 +456,7 @@ impl<P: Plugin> Operation for Shutdown<P> {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        _request: &mut (),
+        _request: &mut lifecycle::Shutdown,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<()>, Error<P>> {
         let result: ::core::result::Result<(), Self::Error> = async move {

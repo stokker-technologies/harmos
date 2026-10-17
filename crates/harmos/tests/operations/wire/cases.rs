@@ -20,26 +20,162 @@ use std::time::Duration;
 // Local Imports
 use super::{Failed, Lanes, Owner, runtime};
 use harmos::operations::{
-    Backoff, CacheKey, Context, FailureKind, Jitter, Operation, OperationDeclaration,
-    OperationPolicy, RestartPolicy, RetryPolicy, Visibility,
+    Backoff, CacheKey, Context, FailureKind, Jitter, Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy,
+    Visibility,
 };
 use harmos::{Error, Message};
 
 /* === Constants === */
+const ECHO_POLICY: OperationPolicy = OperationPolicy {
+    timeout: Duration::from_secs(2),
+    attempt_timeout: Duration::from_secs(1),
+    retries: RetryPolicy::OnTransient { max_retries: 1, backoff: Backoff::Fixed { delay: Duration::from_millis(1), jitter: Jitter::None } },
+    restart: RestartPolicy::Never,
+};
+
+const NESTED_POLICY: OperationPolicy = OperationPolicy { retries: RetryPolicy::Never, ..ECHO_POLICY };
+
+const CODEC_POLICY: OperationPolicy = OperationPolicy {
+    timeout: Duration::from_secs(2),
+    attempt_timeout: Duration::from_secs(1),
+    retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
+};
+
+const SHORT_CODEC_POLICY: OperationPolicy = OperationPolicy {
+    timeout: Duration::from_millis(5),
+    attempt_timeout: Duration::from_millis(5),
+    retries: RetryPolicy::Never,
+    restart: RestartPolicy::Never,
+};
 
 /* === Macros === */
 thread_local! {
     static DECODE_HOOK: std::cell::RefCell<Option<Box<dyn FnOnce()>>> = const { std::cell::RefCell::new(None) };
 }
 
+// Each Echo Request Carries One Text Value.
+macro_rules! text {
+    ($($ty:ident),* $(,)?) => {$(
+        impl From<String> for $ty {
+            fn from(value: String) -> Self {
+                Self { value }
+            }
+        }
+
+        impl From<&str> for $ty {
+            fn from(value: &str) -> Self {
+                Self {
+                    value: value.to_owned(),
+                }
+            }
+        }
+    )*};
+}
+
+// A Text Codec With Scripted Panics And A Decode Hook.
+macro_rules! scripted_codec {
+    ($($ty:ident),* $(,)?) => {$(
+        impl Message for $ty {
+            fn encode_to_vec(&self) -> Vec<u8> {
+                assert_ne!(self.0.value, "encode_panic", "scripted codec panic");
+                Message::encode_to_vec(&self.0)
+            }
+
+            fn encoded_len(&self) -> usize {
+                Message::encoded_len(&self.0)
+            }
+
+            fn decoding_memory(bytes: &[u8]) -> Result<usize, harmos::MessageError> {
+                <Text as Message>::decoding_memory(bytes)
+            }
+
+            fn decode(bytes: &[u8]) -> Result<Self, harmos::MessageError> {
+                if let Some(run) = DECODE_HOOK.with(|hook| hook.borrow_mut().take()) {
+                    run();
+                }
+                let value = <Text as Message>::decode(bytes)?;
+                assert_ne!(value.value, "decode_panic", "scripted codec panic");
+                if value.value == "slow" {
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                Ok(Self(value))
+            }
+        }
+
+        #[cfg(feature = "grpc")]
+        impl harmos::Protobuf for $ty {
+            fn encode_to_vec(&self) -> Vec<u8> {
+                harmos::Protobuf::encode_to_vec(&self.0)
+            }
+
+            fn encoded_len(&self) -> usize {
+                harmos::Protobuf::encoded_len(&self.0)
+            }
+
+            fn decode(bytes: &[u8]) -> Result<Self, harmos::MessageError> {
+                <Text as harmos::Protobuf>::decode(bytes).map(Self)
+            }
+        }
+
+        impl harmos::MemorySize for $ty {
+            fn memory_size(&self) -> usize {
+                self.0.memory_size()
+            }
+        }
+
+        impl harmos::schema::Described for $ty {
+            const NAME: &'static str = concat!(module_path!(), "::", stringify!($ty));
+            const FIELDS: &'static [harmos::schema::Field] = <Text as harmos::schema::Described>::FIELDS;
+            const MARKER: &'static [u8] = &harmos::schema::declaration::encode::<
+                { harmos::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+            >(Self::NAME, Self::FIELDS);
+        }
+    )*};
+}
+
 /* === Type Aliases === */
 
 /* === Structs === */
-pub(super) struct Echo;
+#[harmos::message]
+#[harmos::operation(
+    id = "fixture.echo",
+    version = 1,
+    response = String,
+    visibility = Visibility::Shared,
+    policy = ECHO_POLICY,
+    key = |request: &Echo| (request.value == "retry")
+        .then(|| CacheKey::new(request.value.as_bytes().to_vec()).unwrap()),
+)]
+#[derive(Debug)]
+pub(super) struct Echo {
+    pub value: String,
+}
 
-pub(super) struct PrivateEcho;
+#[harmos::message]
+#[harmos::operation(
+    id = "fixture.private_echo",
+    version = 1,
+    response = String,
+    policy = ECHO_POLICY
+)]
+#[derive(Debug)]
+pub(super) struct PrivateEcho {
+    pub value: String,
+}
 
-pub(super) struct Nested;
+#[harmos::message]
+#[harmos::operation(
+    id = "fixture.nested_echo",
+    version = 1,
+    response = String,
+    visibility = Visibility::Shared,
+    policy = NESTED_POLICY
+)]
+#[derive(Debug)]
+pub(super) struct Nested {
+    pub value: String,
+}
 
 struct Codec;
 
@@ -114,17 +250,11 @@ impl From<String> for Text {
 
 impl From<&str> for Text {
     fn from(value: &str) -> Self {
-        Self {
-            value: value.to_owned(),
-        }
+        Self { value: value.to_owned() }
     }
 }
 
-impl Message for Payload {
-    fn encode_to_vec(&self) -> Vec<u8> {
-        assert_ne!(self.0.value, "encode_panic", "scripted codec panic");
-        self.0.encode_to_vec()
-    }
+text!(Echo, PrivateEcho, Nested, Detached, SameLane);
 
     fn encoded_len(&self) -> usize {
         self.0.encoded_len()
@@ -191,25 +321,17 @@ impl Operation for Coding {
     type Resources = Owner;
     type Error = Failed;
 
-    async fn initialize<'ctx>(
-        resources: Arc<Owner>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Failed> {
+    async fn initialize<'ctx>(resources: Arc<Owner>, _: Self::Context<'ctx>) -> Result<Self, Failed> {
         resources.prepared.fetch_add(1, Ordering::SeqCst);
         Ok(Self { resources })
     }
 
     async fn run<'ctx>(
-        &mut self,
-        _context: Self::Context<'ctx>,
-        request: &mut Payload,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, _context: Self::Context<'ctx>, request: &mut Codec, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Payload>, Failed> {
         let result: ::core::result::Result<Payload, Self::Error> = async move {
             self.resources.runs.fetch_add(1, Ordering::SeqCst);
-            Ok(Payload(Text {
-                value: std::mem::take(&mut request.0.value),
-            }))
+            Ok(Payload(Text { value: std::mem::take(&mut request.0.value) }))
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -226,17 +348,13 @@ impl OperationDeclaration for Echo {
         attempt_timeout: Duration::from_secs(1),
         retries: RetryPolicy::OnTransient {
             max_retries: 1,
-            backoff: Backoff::Fixed {
-                delay: Duration::from_millis(1),
-                jitter: Jitter::None,
-            },
+            backoff: Backoff::Fixed { delay: Duration::from_millis(1), jitter: Jitter::None },
         },
         restart: RestartPolicy::Never,
     };
 
     fn key(request: &Text) -> Option<CacheKey> {
-        (request.value == "retry")
-            .then(|| CacheKey::new(request.value.as_bytes().to_vec()).unwrap())
+        (request.value == "retry").then(|| CacheKey::new(request.value.as_bytes().to_vec()).unwrap())
     }
 }
 
@@ -259,20 +377,14 @@ impl Operation for Echoing {
     type Resources = Owner;
     type Error = Failed;
 
-    async fn initialize<'ctx>(
-        resources: Arc<Owner>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Failed> {
+    async fn initialize<'ctx>(resources: Arc<Owner>, _: Self::Context<'ctx>) -> Result<Self, Failed> {
         resources.prepared.fetch_add(1, Ordering::SeqCst);
         let state = State { attempts: 0 };
         Ok(Self { resources, state })
     }
 
     async fn run<'ctx>(
-        &mut self,
-        context: Self::Context<'ctx>,
-        value: &mut Text,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, context: Self::Context<'ctx>, value: &mut Echo, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<String>, Failed> {
         let result: ::core::result::Result<String, Self::Error> = async move {
             self.resources.runs.fetch_add(1, Ordering::SeqCst);
@@ -301,20 +413,14 @@ impl Operation for PrivateEchoing {
     type Resources = Owner;
     type Error = Failed;
 
-    async fn initialize<'ctx>(
-        resources: Arc<Owner>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Failed> {
+    async fn initialize<'ctx>(resources: Arc<Owner>, _: Self::Context<'ctx>) -> Result<Self, Failed> {
         resources.prepared.fetch_add(1, Ordering::SeqCst);
         let state = State { attempts: 0 };
         Ok(Self { resources, state })
     }
 
     async fn run<'ctx>(
-        &mut self,
-        context: Self::Context<'ctx>,
-        value: &mut Text,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, context: Self::Context<'ctx>, value: &mut PrivateEcho, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<String>, Failed> {
         let result: ::core::result::Result<String, Self::Error> = async move {
             self.resources.runs.fetch_add(1, Ordering::SeqCst);
@@ -332,10 +438,7 @@ impl OperationDeclaration for Nested {
     type Response = String;
     const ID: &'static str = "fixture.nested_echo";
     const VISIBILITY: Visibility = Visibility::Shared;
-    const POLICY: OperationPolicy = OperationPolicy {
-        retries: RetryPolicy::Never,
-        ..Echo::POLICY
-    };
+    const POLICY: OperationPolicy = OperationPolicy { retries: RetryPolicy::Never, ..Echo::POLICY };
 }
 
 pub(super) struct Nesting {
@@ -349,27 +452,74 @@ impl Operation for Nesting {
     type Resources = Owner;
     type Error = Failed;
 
-    async fn initialize<'ctx>(
-        resources: Arc<Owner>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Failed> {
+    async fn initialize<'ctx>(resources: Arc<Owner>, _: Self::Context<'ctx>) -> Result<Self, Failed> {
         resources.prepared.fetch_add(1, Ordering::SeqCst);
-        Ok(Self {
-            _resources: resources,
-        })
+        Ok(Self { _resources: resources })
     }
 
     async fn run<'ctx>(
-        &mut self,
-        context: Self::Context<'ctx>,
-        request: &mut Text,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, context: Self::Context<'ctx>, request: &mut Nested, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<String>, Failed> {
         let result: ::core::result::Result<String, Self::Error> = async move {
-            let reply = context
-                .call_encoded(PrivateEcho::ID, request.encode_to_vec())
-                .await?;
+            let reply = context.call_encoded(PrivateEcho::ID, Message::encode_to_vec(request)).await?;
             Ok(String::decode(&reply).unwrap())
+        }
+        .await;
+        result.map(::core::convert::Into::into)
+    }
+}
+
+struct SameLaneCall {
+    _resources: Arc<Owner>,
+}
+
+impl Operation for SameLaneCall {
+    type Endpoints = ();
+    type Context<'a> = Context<'a>;
+    type Declaration = SameLane;
+    type Resources = Owner;
+    type Error = Failed;
+
+    async fn initialize<'ctx>(resources: Arc<Owner>, _: Self::Context<'ctx>) -> Result<Self, Failed> {
+        resources.prepared.fetch_add(1, Ordering::SeqCst);
+        Ok(Self { _resources: resources })
+    }
+
+    async fn run<'ctx>(
+        &mut self, context: Self::Context<'ctx>, request: &mut SameLane, _endpoints: &mut Self::Endpoints,
+    ) -> Result<harmos::operations::Response<String>, Failed> {
+        let result: ::core::result::Result<String, Self::Error> = async move {
+            let reply = context.call_encoded(PrivateEcho::ID, Message::encode_to_vec(request)).await?;
+            Ok(String::decode(&reply).unwrap())
+        }
+        .await;
+        result.map(::core::convert::Into::into)
+    }
+}
+
+pub(super) struct Detaching {
+    resources: Arc<Owner>,
+}
+
+impl Operation for Detaching {
+    type Endpoints = ();
+    type Context<'a> = Context<'a>;
+    type Declaration = Detached;
+    type Resources = Owner;
+    type Error = Failed;
+
+    async fn initialize<'ctx>(resources: Arc<Owner>, _: Self::Context<'ctx>) -> Result<Self, Failed> {
+        Ok(Self { resources })
+    }
+
+    async fn run<'ctx>(
+        &mut self, context: Self::Context<'ctx>, _request: &mut Detached, _endpoints: &mut Self::Endpoints,
+    ) -> Result<harmos::operations::Response<String>, Failed> {
+        let result: ::core::result::Result<String, Self::Error> = async move {
+            let started = self.resources.wire_started.notified();
+            let _child = context.submit_encoded(PrivateEcho::ID, Text::from("block").encode_to_vec())?;
+            started.await;
+            Ok("parent".to_owned())
         }
         .await;
         result.map(::core::convert::Into::into)
@@ -384,14 +534,8 @@ impl Operation for Nesting {
 async fn malformed_payload_refused() {
     let runtime = runtime().await;
     let owner = Arc::new(Owner::default());
-    runtime
-        .operations
-        .register_wire_operations::<Implemented, _>("app", Lanes::Open, owner.clone())
-        .unwrap();
-    assert!(matches!(
-        runtime.operations.submit_encoded(Echo::ID, vec![0xff]),
-        Err(Error::OperationPayload { .. })
-    ));
+    runtime.operations.register_wire_operations::<Implemented, _>("app", Lanes::Open, owner.clone()).unwrap();
+    assert!(matches!(runtime.operations.submit_encoded(Echo::ID, vec![0xff]), Err(Error::OperationPayload { .. })));
     // The refused payload constructs nothing.
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
     runtime.stop().await.unwrap();
@@ -401,18 +545,10 @@ async fn malformed_payload_refused() {
 async fn binding_never_acquires() {
     let runtime = runtime().await;
     let owner = Arc::new(Owner::default());
-    runtime
-        .operations
-        .register_operations::<Implemented, _>("app", Lanes::Open, owner.clone())
-        .unwrap();
+    runtime.operations.register_operations::<Implemented, _>("app", Lanes::Open, owner.clone()).unwrap();
     assert!(matches!(
-        runtime
-            .operations
-            .submit_encoded(Echo::ID, Text::from("value").encode_to_vec()),
-        Err(Error::InvalidInput {
-            field: "encoded operation",
-            ..
-        })
+        runtime.operations.submit_encoded(Echo::ID, Text::from("value").encode_to_vec()),
+        Err(Error::InvalidInput { field: "encoded operation", .. })
     ));
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
     runtime.stop().await.unwrap();
@@ -422,14 +558,9 @@ async fn binding_never_acquires() {
 async fn decode_panic_refused() {
     let runtime = runtime().await;
     let owner = Arc::new(Owner::default());
-    runtime
-        .operations
-        .register_wire_operations::<ImplementedCodec, _>("app", Lanes::Open, owner.clone())
-        .unwrap();
+    runtime.operations.register_wire_operations::<ImplementedCodec, _>("app", Lanes::Open, owner.clone()).unwrap();
     assert!(matches!(
-        runtime
-            .operations
-            .submit_encoded(Codec::ID, Text::from("decode_panic").encode_to_vec()),
+        runtime.operations.submit_encoded(Codec::ID, Text::from("decode_panic").encode_to_vec()),
         Err(Error::OperationPanicked { .. })
     ));
     // The panic stays inside submission and constructs nothing.
@@ -441,15 +572,9 @@ async fn decode_panic_refused() {
 async fn encode_panic_settles() {
     let runtime = runtime().await;
     let owner = Arc::new(Owner::default());
-    runtime
-        .operations
-        .register_wire_operations::<ImplementedCodec, _>("app", Lanes::Open, owner.clone())
-        .unwrap();
+    runtime.operations.register_wire_operations::<ImplementedCodec, _>("app", Lanes::Open, owner.clone()).unwrap();
     assert!(matches!(
-        runtime
-            .operations
-            .call_encoded(Codec::ID, Text::from("encode_panic").encode_to_vec())
-            .await,
+        runtime.operations.call_encoded(Codec::ID, Text::from("encode_panic").encode_to_vec()).await,
         Err(Error::OperationPanicked { .. })
     ));
     // The response panics after one completed run.
@@ -463,49 +588,67 @@ async fn decode_races_replacement() {
     let runtime = runtime().await;
     let old = Arc::new(Owner::default());
     let replacement = Arc::new(Owner::default());
-    runtime
-        .operations
-        .register_wire_operations::<ImplementedCodec, _>("app", Lanes::Open, old.clone())
-        .unwrap();
+    runtime.operations.register_wire_operations::<ImplementedCodec, _>("app", Lanes::Open, old.clone()).unwrap();
     let operations = runtime.operations.clone();
     let new_owner = replacement.clone();
     DECODE_HOOK.with(|hook| {
         *hook.borrow_mut() = Some(Box::new(move || {
             std::thread::spawn(move || {
-                tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                    .unwrap()
-                    .block_on(async {
-                        operations.unregister(Codec::ID).await.unwrap();
-                        operations
-                            .register_wire_operations::<ImplementedCodec, _>(
-                                "app",
-                                Lanes::Open,
-                                new_owner,
-                            )
-                            .unwrap();
-                    });
+                tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
+                    operations.unregister(Codec::ID).await.unwrap();
+                    operations.register_wire_operations::<ImplementedCodec, _>("app", Lanes::Open, new_owner).unwrap();
+                });
             })
             .join()
             .unwrap();
         }));
     });
-    assert!(matches!(
-        runtime
-            .operations
-            .submit_encoded(Codec::ID, Text::from("original").encode_to_vec()),
-        Err(Error::Closing { .. })
-    ));
+    assert!(matches!(runtime.operations.submit_encoded(Codec::ID, Text::from("original").encode_to_vec()), Err(Error::Closing { .. })));
     assert_eq!(old.prepared.load(Ordering::SeqCst), 0);
     assert_eq!(replacement.prepared.load(Ordering::SeqCst), 0);
-    let reply = runtime
-        .operations
-        .call_encoded(Codec::ID, Text::from("replacement").encode_to_vec())
-        .await
-        .unwrap();
+    let reply = runtime.operations.call_encoded(Codec::ID, Text::from("replacement").encode_to_vec()).await.unwrap();
     assert_eq!(Text::decode(&reply).unwrap().value, "replacement");
     assert_eq!(replacement.prepared.load(Ordering::SeqCst), 1);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn children_refuse_held() {
+    let runtime = runtime().await;
+    let owner = Arc::new(Owner::default());
+    runtime.operations.register_wire_operations::<ImplementedSerial, _>("app", Lanes::Serial, owner.clone()).unwrap();
+    let error = runtime.operations.call(SameLane::from("child")).await.unwrap_err();
+    let Error::OperationFailed { source, .. } = error else {
+        panic!("nested refusal retained");
+    };
+    assert!(matches!(source.downcast_ref::<Failed>(), Some(Failed::Nested(Error::OperationLaneCycle { .. }))));
+    assert_eq!(owner.prepared.load(Ordering::SeqCst), 1);
+    assert_eq!(owner.runs.load(Ordering::SeqCst), 0);
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn success_joins_unawaited() {
+    let runtime = runtime().await;
+    let owner = Arc::new(Owner::default());
+    runtime.operations.register_wire_operations::<Implemented, _>("app", Lanes::Open, owner.clone()).unwrap();
+    assert_eq!(&*runtime.operations.call(Detached::from("ignored")).await.unwrap(), "parent");
+    assert_eq!(owner.wire_joined.load(Ordering::SeqCst), 1);
+    runtime.operations.unregister(PrivateEcho::ID).await.unwrap();
+    runtime.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn cancellation_joins_child() {
+    let runtime = runtime().await;
+    let owner = Arc::new(Owner::default());
+    runtime.operations.register_wire_operations::<Implemented, _>("app", Lanes::Open, owner.clone()).unwrap();
+    let started = owner.wire_started.notified();
+    let parent = runtime.operations.submit(Nested::from("block")).unwrap();
+    started.await;
+    parent.cancel();
+    assert!(matches!(parent.await, Err(Error::OperationRefused(Refusal::Cancelled))));
+    assert_eq!(owner.wire_joined.load(Ordering::SeqCst), 1);
     runtime.stop().await.unwrap();
 }
 

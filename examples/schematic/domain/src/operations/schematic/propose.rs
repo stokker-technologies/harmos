@@ -26,30 +26,26 @@
 
 /* === Structs === */
 #[harmos_domain::message]
-#[derive(Clone, Debug, PartialEq)]
-pub struct Request {
-    pub from: crate::model::Point,
-    pub to: crate::model::Point,
-}
-
-#[harmos_domain::message]
-#[derive(Clone, Debug, PartialEq)]
-pub struct Response {
-    pub points: Vec<crate::model::Point>,
-}
-
 #[harmos_domain::operation(
     id = "schematic.route",
-    request = Request,
-    response = Response,
-
+    response = Route,
     policy = crate::operations::POLICY,
     visibility = harmos_domain::operations::Visibility::Shared,
     replay = harmos_domain::operations::ReplaySafety::Idempotent,
     version = 1,
     grpc(package = "schematic.v1", service = "Schematic", method = "ProposeRoute"),
 )]
-pub struct ProposeRoute;
+#[derive(Clone, Debug, PartialEq)]
+pub struct ProposeRoute {
+    pub from: crate::model::Point,
+    pub to: crate::model::Point,
+}
+
+#[harmos_domain::message]
+#[derive(Clone, Debug, PartialEq)]
+pub struct Route {
+    pub points: Vec<crate::model::Point>,
+}
 
 /* === Enums === */
 

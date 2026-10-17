@@ -27,9 +27,7 @@ use crate::catalog::{Catalog, Projection, Visitor};
     all(feature = "plugin-guest", not(target_arch = "wasm32"))
 ))]
 use crate::operations::Declarations;
-use crate::operations::{
-    AuthoredDeclarations, Definition, OperationDeclaration, WireDeclaration, WireOperation,
-};
+use crate::operations::{AuthoredDeclarations, Definition, OperationDeclaration, WireDeclaration};
 #[cfg(any(
     feature = "plugin",
     feature = "plugin-guest",
@@ -47,15 +45,13 @@ use crate::{Error, Message, Result, operations::Lane};
 type BindCatalog = dyn Fn(&OperationManager) -> Result<()> + Send + Sync;
 
 /* === Structs === */
-struct WireProjection {
+pub(super) struct WireProjection {
     declaration: std::any::TypeId,
     contract: crate::operations::Contract,
     dispatch: Option<super::wire::Dispatch>,
     #[cfg(feature = "grpc")]
     grpc: Option<crate::grpc::routing::Handler>,
 }
-
-struct ProjectWire;
 
 #[derive(Clone)]
 pub(crate) struct CatalogBinding {
@@ -91,46 +87,6 @@ pub struct PluginRegistration {
 /* === Traits === */
 
 /* === Implementations === */
-impl super::WireVisitor for ProjectWire {
-    type Entry = Result<WireProjection>;
-
-    fn wire<O>(self) -> Self::Entry
-    where
-        O: WireOperation,
-        O::Request: Message + Described,
-        O::Response: Message + Described,
-    {
-        let contract =
-            WireDeclaration::of::<O>()
-                .contract()
-                .map_err(|source| Error::OperationFailed {
-                    operation: O::ID.to_owned(),
-                    source: Arc::new(source),
-                })?;
-        let streaming = contract.input().is_some() || contract.output().is_some();
-        #[cfg(feature = "grpc")]
-        let grpc = O::visit_grpc(crate::grpc::routing::Project);
-        #[cfg(feature = "grpc")]
-        if contract.grpc().is_some() && grpc.is_none() {
-            return Err(Error::InvalidInput {
-                field: "operation gRPC binding",
-                reason: "declaration has no typed gRPC adapter",
-            });
-        }
-        Ok(WireProjection {
-            declaration: std::any::TypeId::of::<O>(),
-            contract,
-            dispatch: if streaming {
-                None
-            } else {
-                Some(super::wire::dispatch::<O>)
-            },
-            #[cfg(feature = "grpc")]
-            grpc,
-        })
-    }
-}
-
 impl CatalogBinding {
     pub(crate) fn operation<T>(owner: String, lane: impl Lane, resources: Arc<T::Resources>) -> Self
     where
@@ -274,7 +230,7 @@ impl OperationManager {
         #[cfg(feature = "plugin-sidecar")]
         for entry in &bindings.entries {
             if let Some(native) = &entry.native
-                && let Err(error) = native.capture_observer_control()
+                && let Err(error) = native.capture_observe_contract()
             {
                 self.fence(&bindings.entries, true);
                 self.remove_settled(&bindings.entries);
@@ -378,7 +334,7 @@ impl Bindings<'_> {
                 name: id.to_owned(),
             });
         }
-        let projected = T::Declaration::visit_wire(ProjectWire).transpose()?;
+        let projected = Some(project::<T::Declaration>()?);
         if let Some(projected) = &projected
             && (projected.declaration != std::any::TypeId::of::<T::Declaration>()
                 || projected.contract.operation() != &definition)
@@ -420,9 +376,8 @@ impl Bindings<'_> {
     ) -> Result<()>
     where
         T: for<'ctx> super::Operation<Context<'ctx> = Context<'ctx>>,
-        T::Declaration: WireOperation,
-        <T::Declaration as OperationDeclaration>::Request: Message + Described,
-        <T::Declaration as OperationDeclaration>::Response: Message + Described,
+        T::Declaration: crate::operations::OperationDeclaration,
+        T::Declaration: Message + Described,
     {
         self.register_owned_wire_at::<T>(lane.name(), resources)
     }
@@ -434,9 +389,8 @@ impl Bindings<'_> {
     ) -> Result<()>
     where
         T: for<'ctx> super::Operation<Context<'ctx> = Context<'ctx>>,
-        T::Declaration: WireOperation,
-        <T::Declaration as OperationDeclaration>::Request: Message + Described,
-        <T::Declaration as OperationDeclaration>::Response: Message + Described,
+        T::Declaration: crate::operations::OperationDeclaration,
+        T::Declaration: Message + Described,
     {
         let contract = WireDeclaration::of::<T::Declaration>()
             .contract()
@@ -455,9 +409,8 @@ impl Bindings<'_> {
     ) -> Result<()>
     where
         T: for<'ctx> super::Operation<Context<'ctx> = Context<'ctx>>,
-        T::Declaration: WireOperation,
-        <T::Declaration as OperationDeclaration>::Request: Message + Described,
-        <T::Declaration as OperationDeclaration>::Response: Message + Described,
+        T::Declaration: crate::operations::OperationDeclaration,
+        T::Declaration: Message + Described,
     {
         self.register_wire_contract_at::<T>(contract, lane.name(), resources)
     }
@@ -470,11 +423,10 @@ impl Bindings<'_> {
     ) -> Result<()>
     where
         T: for<'ctx> super::Operation<Context<'ctx> = Context<'ctx>>,
-        T::Declaration: WireOperation,
-        <T::Declaration as OperationDeclaration>::Request: Message + Described,
-        <T::Declaration as OperationDeclaration>::Response: Message + Described,
+        T::Declaration: crate::operations::OperationDeclaration,
+        T::Declaration: Message + Described,
     {
-        let projected = super::WireVisitor::wire::<T::Declaration>(ProjectWire)?;
+        let projected = project::<T::Declaration>()?;
         let declared = &projected.contract;
         let mut definition = declared.operation().clone();
         definition.id = contract.operation().id.clone();
@@ -640,6 +592,33 @@ impl Drop for PluginRegistration {
 }
 
 /* === Public Functions === */
+// The manager's one projection of a declaration: its wire contract, its
+// unary dispatch and, when it binds a method, its gRPC handler.
+pub(super) fn project<O: crate::operations::OperationDeclaration>() -> Result<WireProjection> {
+    let contract =
+        WireDeclaration::of::<O>()
+            .contract()
+            .map_err(|source| Error::OperationFailed {
+                operation: O::ID.to_owned(),
+                source: Arc::new(source),
+            })?;
+    let streaming = contract.input().is_some() || contract.output().is_some();
+    #[cfg(feature = "grpc")]
+    let grpc = contract
+        .grpc()
+        .map(|_| crate::grpc::routing::handler::<O>());
+    Ok(WireProjection {
+        declaration: std::any::TypeId::of::<O>(),
+        contract,
+        dispatch: if streaming {
+            None
+        } else {
+            Some(super::wire::dispatch::<O>)
+        },
+        #[cfg(feature = "grpc")]
+        grpc,
+    })
+}
 
 /* === Private Functions === */
 

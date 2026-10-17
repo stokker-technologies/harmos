@@ -19,10 +19,7 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use crate::operations::{
-    Contract, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility,
-    WireOperation,
-};
+use crate::operations::{Contract, OperationPolicy, RestartPolicy, RetryPolicy, Visibility};
 use crate::plugin::Grant;
 
 /* === Constants === */
@@ -34,11 +31,19 @@ pub const POLICY: OperationPolicy = OperationPolicy {
 };
 
 /* === Macros === */
+crate::declare!(Operations {
+    id: "host.operations",
+    version: 1,
+    policy: POLICY,
+    response: OperationsResponse,
+    description: "Discover bounded live contracts; invocation authorization remains conditional",
+    visibility: Visibility::Shared,
+    grpc: ("harmos.host.v1", "Host", "Operations"),
+});
 
 /* === Type Aliases === */
 
 /* === Structs === */
-pub struct Operations;
 // A Live Provider Contract. Invocation Still Performs Request-Specific Authorization.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DiscoveredOperation {
@@ -55,31 +60,6 @@ pub struct DiscoveredOperation {
 /* === Traits === */
 
 /* === Implementations === */
-impl WireOperation for Operations {
-    const VERSION: u32 = 1;
-    #[cfg(feature = "grpc")]
-    const GRPC: Option<crate::operations::Grpc> = Some(crate::operations::Grpc::new(
-        "harmos.host.v1",
-        "Host",
-        "Operations",
-    ));
-
-    #[cfg(feature = "grpc")]
-    fn visit_grpc<V: crate::operations::GrpcVisitor>(visitor: V) -> Option<V::Entry> {
-        Some(visitor.unary::<Self>())
-    }
-}
-
-impl OperationDeclaration for Operations {
-    type Request = OperationsRequest;
-    type Response = OperationsResponse;
-    const ID: &'static str = "host.operations";
-    const POLICY: OperationPolicy = POLICY;
-    const VISIBILITY: Visibility = Visibility::Shared;
-    const DESCRIPTION: &'static str =
-        "Discover bounded live contracts; invocation authorization remains conditional";
-}
-
 /* === Public Functions === */
 
 /* === Private Functions === */

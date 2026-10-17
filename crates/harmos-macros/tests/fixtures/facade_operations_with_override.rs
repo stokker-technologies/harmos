@@ -30,17 +30,14 @@ use facade::__harmos::operations::{OperationDeclaration, OperationPolicy, Restar
 /* === Macros === */
 
 /* === Type Aliases === */
-pub type Request = WireRequest;
 
 /* === Structs === */
-#[facade::message(harmos_path = ::facade::__harmos)]
-pub struct WireRequest { pub value: String }
 
 pub struct State;
 
+#[facade::message(harmos_path = ::facade::__harmos)]
 #[facade::operation(
     harmos_path = ::facade::__harmos,
-    request = Request,
     response = relative::Reply,
     id = "alias.echo",
     policy = OperationPolicy {
@@ -51,7 +48,7 @@ pub struct State;
     },
     version = 1,
 )]
-pub struct Echo;
+pub struct Echo { pub value: String }
 
 pub struct Guest;
 

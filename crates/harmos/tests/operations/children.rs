@@ -26,9 +26,7 @@ use tokio::sync::{Notify, Semaphore};
 
 // Local Imports
 use super::{Lanes, app::App};
-use harmos::operations::{
-    Backoff, Context, FailureKind, Jitter, Operation, OperationPolicy, RestartPolicy, RetryPolicy,
-};
+use harmos::operations::{Backoff, Context, FailureKind, Jitter, Operation, OperationPolicy, RestartPolicy, RetryPolicy};
 use harmos::{Error, Refusal, Runtime};
 
 /* === Constants === */
@@ -55,6 +53,7 @@ struct Parent {
 struct Child(Arc<Trace>);
 
 /* === Enums === */
+#[harmos::message]
 enum Exit {
     Return,
     Fail,
@@ -72,10 +71,11 @@ enum Failed {
     Child(#[from] Error),
 }
 
+#[harmos::message]
 #[harmos::operation(
-        request = Exit,
         response = (),
         id = "children.parent",
+        version = 1,
         policy = OperationPolicy {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
@@ -86,12 +86,15 @@ enum Failed {
             restart: RestartPolicy::Never,
         },
     )]
-struct ParentContract;
+struct ParentContract {
+    exit: Exit,
+}
 
+#[harmos::message]
 #[harmos::operation(
-        request = (),
         response = (),
         id = "children.child",
+        version = 1,
         policy = OperationPolicy {
             timeout: Duration::from_secs(5),
             attempt_timeout: Duration::from_secs(5),
@@ -99,7 +102,7 @@ struct ParentContract;
             restart: RestartPolicy::Never,
         },
     )]
-struct ChildContract;
+struct ChildContract {}
 
 #[harmos::catalog]
 enum Operations {
@@ -122,18 +125,15 @@ impl Operation for Parent {
     }
 
     async fn run<'ctx>(
-        &mut self,
-        context: Self::Context<'ctx>,
-        exit: &mut Exit,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, context: Self::Context<'ctx>, request: &mut ParentContract, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<()>, Failed> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             self.trace.attempts.fetch_add(1, Ordering::SeqCst);
             self.trace.events.lock().unwrap().push("parent-attempt");
-            let _child = context.submit_as::<ChildContract>(())?;
+            let _child = context.submit(ChildContract {})?;
             self.trace.child_started.notified().await;
             self.trace.parent_ready.notify_one();
-            match exit {
+            match request.exit {
                 Exit::Return => Ok(()),
                 Exit::Fail => Err(Failed::Attempt),
                 Exit::Wait => std::future::pending().await,
@@ -159,18 +159,12 @@ impl Operation for Child {
     type Endpoints = ();
     type Context<'a> = Context<'a>;
 
-    async fn initialize<'ctx>(
-        trace: Arc<Trace>,
-        _: Self::Context<'ctx>,
-    ) -> Result<Self, Self::Error> {
+    async fn initialize<'ctx>(trace: Arc<Trace>, _: Self::Context<'ctx>) -> Result<Self, Self::Error> {
         Ok(Self(trace))
     }
 
     async fn run<'ctx>(
-        &mut self,
-        _context: Self::Context<'ctx>,
-        _request: &mut (),
-        _endpoints: &mut Self::Endpoints,
+        &mut self, _context: Self::Context<'ctx>, _request: &mut ChildContract, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<()>, Self::Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
             self.0.events.lock().unwrap().push("child-started");
@@ -210,38 +204,33 @@ async fn runtime(block_cleanup: bool) -> (Runtime<App>, Arc<Trace>) {
         release: Semaphore::new(0),
         block_cleanup,
     });
-    let runtime = Runtime::<App>::builder((), ())
-        .register(Lanes::catalog())
-        .runtime()
-        .await
-        .unwrap();
-    runtime
-        .operations
-        .register_operation::<Parent>("app", Lanes::Serial, trace.clone())
-        .unwrap();
-    runtime
-        .operations
-        .register_operation::<Child>("app", Lanes::Open, trace.clone())
-        .unwrap();
+    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
+    runtime.operations.register_operation::<Parent>("app", Lanes::Serial, trace.clone()).unwrap();
+    runtime.operations.register_operation::<Child>("app", Lanes::Open, trace.clone()).unwrap();
     (runtime, trace)
+}
+
+async fn torn_down(exit: Exit, cancel: bool) -> Result<harmos::operations::Response<()>, Error> {
+    let (runtime, trace) = runtime(false).await;
+    let parent = runtime.operations.submit(ParentContract { exit }).unwrap();
+    if cancel {
+        trace.parent_ready.notified().await;
+        parent.cancel();
+    }
+    let outcome = parent.await;
+    assert_eq!(*trace.events.lock().unwrap(), ["parent-attempt", "child-started", "child-finalized", "child-dropped"]);
+    runtime.stop().await.unwrap();
+    outcome
 }
 
 /* === Tests === */
 
 #[tokio::test(start_paused = true)]
 async fn parent_joins_child() {
-    let exits = [
-        (Exit::Return, false),
-        (Exit::Fail, false),
-        (Exit::Wait, false),
-        (Exit::Wait, true),
-    ];
+    let exits = [(Exit::Return, false), (Exit::Fail, false), (Exit::Wait, false), (Exit::Wait, true)];
     for (exit, cancel) in exits {
         let (runtime, trace) = runtime(false).await;
-        let parent = runtime
-            .operations
-            .submit_as::<ParentContract>(exit)
-            .unwrap();
+        let parent = runtime.operations.submit_as::<ParentContract>(exit).unwrap();
         if cancel {
             trace.parent_ready.notified().await;
             parent.cancel();
@@ -249,21 +238,10 @@ async fn parent_joins_child() {
         let outcome = parent.await;
 
         // The child is finalized and dropped before the parent settles.
-        assert_eq!(
-            *trace.events.lock().unwrap(),
-            [
-                "parent-attempt",
-                "child-started",
-                "child-finalized",
-                "child-dropped"
-            ]
-        );
+        assert_eq!(*trace.events.lock().unwrap(), ["parent-attempt", "child-started", "child-finalized", "child-dropped"]);
         match outcome {
             Ok(_) => {}
-            Err(Error::OperationFailed { source, .. }) => assert!(matches!(
-                source.downcast_ref::<Failed>(),
-                Some(Failed::Attempt)
-            )),
+            Err(Error::OperationFailed { source, .. }) => assert!(matches!(source.downcast_ref::<Failed>(), Some(Failed::Attempt))),
             Err(Error::OperationRefused(Refusal::TimedOut)) => assert!(!cancel),
             Err(Error::OperationRefused(Refusal::Cancelled)) => assert!(cancel),
             Err(error) => panic!("unexpected parent outcome: {error}"),
@@ -275,30 +253,19 @@ async fn parent_joins_child() {
 #[tokio::test(start_paused = true)]
 async fn retry_waits_child() {
     let (runtime, trace) = runtime(true).await;
-    let parent = runtime
-        .operations
-        .submit_as::<ParentContract>(Exit::Retry)
-        .unwrap();
+    let parent = runtime.operations.submit(ParentContract { exit: Exit::Retry }).unwrap();
     trace.finalizing.notified().await;
     tokio::time::advance(Duration::from_millis(20)).await;
     assert_eq!(trace.attempts.load(Ordering::SeqCst), 1);
-    assert_eq!(
-        *trace.events.lock().unwrap(),
-        ["parent-attempt", "child-started"]
-    );
+    assert_eq!(*trace.events.lock().unwrap(), ["parent-attempt", "child-started"]);
 
     trace.release.add_permits(1);
     trace.finalizing.notified().await;
     assert_eq!(trace.attempts.load(Ordering::SeqCst), 2);
     trace.release.add_permits(1);
     let error = parent.await.unwrap_err();
-    let Error::OperationFailed { source, .. } = error else {
-        panic!("expected authored failure")
-    };
-    assert!(matches!(
-        source.downcast_ref::<Failed>(),
-        Some(Failed::Retry)
-    ));
+    let Error::OperationFailed { source, .. } = error else { panic!("expected authored failure") };
+    assert!(matches!(source.downcast_ref::<Failed>(), Some(Failed::Retry)));
     assert_eq!(
         *trace.events.lock().unwrap(),
         [
@@ -320,28 +287,14 @@ async fn result_awaits_finalization() {
     for exit in [Exit::Return, Exit::Fail] {
         let succeeds = matches!(exit, Exit::Return);
         let (runtime, trace) = runtime(true).await;
-        let mut parent = runtime
-            .operations
-            .submit_as::<ParentContract>(exit)
-            .unwrap();
+        let mut parent = runtime.operations.submit(ParentContract { exit }).unwrap();
         trace.finalizing.notified().await;
         assert!((&mut parent).now_or_never().is_none());
-        assert_eq!(
-            *trace.events.lock().unwrap(),
-            ["parent-attempt", "child-started"]
-        );
+        assert_eq!(*trace.events.lock().unwrap(), ["parent-attempt", "child-started"]);
 
         trace.release.add_permits(1);
         assert_eq!(parent.await.is_ok(), succeeds);
-        assert_eq!(
-            *trace.events.lock().unwrap(),
-            [
-                "parent-attempt",
-                "child-started",
-                "child-finalized",
-                "child-dropped"
-            ]
-        );
+        assert_eq!(*trace.events.lock().unwrap(), ["parent-attempt", "child-started", "child-finalized", "child-dropped"]);
         runtime.stop().await.unwrap();
     }
 }

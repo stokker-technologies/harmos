@@ -21,11 +21,6 @@ use serde::{Deserialize, Serialize};
 use super::contracts::{self, Encoder};
 use super::{StreamDeclaration, publications};
 use crate::catalog::Node;
-use crate::config::SchemaSettings;
-use crate::operations::{Contract, Visibility, WireDeclaration};
-use crate::schema::Described;
-use crate::schema::declaration::Named;
-use crate::schema::graph::Schema;
 
 /* === Constants === */
 
@@ -70,18 +65,6 @@ pub struct Manifest {
     pub facility: String,
     pub owner: String,
     pub observers: Vec<Declaration>,
-    #[serde(default)]
-    pub observer_control: Option<Contract>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct NamedManifest {
-    pub facility: String,
-    pub owner: String,
-    pub observers: Vec<Declaration>,
-    #[serde(default)]
-    pub observer_control: Option<contracts::NamedContract>,
 }
 
 /* === Enums === */
@@ -99,8 +82,6 @@ pub enum Error {
     Contract(#[from] contracts::Error),
     #[error(transparent)]
     Schema(#[from] crate::schema::graph::Error),
-    #[error("invalid observer control inventory: {0}")]
-    Controls(&'static str),
     #[error("the artifact carries no complete {facility} observer inventory for `{owner}`")]
     Missing { facility: String, owner: String },
     #[error("the artifact carries multiple {facility} observer inventories for `{owner}`")]
@@ -122,25 +103,6 @@ impl crate::catalog::Visitor for Descriptors {
 
 impl<S: Declared> crate::catalog::Member<S> for Descriptors {
     const ENTRY: Entry = S::ENTRY;
-}
-
-impl NamedManifest {
-    pub fn resolve(
-        self,
-        declarations: &[Named],
-        settings: &mut SchemaSettings,
-    ) -> Result<Manifest, Error> {
-        let observer_control = self
-            .observer_control
-            .map(|control| control.resolve(declarations, settings))
-            .transpose()?;
-        Ok(Manifest {
-            facility: self.facility,
-            owner: self.owner,
-            observers: self.observers,
-            observer_control,
-        })
-    }
 }
 
 impl Entry {
@@ -278,58 +240,8 @@ pub const fn encode<const N: usize>(facility: &str, owner: &str, entries: &[Entr
     encoded::<N>(facility, owner, entries).bytes
 }
 
-pub fn validate_control(
-    observers: &[Declaration],
-    control: Option<&Contract>,
-    provides: &[Contract],
-) -> Result<(), Error> {
-    if observers.is_empty() {
-        return if control.is_none() {
-            Ok(())
-        } else {
-            Err(Error::Controls("empty observers have no observe control"))
-        };
-    }
-    let control = control.ok_or(Error::Controls(
-        "nonempty observers require an authored observe control",
-    ))?;
-    if control.operation().visibility != Visibility::Host || !provides.contains(control) {
-        return Err(Error::Controls(
-            "the observe control is an exact Host member of provides",
-        ));
-    }
-    if control.operation().policy != crate::observers::POLICY {
-        return Err(Error::Controls(
-            "the observe control declares the resident observers::POLICY",
-        ));
-    }
-    let settings = SchemaSettings::default();
-    let request = Schema::from_declaration(crate::observers::Control::DEFINITION, &settings)?;
-    let response = Schema::from_declaration(<()>::DEFINITION, &settings)?;
-    if !control
-        .schema()
-        .equivalent(control.request().index(), &request, request.root, &settings)?
-        || !control.schema().equivalent(
-            control.response().index(),
-            &response,
-            response.root,
-            &settings,
-        )?
-    {
-        return Err(Error::Controls(
-            "observe control request or response schema differs",
-        ));
-    }
-    Ok(())
-}
-
-pub const fn encoded_tree_len(
-    facility: &str,
-    owner: &str,
-    entries: &[Node<Entry>],
-    controls: &[WireDeclaration],
-) -> usize {
-    let length = encoded_tree::<0>(facility, owner, entries, controls).cursor;
+pub const fn encoded_tree_len(facility: &str, owner: &str, entries: &[Node<Entry>]) -> usize {
+    let length = encoded_tree::<0>(facility, owner, entries).cursor;
     assert!(length - crate::PREFIX.len() - 1 <= crate::FRAGMENT_LIMIT);
     length
 }
@@ -338,10 +250,9 @@ pub const fn encode_tree<const N: usize>(
     facility: &str,
     owner: &str,
     entries: &[Node<Entry>],
-    controls: &[WireDeclaration],
 ) -> [u8; N] {
-    assert!(N == encoded_tree_len(facility, owner, entries, controls));
-    encoded_tree::<N>(facility, owner, entries, controls).bytes
+    assert!(N == encoded_tree_len(facility, owner, entries));
+    encoded_tree::<N>(facility, owner, entries).bytes
 }
 
 /* === Private Functions === */
@@ -406,7 +317,6 @@ const fn encoded_tree<const N: usize>(
     facility: &str,
     owner: &str,
     entries: &[Node<Entry>],
-    controls: &[WireDeclaration],
 ) -> Encoder<N> {
     let mut out = Encoder {
         bytes: [0; N],
@@ -420,11 +330,6 @@ const fn encoded_tree<const N: usize>(
     let mut first = true;
     tree(&mut out, entries, &mut first, 0);
     out.raw(b"]");
-    if !controls.is_empty() {
-        assert!(controls.len() == 1);
-        out.raw(b",\"observer_control\":");
-        contracts::wire(&mut out, &controls[0]);
-    }
     out.raw(b"}\0");
     out
 }

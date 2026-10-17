@@ -159,7 +159,10 @@ struct RunRequest {
     value: String,
 }
 
-struct Run<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool>;
+// One Run Declaration Per Owner, Timeout And Visibility; Each Encodes As A RunRequest.
+struct Run<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> {
+    value: String,
+}
 struct Running<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> {
     _resources: Arc<Owner>,
 }
@@ -179,17 +182,87 @@ impl harmos::Application for Fixture {
     type Resources = ();
 }
 
-impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> harmos::operations::WireOperation
+const RUN_NAME: &str = concat!(module_path!(), "::Run");
+const RUN_MARKER: &[u8] = &harmos::schema::declaration::encode::<
+    {
+        harmos::schema::declaration::encoded_len(
+            RUN_NAME,
+            <RunRequest as harmos::schema::Described>::FIELDS,
+        )
+    },
+>(RUN_NAME, <RunRequest as harmos::schema::Described>::FIELDS);
+
+impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> Run<OWNER, MILLIS, PRIVATE> {
+    fn wire(&self) -> RunRequest {
+        RunRequest {
+            value: self.value.clone(),
+        }
+    }
+}
+
+impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> harmos::Message
     for Run<OWNER, MILLIS, PRIVATE>
 {
-    const VERSION: u32 = 1;
+    fn encode_to_vec(&self) -> Vec<u8> {
+        harmos::Message::encode_to_vec(&self.wire())
+    }
+    fn encoded_len(&self) -> usize {
+        harmos::Message::encoded_len(&self.wire())
+    }
+    fn decoding_memory(bytes: &[u8]) -> ::core::result::Result<usize, harmos::MessageError> {
+        <RunRequest as harmos::Message>::decoding_memory(bytes)
+    }
+    fn decode(bytes: &[u8]) -> ::core::result::Result<Self, harmos::MessageError> {
+        <RunRequest as harmos::Message>::decode(bytes).map(|request| Self {
+            value: request.value,
+        })
+    }
+}
+
+#[cfg(feature = "grpc")]
+impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> harmos::Protobuf
+    for Run<OWNER, MILLIS, PRIVATE>
+{
+    fn encode_to_vec(&self) -> Vec<u8> {
+        harmos::Protobuf::encode_to_vec(&self.wire())
+    }
+    fn encoded_len(&self) -> usize {
+        harmos::Protobuf::encoded_len(&self.wire())
+    }
+    fn decoding_memory(bytes: &[u8]) -> ::core::result::Result<usize, harmos::MessageError> {
+        <RunRequest as harmos::Protobuf>::decoding_memory(bytes)
+    }
+    fn decode(bytes: &[u8]) -> ::core::result::Result<Self, harmos::MessageError> {
+        <RunRequest as harmos::Protobuf>::decode(bytes).map(|request| Self {
+            value: request.value,
+        })
+    }
+}
+
+impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> harmos::MemorySize
+    for Run<OWNER, MILLIS, PRIVATE>
+{
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>() + self.value.capacity()
+    }
+}
+
+impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> harmos::schema::Described
+    for Run<OWNER, MILLIS, PRIVATE>
+{
+    const NAME: &'static str = RUN_NAME;
+    const FIELDS: &'static [harmos::schema::Field] =
+        <RunRequest as harmos::schema::Described>::FIELDS;
+    const MARKER: &'static [u8] = RUN_MARKER;
 }
 
 impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> OperationDeclaration
     for Run<OWNER, MILLIS, PRIVATE>
 {
-    type Request = RunRequest;
     type Response = String;
+    type Input = harmos::operations::NoStream;
+    type Output = harmos::operations::NoStream;
+    const VERSION: u32 = 1;
     const ID: &'static str = match OWNER {
         0 => "provider.run",
         1 => "client.run",
@@ -227,7 +300,7 @@ impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> Operation
     async fn run<'ctx>(
         &mut self,
         _: Self::Context<'ctx>,
-        request: &mut RunRequest,
+        request: &mut Run<OWNER, MILLIS, PRIVATE>,
         _endpoints: &mut Self::Endpoints,
     ) -> std::io::Result<harmos::operations::Response<String>> {
         let result: ::core::result::Result<String, Self::Error> =

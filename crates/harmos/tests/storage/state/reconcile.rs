@@ -23,14 +23,9 @@ use tokio::sync::Notify;
 // Local Imports
 use super::closed;
 use crate::support::{HOUSE, Noted, deposit};
-use crate::{
-    Bank, Data, Ledger, Recovery, StorageBackends, StorageManager, catalog, config, history,
-    record, schema,
-};
+use crate::{Bank, Data, Ledger, Recovery, StorageBackends, StorageManager, catalog, config, history, record, schema};
 use harmos::storage::ReadLimits;
-use harmos::{
-    Builder, Error, Identifier, Runtime, services::Fault, services::Service, state::Position,
-};
+use harmos::{Builder, Error, Identifier, Runtime, services::Fault, services::Service, state::Position};
 
 /* === Constants === */
 
@@ -62,20 +57,10 @@ struct Gate {
 /* === Implementations === */
 impl Store {
     fn new() -> Self {
-        Self {
-            data: Arc::new(Data::new(history())),
-            recovery: Arc::new(Recovery::new(history())),
-        }
+        Self { data: Arc::new(Data::new(history())), recovery: Arc::new(Recovery::new(history())) }
     }
     fn manager(&self) -> StorageManager {
-        StorageManager::new(
-            StorageBackends {
-                primary: self.data.clone(),
-                state: self.recovery.clone(),
-            },
-            config(),
-        )
-        .unwrap()
+        StorageManager::new(StorageBackends { primary: self.data.clone(), state: self.recovery.clone() }, config()).unwrap()
     }
     async fn seed(&self) {
         let storage = self.manager();
@@ -92,14 +77,7 @@ impl Store {
             .await
             .unwrap();
         let payload = harmos::Message::encode_to_vec(&Balance { value: 8 });
-        storage
-            .write_records(&[record(
-                &schema(),
-                &Identifier::new("saved-balance").unwrap(),
-                &payload,
-            )])
-            .await
-            .unwrap();
+        storage.write_records(&[record(&schema(), &Identifier::new("saved-balance").unwrap(), &payload)]).await.unwrap();
         runtime.state.commit(deposit(3)).await.unwrap();
         runtime.stop().await.unwrap();
     }
@@ -109,34 +87,26 @@ impl Store {
 
 /* === Private Functions === */
 fn builder() -> Builder<Bank> {
-    Runtime::<Bank>::builder(Ledger::default(), ())
-        .register(catalog())
-        .managed_state(limits())
+    Runtime::<Bank>::builder(Ledger::default(), ()).register(catalog()).managed_state(limits())
 }
 
 fn limits() -> ReadLimits {
-    ReadLimits {
-        rows: NonZeroUsize::new(1).unwrap(),
-        bytes: NonZeroUsize::new(64 * 1024).unwrap(),
-    }
+    ReadLimits { rows: NonZeroUsize::new(1).unwrap(), bytes: NonZeroUsize::new(64 * 1024).unwrap() }
 }
 
 fn failure() -> Error {
-    Error::InvalidInput {
-        field: "reconciliation",
-        reason: "controlled failure",
-    }
+    Error::InvalidInput { field: "reconciliation", reason: "controlled failure" }
 }
 
 async fn restore(
-    journal: harmos::state::StateManager<Bank>,
-    storage: StorageManager<harmos::storage::ErasedCatalog>,
+    journal: harmos::state::StateManager<Bank>, storage: StorageManager<harmos::storage::ErasedCatalog>,
 ) -> harmos::Result<()> {
+    use harmos::storage::operations::Query;
     use harmos::storage::query::transform::{
         Transform,
         project::{Project, Projection},
     };
-    use harmos::storage::query::{Query, QueryArrow, RecordSelection, RowSlice, Source};
+    use harmos::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
     let mut reader = storage
         .query(Query {
             at: storage.cursor_saved(),
@@ -148,10 +118,7 @@ async fn restore(
                 source_end: None,
             }),
             transforms: vec![Transform::Project(Project {
-                fields: vec![Projection {
-                    field: "payload.value".into(),
-                    name: "value".into(),
-                }],
+                fields: vec![Projection { field: "payload.value".into(), name: "value".into() }],
             })],
             slice: RowSlice::default(),
         })
@@ -159,23 +126,14 @@ async fn restore(
     let mut saved = Vec::new();
     while let Some(output) = reader.next().await? {
         if let QueryArrow::Batch(batch) = output {
-            let values = batch
-                .as_record_batch()
-                .column_by_name("value")
-                .unwrap()
-                .as_any()
-                .downcast_ref::<arrow_array::Int64Array>()
-                .unwrap();
+            let values =
+                batch.as_record_batch().column_by_name("value").unwrap().as_any().downcast_ref::<arrow_array::Int64Array>().unwrap();
             saved.extend(values.values().iter().copied());
         }
     }
     assert_eq!(saved.len(), 1);
     let saved = saved[0];
-    let current = journal
-        .state()
-        .read(|state| state.balances.get(&HOUSE).copied().unwrap_or(0))
-        .await?
-        .value;
+    let current = journal.state().read(|state| state.balances.get(&HOUSE).copied().unwrap_or(0)).await?.value;
     if saved > current {
         journal.commit(deposit(saved - current)).await.unwrap();
     }
@@ -197,16 +155,7 @@ async fn saved_facts_reconcile() {
                 let signal = signal.clone();
                 let saved = saved.clone();
                 async move {
-                    assert_eq!(
-                        context
-                            .state()
-                            .state()
-                            .read(|state| state.balances[&HOUSE])
-                            .await
-                            .unwrap()
-                            .value,
-                        8
-                    );
+                    assert_eq!(context.state().state().read(|state| state.balances[&HOUSE]).await.unwrap().value, 8);
                     assert_eq!(context.state().stored(), Position(2));
                     assert_eq!(saved.status().recovery_saved.sequence, 2);
                     signal.notify_one();
@@ -228,22 +177,12 @@ async fn reconcile_saves_before_services() {
     store.seed().await;
     let storage = store.manager();
     store.data.control.block_flush.store(true, Ordering::SeqCst);
-    store
-        .recovery
-        .control
-        .block_flush
-        .store(true, Ordering::SeqCst);
+    store.recovery.control.block_flush.store(true, Ordering::SeqCst);
     let started = Arc::new(AtomicBool::new(false));
     let mark = started.clone();
     let opening = builder()
         .reconcile(|journal, storage| async move {
-            storage
-                .write_records(&[record(
-                    &schema(),
-                    &Identifier::new("repair-marker").unwrap(),
-                    b"saved",
-                )])
-                .await?;
+            storage.write_records(&[record(&schema(), &Identifier::new("repair-marker").unwrap(), b"saved")]).await?;
             restore(journal, storage).await
         })
         .service("application", move |_context: Service<Bank>| {
@@ -259,11 +198,7 @@ async fn reconcile_saves_before_services() {
     assert!(!started.load(Ordering::SeqCst));
     assert_eq!(storage.status().saved.sequence, 2);
     assert_eq!(storage.status().recovery_saved.sequence, 1);
-    store
-        .data
-        .control
-        .block_flush
-        .store(false, Ordering::SeqCst);
+    store.data.control.block_flush.store(false, Ordering::SeqCst);
     store.data.control.flush_release.notify_one();
     tokio::select! {
         _ = &mut opening => panic!("recovery save must block boot"),
@@ -272,11 +207,7 @@ async fn reconcile_saves_before_services() {
     assert!(!started.load(Ordering::SeqCst));
     assert_eq!(storage.status().saved.sequence, 3);
     assert_eq!(storage.status().recovery_saved.sequence, 1);
-    store
-        .recovery
-        .control
-        .block_flush
-        .store(false, Ordering::SeqCst);
+    store.recovery.control.block_flush.store(false, Ordering::SeqCst);
     store.recovery.control.flush_release.notify_one();
     let runtime = opening.await.unwrap();
     assert_eq!(runtime.state.stored(), Position(2));
@@ -308,16 +239,7 @@ async fn reconcile_failure_keeps_repairs() {
     // Boot failure is not a rollback of admitted repairs.
     let storage = store.manager();
     let runtime = builder().runtime_with_storage(&storage).await.unwrap();
-    assert_eq!(
-        runtime
-            .state
-            .state()
-            .read(|state| state.balances[&HOUSE])
-            .await
-            .unwrap()
-            .value,
-        2
-    );
+    assert_eq!(runtime.state.state().read(|state| state.balances[&HOUSE]).await.unwrap().value, 2);
     runtime.stop().await.unwrap();
 }
 
@@ -361,17 +283,11 @@ async fn repair_save_refuses_boot() {
     let storage = store.manager();
     let started = Arc::new(AtomicBool::new(false));
     let mark = started.clone();
-    store
-        .recovery
-        .control
-        .flush_failures
-        .store(1, Ordering::SeqCst);
+    store.recovery.control.flush_failures.store(1, Ordering::SeqCst);
     assert!(
         builder()
             .reconcile(|journal, _| async move {
-                harmos::records::RecordManager::new(journal.clone())
-                    .publish(Noted("repair".into()))
-                    .await?;
+                harmos::records::RecordManager::new(journal.clone()).publish(Noted("repair".into())).await?;
                 Ok(())
             })
             .service("application", move |_context: Service<Bank>| {
@@ -392,11 +308,7 @@ async fn reconcile_requires_managed() {
     let store = Store::new();
     let storage = store.manager();
     assert!(
-        Runtime::<Bank>::builder(Ledger::default(), ())
-            .reconcile(|_, _| async { Ok(()) })
-            .runtime_with_storage(&storage)
-            .await
-            .is_err()
+        Runtime::<Bank>::builder(Ledger::default(), ()).reconcile(|_, _| async { Ok(()) }).runtime_with_storage(&storage).await.is_err()
     );
     assert!(!store.data.control.open.load(Ordering::SeqCst));
     assert!(!store.recovery.control.open.load(Ordering::SeqCst));
@@ -412,9 +324,7 @@ async fn reconcile_panic_saves() {
             let storage = store.manager();
             let startup = builder()
                 .reconcile(|journal, _| async move {
-                    harmos::records::RecordManager::new(journal.clone())
-                        .publish(Noted("before panic".into()))
-                        .await?;
+                    harmos::records::RecordManager::new(journal.clone()).publish(Noted("before panic".into())).await?;
                     panic!("controlled reconciliation panic");
                 })
                 .runtime_with_storage(&storage);
@@ -431,18 +341,12 @@ async fn reconcile_panic_saves() {
 async fn cancelled_boot_awaits_save() {
     let store = Store::new();
     let storage = store.manager();
-    store
-        .recovery
-        .control
-        .block_flush
-        .store(true, Ordering::SeqCst);
+    store.recovery.control.block_flush.store(true, Ordering::SeqCst);
     let cleanup;
     {
         let opening = builder()
             .reconcile(|journal, _| async move {
-                harmos::records::RecordManager::new(journal.clone())
-                    .publish(Noted("repair".into()))
-                    .await?;
+                harmos::records::RecordManager::new(journal.clone()).publish(Noted("repair".into())).await?;
                 Ok(())
             })
             .runtime_with_storage(&storage);
@@ -454,11 +358,7 @@ async fn cancelled_boot_awaits_save() {
         }
     }
     assert!(!storage.status().closed);
-    store
-        .recovery
-        .control
-        .block_flush
-        .store(false, Ordering::SeqCst);
+    store.recovery.control.block_flush.store(false, Ordering::SeqCst);
     store.recovery.control.flush_release.notify_one();
     closed(&storage, &cleanup).await;
     assert_eq!(storage.status().recovery_saved.sequence, 1);

@@ -55,6 +55,7 @@ pub(super) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
     let mut row = None;
     let mut stream = None;
     let mut callback = None;
+    let mut policy = None;
     let mut facade = None;
     for argument in arguments {
         if let Some(value) = path::declared(&argument) {
@@ -64,7 +65,7 @@ pub(super) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
         let Meta::NameValue(named) = argument else {
             return Err(Error::new(
                 argument.span(),
-                "listener declarations use id, record/version/row or stream, callback, and harmos_path",
+                "listener declarations use id, record/version/row or stream, callback, policy and harmos_path",
             ));
         };
         let tokens = named.value.to_token_stream();
@@ -90,22 +91,23 @@ pub(super) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
                 ));
             }
             set_once(&mut version, value, named.span(), "version")?;
-        } else if named.path.is_ident("row")
-            || named.path.is_ident("stream")
-            || named.path.is_ident("callback")
-        {
+        } else if named.path.is_ident("callback") {
+            let value: LitStr = syn::parse2(tokens)?;
+            set_once(&mut callback, value, named.span(), "callback")?;
+        } else if named.path.is_ident("policy") {
+            let value: syn::Expr = syn::parse2(tokens)?;
+            set_once(&mut policy, value, named.span(), "policy")?;
+        } else if named.path.is_ident("row") || named.path.is_ident("stream") {
             let value: Type = syn::parse2(tokens)?;
             if named.path.is_ident("row") {
                 set_once(&mut row, value, named.span(), "row")?;
-            } else if named.path.is_ident("stream") {
-                set_once(&mut stream, value, named.span(), "stream")?;
             } else {
-                set_once(&mut callback, value, named.span(), "callback")?;
+                set_once(&mut stream, value, named.span(), "stream")?;
             }
         } else {
             return Err(Error::new(
                 named.span(),
-                "listener declarations use id, record/version/row or stream, callback, and harmos_path",
+                "listener declarations use id, record/version/row or stream, callback, policy and harmos_path",
             ));
         }
     }
@@ -114,9 +116,11 @@ pub(super) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
     let callback = callback.ok_or_else(|| {
         Error::new(
             span,
-            "a portable listener requires its exact callback operation type",
+            "a portable listener requires its callback operation id",
         )
     })?;
+    let policy = policy
+        .ok_or_else(|| Error::new(span, "a portable listener requires its callback policy"))?;
     let harmos = HarmosPath::resolve(facade);
     let (source, row) = match (record, version, row, stream) {
         (Some(record), Some(version), Some(row), None) => {
@@ -145,18 +149,19 @@ pub(super) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
     let name = &declaration.ident;
     Ok(quote! {
         #declaration
+        impl #harmos::listeners::Listener for #name {
+            type Row = #row;
+            const CALLBACK: &'static str = #callback;
+            const POLICY: #harmos::operations::OperationPolicy = #policy;
+        }
         impl #harmos::catalog::Member<#name> for #harmos::listeners::Declarations {
             const ENTRY: #harmos::listeners::Entry = #harmos::listeners::Entry {
                 id: #id, source: #source,
                 callback: #harmos::operations::WireDeclaration::of::<
-                    <#callback as #harmos::operations::Declares>::Declaration
+                    #harmos::listeners::Delivery<#name>
                 >(),
             };
         }
-        const _: () = {
-            fn require_callback<O: #harmos::operations::WireOperation<Request = #harmos::listeners::Delivery<#row>, Response = ()>>() {}
-            let _ = require_callback::<<#callback as #harmos::operations::Declares>::Declaration>;
-        };
     })
 }
 

@@ -132,7 +132,7 @@ impl Operation for Reading {
     async fn run<'ctx>(
         &mut self,
         _: Self::Context<'ctx>,
-        request: &mut Step,
+        request: &mut Read,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Step>, Refusal> {
         let result: ::core::result::Result<Step, Self::Error> = async move {
@@ -149,7 +149,9 @@ impl Operation for Reading {
             if request.phase == 2 && self.resources.marks.seen("hold-read-2") {
                 self.resources.marks.marked("release-read-2").await;
             }
-            Ok(request.clone())
+            Ok(Step {
+                phase: request.phase,
+            })
         }
         .await;
         result.map(::core::convert::Into::into)

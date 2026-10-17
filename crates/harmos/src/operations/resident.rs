@@ -233,9 +233,44 @@ pub(crate) trait Settlement: Send + Sync + 'static {
 }
 
 /* === Implementations === */
+harmos_domain::postcard_product!(Activation {});
+
+harmos_domain::with_protobuf! {
+impl harmos_domain::Protobuf for Activation {
+    fn encode_to_vec(&self) -> Vec<u8> {
+        Vec::new()
+    }
+
+    fn encoded_len(&self) -> usize {
+        0
+    }
+
+    fn decode(_: &[u8]) -> std::result::Result<Self, crate::MessageError> {
+        Ok(Self)
+    }
+}
+}
+
+impl crate::schema::Described for Activation {
+    const NAME: &'static str = "harmos::activation";
+    const FIELDS: &'static [crate::schema::declaration::Field] = &[];
+    const MARKER: &'static [u8] = &crate::schema::declaration::encode::<
+        { crate::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
+    >(Self::NAME, Self::FIELDS);
+}
+
+impl crate::MemorySize for Activation {
+    fn memory_size(&self) -> usize {
+        0
+    }
+}
+
+// The Resident Activation Of A Service; It Is Never Declared By Its Identity.
 impl super::OperationDeclaration for Activation {
-    type Request = ();
     type Response = ();
+    type Input = super::NoStream;
+    type Output = super::NoStream;
+    const VERSION: u32 = 1;
     const ID: &'static str = "";
     const POLICY: super::OperationPolicy = super::OperationPolicy {
         timeout: harmos_domain::operations::UNBOUNDED,

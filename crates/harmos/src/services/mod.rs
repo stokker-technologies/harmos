@@ -45,8 +45,8 @@ use std::time::Duration;
 use tokio::sync::watch;
 // Local Imports
 use crate::operations::{
-    Backoff, CallContext, Callable, ContextError, ContextValue, Jitter, OperationInstance,
-    OperationManager, OperationPolicy, Response, RestartPolicy, RetryPolicy,
+    Backoff, CallContext, ContextError, ContextValue, Jitter, OperationDeclaration,
+    OperationInstance, OperationManager, OperationPolicy, Response, RestartPolicy, RetryPolicy,
 };
 use crate::supervision::executor;
 use crate::{
@@ -282,7 +282,7 @@ impl<A: Application> Service<A> {
 
 impl<A: Application> harmos_domain::operations::Host for Service<A> {
     type Error = Error;
-    type Instance<O: Callable> = OperationInstance<O>;
+    type Instance<O: OperationDeclaration> = OperationInstance<O>;
 
     fn context(&self) -> &CallContext {
         harmos_domain::operations::Host::context(&self.operations)
@@ -295,23 +295,23 @@ impl<A: Application> harmos_domain::operations::Host for Service<A> {
         Ok(child)
     }
 
-    fn submit_as<O: Callable>(
+    fn submit<O: OperationDeclaration>(
         &self,
-        request: O::Request,
+        request: O,
     ) -> impl Future<Output = Result<OperationInstance<O>>> + Send {
-        harmos_domain::operations::Host::submit_as::<O>(&self.operations, request)
+        harmos_domain::operations::Host::submit(&self.operations, request)
     }
 
-    fn call_as<O: Callable>(
+    fn call<O: OperationDeclaration>(
         &self,
-        request: O::Request,
+        request: O,
     ) -> impl Future<Output = Result<Response<O::Response>>> + Send {
-        harmos_domain::operations::Host::call_as::<O>(&self.operations, request)
+        harmos_domain::operations::Host::call(&self.operations, request)
     }
 
-    fn submit_with_resources<O: Callable<Response = ()>, R: Send + Sync + 'static>(
+    fn submit_with_resources<O: OperationDeclaration<Response = ()>, R: Send + Sync + 'static>(
         &self,
-        request: O::Request,
+        request: O,
         resources: Arc<R>,
     ) -> impl Future<Output = Result<OperationInstance<O>>> + Send {
         harmos_domain::operations::Host::submit_with_resources::<O, R>(

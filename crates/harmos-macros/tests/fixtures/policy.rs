@@ -8,31 +8,28 @@
  */
 
 
-
-
 /* === Modules === */
 
 /* === Re-Exports === */
 
 /* === Imports === */
-
 // Standard Library Imports
-
+use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-
+use harmos::operations::{OperationPolicy, RestartPolicy, RetryPolicy};
 
 /* === Constants === */
+pub const POLICY: OperationPolicy = OperationPolicy {
+    timeout: Duration::from_secs(1), attempt_timeout: Duration::from_secs(1), retries: RetryPolicy::Never, restart: RestartPolicy::Never
+};
 
 /* === Macros === */
 
 /* === Type Aliases === */
 
 /* === Structs === */
-#[harmos::operation(request = (), response = (), policy = ())]
-struct Read { resource: String }
-
 
 /* === Enums === */
 
@@ -40,9 +37,9 @@ struct Read { resource: String }
 
 /* === Implementations === */
 
+
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn main() {}
 
 /* === Tests === */

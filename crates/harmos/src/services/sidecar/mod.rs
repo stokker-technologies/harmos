@@ -489,7 +489,7 @@ where
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        request: &mut crate::operations::streams::Publication,
+        request: &mut crate::operations::streams::Publish,
         _endpoints: &mut Self::Endpoints,
     ) -> crate::Result<crate::operations::Response<()>> {
         let result: ::core::result::Result<(), Self::Error> = async move {
@@ -574,7 +574,7 @@ where
         }
         let control = self
             .attach
-            .observer_control()
+            .observe_contract()
             .map_err(|error| Fault::Application(error.to_string()))?;
         let mut required = self
             .attach
@@ -588,7 +588,7 @@ where
                 "native required contracts differ from the original admitted generation".to_owned(),
             ));
         }
-        if control.as_ref() != scope.and_then(|scope| scope.observer_control())
+        if control.as_ref() != scope.and_then(|scope| scope.observe_contract())
             || scope.is_some_and(|scope| {
                 normalized_observers(scope.observers().to_vec())
                     != normalized_observers(observers.clone())

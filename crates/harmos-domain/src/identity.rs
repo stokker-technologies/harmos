@@ -13,8 +13,10 @@
 
 /* === Imports === */
 // Standard Library Imports
+use std::fmt;
 
 // Third Party Imports
+use serde::{Deserialize, Serialize};
 
 // Local Imports
 
@@ -25,6 +27,10 @@
 /* === Type Aliases === */
 
 /* === Structs === */
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct DefinitionId(String);
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Requirement {
     pub id: String,
@@ -34,8 +40,34 @@ pub struct Requirement {
 /* === Enums === */
 
 /* === Traits === */
+// The Stable Identity And Semantic Version Of A Declared Definition.
+pub trait Identified {
+    fn definition() -> (DefinitionId, u32);
+}
 
 /* === Implementations === */
+impl DefinitionId {
+    pub fn new(id: impl Into<String>) -> Self {
+        Self(id.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+// The Unit Definition Of A Catalog That Declares Nothing.
+impl Identified for () {
+    fn definition() -> (DefinitionId, u32) {
+        (DefinitionId::new("harmos:unit"), 1)
+    }
+}
+
+impl fmt::Display for DefinitionId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
 
 /* === Public Functions === */
 pub const fn artifact_subset(id: &str) -> bool {

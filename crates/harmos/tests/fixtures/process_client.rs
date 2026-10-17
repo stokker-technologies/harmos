@@ -57,17 +57,13 @@ impl harmos::Plugin for Client {
     type Resources = Witness;
 
     fn prepare(key: String) -> Result<Self, Refusal> {
-        Ok(Self {
-            resources: Witness::find(&key).ok_or_else(|| Refusal::of("the story witness is gone"))?,
-        })
+        Ok(Self { resources: Witness::find(&key).ok_or_else(|| Refusal::of("the story witness is gone"))? })
     }
 
     async fn initialize(&mut self, context: &Supervisor) -> Result<(), Refusal> {
-        self.resources.mark("initializing");
-        let response = context
-            .call_as::<Read>(Step { phase: 1 })
-            .await
-            .map_err(Refusal::from)?;
+        std::fs::create_dir_all(&self.resources.root).map_err(Refusal::of)?;
+        self.resources.mark("initializing")?;
+        let response = context.call(Read { phase: 1 }).await.map_err(Refusal::from)?;
         if response.phase != 1 {
             return Err(Refusal::of("initialization used another provider response"));
         }
@@ -83,18 +79,12 @@ impl harmos::Plugin for Client {
         Arc::clone(&self.resources)
     }
 
-    fn bind_operations(
-        &self,
-        table: &mut WireTable<Supervisor>,
-    ) -> Result<(), harmos::operations::ServingError> {
+    fn bind_operations(&self, table: &mut WireTable<Supervisor>) -> Result<(), harmos::operations::ServingError> {
         table.bind_operation::<Probing>(self.resources())
     }
 
     async fn stop(&mut self, context: &Supervisor) -> Result<(), Refusal> {
-        let response = context
-            .call_as::<Read>(Step { phase: 2 })
-            .await
-            .map_err(Refusal::from)?;
+        let response = context.call(Read { phase: 2 }).await.map_err(Refusal::from)?;
         if response.phase != 2 {
             return Err(Refusal::of("shutdown used another provider response"));
         }
@@ -116,10 +106,7 @@ impl Operation for Probing {
     type Endpoints = ();
     type Context<'a> = &'a Supervisor;
 
-    async fn initialize<'ctx>(
-        resources: Arc<Witness>,
-        _context: Self::Context<'ctx>,
-    ) -> Result<Self, Refusal> {
+    async fn initialize<'ctx>(resources: Arc<Witness>, _context: Self::Context<'ctx>) -> Result<Self, Refusal> {
         let constructed: Result<Self, Refusal> = async move { Ok(Self { resources }) }.await;
         let mut operation = constructed?;
         let started: Result<(), Refusal> = async {
@@ -133,14 +120,11 @@ impl Operation for Probing {
     }
 
     async fn run<'ctx>(
-        &mut self,
-        _: Self::Context<'ctx>,
-        request: &mut Step,
-        _endpoints: &mut Self::Endpoints,
+        &mut self, _: Self::Context<'ctx>, request: &mut Probe, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Step>, Refusal> {
         let result: ::core::result::Result<Step, Self::Error> = async move {
-            self.resources.mark("probe-started");
-            Ok(request.clone())
+            self.resources.mark("probe-started")?;
+            Ok(Step { phase: request.phase })
         }
         .await;
         result.map(::core::convert::Into::into)

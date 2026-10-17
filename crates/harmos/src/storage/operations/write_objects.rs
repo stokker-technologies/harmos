@@ -19,9 +19,7 @@ use std::sync::Arc;
 // Local Imports
 use crate::operations::{Context, Operation, OperationDeclaration, StreamInput, StreamOutput};
 use crate::storage::StorageManager;
-use crate::storage::writes::{
-    DataBatch, WriteCompletion, WriteKind, WriteReceipt, WriteRequest, exchange,
-};
+use crate::storage::writes::{DataBatch, WriteCompletion, WriteKind, WriteReceipt, exchange};
 use crate::{Error, Result};
 
 /* === Constants === */
@@ -59,13 +57,13 @@ impl<C: 'static> Operation for Handler<C> {
     async fn run<'a>(
         &mut self,
         ctx: Self::Context<'a>,
-        request: &mut WriteRequest,
+        request: &mut WriteObjects,
         endpoints: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<WriteCompletion>> {
         let completion = exchange(
             &self.storage,
             &ctx,
-            request,
+            request.scope.as_ref(),
             endpoints,
             WriteKind::Objects,
             WriteObjects::ID,

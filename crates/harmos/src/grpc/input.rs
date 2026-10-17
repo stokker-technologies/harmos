@@ -22,8 +22,8 @@ use futures_util::StreamExt;
 
 // Local Imports
 use super::{InputEnvelope, Opening, Pending};
-use crate::operations::{InputDeclaration, OperationInstance, StreamItem, StreamOutput};
-use crate::{Error, MemorySize};
+use crate::Error;
+use crate::operations::{OperationInstance, StreamItem, StreamOutput};
 
 /* === Constants === */
 
@@ -95,13 +95,17 @@ where
 
 pub fn input<O, S>(
     instance: OperationInstance<O>,
-    output: StreamOutput<O::Item>,
+    output: StreamOutput<<O::Input as crate::operations::Direction>::Item>,
     incoming: S,
 ) -> impl Future<Output = Result<crate::operations::Response<O::Response>, InputError>> + Send
 where
-    O: InputDeclaration,
-    O::Item: MemorySize,
-    S: Stream<Item = Result<StreamItem<O::Item>, tonic::Status>> + Send,
+    O: crate::operations::OperationDeclaration,
+    S: Stream<
+            Item = Result<
+                StreamItem<<O::Input as crate::operations::Direction>::Item>,
+                tonic::Status,
+            >,
+        > + Send,
 {
     let pending = Pending {
         instance,

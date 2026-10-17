@@ -38,6 +38,7 @@ mod value;
 
 pub mod __private {
     pub use crate::config::SchemaSettings;
+    pub use crate::declare;
     pub use crate::operations::response::ErasedResponse;
     pub use crate::plugin::schema_markers as PluginSchemaMarkers;
     pub extern crate serde;
@@ -86,7 +87,8 @@ pub use config::{ConfigError, decode_config, encode_config, validate_config};
 pub use error::{Error, Result};
 pub use failure::Failure;
 pub use identity::{
-    Requirement, artifact_subset, qualified, qualified_len, qualify, stream_subset,
+    DefinitionId, Identified, Requirement, artifact_subset, qualified, qualified_len, qualify,
+    stream_subset,
 };
 pub use inventory::StreamDeclaration;
 pub use inventory::publications::StreamSpec;
@@ -100,7 +102,7 @@ pub use value::{VALUE_DEPTH, Value, ValueError};
 pub use harmos_macros::{catalog, listener, message, observer, operation, plugin, stream};
 #[cfg(feature = "grpc")]
 pub use message::Protobuf;
-pub use message::{MemorySize, Message, MessageError, Storable, btree_map_memory};
+pub use message::{MemorySize, Message, MessageError, Portable, Storable, btree_map_memory};
 pub use presentation::{RowMetadata, StreamField};
 pub use streams::{Axial, Batched, Definition, Prefix, Track, Tracked};
 

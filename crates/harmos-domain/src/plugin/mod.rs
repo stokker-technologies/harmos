@@ -95,8 +95,6 @@ pub trait Declared: Send + Sync + 'static {
     const CONTRIBUTIONS: &'static [crate::inventory::Section] = &[];
     const LISTENERS: &'static [crate::catalog::Node<crate::listeners::Entry>] = &[];
     const OBSERVERS: &'static [crate::catalog::Node<crate::inventory::observers::Entry>] = &[];
-    // Empty, or the one observe control serving this plugin's observers.
-    const OBSERVER_CONTROL: &'static [crate::operations::WireDeclaration] = &[];
     const STREAMS: &'static [crate::inventory::publications::Entry];
 
     fn markers() -> Result<Vec<&'static [u8]>, crate::schema::graph::Error>;
@@ -135,8 +133,10 @@ pub fn schema_markers<P: Declared>(
         };
         crate::catalog::try_for_each(P::PROVIDES, &mut append)?;
         crate::catalog::try_for_each(P::REQUIRES, |requirement| append(&requirement.declaration))?;
-        for declaration in P::OBSERVER_CONTROL {
-            append(declaration)?;
+        if crate::catalog::count(P::OBSERVERS) != 0 {
+            append(&crate::operations::WireDeclaration::of::<
+                crate::observers::Control,
+            >())?;
         }
         crate::catalog::try_for_each(P::LISTENERS, |listener| append(&listener.callback))?;
     }
@@ -148,7 +148,7 @@ pub fn schema_markers<P: Declared>(
     })?;
     push_schema_root(
         &mut roots,
-        crate::operations::lifecycle::InitializeRequest::DEFINITION,
+        <crate::operations::lifecycle::Initialize as crate::schema::Described>::DEFINITION,
         carrier_bytes,
         settings,
     )?;

@@ -23,6 +23,7 @@ use arrow_array::{StringArray, StructArray, UInt64Array};
 use super::super::{Bank, Data, Ledger, Recovery, catalog, history};
 use super::{Fixture, Lanes, config};
 use harmos::storage::operations::Query;
+use harmos::storage::operations::Query as Request;
 use harmos::storage::query::scalar::ScalarValue;
 use harmos::storage::query::transform::{
     Transform,
@@ -30,7 +31,7 @@ use harmos::storage::query::transform::{
     project::{Project, Projection},
     sort::{Sort, SortKey},
 };
-use harmos::storage::query::{Query as Request, QueryArrow, RecordSelection, RowSlice, Source};
+use harmos::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
 use harmos::storage::{
     ObjectKey, ObjectRetention, PayloadEncoding, RecordWrite, SchemaKey, StorageBackends,
     StorageManager, StoredObject,

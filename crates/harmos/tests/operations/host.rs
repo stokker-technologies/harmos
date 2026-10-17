@@ -29,10 +29,7 @@ use tokio::sync::{Notify, Semaphore};
 use super::{Lanes, app::App};
 use harmos::builtin;
 use harmos::operations::instance::{Outcome, Phase};
-use harmos::operations::{
-    Context, Host, Instance, Operation, OperationDeclaration, OperationPolicy, RestartPolicy,
-    RetryPolicy,
-};
+use harmos::operations::{Context, Host, Instance, Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
 use harmos::{Error, Refusal, Runtime};
 
 /* === Constants === */
@@ -50,6 +47,7 @@ const POLICY: OperationPolicy = OperationPolicy {
 /* === Structs === */
 // The declaration is its own request, so `call` and `submit` infer it.
 #[harmos::message]
+#[harmos::operation(id = "fixture.hold", version = 1, response = u64, policy = POLICY)]
 struct Hold {
     value: u64,
 }
@@ -65,27 +63,20 @@ struct Gate {
 struct Holding(Arc<Gate>);
 
 // A resident service activated through the host by its identity.
-struct Ticker;
+#[harmos::message]
+#[harmos::operation(
+    id = "fixture.ticker",
+    version = 1,
+    response = (),
+    policy = harmos::services::POLICY
+)]
+struct Ticker {}
 
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
-impl OperationDeclaration for Hold {
-    type Request = Self;
-    type Response = u64;
-    const ID: &'static str = "fixture.hold";
-    const POLICY: OperationPolicy = POLICY;
-}
-
-impl OperationDeclaration for Ticker {
-    type Request = ();
-    type Response = ();
-    const ID: &'static str = "fixture.ticker";
-    const POLICY: OperationPolicy = harmos::services::POLICY;
-}
-
 impl Operation for Holding {
     type Declaration = Hold;
     type Resources = Gate;
@@ -98,10 +89,7 @@ impl Operation for Holding {
     }
 
     async fn run<'ctx>(
-        &mut self,
-        _: Self::Context<'ctx>,
-        request: &mut Hold,
-        _: &mut Self::Endpoints,
+        &mut self, _: Self::Context<'ctx>, request: &mut Hold, _: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<u64>, Error> {
         self.0.started.notify_one();
         self.0.release.acquire().await.unwrap().forget();
@@ -127,15 +115,8 @@ async fn runtime() -> (Runtime<App>, Arc<Gate>) {
         cleaned: AtomicUsize::new(0),
         cleanup: Notify::new(),
     });
-    let runtime = Runtime::<App>::builder((), ())
-        .register(Lanes::catalog())
-        .runtime()
-        .await
-        .unwrap();
-    runtime
-        .operations
-        .register_operation::<Holding>("app", Lanes::Open, gate.clone())
-        .unwrap();
+    let runtime = Runtime::<App>::builder((), ()).register(Lanes::catalog()).runtime().await.unwrap();
+    runtime.operations.register_operation::<Holding>("app", Lanes::Open, gate.clone()).unwrap();
     builtin::Catalog::register(&runtime.operations, "host", Lanes::Open).unwrap();
     (runtime, gate)
 }
@@ -153,7 +134,7 @@ async fn joined<H: Host>(host: &H, gate: &Gate) -> Result<u64, H::Error> {
 }
 
 async fn cancelled<H: Host>(host: &H, gate: &Gate) -> Result<(), H::Error> {
-    let instance = host.submit_as::<Hold>(Hold { value: 1 }).await?;
+    let instance = host.submit(Hold { value: 1 }).await?;
     gate.started.notified().await;
     assert!(instance.cancel_and_join().await.is_err());
     Ok(())
@@ -164,10 +145,7 @@ fn hidden(error: Option<Error>) -> bool {
     let Some(Error::OperationFailed { source, .. }) = error else {
         return false;
     };
-    matches!(
-        source.downcast_ref::<Error>(),
-        Some(Error::NotRegistered { .. })
-    )
+    matches!(source.downcast_ref::<Error>(), Some(Error::NotRegistered { .. }))
 }
 
 /* === Tests === */
@@ -232,10 +210,7 @@ async fn builtin_controls_instance() {
     assert!(!status.cancellation_requested);
     let cancelled = operations.call(builtin::Cancel::of(id)).await.unwrap();
     assert!(cancelled.cancellation_requested);
-    assert!(matches!(
-        (&mut instance).await,
-        Err(Error::OperationRefused(Refusal::Cancelled))
-    ));
+    assert!(matches!((&mut instance).await, Err(Error::OperationRefused(Refusal::Cancelled))));
     instance.settle().await.unwrap();
     // Settled Instances Leave The Index; Unknown Ids Stay Hidden
     let settled = operations.call(builtin::Status::of(id)).await;
@@ -253,31 +228,22 @@ async fn resident_leases_watched() {
     let (runtime, gate) = runtime().await;
     let operations = &runtime.operations;
     operations
-        .register_service::<App, Gate, _, _>(
-            harmos::services::ServiceDefinition::new(Ticker::ID),
-            |gate: Arc<Gate>| {
-                move |mut context: harmos::services::Service<App>| {
-                    let gate = gate.clone();
-                    async move {
-                        context.ready();
-                        context.stopping().await;
-                        gate.cleaned.fetch_add(1, Ordering::SeqCst);
-                        Ok::<(), harmos::services::Fault<&str>>(())
-                    }
+        .register_service::<App, Gate, _, _>(harmos::services::ServiceDefinition::new(Ticker::ID), |gate: Arc<Gate>| {
+            move |mut context: harmos::services::Service<App>| {
+                let gate = gate.clone();
+                async move {
+                    context.ready();
+                    context.stopping().await;
+                    gate.cleaned.fetch_add(1, Ordering::SeqCst);
+                    Ok::<(), harmos::services::Fault<&str>>(())
                 }
-            },
-        )
+            }
+        })
         .unwrap();
 
     // Activations Over The Same Resources Share One Instance
-    let first = operations
-        .submit_with_resources::<Ticker, Gate>((), gate.clone())
-        .await
-        .unwrap();
-    let second = operations
-        .submit_with_resources::<Ticker, Gate>((), gate.clone())
-        .await
-        .unwrap();
+    let first = operations.submit_with_resources::<Ticker, Gate>(Ticker {}, gate.clone()).await.unwrap();
+    let second = operations.submit_with_resources::<Ticker, Gate>(Ticker {}, gate.clone()).await.unwrap();
     assert_eq!(first.id(), second.id());
     first.ready().await.unwrap();
     let id = first.id();
@@ -291,9 +257,7 @@ async fn resident_leases_watched() {
         items: std::num::NonZeroUsize::new(16).unwrap(),
         bytes: std::num::NonZeroUsize::new(4096).unwrap(),
     };
-    let mut watch = operations
-        .download::<builtin::Watch>(builtin::Watch::of(id), settings)
-        .unwrap();
+    let mut watch = operations.download::<builtin::Watch>(builtin::Watch::of(id), settings).unwrap();
     let current = watch.next().await.unwrap().unwrap();
     assert_eq!(current.phase, Phase::Running.as_str());
     drop(first);
@@ -306,10 +270,7 @@ async fn resident_leases_watched() {
     }
     let last = watch.join().await.unwrap();
     assert_eq!(last.phase, Phase::Stopped.as_str());
-    assert_eq!(
-        phases.last().map(String::as_str),
-        Some(Phase::Stopped.as_str())
-    );
+    assert_eq!(phases.last().map(String::as_str), Some(Phase::Stopped.as_str()));
     assert!(phases.iter().any(|phase| phase == Phase::Stopping.as_str()));
     second.settle().await.unwrap();
     assert_eq!(gate.cleaned.load(Ordering::SeqCst), 1);

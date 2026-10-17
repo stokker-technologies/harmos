@@ -12,7 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
-use harmos_domain::operations::storage::{WriteSchema, WriteSchemaRequest};
+use harmos_domain::operations::storage::WriteSchema;
 
 // Standard Library Imports
 
@@ -63,7 +63,7 @@ impl<C: 'static> Operation for Handler<C> {
     async fn run<'a>(
         &mut self,
         _: Self::Context<'a>,
-        request: &mut WriteSchemaRequest,
+        request: &mut WriteSchema,
         _: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<StorageCursor>> {
         let result: ::core::result::Result<StorageCursor, Self::Error> = async move {

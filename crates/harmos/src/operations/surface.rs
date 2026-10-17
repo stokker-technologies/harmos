@@ -25,7 +25,7 @@ use std::sync::Arc;
 // Local Imports
 use super::caller::Identity;
 use super::{
-    CallContext, Callable, Context, ContextError, ContextValue, OperationInstance,
+    CallContext, Context, ContextError, ContextValue, OperationDeclaration, OperationInstance,
     OperationManager, Response,
 };
 use crate::{Error, Result};
@@ -45,7 +45,7 @@ use crate::{Error, Result};
 /* === Implementations === */
 impl harmos_domain::operations::Host for OperationManager {
     type Error = Error;
-    type Instance<O: Callable> = OperationInstance<O>;
+    type Instance<O: OperationDeclaration> = OperationInstance<O>;
 
     fn context(&self) -> &CallContext {
         self.call_context()
@@ -56,24 +56,24 @@ impl harmos_domain::operations::Host for OperationManager {
         Ok(self.with_context(context))
     }
 
-    fn submit_as<O: Callable>(
+    fn submit<O: OperationDeclaration>(
         &self,
-        request: O::Request,
+        request: O,
     ) -> impl Future<Output = Result<OperationInstance<O>>> + Send {
-        std::future::ready(OperationManager::submit_as::<O>(self, request))
+        std::future::ready(OperationManager::submit(self, request))
     }
 
-    fn call_as<O: Callable>(
+    fn call<O: OperationDeclaration>(
         &self,
-        request: O::Request,
+        request: O,
     ) -> impl Future<Output = Result<Response<O::Response>>> + Send {
-        let submitted = OperationManager::submit_as::<O>(self, request);
+        let submitted = OperationManager::submit(self, request);
         async move { submitted?.await }
     }
 
-    fn submit_with_resources<O: Callable<Response = ()>, R: Send + Sync + 'static>(
+    fn submit_with_resources<O: OperationDeclaration<Response = ()>, R: Send + Sync + 'static>(
         &self,
-        _: O::Request,
+        _: O,
         resources: Arc<R>,
     ) -> impl Future<Output = Result<OperationInstance<O>>> + Send {
         self.activate_resident::<O, R>(O::ID, resources, Identity::Host)
@@ -82,7 +82,7 @@ impl harmos_domain::operations::Host for OperationManager {
 
 impl harmos_domain::operations::Host for Context<'_> {
     type Error = Error;
-    type Instance<O: Callable> = OperationInstance<O>;
+    type Instance<O: OperationDeclaration> = OperationInstance<O>;
 
     fn context(&self) -> &CallContext {
         Context::context(self)
@@ -95,26 +95,26 @@ impl harmos_domain::operations::Host for Context<'_> {
         Ok(child)
     }
 
-    fn submit_as<O: Callable>(
+    fn submit<O: OperationDeclaration>(
         &self,
-        request: O::Request,
+        request: O,
     ) -> impl Future<Output = Result<OperationInstance<O>>> + Send {
-        std::future::ready(Context::submit_as::<O>(self, request))
+        std::future::ready(Context::submit(self, request))
     }
 
-    fn call_as<O: Callable>(
+    fn call<O: OperationDeclaration>(
         &self,
-        request: O::Request,
+        request: O,
     ) -> impl Future<Output = Result<Response<O::Response>>> + Send {
-        let submitted = Context::submit_as::<O>(self, request);
+        let submitted = Context::submit(self, request);
         async move { submitted?.await }
     }
 
     // A resident outlives the attempt that activated it; its lease names the
     // attempt's caller.
-    fn submit_with_resources<O: Callable<Response = ()>, R: Send + Sync + 'static>(
+    fn submit_with_resources<O: OperationDeclaration<Response = ()>, R: Send + Sync + 'static>(
         &self,
-        _: O::Request,
+        _: O,
         resources: Arc<R>,
     ) -> impl Future<Output = Result<OperationInstance<O>>> + Send {
         self.operations

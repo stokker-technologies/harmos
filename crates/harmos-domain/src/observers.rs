@@ -7,8 +7,8 @@
  * ***
  */
 
-// The wire shape of a remote observer activation. A sidecar serves one
-// observe control: the host submits it with the observer's identity, the
+// The built-in observe control `harmos.observe`. A sidecar that declares
+// observers serves it: the host submits it with the observer's identity, the
 // sidecar initializes and ticks that observer for as long as the invocation
 // runs, and cancelling the invocation stops and cleans it up through the
 // ordinary operation lifecycle.
@@ -23,7 +23,10 @@ use std::borrow::Cow;
 // Third Party Imports
 
 // Local Imports
-use crate::operations::{OperationPolicy, RestartPolicy, RetryPolicy, UNBOUNDED};
+use crate::operations::{
+    Contract, ContractError, OperationPolicy, ReplaySafety, RestartPolicy, RetryPolicy, UNBOUNDED,
+    Visibility,
+};
 use crate::schema::declaration::{Field, Kind};
 use crate::schema::{Cardinality, Described};
 
@@ -37,6 +40,14 @@ pub const POLICY: OperationPolicy = OperationPolicy {
 };
 
 /* === Macros === */
+crate::declare!(Control {
+    id: "harmos.observe",
+    version: 1,
+    policy: POLICY,
+    response: (),
+    visibility: Visibility::Host,
+    replay: ReplaySafety::Idempotent,
+});
 
 /* === Type Aliases === */
 
@@ -89,6 +100,10 @@ impl Described for Control {
 }
 
 /* === Public Functions === */
+// The Contract Every Observer-Declaring Sidecar Serves.
+pub fn contract() -> Result<Contract, ContractError> {
+    Contract::reserved::<Control>(POLICY)
+}
 
 /* === Private Functions === */
 
