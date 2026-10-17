@@ -125,8 +125,8 @@ pub(super) struct State {
     pub(super) queue: PendingQueue,
     pub(super) scratch_bytes: usize,
     pub(super) read_bytes: usize,
-    /// Per pool: whether an owner that already holds bytes is waiting to grow.
-    pub(super) growth_waiting: [bool; 2],
+    /// Per pool: owners that hold bytes and are waiting to grow.
+    pub(super) growers: [super::capacity::Growers; 2],
     pub(super) data_attempted: u64,
     pub(super) objects_pruned: u64,
     pub(super) objects_prune_owed: bool,
@@ -293,7 +293,7 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
                     next: 0,
                     queue: PendingQueue::default(),
                     scratch_bytes: 0,
-                    growth_waiting: [false; 2],
+                    growers: Default::default(),
                     read_bytes: 0,
                     data_attempted: 0,
                     objects_pruned: 0,

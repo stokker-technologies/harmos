@@ -22,7 +22,7 @@ use crate::app::SchematicEditor;
 use crate::config::Settings;
 use crate::streams::NetVoltage;
 use harmos::Builder;
-use jsonl_adapter::{Jsonl, JsonlStreams};
+use schematic_storage::{Jsonl, JsonlStreams};
 
 /* === Constants === */
 

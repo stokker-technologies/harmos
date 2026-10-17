@@ -25,7 +25,7 @@ use crate::app::{Origin, SchematicEditor};
 use crate::error::DocumentError;
 use crate::state::Schematic;
 use harmos::state::Position;
-use jsonl_adapter::{Jsonl, Sidecar};
+use schematic_storage::{Jsonl, Sidecar};
 
 /* === Constants === */
 

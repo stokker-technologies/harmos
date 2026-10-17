@@ -252,8 +252,8 @@ impl<C: ObjectCatalog> StorageManager<C> {
             }
         }
 
-        // Charge The Bounded Raw Read, Then Its Decoded Value. Growth Refused
-        // While Another Holder Waits Releases The Read And Waits For Both.
+        // Charge The Bounded Raw Read, Then Its Decoded Value. Growth Refused As
+        // A Certain Cycle Releases The Read And Waits For Both With Nothing Held.
         let raw = budget.get().saturating_add(ENTRY_OVERHEAD);
         let mut credit = raw;
         let (object, _charge) = loop {
@@ -278,7 +278,7 @@ impl<C: ObjectCatalog> StorageManager<C> {
                 .await
             {
                 Ok(()) => break (object, charge),
-                Err(Refusal::Busy) => credit = total,
+                Err(Refusal::Cycle) => credit = total,
                 Err(refusal) => return Err(refusal.into_error()),
             }
         };

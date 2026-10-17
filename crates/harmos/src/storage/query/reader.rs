@@ -137,14 +137,15 @@ impl<C> StorageManager<C> {
         query.validate()?;
         self.inner.primary.history().check(&query.at.history)?;
 
-        // Queued Descriptions Stay Charged And Bounded In Count.
+        // Admit A Query Slot Before Charging Its Description. Queued Callers
+        // Hold No Read Bytes That An Active Reader Might Need To Finish.
+        let active = query_slot(&self.inner).await?;
         let held = Held::default();
         let description_bytes = query.memory_size().saturating_add(ENTRY_OVERHEAD);
         let description =
             Reservation::wait(&self.inner, Pool::Read, &held, description_bytes, None)
                 .await
                 .map_err(Refusal::into_error)?;
-        let active = query_slot(&self.inner).await?;
 
         // Pin The Requested Image For The Whole Invocation.
         let snapshot = self.snapshot(&query.at).await?;

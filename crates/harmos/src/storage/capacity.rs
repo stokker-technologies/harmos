@@ -15,6 +15,7 @@
 
 /* === Imports === */
 // Standard Library Imports
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -47,12 +48,24 @@ pub(super) struct Reservation {
     held: Held,
 }
 
-/// A holding owner's exclusive right to wait for growth in one pool. At most one
-/// owner that retains bytes waits per pool, so waiting holders never form a
-/// cycle; dropping the turn, including by cancelling the wait, frees it.
-struct Turn {
+/// The owners of one pool that hold bytes while waiting to grow.
+#[derive(Default)]
+pub(super) struct Growers {
+    next: u64,
+    waiting: BTreeMap<u64, Grower>,
+}
+
+struct Grower {
+    held: Held,
+    need: usize,
+}
+
+/// A registered grower; dropping it, including by cancelling the wait, leaves.
+struct Waiting {
     inner: Arc<Inner>,
     pool: Pool,
+    id: u64,
+    active: bool,
 }
 
 /* === Enums === */
@@ -69,10 +82,11 @@ pub(super) enum Pool {
 pub(super) enum Refusal {
     /// The owner's held bytes plus the request can never fit the configured pool.
     Exceeded(Pool),
-    /// Other owners currently hold the capacity. Without held bytes, or as the
-    /// pool's one waiting holder, the owner waits; otherwise it is refused so it
-    /// can release what it holds before waiting again for the full amount.
+    /// Other owners currently hold the capacity; waiting may succeed.
     Busy,
+    /// Waiting would complete a certain cycle: no waiting holder, the caller
+    /// included, could grow even if every other owner released everything.
+    Cycle,
     /// The caller's deadline elapsed while waiting.
     Elapsed,
     /// Storage cannot admit work at all (closing, stopped or failed).
@@ -168,6 +182,9 @@ impl Refusal {
             },
             Self::Busy => Error::ResourceExhausted {
                 resource: "storage capacity",
+            },
+            Self::Cycle => Error::ResourceExhausted {
+                resource: "storage capacity cycle",
             },
             Self::Elapsed => Error::ResourceExhausted {
                 resource: "storage capacity deadline",
@@ -268,8 +285,9 @@ impl Reservation {
     }
 
     /// Grow, waiting for other owners to release capacity. An owner that already
-    /// holds bytes waits only while it has the pool's growth turn; when another
-    /// holder has it, growth is refused with `Busy` instead of waiting.
+    /// holds bytes joins the pool's growers and waits unless no grower, itself
+    /// included, could grow even after every other owner released everything;
+    /// only that certain cycle is refused, with `Cycle`.
     pub(super) async fn grow(
         &mut self,
         additional: usize,
@@ -279,22 +297,29 @@ impl Reservation {
             return Ok(());
         }
         let inner = Arc::clone(&self.inner);
-        let mut turn = None;
+        let mut waiting: Option<Waiting> = None;
         let result = inner
             .wait(deadline, |state| match self.attempt(state, additional) {
-                Attempt::Wait if turn.is_none() && self.held.bytes() != 0 => {
-                    match Turn::take(&self.inner, state, self.pool) {
-                        Some(taken) => {
-                            turn = Some(taken);
+                Attempt::Wait if waiting.is_none() && self.held.bytes() != 0 => {
+                    match Waiting::join(&self.inner, state, self.pool, &self.held, additional) {
+                        Some(joined) => {
+                            waiting = Some(joined);
                             Attempt::Wait
                         }
-                        None => Attempt::Refuse(Refusal::Busy),
+                        None => Attempt::Refuse(Refusal::Cycle),
                     }
                 }
-                attempt => attempt,
+                attempt => {
+                    if !matches!(&attempt, Attempt::Wait) {
+                        if let Some(waiting) = &mut waiting {
+                            waiting.leave(state);
+                        }
+                    }
+                    attempt
+                }
             })
             .await;
-        drop(turn);
+        drop(waiting);
         result
     }
 
@@ -360,23 +385,63 @@ impl Reservation {
     }
 }
 
-impl Turn {
-    fn take(inner: &Arc<Inner>, state: &mut State, pool: Pool) -> Option<Self> {
-        let waiting = &mut state.growth_waiting[pool.index()];
-        if *waiting {
-            return None;
-        }
-        *waiting = true;
-        Some(Self {
-            inner: Arc::clone(inner),
-            pool,
-        })
+impl Growers {
+    // Some Grower's Need Fits Once Every Owner That Is Not Growing Released Everything.
+    fn can_progress(&self, ceiling: usize, held: usize, need: usize) -> bool {
+        let waiters = self.waiting.values();
+        let held = waiters.clone().fold(held, |total, grower| {
+            total.saturating_add(grower.held.bytes())
+        });
+        let free = ceiling.saturating_sub(held);
+        need <= free || waiters.into_iter().any(|grower| grower.need <= free)
     }
 }
 
-impl Drop for Turn {
+impl Waiting {
+    fn join(
+        inner: &Arc<Inner>,
+        state: &mut State,
+        pool: Pool,
+        held: &Held,
+        need: usize,
+    ) -> Option<Self> {
+        let growers = &mut state.growers[pool.index()];
+        if !growers.can_progress(pool.ceiling(inner), held.bytes(), need) {
+            return None;
+        }
+        let id = growers.next;
+        growers.next += 1;
+        growers.waiting.insert(
+            id,
+            Grower {
+                held: held.clone(),
+                need,
+            },
+        );
+        Some(Self {
+            inner: Arc::clone(inner),
+            pool,
+            id,
+            active: true,
+        })
+    }
+
+    // Admission And Departure Share The State Lock: A Running Owner Must Never
+    // Be Counted As A Waiting Holder By Another Admission.
+    fn leave(&mut self, state: &mut State) {
+        state.growers[self.pool.index()].waiting.remove(&self.id);
+        self.active = false;
+    }
+}
+
+impl Drop for Waiting {
     fn drop(&mut self) {
-        self.inner.state.lock().unwrap().growth_waiting[self.pool.index()] = false;
+        if !self.active {
+            return;
+        }
+        self.inner.state.lock().unwrap().growers[self.pool.index()]
+            .waiting
+            .remove(&self.id);
     }
 }
 
@@ -396,9 +461,9 @@ impl Drop for Reservation {
 impl Inner {
     /// The one capacity wait. Notification is armed before each check, so a
     /// release between check and await is never lost; a refused check changes
-    /// nothing and wakes no one; only the caller's growth turn is held across
-    /// the await, so dropping the future cancels cleanly; an optional deadline
-    /// bounds the wait.
+    /// nothing and wakes no one; only the caller's grower registration is held
+    /// across the await, so dropping the future cancels cleanly; an optional
+    /// deadline bounds the wait.
     pub(super) async fn wait<T>(
         &self,
         deadline: Option<Instant>,

@@ -14,22 +14,18 @@
 /* === Re-Exports === */
 
 /* === Imports === */
-use crate::storage::query::transform::FilterExecution;
 // Standard Library Imports
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 // Third Party Imports
-use arrow_array::RecordBatch;
 use tokio::sync::OwnedSemaphorePermit;
 
 // Local Imports
-use super::reader::{find_schema, query_slot, retry};
-use super::transform::filter::Filter;
+use super::reader::{query_slot, retry};
 use super::{ObjectSelection, ObjectVersions, RecordSelection};
 use crate::catalog::Contains;
-use crate::storage::arrow::{RetainedMemory, resident_bytes};
 use crate::storage::backend::ScanPage;
 use crate::storage::capacity::{Held, Pool, Refusal, Reservation};
 use crate::storage::manager::{ENTRY_OVERHEAD, Inner};
@@ -38,7 +34,7 @@ use crate::storage::selection::Entry;
 use crate::storage::snapshot::Snapshot;
 use crate::storage::{
     ObjectCatalog, ObjectEntry, ObjectRevision, SchemaKey, StorageCursor, StorageManager,
-    StorageSchema, StoredObject, StoredRecord,
+    StoredObject, StoredRecord,
 };
 use crate::{BackendFailure, Error, MemorySize, Message, Result};
 use harmos_domain::model::storage::catalog::{decode_admitted, object_schema};
@@ -56,8 +52,6 @@ pub struct ObjectRead<'a, T: StoredObject> {
     pub at: StorageCursor,
     pub key: Option<&'a T::Key>,
     pub versions: ObjectVersions,
-    /// Conjunctive filters over the query source columns (`_storage.*`, `payload.*`).
-    pub filters: Vec<Filter>,
 }
 
 /// A typed read of one record schema's saved records after a storage position.
@@ -65,8 +59,6 @@ pub struct RecordRead {
     pub at: StorageCursor,
     pub selection: RecordSelection,
     pub after: u64,
-    /// Conjunctive filters over the query source columns (`_storage.*`, `payload.*`).
-    pub filters: Vec<Filter>,
 }
 
 /// Delivers bounded pages of decoded object revisions at one saved cursor.
@@ -88,9 +80,6 @@ struct Pages<E: Entry> {
     inner: Arc<Inner>,
     held: Held,
     selection: E::Selection,
-    key: SchemaKey,
-    filters: Vec<Filter>,
-    schema: Option<(StorageSchema, RetainedMemory)>,
     snapshot: Option<Snapshot>,
     active: Option<OwnedSemaphorePermit>,
     _description: Reservation,
@@ -103,15 +92,11 @@ struct Pages<E: Entry> {
 /* === Enums === */
 
 /* === Traits === */
-// Native Entries With An Arrow Source Layout For Filter Evaluation.
-trait Filtered: Entry {
-    fn arrow(schema: &StorageSchema, rows: &[Self], bank: &MemoryBank) -> Result<RecordBatch>;
-}
 
 /* === Implementations === */
 impl<C: ObjectCatalog> StorageManager<C> {
     /// Read saved revisions of `T`, latest or complete, decoded from their
-    /// stored bytes without Arrow payload expansion unless filters are given.
+    /// stored bytes without Arrow payload expansion.
     /// A type whose schema was never written reads as no revisions.
     pub async fn read_objects<T: StoredObject>(
         &self,
@@ -130,7 +115,7 @@ impl<C: ObjectCatalog> StorageManager<C> {
             key,
             versions: read.versions,
         };
-        let pages = Pages::open(self, read.at, selection, schema.clone(), read.filters).await?;
+        let pages = Pages::open(self, read.at, selection).await?;
         Ok(ObjectReader {
             pages,
             schema,
@@ -145,8 +130,7 @@ impl<C> StorageManager<C> {
     pub async fn read_records<T: Message>(&self, read: RecordRead) -> Result<RecordReader<T>> {
         super::Source::Records(read.selection.clone()).validate()?;
         read.selection.schema.require_postcard()?;
-        let key = read.selection.schema.clone();
-        let mut pages = Pages::open(self, read.at, read.selection, key, read.filters).await?;
+        let mut pages = Pages::open(self, read.at, read.selection).await?;
         pages.after = read.after;
         Ok(RecordReader {
             pages,
@@ -216,7 +200,7 @@ impl<T: Message> RecordReader<T> {
     }
 }
 
-impl<E: Filtered> Pages<E>
+impl<E: Entry> Pages<E>
 where
     E::Selection: MemorySize,
 {
@@ -224,33 +208,21 @@ where
         manager: &StorageManager<C>,
         at: StorageCursor,
         selection: E::Selection,
-        key: SchemaKey,
-        filters: Vec<Filter>,
     ) -> Result<Self> {
         let inner = &manager.inner;
-        if filters.len() > 64 {
-            return Err(Error::InvalidInput {
-                field: "typed storage read",
-                reason: "too many filters",
-            });
-        }
+        let active = query_slot(inner).await?;
         let held = Held::default();
         let description = selection
             .memory_size()
-            .saturating_add(filters.memory_size())
             .saturating_add(ENTRY_OVERHEAD);
         let description = Reservation::wait(inner, Pool::Read, &held, description, None)
             .await
             .map_err(Refusal::into_error)?;
-        let active = query_slot(inner).await?;
         let snapshot = manager.snapshot(&at).await?;
-        let mut pages = Self {
+        Ok(Self {
             inner: Arc::clone(inner),
             held,
             selection,
-            key,
-            filters,
-            schema: None,
             snapshot: Some(snapshot),
             active: Some(active),
             _description: description,
@@ -258,23 +230,12 @@ where
             rows: inner.settings.response.batch_rows,
             failed: false,
             inflight: false,
-        };
-        // Filters Read The Stored Schema; Never Written Means Nothing To Read.
-        if !pages.filters.is_empty() {
-            let snapshot = pages
-                .snapshot
-                .as_ref()
-                .expect("opened reader owns its snapshot");
-            match find_schema(&pages.inner, &pages.held, snapshot, &pages.key).await? {
-                Some(schema) => pages.schema = Some(schema),
-                None => pages.release(),
-            }
-        }
-        Ok(pages)
+        })
+
     }
 }
 
-impl<E: Filtered> Pages<E> {
+impl<E: Entry> Pages<E> {
     async fn next<V>(
         &mut self,
         memory: impl Fn(&E) -> Result<usize>,
@@ -330,7 +291,7 @@ impl<E: Filtered> Pages<E> {
         Ok(None)
     }
 
-    // Scan, Filter And Decode One Page; State Advances Only After Every Claim Succeeded.
+    // Scan And Decode One Page; State Advances Only After Every Claim Succeeded.
     async fn attempt<V>(
         &mut self,
         bank: &MemoryBank,
@@ -364,7 +325,6 @@ impl<E: Filtered> Pages<E> {
         let Some(last) = entries.last().map(|entry| entry.position().sequence) else {
             return Ok(None);
         };
-        let entries = self.select(entries, bank)?;
         let mut decoded = bank.scope();
         for entry in &entries {
             decoded.claim(memory(entry)?)?;
@@ -374,53 +334,14 @@ impl<E: Filtered> Pages<E> {
         Ok(Some(values))
     }
 
-    // Keep The Native Entries Whose Arrow Source Rows Every Filter Selects.
-    fn select(&self, entries: Vec<E>, bank: &MemoryBank) -> Result<Vec<E>> {
-        let Some((schema, _)) = &self.schema else {
-            return Ok(entries);
-        };
-        let batch = E::arrow(schema, &entries, bank)?;
-        let mut scratch = bank.scope();
-        scratch.claim(resident_bytes(&batch)?)?;
-        let mut keep = vec![true; entries.len()];
-        for filter in &self.filters {
-            filter.output_schema(batch.schema().as_ref())?;
-            let mut selected = vec![false; entries.len()];
-            for row in filter.select(&batch, &mut || Ok(()))? {
-                selected[row as usize] = true;
-            }
-            for (kept, selected) in keep.iter_mut().zip(selected) {
-                *kept &= selected;
-            }
-        }
-        Ok(entries
-            .into_iter()
-            .zip(keep)
-            .filter_map(|(entry, kept)| kept.then_some(entry))
-            .collect())
-    }
-
     fn fail(&mut self) {
         self.failed = true;
-        self.schema = None;
         self.release();
     }
 
     fn release(&mut self) {
         self.snapshot = None;
         self.active = None;
-    }
-}
-
-impl Filtered for ObjectEntry {
-    fn arrow(schema: &StorageSchema, rows: &[Self], bank: &MemoryBank) -> Result<RecordBatch> {
-        super::source::objects(schema, rows, bank)
-    }
-}
-
-impl Filtered for StoredRecord {
-    fn arrow(schema: &StorageSchema, rows: &[Self], bank: &MemoryBank) -> Result<RecordBatch> {
-        super::source::records(schema, rows, bank)
     }
 }
 

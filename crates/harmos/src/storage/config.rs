@@ -100,10 +100,10 @@ impl StorageSettings {
                 reason: "query counts exceed semaphore capacity",
             });
         }
-        if self.response.batch_bytes > self.budget.read_memory_bytes {
+        if self.response.batch_bytes.get() > self.budget.read_memory_bytes.get() / 2 {
             return Err(crate::Error::InvalidInput {
                 field: "storage response",
-                reason: "response batches cannot exceed the shared read budget",
+                reason: "response batches cannot exceed half the shared read budget",
             });
         }
         Ok(())
