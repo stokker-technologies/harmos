@@ -56,3 +56,6 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 # === Patches === #
 
 # === Other === #
+
+# A Standalone Plugin Is Its Own Workspace Root, Even Inside Another Checkout
+[workspace]
