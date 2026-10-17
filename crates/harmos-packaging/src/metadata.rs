@@ -175,7 +175,7 @@ impl Inputs {
     }
 
     pub(super) fn relevant(&self, path: &Path) -> bool {
-        if self.excluded.iter().any(|root| path.starts_with(root)) {
+        if self.excluded.iter().any(|root| path.starts_with(root) || staging_sibling(root, path)) {
             return false;
         }
         if self.files.contains(path) || self.files.iter().any(|file| file.starts_with(path)) {
@@ -194,6 +194,18 @@ impl Inputs {
 /* === Public Functions === */
 
 /* === Private Functions === */
+// Cargo Creates A Missing Output Directory Atomically Through A Sibling Named After It Plus Six Random Characters
+fn staging_sibling(root: &Path, path: &Path) -> bool {
+    let (Some(parent), Some(name)) = (root.parent(), root.file_name().and_then(|name| name.to_str())) else {
+        return false;
+    };
+    let Some(first) = path.strip_prefix(parent).ok().and_then(|relative| relative.components().next()) else {
+        return false;
+    };
+    first.as_os_str().to_str().and_then(|first| first.strip_prefix(name)).is_some_and(|suffix| {
+        suffix.len() == 6 && suffix.bytes().all(|byte| byte.is_ascii_alphanumeric())
+    })
+}
 
 /* === Tests === */
 
@@ -219,5 +231,19 @@ mod tests {
         assert!(inputs.relevant(&root.join("Cargo.toml")));
         assert!(inputs.relevant(&PathBuf::from("dependency/src/lib.rs")));
         assert!(!inputs.relevant(&PathBuf::from("unrelated/src/lib.rs")));
+    }
+
+    #[test]
+    fn inputs_ignore_atomic_output_creation() {
+        let root = PathBuf::from("project");
+        let inputs = Inputs {
+            roots: BTreeSet::from([root.clone()]),
+            files: BTreeSet::from([root.join("Cargo.toml")]),
+            excluded: BTreeSet::from([root.join("build")]),
+        };
+        assert!(!inputs.relevant(&root.join("buildyQTpmE")));
+        assert!(!inputs.relevant(&root.join("buildyQTpmE/debug")));
+        assert!(inputs.relevant(&root.join("build_notes.rs")));
+        assert!(inputs.relevant(&root.join("build_script")));
     }
 }
