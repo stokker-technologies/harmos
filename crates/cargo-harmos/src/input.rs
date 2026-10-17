@@ -52,10 +52,12 @@ pub struct BuildArguments {
 
 #[derive(clap::Args)]
 pub struct CollectionArguments {
-    #[arg(long, requires = "metadata_json")]
+    #[arg(long, requires_all = ["metadata_json", "archive_json"])]
     from_cargo_json: Option<std::path::PathBuf>,
     #[arg(long, requires = "from_cargo_json")]
     metadata_json: Option<std::path::PathBuf>,
+    #[arg(long, requires = "from_cargo_json")]
+    archive_json: Option<std::path::PathBuf>,
 }
 
 /* === Enums === */
@@ -85,17 +87,18 @@ impl CollectionArguments {
         settings: &harmos_packaging::config::BuildSettings,
         cancellation: &harmos_packaging::BuildCancellation,
     ) -> Result<harmos_packaging::Build, harmos_packaging::Error> {
-        match (self.from_cargo_json, self.metadata_json) {
-            (Some(messages), Some(metadata)) => {
+        match (self.from_cargo_json, self.metadata_json, self.archive_json) {
+            (Some(messages), Some(metadata), Some(receipt)) => {
                 if cancellation.is_cancelled() { return Err(harmos_packaging::Error::Cancelled); }
                 harmos_packaging::Build::from_cargo_outputs(
                     std::io::BufReader::new(std::fs::File::open(messages)?),
                     std::fs::File::open(metadata)?,
+                    std::fs::File::open(receipt)?,
                     settings,
                 )
             }
-            (None, None) => harmos_packaging::build_with_cancellation(settings, cancellation),
-            _ => Err(harmos_packaging::Error::Settings("collection requires both Cargo messages and metadata".into())),
+            (None, None, None) => harmos_packaging::build_with_cancellation(settings, cancellation),
+            _ => Err(harmos_packaging::Error::Settings("collection requires Cargo messages, metadata and the archive producer receipt".into())),
         }
     }
 }
