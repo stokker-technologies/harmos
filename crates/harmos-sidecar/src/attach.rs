@@ -85,10 +85,7 @@ pub enum ExecutableError {
     #[error("the sidecar executable `{path}` is not an absolute path")]
     Relative { path: PathBuf },
     #[error("the sidecar executable `{path}` cannot be read: {source}")]
-    Unreadable {
-        path: PathBuf,
-        source: std::io::Error,
-    },
+    Unreadable { path: PathBuf, source: std::io::Error },
     #[error("the sidecar executable `{path}` is not a file")]
     NotFile { path: PathBuf },
     #[error("the sidecar executable `{path}` has no valid declaration: {source}")]
@@ -117,37 +114,27 @@ pub trait Attach: Clone + Send + Sync + 'static {
         Vec::new()
     }
 
-    fn operations(&self) -> harmos_contract::Result<Vec<crate::operations::Definition>> {
+    fn operations(&self) -> harmos_domain::Result<Vec<crate::operations::Definition>> {
         Ok(Vec::new())
     }
 
-    fn operation_contracts(
-        &self,
-    ) -> harmos_contract::Result<Option<Vec<crate::operations::Contract>>> {
+    fn operation_contracts(&self) -> harmos_domain::Result<Option<Vec<crate::operations::Contract>>> {
         Ok(None)
     }
 
-    fn required_contracts(
-        &self,
-    ) -> harmos_contract::Result<Option<Vec<crate::inventory::contracts::Required>>> {
+    fn required_contracts(&self) -> harmos_domain::Result<Option<Vec<crate::inventory::contracts::Required>>> {
         Ok(None)
     }
 
-    fn sdk_lifecycle(
-        &self,
-    ) -> harmos_contract::Result<Option<[crate::operations::lifecycle::Descriptor; 2]>> {
+    fn sdk_lifecycle(&self) -> harmos_domain::Result<Option<[crate::operations::lifecycle::Descriptor; 2]>> {
         Ok(None)
     }
 
-    fn observer_controls(
-        &self,
-    ) -> harmos_contract::Result<Option<[crate::operations::Contract; 2]>> {
+    fn observe_contract(&self) -> harmos_domain::Result<Option<crate::operations::Contract>> {
         Ok(None)
     }
 
-    fn listener_declarations(
-        &self,
-    ) -> harmos_contract::Result<Option<Vec<harmos_contract::listeners::Definition>>> {
+    fn listener_declarations(&self) -> harmos_domain::Result<Option<Vec<harmos_domain::listeners::Definition>>> {
         Ok(None)
     }
 
@@ -157,9 +144,7 @@ pub trait Attach: Clone + Send + Sync + 'static {
 /* === Implementations === */
 impl Ending {
     pub fn new(receipt: impl End) -> Self {
-        Self {
-            receipt: Box::new(receipt),
-        }
+        Self { receipt: Box::new(receipt) }
     }
 
     pub fn terminal<F, U>(end: F) -> Self
@@ -167,11 +152,7 @@ impl Ending {
         F: FnOnce() -> U + Send + 'static,
         U: Future<Output = std::io::Result<()>> + Send + 'static,
     {
-        Self::new(Terminal {
-            start: Some(Box::new(move || Box::pin(end()))),
-            work: None,
-            result: None,
-        })
+        Self::new(Terminal { start: Some(Box::new(move || Box::pin(end()))), work: None, result: None })
     }
 
     pub async fn settle(&mut self) -> std::io::Result<()> {
@@ -186,24 +167,13 @@ impl End for Terminal {
                 return result.clone().map_err(Error::other);
             }
             if self.work.is_none() {
-                let start = self
-                    .start
-                    .take()
-                    .ok_or_else(|| Error::other("terminal ending construction did not return"))?;
+                let start = self.start.take().ok_or_else(|| Error::other("terminal ending construction did not return"))?;
                 self.work = Some(start());
             }
-            let result = self
-                .work
-                .as_mut()
-                .expect("original terminal work is retained")
-                .await;
+            let result = self.work.as_mut().expect("original terminal work is retained").await;
             self.work = None;
             self.result = Some(result.map_err(Arc::new));
-            self.result
-                .as_ref()
-                .expect("terminal outcome is retained")
-                .clone()
-                .map_err(Error::other)
+            self.result.as_ref().expect("terminal outcome is retained").clone().map_err(Error::other)
         })
     }
 }
@@ -226,17 +196,8 @@ impl End for ProcessEnd {
 }
 
 impl Attached {
-    pub fn new(
-        write: impl AsyncWrite + Send + Unpin + 'static,
-        read: impl AsyncRead + Send + Unpin + 'static,
-    ) -> Self {
-        Self {
-            control: None,
-            write: Box::new(write),
-            read: Box::new(read),
-            diagnostics: None,
-            end: None,
-        }
+    pub fn new(write: impl AsyncWrite + Send + Unpin + 'static, read: impl AsyncRead + Send + Unpin + 'static) -> Self {
+        Self { control: None, write: Box::new(write), read: Box::new(read), diagnostics: None, end: None }
     }
 
     pub fn control(mut self, channel: crate::transport::Io) -> Self {
@@ -275,13 +236,7 @@ impl Attached {
         Option<Box<dyn AsyncRead + Send + Unpin>>,
         Option<Ending>,
     ) {
-        (
-            self.write,
-            self.read,
-            self.control,
-            self.diagnostics,
-            self.end,
-        )
+        (self.write, self.read, self.control, self.diagnostics, self.end)
     }
 }
 
@@ -291,23 +246,13 @@ impl Executable {
         if !program.is_absolute() {
             return Err(ExecutableError::Relative { path: program });
         }
-        let held = std::fs::metadata(&program).map_err(|source| ExecutableError::Unreadable {
-            path: program.clone(),
-            source,
-        })?;
+        let held = std::fs::metadata(&program).map_err(|source| ExecutableError::Unreadable { path: program.clone(), source })?;
         if !held.is_file() {
             return Err(ExecutableError::NotFile { path: program });
         }
-        let bytes = std::fs::read(&program).map_err(|source| ExecutableError::Unreadable {
-            path: program.clone(),
-            source,
-        })?;
-        let declaration = Declaration::inspect(&bytes, Facility::Sidecar).map_err(|source| {
-            ExecutableError::Declaration {
-                path: program.clone(),
-                source: Box::new(source),
-            }
-        })?;
+        let bytes = std::fs::read(&program).map_err(|source| ExecutableError::Unreadable { path: program.clone(), source })?;
+        let declaration = Declaration::inspect(&bytes, Facility::Sidecar)
+            .map_err(|source| ExecutableError::Declaration { path: program.clone(), source: Box::new(source) })?;
         Ok(Self {
             program,
             declaration,
@@ -373,65 +318,32 @@ impl Attach for Executable {
         self.declaration.observers.clone()
     }
 
-    fn operations(&self) -> harmos_contract::Result<Vec<crate::operations::Definition>> {
+    fn operations(&self) -> harmos_domain::Result<Vec<crate::operations::Definition>> {
         Ok(self.declaration.operations.clone())
     }
 
-    fn operation_contracts(
-        &self,
-    ) -> harmos_contract::Result<Option<Vec<crate::operations::Contract>>> {
+    fn operation_contracts(&self) -> harmos_domain::Result<Option<Vec<crate::operations::Contract>>> {
         Ok(Some(self.declaration.contracts.provides.clone()))
     }
 
-    fn required_contracts(
-        &self,
-    ) -> harmos_contract::Result<Option<Vec<crate::inventory::contracts::Required>>> {
+    fn required_contracts(&self) -> harmos_domain::Result<Option<Vec<crate::inventory::contracts::Required>>> {
         Ok(Some(self.declaration.contracts.requires.clone()))
     }
 
-    fn sdk_lifecycle(
-        &self,
-    ) -> harmos_contract::Result<Option<[crate::operations::lifecycle::Descriptor; 2]>> {
+    fn sdk_lifecycle(&self) -> harmos_domain::Result<Option<[crate::operations::lifecycle::Descriptor; 2]>> {
         Ok(Some(self.declaration.contracts.lifecycle.clone()))
     }
 
-    fn observer_controls(
-        &self,
-    ) -> harmos_contract::Result<Option<[crate::operations::Contract; 2]>> {
-        Ok(self.declaration.observer_controls().cloned())
+    fn observe_contract(&self) -> harmos_domain::Result<Option<crate::operations::Contract>> {
+        Ok(self.declaration.observe_contract())
     }
 
-    fn listener_declarations(
-        &self,
-    ) -> harmos_contract::Result<Option<Vec<harmos_contract::listeners::Definition>>> {
+    fn listener_declarations(&self) -> harmos_domain::Result<Option<Vec<harmos_domain::listeners::Definition>>> {
         Ok(Some(self.declaration.listeners.clone()))
     }
 
     async fn attach(&self) -> Result<Attached, Error> {
-        let mut command = Command::new(&self.program);
-        command
-            .args(&self.arguments)
-            .env_clear()
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true);
-        #[cfg(windows)]
-        {
-            command.creation_flags(CREATE_NO_WINDOW);
-            command.env("SystemRoot", system_root()?);
-            let temporary = std::env::temp_dir();
-            command.env("TMP", &temporary).env("TEMP", &temporary);
-        }
-        if !cfg!(windows)
-            && let Some(tmpdir) = std::env::var_os("TMPDIR").filter(|value| !value.is_empty())
-        {
-            command.env("TMPDIR", tmpdir);
-        }
-        command.envs(self.environment.iter().cloned());
-        if let Some(directory) = &self.directory {
-            command.current_dir(directory);
-        }
+        let mut command = command(&self.program, &self.arguments, self.directory.as_deref(), &self.environment)?;
 
         #[cfg(any(unix, windows))]
         let control = control::prepare(&mut command)?;
@@ -439,21 +351,11 @@ impl Attach for Executable {
         drop(command);
         #[cfg(windows)]
         let control = control.io(child.id().expect("a spawned child has its process id"));
-        let write = child
-            .stdin
-            .take()
-            .ok_or_else(|| Error::other("the sidecar was started without a standard input"))?;
-        let read = child
-            .stdout
-            .take()
-            .ok_or_else(|| Error::other("the sidecar was started without a standard output"))?;
+        let write = child.stdin.take().ok_or_else(|| Error::other("the sidecar was started without a standard input"))?;
+        let read = child.stdout.take().ok_or_else(|| Error::other("the sidecar was started without a standard output"))?;
         let diagnostics = child.stderr.take();
 
-        let ending = Ending::new(ProcessEnd {
-            child,
-            signaled: false,
-            completed: false,
-        });
+        let ending = Ending::new(ProcessEnd { child, signaled: false, completed: false });
         let mut attached = Attached::new(write, read).ending(ending);
         #[cfg(any(unix, windows))]
         {
@@ -469,6 +371,31 @@ impl Attach for Executable {
 /* === Public Functions === */
 
 /* === Private Functions === */
+fn command(
+    program: &Path, arguments: &[OsString], directory: Option<&Path>, environment: &[(OsString, OsString)],
+) -> Result<Command, Error> {
+    let mut command = Command::new(program);
+    command.args(arguments).env_clear().stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
+    #[cfg(windows)]
+    {
+        command.creation_flags(CREATE_NO_WINDOW);
+        command.env("SystemRoot", system_root()?);
+        let temporary = std::env::temp_dir();
+        command.env("TMP", &temporary).env("TEMP", &temporary);
+    }
+    if !cfg!(windows)
+        && let Some(tmpdir) = std::env::var_os("TMPDIR").filter(|value| !value.is_empty())
+    {
+        command.env("TMPDIR", tmpdir);
+    }
+    command.envs(environment.iter().cloned());
+    if let Some(directory) = directory {
+        command.current_dir(directory);
+    }
+
+    Ok(command)
+}
+
 #[cfg(windows)]
 fn system_root() -> Result<OsString, Error> {
     use std::os::windows::ffi::OsStringExt;
@@ -484,8 +411,7 @@ fn system_root() -> Result<OsString, Error> {
         // SAFETY: the buffer is writable for the supplied number of UTF-16
         // units, and the API retains no pointer after this synchronous call.
         #[allow(unsafe_code)]
-        let length =
-            unsafe { GetSystemWindowsDirectoryW(buffer.as_mut_ptr(), buffer.len() as u32) };
+        let length = unsafe { GetSystemWindowsDirectoryW(buffer.as_mut_ptr(), buffer.len() as u32) };
         if length == 0 {
             return Err(Error::last_os_error());
         }
@@ -497,3 +423,32 @@ fn system_root() -> Result<OsString, Error> {
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn command_retains_explicit_configuration_without_spawning() {
+        let arguments = [OsString::from("--plugin")];
+        let directory = Path::new("work");
+        let environment = [
+            (OsString::from("HARMOS_EXPLICIT"), OsString::from("kept")),
+            (OsString::from("TMPDIR"), OsString::from("chosen-unix-temp")),
+            (OsString::from("TMP"), OsString::from("chosen-windows-temp")),
+            (OsString::from("TEMP"), OsString::from("chosen-windows-temp")),
+        ];
+        let configured = command(Path::new("sidecar"), &arguments, Some(directory), &environment).unwrap();
+        let configured = configured.as_std();
+        assert_eq!(configured.get_program(), "sidecar");
+        assert_eq!(configured.get_args().collect::<Vec<_>>(), [arguments[0].as_os_str()]);
+        assert_eq!(configured.get_current_dir(), Some(directory));
+        let variables = configured.get_envs().collect::<std::collections::BTreeMap<_, _>>();
+        for (name, value) in &environment {
+            assert_eq!(variables.get(name.as_os_str()), Some(&Some(value.as_os_str())));
+        }
+        assert!(!variables.contains_key(std::ffi::OsStr::new("PATH")));
+        #[cfg(windows)]
+        assert!(variables.contains_key(std::ffi::OsStr::new("SystemRoot")));
+    }
+}

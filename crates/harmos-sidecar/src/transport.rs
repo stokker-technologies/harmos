@@ -87,8 +87,7 @@ enum Body<'a> {
     },
     Refusal {
         id: u64,
-        code: i64,
-        message: &'a str,
+        refusal: std::borrow::Cow<'a, harmos_domain::Refusal>,
     },
     Credit {
         consumed: u64,
@@ -110,16 +109,13 @@ impl Role {
 impl Packet {
     pub fn channel(&self) -> Role {
         match self {
-            Self::Frame(Frame::Cancel { .. }) | Self::Credit(_) | Self::Cancellation { .. } => {
-                Role::Control
-            }
+            Self::Frame(Frame::Cancel { .. }) | Self::Credit(_) | Self::Cancellation { .. } => Role::Control,
             _ => Role::Data,
         }
     }
 
     pub fn encoded_len(&self) -> io::Result<usize> {
-        let size =
-            postcard::experimental::serialized_size(&(VERSION, self.body()?)).map_err(invalid)?;
+        let size = postcard::experimental::serialized_size(&(VERSION, self.body()?)).map_err(invalid)?;
         if size > self.channel().limit() {
             return Err(invalid("packet exceeds channel limit"));
         }
@@ -160,62 +156,32 @@ impl Packet {
             return Err(invalid("packet arrived on the wrong physical channel"));
         }
         Ok(match body {
-            Body::Call { id, method, params } => Self::Frame(Frame::Call {
-                id,
-                method: method.to_owned(),
-                params: params.to_vec(),
-            }),
+            Body::Call { id, method, params } => Self::Frame(Frame::Call { id, method: method.to_owned(), params: params.to_vec() }),
             Body::Cancel { id, preceding } => Self::Cancellation { id, preceding },
-            Body::Push { method, params } => Self::Frame(Frame::Push {
-                method: method.to_owned(),
-                params: params.to_vec(),
-            }),
-            Body::Answer { id, result } => Self::Frame(Frame::Answer {
-                id,
-                result: result.to_vec(),
-            }),
-            Body::Refusal { id, code, message } => Self::Frame(Frame::Refusal {
-                id,
-                code,
-                message: message.to_owned(),
-            }),
+            Body::Push { method, params } => Self::Frame(Frame::Push { method: method.to_owned(), params: params.to_vec() }),
+            Body::Answer { id, result } => Self::Frame(Frame::Answer { id, result: result.to_vec() }),
+            Body::Refusal { id, refusal } => Self::Frame(Frame::Refusal { id, refusal: refusal.into_owned() }),
             Body::Credit { consumed } => Self::Credit(consumed),
         })
     }
 
     fn body(&self) -> io::Result<Body<'_>> {
         Ok(match self {
-            Self::Frame(Frame::Call { id, method, params }) => Body::Call {
-                id: *id,
-                method,
-                params,
-            },
+            Self::Frame(Frame::Call { id, method, params }) => Body::Call { id: *id, method, params },
             Self::Frame(Frame::Cancel { .. }) => {
                 return Err(invalid("cancellation requires a data watermark"));
             }
             Self::Frame(Frame::Push { method, params }) => Body::Push { method, params },
             Self::Frame(Frame::Answer { id, result }) => Body::Answer { id: *id, result },
-            Self::Frame(Frame::Refusal { id, code, message }) => Body::Refusal {
-                id: *id,
-                code: *code,
-                message,
-            },
-            Self::Credit(consumed) => Body::Credit {
-                consumed: *consumed,
-            },
-            Self::Cancellation { id, preceding } => Body::Cancel {
-                id: *id,
-                preceding: *preceding,
-            },
+            Self::Frame(Frame::Refusal { id, refusal }) => Body::Refusal { id: *id, refusal: std::borrow::Cow::Borrowed(refusal) },
+            Self::Credit(consumed) => Body::Credit { consumed: *consumed },
+            Self::Cancellation { id, preceding } => Body::Cancel { id: *id, preceding: *preceding },
         })
     }
 }
 
 /* === Public Functions === */
-pub async fn read<R: AsyncRead + Unpin>(
-    reader: &mut R,
-    channel: Role,
-) -> io::Result<Option<Packet>> {
+pub async fn read<R: AsyncRead + Unpin>(reader: &mut R, channel: Role) -> io::Result<Option<Packet>> {
     let Some(length) = read_length(reader, channel).await? else {
         return Ok(None);
     };
@@ -224,10 +190,7 @@ pub async fn read<R: AsyncRead + Unpin>(
     Packet::decode(channel, &body).map(Some)
 }
 
-pub async fn read_data<R: AsyncRead + Unpin>(
-    reader: &mut R,
-    credit: &Arc<ReceiveCredit>,
-) -> io::Result<Option<(Packet, Consumption)>> {
+pub async fn read_data<R: AsyncRead + Unpin>(reader: &mut R, credit: &Arc<ReceiveCredit>) -> io::Result<Option<(Packet, Consumption)>> {
     let Some(length) = read_length(reader, Role::Data).await? else {
         return Ok(None);
     };
@@ -244,10 +207,7 @@ pub async fn write<W: AsyncWrite + Unpin>(writer: &mut W, packet: &Packet) -> io
 }
 
 /* === Private Functions === */
-async fn read_length<R: AsyncRead + Unpin>(
-    reader: &mut R,
-    channel: Role,
-) -> io::Result<Option<usize>> {
+async fn read_length<R: AsyncRead + Unpin>(reader: &mut R, channel: Role) -> io::Result<Option<usize>> {
     let mut header = [0; 4];
     if reader.read(&mut header[..1]).await? == 0 {
         return Ok(None);

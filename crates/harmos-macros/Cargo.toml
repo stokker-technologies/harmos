@@ -2,6 +2,7 @@
 
 [package]
 name = "harmos-macros"
+autotests = false
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -64,16 +65,12 @@ syn = { workspace = true, default-features = true }
 # === Test Targets ===
 
 [[test]]
-name = "facade"
-path = "tests/path/main.rs"
-
-[[test]]
-name = "metadata"
+name = "integration"
 path = "tests/artifact/main.rs"
 
 [[test]]
-name = "ui"
-path = "tests/catalog/main.rs"
+name = "acceptance"
+path = "tests/acceptance/main.rs"
 
 # === Bench Targets ===
 

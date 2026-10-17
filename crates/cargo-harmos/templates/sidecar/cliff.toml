@@ -1,0 +1,56 @@
+# Rendered by stkr project update from templates/tools/cliff.toml; sha256:79bdb5620bf5dbc4bed7e6fffcf803a1680351d0cd8c6188ab32161e601d8b7b
+# ***
+#
+# __PRODUCT_NAME__
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
+
+# === Changelog === #
+
+[changelog]
+header = "# Changelog\n\nAll notable changes to this project will be documented in this file.\n\n"
+body = """
+{% if version %}\
+## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% for group, commits in commits | group_by(attribute="group") %}
+
+### {{ group | upper_first }}
+{% for commit in commits %}
+- {% if commit.breaking %}**Breaking:** {% endif %}{{ commit.message | upper_first }}{% if commit.breaking_description %}: {{ commit.breaking_description }}{% endif %}\
+{% endfor %}
+{% endfor %}\n{% endif %}\
+"""
+trim = true
+
+# === Commit Parsing === #
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+split_commits = false
+commit_parsers = [
+  { message = "^feat", group = "added" },
+  { message = "^fix", group = "fixed" },
+  { message = "^docs", group = "changed" },
+  { message = "^refactor", group = "changed" },
+  { message = "^perf", group = "changed" },
+  { message = "^style", group = "changed" },
+  { message = "^test", group = "changed" },
+  { message = "^build", group = "changed" },
+  { message = "^ci", group = "changed" },
+  { message = "^chore", group = "changed" },
+  { message = "^revert", group = "changed" },
+]
+protect_breaking_commits = true
+filter_commits = false
+tag_pattern = "v[0-9]*"
+
+# === Version Planning === #
+
+[bump]
+breaking_always_bump_major = false
+features_always_bump_minor = false
+bump_type = "patch"

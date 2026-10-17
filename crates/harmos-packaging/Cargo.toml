@@ -1,0 +1,119 @@
+# ***
+#
+# Harmos
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
+# === Package === #
+
+[package]
+name = "harmos-packaging"
+autotests = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# === Package Targets === #
+
+# === Features === #
+
+[features]
+default = []
+sidecar = []
+guest = ["dep:wit-component"]
+bindings-proto = ["dep:heck", "dep:prost-reflect"]
+bindings-python = ["bindings-proto"]
+
+# === Dependencies === #
+
+[dependencies]
+# Local
+harmos-domain = { workspace = true }
+
+# Git
+
+# Error Handling
+thiserror = { workspace = true, default-features = true }
+
+# Logging
+tracing = { workspace = true, default-features = true }
+
+# Utilities
+heck = { workspace = true, optional = true }
+semver = { workspace = true, default-features = true, features = ["serde"] }
+sha2 = { workspace = true, default-features = true }
+
+# Serialization
+prost-reflect = { workspace = true, optional = true }
+serde = { workspace = true, default-features = true }
+serde_json = { workspace = true, default-features = true, features = ["raw_value"] }
+wit-component = { workspace = true, optional = true, default-features = true }
+
+# Configuration
+
+# Filesystem
+notify = { workspace = true }
+tar = { workspace = true }
+tempfile = { workspace = true, default-features = true }
+
+# Parsing
+
+# Concurrency
+process-wrap = { workspace = true, features = ["std", "job-object", "process-group"] }
+
+# Async
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Build Dependencies === #
+
+# === Dev Dependencies === #
+
+[dev-dependencies]
+harmos-sdk = { workspace = true, features = ["grpc"] }
+# Local
+harmos-domain = { workspace = true, features = ["derive"] }
+
+# Serialization
+protoc-bin-vendored = { workspace = true }
+
+
+# === Target Dependencies === #
+
+# === Test Targets === #
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
+
+[[test]]
+name = "acceptance"
+path = "tests/acceptance/main.rs"
+required-features = ["bindings-proto", "bindings-python"]
+
+# === Bench Targets === #
+
+# === Example Targets === #
+
+# === Workspace Lints === #
+
+# === Lints === #
+
+[lints]
+workspace = true
+
+# === Profiles === #
+
+# === Patches === #
+
+# === Other === #

@@ -39,7 +39,11 @@ pub struct Arguments {
 /* === Enums === */
 #[derive(clap::Subcommand)]
 enum Command {
-    #[command(about = "Build And Package Inspected Guest Artifacts.")]
+    #[command(about = "Inspect Embedded Plugin Metadata.")]
+    Inspect(super::inspect::Arguments),
+    #[command(about = "Package Stamped Plugin Artifacts.")]
+    Package(super::package::Arguments),
+    #[command(about = "Build And Stamp Guest Artifacts.")]
     Build(build::Arguments),
     #[command(about = "Watch Sources And Dependencies And Rebuild Guest Artifacts.")]
     Dev(dev::Arguments),
@@ -50,11 +54,10 @@ enum Command {
 /* === Implementations === */
 
 /* === Public Functions === */
-pub fn run(
-    arguments: Arguments,
-    cancellation: &harmos::packaging::BuildCancellation,
-) -> Result<(), harmos::packaging::Error> {
+pub fn run(arguments: Arguments, cancellation: &harmos_packaging::BuildCancellation) -> Result<(), harmos_packaging::Error> {
     match arguments.command {
+        Command::Inspect(arguments) => super::inspect::run(arguments),
+        Command::Package(arguments) => super::package::run(arguments, harmos_packaging::config::BuildBackend::Guest, cancellation),
         Command::Build(arguments) => build::run(arguments, cancellation),
         Command::Dev(arguments) => dev::run(arguments, cancellation),
     }

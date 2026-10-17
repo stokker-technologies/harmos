@@ -1,0 +1,132 @@
+# === Package ===
+
+[package]
+name = "harmos-domain"
+autotests = false
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The authoring attributes, on by default the way serde ships its derives. Every
+# trait beneath them is an ordinary public contract, so a crate that turns this
+# off writes the implementations by hand and links no proc-macro chain at all.
+version = { workspace = true }
+
+# === Package Targets ===
+
+# === Features ===
+
+[features]
+default = ["derive"]
+derive = ["dep:harmos-macros"]
+
+# === Dependencies ===
+
+[dependencies]
+# Local
+harmos-macros = { workspace = true, default-features = true, optional = true }
+
+# Git
+
+# Error Handling
+thiserror = { workspace = true, default-features = true }
+
+# Logging
+
+# Utilities
+semver = { workspace = true, default-features = true }
+time = { workspace = true, default-features = true }
+
+# Serialization
+postcard = { workspace = true }
+serde = { workspace = true, default-features = true }
+serde_json = { workspace = true, default-features = true }
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+memchr = { workspace = true, default-features = true }
+
+# Concurrency
+
+# Async
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Build Dependencies ===
+
+# === Dev Dependencies ===
+
+[dev-dependencies]
+# Downstream Crates Stay Path-Only So The Packaged Manifest Drops Them Instead Of Forming A Publish Cycle
+harmos-sdk = { path = "../harmos-sdk", features = ["grpc"] }
+# Local
+harmos-packaging = { path = "../harmos-packaging", features = ["bindings-proto"] }
+harmos-macros = { workspace = true }
+
+# Git
+
+# Error Handling
+
+# Logging
+
+# Utilities
+
+# Serialization
+prost-reflect = { workspace = true }
+protoc-bin-vendored = { workspace = true }
+
+# Configuration
+
+# Filesystem
+tempfile = { workspace = true }
+
+# Parsing
+
+# Concurrency
+
+# Async
+tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Target Dependencies ===
+
+# === Test Targets ===
+
+[[test]]
+name = "integration"
+path = "tests/message/main.rs"
+required-features = ["derive"]
+
+# === Bench Targets ===
+
+# === Example Targets ===
+
+# === Workspace Lints ===
+
+# === Lints ===
+
+[lints]
+workspace = true
+
+# === Profiles ===
+
+# === Patches ===
+
+# === Other ===

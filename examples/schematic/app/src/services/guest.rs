@@ -22,8 +22,8 @@ use std::sync::Arc;
 use crate::app::{Runtime, SchematicEditor};
 use crate::lanes::Lanes;
 use harmos::config::PluginSettings;
-use harmos::plugin::guest::{Host, Loaded};
-use schematic_contract::operations::Operations;
+use harmos::guest::{Host, Loaded};
+use schematic_domain::operations::Operations;
 
 /* === Constants === */
 pub const NAME: &str = "schematic-tools";
@@ -50,31 +50,19 @@ pub async fn start(runtime: &Runtime, loaded: Loaded<SchematicEditor>) -> harmos
             reason: "the inspected component has a different owner",
         });
     }
-    let settings = PluginSettings {
-        encoding_memory_bytes: SDK_ENCODING_MEMORY_BYTES,
-        ..Default::default()
-    };
-    runtime
-        .plugin
-        .register_guest::<Operations>(loaded, settings, Lanes::Open)
-        .await?;
+    let settings = PluginSettings { encoding_memory_bytes: SDK_ENCODING_MEMORY_BYTES, ..Default::default() };
+    runtime.plugin.register_guest::<Operations>(loaded, settings, Lanes::Open).await?;
     runtime.plugin.initialize().await
 }
 
-pub fn load(
-    runtime: &Runtime,
-    component: &[u8],
-) -> Result<Loaded<SchematicEditor>, harmos::plugin::guest::Error> {
+pub fn load(runtime: &Runtime, component: &[u8]) -> Result<Loaded<SchematicEditor>, harmos::guest::Error> {
     let host = Host::new(runtime)?;
     host.load(component)
 }
 
 /* === Private Functions === */
 pub(super) fn failure(source: impl std::error::Error + Send + Sync + 'static) -> harmos::Error {
-    harmos::Error::OperationFailed {
-        operation: NAME.into(),
-        source: Arc::new(source),
-    }
+    harmos::Error::OperationFailed { operation: NAME.into(), source: Arc::new(source) }
 }
 
 /* === Tests === */

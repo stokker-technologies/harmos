@@ -48,12 +48,8 @@ struct Witnessed {
 /* === Public Functions === */
 pub fn read(directory: &Path) -> Columns {
     let rows: Vec<Witnessed> =
-        jsonl_adapter::streams::read_rows(directory.join("net_voltage.jsonl"))
-            .expect("the clean stop wrote the selected stream");
-    let mut columns = Columns {
-        position: Vec::with_capacity(rows.len()),
-        gap_missed: Vec::with_capacity(rows.len()),
-    };
+        schematic_storage::streams::read_rows(directory.join("net_voltage.jsonl")).expect("the clean stop wrote the selected stream");
+    let mut columns = Columns { position: Vec::with_capacity(rows.len()), gap_missed: Vec::with_capacity(rows.len()) };
 
     for row in rows {
         columns.position.push(row.position);

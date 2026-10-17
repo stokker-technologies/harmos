@@ -64,10 +64,7 @@ impl Application for SchematicEditor {
 
 /* === Public Functions === */
 pub fn builder(origin: impl Into<Origin>, resources: ()) -> Builder<SchematicEditor> {
-    let settings = harmos::operations::Settings {
-        preparation_bytes: Some(NonZeroUsize::new(64 * 1024).unwrap()),
-        ..Default::default()
-    };
+    let settings = harmos::operations::Settings { preparation_bytes: Some(NonZeroUsize::new(64 * 1024).unwrap()), ..Default::default() };
     harmos::Runtime::builder(origin, resources)
         .register(Transactions::catalog())
         .register(Records::catalog())
@@ -95,10 +92,7 @@ pub async fn launch(document: Document, config: &Settings) -> Result<Runtime, Er
 
 #[cfg(feature = "simulation")]
 #[tracing::instrument(level = "debug", skip_all, fields(seed))]
-pub fn simulate(
-    origin: impl Into<Origin>,
-    seed: u64,
-) -> Result<Simulated, harmos::runtime::Incompatible> {
+pub fn simulate(origin: impl Into<Origin>, seed: u64) -> Result<Simulated, harmos::runtime::Incompatible> {
     builder(origin, ()).entropy_seed(seed).simulate()
 }
 

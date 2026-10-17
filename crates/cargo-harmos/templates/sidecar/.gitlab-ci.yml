@@ -1,0 +1,203 @@
+# Rendered by stkr project update from templates/ci/.gitlab-ci.yml; sha256:85d8fcf9c84f3b50dec8af2e98c5891dfefc445d6b0f6e810c7546af6a427f15
+stages:
+- Source
+- Build
+- Integration
+- Acceptance And System
+- Gate
+default:
+  image:
+    name: >-
+      ghcr.io/jdx/mise:2026.10.8-debian@sha256:8cc0b83dd86465df9ae4a813cce9ce24cb0b4f749617c419d3e4beb838b365b1
+    entrypoint:
+    - ""
+  before_script:
+  - mise trust --yes
+  - mise install --yes
+  cache:
+  - key:
+      prefix: tools
+      files:
+      - mise.lock
+    paths:
+    - .cache/mise/
+    policy: pull-push
+variables:
+  GIT_DEPTH: "0"
+  MISE_YES: "1"
+  MISE_LOCKED: "1"
+  MISE_DATA_DIR: $CI_PROJECT_DIR/.cache/mise
+workflow:
+  rules:
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+    when: never
+  - if: $CI_COMMIT_BRANCH
+  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+Source:
+  stage: Source
+  tags: []
+  timeout: 10 minutes
+  script:
+  - mise run format:python --check
+  - mise run format:rust --check
+  - mise run format:toml --check
+  - mise run check:python
+  - mise run lint:python
+  needs: []
+  rules:
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: $CI_COMMIT_BRANCH =~ /^(dev|main|release\/v.*)$/
+  variables:
+    MISE_ENABLE_TOOLS: python,rust,uv,taplo
+Build:
+  stage: Build
+  tags: []
+  timeout: 30 minutes
+  script:
+  - mise run build
+  - mise run test:unit
+  - mise run check
+  - mise run lint:rust
+  - mise run package:rust
+  needs: []
+  after_script:
+  - >-
+    mkdir -p .cache/evidence/build && cp -R .stkr/tests/. .cache/evidence/build/
+    2>/dev/null || true
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths:
+    - target/nextest/
+    - target/fixtures/
+    - dist/
+    - .cache/evidence/build/
+  rules:
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: $CI_COMMIT_BRANCH =~ /^(dev|main|release\/v.*)$/
+  variables:
+    MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,taplo
+Gate:
+  stage: Gate
+  tags: []
+  timeout: 10 minutes
+  script:
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.run collect .cache/evidence/*
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.run verify
+  needs:
+  - job: Source
+    artifacts: true
+  - job: Build
+    artifacts: true
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+    - .stkr/tests/
+    - .stkr/benchmarks/
+  rules:
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: $CI_COMMIT_BRANCH =~ /^(dev|main|release\/v.*)$/
+  variables:
+    MISE_ENABLE_TOOLS: python,uv
+Release / Publish / Dry:
+  stage: Gate
+  tags: []
+  timeout: 60 minutes
+  script:
+  - mise run package:rust --profile release
+  - mise run release:publish:dry
+  needs:
+  - job: Gate
+    artifacts: false
+  rules:
+  - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(dev|release\/v.*)$/
+CI / Nightly:
+  stage: Gate
+  tags: []
+  timeout: 180 minutes
+  script:
+  - >-
+    if [ "$(cat .cache/nightly/revision 2>/dev/null)" = "$CI_COMMIT_SHA" ]; then
+    echo dev has not moved; exit 0; fi
+  - mise run ci:nightly
+  - mkdir -p .cache/nightly && echo "$CI_COMMIT_SHA" > .cache/nightly/revision
+  needs: []
+  rules:
+  - if: $CI_PIPELINE_SOURCE == "schedule" && $CI_COMMIT_BRANCH == "dev"
+  cache:
+  - key: nightly
+    paths:
+    - .stkr/benchmarks/
+    - .cache/nightly/
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+    - .stkr/tests/
+    - .stkr/benchmarks/
+  variables:
+    MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,cargo:cargo-llvm-cov,taplo
+Package / Release:
+  stage: Build
+  tags: []
+  timeout: 30 minutes
+  script:
+  - "mkdir -p .cache/release && curl --fail --location --header \"JOB-TOKEN: $CI_JOB_TOKEN\" --output .cache/release/evidence.zip \"$CI_API_V4_URL/projects/$CI_PROJECT_ID/jobs/artifacts/release%2F${CI_COMMIT_TAG}/download?job=Gate\""
+  - unzip -o .cache/release/evidence.zip -d .cache/release
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.run collect .cache/release/.stkr/tests
+  - >-
+    mise exec -- uv run --locked --project tools/python python -m
+    project_tools.test.run verify
+  - mise run package:rust --profile release
+  needs: []
+  rules:
+  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+  artifacts:
+    expire_in: 30 days
+    paths:
+    - target/package/
+Release / Publish:
+  stage: Gate
+  tags: []
+  timeout: 20 minutes
+  script:
+  - mise run release:publish
+  needs:
+  - job: Package / Release
+    artifacts: true
+  rules:
+  - if: $CI_COMMIT_TAG =~ /^v[0-9]/
+  environment:
+    name: Publish
+  id_tokens:
+    PYPI_ID_TOKEN:
+      aud: pypi
+    CRATES_IO_ID_TOKEN:
+      aud: crates.io
+  variables:
+    MISE_ENABLE_TOOLS: python,rust,uv,git-cliff
+Prepare Release:
+  stage: Source
+  tags: []
+  timeout: 20 minutes
+  script:
+  - git switch -c "release/v$RELEASE_VERSION"
+  - mise run release:prepare
+  - "git -c user.name=\"$GITLAB_USER_NAME\" -c user.email=\"$GITLAB_USER_EMAIL\" commit -am \"chore: prepare release v$RELEASE_VERSION\""
+  - >-
+    git push "https://oauth2:$RELEASE_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_PATH.git"
+    "release/v$RELEASE_VERSION"
+  needs: []
+  rules:
+  - if: $CI_PIPELINE_SOURCE == "web" && $RELEASE_VERSION
+    when: manual
+  variables:
+    MISE_ENABLE_TOOLS: python,rust,uv,git-cliff

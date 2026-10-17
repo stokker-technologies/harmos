@@ -1,0 +1,16 @@
+# Rendered by stkr project update from templates/tools/ruff.toml; sha256:b91e6053389704ef3c8fed3a81d2a6525168587209f29909fc18c62b2bd1e86a
+# ***
+#
+# Harmos
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
+# === Formatting === #
+
+# Width 140 matches every Hub-rendered formatter: wide displays are the norm and two files still sit side by side in a
+# diff on a 4K display.
+line-length = 140
+# The package's own pyproject.toml keeps every other setting.
+extend = "pyproject.toml"

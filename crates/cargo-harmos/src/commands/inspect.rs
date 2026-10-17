@@ -42,15 +42,12 @@ pub struct Arguments {
 /* === Implementations === */
 
 /* === Public Functions === */
-pub fn run(arguments: Arguments) -> Result<(), harmos::packaging::Error> {
-    let inspected = harmos::packaging::inspect(&arguments.artifact)?;
+pub fn run(arguments: Arguments) -> Result<(), harmos_packaging::Error> {
+    let inspected = harmos_packaging::inspect(&arguments.artifact)?;
     if arguments.json {
         println!("{}", serde_json::to_string_pretty(&inspected)?);
     } else {
-        println!(
-            "{}@{} ({})\n{}",
-            inspected.id, inspected.version, inspected.facility, inspected.sha256
-        );
+        println!("{}@{} ({})\n{}", inspected.id, inspected.version, inspected.facility, inspected.sha256);
     }
     Ok(())
 }

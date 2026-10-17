@@ -1,0 +1,50 @@
+/* ***
+ *
+ * Harmos
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * ***
+ */
+
+
+// Run The Native Plugin Over Its SDK Transport.
+
+/* === Modules === */
+
+/* === Re-Exports === */
+
+/* === Imports === */
+
+// Standard Library Imports
+
+// Third Party Imports
+
+// Local Imports
+
+
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+/* === Enums === */
+
+/* === Traits === */
+
+/* === Implementations === */
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    harmos_sidecar::run_plugin::<__RUST_MODULE__::Plugin>(std::num::NonZeroUsize::new(4).unwrap()).await?;
+    Ok(())
+}
+
+
+/* === Tests === */

@@ -1,0 +1,12 @@
+# ***
+#
+# Harmos
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
+
+[tasks.dev]
+description = "Watch And Rebuild The Plugin"
+run = "cargo harmos sidecar dev"
