@@ -10,9 +10,12 @@
 /* === Modules === */
 /* === Re-Exports === */
 /* === Imports === */
-use super::backend::{Data, Recovery, history, storage_settings};
-use super::support::{Bank, Ledger, catalog};
-use super::waveforms::{self, Experiment, Objects, Sample};
+// Standard Library Imports
+use std::num::NonZeroUsize;
+use std::sync::Arc;
+use std::time::{Duration, UNIX_EPOCH};
+
+// Third Party Imports
 use harmos::storage::query::transform::{
     Transform,
     aggregate::{Aggregate, Measure},
@@ -20,12 +23,14 @@ use harmos::storage::query::transform::{
     histogram::Histogram,
     project::{Project, Projection},
 };
-use harmos::storage::query::{Query, QueryOutput, RowSlice, Source, StreamSelection};
+use harmos::storage::query::{Query, QueryArrow, RowSlice, Source, StreamSelection};
 use harmos::storage::*;
 use harmos::{Identifier, Runtime};
-use std::num::NonZeroUsize;
-use std::sync::Arc;
-use std::time::{Duration, UNIX_EPOCH};
+
+// Local Imports
+use super::backend::{Data, Recovery, history, storage_settings};
+use super::support::{Bank, Ledger, catalog};
+use super::waveforms::{self, Experiment, Objects, Sample};
 
 /* === Constants === */
 /* === Macros === */
@@ -41,7 +46,7 @@ async fn positions<C>(storage: &StorageManager<C>, query: Query) -> Vec<(u64, u6
     let mut reader = storage.query(query).await.unwrap();
     let mut rows = Vec::new();
     while let Some(output) = reader.next().await.unwrap() {
-        let QueryOutput::Batch(batch) = output else {
+        let QueryArrow::Batch(batch) = output else {
             continue;
         };
         let batch = batch.as_record_batch();
@@ -249,7 +254,7 @@ async fn nominal() {
         .unwrap();
     let mut received = Vec::new();
     while let Some(output) = reader.next().await.unwrap() {
-        let QueryOutput::Batch(batch) = output else {
+        let QueryArrow::Batch(batch) = output else {
             continue;
         };
         let batch = batch.as_record_batch();
@@ -346,11 +351,11 @@ async fn nominal() {
         .unwrap();
     assert!(matches!(
         reader.next().await.unwrap(),
-        Some(QueryOutput::Schema(_))
+        Some(QueryArrow::Schema(_))
     ));
     let mut phases = 0;
     while let Some(output) = reader.next().await.unwrap() {
-        let QueryOutput::Batch(batch) = output else {
+        let QueryArrow::Batch(batch) = output else {
             panic!("schema must be emitted once");
         };
         let values = batch
@@ -388,7 +393,7 @@ async fn nominal() {
     let mut counts_actual = Vec::new();
     let mut counted = 0;
     while let Some(output) = histogram.next().await.unwrap() {
-        if let QueryOutput::Batch(batch) = output {
+        if let QueryArrow::Batch(batch) = output {
             let counts = batch
                 .as_record_batch()
                 .column_by_name("count")
@@ -444,7 +449,7 @@ async fn nominal() {
         .unwrap();
     let mut displayed = 0;
     while let Some(output) = display.next().await.unwrap() {
-        if let QueryOutput::Batch(batch) = output {
+        if let QueryArrow::Batch(batch) = output {
             displayed += batch.as_record_batch().num_rows();
         }
     }

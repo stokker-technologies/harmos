@@ -24,7 +24,7 @@ use super::super::{Bank, Data, Ledger, Recovery, catalog, config, history};
 use super::Lanes;
 use arrow_array::{StringArray, StructArray};
 use arrow_schema::{DataType, Field, Fields};
-use harmos::storage::operations::{Operations, WriteObjects};
+use harmos::storage::operations::WriteObjects;
 use harmos::storage::writes::{DataBatch, WriteReceipt, WriteRequest};
 use harmos::storage::{
     MutationId, ObjectCatalog, ObjectRetention, ObjectValue, ObjectVersion, StorageBackends,
@@ -120,7 +120,7 @@ async fn object_writes_preserve() {
         .runtime_with_storage(&storage)
         .await
         .unwrap();
-    Operations::register(
+    harmos::storage::operations::register(
         &runtime.operations,
         "storage",
         Lanes::Open,
@@ -168,7 +168,7 @@ async fn object_writes_preserve() {
             sequence: 1,
             destination: first.schema.id.clone(),
             schema: first.schema,
-            data,
+            data: data.into(),
         })
         .await
         .unwrap();
@@ -267,14 +267,7 @@ async fn shared_object_receipts() {
     };
     let objects = vec![value("first", "saved"), value("second", "saved")];
     let receipts = storage.write_objects_once(&saved, &objects).await.unwrap();
-    let save = MutationId {
-        key: Identifier::new("save").unwrap(),
-        ..saved.clone()
-    };
-    storage
-        .save_once(&save, &receipts[1].position)
-        .await
-        .unwrap();
+    storage.flush_until(&receipts[1].position).await.unwrap();
     storage
         .write_objects_once(&lost, &[value("third", "lost")])
         .await
@@ -475,7 +468,7 @@ async fn query_fixture() -> (Runtime<Bank>, StorageManager<Objects>, Arc<Data<Ob
         .runtime_with_storage(&storage)
         .await
         .unwrap();
-    Operations::register(
+    harmos::storage::operations::register(
         &runtime.operations,
         "storage",
         Lanes::Open,

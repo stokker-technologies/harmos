@@ -71,7 +71,7 @@ bench = false
 # Core Runtime And Authoring Are Always Available
 [features]
 default = []
-bindings-python = ["harmos-contract/bindings-python"]
+bindings-python = ["harmos-domain/bindings-python"]
 packaging = ["dep:harmos-bundle", "dep:notify", "dep:process-wrap", "dep:tempfile"]
 packaging-sidecar = ["packaging"]
 packaging-guest = ["packaging", "dep:harmos-guest", "harmos-guest/componentize"]
@@ -105,7 +105,7 @@ grpc = [
   "tonic/tls-ring",
 ]
 # Descriptor Projection (`harmos::grpc::Artifacts`) Without The gRPC Server.
-reflection = ["harmos-contract/reflection"]
+reflection = ["harmos-domain/reflection"]
 # Hands Out The Signal Kernels; Core Reductions Use Them Regardless.
 signal = []
 signal-fft = ["signal", "harmos-signal/fft"]
@@ -116,7 +116,7 @@ simulation = ["tokio/test-util"]
 [dependencies]
 # Local
 harmos-bundle = { workspace = true, optional = true }
-harmos-contract = { workspace = true, features = ["derive", "streaming"] }
+harmos-domain = { workspace = true, features = ["derive", "streaming"] }
 harmos-guest = { workspace = true, optional = true }
 harmos-macros = { workspace = true, default-features = true }
 harmos-signal = { workspace = true, default-features = false }

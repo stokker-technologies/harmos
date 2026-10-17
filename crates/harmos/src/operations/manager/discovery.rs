@@ -25,7 +25,7 @@ use crate::operations::Contract;
 use crate::operations::caller::Source;
 use crate::operations::host::{OperationsRequest, OperationsResponse};
 use crate::{Error, Identifier, Result};
-use harmos_contract::plugin::Grant;
+use harmos_domain::plugin::Grant;
 
 /* === Constants === */
 const MAX_ROWS: u32 = 256;
@@ -213,7 +213,7 @@ impl OperationManager {
                     feature = "plugin-sidecar"
                 )))]
                 let plugin_required: Option<
-                    &harmos_contract::inventory::contracts::Required,
+                    &harmos_domain::inventory::contracts::Required,
                 > = None;
                 selected_grants = required
                     .grants

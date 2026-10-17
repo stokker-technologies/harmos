@@ -12,7 +12,6 @@ mod abandon_file;
 mod append_file;
 mod create_file;
 mod delete_file;
-mod file_mutation;
 mod finish_file;
 mod follow;
 mod follow_file;
@@ -22,7 +21,6 @@ mod query;
 mod query_storage;
 mod read_file;
 mod resume_file;
-mod save;
 mod write_file;
 mod write_objects;
 mod write_records;
@@ -30,115 +28,58 @@ mod write_schema;
 mod write_stream;
 
 /* === Re-Exports === */
-pub use abandon_file::AbandonFile;
-pub use append_file::{AppendFile, AppendFileRequest};
-pub use create_file::{CreateFile, CreateFileRequest};
-pub use delete_file::{DeleteFile, DeleteFileRequest};
-pub use file_mutation::FileMutation;
-pub use finish_file::FinishFile;
-pub use follow::{Follow, FollowBoundaries, Followed};
-pub use follow_file::FollowFile;
-pub use follow_objects::FollowObjects;
-pub use follow_stream::FollowStream;
-pub use query::Query;
-pub use query_storage::{QueryStorage, QueryStorageRequest};
-pub use read_file::ReadFile;
-pub use resume_file::ResumeFile;
-pub use save::{Save, SaveRequest};
-pub use write_file::WriteFile;
-pub use write_objects::WriteObjects;
-pub use write_records::WriteRecords;
-pub use write_schema::{WriteSchema, WriteSchemaRequest};
-pub use write_stream::WriteStreams;
+pub use harmos_domain::operations::storage::*;
 
 /* === Imports === */
 
 // Standard Library Imports
 
 use std::sync::Arc;
-use std::time::Duration;
 
 // Third Party Imports
 
 // Local Imports
-use crate::catalog::{Catalog, Contains, Member, Visitor};
+use crate::catalog::{Catalog, Member, Visitor};
 
 use crate::operations::OperationManager;
-use crate::operations::{Backoff, Jitter, OperationPolicy, RestartPolicy, RetryPolicy};
 
 use crate::storage::StorageManager;
 
 use crate::{Result, operations::Lane};
 
 /* === Constants === */
-pub const POLICY: OperationPolicy = OperationPolicy {
-    timeout: Duration::from_secs(60),
-    attempt_timeout: Duration::from_secs(15),
-    retries: RetryPolicy::OnTransient {
-        max_retries: 3,
-        backoff: Backoff::Exponential {
-            initial: Duration::from_millis(250),
-            maximum: Duration::from_secs(2),
-            jitter: Jitter::Deterministic,
-        },
-    },
-    restart: RestartPolicy::Never,
-};
-
-pub const EVERY_SCHEMA: &str = "*";
-
-const STREAM_POLICY: OperationPolicy = OperationPolicy {
-    attempt_timeout: POLICY.timeout,
-    retries: RetryPolicy::Never,
-    ..POLICY
-};
-
-const IO_POLICY: OperationPolicy = OperationPolicy {
-    timeout: harmos_contract::operations::UNBOUNDED,
-    attempt_timeout: harmos_contract::operations::UNBOUNDED,
-    retries: RetryPolicy::Never,
-    restart: RestartPolicy::Never,
-};
 
 /* === Macros === */
-// Declare The Portable Catalog And Its Original Provider Bindings Together.
-macro_rules! catalog {
-    ($($leaf:ident => $module:ident),* $(,)?) => {
-                pub enum Operations { $($leaf($leaf)),* }
-        impl<V: Visitor $(+ Member<$leaf>)*> Catalog<V> for Operations {
-            type Entries = [V::Entry; [$(stringify!($leaf)),*].len()];
-            const ENTRIES: Self::Entries = [$(<V as Member<$leaf>>::ENTRY),*];
-        }
-        $(impl Contains<$leaf> for Operations {})*
-
+// Bind Each Declaration To Its Original Storage Handler.
+macro_rules! provider {
+    ($($module:ident),* $(,)?) => {
         impl<C: 'static, V> Catalog<V> for Provider<C>
         where V: Visitor $(+ Member<$module::Handler<C>>)* {
-            type Entries = [V::Entry; [$(stringify!($leaf)),*].len()];
+            type Entries = [V::Entry; [$(stringify!($module)),*].len()];
             const ENTRIES: Self::Entries = [$(<V as Member<$module::Handler<C>>>::ENTRY),*];
         }
     };
 }
 
-catalog! {
-    Query => query,
-    ReadFile => read_file,
-    Save => save,
-    Follow => follow,
-    FollowStream => follow_stream,
-    FollowFile => follow_file,
-    QueryStorage => query_storage,
-    ResumeFile => resume_file,
-    CreateFile => create_file,
-    AppendFile => append_file,
-    FinishFile => finish_file,
-    AbandonFile => abandon_file,
-    WriteRecords => write_records,
-    WriteStreams => write_stream,
-    WriteFile => write_file,
-    DeleteFile => delete_file,
-    WriteSchema => write_schema,
-    WriteObjects => write_objects,
-    FollowObjects => follow_objects,
+provider! {
+    query,
+    read_file,
+    follow,
+    follow_stream,
+    follow_file,
+    query_storage,
+    resume_file,
+    create_file,
+    append_file,
+    finish_file,
+    abandon_file,
+    write_records,
+    write_stream,
+    write_file,
+    delete_file,
+    write_schema,
+    write_objects,
+    follow_objects,
 }
 
 /* === Type Aliases === */
@@ -152,18 +93,16 @@ struct Provider<C>(std::marker::PhantomData<fn() -> C>);
 
 /* === Implementations === */
 
-impl Operations {
-    pub fn register<C: 'static>(
-        operations: &OperationManager,
-        owner: &str,
-        lane: impl Lane,
-        storage: Arc<StorageManager<C>>,
-    ) -> Result<()> {
-        operations.register_wire_operations::<Provider<C>, _>(owner, lane, storage)
-    }
-}
-
 /* === Public Functions === */
+// Serve The Storage Operations Over One Storage Manager.
+pub fn register<C: 'static>(
+    operations: &OperationManager,
+    owner: &str,
+    lane: impl Lane,
+    storage: Arc<StorageManager<C>>,
+) -> Result<()> {
+    operations.register_wire_operations::<Provider<C>, _>(owner, lane, storage)
+}
 
 /* === Private Functions === */
 fn output_timeout() -> crate::Error {
@@ -175,10 +114,6 @@ fn output_timeout() -> crate::Error {
             "consumer delivery deadline exceeded",
         ),
     )
-}
-
-const fn grpc(method: &'static str) -> crate::operations::Grpc {
-    crate::operations::Grpc::new("harmos.storage.v1", "Storage", method)
 }
 
 fn classify(error: &crate::Error) -> crate::operations::FailureKind {

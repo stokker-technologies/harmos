@@ -97,7 +97,7 @@ async fn streams_flush_controls() {
         .unwrap();
     assert!(matches!(
         durable.next().await.unwrap(),
-        Some(harmos::storage::query::QueryOutput::Schema(_))
+        Some(harmos::storage::query::QueryArrow::Schema(_))
     ));
     assert!(durable.next().await.unwrap().is_none());
     let mut reader = f.storage.read_file(whole(&reference)).await.unwrap();

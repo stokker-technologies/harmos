@@ -800,7 +800,7 @@ dependencies = [
  "futures-util",
  "getrandom 0.4.3",
  "harmos-bundle",
- "harmos-contract",
+ "harmos-domain",
  "harmos-guest",
  "harmos-macros",
  "harmos-sidecar",
@@ -821,7 +821,7 @@ dependencies = [
 name = "harmos-bundle"
 version = "0.2.0"
 dependencies = [
- "harmos-contract",
+ "harmos-domain",
  "semver",
  "serde",
  "serde_json",
@@ -833,7 +833,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "harmos-contract"
+name = "harmos-domain"
 version = "0.2.0"
 dependencies = [
  "harmos-macros",
@@ -848,14 +848,13 @@ dependencies = [
  "thiserror",
  "time",
  "tokio",
- "tracing",
 ]
 
 [[package]]
 name = "harmos-guest"
 version = "0.2.0"
 dependencies = [
- "harmos-contract",
+ "harmos-domain",
  "semver",
  "serde",
  "serde_json",
@@ -883,7 +882,7 @@ version = "0.2.0"
 dependencies = [
  "futures-util",
  "getrandom 0.4.3",
- "harmos-contract",
+ "harmos-domain",
  "libc",
  "postcard",
  "semver",
@@ -1364,7 +1363,7 @@ name = "schematic-app"
 version = "0.2.0"
 dependencies = [
  "harmos",
- "schematic-contract",
+ "schematic-domain",
  "schematic-storage",
  "serde",
  "serde_json",
@@ -1382,7 +1381,7 @@ dependencies = [
  "clap",
  "harmos",
  "schematic-app",
- "schematic-contract",
+ "schematic-domain",
  "tempfile",
  "thiserror",
  "tokio",
@@ -1390,10 +1389,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "schematic-contract"
+name = "schematic-domain"
 version = "0.2.0"
 dependencies = [
- "harmos-contract",
+ "harmos-domain",
  "serde",
  "thiserror",
 ]
@@ -1402,9 +1401,9 @@ dependencies = [
 name = "schematic-guest"
 version = "0.2.0"
 dependencies = [
- "harmos-contract",
+ "harmos-domain",
  "harmos-guest",
- "schematic-contract",
+ "schematic-domain",
  "serde",
  "serde_json",
  "thiserror",
@@ -1416,7 +1415,7 @@ name = "schematic-sidecar"
 version = "0.2.0"
 dependencies = [
  "harmos",
- "schematic-contract",
+ "schematic-domain",
  "thiserror",
  "tokio",
  "tracing",

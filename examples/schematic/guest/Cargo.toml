@@ -25,12 +25,12 @@ crate-type = ["cdylib", "rlib"]
 
 # === Dependencies ===
 
-# The contract crate and nothing above it: a guest compiles the editor's contract
+# The domain crate and nothing above it: a guest compiles the editor's domain
 # with its plugins, never the host half that serves it.
 [dependencies]
 # Local
 harmos-guest = { workspace = true, features = ["derive", "grpc", "kit", "streaming"] }
-schematic-contract = { path = "../contract" }
+schematic-domain = { path = "../domain" }
 
 # Git
 
@@ -68,8 +68,8 @@ serde_json = { workspace = true, default-features = true }
 
 [build-dependencies]
 # Local
-harmos-contract = { workspace = true, features = ["reflection"] }
-schematic-contract = { path = "../contract", features = ["grpc"] }
+harmos-domain = { workspace = true, features = ["reflection"] }
+schematic-domain = { path = "../domain", features = ["grpc"] }
 
 # Git
 

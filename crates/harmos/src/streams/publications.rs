@@ -24,8 +24,8 @@ use tokio::sync::watch;
 use super::definition::Windows;
 use super::{Demand, Holding, Item, Query, StreamManager, Tier, Wired, window};
 use crate::{Application, state::Position, streams::Definition};
-use harmos_contract::inventory::publications;
-use harmos_contract::{StreamDeclaration, artifact_subset};
+use harmos_domain::inventory::publications;
+use harmos_domain::{StreamDeclaration, artifact_subset};
 
 /* === Constants === */
 const MAX_PUBLICATION_BYTES: usize = 1024 * 1024;
@@ -150,7 +150,7 @@ impl<A: Application> StreamManager<A> {
                     definition
                         .schema()
                         .expect("plugin definitions own a row schema"),
-                    &harmos_contract::config::SchemaSettings::default(),
+                    &harmos_domain::config::SchemaSettings::default(),
                 )
                 .map_err(crate::schema::Error::from)
                 .map(Arc::new)

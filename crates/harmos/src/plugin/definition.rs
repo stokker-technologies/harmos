@@ -21,8 +21,8 @@ use std::path::PathBuf;
 use semver::Version;
 // Local Imports
 use super::Requirement;
-use harmos_contract::inventory::{StreamDeclaration, operations, publications};
-use harmos_contract::{ConfigError, Registration, RegistrationError, artifact_subset};
+use harmos_domain::inventory::{StreamDeclaration, operations, publications};
+use harmos_domain::{ConfigError, Registration, RegistrationError, artifact_subset};
 
 /* === Constants === */
 
@@ -43,16 +43,16 @@ pub struct PluginDefinition {
 
 #[derive(Clone, Default, PartialEq, Eq)]
 pub struct PluginContributions {
-    pub lifecycle: Option<[harmos_contract::operations::lifecycle::Descriptor; 2]>,
-    pub operations: Vec<harmos_contract::operations::Definition>,
-    pub wire_contracts: Vec<harmos_contract::operations::Contract>,
-    pub required_contracts: Option<Vec<harmos_contract::inventory::contracts::Required>>,
-    pub observers: Vec<harmos_contract::inventory::observers::Declaration>,
-    pub observer_control: Option<harmos_contract::operations::Contract>,
+    pub lifecycle: Option<[harmos_domain::operations::lifecycle::Descriptor; 2]>,
+    pub operations: Vec<harmos_domain::operations::Definition>,
+    pub wire_contracts: Vec<harmos_domain::operations::Contract>,
+    pub required_contracts: Option<Vec<harmos_domain::inventory::contracts::Required>>,
+    pub observers: Vec<harmos_domain::inventory::observers::Declaration>,
+    pub observer_control: Option<harmos_domain::operations::Contract>,
     pub streams: Vec<StreamDeclaration>,
-    pub listeners: Vec<harmos_contract::listeners::Definition>,
+    pub listeners: Vec<harmos_domain::listeners::Definition>,
     pub registrations: Vec<Registration>,
-    pub sections: Vec<harmos_contract::inventory::Section>,
+    pub sections: Vec<harmos_domain::inventory::Section>,
 }
 
 /* === Enums === */
@@ -97,7 +97,7 @@ pub enum PluginDefinitionError {
     #[error(transparent)]
     Operations(#[from] operations::Error),
     #[error(transparent)]
-    Listeners(#[from] harmos_contract::inventory::listeners::Error),
+    Listeners(#[from] harmos_domain::inventory::listeners::Error),
     #[error(transparent)]
     Registration(#[from] RegistrationError),
     #[error("registration `{namespace}` has an invalid JSON payload: {source}")]
@@ -287,7 +287,7 @@ impl PluginDefinition {
 
     #[cfg(any(feature = "plugin-sidecar", feature = "plugin-guest"))]
     fn inspected(
-        declaration: &harmos_contract::inventory::Declaration,
+        declaration: &harmos_domain::inventory::Declaration,
         artifact: PluginArtifact,
         configuration: Vec<u8>,
     ) -> Result<Self, PluginDefinitionError> {
@@ -320,7 +320,7 @@ impl PluginDefinition {
 
     pub(super) fn validate(&mut self) -> Result<(), PluginDefinitionError> {
         if let Some(pair) = &self.contributions.lifecycle {
-            use harmos_contract::operations::lifecycle::Action;
+            use harmos_domain::operations::lifecycle::Action;
             if pair[0].action() != Action::Initialize || pair[1].action() != Action::Shutdown {
                 return Err(invalid(
                     "SDK lifecycle",
@@ -336,7 +336,7 @@ impl PluginDefinition {
             ));
         }
         self.artifact.validate()?;
-        harmos_contract::validate_config(&self.configuration)?;
+        harmos_domain::validate_config(&self.configuration)?;
 
         operations::validate(&self.contributions.operations)?;
         self.contributions
@@ -391,7 +391,7 @@ impl PluginDefinition {
             }
         }
 
-        harmos_contract::inventory::observers::validate(
+        harmos_domain::inventory::observers::validate(
             &self.contributions.observers,
             &self.contributions.streams,
         )
@@ -401,7 +401,7 @@ impl PluginDefinition {
                 "invalid observer inventory or publication grant",
             )
         })?;
-        harmos_contract::inventory::observers::validate_control(
+        harmos_domain::inventory::observers::validate_control(
             &self.contributions.observers,
             self.contributions.observer_control.as_ref(),
             &self.contributions.wire_contracts,
@@ -414,20 +414,20 @@ impl PluginDefinition {
         })?;
 
         if self.contributions.listeners.len() > 4096 {
-            return Err(harmos_contract::inventory::listeners::Error::Inventory.into());
+            return Err(harmos_domain::inventory::listeners::Error::Inventory.into());
         }
         let mut listeners = BTreeSet::new();
         let mut callbacks = BTreeSet::new();
         for listener in &self.contributions.listeners {
             let callback = listener.callback().operation();
             if !listeners.insert(listener.id()) || !callbacks.insert(&callback.id) {
-                return Err(harmos_contract::inventory::listeners::Error::Entry {
+                return Err(harmos_domain::inventory::listeners::Error::Entry {
                     id: listener.id().to_string(),
                 }
                 .into());
             }
             if !self.contributions.operations.contains(callback) {
-                return Err(harmos_contract::inventory::listeners::Error::Callback {
+                return Err(harmos_domain::inventory::listeners::Error::Callback {
                     id: callback.id.to_string(),
                 }
                 .into());
@@ -464,7 +464,7 @@ impl PluginDefinition {
                 }
                 .into());
             }
-            harmos_contract::validate_config(&registration.payload).map_err(|source| {
+            harmos_domain::validate_config(&registration.payload).map_err(|source| {
                 PluginDefinitionError::RegistrationPayload {
                     namespace: registration.namespace.clone(),
                     source,

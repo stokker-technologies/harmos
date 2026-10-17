@@ -22,7 +22,7 @@ use super::publications::{publication_definitions, validate_existing};
 use super::{PluginStream, PublicationLease, StreamAdmissionError, StreamManager, window};
 use crate::plugin::PluginScope;
 use crate::{Application, state::Position};
-use harmos_contract::StreamDeclaration;
+use harmos_domain::StreamDeclaration;
 
 /* === Constants === */
 
@@ -68,7 +68,7 @@ impl<A: Application> StreamManager<A> {
                     definition
                         .schema()
                         .expect("plugin definitions own a row schema"),
-                    &harmos_contract::config::SchemaSettings::default(),
+                    &harmos_domain::config::SchemaSettings::default(),
                 )
                 .map_err(crate::schema::Error::from)
                 .map(Arc::new)

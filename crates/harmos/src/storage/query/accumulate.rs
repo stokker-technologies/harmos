@@ -244,7 +244,7 @@ impl Accumulator {
                 let scratch = &self.scratch;
                 sort_values(&mut order, |a, b| {
                     check()?;
-                    scratch[a].compare(&scratch[b])
+                    Ok(scratch[a].compare(&scratch[b])?)
                 })?;
                 let lower = &scratch[order[(order.len() - 1) / 2]];
                 let upper = &scratch[order[order.len() / 2]];

@@ -95,19 +95,19 @@ pub enum ComponentError {
     #[error("operation `{operation}` differs from the selected guest catalog")]
     Catalog { operation: &'static str },
     #[error(transparent)]
-    Declaration(#[from] harmos_contract::Error),
+    Declaration(#[from] harmos_domain::Error),
     #[error("guest operation transport failed")]
     Transport(#[from] GuestError),
     #[error("guest operation response codec failed")]
     Payload(#[from] crate::MessageError),
     // The guest refused the request while preparing it.
     #[error(transparent)]
-    Preparation(harmos_contract::Failure),
+    Preparation(harmos_domain::Failure),
     #[error("guest operation request is not granted")]
     Unauthorized(#[source] crate::Error),
     // The guest handler failed; its failure crosses unchanged.
     #[error(transparent)]
-    Remote(harmos_contract::Failure),
+    Remote(harmos_domain::Failure),
 }
 
 /* === Traits === */
@@ -118,7 +118,7 @@ impl ComponentError {
         classify(self)
     }
 
-    pub(crate) fn failure(&self) -> Option<&harmos_contract::Failure> {
+    pub(crate) fn failure(&self) -> Option<&harmos_domain::Failure> {
         match self {
             Self::Preparation(failure) | Self::Remote(failure) => Some(failure),
             Self::Stream(source) => source.failure(),
@@ -394,7 +394,7 @@ impl Component {
             // The guest decoded the request; refuse it before any attempt runs.
             let payload = ready(answer)?;
             let grant =
-                harmos_contract::operations::decode_prepared_grant(&payload).map_err(|error| {
+                harmos_domain::operations::decode_prepared_grant(&payload).map_err(|error| {
                     GuestError::Malformed {
                         method: "operate".to_owned(),
                         message: format!("prepared grant is malformed: {error}"),
@@ -515,12 +515,12 @@ impl Component {
                 });
                 let mut definition = descriptor.contract().operation().clone();
                 let suffix = match descriptor.action() {
-                    harmos_contract::operations::lifecycle::Action::Initialize => "initialize",
-                    harmos_contract::operations::lifecycle::Action::Shutdown => "shutdown",
+                    harmos_domain::operations::lifecycle::Action::Initialize => "initialize",
+                    harmos_domain::operations::lifecycle::Action::Shutdown => "shutdown",
                 };
                 definition.id = crate::Identifier::new(format!("{}.sdk.{suffix}", scope.owner()))
                     .map_err(|source| Error::OperationDeclaration {
-                    source: harmos_contract::Error::from(source),
+                    source: harmos_domain::Error::from(source),
                 })?;
                 let mut entry = operations.binding_owned_definition::<SdkOperation>(
                     scope.owner(),

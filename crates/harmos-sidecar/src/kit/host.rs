@@ -19,9 +19,9 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::{Semaphore, SemaphorePermit, mpsc, oneshot};
 // Local Imports
 use crate::Frame;
-use harmos_contract::Message;
-use harmos_contract::operations::instance::Id;
-use harmos_contract::operations::{
+use harmos_domain::Message;
+use harmos_domain::operations::instance::Id;
+use harmos_domain::operations::{
     CHILD_METHOD, OperationDeclaration, WireChildAction, WireChildControl,
 };
 
@@ -60,7 +60,7 @@ pub struct Supervisor {
     pending: Arc<PendingCalls>,
     operation_context: Option<[u8; 32]>,
     generation_context: Option<[u8; 32]>,
-    call: Arc<harmos_contract::operations::CallContext>,
+    call: Arc<harmos_domain::operations::CallContext>,
     clock: fn() -> Option<i64>,
 }
 
@@ -81,7 +81,7 @@ pub enum CallError {
     Refused {
         code: i64,
         #[source]
-        failure: harmos_contract::Failure,
+        failure: harmos_domain::Failure,
     },
     #[error("the host connection is unavailable")]
     Unavailable,
@@ -117,7 +117,7 @@ pub enum PublicationError {
 /* === Implementations === */
 // A handler that returns a host refusal forwards its failure unchanged rather
 // than flattening the call error's own line into a new cause.
-impl From<CallError> for harmos_contract::Refusal {
+impl From<CallError> for harmos_domain::Refusal {
     fn from(error: CallError) -> Self {
         match error {
             CallError::Refused { code, failure } => Self::failed(code, failure),
@@ -126,7 +126,7 @@ impl From<CallError> for harmos_contract::Refusal {
     }
 }
 
-impl harmos_contract::plugin::Context for Supervisor {
+impl harmos_domain::plugin::Context for Supervisor {
     fn with_generation(&self, token: [u8; 32]) -> Self {
         let mut host = self.clone();
         host.generation_context = Some(token);
@@ -225,23 +225,23 @@ impl Supervisor {
     pub(crate) fn for_attempt(
         &self,
         context: [u8; 32],
-        values: Vec<harmos_contract::operations::CallValue>,
-    ) -> Result<Self, harmos_contract::operations::ContextError> {
+        values: Vec<harmos_domain::operations::CallValue>,
+    ) -> Result<Self, harmos_domain::operations::ContextError> {
         let mut host = self.for_operation(context);
-        host.call = Arc::new(harmos_contract::operations::CallContext::from_portable(
+        host.call = Arc::new(harmos_domain::operations::CallContext::from_portable(
             values,
         )?);
         Ok(host)
     }
 
-    pub fn context(&self) -> &harmos_contract::operations::CallContext {
+    pub fn context(&self) -> &harmos_domain::operations::CallContext {
         &self.call
     }
 
-    pub fn with_value<T: harmos_contract::operations::ContextValue>(
+    pub fn with_value<T: harmos_domain::operations::ContextValue>(
         &self,
         value: T,
-    ) -> Result<Self, harmos_contract::operations::ContextError> {
+    ) -> Result<Self, harmos_domain::operations::ContextError> {
         let mut child = self.clone();
         child.call = Arc::new(self.call.with_value(value)?);
         Ok(child)
@@ -346,7 +346,7 @@ impl Supervisor {
             });
         }
         let payload = request.encode_to_vec();
-        let command = harmos_contract::operations::WireChildCall {
+        let command = harmos_domain::operations::WireChildCall {
             context,
             generation_context: self.generation_context,
             values: self.call.portable(),
@@ -425,7 +425,7 @@ impl Supervisor {
         self.pending.answer(id, Ok(result));
     }
 
-    pub(crate) fn receive_refusal(&self, id: u64, refusal: harmos_contract::Refusal) {
+    pub(crate) fn receive_refusal(&self, id: u64, refusal: harmos_domain::Refusal) {
         let code = refusal.code();
         let failure = refusal.into_failure();
         self.pending
@@ -458,7 +458,6 @@ impl Supervisor {
         S: crate::StreamSpec,
         S::Row: Message,
     {
-        use harmos_contract::operations::host;
         debug_assert_eq!(rows.len(), stamps.len());
         if rows.is_empty() {
             return Ok(());
@@ -476,7 +475,10 @@ impl Supervisor {
                         rest.1,
                         context,
                         |request| {
-                            let params = self.child::<host::Publish>(&request, false)?;
+                            let params = self
+                                .child::<harmos_domain::operations::streams::Publish>(
+                                    &request, false,
+                                )?;
                             let frame = Self::request_frame(id, CHILD_METHOD, params)?;
                             call.send(Outgoing::Frame(frame));
                             Ok(())
@@ -486,7 +488,7 @@ impl Supervisor {
                 })
                 .await?;
             <() as Message>::decode(bytes.as_slice()).map_err(|source| CallError::Malformed {
-                method: host::Publish::ID,
+                method: harmos_domain::operations::streams::Publish::ID,
                 message: source.to_string(),
             })?;
             rest = (&rest.0[sent..], &rest.1[sent..]);
@@ -506,14 +508,16 @@ impl Supervisor {
         rows: &[S::Row],
         stamps: &[Option<i64>],
         context: Option<&str>,
-        send: impl FnOnce(harmos_contract::operations::host::Publication) -> Result<(), E>,
+        send: impl FnOnce(harmos_domain::operations::streams::Publication) -> Result<(), E>,
     ) -> Result<usize, E>
     where
         S::Row: Message,
     {
-        use harmos_contract::operations::host;
         let fits = |body: usize| {
-            Frame::request_payload_encoded_len(host::Publish::ID, body) <= Frame::LIMIT
+            Frame::request_payload_encoded_len(
+                harmos_domain::operations::streams::Publish::ID,
+                body,
+            ) <= Frame::LIMIT
         };
         let mut sequences = self
             .sequences
@@ -569,7 +573,7 @@ impl Supervisor {
             *next += 1;
         }
         let taken = deltas.len() + 1;
-        send(host::Publication {
+        send(harmos_domain::operations::streams::Publication {
             stream: S::ID.to_owned(),
             schema: S::VERSION,
             sequence: Some(first),
@@ -579,9 +583,11 @@ impl Supervisor {
             following: rows[1..taken]
                 .iter()
                 .zip(deltas)
-                .map(|(row, published_delta_micros)| host::FollowingRow {
-                    payload: row.encode_to_vec(),
-                    published_delta_micros,
+                .map(|(row, published_delta_micros)| {
+                    harmos_domain::operations::streams::FollowingRow {
+                        payload: row.encode_to_vec(),
+                        published_delta_micros,
+                    }
                 })
                 .collect(),
         })?;
@@ -602,7 +608,7 @@ impl Supervisor {
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn refused_line(code: i64, failure: &harmos_contract::Failure) -> String {
+fn refused_line(code: i64, failure: &harmos_domain::Failure) -> String {
     match failure.context().operation() {
         Some(operation) => format!("operation `{operation}` failed"),
         None => format!("the host refused the call ({code})"),

@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 // Local Imports
 use crate::Error;
-use schematic_contract::operations::propose::{Request, Response};
+use schematic_domain::operations::schematic::propose::{Request, Response};
 
 /* === Constants === */
 
@@ -35,7 +35,7 @@ pub(crate) struct ProposeRoute;
 /* === Traits === */
 
 /* === Implementations === */
-#[harmos::operation(declaration = schematic_contract::operations::ProposeRoute)]
+#[harmos::operation(declaration = schematic_domain::operations::ProposeRoute)]
 impl ProposeRoute {
     async fn initialize(_: Arc<()>, _: &harmos::sidecar::Supervisor) -> Self {
         Self
@@ -47,7 +47,7 @@ impl ProposeRoute {
         _context: &harmos::sidecar::Supervisor,
         request: &mut Request,
     ) -> Result<Response, Error> {
-        let corner = schematic_contract::model::Point {
+        let corner = schematic_domain::model::Point {
             x: request.to.x,
             y: request.from.y,
         };

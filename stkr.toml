@@ -31,7 +31,7 @@ step_timeout_seconds = 600
 
 # Declaration-Only Contracts Have No Runtime Work To Trace.
 [conventions.rust]
-exclude = ["schematic-contract"]
+exclude = ["schematic-domain"]
 
 [conventions.testing.limits]
 unit = 512

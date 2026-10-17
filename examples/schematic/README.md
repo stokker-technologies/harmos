@@ -25,7 +25,7 @@ Reopened: 2 symbols, 1 net, 3 route points
 
 | Directory | Owns |
 | --- | --- |
-| [contract](contract/src/operations/mod.rs) | Portable requests, responses, and struct-owned operation declarations. |
+| [domain](domain/src/operations/mod.rs) | The model and the operation catalogs: portable `schematic` operations and native `directories` access. |
 | [app](app/src/app.rs) | Document state, transactions, persistence, runtime composition, and plugin lifecycle. |
 | [cli](cli/src/walkthrough.rs) | The readable teaching sequence and terminal output. |
 | [guest](guest/src/operations/mod.rs) | Validation, routing, and streamed analysis in a sandboxed Wasm component. |
@@ -33,7 +33,7 @@ Reopened: 2 symbols, 1 net, 3 route points
 
 The plugins return advice. The host applies it through `ApplyRoute`, preserving
 one owner for edits, undo/redo, and recovery. Neither plugin imports the app.
-The contract and SDKs compile without the host runtime.
+The domain crate and SDKs compile without the host runtime.
 
 ## Streaming And Native Access
 
@@ -67,7 +67,7 @@ CLI from any working directory; native directory listing uses that directory.
 Windows executables have the `.exe` suffix.
 
 The CLI, sidecar and guest build scripts derive their schema bundles from the
-shared Rust contract. Each bundle contains `manifest.txt`, `descriptors.bin` and
+shared Rust domain crate. Each bundle contains `manifest.txt`, `descriptors.bin` and
 package-relative `.proto` files, preserving imports. The native catalogs include
 `ListDirectories`; the guest catalog includes only portable operations. The
 `schematic.v1.Schematic` schema describes known methods. Exporting it does not

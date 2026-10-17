@@ -27,14 +27,13 @@ use wasmtime::component::{Component, HasSelf, Linker};
 use wasmtime::{Config, Engine, Store};
 // Local Imports
 use harmos::guest::capabilities::Refusal as BridgeRefusal;
-use harmos_contract::builtin::InstanceState;
-use harmos_contract::inventory::{Declaration, Facility};
-use harmos_contract::operations::host;
-use harmos_contract::operations::{
+use harmos_domain::inventory::{Declaration, Facility};
+use harmos_domain::operations::lifecycle::InstanceState;
+use harmos_domain::operations::{
     WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCommand,
     lifecycle::InitializeRequest,
 };
-use harmos_contract::{Message, Refusal};
+use harmos_domain::{Message, Refusal};
 use sandbox::{Echo, Echoed};
 
 /* === Constants === */
@@ -131,7 +130,9 @@ impl Stub {
                     .map(|answer| answer.encode_to_vec())
             }
             "host.publish" => {
-                let request = host::Publication::decode(&call.payload).map_err(Refusal::of)?;
+                let request =
+                    harmos_domain::operations::streams::Publication::decode(&call.payload)
+                        .map_err(Refusal::of)?;
                 assert_eq!(request.schema, 1);
                 assert_eq!(
                     request.sequence, None,

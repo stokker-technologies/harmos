@@ -24,9 +24,9 @@ use std::time::Duration;
 
 // Local Imports
 use contract::{Counts, Decline, Echo, Echoed, Fail, ProviderEcho, Read, Spin, Stage, Value, Wait};
-use harmos_contract::operations::{
-    FailureKind, OperationPolicy, RestartPolicy, RetryPolicy, ServingError, WireTable, host,
-    lifecycle,
+use harmos_domain::operations::{
+    FailureKind, OperationPolicy, RestartPolicy, RetryPolicy, ServingError, WireTable, lifecycle,
+    streams,
 };
 use harmos_guest::{Context, Host, OperationRefusal, PublishError};
 
@@ -100,7 +100,7 @@ impl lifecycle::Policy for Sandbox {
     id = "sandbox-guest",
     description = "Answers the host harness's sandbox probes.",
     provides = contract::Operations,
-    requires(ProviderEcho, host::Publish),
+    requires(ProviderEcho, streams::Publish),
     streams(Echoed)
 )]
 impl harmos_guest::Plugin for Sandbox {

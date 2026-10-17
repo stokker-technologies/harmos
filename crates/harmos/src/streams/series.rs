@@ -17,7 +17,7 @@ use std::any::Any;
 use std::ops::Bound;
 use std::sync::Arc;
 // Third Party Imports
-use harmos_contract::Aggregate;
+use harmos_domain::Aggregate;
 use harmos_signal::Summary;
 use tokio::sync::{mpsc, oneshot};
 // Local Imports

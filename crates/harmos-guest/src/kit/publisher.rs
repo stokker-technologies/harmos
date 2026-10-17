@@ -18,8 +18,8 @@ use std::marker::PhantomData;
 
 // Local Imports
 use super::Context;
-use harmos_contract::operations::{Host, host};
-use harmos_contract::{Message, StreamSpec, plugin::Declared};
+use harmos_domain::operations::Host;
+use harmos_domain::{Message, StreamSpec, plugin::Declared};
 
 /* === Constants === */
 
@@ -39,14 +39,14 @@ pub enum PublishError {
     #[error("stream is not in the authored inventory")]
     UndeclaredStream,
     #[error(transparent)]
-    Call(#[from] harmos_contract::Refusal),
+    Call(#[from] harmos_domain::Refusal),
 }
 
 /* === Traits === */
 
 /* === Implementations === */
 // A refused publication forwards the host's failure unchanged.
-impl From<PublishError> for harmos_contract::Refusal {
+impl From<PublishError> for harmos_domain::Refusal {
     fn from(error: PublishError) -> Self {
         match error {
             PublishError::Call(refusal) => refusal,
@@ -85,7 +85,7 @@ impl<P: Declared> Publisher<P> {
             return Err(PublishError::UndeclaredStream);
         }
         self.context.calling_context()?;
-        let request = host::Publication {
+        let request = harmos_domain::operations::streams::Publication {
             stream: S::ID.to_owned(),
             schema: S::VERSION,
             sequence: None,
@@ -94,7 +94,9 @@ impl<P: Declared> Publisher<P> {
             payload: row.encode_to_vec(),
             following: Vec::new(),
         };
-        let published = Host::call_as::<host::Publish>(&self.context, request).await?;
+        let published =
+            Host::call_as::<harmos_domain::operations::streams::Publish>(&self.context, request)
+                .await?;
         drop(published);
         Ok(())
     }

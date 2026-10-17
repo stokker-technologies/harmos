@@ -20,8 +20,8 @@ use std::sync::Arc;
 // Local Imports
 use crate::Error;
 use harmos::MemorySize;
-use schematic_contract::operations::analyze::Finding;
-use schematic_contract::operations::analyze::{Request, Response};
+use schematic_domain::operations::schematic::analyze::Finding;
+use schematic_domain::operations::schematic::analyze::{Request, Response};
 
 /* === Constants === */
 
@@ -37,7 +37,7 @@ pub(crate) struct AnalyzeSchematic;
 /* === Traits === */
 
 /* === Implementations === */
-#[harmos::operation(declaration = schematic_contract::operations::AnalyzeSchematic, output = Finding)]
+#[harmos::operation(declaration = schematic_domain::operations::AnalyzeSchematic, output = Finding)]
 impl AnalyzeSchematic {
     async fn initialize(_: Arc<()>, _: &harmos::sidecar::Supervisor) -> Self {
         Self

@@ -12,9 +12,9 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+use harmos_domain::operations::storage::FollowObjects;
 
 // Standard Library Imports
-use std::any::TypeId;
 
 use std::sync::Arc;
 
@@ -23,8 +23,6 @@ use std::sync::Arc;
 // Local Imports
 
 use crate::operations::{Context, Operation, StreamOutput};
-use crate::operations::{OperationDeclaration, OutputDeclaration, Visibility, WireOperation};
-use crate::schema::Described;
 
 use crate::storage::StorageManager;
 use crate::storage::follow::Objects;
@@ -39,7 +37,6 @@ use crate::{Error, MemorySize, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
-pub struct FollowObjects;
 
 pub(super) struct Handler<C> {
     storage: Arc<StorageManager<C>>,
@@ -50,25 +47,6 @@ pub(super) struct Handler<C> {
 /* === Traits === */
 
 /* === Implementations === */
-impl OperationDeclaration for FollowObjects {
-    type Request = Objects;
-    type Response = StorageCursor;
-    const ID: &'static str = "storage.follow_objects";
-    const POLICY: crate::operations::OperationPolicy = super::STREAM_POLICY;
-    const VISIBILITY: Visibility = Visibility::Host;
-    fn endpoint_types() -> (Option<TypeId>, Option<TypeId>) {
-        (None, Some(TypeId::of::<ObjectEntry>()))
-    }
-}
-
-impl OutputDeclaration for FollowObjects {
-    type Item = ObjectEntry;
-}
-
-impl WireOperation for FollowObjects {
-    const VERSION: u32 = 1;
-    const OUTPUT: Option<crate::schema::declaration::Definition> = Some(ObjectEntry::DEFINITION);
-}
 
 impl<C: 'static> Operation for Handler<C> {
     type Declaration = FollowObjects;

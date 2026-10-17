@@ -48,7 +48,6 @@ enum Action {
     Write(Arc<Pending>),
     Snapshot(SnapshotAction),
     File(FileAction),
-    Save(Arc<super::saving::SaveWork>),
     Delete(Arc<super::deletion::DeleteWork>),
     Recovery(Target),
     Prune(super::StorageCursor),
@@ -59,7 +58,6 @@ enum Completed {
     Opened(u64, Result<super::BackendSnapshot>),
     Released(u64),
     File(FileCompleted),
-    Saved,
     Deleted,
     Recovery(RecoveryPosition),
     Pruned(bool),
@@ -118,7 +116,6 @@ impl<A: Application> Resident<A> for Worker {
                     next_flush = now + super::config::FLUSH_INTERVAL;
                 }
                 state.expire_files();
-                state.request_saves();
                 state.request_deletions();
                 state.collect();
                 if state.queue.bytes() >= inner.settings.target_batch_bytes() {
@@ -140,8 +137,6 @@ impl<A: Application> Resident<A> for Worker {
                     prune.take()
                 } else if !state.ready || state.status.failure.is_some() {
                     None
-                } else if let Some(save) = state.save_action() {
-                    Some(Action::Save(save))
                 } else if let Some(deletion) = state.deletion_action() {
                     Some(Action::Delete(deletion))
                 } else if let Some(target) = state
@@ -254,12 +249,6 @@ impl<A: Application> Resident<A> for Worker {
                                     .complete(&work.receipt.mutation, work.receipt.value.clone());
                                 state.deletions.remove(&work.receipt.mutation);
                             }
-                            (Action::Save(work), Completed::Saved) => {
-                                state
-                                    .receipts
-                                    .complete(&work.receipt.mutation, work.receipt.value.clone());
-                                state.saves.remove(&work.receipt.mutation);
-                            }
                             (Action::Prune(through), Completed::Pruned(done)) => {
                                 if done && !state.objects_prune_owed {
                                     state.objects_pruned = through.sequence;
@@ -334,12 +323,11 @@ impl<A: Application> Resident<A> for Worker {
                         // Receipt-Addressed Calls Use The Shared Operation Retry Policy.
                         // Do Not Multiply Its Three Retries By Another Physical Budget.
                         let retries = match &action {
-                            Action::Save(_) | Action::Delete(_) => 0,
+                            Action::Delete(_) => 0,
                             Action::Write(pending)
                                 if pending.operation.domain() == Domain::Data && {
                                     let state = inner.state.lock().unwrap();
-                                    state.saving_data(pending.index)
-                                        || state.deleting_data(pending.index)
+                                    state.deleting_data(pending.index)
                                 } =>
                             {
                                 0
@@ -373,13 +361,9 @@ impl<A: Application> Resident<A> for Worker {
                             Action::Delete(work) => {
                                 state.deletion_failed(&work.receipt.mutation, source.clone())
                             }
-                            Action::Save(work) => {
-                                state.save_failed(&work.receipt.mutation, source.clone())
-                            }
                             Action::Write(pending)
                                 if pending.operation.domain() == Domain::Data =>
                             {
-                                state.save_data_failed(pending.index, source.clone());
                                 state.deletion_data_failed(pending.index, source.clone())
                             }
                             _ => {}
@@ -515,7 +499,6 @@ impl Operation {
 /* === Private Functions === */
 async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
     match action {
-        Action::Save(work) => work.perform(inner).await.map(|()| Completed::Saved),
         Action::Delete(work) => work.perform(inner).await.map(|()| Completed::Deleted),
         Action::Prune(through) => inner
             .bounded(

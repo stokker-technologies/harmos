@@ -18,7 +18,7 @@ mod process;
 /* === Re-Exports === */
 pub use build::{Artifact, Build, PackageOutput, Schema, build, build_with_cancellation};
 pub use dev::{DevEvent, dev};
-pub use harmos_contract::inventory::{Declaration, DeclarationError, Facility};
+pub use harmos_domain::inventory::{Declaration, DeclarationError, Facility};
 #[cfg(feature = "packaging-guest")]
 pub use harmos_guest::componentize;
 pub use process::BuildCancellation;
@@ -65,7 +65,7 @@ pub enum Error {
     #[error(transparent)]
     Json(#[from] serde_json::Error),
     #[error(transparent)]
-    Declaration(#[from] harmos_contract::inventory::DeclarationError),
+    Declaration(#[from] harmos_domain::inventory::DeclarationError),
     #[error("invalid packaging settings: {0}")]
     Settings(String),
     #[error("Cargo build failed: {0}")]

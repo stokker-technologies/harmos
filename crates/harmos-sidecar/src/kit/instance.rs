@@ -25,13 +25,13 @@ use std::marker::PhantomData;
 
 // Local Imports
 use super::{CallError, Supervisor};
-use harmos_contract::builtin::InstanceState;
-use harmos_contract::operations::instance::{Id, Status};
-use harmos_contract::operations::{
+use harmos_domain::operations::instance::{Id, Status};
+use harmos_domain::operations::lifecycle::InstanceState;
+use harmos_domain::operations::{
     CallContext, Callable, ContextError, ContextValue, Host, Instance, OperationDeclaration,
     Response, WireChildAction,
 };
-use harmos_contract::{Message, StreamSpec};
+use harmos_domain::{Message, StreamSpec};
 
 /* === Constants === */
 
@@ -209,7 +209,7 @@ where
 
 fn decode_status(bytes: &[u8]) -> Result<Status, CallError> {
     let malformed = |message: String| CallError::Malformed {
-        method: harmos_contract::operations::CHILD_METHOD,
+        method: harmos_domain::operations::CHILD_METHOD,
         message,
     };
     let state = InstanceState::decode(bytes).map_err(|error| malformed(error.to_string()))?;

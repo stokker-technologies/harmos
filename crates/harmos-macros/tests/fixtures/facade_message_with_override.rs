@@ -68,7 +68,7 @@ impl facade::__harmos::operations::lifecycle::Policy for Publisher {
 }
 
 #[facade::plugin(id = "facade-publisher", context = facade::__harmos::sidecar::Supervisor, config = (),
-    provides = (), requires(facade::__harmos::operations::host::Publish), streams(Portable), harmos_path = ::facade::__harmos)]
+    provides = (), requires(facade::__harmos::operations::streams::Publish), streams(Portable), harmos_path = ::facade::__harmos)]
 impl ProductPlugin for Publisher {}
 
 #[facade::observer(interval_ms = 100, streams(Portable), harmos_path = ::facade::__harmos)]

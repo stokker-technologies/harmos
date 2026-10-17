@@ -20,8 +20,6 @@ mod objects;
 mod plugins;
 #[path = "queries.rs"]
 mod queries;
-#[path = "saves.rs"]
-mod saves;
 #[path = "schemas.rs"]
 mod schemas;
 #[path = "writes.rs"]
@@ -40,7 +38,7 @@ use std::sync::Arc;
 // Local Imports
 use super::{Fixture, config, write};
 use harmos::operations::Contracts;
-use harmos::storage::operations::{Operations, Save, SaveRequest};
+use harmos::storage::operations::Operations;
 
 /* === Constants === */
 
@@ -85,86 +83,7 @@ fn records() -> harmos::storage::query::RecordSelection {
     }
 }
 
-pub(super) fn save_request(
-    fixture: &Fixture,
-    through: harmos::storage::StorageCursor,
-) -> SaveRequest {
-    SaveRequest {
-        mutation: harmos::storage::MutationId {
-            window: fixture.storage.mutation_window().unwrap().id,
-            key: harmos::Identifier::new("save").unwrap(),
-        },
-        at: through,
-    }
-}
-
 /* === Tests === */
-
-#[tokio::test]
-async fn operation_preserves_storage() {
-    let fixture = Fixture::new(config()).await;
-    Operations::register(
-        &fixture.runtime.operations,
-        "storage",
-        Lanes::Open,
-        Arc::new(fixture.storage.clone()),
-    )
-    .unwrap();
-    write(&fixture.storage, "accepted").await;
-    let through = fixture.storage.cursor_accepted();
-    assert!(fixture.storage.cursor_saved().sequence < through.sequence);
-    let saved = fixture
-        .runtime
-        .operations
-        .call_as::<Save>(save_request(&fixture, through.clone()))
-        .await
-        .unwrap();
-    assert!(saved.covers(&through).unwrap());
-    assert_eq!(*saved, fixture.storage.cursor_saved());
-    let repeated = fixture
-        .runtime
-        .operations
-        .call_as::<Save>(save_request(&fixture, through.clone()))
-        .await
-        .unwrap();
-    assert_eq!(*repeated, *saved);
-    assert_eq!(fixture.storage.cursor_accepted(), through);
-    fixture.finish().await;
-}
-
-#[tokio::test]
-async fn operation_rejects_future() {
-    let fixture = Fixture::new(config()).await;
-    Operations::register(
-        &fixture.runtime.operations,
-        "storage",
-        Lanes::Open,
-        Arc::new(fixture.storage.clone()),
-    )
-    .unwrap();
-    let mut foreign = fixture.storage.cursor_accepted();
-    foreign.history.epoch = harmos::Identifier::new("different").unwrap();
-    assert!(
-        fixture
-            .runtime
-            .operations
-            .call_as::<Save>(save_request(&fixture, foreign))
-            .await
-            .is_err()
-    );
-    let mut future = fixture.storage.cursor_accepted();
-    future.sequence += 1;
-    assert!(
-        fixture
-            .runtime
-            .operations
-            .call_as::<Save>(save_request(&fixture, future))
-            .await
-            .is_err()
-    );
-    assert_eq!(fixture.storage.cursor_saved().sequence, 0);
-    fixture.finish().await;
-}
 
 #[test]
 fn catalog_exposes_save() {
@@ -223,94 +142,12 @@ fn plugin_facing_storage() {
     );
 }
 
-#[tokio::test(start_paused = true)]
-async fn save_retries_three() {
-    let fixture = Fixture::new(config()).await;
-    Operations::register(
-        &fixture.runtime.operations,
-        "storage",
-        Lanes::Open,
-        Arc::new(fixture.storage.clone()),
-    )
-    .unwrap();
-    let through = write(&fixture.storage, "retry").await;
-    fixture
-        .data
-        .control
-        .failures
-        .store(3, std::sync::atomic::Ordering::SeqCst);
-    let saved = fixture
-        .runtime
-        .operations
-        .call_as::<Save>(save_request(&fixture, through.clone()))
-        .await
-        .unwrap();
-    assert_eq!(*saved, through);
-    assert_eq!(fixture.storage.cursor_accepted(), through);
-    assert_eq!(
-        fixture
-            .data
-            .control
-            .failures
-            .load(std::sync::atomic::Ordering::SeqCst),
-        0
-    );
-    fixture.finish().await;
-}
-
-#[tokio::test(start_paused = true)]
-async fn save_retry_budget() {
-    let fixture = Fixture::new(config()).await;
-    Operations::register(
-        &fixture.runtime.operations,
-        "storage",
-        Lanes::Open,
-        Arc::new(fixture.storage.clone()),
-    )
-    .unwrap();
-    let through = write(&fixture.storage, "retry-budget").await;
-    fixture
-        .data
-        .control
-        .failures
-        .store(5, std::sync::atomic::Ordering::SeqCst);
-    assert!(
-        fixture
-            .runtime
-            .operations
-            .call_as::<Save>(save_request(&fixture, through.clone()))
-            .await
-            .is_err()
-    );
-    assert_eq!(
-        fixture
-            .data
-            .control
-            .failures
-            .load(std::sync::atomic::Ordering::SeqCst),
-        1
-    );
-    assert_eq!(fixture.storage.cursor_saved().sequence, 0);
-    fixture
-        .data
-        .control
-        .failures
-        .store(0, std::sync::atomic::Ordering::SeqCst);
-    fixture
-        .runtime
-        .operations
-        .call_as::<Save>(save_request(&fixture, through))
-        .await
-        .unwrap();
-    fixture.finish().await;
-}
-
 #[tokio::test]
 async fn crosses_save_resumes() {
     use harmos::storage::operations::{Follow, Followed};
     tokio::time::timeout(std::time::Duration::from_secs(5), async {
         let fixture = Fixture::new(config()).await;
-        Operations::register(
+        harmos::storage::operations::register(
             &fixture.runtime.operations,
             "storage",
             Lanes::Open,
@@ -375,7 +212,7 @@ async fn follow_keeps_sequence() {
     use harmos::storage::{StoredRow, StreamWrite};
     tokio::time::timeout(std::time::Duration::from_secs(5), async {
         let fixture = Fixture::new(config()).await;
-        Operations::register(
+        harmos::storage::operations::register(
             &fixture.runtime.operations,
             "storage",
             Lanes::Open,
@@ -445,7 +282,7 @@ async fn following_spends_budget() {
     use harmos::storage::operations::{Follow, Followed};
     use std::time::Duration;
     let fixture = Fixture::new(config()).await;
-    Operations::register(
+    harmos::storage::operations::register(
         &fixture.runtime.operations,
         "storage",
         Lanes::Open,

@@ -443,7 +443,7 @@ fn selected_candidate(provider: &str, first: bool) -> PluginDefinitions {
         configuration: b"null".to_vec(),
         contributions: if id == "client" {
             PluginContributions {
-                required_contracts: Some(vec![harmos_contract::inventory::contracts::Required {
+                required_contracts: Some(vec![harmos_domain::inventory::contracts::Required {
                     contract: contract.clone(),
                     grants: Vec::new(),
                 }]),

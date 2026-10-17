@@ -31,8 +31,8 @@ use harmos::plugin::{
     PluginScope, PluginTransition, Requirement, Router,
 };
 use harmos::{Error, Message, Result, operations::OperationManager};
-use harmos_contract::inventory::contracts::Required;
-use harmos_contract::plugin::Grant;
+use harmos_domain::inventory::contracts::Required;
+use harmos_domain::plugin::Grant;
 
 /* === Constants === */
 
@@ -116,7 +116,7 @@ impl harmos::operations::Operation for Surveying {
 }
 
 impl harmos::operations::Operation for CorePublication {
-    type Declaration = harmos::operations::host::Publish;
+    type Declaration = harmos::operations::streams::Publish;
     type Resources = CoreOwner;
     type Error = super::Failed;
     type Endpoints = ();
@@ -131,7 +131,7 @@ impl harmos::operations::Operation for CorePublication {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        _request: &mut harmos::operations::host::Publication,
+        _request: &mut harmos::operations::streams::Publication,
         _endpoints: &mut Self::Endpoints,
     ) -> std::result::Result<harmos::operations::Response<()>, Self::Error> {
         let result: ::core::result::Result<(), Self::Error> = async move {
@@ -483,7 +483,7 @@ async fn discovery_keeps_original_authority() {
 
 #[tokio::test]
 async fn preflight_preserves_plugin() {
-    use harmos::operations::host::{Publication, Publish};
+    use harmos::operations::streams::{Publication, Publish};
     let runtime = super::runtime_with_preparation(NonZeroUsize::new(4096).unwrap()).await;
     let owner = Arc::new(CoreOwner::default());
     runtime

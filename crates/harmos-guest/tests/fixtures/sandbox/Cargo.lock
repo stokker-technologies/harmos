@@ -118,7 +118,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "harmos-contract"
+name = "harmos-domain"
 version = "0.2.0"
 dependencies = [
  "harmos-macros",
@@ -129,14 +129,13 @@ dependencies = [
  "serde_json",
  "thiserror",
  "time",
- "tracing",
 ]
 
 [[package]]
 name = "harmos-guest"
 version = "0.2.0"
 dependencies = [
- "harmos-contract",
+ "harmos-domain",
  "semver",
  "serde",
  "serde_json",
@@ -162,7 +161,7 @@ dependencies = [
 name = "harmos-sandbox-guest"
 version = "0.2.0"
 dependencies = [
- "harmos-contract",
+ "harmos-domain",
  "harmos-guest",
 ]
 

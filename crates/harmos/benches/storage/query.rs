@@ -9,15 +9,21 @@
 /* === Modules === */
 /* === Re-Exports === */
 /* === Imports === */
-use super::{fixture::Fixture, waveforms};
+// Standard Library Imports
+use std::time::{Duration, Instant, UNIX_EPOCH};
+
+// Third Party Imports
 use criterion::{BenchmarkId, Criterion, Throughput};
 use harmos::storage::query::transform::{
     Transform,
     project::{Project, Projection},
 };
-use harmos::storage::query::{Query, QueryOutput, RowSlice, Source, StreamSelection};
+use harmos::storage::query::{Query, QueryArrow, RowSlice, Source, StreamSelection};
 use harmos::storage::*;
-use std::time::{Duration, Instant, UNIX_EPOCH};
+
+// Local Imports
+use super::{fixture::Fixture, waveforms};
+
 /* === Constants === */
 /* === Macros === */
 /* === Type Aliases === */
@@ -90,9 +96,9 @@ pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
                                     let mut reader = fixture.storage.query(query).await.unwrap();
                                     assert!(matches!(
                                         reader.next().await.unwrap(),
-                                        Some(QueryOutput::Schema(_))
+                                        Some(QueryArrow::Schema(_))
                                     ));
-                                    let Some(QueryOutput::Batch(first)) =
+                                    let Some(QueryArrow::Batch(first)) =
                                         reader.next().await.unwrap()
                                     else {
                                         panic!("nonempty query");
@@ -101,7 +107,7 @@ pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
                                     let mut rows = first.as_record_batch().num_rows();
                                     drop(first);
                                     while let Some(output) = reader.next().await.unwrap() {
-                                        if let QueryOutput::Batch(batch) = output {
+                                        if let QueryArrow::Batch(batch) = output {
                                             rows += batch.as_record_batch().num_rows();
                                         }
                                     }

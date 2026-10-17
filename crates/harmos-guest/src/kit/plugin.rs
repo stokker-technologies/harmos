@@ -30,8 +30,8 @@ use std::sync::{Arc, Mutex};
 
 // Local Imports
 use super::context::Context;
-use harmos_contract::operations::{Contracts, WireCommand, WireTable};
-use harmos_contract::plugin::{Declared, Owner, Plugin};
+use harmos_domain::operations::{Contracts, WireCommand, WireTable};
+use harmos_domain::plugin::{Declared, Owner, Plugin};
 
 /* === Constants === */
 
@@ -93,8 +93,8 @@ pub fn registrations<P: Plugin + Declared>()
     supported_observers::<P>()?;
     super::context::retain();
     std::hint::black_box(P::markers().map_err(|error| error.to_string())?);
-    let mut registrar = harmos_contract::Registrar::new();
-    <P as harmos_contract::Plugin>::register(&mut registrar).map_err(|error| error.to_string())?;
+    let mut registrar = harmos_domain::Registrar::new();
+    <P as harmos_domain::Plugin>::register(&mut registrar).map_err(|error| error.to_string())?;
     Ok(registrar
         .finish()
         .into_iter()
@@ -127,24 +127,24 @@ where
             return Ok(Arc::clone(&instance.table));
         }
         std::hint::black_box(P::markers().map_err(refusal)?);
-        let required = harmos_contract::inventory::contracts::Required::from_tree(P::REQUIRES)
+        let required = harmos_domain::inventory::contracts::Required::from_tree(P::REQUIRES)
             .map_err(refusal)?;
         let provides = Contracts::from_tree(P::PROVIDES).map_err(refusal)?;
         let listeners =
-            harmos_contract::listeners::Declarations::from_tree(P::LISTENERS).map_err(refusal)?;
-        harmos_contract::inventory::listeners::validate(&listeners, &provides).map_err(refusal)?;
-        let declaration = harmos_contract::inventory::Declaration::inspect(
+            harmos_domain::listeners::Declarations::from_tree(P::LISTENERS).map_err(refusal)?;
+        harmos_domain::inventory::listeners::validate(&listeners, &provides).map_err(refusal)?;
+        let declaration = harmos_domain::inventory::Declaration::inspect(
             &P::markers().map_err(refusal)?.concat(),
-            harmos_contract::inventory::Facility::Guest,
+            harmos_domain::inventory::Facility::Guest,
         )
         .map_err(refusal)?;
-        harmos_contract::inventory::publications::validate_match(P::STREAMS, &declaration.streams)
+        harmos_domain::inventory::publications::validate_match(P::STREAMS, &declaration.streams)
             .map_err(refusal)?;
         let contracts = &declaration.contracts;
         let sdk = [
-            harmos_contract::operations::lifecycle::Descriptor::of_initialize::<P>()
+            harmos_domain::operations::lifecycle::Descriptor::of_initialize::<P>()
                 .map_err(refusal)?,
-            harmos_contract::operations::lifecycle::Descriptor::of_shutdown::<P>()
+            harmos_domain::operations::lifecycle::Descriptor::of_shutdown::<P>()
                 .map_err(refusal)?,
         ];
         if declaration.id != P::ID
@@ -196,7 +196,7 @@ where
 
 /* === Private Functions === */
 fn supported_observers<P: Declared>() -> Result<(), String> {
-    if harmos_contract::catalog::count(P::OBSERVERS) != 0 || !P::OBSERVER_CONTROL.is_empty() {
+    if harmos_domain::catalog::count(P::OBSERVERS) != 0 || !P::OBSERVER_CONTROL.is_empty() {
         return Err("guest observer callbacks are unsupported".into());
     }
     Ok(())
@@ -204,7 +204,7 @@ fn supported_observers<P: Declared>() -> Result<(), String> {
 
 #[doc(hidden)]
 pub fn refusal(error: impl std::fmt::Display) -> Refusal {
-    let refusal = harmos_contract::Refusal::new(harmos_contract::UNREADABLE, error);
+    let refusal = harmos_domain::Refusal::new(harmos_domain::UNREADABLE, error);
     Refusal {
         code: refusal.code().to_string(),
         failure: refusal.failure().encode(),

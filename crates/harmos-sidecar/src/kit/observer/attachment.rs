@@ -30,9 +30,9 @@ use tokio::sync::oneshot;
 // Local Imports
 use super::{Activity, Instance, ObserverError, ObserverHost};
 use crate::{Refusal, Supervisor};
-use harmos_contract::observers::Control;
-use harmos_contract::operations::{Operation, ServingError, Visibility, WireOperation, WireTable};
-use harmos_contract::plugin::Attachment;
+use harmos_domain::observers::Control;
+use harmos_domain::operations::{Operation, ServingError, Visibility, WireOperation, WireTable};
+use harmos_domain::plugin::Attachment;
 
 /* === Constants === */
 
@@ -43,7 +43,7 @@ use harmos_contract::plugin::Attachment;
 /* === Structs === */
 pub struct ObserverAttachment<R, H = Supervisor> {
     resources: Arc<R>,
-    declarations: Vec<harmos_contract::inventory::observers::Declaration>,
+    declarations: Vec<harmos_domain::inventory::observers::Declaration>,
     instances: BTreeMap<&'static str, Instance<R, H>>,
     closing: AtomicBool,
 }
@@ -74,7 +74,7 @@ impl<R: Send + Sync + 'static, H: ObserverHost<R>> ObserverAttachment<R, H> {
     pub fn new(
         instances: Vec<Instance<R, H>>,
         resources: Arc<R>,
-        grants: &[harmos_contract::inventory::publications::Entry],
+        grants: &[harmos_domain::inventory::publications::Entry],
     ) -> Result<Arc<Self>, Refusal> {
         super::validate_outputs(&instances, grants).map_err(Refusal::of)?;
         let declarations: Vec<_> = instances.iter().map(Instance::declaration).collect();
@@ -97,12 +97,12 @@ impl<R: Send + Sync + 'static, H: ObserverHost<R>> ObserverAttachment<R, H> {
 
     pub fn from_catalog<C>(
         resources: Arc<R>,
-        grants: &[harmos_contract::inventory::publications::Entry],
+        grants: &[harmos_domain::inventory::publications::Entry],
     ) -> Result<Arc<Self>, Refusal>
     where
-        C: harmos_contract::catalog::Catalog<super::Declarations<R, H>>,
+        C: harmos_domain::catalog::Catalog<super::Declarations<R, H>>,
     {
-        use harmos_contract::catalog::Projection;
+        use harmos_domain::catalog::Projection;
         let mut instances = Vec::new();
         C::ENTRIES
             .try_for_each(|prepare| {
@@ -119,7 +119,7 @@ impl<R: Send + Sync + 'static, H: ObserverHost<R>> ObserverAttachment<R, H> {
     where
         O: WireOperation<Request = Control, Response = ()>,
     {
-        if O::VISIBILITY != Visibility::Host || O::POLICY != harmos_contract::observers::POLICY {
+        if O::VISIBILITY != Visibility::Host || O::POLICY != harmos_domain::observers::POLICY {
             return Err(ServingError::Catalog);
         }
         table.bind_resident_operation::<Observe<R, H, O>>(Arc::clone(self))
@@ -129,7 +129,7 @@ impl<R: Send + Sync + 'static, H: ObserverHost<R>> ObserverAttachment<R, H> {
 impl<R: Send + Sync + 'static, H: ObserverHost<R>> Attachment<Supervisor>
     for ObserverAttachment<R, H>
 {
-    fn observers(&self) -> Vec<harmos_contract::inventory::observers::Declaration> {
+    fn observers(&self) -> Vec<harmos_domain::inventory::observers::Declaration> {
         self.declarations.clone()
     }
 

@@ -145,7 +145,7 @@ pub(super) fn objects(
         Field::new("revision", DataType::UInt64, false),
         Arc::new(UInt64Array::from(
             rows.iter()
-                .map(|row| row.version.revision.get())
+                .map(|row| row.version.revision().get())
                 .collect::<Vec<_>>(),
         )),
     ));
@@ -504,7 +504,7 @@ fn payload(
     let expanded_bytes =
         expanded_schema_bytes(&schema.schema, schema.schema.root, 0, &mut expanded_fields)?;
     budget.claim(expanded_bytes)?;
-    let settings = harmos_contract::config::SchemaSettings::default();
+    let settings = harmos_domain::config::SchemaSettings::default();
     let construction = schema::Validator::construction_memory_bytes(&schema.schema, &settings)
         .map_err(|_| invalid("invalid payload schema"))?;
     budget.claim(construction)?;

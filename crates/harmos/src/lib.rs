@@ -56,24 +56,24 @@ pub mod observers;
 mod supervision;
 
 pub mod __private {
-    pub use harmos_contract::config::SchemaSettings;
-    pub use harmos_contract::plugin::schema_markers as PluginSchemaMarkers;
+    pub use harmos_domain::config::SchemaSettings;
+    pub use harmos_domain::plugin::schema_markers as PluginSchemaMarkers;
     pub extern crate serde;
     pub extern crate serde_json;
     pub use crate::with_protobuf;
-    pub use harmos_contract::__private::CarrierContext;
-    pub use harmos_contract::__private::{
+    pub use harmos_domain::__private::CarrierContext;
+    pub use harmos_domain::__private::{
         DecodeInput, DecodeScalar, DecodeValue, MessageError, PostcardReader, PostcardValue,
         decoding_add, decoding_multiply, decoding_vector,
     };
     #[cfg(feature = "grpc")]
-    pub use harmos_contract::__private::{Protobuf, prost};
-    pub use harmos_contract::inventory as PluginInventory;
-    pub use harmos_contract::plugin::{
+    pub use harmos_domain::__private::{Protobuf, prost};
+    pub use harmos_domain::inventory as PluginInventory;
+    pub use harmos_domain::plugin::{
         Contribution as PluginContribution, Declared as PluginDeclared, Grant as PluginGrant,
         Requirement as PluginRequirement, Requirements as PluginRequirements,
     };
-    pub use harmos_contract::{
+    pub use harmos_domain::{
         Registrar as PluginRegistrar, RegistrationError as PluginRegistrationError,
     };
     #[cfg(feature = "plugin-sidecar")]
@@ -82,13 +82,13 @@ pub mod __private {
     // A stream declaration is authored wherever its row type is, host core or
     // no host core, so these three are as unconditional as the attribute that
     // generates them.
-    pub use harmos_contract::streams::{BatchDefinition, StreamCatalog, StreamRow};
+    pub use harmos_domain::streams::{BatchDefinition, StreamCatalog, StreamRow};
     // How generated code names a type the tokens it was handed cannot spell.
     // Ungated on purpose: a hand-written contribution in a crate that compiles
     // no authoring attributes at all still resolves the same paths.
 
     pub use crate::state::{Catalogued, Mutual};
-    pub use harmos_contract::__private::Answer;
+    pub use harmos_domain::__private::Answer;
 
     pub fn stream_definition<S: StreamRow>(
         id: &'static str,
@@ -105,15 +105,15 @@ pub mod __private {
 pub use application::Application;
 pub use error::{BackendFailure, Error};
 #[cfg(feature = "bindings-python")]
-pub use harmos_contract::bindings;
+pub use harmos_domain::bindings;
 pub use identity::{DefinitionId, Identified};
 pub use operations::refusal::Refusal;
 pub use runtime::{Builder, Runtime};
 
 #[cfg(feature = "grpc")]
-pub use harmos_contract::Protobuf;
-pub use harmos_contract::plugin::Plugin;
-pub use harmos_contract::{
+pub use harmos_domain::Protobuf;
+pub use harmos_domain::plugin::Plugin;
+pub use harmos_domain::{
     Aggregate, Failure, Identifier, IdentifierError, MemorySize, Message, MessageError, Metadata,
     RowMetadata, Storable, StreamField, StreamSpec, Value, ValueError, btree_map_memory,
 };
@@ -121,9 +121,9 @@ pub use harmos_contract::{
 #[cfg(any(feature = "plugin", feature = "packaging"))]
 pub use harmos_bundle as bundle;
 #[cfg(all(feature = "reflection", not(feature = "grpc")))]
-pub use harmos_contract::grpc;
+pub use harmos_domain::grpc;
 // `message` Names Both The Contract Module And Its Same-Named Attribute.
-pub use harmos_contract::{artifacts, catalog, failure, listeners, message, schema};
+pub use harmos_domain::{artifacts, catalog, failure, listeners, message, schema};
 pub use harmos_macros::{
     lanes, listener, observer, operation, plugin, record, records, stream, streams, transaction,
     transactions,

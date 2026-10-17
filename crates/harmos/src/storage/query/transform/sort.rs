@@ -12,19 +12,20 @@
 /* === Modules === */
 
 /* === Re-Exports === */
+pub use harmos_domain::model::storage::query::transform::sort::{Sort, SortKey};
 
 /* === Imports === */
+use crate::storage::query::transform::FieldPathExecution;
 // Standard Library Imports
 use std::cmp::Ordering;
 // Third Party Imports
 use arrow_array::RecordBatch;
 use arrow_schema::Schema;
 // Local Imports
-use super::{FieldPath, invalid, scalar_type, take};
-use crate::storage::codec::{Flag, Nested, Repeated, product};
+use super::{invalid, scalar_type, take};
+use crate::Result;
 use crate::storage::query::accumulate::sort_values;
-use crate::storage::query::scalar::ScalarValue;
-use crate::{MemorySize, Result};
+use harmos_domain::model::storage::query::scalar::ScalarValue;
 
 /* === Constants === */
 
@@ -33,24 +34,23 @@ use crate::{MemorySize, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
-#[derive(Clone, Debug)]
-pub struct Sort {
-    pub keys: Vec<SortKey>,
-}
-#[derive(Clone, Debug)]
-pub struct SortKey {
-    pub field: FieldPath,
-    pub descending: bool,
-    pub nulls_first: bool,
-}
 
 /* === Enums === */
 
 /* === Traits === */
+pub trait SortExecution {
+    fn output_schema(&self, input: &Schema) -> Result<Schema>;
+
+    fn apply(
+        &self,
+        input: &RecordBatch,
+        check: &mut impl FnMut() -> Result<()>,
+    ) -> Result<RecordBatch>;
+}
 
 /* === Implementations === */
-impl Sort {
-    pub fn output_schema(&self, input: &Schema) -> Result<Schema> {
+impl SortExecution for Sort {
+    fn output_schema(&self, input: &Schema) -> Result<Schema> {
         if self.keys.is_empty() || self.keys.len() > 64 {
             return Err(invalid("sort requires 1..64 keys"));
         }
@@ -62,7 +62,7 @@ impl Sort {
         Ok(input.clone())
     }
 
-    pub fn apply(
+    fn apply(
         &self,
         input: &RecordBatch,
         check: &mut impl FnMut() -> Result<()>,
@@ -110,26 +110,6 @@ impl Sort {
             Ok(left.cmp(&right))
         })?;
         take(input, indices)
-    }
-}
-product!(Sort { keys: Repeated<SortKey> => 1 });
-product!(SortKey { field: Nested<FieldPath> => 1, descending: Flag => 2, nulls_first: Flag => 3 });
-impl MemorySize for Sort {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            + self
-                .keys
-                .memory_size()
-                .saturating_sub(std::mem::size_of_val(&self.keys))
-    }
-}
-impl MemorySize for SortKey {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            + self
-                .field
-                .memory_size()
-                .saturating_sub(std::mem::size_of_val(&self.field))
     }
 }
 

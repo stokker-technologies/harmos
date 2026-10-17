@@ -22,7 +22,7 @@ use std::time::Duration;
 // Local Imports
 use super::{Fixture, config, metadata};
 use harmos::Identifier;
-use harmos::storage::operations::{FileMutation, Operations, ResumeFile};
+use harmos::storage::operations::{FileMutation, ResumeFile};
 use harmos::storage::{MutationId, StorageManager};
 
 /* === Constants === */
@@ -86,7 +86,7 @@ async fn repeated_resume_returns() {
 #[tokio::test(start_paused = true)]
 async fn operation_retries_three() {
     let f = Fixture::new(config()).await;
-    Operations::register(
+    harmos::storage::operations::register(
         &f.runtime.operations,
         "storage",
         crate::operations::Lanes::Open,
@@ -224,7 +224,7 @@ async fn matching_resumes_share() {
 #[tokio::test(start_paused = true)]
 async fn budgets_never_multiply() {
     let f = Fixture::new(config()).await;
-    Operations::register(
+    harmos::storage::operations::register(
         &f.runtime.operations,
         "storage",
         crate::operations::Lanes::Open,

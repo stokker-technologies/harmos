@@ -496,7 +496,7 @@ impl Bindings<'_> {
                         left.index(),
                         right.schema(),
                         right.index(),
-                        &harmos_contract::config::SchemaSettings::default(),
+                        &harmos_domain::config::SchemaSettings::default(),
                     )
                     .unwrap_or(false),
                 _ => false,

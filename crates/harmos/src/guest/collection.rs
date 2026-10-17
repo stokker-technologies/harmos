@@ -52,7 +52,7 @@ impl Drop for Cleanup {
         if let Some(runtime) = self.runtime.take() {
             self.executor.spawn(async move {
                 if let Err(error) = runtime.stop().await {
-                    let error = harmos_contract::failure::Report(&error);
+                    let error = harmos_domain::failure::Report(&error);
                     tracing::error!(%error, "catalog runtime shutdown failed after cancellation");
                 }
             });
@@ -92,7 +92,7 @@ pub async fn registrations(bytes: &[u8]) -> Result<Vec<Registration>, Error> {
             return Err(invalid("catalog exceeds 256 namespaces"));
         }
         for entry in entries {
-            if !harmos_contract::artifact_subset(&entry.namespace)
+            if !harmos_domain::artifact_subset(&entry.namespace)
                 || entry.schema == 0
                 || !namespaces.insert(&entry.namespace)
             {

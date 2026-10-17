@@ -12,20 +12,16 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+use harmos_domain::operations::storage::ReadFile;
 // Standard Library Imports
-use std::any::TypeId;
 use std::sync::Arc;
 // Third Party Imports
 // Local Imports
-use crate::operations::{
-    Context, Grpc, Operation, OperationDeclaration, OutputDeclaration, ReplaySafety, StreamOutput,
-    Visibility, WireOperation,
-};
-use crate::schema::Described;
+use crate::operations::{Context, Operation, OperationDeclaration, StreamOutput};
 use crate::storage::StorageManager;
 use crate::storage::config::IO_TIMEOUT;
-use crate::storage::files::{FileBatch, FileCompletion, ReadFile as ReadRequest};
 use crate::{Error, MemorySize, Result};
+use harmos_domain::model::storage::files::{FileBatch, FileCompletion, ReadFile as ReadRequest};
 
 /* === Constants === */
 
@@ -34,7 +30,6 @@ use crate::{Error, MemorySize, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
-pub struct ReadFile;
 
 pub(super) struct Handler<C> {
     storage: Arc<StorageManager<C>>,
@@ -45,35 +40,6 @@ pub(super) struct Handler<C> {
 /* === Traits === */
 
 /* === Implementations === */
-impl OperationDeclaration for ReadFile {
-    type Request = ReadRequest;
-    type Response = FileCompletion;
-    const ID: &'static str = "storage.read_file";
-    const POLICY: crate::operations::OperationPolicy = super::IO_POLICY;
-    const VISIBILITY: Visibility = Visibility::Shared;
-    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-
-    fn grant(request: &ReadRequest) -> Option<harmos_contract::plugin::Grant> {
-        Some(harmos_contract::plugin::Grant::of(
-            Self::ID,
-            request.file.metadata.id.as_str().to_owned(),
-        ))
-    }
-    fn endpoint_types() -> (Option<TypeId>, Option<TypeId>) {
-        (None, Some(TypeId::of::<FileBatch>()))
-    }
-}
-impl OutputDeclaration for ReadFile {
-    type Item = FileBatch;
-}
-impl WireOperation for ReadFile {
-    const VERSION: u32 = 1;
-    const OUTPUT: Option<crate::schema::declaration::Definition> = Some(FileBatch::DEFINITION);
-    const GRPC: Option<Grpc> = Some(super::grpc("ReadFile"));
-    crate::with_protobuf! {
-        fn visit_grpc<V: crate::operations::GrpcVisitor>(visitor: V) -> Option<V::Entry> { Some(visitor.download::<Self>()) }
-    }
-}
 impl<C: 'static> Operation for Handler<C> {
     type Declaration = ReadFile;
     type Resources = StorageManager<C>;
@@ -94,7 +60,7 @@ impl<C: 'static> Operation for Handler<C> {
         request: &mut ReadRequest,
         output: &mut Self::Endpoints,
     ) -> Result<crate::operations::Response<FileCompletion>> {
-        let grant = harmos_contract::plugin::Grant::of(
+        let grant = harmos_domain::plugin::Grant::of(
             ReadFile::ID,
             request.file.metadata.id.as_str().to_owned(),
         );

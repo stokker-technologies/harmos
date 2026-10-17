@@ -191,7 +191,7 @@ impl harmos::operations::authorization::Authorizer for ExternalAccess {
         provider: harmos::operations::authorization::Provider<'_>,
     ) -> harmos::Result<Option<harmos::operations::authorization::Required>> {
         use harmos::operations::authorization::Required;
-        use harmos_contract::plugin::Grant;
+        use harmos_domain::plugin::Grant;
         // Reentrant Read Proves The Callback Does Not Hold The Original Registry Lock.
         assert_eq!(
             self.operations
@@ -243,8 +243,8 @@ impl OperationDeclaration for Guarded {
     fn visit_wire<V: harmos::operations::WireVisitor>(visitor: V) -> Option<V::Entry> {
         Some(visitor.unary::<Self>())
     }
-    fn grant(_: &Ask) -> Option<harmos_contract::plugin::Grant> {
-        Some(harmos_contract::plugin::Grant::of(Self::ID, "reading"))
+    fn grant(_: &Ask) -> Option<harmos_domain::plugin::Grant> {
+        Some(harmos_domain::plugin::Grant::of(Self::ID, "reading"))
     }
     fn key(_: &Ask) -> Option<harmos::operations::CacheKey> {
         Some(harmos::operations::CacheKey::new(b"same-request".to_vec()).unwrap())
@@ -1138,7 +1138,7 @@ async fn builtin_operations_over_grpc() {
 #[tokio::test]
 async fn external_authority_parity() {
     use harmos::operations::discovery::Discovery;
-    use harmos_contract::plugin::Grant;
+    use harmos_domain::plugin::Grant;
     let runtime = Runtime::<App>::builder((), ())
         .register(Lanes::catalog())
         .runtime()

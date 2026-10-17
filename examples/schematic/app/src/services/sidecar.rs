@@ -24,7 +24,7 @@ use crate::lanes::Lanes;
 use harmos::config::PluginSidecarSettings;
 use harmos::sidecar::Executable;
 use harmos::{Error, Result};
-use schematic_contract::native::Operations;
+use schematic_domain::operations::Native;
 
 /* === Constants === */
 pub const NAME: &str = "schematic-tools";
@@ -54,7 +54,7 @@ pub async fn start(runtime: &Runtime, path: &Path, directory: &Path) -> Result<(
     }
     runtime
         .plugin
-        .register_sidecar::<Operations>(executable, PluginSidecarSettings::default(), Lanes::Open)
+        .register_sidecar::<Native>(executable, PluginSidecarSettings::default(), Lanes::Open)
         .await?;
     runtime.plugin.initialize().await
 }

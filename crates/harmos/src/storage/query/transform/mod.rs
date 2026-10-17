@@ -18,10 +18,18 @@ pub mod project;
 pub mod sort;
 
 /* === Re-Exports === */
+pub use aggregate::AggregateExecution;
+pub use downsample::DownsampleExecution;
+pub use filter::FilterExecution;
+pub use harmos_domain::model::storage::query::transform::{FieldPath, Transform};
+pub use histogram::HistogramExecution;
+pub use project::ProjectExecution;
+pub use sort::SortExecution;
 
 /* === Imports === */
 // Standard Library Imports
 use std::sync::Arc;
+
 // Third Party Imports
 use arrow_array::{
     Array, ArrayRef, BinaryArray, BooleanArray, Float32Array, Float64Array, Int8Array, Int16Array,
@@ -29,10 +37,10 @@ use arrow_array::{
     TimestampNanosecondArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array,
 };
 use arrow_schema::{DataType, Field, Schema, TimeUnit};
+use harmos_domain::model::storage::query::scalar::{ExactNumber, ScalarValue};
+
 // Local Imports
-use crate::storage::codec::{Many, Nested, Text, product, variants};
-use crate::storage::query::scalar::{ExactNumber, ScalarValue};
-use crate::{Error, MemorySize, Result};
+use crate::{Error, Result};
 
 /* === Constants === */
 
@@ -41,35 +49,32 @@ use crate::{Error, MemorySize, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FieldPath {
-    pub fields: Vec<String>,
-}
 
 /* === Enums === */
-#[derive(Clone, Debug)]
-pub enum Transform {
-    Filter(filter::Filter),
-    Project(project::Project),
-    Aggregate(aggregate::Aggregate),
-    Histogram(histogram::Histogram),
-    Downsample(downsample::Downsample),
-    Sort(sort::Sort),
-}
 
 /* === Traits === */
+pub trait FieldPathExecution {
+    fn field(&self, schema: &Schema) -> Result<Field>;
 
-/* === Implementations === */
-impl From<&str> for FieldPath {
-    fn from(name: &str) -> Self {
-        Self {
-            fields: name.split('.').map(str::to_owned).collect(),
-        }
-    }
+    fn array<'a>(&self, batch: &'a RecordBatch) -> Result<&'a ArrayRef>;
+
+    fn value(&self, batch: &RecordBatch, row: usize) -> Result<ScalarValue>;
 }
 
-impl FieldPath {
-    pub fn field(&self, schema: &Schema) -> Result<Field> {
+pub trait TransformExecution {
+    fn output_schema(&self, input: &Schema) -> Result<Schema>;
+
+    fn apply(
+        &self,
+        input: &RecordBatch,
+        check: &mut impl FnMut() -> Result<()>,
+    ) -> Result<RecordBatch>;
+}
+
+/* === Implementations === */
+
+impl FieldPathExecution for FieldPath {
+    fn field(&self, schema: &Schema) -> Result<Field> {
         if self.fields.is_empty() || self.fields.len() > 32 {
             return Err(invalid("field path requires 1..32 components"));
         }
@@ -93,7 +98,7 @@ impl FieldPath {
         Ok(found.expect("nonempty field path"))
     }
 
-    pub fn array<'a>(&self, batch: &'a RecordBatch) -> Result<&'a ArrayRef> {
+    fn array<'a>(&self, batch: &'a RecordBatch) -> Result<&'a ArrayRef> {
         let first = self
             .fields
             .first()
@@ -113,7 +118,7 @@ impl FieldPath {
         Ok(array)
     }
 
-    pub fn value(&self, batch: &RecordBatch, row: usize) -> Result<ScalarValue> {
+    fn value(&self, batch: &RecordBatch, row: usize) -> Result<ScalarValue> {
         let first = self
             .fields
             .first()
@@ -140,8 +145,8 @@ impl FieldPath {
     }
 }
 
-impl Transform {
-    pub fn output_schema(&self, input: &Schema) -> Result<Schema> {
+impl TransformExecution for Transform {
+    fn output_schema(&self, input: &Schema) -> Result<Schema> {
         match self {
             Self::Filter(value) => value.output_schema(input),
             Self::Project(value) => value.output_schema(input),
@@ -152,7 +157,7 @@ impl Transform {
         }
     }
 
-    pub fn apply(
+    fn apply(
         &self,
         input: &RecordBatch,
         check: &mut impl FnMut() -> Result<()>,
@@ -165,54 +170,6 @@ impl Transform {
             Self::Downsample(value) => value.apply(input, check),
             Self::Sort(value) => value.apply(input, check),
         }
-    }
-
-    pub fn is_streaming(&self) -> bool {
-        matches!(self, Self::Filter(_) | Self::Project(_))
-    }
-}
-
-product!(FieldPath { fields: Many<Text> => 1 });
-variants!(Transform {
-    0, 1, "filter": Self::Filter(value) => { value: Nested<filter::Filter> => 1 } => Self::Filter(value);
-    1, 2, "project": Self::Project(value) => { value: Nested<project::Project> => 1 } => Self::Project(value);
-    2, 3, "aggregate": Self::Aggregate(value) => { value: Nested<aggregate::Aggregate> => 1 } => Self::Aggregate(value);
-    3, 4, "histogram": Self::Histogram(value) => { value: Nested<histogram::Histogram> => 1 } => Self::Histogram(value);
-    4, 5, "downsample": Self::Downsample(value) => { value: Nested<downsample::Downsample> => 1 } => Self::Downsample(value);
-    5, 6, "sort": Self::Sort(value) => { value: Nested<sort::Sort> => 1 } => Self::Sort(value);
-});
-impl MemorySize for FieldPath {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            + self
-                .fields
-                .memory_size()
-                .saturating_sub(std::mem::size_of_val(&self.fields))
-    }
-}
-impl MemorySize for Transform {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            + match self {
-                Self::Filter(value) => value
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(value)),
-                Self::Project(value) => value
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(value)),
-                Self::Aggregate(value) => value
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(value)),
-                Self::Histogram(value) => value
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(value)),
-                Self::Downsample(value) => value
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(value)),
-                Self::Sort(value) => value
-                    .memory_size()
-                    .saturating_sub(std::mem::size_of_val(value)),
-            }
     }
 }
 
@@ -445,7 +402,7 @@ pub(super) fn values_array(data_type: &DataType, values: &[ScalarValue]) -> Resu
                 .iter()
                 .map(|value| match value {
                     ScalarValue::Null | ScalarValue::Missing => Ok(None),
-                    value => crate::storage::query::scalar::exact(value)
+                    value => harmos_domain::model::storage::query::scalar::exact(value)
                         .map(Some)
                         .ok_or_else(|| invalid("exact output type mismatch")),
                 })

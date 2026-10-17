@@ -10,7 +10,7 @@
 /* === Modules === */
 
 /* === Re-Exports === */
-pub use harmos_contract::operations::instance::Id as OperationInstanceId;
+pub use harmos_domain::operations::instance::Id as OperationInstanceId;
 
 /* === Imports === */
 // Standard Library Imports
@@ -258,7 +258,7 @@ impl<O: OperationDeclaration> Drop for OperationInstance<O> {
     }
 }
 
-impl<O> harmos_contract::operations::Instance<O> for OperationInstance<O>
+impl<O> harmos_domain::operations::Instance<O> for OperationInstance<O>
 where
     O: OperationDeclaration,
 {
@@ -270,7 +270,7 @@ where
 
     fn status(
         &self,
-    ) -> impl Future<Output = Result<harmos_contract::operations::instance::Status>> + Send {
+    ) -> impl Future<Output = Result<harmos_domain::operations::instance::Status>> + Send {
         std::future::ready(Ok(self.control.status().portable()))
     }
 
@@ -327,7 +327,7 @@ impl Context<'_> {
     }
 
     // Revalidate The Caller Before Every Streamed Destination
-    pub(crate) fn admit_stream_grant(&self, grant: &harmos_contract::plugin::Grant) -> Result<()> {
+    pub(crate) fn admit_stream_grant(&self, grant: &harmos_domain::plugin::Grant) -> Result<()> {
         self.source.check()?;
         match &self.origin.grants {
             Some(authority) => authority.admit(Some(grant)),
@@ -341,7 +341,7 @@ impl Context<'_> {
         all(feature = "plugin-guest", not(target_arch = "wasm32")),
         feature = "plugin-sidecar"
     ))]
-    pub(super) fn admit_grant(&self, grant: Option<&harmos_contract::plugin::Grant>) -> Result<()> {
+    pub(super) fn admit_grant(&self, grant: Option<&harmos_domain::plugin::Grant>) -> Result<()> {
         match (&self.origin.grants, grant) {
             (Some(authority), grant) => authority.admit(grant),
             (None, None) => Ok(()),

@@ -24,8 +24,7 @@ use serde::Serialize;
 use super::backend::{BackendSnapshot, ScanPage, StorageBackend};
 use super::manager::Operation;
 use super::query::{
-    FileSelection, ObjectSelection, ObjectVersions, RecordSelection, SchemaSelection,
-    StreamSelection,
+    FileSelection, ObjectSelection, RecordSelection, SchemaSelection, StreamSelection,
 };
 use super::{
     FileReference, ObjectEntry, StorageCursor, StorageFuture, StorageSchema, StoredRecord,
@@ -234,12 +233,6 @@ impl Entry for FileReference {
         page: ScanPage,
     ) -> StorageFuture<'a, Vec<Self>> {
         backend.read_files(snapshot, selection, page)
-    }
-}
-
-impl ObjectSelection {
-    pub(super) fn follows_revisions(&self) -> bool {
-        self.versions == ObjectVersions::Revisions
     }
 }
 

@@ -21,7 +21,7 @@ use tokio::sync::Notify;
 use super::operations::{Lanes, Managed};
 use super::*;
 use harmos::{storage::Batch, storage::Cursor, storage::StreamConsumer};
-use harmos_contract::plugin::Declared;
+use harmos_domain::plugin::Declared;
 use harmos_sidecar::{Attach, ObserverContext};
 
 /* === Constants === */
@@ -217,30 +217,30 @@ impl<S: harmos_sidecar::Attach> harmos_sidecar::Attach for Advertised<S> {
         self.observers.clone()
     }
 
-    fn operations(&self) -> harmos_contract::Result<Vec<harmos::operations::Definition>> {
+    fn operations(&self) -> harmos_domain::Result<Vec<harmos::operations::Definition>> {
         self.inner.operations()
     }
     fn operation_contracts(
         &self,
-    ) -> harmos_contract::Result<Option<Vec<harmos::operations::Contract>>> {
+    ) -> harmos_domain::Result<Option<Vec<harmos::operations::Contract>>> {
         self.inner.operation_contracts()
     }
     fn required_contracts(
         &self,
-    ) -> harmos_contract::Result<Option<Vec<harmos_contract::inventory::contracts::Required>>> {
+    ) -> harmos_domain::Result<Option<Vec<harmos_domain::inventory::contracts::Required>>> {
         self.inner.required_contracts()
     }
     fn sdk_lifecycle(
         &self,
-    ) -> harmos_contract::Result<Option<[harmos::operations::lifecycle::Descriptor; 2]>> {
+    ) -> harmos_domain::Result<Option<[harmos::operations::lifecycle::Descriptor; 2]>> {
         self.inner.sdk_lifecycle()
     }
-    fn observer_control(&self) -> harmos_contract::Result<Option<harmos::operations::Contract>> {
+    fn observer_control(&self) -> harmos_domain::Result<Option<harmos::operations::Contract>> {
         self.inner.observer_control()
     }
     fn listener_declarations(
         &self,
-    ) -> harmos_contract::Result<Option<Vec<harmos_contract::listeners::Definition>>> {
+    ) -> harmos_domain::Result<Option<Vec<harmos_domain::listeners::Definition>>> {
         self.inner.listener_declarations()
     }
 
@@ -292,7 +292,7 @@ impl harmos::operations::lifecycle::Policy for Ticking {
     const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos::plugin(description = "Observer Demand During SDK Initialization.", id = "ticking", provides = ObserverOperations, requires(harmos::operations::host::Publish),
+#[harmos::plugin(description = "Observer Demand During SDK Initialization.", id = "ticking", provides = ObserverOperations, requires(harmos::operations::streams::Publish),
     observers = TickingObservers, observer_control = ObserveControl, streams(TickingPulse))]
 impl harmos::Plugin for Ticking {
     type Config = usize;
@@ -329,7 +329,7 @@ impl harmos::Plugin for Ticking {
     ) -> Result<(), harmos::operations::ServingError> {
         self.attachment.bind::<ObserveControl>(table)
     }
-    fn attachment(&self) -> Option<Arc<dyn harmos_contract::plugin::Attachment<Self::Context>>> {
+    fn attachment(&self) -> Option<Arc<dyn harmos_domain::plugin::Attachment<Self::Context>>> {
         Some(self.attachment.clone())
     }
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -377,7 +377,7 @@ impl harmos::operations::lifecycle::Policy for Twins {
     const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos::plugin(description = "Two Streams Share One Row Shape.", id = "twins", provides = (), requires(harmos::operations::host::Publish),  observers = (), streams(Left),
+#[harmos::plugin(description = "Two Streams Share One Row Shape.", id = "twins", provides = (), requires(harmos::operations::streams::Publish),  observers = (), streams(Left),
     stream_entries = &[harmos_sidecar::inventory::publications::Entry::of::<Right>()])]
 impl harmos::Plugin for Twins {
     type Config = ();
@@ -429,7 +429,7 @@ impl harmos::operations::lifecycle::Policy for Batches {
     const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos::plugin(description = "Publishes Ordered Row Batches.", id = "batches", provides = (), requires(harmos::operations::host::Publish), observers = (), streams(BatchedRows, RawRows, TimedRows, ClockedRows, StampedRows))]
+#[harmos::plugin(description = "Publishes Ordered Row Batches.", id = "batches", provides = (), requires(harmos::operations::streams::Publish), observers = (), streams(BatchedRows, RawRows, TimedRows, ClockedRows, StampedRows))]
 impl harmos::Plugin for Batches {
     type Config = ();
     type Context = harmos_sidecar::Supervisor;
@@ -504,7 +504,7 @@ impl harmos::Plugin for Batches {
                    sequence: u64,
                    published_unix_micros: Option<i64>,
                    following: Vec<(Vec<u8>, Option<i64>)>| {
-            harmos::operations::host::Publication {
+            harmos::operations::streams::Publication {
                 stream: stream.to_owned(),
                 schema: 1,
                 sequence: Some(sequence),
@@ -514,7 +514,7 @@ impl harmos::Plugin for Batches {
                 following: following
                     .into_iter()
                     .map(|(payload, published_delta_micros)| {
-                        harmos::operations::host::FollowingRow {
+                        harmos::operations::streams::FollowingRow {
                             payload,
                             published_delta_micros,
                         }
@@ -524,7 +524,9 @@ impl harmos::Plugin for Batches {
         };
         let pulse = |sample: u64| harmos::Message::encode_to_vec(&support::pulse(sample));
         let publish = |request| {
-            harmos::operations::Host::call_as::<harmos::operations::host::Publish>(context, request)
+            harmos::operations::Host::call_as::<harmos::operations::streams::Publish>(
+                context, request,
+            )
         };
         let raw_id = <RawRows as harmos::StreamSpec>::ID;
         let refused = publish(raw(
@@ -624,11 +626,11 @@ impl Drop for ObserverSeed {
 }
 
 impl harmos::operations::OperationDeclaration for ObserveControl {
-    type Request = harmos_contract::observers::Control;
+    type Request = harmos_domain::observers::Control;
     type Response = ();
     const ID: &'static str = "publications.observer.observe";
     const VISIBILITY: harmos::operations::Visibility = harmos::operations::Visibility::Host;
-    const POLICY: harmos::operations::OperationPolicy = harmos_contract::observers::POLICY;
+    const POLICY: harmos::operations::OperationPolicy = harmos_domain::observers::POLICY;
 }
 
 impl harmos::operations::WireOperation for ObserveControl {
@@ -647,7 +649,7 @@ impl harmos::operations::lifecycle::Policy for SampledTwins {
     const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos::plugin(description = "Independent Observers Sharing The Original Initialized Resources.", id = "twin-observers", provides = ObserverOperations, requires(harmos::operations::host::Publish),
+#[harmos::plugin(description = "Independent Observers Sharing The Original Initialized Resources.", id = "twin-observers", provides = ObserverOperations, requires(harmos::operations::streams::Publish),
     observers = TwinObservers, observer_control = ObserveControl, streams(Left, Right))]
 impl harmos::Plugin for SampledTwins {
     type Config = usize;
@@ -667,7 +669,7 @@ impl harmos::Plugin for SampledTwins {
         });
         let attachment = harmos_sidecar::ObserverAttachment::from_catalog::<TwinObservers>(
             resources.clone(),
-            <Self as harmos_contract::plugin::Declared>::STREAMS,
+            <Self as harmos_domain::plugin::Declared>::STREAMS,
         )?;
         Ok(Self {
             resources,
@@ -690,7 +692,7 @@ impl harmos::Plugin for SampledTwins {
     ) -> Result<(), harmos::operations::ServingError> {
         self.attachment.bind::<ObserveControl>(table)
     }
-    fn attachment(&self) -> Option<Arc<dyn harmos_contract::plugin::Attachment<Self::Context>>> {
+    fn attachment(&self) -> Option<Arc<dyn harmos_domain::plugin::Attachment<Self::Context>>> {
         Some(self.attachment.clone())
     }
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -793,7 +795,7 @@ impl harmos::operations::lifecycle::Policy for MultiStream {
     const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos::plugin(description = "One Observer Publishing Two Rows.", id = "multi-stream", provides = ObserverOperations, requires(harmos::operations::host::Publish),
+#[harmos::plugin(description = "One Observer Publishing Two Rows.", id = "multi-stream", provides = ObserverOperations, requires(harmos::operations::streams::Publish),
     observers = MultiObservers, observer_control = ObserveControl, streams(Left, Right))]
 impl harmos::Plugin for MultiStream {
     type Config = ();
@@ -823,7 +825,7 @@ impl harmos::Plugin for MultiStream {
     ) -> Result<(), harmos::operations::ServingError> {
         self.attachment.bind::<ObserveControl>(table)
     }
-    fn attachment(&self) -> Option<Arc<dyn harmos_contract::plugin::Attachment<Self::Context>>> {
+    fn attachment(&self) -> Option<Arc<dyn harmos_domain::plugin::Attachment<Self::Context>>> {
         Some(self.attachment.clone())
     }
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -859,7 +861,7 @@ impl harmos::operations::lifecycle::Policy for Flood {
     const SHUTDOWN_POLICY: harmos::operations::OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos::plugin(description = "Publishes Faster Than Its Host Ingests.", id = "flood", provides = ObserverOperations, requires(harmos::operations::host::Publish),
+#[harmos::plugin(description = "Publishes Faster Than Its Host Ingests.", id = "flood", provides = ObserverOperations, requires(harmos::operations::streams::Publish),
     observers = FloodObservers, observer_control = ObserveControl, streams(FloodRows))]
 impl harmos::Plugin for Flood {
     type Config = ();
@@ -889,7 +891,7 @@ impl harmos::Plugin for Flood {
     ) -> Result<(), harmos::operations::ServingError> {
         self.attachment.bind::<ObserveControl>(table)
     }
-    fn attachment(&self) -> Option<Arc<dyn harmos_contract::plugin::Attachment<Self::Context>>> {
+    fn attachment(&self) -> Option<Arc<dyn harmos_domain::plugin::Attachment<Self::Context>>> {
         Some(self.attachment.clone())
     }
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
@@ -1878,7 +1880,7 @@ fn explicit_artifact_grants() {
     assert_eq!(observers[0].streams.len(), 2);
 
     let empty = harmos::sidecar::inventory::Declaration::inspect(
-        &<Twins as harmos_contract::plugin::Declared>::markers()
+        &<Twins as harmos_domain::plugin::Declared>::markers()
             .unwrap()
             .concat(),
         harmos::sidecar::inventory::Facility::Sidecar,

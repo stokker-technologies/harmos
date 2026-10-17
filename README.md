@@ -177,7 +177,7 @@ harmos = { git = "https://github.com/stokker-technologies/harmos", rev = "<teste
 ```
 
 Crates compiled to WebAssembly, shared declaration crates and guest components,
-must build without the host runtime, so they still depend on `harmos-contract`
+must build without the host runtime, so they still depend on `harmos-domain`
 and `harmos-guest` (`features = ["kit", "streaming"]`) directly.
 
 Tooling consumers use `harmos::packaging` with the `packaging` feature. It reuses
@@ -327,13 +327,17 @@ Finite storage queries select a source at a full persisted storage cursor,
 apply an ordered transform plan, and apply row `offset`/`limit` to the final
 result. Delivery emits a schema, bounded Arrow record batches, and a final
 operation completion. Response `batch_rows` and `batch_bytes` bound each delivery
-batch; they do not truncate the query result. Consumers retain the storage
-memory ownership of shared Arrow buffers through clones and slices.
+batch; they do not truncate the query result. In process, the manager's reader
+yields native `QueryArrow` items whose shared Arrow buffers keep their storage
+charge through clones and slices. The `storage.query` operation, declared in
+`harmos-domain`, carries the same items as Arrow IPC (`QueryOutput`), and the
+write operations take `DataBatch` values whose data is Arrow IPC; serve them with
+`harmos::storage::operations::register`.
 
 ```rust
 let mut reader = storage.query(Query { at, source, transforms, slice }).await?;
 while let Some(output) = reader.next().await? {
-    // One QueryOutput::Schema, then QueryOutput::Batch values.
+    // One QueryArrow::Schema, then QueryArrow::Batch values.
 }
 let completion = reader.completion()?;
 ```

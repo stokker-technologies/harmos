@@ -26,7 +26,7 @@ use tonic::codec::{BufferSettings, DecodeBuf, EncodeBuf};
 // Local Imports
 use crate::operations::Contract;
 use crate::schema::ProtobufValidator;
-use harmos_contract::__private::{DecodeInput, prost};
+use harmos_domain::__private::{DecodeInput, prost};
 use prost::Message;
 
 /* === Constants === */

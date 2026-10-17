@@ -22,7 +22,7 @@ use std::sync::Arc;
 // Local Imports
 use super::{Fixture, config, write};
 use harmos::operations::Contracts;
-use harmos::storage::operations::{Operations, Save, SaveRequest};
+use harmos::storage::operations::Operations;
 
 /* === Constants === */
 
@@ -54,19 +54,6 @@ fn followed(
         harmos::storage::operations::Followed::Boundaries(_) => {
             panic!("boundaries are reported once, before records")
         }
-    }
-}
-
-pub(super) fn save_request(
-    fixture: &Fixture,
-    through: harmos::storage::StorageCursor,
-) -> SaveRequest {
-    SaveRequest {
-        mutation: harmos::storage::MutationId {
-            window: fixture.storage.mutation_window().unwrap().id,
-            key: harmos::Identifier::new("save").unwrap(),
-        },
-        at: through,
     }
 }
 

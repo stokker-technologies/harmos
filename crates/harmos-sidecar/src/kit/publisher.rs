@@ -22,7 +22,7 @@ use super::{
     CallError, ObserverContext, ObserverHost, ObserverPublisher, ObserverStreamPublisher,
     PublicationError, Supervisor,
 };
-use harmos_contract::{Message, StreamSpec, plugin::Declared};
+use harmos_domain::{Message, StreamSpec, plugin::Declared};
 
 /* === Constants === */
 
@@ -58,7 +58,7 @@ pub enum PublishError {
 /* === Traits === */
 
 /* === Implementations === */
-impl From<PublishError> for harmos_contract::Refusal {
+impl From<PublishError> for harmos_domain::Refusal {
     fn from(error: PublishError) -> Self {
         match error {
             PublishError::Call(error) => error.into(),
@@ -206,12 +206,12 @@ impl<R, P: Declared> ObserverHost<R> for Publisher<P> {
     }
 }
 
-impl<R: Sync, V: StreamSpec<Row = V> + harmos_contract::schema::Described + Message, P: Declared>
+impl<R: Sync, V: StreamSpec<Row = V> + harmos_domain::schema::Described + Message, P: Declared>
     ObserverPublisher<R, V> for Publisher<P>
 {
     type Error = PublishError;
-    const STREAM: Option<harmos_contract::inventory::publications::Entry> =
-        Some(harmos_contract::inventory::publications::Entry::of::<V>());
+    const STREAM: Option<harmos_domain::inventory::publications::Entry> =
+        Some(harmos_domain::inventory::publications::Entry::of::<V>());
 
     async fn publish(
         &self,

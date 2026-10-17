@@ -341,7 +341,7 @@ async fn measure(mode: &str, count: usize, repetition: Option<usize>) -> Duratio
         .unwrap();
     let mut replay_count = 0;
     while let Some(output) = reader.next().await.unwrap() {
-        if let harmos::storage::query::QueryOutput::Batch(batch) = output {
+        if let harmos::storage::query::QueryArrow::Batch(batch) = output {
             replay_count += batch.as_record_batch().num_rows();
         }
     }

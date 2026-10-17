@@ -14,17 +14,14 @@
 /* === Re-Exports === */
 
 /* === Imports === */
-use crate::operations::{
-    Context, Grpc, Operation, OperationDeclaration, OutputDeclaration, ReplaySafety, StreamOutput,
-    Visibility, WireOperation,
-};
-use crate::schema::Described;
+use crate::operations::{Context, Operation, OperationDeclaration, StreamOutput};
 use crate::storage::StorageManager;
 use crate::storage::config::IO_TIMEOUT;
 use crate::storage::query::{Query as Request, QueryCompletion, QueryOutput};
 use crate::{Error, MemorySize, Result};
-use harmos_contract::plugin::Grant;
-use std::{any::TypeId, sync::Arc};
+use harmos_domain::operations::storage::Query;
+use harmos_domain::plugin::Grant;
+use std::sync::Arc;
 
 // Standard Library Imports
 
@@ -39,7 +36,6 @@ use std::{any::TypeId, sync::Arc};
 /* === Type Aliases === */
 
 /* === Structs === */
-pub struct Query;
 pub(super) struct Handler<C> {
     storage: Arc<StorageManager<C>>,
 }
@@ -49,33 +45,6 @@ pub(super) struct Handler<C> {
 /* === Traits === */
 
 /* === Implementations === */
-impl OperationDeclaration for Query {
-    type Request = Request;
-    type Response = QueryCompletion;
-    const ID: &'static str = "storage.query";
-    const POLICY: crate::operations::OperationPolicy = super::IO_POLICY;
-    const VISIBILITY: Visibility = Visibility::Shared;
-    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-    fn grant(request: &Request) -> Option<Grant> {
-        Some(Grant::of(Self::ID, request.source.grant_scope()))
-    }
-    fn endpoint_types() -> (Option<TypeId>, Option<TypeId>) {
-        (None, Some(TypeId::of::<QueryOutput>()))
-    }
-}
-impl OutputDeclaration for Query {
-    type Item = QueryOutput;
-}
-impl WireOperation for Query {
-    const VERSION: u32 = 1;
-    const GRPC: Option<Grpc> = Some(super::grpc("Query"));
-    const OUTPUT: Option<crate::schema::declaration::Definition> = Some(QueryOutput::DEFINITION);
-    crate::with_protobuf! {
-        fn visit_grpc<V: crate::operations::GrpcVisitor>(visitor: V) -> Option<V::Entry> {
-            Some(visitor.download::<Self>())
-        }
-    }
-}
 impl<C: 'static> Operation for Handler<C> {
     type Declaration = Query;
     type Resources = StorageManager<C>;
@@ -99,6 +68,7 @@ impl<C: 'static> Operation for Handler<C> {
         let mut reader = self.storage.query(request.clone()).await?;
         while let Some(item) = reader.next().await? {
             ctx.admit_stream_grant(&grant)?;
+            let item = item.output();
             tokio::time::timeout(
                 IO_TIMEOUT,
                 output.send_with(item.memory_size(), || Ok(item)),

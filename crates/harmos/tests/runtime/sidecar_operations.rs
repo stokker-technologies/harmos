@@ -568,7 +568,7 @@ impl<A: Attach> Managed<A> {
     }
     pub(crate) fn publication(&self) -> harmos::Result<()> {
         let selected =
-            harmos::operations::WireDeclaration::of::<harmos::operations::host::Publish>()
+            harmos::operations::WireDeclaration::of::<harmos::operations::streams::Publish>()
                 .contract()
                 .map_err(|source| harmos::Error::OperationFailed {
                     operation: "host.publish".into(),
@@ -838,7 +838,7 @@ impl<S: Attach> Attach for Advertised<S> {
         self.source.owner()
     }
 
-    fn operations(&self) -> Result<Vec<Definition>, harmos_contract::Error> {
+    fn operations(&self) -> Result<Vec<Definition>, harmos_domain::Error> {
         Ok(self.operations.clone())
     }
 
@@ -847,28 +847,28 @@ impl<S: Attach> Attach for Advertised<S> {
     }
     fn operation_contracts(
         &self,
-    ) -> harmos_contract::Result<Option<Vec<harmos::operations::Contract>>> {
+    ) -> harmos_domain::Result<Option<Vec<harmos::operations::Contract>>> {
         self.source.operation_contracts()
     }
     fn required_contracts(
         &self,
-    ) -> harmos_contract::Result<Option<Vec<harmos_contract::inventory::contracts::Required>>> {
+    ) -> harmos_domain::Result<Option<Vec<harmos_domain::inventory::contracts::Required>>> {
         self.source.required_contracts()
     }
     fn sdk_lifecycle(
         &self,
-    ) -> harmos_contract::Result<Option<[harmos::operations::lifecycle::Descriptor; 2]>> {
+    ) -> harmos_domain::Result<Option<[harmos::operations::lifecycle::Descriptor; 2]>> {
         self.source.sdk_lifecycle()
     }
-    fn observers(&self) -> Vec<harmos_contract::inventory::observers::Declaration> {
+    fn observers(&self) -> Vec<harmos_domain::inventory::observers::Declaration> {
         self.source.observers()
     }
-    fn observer_control(&self) -> harmos_contract::Result<Option<harmos::operations::Contract>> {
+    fn observer_control(&self) -> harmos_domain::Result<Option<harmos::operations::Contract>> {
         self.source.observer_control()
     }
     fn listener_declarations(
         &self,
-    ) -> harmos_contract::Result<Option<Vec<harmos_contract::listeners::Definition>>> {
+    ) -> harmos_domain::Result<Option<Vec<harmos_domain::listeners::Definition>>> {
         self.source.listener_declarations()
     }
 

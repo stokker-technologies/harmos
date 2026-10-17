@@ -33,7 +33,7 @@ use harmos::plugin::{
 use harmos::schema::{Described, Field};
 use harmos::streams::PluginListenerRegistration;
 use harmos::{Error, Message, MessageError, Result, Runtime};
-use harmos_contract::listeners::{Context as DeliveryContext, Delivery, Source};
+use harmos_domain::listeners::{Context as DeliveryContext, Delivery, Source};
 
 /* === Constants === */
 
@@ -424,8 +424,8 @@ fn fact(value: u32) -> Fact {
     }
 }
 
-fn publication() -> harmos_contract::StreamDeclaration {
-    harmos_contract::StreamDeclaration {
+fn publication() -> harmos_domain::StreamDeclaration {
+    harmos_domain::StreamDeclaration {
         metadata: harmos::Metadata::new(
             harmos::Identifier::new("listener.samples").unwrap(),
             "Samples",
@@ -464,7 +464,7 @@ fn candidate(managed: bool) -> PluginDefinitions {
         ),
     ] {
         listeners.push(
-            harmos_contract::listeners::Definition::new(
+            harmos_domain::listeners::Definition::new(
                 harmos::Identifier::new(id).unwrap(),
                 Source::Stream {
                     id: "listener.samples".into(),

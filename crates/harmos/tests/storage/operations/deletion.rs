@@ -22,7 +22,7 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use super::{Fixture, Lanes, Operations, config};
+use super::{Fixture, Lanes, config};
 use harmos::Identifier;
 use harmos::storage::operations::{DeleteFile, DeleteFileRequest};
 use harmos::storage::{FileMetadata, MutationId, StagedFile, StorageBackend};
@@ -118,7 +118,7 @@ async fn deletion_rejects_producers() {
         .unwrap();
     assert!(matches!(
         query.next().await.unwrap(),
-        Some(harmos::storage::query::QueryOutput::Schema(_))
+        Some(harmos::storage::query::QueryArrow::Schema(_))
     ));
     assert!(query.next().await.unwrap().is_none());
     drop(query);
@@ -202,7 +202,7 @@ async fn deletion_finishes_retains() {
 #[tokio::test]
 async fn deletion_retries_lost() {
     let f = Fixture::new(config()).await;
-    Operations::register(
+    harmos::storage::operations::register(
         &f.runtime.operations,
         "storage",
         Lanes::Open,
@@ -236,7 +236,7 @@ async fn deletion_retries_lost() {
 #[tokio::test]
 async fn deletion_never_multiplies() {
     let f = Fixture::new(config()).await;
-    Operations::register(
+    harmos::storage::operations::register(
         &f.runtime.operations,
         "storage",
         Lanes::Open,

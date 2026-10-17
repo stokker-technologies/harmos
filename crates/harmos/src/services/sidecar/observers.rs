@@ -152,7 +152,7 @@ impl Remote {
     fn observe(
         &self,
         children: &ChildSettlement,
-        control: &harmos_contract::observers::Control,
+        control: &harmos_domain::observers::Control,
     ) -> crate::Result<crate::operations::EncodedInvocation> {
         let original = self.control.get().ok_or(crate::Error::NotReady {
             domain: "observer control",
@@ -179,7 +179,7 @@ impl Remote {
             })?;
         children.submit(false, || {
             binding.submit_with(bytes, |_| {
-                Ok(harmos_contract::Message::encode_to_vec(control))
+                Ok(harmos_domain::Message::encode_to_vec(control))
             })
         })
     }
@@ -224,7 +224,7 @@ impl ObserverBackend for Backend {
         if let Some(provider) = &remote.provider {
             activation.depend_on(provider)?;
         }
-        let control = harmos_contract::observers::Control {
+        let control = harmos_domain::observers::Control {
             observer: self.definition.id.clone(),
             generation: activation.id().value(),
         };

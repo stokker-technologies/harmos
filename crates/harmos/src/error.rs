@@ -86,7 +86,7 @@ pub enum Error<E = Infallible> {
     OperationPayload {
         operation: String,
         #[source]
-        source: harmos_contract::MessageError,
+        source: harmos_domain::MessageError,
     },
 
     #[error("operation `{operation}` panicked")]
@@ -95,7 +95,7 @@ pub enum Error<E = Infallible> {
     #[error("operation declaration is invalid: {source}")]
     OperationDeclaration {
         #[source]
-        source: harmos_contract::Error,
+        source: harmos_domain::Error,
     },
 
     // Prints its own line; the cause is the source, read through `failure()`.
@@ -223,9 +223,24 @@ pub enum PreparationError {
 /* === Traits === */
 
 /* === Implementations === */
-impl<E> From<harmos_contract::operations::ContextError> for Error<E> {
-    fn from(error: harmos_contract::operations::ContextError) -> Self {
-        use harmos_contract::operations::ContextError;
+impl<E> From<harmos_domain::Error> for Error<E> {
+    fn from(error: harmos_domain::Error) -> Self {
+        match error {
+            harmos_domain::Error::InvalidInput { field, reason } => {
+                Self::InvalidInput { field, reason }
+            }
+            harmos_domain::Error::ResourceExhausted { resource } => {
+                Self::ResourceExhausted { resource }
+            }
+            harmos_domain::Error::DifferentHistory => Self::DifferentHistory,
+            source => Self::OperationDeclaration { source },
+        }
+    }
+}
+
+impl<E> From<harmos_domain::operations::ContextError> for Error<E> {
+    fn from(error: harmos_domain::operations::ContextError) -> Self {
+        use harmos_domain::operations::ContextError;
         match error {
             ContextError::Duplicate { name } => Self::AlreadyRegistered {
                 domain: "call context",
@@ -250,7 +265,7 @@ impl<E> From<harmos_contract::operations::ContextError> for Error<E> {
 impl<E> Error<E> {
     // The structured failure this error carries from a plugin, with its cause
     // written once at the origin and the operation frame the host added.
-    pub fn failure(&self) -> Option<&harmos_contract::Failure> {
+    pub fn failure(&self) -> Option<&harmos_domain::Failure> {
         match self {
             Self::OperationFailed { source, .. } | Self::TaskFailed { source, .. } => {
                 carried(source.as_ref())
@@ -293,7 +308,7 @@ impl<E> Error<E> {
 // transported it where that carrier hides it behind a transparent line.
 fn carried<'a>(
     source: &'a (dyn std::error::Error + 'static),
-) -> Option<&'a harmos_contract::Failure> {
+) -> Option<&'a harmos_domain::Failure> {
     std::iter::successors(Some(source), |link| link.source()).find_map(|link| {
         if let Some(error) = link.downcast_ref::<Error>() {
             return error.failure();
@@ -306,7 +321,7 @@ fn carried<'a>(
         if let Some(error) = link.downcast_ref::<crate::operations::ComponentError>() {
             return error.failure();
         }
-        harmos_contract::Failure::find(link)
+        harmos_domain::Failure::find(link)
     })
 }
 

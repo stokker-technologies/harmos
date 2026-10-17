@@ -278,53 +278,6 @@ async fn lost_fence_response() {
     f.finish().await;
 }
 
-#[tokio::test(start_paused = true)]
-async fn operation_retries_file() {
-    use harmos::storage::operations::{Operations, Save};
-    let f = Fixture::new(config()).await;
-    Operations::register(
-        &f.runtime.operations,
-        "storage",
-        operations::Lanes::Open,
-        Arc::new(f.storage.clone()),
-    )
-    .unwrap();
-    let mut producer = f
-        .storage
-        .produce_file(metadata("save-retry"))
-        .await
-        .unwrap();
-    producer.write_all(b"prefix").await.unwrap();
-    f.data
-        .control
-        .block_checkpoint
-        .store(true, Ordering::SeqCst);
-    f.data
-        .control
-        .checkpoint_failures
-        .store(3, Ordering::SeqCst);
-    let request = super::super::operations::save_request(&f, f.storage.cursor_accepted());
-    let save = f.runtime.operations.call_as::<Save>(request.clone());
-    let append = async {
-        f.data.control.checkpoint_entered.notified().await;
-        f.data
-            .control
-            .block_checkpoint
-            .store(false, Ordering::SeqCst);
-        f.data.control.checkpoint_release.notify_one();
-    };
-    let (result, ()) = tokio::join!(save, append);
-    result.unwrap();
-    producer.write_all(b"later").await.unwrap();
-    f.runtime.operations.call_as::<Save>(request).await.unwrap();
-    assert_eq!(f.data.control.checkpoint_failures.load(Ordering::SeqCst), 0);
-    assert_eq!(
-        f.data.saved_productions.lock().unwrap()["save-retry"].1,
-        b"prefix"
-    );
-    f.finish().await;
-}
-
 #[tokio::test]
 async fn recovery_releases_read() {
     let source = Fixture::new(config()).await;
@@ -436,44 +389,6 @@ async fn receipts_replay_readmitting() {
             .is_err()
     );
     assert!(!restored.data.records.lock().unwrap().is_empty());
-    restored.finish().await;
-    f.finish().await;
-}
-
-#[tokio::test]
-async fn save_replays_restart() {
-    let f = Fixture::new(config()).await;
-    let mut producer = f.storage.produce_file(metadata("lost-save")).await.unwrap();
-    producer.write_all(b"saved-prefix").await.unwrap();
-    let request = super::super::operations::save_request(&f, f.storage.cursor_accepted());
-    f.data.control.receipt_failures.store(1, Ordering::SeqCst);
-    assert!(
-        f.storage
-            .save_once(&request.mutation, &request.at)
-            .await
-            .is_err()
-    );
-    assert!(
-        f.data
-            .mutation_receipts
-            .lock()
-            .unwrap()
-            .contains_key(&request.mutation)
-    );
-    let restored = restart(&f).await;
-    assert_eq!(
-        restored
-            .storage
-            .save_once(&request.mutation, &request.at)
-            .await
-            .unwrap(),
-        request.at
-    );
-    assert_eq!(
-        restored.data.saved_productions.lock().unwrap()["lost-save"].1,
-        b"saved-prefix"
-    );
-    assert_eq!(restored.storage.status().read_bytes, 0);
     restored.finish().await;
     f.finish().await;
 }

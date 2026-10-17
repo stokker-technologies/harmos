@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+use crate::storage::manager::RecordWriteBytes;
 // Standard Library Imports
 use std::sync::Arc;
 // Third Party Imports

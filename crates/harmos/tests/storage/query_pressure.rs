@@ -36,7 +36,7 @@ use harmos::storage::query::transform::{
     aggregate::{Aggregate, Measure},
     filter::{Clause, Compare, Condition, Filter, Term},
 };
-use harmos::storage::query::{Query, QueryOutput, QueryReader, RowSlice, Source, StreamSelection};
+use harmos::storage::query::{Query, QueryArrow, QueryReader, RowSlice, Source, StreamSelection};
 use harmos::storage::*;
 
 /* === Constants === */
@@ -146,7 +146,7 @@ async fn external_pressure_reloads_uncommitted_page_once_and_cancellation_releas
         let mut reader = storage.query(query()).await.unwrap();
         assert!(matches!(
             reader.next().await.unwrap(),
-            Some(QueryOutput::Schema(_))
+            Some(QueryArrow::Schema(_))
         ));
         let prepared = storage.status().read_bytes;
 
@@ -195,7 +195,7 @@ async fn external_pressure_reloads_uncommitted_page_once_and_cancellation_releas
             let mut successor = storage.query(query()).await.unwrap();
             assert!(matches!(
                 successor.next().await.unwrap(),
-                Some(QueryOutput::Schema(_))
+                Some(QueryArrow::Schema(_))
             ));
             assert_result(successor.next().await.unwrap().unwrap());
             assert!(successor.next().await.unwrap().is_none());
@@ -221,8 +221,8 @@ async fn external_pressure_reloads_uncommitted_page_once_and_cancellation_releas
     }
 }
 
-fn assert_result(output: QueryOutput) {
-    let QueryOutput::Batch(batch) = output else {
+fn assert_result(output: QueryArrow) {
+    let QueryArrow::Batch(batch) = output else {
         panic!("expected aggregate batch")
     };
     let batch = batch.as_record_batch();
@@ -305,7 +305,7 @@ async fn cancelled_schema_admission_releases_query_slot() {
     let mut successor = storage.query(query()).await.unwrap();
     assert!(matches!(
         successor.next().await.unwrap(),
-        Some(QueryOutput::Schema(_))
+        Some(QueryArrow::Schema(_))
     ));
     assert!(successor.next().await.unwrap().is_none());
     assert_eq!(successor.completion().unwrap().rows, 0);
@@ -320,7 +320,7 @@ async fn contending_captures_never_deadlock() {
     // Announces A Refusal Before Releasing What It Holds.
     async fn capture(
         mut reader: QueryReader,
-        mut kept: Vec<QueryOutput>,
+        mut kept: Vec<QueryArrow>,
         refused: &Notify,
     ) -> harmos::Result<usize> {
         loop {
@@ -379,8 +379,8 @@ async fn contending_captures_never_deadlock() {
     let mut second = f.storage.query(query()).await.unwrap();
     let first_kept = vec![first.next().await.unwrap().unwrap()];
     let second_kept = vec![second.next().await.unwrap().unwrap()];
-    assert!(matches!(first_kept[0], QueryOutput::Schema(_)));
-    assert!(matches!(second_kept[0], QueryOutput::Schema(_)));
+    assert!(matches!(first_kept[0], QueryArrow::Schema(_)));
+    assert!(matches!(second_kept[0], QueryArrow::Schema(_)));
     let occupied = f.storage.status().read_bytes;
     let probe = f.storage.reserve_arrow_memory(0).unwrap();
     let overhead = f.storage.status().read_bytes - occupied;

@@ -52,7 +52,7 @@ pub struct Context {
 /* === Traits === */
 
 /* === Implementations === */
-impl harmos_contract::plugin::Context for Context {
+impl harmos_domain::plugin::Context for Context {
     fn with_generation(&self, token: [u8; 32]) -> Self {
         Self {
             context: self.context,

@@ -10,7 +10,7 @@
 /* === Modules === */
 
 /* === Re-Exports === */
-pub use harmos_contract::journal::Position;
+pub use harmos_domain::journal::Position;
 
 pub use std::time::SystemTime as Timestamp;
 

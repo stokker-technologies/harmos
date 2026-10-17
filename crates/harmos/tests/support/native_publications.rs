@@ -106,7 +106,7 @@ impl harmos::operations::lifecycle::Policy for Producer {
     const SHUTDOWN_POLICY: OperationPolicy = POLICY;
 }
 
-#[harmos::plugin(description = "Publishes Timed Sample Rows Through Host Publication.", id = "publication-producer", provides = Operations, requires(harmos::operations::host::Publish), streams(Sample))]
+#[harmos::plugin(description = "Publishes Timed Sample Rows Through Host Publication.", id = "publication-producer", provides = Operations, requires(harmos::operations::streams::Publish), streams(Sample))]
 impl harmos::Plugin for Producer {
     type Config = ();
     type Context = Supervisor;

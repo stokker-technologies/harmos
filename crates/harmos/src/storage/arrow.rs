@@ -11,7 +11,6 @@
 
 /* === Modules === */
 mod ipc;
-mod message;
 mod retention;
 
 /* === Re-Exports === */
@@ -197,6 +196,18 @@ impl MemorySize for ArrowSchema {
         std::mem::size_of::<Self>()
             .saturating_add(schema_memory(&self.schema))
             .saturating_add(self.ipc.capacity())
+    }
+}
+
+impl From<&ArrowBatch> for harmos_domain::model::storage::ArrowIpc {
+    fn from(batch: &ArrowBatch) -> Self {
+        Self::new(batch.ipc_bytes().to_vec())
+    }
+}
+
+impl From<ArrowBatch> for harmos_domain::model::storage::ArrowIpc {
+    fn from(batch: ArrowBatch) -> Self {
+        Self::from(&batch)
     }
 }
 

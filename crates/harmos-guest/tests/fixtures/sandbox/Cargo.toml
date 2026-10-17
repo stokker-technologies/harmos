@@ -29,7 +29,7 @@ path = "src/lib.rs"
 
 [dependencies]
 # Local
-harmos-contract = { path = "../../../../harmos-contract", default-features = false, features = ["derive"] }
+harmos-domain = { path = "../../../../harmos-domain", default-features = false, features = ["derive"] }
 harmos-guest = { path = "../../..", default-features = false, features = ["derive", "kit"] }
 
 # Git

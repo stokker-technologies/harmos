@@ -561,7 +561,7 @@ where
 {
     fn drop(&mut self) {
         if let Err(error) = self.stop() {
-            let error = harmos_contract::failure::Report(&error);
+            let error = harmos_domain::failure::Report(&error);
             tracing::error!(%error, "simulated runtime shutdown failed during drop");
         }
     }

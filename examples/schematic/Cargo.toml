@@ -2,7 +2,7 @@
 
 [workspace]
 resolver = "3"
-members = ["app", "cli", "contract", "guest", "sidecar", "storage"]
+members = ["app", "cli", "domain", "guest", "sidecar", "storage"]
 
 # === Workspace Package ===
 
@@ -18,7 +18,7 @@ publish = false
 [workspace.dependencies]
 # Local
 harmos = { path = "../../crates/harmos" }
-harmos-contract = { path = "../../crates/harmos-contract", default-features = false }
+harmos-domain = { path = "../../crates/harmos-domain", default-features = false }
 harmos-guest = { path = "../../crates/harmos-guest", default-features = false }
 
 # Git

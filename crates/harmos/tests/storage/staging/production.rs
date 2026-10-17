@@ -25,7 +25,7 @@ use super::{Fixture, config, metadata};
 use harmos::Identifier;
 use harmos::storage::operations::{
     AbandonFile, AppendFile, AppendFileRequest, CreateFile, CreateFileRequest, FileMutation,
-    FinishFile, Operations,
+    FinishFile,
 };
 use harmos::storage::{FilePhase, MutationId, StagedFile};
 
@@ -48,7 +48,7 @@ use harmos::storage::{FilePhase, MutationId, StagedFile};
 /* === Private Functions === */
 async fn fixture() -> Fixture {
     let f = Fixture::new(config()).await;
-    Operations::register(
+    harmos::storage::operations::register(
         &f.runtime.operations,
         "storage",
         crate::operations::Lanes::Open,
@@ -462,7 +462,7 @@ async fn finish_reconciles_lost() {
 #[tokio::test]
 async fn retries_never_multiply() {
     let f = Fixture::new(config()).await;
-    Operations::register(
+    harmos::storage::operations::register(
         &f.runtime.operations,
         "storage",
         crate::operations::Lanes::Open,

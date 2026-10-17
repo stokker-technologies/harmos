@@ -9,11 +9,17 @@
 /* === Modules === */
 /* === Re-Exports === */
 /* === Imports === */
-use super::{fixture::Fixture, waveforms};
-use criterion::{BenchmarkId, Criterion};
-use harmos::storage::query::{Query, QueryOutput, RowSlice, Source, StreamSelection};
-use harmos::storage::*;
+// Standard Library Imports
 use std::time::{Duration, Instant};
+
+// Third Party Imports
+use criterion::{BenchmarkId, Criterion};
+use harmos::storage::query::{Query, QueryArrow, RowSlice, Source, StreamSelection};
+use harmos::storage::*;
+
+// Local Imports
+use super::{fixture::Fixture, waveforms};
+
 /* === Constants === */
 /* === Macros === */
 /* === Type Aliases === */
@@ -71,7 +77,7 @@ pub fn run(criterion: &mut Criterion, executor: &tokio::runtime::Runtime) {
                                 let mut rows = 0;
                                 let mut peak = 0;
                                 while let Some(output) = reader.next().await.unwrap() {
-                                    let QueryOutput::Batch(page) = output else {
+                                    let QueryArrow::Batch(page) = output else {
                                         continue;
                                     };
                                     rows += page.as_record_batch().num_rows();

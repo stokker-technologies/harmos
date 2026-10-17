@@ -12,6 +12,7 @@
 /* === Re-Exports === */
 
 /* === Imports === */
+use harmos_domain::model::storage::{RecordWrite, StreamWrite};
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::io::{self, Write};
@@ -36,7 +37,7 @@ use super::{
 use crate::operations::{OperationManager, resident::Lease};
 use crate::services::{Once, ServiceDefinition};
 use crate::supervision::executor;
-use crate::{Application, Error, Identifier, Result, state::Timestamp};
+use crate::{Application, Error, Identifier, Result};
 
 /* === Constants === */
 const WORKER_NAME: &str = "harmos-storage";
@@ -49,23 +50,6 @@ pub(super) const ENTRY_OVERHEAD: usize = 1024;
 /* === Type Aliases === */
 
 /* === Structs === */
-#[derive(Clone, Copy, Debug, Serialize)]
-pub struct RecordWrite<'a> {
-    pub schema: &'a SchemaKey,
-    pub scope: Option<&'a Identifier>,
-    pub item: &'a Identifier,
-    pub source: Option<&'a Identifier>,
-    pub source_time: Option<Timestamp>,
-    pub payload: &'a [u8],
-}
-
-#[derive(Clone, Copy, Debug, Serialize)]
-pub struct StreamWrite<'a> {
-    pub stream: &'a Identifier,
-    pub sequence: u64,
-    pub record: RecordWrite<'a>,
-}
-
 #[derive(Clone, Debug)]
 pub struct StorageStatus {
     pub accepted: StorageCursor,
@@ -156,7 +140,6 @@ pub(super) struct State {
     pub(super) followers: BTreeMap<u64, super::follow::Following>,
     pub(super) files: BTreeMap<u64, super::staging::FileState>,
     pub(super) receipts: super::receipts::Receipts,
-    pub(super) saves: BTreeMap<super::MutationId, super::saving::SaveState>,
     pub(super) deletions: BTreeMap<super::MutationId, super::deletion::Deletion>,
     pub(super) file_cursor: u64,
     pub(super) finishing: Option<u64>,
@@ -216,6 +199,9 @@ pub(super) enum Operation {
 }
 
 /* === Traits === */
+pub(crate) trait RecordWriteBytes {
+    fn resident_bytes(&self, history: &super::StoreHistory) -> Result<usize>;
+}
 trait WorkerOwner: Send + Sync {
     fn stop(&self) -> StorageFuture<'_, ()>;
 }
@@ -321,7 +307,6 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
                     snapshots: BTreeMap::new(),
                     followers: BTreeMap::new(),
                     files: BTreeMap::new(),
-                    saves: BTreeMap::new(),
                     deletions: BTreeMap::new(),
                     receipts,
                     file_cursor: 0,
@@ -477,7 +462,7 @@ impl<C> StorageManager<C> {
         mutation: Option<&crate::storage::MutationId>,
     ) -> Result<StorageCursor> {
         let scratch = schema
-            .validation_memory_bytes(&harmos_contract::config::SchemaSettings::default())
+            .validation_memory_bytes(&harmos_domain::config::SchemaSettings::default())
             .map_err(|_| Error::InvalidInput {
                 field: "storage schema",
                 reason: "invalid message field budget",
@@ -503,7 +488,7 @@ impl<C> StorageManager<C> {
         }
         let scratch = self.reserve_scratch(scratch).await?;
         schema
-            .prepare(&harmos_contract::config::SchemaSettings::default())
+            .prepare(&harmos_domain::config::SchemaSettings::default())
             .map_err(|_| Error::InvalidInput {
                 field: "storage schema",
                 reason: "invalid message fields",
@@ -843,7 +828,6 @@ impl<C> StorageManager<C> {
         if ready {
             self.settle_transition().await;
             self.settle_files().await?;
-            self.settle_saves().await?;
             self.settle_deletions().await?;
             let files = self.capture_files(None)?;
             self.flush_domain(Domain::Data, None).await?;
@@ -955,7 +939,7 @@ impl<C> StorageManager<C> {
     pub(crate) async fn admit_arrow_records(
         &self,
         scope: Option<&Identifier>,
-        batch: &super::writes::DataBatch,
+        batch: &super::writes::DecodedBatch,
     ) -> Result<StorageCursor> {
         let scratch = self.reserve_arrow_write(batch).await?;
         let (schema, _schema_memory) = self.lookup_schema(&batch.schema).await?;
@@ -983,7 +967,7 @@ impl<C> StorageManager<C> {
     pub(crate) async fn admit_arrow_streams(
         &self,
         scope: Option<&Identifier>,
-        batch: &super::writes::DataBatch,
+        batch: &super::writes::DecodedBatch,
     ) -> Result<StorageCursor> {
         let scratch = self.reserve_arrow_write(batch).await?;
         let (schema, _schema_memory) = self.lookup_schema(&batch.schema).await?;
@@ -998,7 +982,7 @@ impl<C> StorageManager<C> {
     pub(crate) async fn admit_arrow_objects(
         &self,
         _scope: Option<&Identifier>,
-        batch: &super::writes::DataBatch,
+        batch: &super::writes::DecodedBatch,
     ) -> Result<StorageCursor> {
         use crate::MemorySize;
         if batch.destination != batch.schema.id {
@@ -1010,7 +994,7 @@ impl<C> StorageManager<C> {
         let scratch = self.reserve_arrow_write(batch).await?;
         let _writer = self.inner.object_writes.lock().await;
         let definition = (self.inner.object_definition)(&batch.schema)?;
-        let graph = definition.graph(&harmos_contract::config::SchemaSettings::default())?;
+        let graph = definition.graph(&harmos_domain::config::SchemaSettings::default())?;
         let values =
             super::writes::convert::objects(batch, &graph, self.inner.settings.max_batch_bytes())?;
         let count = std::num::NonZeroUsize::new(values.len()).ok_or(Error::InvalidInput {
@@ -1065,7 +1049,7 @@ impl<C> StorageManager<C> {
 
     async fn check_object_preconditions(
         &self,
-        batch: &super::writes::DataBatch,
+        batch: &super::writes::DecodedBatch,
         values: &[super::ObjectValue],
     ) -> Result<()> {
         use arrow_array::Array;
@@ -1141,7 +1125,7 @@ impl<C> StorageManager<C> {
                 .await?;
             let revision = latest
                 .first()
-                .map_or(0, |entry| entry.version.revision.get());
+                .map_or(0, |entry| entry.version.revision().get());
             if revision != expected.value(row) {
                 return Err(Error::InvalidInput {
                     field: "object revision",
@@ -1152,7 +1136,10 @@ impl<C> StorageManager<C> {
         Ok(())
     }
 
-    async fn reserve_arrow_write(&self, batch: &super::writes::DataBatch) -> Result<Reservation> {
+    async fn reserve_arrow_write(
+        &self,
+        batch: &super::writes::DecodedBatch,
+    ) -> Result<Reservation> {
         use crate::MemorySize;
         if batch.data.as_record_batch().num_rows() == 0 {
             return Err(Error::InvalidInput {
@@ -1516,6 +1503,36 @@ impl<C> StorageManager<C> {
 }
 
 impl State {
+    pub(super) fn data_target(&self, through: &StorageCursor) -> Result<Target> {
+        if !self.status.accepted.covers(through)? {
+            return Err(Error::InvalidInput {
+                field: "storage cursor",
+                reason: "cursor is ahead of admission",
+            });
+        }
+        if self.status.saved.covers(through)? {
+            return Ok(Target {
+                index: self.data_flushed,
+                sequence: self.status.saved.sequence,
+            });
+        }
+        let entry = self
+            .queue
+            .iter()
+            .find(|entry| {
+                entry.operation.domain() == Domain::Data
+                    && entry.operation.sequence() >= through.sequence
+            })
+            .ok_or(Error::InvalidInput {
+                field: "storage cursor",
+                reason: "admitted cursor has no pending owner",
+            })?;
+        Ok(Target {
+            index: entry.index,
+            sequence: entry.operation.sequence(),
+        })
+    }
+
     /// Recompute the published pending and read totals from their owners.
     pub(super) fn collect(&mut self) {
         let now = executor::now();
@@ -1537,8 +1554,7 @@ impl State {
                 .deletions
                 .values()
                 .map(|deletion| deletion.bytes)
-                .sum::<usize>()
-            + self.saves.values().map(|save| save.bytes).sum::<usize>();
+                .sum::<usize>();
     }
 
     pub(super) fn needs_write(&self, entry: &Pending) -> bool {
@@ -1623,8 +1639,8 @@ impl WorkerOwner for Owner {
     }
 }
 
-impl RecordWrite<'_> {
-    pub(super) fn resident_bytes(&self, history: &super::StoreHistory) -> Result<usize> {
+impl RecordWriteBytes for RecordWrite<'_> {
+    fn resident_bytes(&self, history: &super::StoreHistory) -> Result<usize> {
         [
             self.payload.len(),
             self.schema.id.as_str().len(),
@@ -1642,18 +1658,6 @@ impl RecordWrite<'_> {
             field: "storage admission",
             reason: "size overflow",
         })
-    }
-
-    pub(super) fn stored(&self, position: StorageCursor) -> StoredRecord {
-        StoredRecord {
-            position,
-            schema: self.schema.clone(),
-            scope: self.scope.cloned(),
-            item: self.item.clone(),
-            source: self.source.cloned(),
-            source_time: self.source_time,
-            payload: self.payload.to_vec(),
-        }
     }
 }
 

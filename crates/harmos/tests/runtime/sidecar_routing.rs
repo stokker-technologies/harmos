@@ -331,7 +331,7 @@ impl harmos::operations::Operation for PublishingCall {
     }
 }
 
-#[harmos::plugin(description = "Publishes Before Its Generation Commits.", id = "caller", streams(MeterPulse), provides = PublishingOperations, requires(harmos::operations::host::Publish))]
+#[harmos::plugin(description = "Publishes Before Its Generation Commits.", id = "caller", streams(MeterPulse), provides = PublishingOperations, requires(harmos::operations::streams::Publish))]
 impl harmos::Plugin for Publishing {
     type Context = Supervisor;
     type Config = bool;
@@ -601,7 +601,7 @@ impl Attach for Attachment {
     }
     fn operation_contracts(
         &self,
-    ) -> harmos_contract::Result<Option<Vec<harmos::operations::Contract>>> {
+    ) -> harmos_domain::Result<Option<Vec<harmos::operations::Contract>>> {
         if !self.canonical {
             return Ok(None);
         }
@@ -616,7 +616,7 @@ impl Attach for Attachment {
         };
         Ok(Some(contracts))
     }
-    fn operations(&self) -> harmos_contract::Result<Vec<harmos::operations::Definition>> {
+    fn operations(&self) -> harmos_domain::Result<Vec<harmos::operations::Definition>> {
         match self.id.as_str() {
             "provider" => Declarations::of::<ProviderOperations>(),
             "caller" if self.publishing => Declarations::of::<PublishingOperations>(),
@@ -636,7 +636,7 @@ impl Attach for Attachment {
     }
     fn sdk_lifecycle(
         &self,
-    ) -> harmos_contract::Result<Option<[harmos::operations::lifecycle::Descriptor; 2]>> {
+    ) -> harmos_domain::Result<Option<[harmos::operations::lifecycle::Descriptor; 2]>> {
         use harmos::operations::lifecycle::Descriptor;
         let pair = match self.id.as_str() {
             "provider" => [
@@ -671,19 +671,19 @@ impl Attach for Attachment {
     }
     fn required_contracts(
         &self,
-    ) -> harmos_contract::Result<Option<Vec<harmos_contract::inventory::contracts::Required>>> {
+    ) -> harmos_domain::Result<Option<Vec<harmos_domain::inventory::contracts::Required>>> {
         let requirements = if self.id == "caller" && !self.publishing {
             harmos::operations::Contracts::of::<DependentRequirements>()
                 .expect("valid fixture requirements")
                 .into_iter()
-                .map(|contract| harmos_contract::inventory::contracts::Required {
+                .map(|contract| harmos_domain::inventory::contracts::Required {
                     contract,
                     grants: Vec::new(),
                 })
                 .collect()
         } else if self.id == "caller" {
-            harmos_contract::inventory::contracts::Required::from_tree(
-                <Publishing as harmos_contract::plugin::Declared>::REQUIRES,
+            harmos_domain::inventory::contracts::Required::from_tree(
+                <Publishing as harmos_domain::plugin::Declared>::REQUIRES,
             )
             .expect("valid fixture requirements")
         } else {

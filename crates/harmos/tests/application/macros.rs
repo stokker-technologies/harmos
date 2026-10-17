@@ -408,8 +408,8 @@ mod unified_plugins {
         assert_eq!(
             required[1].grants,
             [
-                harmos_contract::plugin::Grant::of("host.survey", "reading"),
-                harmos_contract::plugin::Grant::of("host.survey", "power"),
+                harmos_domain::plugin::Grant::of("host.survey", "reading"),
+                harmos_domain::plugin::Grant::of("host.survey", "power"),
             ]
         );
         // A grant names the operation it permits and, for a scoped
@@ -419,7 +419,7 @@ mod unified_plugins {
             r#"{"operation":"host.survey","scope":"reading"}"#
         );
         assert!(
-            serde_json::from_str::<harmos_contract::plugin::Grant>(r#"{"survey":"reading"}"#)
+            serde_json::from_str::<harmos_domain::plugin::Grant>(r#"{"survey":"reading"}"#)
                 .is_err()
         );
         assert_eq!(declaration.config, "SdkInitialization");
@@ -439,7 +439,7 @@ mod unified_plugins {
             declaration.observers[0].id,
             "fixture.unified.inert-observer"
         );
-        let inert = <InertObserver as harmos_contract::inventory::observers::Declared>::ENTRY;
+        let inert = <InertObserver as harmos_domain::inventory::observers::Declared>::ENTRY;
         let physical = <harmos::sidecar::__private::ObserverInventory<CustomHost> as harmos::catalog::Member<InertObserver>>::ENTRY;
         assert_eq!(inert.id, physical.id);
         assert_eq!(inert.interval, physical.interval);
@@ -451,7 +451,7 @@ mod unified_plugins {
 
     #[test]
     fn contributions_carry_inert() {
-        use harmos_contract::inventory::{Declaration, Facility};
+        use harmos_domain::inventory::{Declaration, Facility};
         let declaration = Declaration::inspect(
             &Contributing::markers().unwrap().concat(),
             Facility::Sidecar,
@@ -470,7 +470,7 @@ mod unified_plugins {
         );
         // A Host That Does Not Own A Namespace Simply Never Asks For It
         assert!(declaration.section("unknown.host").is_none());
-        let mut registrar = harmos_contract::Registrar::new();
+        let mut registrar = harmos_domain::Registrar::new();
         <Contributing as harmos::Plugin>::register(&mut registrar).unwrap();
         let registered = registrar
             .finish()
@@ -494,14 +494,14 @@ mod unified_plugins {
             .unwrap()
             .into_iter()
             .map(|marker| {
-                serde_json::from_slice(&marker[harmos_contract::PREFIX.len()..marker.len() - 1])
+                serde_json::from_slice(&marker[harmos_domain::PREFIX.len()..marker.len() - 1])
                     .unwrap()
             })
             .collect();
         let bytes = |parts: &[serde_json::Value]| {
             let mut bytes = Vec::new();
             for part in parts {
-                bytes.extend_from_slice(harmos_contract::PREFIX);
+                bytes.extend_from_slice(harmos_domain::PREFIX);
                 bytes.extend_from_slice(&serde_json::to_vec(part).unwrap());
                 bytes.push(0);
             }
@@ -655,25 +655,25 @@ mod unified_plugins {
     }
 
     struct Catalog;
-    impl harmos_contract::plugin::Contribution for Catalog {
+    impl harmos_domain::plugin::Contribution for Catalog {
         const NAMESPACE: &'static str = "dokime.catalog";
-        const SECTION: harmos_contract::inventory::Section =
-            harmos_contract::inventory::Section::new(Self::NAMESPACE, r#"{"kinds":["bench"]}"#);
+        const SECTION: harmos_domain::inventory::Section =
+            harmos_domain::inventory::Section::new(Self::NAMESPACE, r#"{"kinds":["bench"]}"#);
         fn register(
-            registrar: &mut harmos_contract::Registrar,
-        ) -> Result<(), harmos_contract::RegistrationError> {
+            registrar: &mut harmos_domain::Registrar,
+        ) -> Result<(), harmos_domain::RegistrationError> {
             registrar.register(Self::NAMESPACE, 1, &["bench"])
         }
     }
 
     struct Panels;
-    impl harmos_contract::plugin::Contribution for Panels {
+    impl harmos_domain::plugin::Contribution for Panels {
         const NAMESPACE: &'static str = "studio.panels";
-        const SECTION: harmos_contract::inventory::Section =
-            harmos_contract::inventory::Section::new(Self::NAMESPACE, "[]");
+        const SECTION: harmos_domain::inventory::Section =
+            harmos_domain::inventory::Section::new(Self::NAMESPACE, "[]");
         fn register(
-            registrar: &mut harmos_contract::Registrar,
-        ) -> Result<(), harmos_contract::RegistrationError> {
+            registrar: &mut harmos_domain::Registrar,
+        ) -> Result<(), harmos_domain::RegistrationError> {
             registrar.register(Self::NAMESPACE, 2, &Vec::<String>::new())
         }
     }
@@ -806,7 +806,7 @@ mod unified_plugins {
         assert_eq!(P::STREAMS[0].id, "unified_rows");
         let mut bytes = Vec::new();
         for marker in P::markers().unwrap() {
-            assert!(marker.starts_with(harmos_contract::PREFIX));
+            assert!(marker.starts_with(harmos_domain::PREFIX));
             bytes.extend_from_slice(marker);
         }
         let declaration = PluginInventory::Declaration::inspect(

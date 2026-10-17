@@ -70,7 +70,7 @@ pub struct File {
 pub struct Executable {
     pub facility: Facility,
     pub target: String,
-    pub registrations: Vec<harmos_contract::Registration>,
+    pub registrations: Vec<harmos_domain::Registration>,
 }
 
 #[derive(Clone, Copy, Debug)]

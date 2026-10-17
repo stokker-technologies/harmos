@@ -20,8 +20,8 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use harmos_contract::StreamSpec;
-use harmos_contract::operations::{
+use harmos_domain::StreamSpec;
+use harmos_domain::operations::{
     Backoff, Jitter, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility,
     WireOperation,
 };

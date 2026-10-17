@@ -116,11 +116,11 @@ impl Drop for Seed {
 }
 
 impl OperationDeclaration for Observe {
-    type Request = harmos_contract::observers::Control;
+    type Request = harmos_domain::observers::Control;
     type Response = ();
     const ID: &'static str = "custom.observer.observe";
     const VISIBILITY: Visibility = Visibility::Host;
-    const POLICY: OperationPolicy = harmos_contract::observers::POLICY;
+    const POLICY: OperationPolicy = harmos_domain::observers::POLICY;
 }
 
 impl WireOperation for Observe {
@@ -139,7 +139,7 @@ impl harmos::operations::lifecycle::Policy for Bridge {
     const SHUTDOWN_POLICY: OperationPolicy = LIFECYCLE;
 }
 
-#[harmos::plugin(id = "custom-host", provides = Operations, requires(harmos::operations::host::Publish),  observers = Observers, observer_control = Observe, streams(Published))]
+#[harmos::plugin(id = "custom-host", provides = Operations, requires(harmos::operations::streams::Publish),  observers = Observers, observer_control = Observe, streams(Published))]
 impl harmos::Plugin for Bridge {
     type Config = usize;
     type Resources = Settings;
@@ -156,7 +156,7 @@ impl harmos::Plugin for Bridge {
             })?;
         let attachment = ObserverAttachment::<Settings, Host>::from_catalog::<Observers>(
             resources.clone(),
-            <Self as harmos_contract::plugin::Declared>::STREAMS,
+            <Self as harmos_domain::plugin::Declared>::STREAMS,
         )?;
         Ok(Self {
             resources,
@@ -181,7 +181,7 @@ impl harmos::Plugin for Bridge {
     ) -> Result<(), harmos::operations::ServingError> {
         self.attachment.bind::<Observe>(table)
     }
-    fn attachment(&self) -> Option<Arc<dyn harmos_contract::plugin::Attachment<Supervisor>>> {
+    fn attachment(&self) -> Option<Arc<dyn harmos_domain::plugin::Attachment<Supervisor>>> {
         Some(self.attachment.clone())
     }
     async fn stop(&mut self, _: &Supervisor) -> Result<(), Self::Error> {
@@ -198,8 +198,8 @@ impl harmos::Plugin for Bridge {
 }
 
 // The Inert Descriptor Uses The Same Custom Host Projection As The Callback.
-impl<const N: u64> harmos_contract::inventory::observers::Declared for Watch<N> {
-    const ENTRY: harmos_contract::inventory::observers::Entry =
+impl<const N: u64> harmos_domain::inventory::observers::Declared for Watch<N> {
+    const ENTRY: harmos_domain::inventory::observers::Entry =
         <harmos::sidecar::__private::ObserverInventory<Host> as harmos::catalog::Member<
             Self,
         >>::ENTRY;

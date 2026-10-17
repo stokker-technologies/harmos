@@ -122,9 +122,9 @@ impl Session {
 #[tokio::test]
 async fn sdk_lifecycle_retained() {
     let bytes = support::component();
-    let declaration = harmos_contract::inventory::Declaration::inspect(
+    let declaration = harmos_domain::inventory::Declaration::inspect(
         &bytes,
-        harmos_contract::inventory::Facility::Guest,
+        harmos_domain::inventory::Facility::Guest,
     )
     .unwrap();
     let contracts = &declaration.contracts;

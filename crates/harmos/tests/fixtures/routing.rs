@@ -98,7 +98,7 @@ impl harmos::operations::lifecycle::Policy for Process {
     const SHUTDOWN_POLICY: OperationPolicy = POLICY;
 }
 
-#[harmos::plugin(id = "process", provides = Operations, requires(harmos::operations::host::Publish),  streams(Blob))]
+#[harmos::plugin(id = "process", provides = Operations, requires(harmos::operations::streams::Publish),  streams(Blob))]
 impl harmos::Plugin for Process {
     type Context = Supervisor;
     type Config = String;

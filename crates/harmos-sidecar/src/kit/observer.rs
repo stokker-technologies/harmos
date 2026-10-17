@@ -18,7 +18,7 @@ mod attachment;
 
 /* === Re-Exports === */
 pub use attachment::ObserverAttachment;
-pub use harmos_contract::inventory::observers::{Activation, DemandKey};
+pub use harmos_domain::inventory::observers::{Activation, DemandKey};
 
 /* === Imports === */
 // Standard Library Imports
@@ -37,7 +37,7 @@ use super::{
     ObserverCaller, ObserverHost, ObserverPublisher, ObserverStreamPublisher, PublicationError,
     Supervisor,
 };
-use harmos_contract::inventory::publications;
+use harmos_domain::inventory::publications;
 
 /* === Constants === */
 
@@ -73,7 +73,7 @@ pub struct ObserverContext<'a, R, H = Supervisor> {
 }
 
 pub struct Instance<R, H = Supervisor> {
-    entry: harmos_contract::inventory::observers::Entry,
+    entry: harmos_domain::inventory::observers::Entry,
     open: Open<R, H>,
     context: Option<ContextFactory<H>>,
 }
@@ -160,35 +160,33 @@ pub trait Observer<H: Send + Sync + 'static = Supervisor>: Sized + Send + 'stati
 }
 
 /* === Implementations === */
-impl<R: Send + Sync + 'static, H: Send + Sync + 'static> harmos_contract::catalog::Visitor
+impl<R: Send + Sync + 'static, H: Send + Sync + 'static> harmos_domain::catalog::Visitor
     for Declarations<R, H>
 {
     type Entry = fn() -> Instance<R, H>;
 }
 
 impl<R: Send + Sync + 'static, H: Send + Sync + 'static, S: Observer<H, Resources = R>>
-    harmos_contract::catalog::Member<S> for Declarations<R, H>
+    harmos_domain::catalog::Member<S> for Declarations<R, H>
 {
     const ENTRY: fn() -> Instance<R, H> = Instance::of::<S>;
 }
 
-impl<H: Send + Sync + 'static> harmos_contract::catalog::Visitor for Outputs<H> {
+impl<H: Send + Sync + 'static> harmos_domain::catalog::Visitor for Outputs<H> {
     type Entry = &'static [publications::Entry];
 }
 
-impl<H: Send + Sync + 'static, S: Observer<H>> harmos_contract::catalog::Member<S> for Outputs<H> {
+impl<H: Send + Sync + 'static, S: Observer<H>> harmos_domain::catalog::Member<S> for Outputs<H> {
     const ENTRY: &'static [publications::Entry] = S::STREAMS;
 }
 
-impl<H: Send + Sync + 'static> harmos_contract::catalog::Visitor for Inventory<H> {
-    type Entry = harmos_contract::inventory::observers::Entry;
+impl<H: Send + Sync + 'static> harmos_domain::catalog::Visitor for Inventory<H> {
+    type Entry = harmos_domain::inventory::observers::Entry;
 }
 
-impl<H: Send + Sync + 'static, S: Observer<H>> harmos_contract::catalog::Member<S>
-    for Inventory<H>
-{
-    const ENTRY: harmos_contract::inventory::observers::Entry =
-        harmos_contract::inventory::observers::Entry {
+impl<H: Send + Sync + 'static, S: Observer<H>> harmos_domain::catalog::Member<S> for Inventory<H> {
+    const ENTRY: harmos_domain::inventory::observers::Entry =
+        harmos_domain::inventory::observers::Entry {
             id: S::ID,
             description: S::DESCRIPTION,
             interval: S::INTERVAL,
@@ -262,7 +260,7 @@ impl<R: Sync, H> ObserverContext<'_, R, H> {
         self.host.publish(self, value).await
     }
 
-    pub async fn publish_on<S: harmos_contract::StreamSpec>(
+    pub async fn publish_on<S: harmos_domain::StreamSpec>(
         &self,
         row: &S::Row,
     ) -> Result<(), H::Error>
@@ -319,7 +317,7 @@ impl<R: Send + Sync + 'static, H: Send + Sync + 'static> Instance<R, H> {
         }
 
         Self {
-            entry: <Inventory<H> as harmos_contract::catalog::Member<S>>::ENTRY,
+            entry: <Inventory<H> as harmos_domain::catalog::Member<S>>::ENTRY,
             open: Activity::open::<S, H>,
             context: None,
         }
@@ -333,7 +331,7 @@ impl<R: Send + Sync + 'static, H: Send + Sync + 'static> Instance<R, H> {
         self
     }
 
-    pub fn declaration(&self) -> harmos_contract::inventory::observers::Declaration {
+    pub fn declaration(&self) -> harmos_domain::inventory::observers::Declaration {
         self.entry.declaration()
     }
 
@@ -443,7 +441,7 @@ impl<S: Observer<H>, H: Send + Sync + 'static> Body for Bound<S, H> {
                 {
                     Ok(Ok(observer)) => self.observer = Some(observer),
                     Ok(Err(error)) => tracing::warn!(
-                        observer = name, activation_id = %activation, error = %harmos_contract::failure::Report(&error),
+                        observer = name, activation_id = %activation, error = %harmos_domain::failure::Report(&error),
                         "observer initialization failed; retrying next cadence"
                     ),
                     Err(_) => tracing::error!(
@@ -483,7 +481,7 @@ impl<S: Observer<H>, H: Send + Sync + 'static> Body for Bound<S, H> {
                 match observed {
                     Ok(Ok(())) => {}
                     Ok(Err(error)) => tracing::warn!(
-                        observer = name, activation_id = %activation, tick = tick.ordinal(), error = %harmos_contract::failure::Report(&error),
+                        observer = name, activation_id = %activation, tick = tick.ordinal(), error = %harmos_domain::failure::Report(&error),
                         "observer callback refused"
                     ),
                     Err(_) => {

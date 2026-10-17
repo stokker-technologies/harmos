@@ -146,7 +146,7 @@ async fn restore(
         Transform,
         project::{Project, Projection},
     };
-    use harmos::storage::query::{Query, QueryOutput, RecordSelection, RowSlice, Source};
+    use harmos::storage::query::{Query, QueryArrow, RecordSelection, RowSlice, Source};
     let mut reader = storage
         .query(Query {
             at: storage.cursor_saved(),
@@ -168,7 +168,7 @@ async fn restore(
         .await?;
     let mut saved = Vec::new();
     while let Some(output) = reader.next().await? {
-        if let QueryOutput::Batch(batch) = output {
+        if let QueryArrow::Batch(batch) = output {
             let values = batch
                 .as_record_batch()
                 .column_by_name("value")

@@ -12,16 +12,20 @@
 /* === Modules === */
 
 /* === Re-Exports === */
+pub use harmos_domain::model::storage::query::transform::downsample::{Algorithm, Downsample};
 
 /* === Imports === */
+// Standard Library Imports
+
 // Third Party Imports
 use arrow_array::RecordBatch;
 use arrow_schema::{DataType, Schema, TimeUnit};
+use harmos_domain::model::storage::query::scalar::ScalarValue;
+
 // Local Imports
-use super::{FieldPath, invalid, numeric_type, take};
-use crate::storage::codec::{Code, Index, Nested, Optional, coded, product};
-use crate::storage::query::scalar::ScalarValue;
-use crate::{MemorySize, Result};
+use super::{invalid, numeric_type, take};
+use crate::Result;
+use crate::storage::query::transform::FieldPathExecution;
 
 /* === Constants === */
 
@@ -30,28 +34,23 @@ use crate::{MemorySize, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
-#[derive(Clone, Debug)]
-pub struct Downsample {
-    pub max_rows: usize,
-    pub algorithm: Algorithm,
-    pub value: Option<FieldPath>,
-    pub axis: Option<FieldPath>,
-}
 
 /* === Enums === */
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Algorithm {
-    Decimate,
-    Extrema,
-    Lttb,
-    LttbLog,
-}
 
 /* === Traits === */
+pub trait DownsampleExecution {
+    fn output_schema(&self, input: &Schema) -> Result<Schema>;
+
+    fn apply(
+        &self,
+        input: &RecordBatch,
+        check: &mut impl FnMut() -> Result<()>,
+    ) -> Result<RecordBatch>;
+}
 
 /* === Implementations === */
-impl Downsample {
-    pub fn output_schema(&self, input: &Schema) -> Result<Schema> {
+impl DownsampleExecution for Downsample {
+    fn output_schema(&self, input: &Schema) -> Result<Schema> {
         if self.max_rows == 0 {
             return Err(invalid("downsample max_rows must be positive"));
         }
@@ -97,7 +96,7 @@ impl Downsample {
         Ok(input.clone())
     }
 
-    pub fn apply(
+    fn apply(
         &self,
         input: &RecordBatch,
         check: &mut impl FnMut() -> Result<()>,
@@ -175,26 +174,6 @@ impl Downsample {
         )
     }
 }
-product!(Downsample { max_rows: Index => 1, algorithm: Code<Algorithm> => 2, value: Optional<Nested<FieldPath>> => 3, axis: Optional<Nested<FieldPath>> => 4 });
-coded!(Algorithm {
-    Decimate,
-    Extrema,
-    Lttb,
-    LttbLog
-});
-impl MemorySize for Downsample {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            + self
-                .value
-                .memory_size()
-                .saturating_sub(std::mem::size_of_val(&self.value))
-            + self
-                .axis
-                .memory_size()
-                .saturating_sub(std::mem::size_of_val(&self.axis))
-    }
-}
 
 /* === Public Functions === */
 
@@ -203,7 +182,7 @@ pub(in crate::storage::query) fn number(value: &ScalarValue) -> Result<f64> {
     match value {
         ScalarValue::Float(value) => Ok(*value),
         value => {
-            let exact = crate::storage::query::scalar::exact(value)
+            let exact = harmos_domain::model::storage::query::scalar::exact(value)
                 .ok_or_else(|| invalid("numeric field has a null or nonnumeric value"))?;
             let value = exact.numerator as f64 / exact.denominator.get() as f64;
             Ok(if exact.negative { -value } else { value })

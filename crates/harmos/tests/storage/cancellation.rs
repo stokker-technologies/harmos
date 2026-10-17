@@ -10,14 +10,20 @@
 /* === Modules === */
 /* === Re-Exports === */
 /* === Imports === */
-use super::backend::{Data, Recovery, history, storage_settings};
-use super::support::{Bank, Ledger, catalog};
-use super::waveforms;
-use harmos::storage::*;
-use harmos::{Identifier, Runtime};
+// Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::{Arc, atomic::Ordering};
 use std::task::Poll;
+
+// Third Party Imports
+use harmos::storage::*;
+use harmos::{Identifier, Runtime};
+
+// Local Imports
+use super::backend::{Data, Recovery, history, storage_settings};
+use super::support::{Bank, Ledger, catalog};
+use super::waveforms;
+
 /* === Constants === */
 /* === Macros === */
 /* === Type Aliases === */
@@ -113,7 +119,7 @@ async fn cancellation() {
     let mut following = storage.query(query()).await.unwrap();
     assert!(matches!(
         following.next().await.unwrap(),
-        Some(harmos::storage::query::QueryOutput::Schema(_))
+        Some(harmos::storage::query::QueryArrow::Schema(_))
     ));
     assert!(following.next().await.unwrap().is_none());
     assert_eq!(following.completion().unwrap().rows, 0);

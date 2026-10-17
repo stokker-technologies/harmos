@@ -22,7 +22,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 // Third Party Imports
-use harmos_contract::Refusal as OperationRefusal;
+use harmos_domain::Refusal as OperationRefusal;
 use sha2::{Digest, Sha256};
 use wasmtime::component::{Component, InstancePre, Linker};
 use wasmtime::{Config, Engine as WasmEngine, Store, StoreLimits, StoreLimitsBuilder};
@@ -31,7 +31,7 @@ use wasmtime::{Config, Engine as WasmEngine, Store, StoreLimits, StoreLimitsBuil
 use super::Registration;
 use crate::config::PluginGuestSettings;
 use crate::{Application, Runtime, streams::StreamManager};
-use harmos_contract::inventory::{Declaration, DeclarationError, Facility};
+use harmos_domain::inventory::{Declaration, DeclarationError, Facility};
 
 /* === Constants === */
 const TICK: Duration = Duration::from_millis(1);
@@ -277,7 +277,7 @@ impl<A: Application> Host<A> {
                                                                 error,
                                                             )
                                                         }
-                                                        error => harmos_contract::Refusal::new(
+                                                        error => harmos_domain::Refusal::new(
                                                             -32_606, error,
                                                         ),
                                                     };
@@ -527,7 +527,7 @@ impl<A: Application> Bridge<A> {
 
     fn refusal(code: &str, message: impl Into<String>) -> sdk::capabilities::Refusal {
         let failure =
-            harmos_contract::Failure::new(crate::operations::FailureKind::Permanent, message);
+            harmos_domain::Failure::new(crate::operations::FailureKind::Permanent, message);
         sdk::capabilities::Refusal {
             code: code.to_owned(),
             failure: failure.encode(),
@@ -558,16 +558,16 @@ pub(super) fn store_limits(settings: PluginGuestSettings) -> StoreLimits {
 }
 
 fn refused(refusal: sdk::capabilities::Refusal) -> OperationRefusal {
-    let failure = match harmos_contract::Failure::decode(&refusal.failure) {
+    let failure = match harmos_domain::Failure::decode(&refusal.failure) {
         Ok(failure) => failure,
         Err(source) => {
             let cause = format!("the guest refusal is unreadable: {source}");
-            harmos_contract::Failure::new(crate::operations::FailureKind::Invalid, cause)
+            harmos_domain::Failure::new(crate::operations::FailureKind::Invalid, cause)
         }
     };
     match refusal.code.parse::<i64>() {
         Ok(code) => OperationRefusal::failed(code, failure),
-        Err(_) => OperationRefusal::failed(harmos_contract::FAILED, failure),
+        Err(_) => OperationRefusal::failed(harmos_domain::FAILED, failure),
     }
 }
 

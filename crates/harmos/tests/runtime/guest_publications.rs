@@ -130,7 +130,7 @@ impl Operation for Echo {
 }
 
 impl Operation for Publish {
-    type Declaration = harmos::operations::host::Publish;
+    type Declaration = harmos::operations::streams::Publish;
     type Resources = Domain;
     type Error = harmos::Error;
     type Endpoints = ();
@@ -146,7 +146,7 @@ impl Operation for Publish {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        row: &mut harmos::operations::host::Publication,
+        row: &mut harmos::operations::streams::Publication,
         _endpoints: &mut Self::Endpoints,
     ) -> harmos::Result<harmos::operations::Response<()>> {
         let result: ::core::result::Result<(), Self::Error> = async move {
@@ -170,7 +170,7 @@ impl Operation for Publish {
             lease
                 .stage_derived_row(row, 0)
                 .map_err(|source| harmos::Error::OperationFailed {
-                    operation: <harmos::operations::host::Publish as OperationDeclaration>::ID
+                    operation: <harmos::operations::streams::Publish as OperationDeclaration>::ID
                         .into(),
                     source: Arc::new(source),
                 })?;

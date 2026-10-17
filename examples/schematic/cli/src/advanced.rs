@@ -21,10 +21,11 @@ use std::num::NonZeroUsize;
 use crate::Result;
 use harmos::operations::StreamSettings;
 use schematic_app::app::Runtime;
-use schematic_app::contract::{
+use schematic_app::domain::{
     model::Snapshot,
-    native::{ListDirectories, list_directories},
-    operations::{AnalyzeSchematic, analyze},
+    operations::{
+        AnalyzeSchematic, ListDirectories, directories::list_directories, schematic::analyze,
+    },
 };
 
 /* === Constants === */

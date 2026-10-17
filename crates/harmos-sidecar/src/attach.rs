@@ -117,35 +117,35 @@ pub trait Attach: Clone + Send + Sync + 'static {
         Vec::new()
     }
 
-    fn operations(&self) -> harmos_contract::Result<Vec<crate::operations::Definition>> {
+    fn operations(&self) -> harmos_domain::Result<Vec<crate::operations::Definition>> {
         Ok(Vec::new())
     }
 
     fn operation_contracts(
         &self,
-    ) -> harmos_contract::Result<Option<Vec<crate::operations::Contract>>> {
+    ) -> harmos_domain::Result<Option<Vec<crate::operations::Contract>>> {
         Ok(None)
     }
 
     fn required_contracts(
         &self,
-    ) -> harmos_contract::Result<Option<Vec<crate::inventory::contracts::Required>>> {
+    ) -> harmos_domain::Result<Option<Vec<crate::inventory::contracts::Required>>> {
         Ok(None)
     }
 
     fn sdk_lifecycle(
         &self,
-    ) -> harmos_contract::Result<Option<[crate::operations::lifecycle::Descriptor; 2]>> {
+    ) -> harmos_domain::Result<Option<[crate::operations::lifecycle::Descriptor; 2]>> {
         Ok(None)
     }
 
-    fn observer_control(&self) -> harmos_contract::Result<Option<crate::operations::Contract>> {
+    fn observer_control(&self) -> harmos_domain::Result<Option<crate::operations::Contract>> {
         Ok(None)
     }
 
     fn listener_declarations(
         &self,
-    ) -> harmos_contract::Result<Option<Vec<harmos_contract::listeners::Definition>>> {
+    ) -> harmos_domain::Result<Option<Vec<harmos_domain::listeners::Definition>>> {
         Ok(None)
     }
 
@@ -371,35 +371,35 @@ impl Attach for Executable {
         self.declaration.observers.clone()
     }
 
-    fn operations(&self) -> harmos_contract::Result<Vec<crate::operations::Definition>> {
+    fn operations(&self) -> harmos_domain::Result<Vec<crate::operations::Definition>> {
         Ok(self.declaration.operations.clone())
     }
 
     fn operation_contracts(
         &self,
-    ) -> harmos_contract::Result<Option<Vec<crate::operations::Contract>>> {
+    ) -> harmos_domain::Result<Option<Vec<crate::operations::Contract>>> {
         Ok(Some(self.declaration.contracts.provides.clone()))
     }
 
     fn required_contracts(
         &self,
-    ) -> harmos_contract::Result<Option<Vec<crate::inventory::contracts::Required>>> {
+    ) -> harmos_domain::Result<Option<Vec<crate::inventory::contracts::Required>>> {
         Ok(Some(self.declaration.contracts.requires.clone()))
     }
 
     fn sdk_lifecycle(
         &self,
-    ) -> harmos_contract::Result<Option<[crate::operations::lifecycle::Descriptor; 2]>> {
+    ) -> harmos_domain::Result<Option<[crate::operations::lifecycle::Descriptor; 2]>> {
         Ok(Some(self.declaration.contracts.lifecycle.clone()))
     }
 
-    fn observer_control(&self) -> harmos_contract::Result<Option<crate::operations::Contract>> {
+    fn observer_control(&self) -> harmos_domain::Result<Option<crate::operations::Contract>> {
         Ok(self.declaration.observer_control().cloned())
     }
 
     fn listener_declarations(
         &self,
-    ) -> harmos_contract::Result<Option<Vec<harmos_contract::listeners::Definition>>> {
+    ) -> harmos_domain::Result<Option<Vec<harmos_domain::listeners::Definition>>> {
         Ok(Some(self.declaration.listeners.clone()))
     }
 

@@ -389,7 +389,7 @@ impl<A: Application> PluginHost<A> {
             });
         }
         if !definition.contributions.operations.is_empty() {
-            harmos_contract::inventory::operations::validate_match(
+            harmos_domain::inventory::operations::validate_match(
                 &declarations,
                 &definition.contributions.operations,
             )

@@ -387,7 +387,7 @@ async fn generations_guard_plans() {
                 definition
                     .contributions
                     .registrations
-                    .push(harmos_contract::Registration {
+                    .push(harmos_domain::Registration {
                         namespace: "owner.catalog".into(),
                         schema: 1,
                         payload: b"{}".to_vec(),

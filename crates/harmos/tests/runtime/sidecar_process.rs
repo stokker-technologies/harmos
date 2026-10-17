@@ -68,7 +68,7 @@ struct CallbackPublication {
 }
 
 impl Operation for CallbackPublication {
-    type Declaration = harmos::operations::host::Publish;
+    type Declaration = harmos::operations::streams::Publish;
     type Resources = Callback;
     type Error = harmos::Error;
     type Endpoints = ();
@@ -84,7 +84,7 @@ impl Operation for CallbackPublication {
     async fn run<'ctx>(
         &mut self,
         context: Self::Context<'ctx>,
-        request: &mut harmos::operations::host::Publication,
+        request: &mut harmos::operations::streams::Publication,
         _endpoints: &mut Self::Endpoints,
     ) -> harmos::Result<harmos::operations::Response<()>> {
         let result: ::core::result::Result<harmos::operations::Response<()>, Self::Error> =

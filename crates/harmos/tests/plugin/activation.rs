@@ -100,7 +100,7 @@ impl Operation for WireClient {
 #[tokio::test]
 async fn runtime_embedded_wire_contracts() {
     use harmos::operations::{AuthoredContracts, Contract};
-    use harmos_contract::inventory::contracts::Required;
+    use harmos_domain::inventory::contracts::Required;
     let runtime = harmos::Runtime::<Fixture>::builder((), ())
         .operation_settings(harmos::operations::Settings {
             preparation_bytes: Some(std::num::NonZeroUsize::new(4096).unwrap()),
@@ -782,7 +782,7 @@ async fn inventory_refuses_commit() {
     client
         .contributions
         .streams
-        .push(harmos_contract::StreamDeclaration {
+        .push(harmos_domain::StreamDeclaration {
             id: "client.discovery".into(),
             schema: 1,
             window: 4,

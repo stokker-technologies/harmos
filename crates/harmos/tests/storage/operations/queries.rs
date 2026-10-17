@@ -21,7 +21,7 @@ use std::sync::Arc;
 use arrow_array::{StringArray, StructArray, UInt64Array};
 // Local Imports
 use super::super::{Bank, Data, Ledger, Recovery, catalog, history};
-use super::{Fixture, Lanes, Operations, config};
+use super::{Fixture, Lanes, config};
 use harmos::storage::operations::Query;
 use harmos::storage::query::scalar::ScalarValue;
 use harmos::storage::query::transform::{
@@ -30,7 +30,7 @@ use harmos::storage::query::transform::{
     project::{Project, Projection},
     sort::{Sort, SortKey},
 };
-use harmos::storage::query::{Query as Request, QueryOutput, RecordSelection, RowSlice, Source};
+use harmos::storage::query::{Query as Request, QueryArrow, RecordSelection, RowSlice, Source};
 use harmos::storage::{
     ObjectKey, ObjectRetention, PayloadEncoding, RecordWrite, SchemaKey, StorageBackends,
     StorageManager, StoredObject,
@@ -110,7 +110,7 @@ async fn query_schema_batches_completion() {
     let mut settings = config();
     settings.response.batch_rows = NonZeroUsize::new(2).unwrap();
     let fixture = Fixture::new(settings).await;
-    Operations::register(
+    harmos::storage::operations::register(
         &fixture.runtime.operations,
         "storage",
         Lanes::Open,
@@ -218,7 +218,8 @@ async fn query_schema_batches_completion() {
         items: NonZeroUsize::MIN,
         bytes: NonZeroUsize::new(4 * 1024 * 1024).unwrap(),
     };
-    let (sender, mut receiver) = harmos::operations::stream::<QueryOutput>(stream).unwrap();
+    let (sender, mut receiver) =
+        harmos::operations::stream::<harmos::storage::query::QueryOutput>(stream).unwrap();
     let instance = fixture
         .runtime
         .operations
@@ -226,8 +227,8 @@ async fn query_schema_batches_completion() {
         .unwrap();
 
     // One Invocation Announces One Schema, Then Bounded Batches.
-    let first = receiver.recv().await.unwrap();
-    let QueryOutput::Schema(header) = &*first else {
+    let first = QueryArrow::try_from(&*receiver.recv().await.unwrap()).unwrap();
+    let QueryArrow::Schema(header) = &first else {
         panic!("query must announce schema first");
     };
     assert_eq!(
@@ -245,7 +246,8 @@ async fn query_schema_batches_completion() {
     let mut identities = Vec::new();
     let mut batches = 0;
     while let Some(item) = receiver.recv().await {
-        let QueryOutput::Batch(batch) = &*item else {
+        let item = QueryArrow::try_from(&*item).unwrap();
+        let QueryArrow::Batch(batch) = &item else {
             panic!("schema may only be announced once");
         };
         batch.validate_schema(&announced).unwrap();
@@ -338,7 +340,7 @@ async fn query_heterogeneous_projection() {
         .unwrap();
     let mut schema_ids = Vec::new();
     while let Some(output) = matching.next().await.unwrap() {
-        if let QueryOutput::Batch(batch) = output {
+        if let QueryArrow::Batch(batch) = output {
             let metadata = batch
                 .as_record_batch()
                 .column_by_name("_storage")
@@ -379,13 +381,13 @@ async fn query_heterogeneous_projection() {
         })
         .await
         .unwrap();
-    let Some(QueryOutput::Schema(header)) = projected.next().await.unwrap() else {
+    let Some(QueryArrow::Schema(header)) = projected.next().await.unwrap() else {
         panic!("schema first");
     };
     assert_eq!(header.as_schema().fields().len(), 2);
     let mut values = Vec::new();
     while let Some(output) = projected.next().await.unwrap() {
-        let QueryOutput::Batch(batch) = output else {
+        let QueryArrow::Batch(batch) = output else {
             panic!("one header");
         };
         batch.validate_schema(header.as_schema()).unwrap();

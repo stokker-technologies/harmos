@@ -43,7 +43,7 @@ impl HarmosPath {
             "dokime",
             "harmos-guest",
             "harmos-sidecar",
-            "harmos-contract",
+            "harmos-domain",
         ] {
             if let Ok(found) = proc_macro_crate::crate_name(package) {
                 let name = match found {

@@ -9,7 +9,11 @@
 /* === Modules === */
 /* === Re-Exports === */
 /* === Imports === */
-use super::{Fixture, Lanes, Operations, config};
+// Standard Library Imports
+use std::num::NonZeroUsize;
+use std::sync::Arc;
+
+// Third Party Imports
 use arrow_array::{Array, ArrayRef, RecordBatch, StringArray, StructArray, UInt64Array};
 use arrow_schema::{DataType, Field, Fields, Schema};
 use harmos::operations::StreamSettings;
@@ -17,8 +21,10 @@ use harmos::storage::arrow::ArrowBatch;
 use harmos::storage::operations::{WriteRecords, WriteStreams};
 use harmos::storage::writes::{DataBatch, WriteReceipt, WriteRequest};
 use harmos::{Identifier, MemorySize, Message};
-use std::num::NonZeroUsize;
-use std::sync::Arc;
+
+// Local Imports
+use super::{Fixture, Lanes, config};
+
 /* === Constants === */
 /* === Macros === */
 /* === Type Aliases === */
@@ -43,7 +49,7 @@ pub(super) fn batch(sequence: u64, destination: &str) -> DataBatch {
         sequence,
         destination: Identifier::new(destination).unwrap(),
         schema: super::super::schema(),
-        data,
+        data: data.into(),
     }
 }
 
@@ -90,7 +96,7 @@ pub(super) async fn seed(f: &Fixture) {
 #[tokio::test]
 async fn typed_writer_batches() {
     let f = Fixture::new(config()).await;
-    Operations::register(
+    harmos::storage::operations::register(
         &f.runtime.operations,
         "storage",
         Lanes::Open,
@@ -154,10 +160,7 @@ async fn typed_writer_batches() {
     let decoded = DataBatch::decode(&encoded).unwrap();
     assert_eq!(decoded.sequence, 42);
     assert_eq!(decoded.destination, original.destination);
-    assert_eq!(
-        decoded.data.as_record_batch(),
-        original.data.as_record_batch()
-    );
+    assert_eq!(decoded.data, original.data);
     f.finish().await;
 }
 

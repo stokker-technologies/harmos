@@ -19,7 +19,7 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use super::{Fixture, Lanes, Operations, config};
+use super::{Fixture, Lanes, config};
 use harmos::Aggregate;
 use harmos::Message;
 use harmos::operations::{OperationDeclaration, OperationManager, WireDeclaration, WireOperation};
@@ -34,14 +34,14 @@ use harmos::storage::query::transform::{
     aggregate::{Aggregate as AggregateTransform, Measure},
 };
 use harmos::storage::query::{
-    Query as QueryRequest, QueryOutput, RecordSelection, RowSlice, Source,
+    Query as QueryRequest, QueryArrow, RecordSelection, RowSlice, Source,
 };
 
 use harmos::storage::SchemaKey;
 use harmos::storage::writes::{WriteReceipt, WriteRequest};
 use harmos::{Error, Identifier, Result};
-use harmos_contract::inventory::contracts::Required;
-use harmos_contract::plugin::Grant;
+use harmos_domain::inventory::contracts::Required;
+use harmos_domain::plugin::Grant;
 
 /* === Constants === */
 
@@ -198,7 +198,7 @@ async fn seed(fixture: &Fixture, values: &[u64]) {
 #[tokio::test]
 async fn requirements_route_plugins() {
     let fixture = Fixture::new(config()).await;
-    Operations::register(
+    harmos::storage::operations::register(
         &fixture.runtime.operations,
         "storage",
         Lanes::Open,
@@ -290,7 +290,7 @@ async fn requirements_route_plugins() {
 async fn query_enforces_grants() {
     let fixture = Fixture::new(config()).await;
     seed(&fixture, &[9_007_199_254_740_993, 9_007_199_254_740_995]).await;
-    Operations::register(
+    harmos::storage::operations::register(
         &fixture.runtime.operations,
         "storage",
         Lanes::Open,
@@ -339,7 +339,7 @@ async fn query_enforces_grants() {
         .unwrap();
     let mut count = None;
     while let Some(output) = collected.next().await.unwrap() {
-        if let QueryOutput::Batch(batch) = &*output {
+        if let QueryArrow::Batch(batch) = &QueryArrow::try_from(&*output).unwrap() {
             let values = batch
                 .as_record_batch()
                 .column_by_name("count")

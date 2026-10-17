@@ -12,8 +12,10 @@
 /* === Modules === */
 
 /* === Re-Exports === */
+pub use harmos_domain::model::storage::query::transform::aggregate::{Aggregate, Measure};
 
 /* === Imports === */
+use crate::storage::query::transform::FieldPathExecution;
 // Standard Library Imports
 use std::cmp::Ordering;
 use std::sync::Arc;
@@ -21,12 +23,10 @@ use std::sync::Arc;
 use arrow_array::RecordBatch;
 use arrow_schema::{DataType, Field, Schema};
 // Local Imports
-use super::project::Projection;
-use super::{FieldPath, exact_type, invalid, numeric_type, scalar_type, values_array};
-use crate::storage::codec::{Nested, Repeated, Text, product};
+use super::{exact_type, invalid, numeric_type, scalar_type, values_array};
 use crate::storage::query::accumulate::{Accumulator, Scratch};
-use crate::storage::query::scalar::{Agg, ScalarValue};
 use crate::{MemorySize, Result};
+use harmos_domain::model::storage::query::scalar::{Agg, ScalarValue};
 
 /* === Constants === */
 
@@ -35,11 +35,6 @@ use crate::{MemorySize, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
-#[derive(Clone, Debug)]
-pub struct Aggregate {
-    pub groups: Vec<Projection>,
-    pub measures: Vec<Measure>,
-}
 /// Incremental aggregate state: groups in key order with their accumulators.
 pub struct Groups {
     plan: Aggregate,
@@ -54,20 +49,25 @@ struct Group {
     accumulators: Vec<Accumulator>,
 }
 
-#[derive(Clone, Debug)]
-pub struct Measure {
-    pub field: FieldPath,
-    pub statistic: crate::Aggregate,
-    pub name: String,
-}
-
 /* === Enums === */
 
 /* === Traits === */
+pub trait AggregateExecution {
+    fn output_schema(&self, input: &Schema) -> Result<Schema>;
+
+    /// Start an incremental reduction over batches of `input`.
+    fn start(&self, input: &Schema) -> Result<Groups>;
+
+    fn apply(
+        &self,
+        input: &RecordBatch,
+        check: &mut impl FnMut() -> Result<()>,
+    ) -> Result<RecordBatch>;
+}
 
 /* === Implementations === */
-impl Aggregate {
-    pub fn output_schema(&self, input: &Schema) -> Result<Schema> {
+impl AggregateExecution for Aggregate {
+    fn output_schema(&self, input: &Schema) -> Result<Schema> {
         if self.groups.len() > 64 || self.measures.is_empty() || self.measures.len() > 64 {
             return Err(invalid(
                 "aggregate requires at most 64 groups and 1..64 measures",
@@ -140,7 +140,7 @@ impl Aggregate {
     }
 
     /// Start an incremental reduction over batches of `input`.
-    pub fn start(&self, input: &Schema) -> Result<Groups> {
+    fn start(&self, input: &Schema) -> Result<Groups> {
         let schema = Arc::new(self.output_schema(input)?);
         let mut groups = Groups {
             plan: self.clone(),
@@ -157,7 +157,7 @@ impl Aggregate {
         Ok(groups)
     }
 
-    pub fn apply(
+    fn apply(
         &self,
         input: &RecordBatch,
         check: &mut impl FnMut() -> Result<()>,
@@ -291,31 +291,6 @@ impl Groups {
             }
         }
         Ok(Err(low))
-    }
-}
-product!(Aggregate { groups: Repeated<Projection> => 1, measures: Repeated<Measure> => 2 });
-product!(Measure { field: Nested<FieldPath> => 1, statistic: Nested<crate::Aggregate> => 2, name: Text => 3 });
-impl MemorySize for Aggregate {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            + self
-                .groups
-                .memory_size()
-                .saturating_sub(std::mem::size_of_val(&self.groups))
-            + self
-                .measures
-                .memory_size()
-                .saturating_sub(std::mem::size_of_val(&self.measures))
-    }
-}
-impl MemorySize for Measure {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            + self
-                .field
-                .memory_size()
-                .saturating_sub(std::mem::size_of_val(&self.field))
-            + self.name.capacity()
     }
 }
 

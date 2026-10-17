@@ -40,6 +40,7 @@ use crate::storage::{
     FileReference, ObjectEntry, SchemaKey, StorageManager, StorageSchema, StoredRecord, StoredRow,
 };
 use crate::{Error, MemorySize, Result};
+use harmos_domain::model::storage::ArrowIpc;
 
 /* === Constants === */
 
@@ -76,6 +77,12 @@ pub struct QueryReader {
 }
 
 /* === Enums === */
+/// One native query item: the result schema first, then retained batches.
+#[derive(Clone, Debug)]
+pub enum QueryArrow {
+    Schema(ArrowSchema),
+    Batch(ArrowBatch),
+}
 enum Rows {
     Objects(Vec<ObjectEntry>),
     Records(Vec<StoredRecord>),
@@ -87,6 +94,41 @@ enum Rows {
 /* === Traits === */
 
 /* === Implementations === */
+impl QueryArrow {
+    /// The wire form of this item: its Arrow IPC message.
+    pub fn output(&self) -> QueryOutput {
+        match self {
+            Self::Schema(schema) => QueryOutput::Schema(ArrowIpc::new(schema.ipc_bytes().to_vec())),
+            Self::Batch(batch) => QueryOutput::Batch(ArrowIpc::new(batch.ipc_bytes().to_vec())),
+        }
+    }
+}
+
+impl TryFrom<&QueryOutput> for QueryArrow {
+    type Error = Error;
+
+    /// Decode a wire item, preflighting the Arrow allocation it describes.
+    fn try_from(output: &QueryOutput) -> Result<Self> {
+        Ok(match output {
+            QueryOutput::Schema(ipc) => Self::Schema(ArrowSchema::from_ipc(ipc.bytes())?),
+            QueryOutput::Batch(ipc) => Self::Batch(ArrowBatch::from_ipc(ipc.bytes())?),
+        })
+    }
+}
+
+impl MemorySize for QueryArrow {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+            + match self {
+                Self::Schema(value) => value
+                    .memory_size()
+                    .saturating_sub(std::mem::size_of_val(value)),
+                Self::Batch(value) => value
+                    .memory_size()
+                    .saturating_sub(std::mem::size_of_val(value)),
+            }
+    }
+}
 impl<C> StorageManager<C> {
     /// Validate and admit a query at its fixed cursor. Results are produced by
     /// successive `QueryReader::next` calls.
@@ -133,7 +175,7 @@ impl<C> StorageManager<C> {
 }
 
 impl QueryReader {
-    pub async fn next(&mut self) -> Result<Option<QueryOutput>> {
+    pub async fn next(&mut self) -> Result<Option<QueryArrow>> {
         if self.failed || self.inflight {
             self.fail();
             return Err(Error::NotReady {
@@ -176,17 +218,17 @@ impl QueryReader {
         self.active = None;
     }
 
-    async fn advance(&mut self) -> Result<Option<QueryOutput>> {
+    async fn advance(&mut self) -> Result<Option<QueryArrow>> {
         if self.exhausted {
             return Ok(None);
         }
         if self.plan.is_none() {
             let schema = self.prepare().await?;
-            return Ok(Some(QueryOutput::Schema(schema)));
+            return Ok(Some(QueryArrow::Schema(schema)));
         }
         loop {
             if let Some(batch) = self.deliver().await? {
-                return Ok(Some(QueryOutput::Batch(batch)));
+                return Ok(Some(QueryArrow::Batch(batch)));
             }
             let (plan, _) = self.plan.as_ref().expect("prepared plan");
             if plan.is_satisfied() {
@@ -379,8 +421,8 @@ impl QueryReader {
                     .map_err(Refusal::into_error)?;
             let output = ArrowBatch::try_new(slice)?;
 
-            // QueryOutput Adds Its Envelope Around The Arrow Bytes Field.
-            let envelope = QueryOutput::Batch(output.clone());
+            // The Wire Output Adds Its Envelope Around The Arrow Bytes Field.
+            let envelope = QueryOutput::Batch(ArrowIpc::new(output.ipc_bytes().to_vec()));
             let encoded = crate::Message::encoded_len(&envelope);
             #[cfg(feature = "grpc")]
             let encoded = encoded.max(crate::Protobuf::encoded_len(&envelope));

@@ -43,7 +43,7 @@ mod window;
 /* === Re-Exports === */
 pub use batches::{BatchItem, Batches, Measurement, Summary};
 pub use definition::Stream;
-pub use harmos_contract::streams::{
+pub use harmos_domain::streams::{
     Axial, BatchDefinition, Batched, Definition, Prefix, StreamCatalog, StreamRow, Track, Tracked,
 };
 

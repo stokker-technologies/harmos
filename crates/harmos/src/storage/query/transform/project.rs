@@ -12,8 +12,10 @@
 /* === Modules === */
 
 /* === Re-Exports === */
+pub use harmos_domain::model::storage::query::transform::project::{Project, Projection};
 
 /* === Imports === */
+use crate::storage::query::transform::FieldPathExecution;
 // Standard Library Imports
 use std::sync::Arc;
 // Third Party Imports
@@ -21,8 +23,7 @@ use arrow_array::RecordBatch;
 use arrow_schema::Schema;
 // Local Imports
 use super::{FieldPath, invalid};
-use crate::storage::codec::{Nested, Repeated, Text, product};
-use crate::{MemorySize, Result};
+use crate::Result;
 
 /* === Constants === */
 
@@ -31,23 +32,23 @@ use crate::{MemorySize, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
-#[derive(Clone, Debug)]
-pub struct Project {
-    pub fields: Vec<Projection>,
-}
-#[derive(Clone, Debug)]
-pub struct Projection {
-    pub field: FieldPath,
-    pub name: String,
-}
 
 /* === Enums === */
 
 /* === Traits === */
+pub trait ProjectExecution {
+    fn output_schema(&self, input: &Schema) -> Result<Schema>;
+
+    fn apply(
+        &self,
+        input: &RecordBatch,
+        check: &mut impl FnMut() -> Result<()>,
+    ) -> Result<RecordBatch>;
+}
 
 /* === Implementations === */
-impl Project {
-    pub fn output_schema(&self, input: &Schema) -> Result<Schema> {
+impl ProjectExecution for Project {
+    fn output_schema(&self, input: &Schema) -> Result<Schema> {
         if self.fields.is_empty() || self.fields.len() > 4096 {
             return Err(invalid("projection requires bounded nonempty fields"));
         }
@@ -69,7 +70,7 @@ impl Project {
         Ok(Schema::new_with_metadata(fields, input.metadata().clone()))
     }
 
-    pub fn apply(
+    fn apply(
         &self,
         input: &RecordBatch,
         check: &mut impl FnMut() -> Result<()>,
@@ -99,27 +100,6 @@ impl Project {
             columns.push(array);
         }
         RecordBatch::try_new(schema, columns).map_err(|_| invalid("projected batch is invalid"))
-    }
-}
-product!(Project { fields: Repeated<Projection> => 1 });
-product!(Projection { field: Nested<FieldPath> => 1, name: Text => 2 });
-impl MemorySize for Project {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            + self
-                .fields
-                .memory_size()
-                .saturating_sub(std::mem::size_of_val(&self.fields))
-    }
-}
-impl MemorySize for Projection {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            + self
-                .field
-                .memory_size()
-                .saturating_sub(std::mem::size_of_val(&self.field))
-            + self.name.capacity()
     }
 }
 
