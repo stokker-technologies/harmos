@@ -28,28 +28,27 @@
 #[harmos_domain::message]
 #[derive(Clone, Debug, PartialEq)]
 pub struct Request {
-    pub from: crate::model::Point,
-    pub to: crate::model::Point,
+    pub schematic: crate::model::Snapshot,
 }
 
 #[harmos_domain::message]
 #[derive(Clone, Debug, PartialEq)]
 pub struct Response {
-    pub points: Vec<crate::model::Point>,
+    pub diagnostics: Vec<String>,
 }
 
 #[harmos_domain::operation(
-    id = "schematic.route",
+    id = "schematic.validate",
     request = Request,
     response = Response,
 
-    policy = super::POLICY,
+    policy = crate::operations::POLICY,
     visibility = harmos_domain::operations::Visibility::Shared,
     replay = harmos_domain::operations::ReplaySafety::Idempotent,
     version = 1,
-    grpc(package = "schematic.v1", service = "Schematic", method = "ProposeRoute"),
+    grpc(package = "schematic.v1", service = "Schematic", method = "Validate"),
 )]
-pub struct ProposeRoute;
+pub struct ValidateSchematic;
 
 /* === Enums === */
 

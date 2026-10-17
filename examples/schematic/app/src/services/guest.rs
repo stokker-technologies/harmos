@@ -23,7 +23,7 @@ use crate::app::{Runtime, SchematicEditor};
 use crate::lanes::Lanes;
 use harmos::config::PluginSettings;
 use harmos::guest::{Host, Loaded};
-use schematic_contract::operations::Operations;
+use schematic_domain::operations::Operations;
 
 /* === Constants === */
 pub const NAME: &str = "schematic-tools";

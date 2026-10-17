@@ -45,11 +45,11 @@ pub struct Plugin {
 
 /* === Implementations === */
 impl harmos_guest::operations::lifecycle::Policy for Plugin {
-    const INITIALIZATION_POLICY: OperationPolicy = schematic_contract::operations::POLICY;
+    const INITIALIZATION_POLICY: OperationPolicy = schematic_domain::operations::POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-#[harmos_guest::plugin(id = "schematic-tools", provides = schematic_contract::operations::Operations, requires = ())]
+#[harmos_guest::plugin(id = "schematic-tools", provides = schematic_domain::operations::Operations, requires = ())]
 impl harmos_guest::Plugin for Plugin {
     type Config = ();
     type Error = Error;

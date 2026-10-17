@@ -80,7 +80,7 @@ description = "Check / Wasm"
 run = [
   "{{vars.cargo_guard}}cargo check --locked -p harmos-domain --target wasm32-unknown-unknown",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-domain --target wasm32-wasip2",
-  "{{vars.cargo_guard}}cargo check --locked -p schematic-contract --target wasm32-unknown-unknown",
+  "{{vars.cargo_guard}}cargo check --locked -p schematic-domain --target wasm32-unknown-unknown",
   "{{vars.cargo_guard}}cargo check --locked -p schematic-guest --target wasm32-unknown-unknown",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-guest --example operation-component --features componentize,kit,streaming --target wasm32-unknown-unknown",
   "{{vars.cargo_guard}}cargo check --locked -p harmos-guest --example plugin-component --features componentize,kit --target wasm32-unknown-unknown",
@@ -115,7 +115,7 @@ run = "{{vars.cargo_guard}}uv run --locked --project tools/python python -m harm
 
 [tasks."check:examples"]
 description = "Check / Example Crate Boundaries"
-run = "{{vars.cargo_guard}}cargo check --locked -p schematic-contract -p schematic-app -p schematic-cli -p schematic-guest -p schematic-sidecar -p jsonl-adapter -p harmos-observer-fixture -p harmos-lifecycle-fixture --all-targets"
+run = "{{vars.cargo_guard}}cargo check --locked -p schematic-domain -p schematic-app -p schematic-cli -p schematic-guest -p schematic-sidecar -p jsonl-adapter -p harmos-observer-fixture -p harmos-lifecycle-fixture --all-targets"
 
 
 # === === Tasks | Stats === === #

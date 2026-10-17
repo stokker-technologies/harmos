@@ -27,6 +27,12 @@
 /* === Structs === */
 #[harmos_domain::message]
 #[derive(Clone, Debug, PartialEq)]
+pub struct Finding {
+    pub text: String,
+}
+
+#[harmos_domain::message]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Request {
     pub schematic: crate::model::Snapshot,
 }
@@ -34,21 +40,21 @@ pub struct Request {
 #[harmos_domain::message]
 #[derive(Clone, Debug, PartialEq)]
 pub struct Response {
-    pub diagnostics: Vec<String>,
+    pub checked: u32,
 }
 
 #[harmos_domain::operation(
-    id = "schematic.validate",
+    id = "schematic.analyze",
     request = Request,
     response = Response,
-
-    policy = super::POLICY,
+    output = Finding,
+    policy = crate::operations::POLICY,
     visibility = harmos_domain::operations::Visibility::Shared,
     replay = harmos_domain::operations::ReplaySafety::Idempotent,
     version = 1,
-    grpc(package = "schematic.v1", service = "Schematic", method = "Validate"),
+    grpc(package = "schematic.v1", service = "Schematic", method = "Analyze"),
 )]
-pub struct ValidateSchematic;
+pub struct AnalyzeSchematic;
 
 /* === Enums === */
 

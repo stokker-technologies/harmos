@@ -1105,7 +1105,6 @@ dependencies = [
  "thiserror",
  "time",
  "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -2268,7 +2267,7 @@ dependencies = [
  "futures-core",
  "harmos",
  "jsonl-adapter",
- "schematic-contract",
+ "schematic-domain",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -2285,7 +2284,7 @@ dependencies = [
  "clap",
  "harmos",
  "schematic-app",
- "schematic-contract",
+ "schematic-domain",
  "tempfile",
  "thiserror",
  "tokio",
@@ -2293,7 +2292,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "schematic-contract"
+name = "schematic-domain"
 version = "0.2.0"
 dependencies = [
  "harmos-domain",
@@ -2307,7 +2306,7 @@ version = "0.2.0"
 dependencies = [
  "harmos-domain",
  "harmos-guest",
- "schematic-contract",
+ "schematic-domain",
  "serde",
  "serde_json",
  "thiserror",
@@ -2319,7 +2318,7 @@ name = "schematic-sidecar"
 version = "0.2.0"
 dependencies = [
  "harmos",
- "schematic-contract",
+ "schematic-domain",
  "schematic-guest",
  "thiserror",
  "tokio",

@@ -36,7 +36,6 @@ harmos-macros = { workspace = true, default-features = true, optional = true }
 thiserror = { workspace = true, default-features = true }
 
 # Logging
-tracing = { workspace = true, default-features = true }
 
 # Utilities
 heck = { workspace = true, optional = true }

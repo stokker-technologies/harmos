@@ -25,7 +25,7 @@ version.workspace = true
 [dependencies]
 # Local
 harmos = { workspace = true, features = ["plugin-sidecar"] }
-schematic-contract = { path = "../contract" }
+schematic-domain = { path = "../domain" }
 
 # Git
 
@@ -63,7 +63,7 @@ tokio = { workspace = true, default-features = true, features = ["macros", "rt-m
 [build-dependencies]
 # Local
 harmos = { workspace = true, features = ["reflection"] }
-schematic-contract = { path = "../contract", features = ["grpc"] }
+schematic-domain = { path = "../domain", features = ["grpc"] }
 
 # Git
 

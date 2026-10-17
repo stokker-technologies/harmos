@@ -39,7 +39,7 @@
 
 /* === Private Functions === */
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let contracts = harmos::operations::Contracts::of::<schematic_contract::native::Operations>()?;
+    let contracts = harmos::operations::Contracts::of::<schematic_domain::operations::Native>()?;
     let artifacts = harmos::grpc::Artifacts::new(&contracts)?;
     artifacts.export_build("operations")?;
     Ok(())

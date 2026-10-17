@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 // Local Imports
 use crate::Error;
-use schematic_contract::operations::validate::{Request, Response};
+use schematic_domain::operations::schematic::validate::{Request, Response};
 
 /* === Constants === */
 
@@ -35,7 +35,7 @@ pub(crate) struct ValidateSchematic;
 /* === Traits === */
 
 /* === Implementations === */
-#[harmos::operation(declaration = schematic_contract::operations::ValidateSchematic)]
+#[harmos::operation(declaration = schematic_domain::operations::ValidateSchematic)]
 impl ValidateSchematic {
     async fn initialize(_: Arc<()>, _: &harmos::sidecar::Supervisor) -> Self {
         Self

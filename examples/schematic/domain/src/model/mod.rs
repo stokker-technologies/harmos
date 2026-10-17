@@ -7,11 +7,13 @@
  * ***
  */
 
+// The Closed Catalog Of Model Domains.
+
 /* === Modules === */
-pub mod list_directories;
+pub mod schematic;
 
 /* === Re-Exports === */
-pub use list_directories::ListDirectories;
+pub use schematic::{Connection, Point, Snapshot};
 
 /* === Imports === */
 // Standard Library Imports
@@ -29,12 +31,6 @@ pub use list_directories::ListDirectories;
 /* === Structs === */
 
 /* === Enums === */
-#[harmos_domain::catalog]
-pub enum Operations {
-    #[nested]
-    Shared(crate::operations::Operations),
-    ListDirectories(ListDirectories),
-}
 
 /* === Traits === */
 

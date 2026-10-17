@@ -20,9 +20,9 @@ use criterion::{BenchmarkId, Criterion, Throughput};
 
 // Local Imports
 use schematic_app::{app, services::guest, state::Schematic};
-use schematic_contract::{
+use schematic_domain::{
     model::Snapshot,
-    operations::{ValidateSchematic, validate::Request},
+    operations::{ValidateSchematic, schematic::validate::Request},
 };
 
 /* === Constants === */

@@ -24,7 +24,7 @@ mod wire;
 
 /* === Re-Exports === */
 pub use error::{Error, Result};
-pub use schematic_contract as contract;
+pub use schematic_domain as domain;
 
 /* === Imports === */
 // Standard Library Imports

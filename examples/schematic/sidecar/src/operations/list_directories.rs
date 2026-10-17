@@ -20,7 +20,7 @@ use std::sync::Arc;
 // Local Imports
 use crate::Error;
 use harmos::sidecar::Supervisor;
-use schematic_contract::native::list_directories::{Request, Response};
+use schematic_domain::operations::directories::list_directories::{Request, Response};
 
 /* === Constants === */
 
@@ -36,7 +36,7 @@ pub(crate) struct ListDirectories;
 /* === Traits === */
 
 /* === Implementations === */
-#[harmos::operation(declaration = schematic_contract::native::ListDirectories)]
+#[harmos::operation(declaration = schematic_domain::operations::ListDirectories)]
 impl ListDirectories {
     async fn initialize(_: Arc<()>, _: &Supervisor) -> Self {
         Self

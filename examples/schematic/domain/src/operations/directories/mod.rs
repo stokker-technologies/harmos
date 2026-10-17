@@ -7,14 +7,13 @@
  * ***
  */
 
+// Operations Over The Host Filesystem, Served Only By Native Deliveries.
+
 /* === Modules === */
-mod error;
-pub mod model;
-pub mod native;
-pub mod operations;
+pub mod list_directories;
 
 /* === Re-Exports === */
-pub use error::{Error, Result};
+pub use list_directories::ListDirectories;
 
 /* === Imports === */
 // Standard Library Imports

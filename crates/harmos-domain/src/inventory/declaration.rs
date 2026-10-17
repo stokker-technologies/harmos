@@ -163,7 +163,6 @@ impl Facility {
 }
 
 impl Declaration {
-    #[tracing::instrument(level = "debug", skip_all, fields(artifact_bytes = artifact.len()))]
     pub fn inspect(artifact: &[u8], facility: Facility) -> Result<Self, DeclarationError> {
         let name = facility.as_str();
         let mut identity = None;

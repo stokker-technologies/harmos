@@ -9,6 +9,6 @@ and reopens the result.
 | Native Sidecar | `mise run run:schematic` | Shared analysis and routing, plus native directory access |
 | Sandboxed Guest | `mise run run:schematic:guest` | The same analysis and routing, with no filesystem access |
 
-The portable contract, host app, CLI, guest, and sidecar have separate crates under
+The portable domain, host app, CLI, guest, and sidecar have separate crates under
 `schematic/`. The short advanced scenario adds streamed analysis and cancellation.
 Regression fixtures and JSONL persistence support live under `tests/`.

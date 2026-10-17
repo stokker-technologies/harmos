@@ -22,7 +22,7 @@ mod scenario_runtime;
 use harmos::plugin::Declared;
 use harmos::sidecar::inventory::{Declaration, Facility};
 use harmos::sidecar::operations::{Declarations, OperationDeclaration};
-use schematic_contract::{native::ListDirectories, operations::Operations};
+use schematic_domain::operations::{ListDirectories, Operations};
 
 /* === Constants === */
 
@@ -50,7 +50,7 @@ fn contract_scenario() {
         let declaration = Declaration::inspect(&bytes, Facility::Sidecar).unwrap();
         assert_eq!(declaration.id, "schematic-tools");
         assert_eq!(declaration.version.to_string(), env!("CARGO_PKG_VERSION"));
-        let expected = Declarations::of::<schematic_contract::native::Operations>().unwrap();
+        let expected = Declarations::of::<schematic_domain::operations::Native>().unwrap();
         assert_eq!(declaration.operations, expected);
         assert!(declaration.streams.is_empty());
     });

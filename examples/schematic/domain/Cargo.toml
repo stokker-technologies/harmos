@@ -1,12 +1,12 @@
 # === Package ===
 
 [package]
-name = "schematic-contract"
+name = "schematic-domain"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
-# The editor's serializable contract with its own plugins, and nothing else.
+# The editor's serializable domain shared with its own plugins, and nothing else.
 version = { workspace = true }
 
 # === Package Targets ===

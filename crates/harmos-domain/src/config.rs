@@ -61,7 +61,6 @@ impl Default for SchemaSettings {
 }
 
 /* === Public Functions === */
-#[tracing::instrument(level = "trace", skip_all)]
 pub fn decode_config<C: DeserializeOwned>(bytes: &[u8]) -> Result<C, ConfigError> {
     serde_json::from_slice(bytes).map_err(ConfigError::Decode)
 }
