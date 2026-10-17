@@ -129,7 +129,7 @@ pub fn dev(
             Ok((metadata, resolved)) => {
                 configure(&mut watcher, &mut watched, &resolved)?;
                 *inputs.lock().expect("watch inputs are healthy") = resolved;
-                build_resolved(settings, cancellation, metadata)
+                build_resolved(settings, cancellation, metadata, false)
             }
             Err(error) => Err(error),
         };

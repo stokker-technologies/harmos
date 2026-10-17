@@ -202,10 +202,10 @@ pub fn check() {
             Schema::from_declaration(Summary::DEFINITION, &settings).unwrap();
         });
     }
-    #[cfg(feature = "reflection")]
+    #[cfg(feature = "grpc")]
     {
         scenario_runtime::check("aggregate_reflects_as_oneof", || {
-            use harmos_domain::schema::reflection::DynamicMessage;
+            use harmos_packaging::proto::reflection::DynamicMessage;
             let schema = crate::schema_descriptor(Aggregate::DEFINITION);
             assert_eq!(schema.oneofs().count(), 1);
             for value in EVERY {

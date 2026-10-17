@@ -23,10 +23,10 @@ publish = true
 [workspace.dependencies]
 # Local
 harmos = { path = "crates/harmos" }
-harmos-bundle = { path = "crates/harmos-bundle" }
 harmos-domain = { path = "crates/harmos-domain", default-features = false }
 harmos-guest = { path = "crates/harmos-guest", default-features = false }
 harmos-macros = { path = "crates/harmos-macros" }
+harmos-packaging = { path = "crates/harmos-packaging", default-features = false }
 harmos-sidecar = { path = "crates/harmos-sidecar", default-features = false }
 harmos-signal = { path = "crates/harmos-signal", default-features = false }
 

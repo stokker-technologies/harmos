@@ -46,7 +46,7 @@ type Shutdown = Pin<Box<dyn Future<Output = ()> + Send>>;
 
 /* === Structs === */
 #[derive(Clone)]
-pub(super) struct Ingress {
+pub(super) struct Inbound {
     pub(super) routes: tonic::service::Routes,
     pub(super) middleware: Arc<[Arc<dyn Middleware>]>,
     pub(super) timeout: Duration,
@@ -70,7 +70,7 @@ struct Observed {
 /* === Traits === */
 
 /* === Implementations === */
-impl Service<http::Request<Body>> for Ingress {
+impl Service<http::Request<Body>> for Inbound {
     type Response = Response;
     type Error = Infallible;
     type Future = Pin<Box<dyn Future<Output = Result<Response, Infallible>> + Send>>;

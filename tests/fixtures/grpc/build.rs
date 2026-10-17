@@ -21,7 +21,7 @@ mod contract;
 
 // Local Imports
 #[cfg(feature = "grpc")]
-use harmos::operations::Contracts;
+use harmos_domain::operations::Contracts;
 
 #[cfg(feature = "grpc")]
 use contract::{Operations, Payload};
@@ -67,7 +67,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         harmos::Protobuf::encode_to_vec(&final_response),
     )?;
     let contracts = Contracts::of::<Operations>()?;
-    harmos::grpc::Artifacts::new(&contracts)?.export_build("operations")?;
+    harmos_packaging::proto::generate(&contracts, &output.join("grpc/operations"))?;
     let methods: Vec<_> = ["Unary", "Upload", "Download", "Exchange"]
         .into_iter()
         .zip(&contracts)

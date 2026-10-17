@@ -285,7 +285,7 @@ version = "0.2.0"
 dependencies = [
  "clap",
  "ctrlc",
- "harmos",
+ "harmos-packaging",
  "semver",
  "serde_json",
  "thiserror",
@@ -1036,22 +1036,20 @@ dependencies = [
  "futures-core",
  "futures-util",
  "getrandom 0.4.3",
- "harmos-bundle",
  "harmos-domain",
  "harmos-guest",
  "harmos-macros",
+ "harmos-packaging",
  "harmos-sidecar",
  "harmos-signal",
  "heck",
  "http-body",
  "http-body-util",
- "schematic-storage",
- "notify",
  "petgraph",
  "postcard",
- "process-wrap",
  "prost-reflect",
  "protoc-bin-vendored",
+ "schematic-storage",
  "semver",
  "serde",
  "serde_json",
@@ -1072,35 +1070,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "harmos-bundle"
-version = "0.2.0"
-dependencies = [
- "harmos-domain",
- "semver",
- "serde",
- "serde_json",
- "sha2 0.11.0",
- "tar",
- "tempfile",
- "thiserror",
- "tracing",
-]
-
-[[package]]
 name = "harmos-domain"
 version = "0.2.0"
 dependencies = [
  "harmos-macros",
- "heck",
+ "harmos-packaging",
  "memchr",
  "postcard",
  "prost",
- "prost-reflect",
  "protoc-bin-vendored",
  "semver",
  "serde",
  "serde_json",
- "sha2 0.11.0",
  "tempfile",
  "thiserror",
  "time",
@@ -1172,6 +1153,27 @@ dependencies = [
  "semver",
  "serde_json",
  "syn 3.0.9",
+]
+
+[[package]]
+name = "harmos-packaging"
+version = "0.2.0"
+dependencies = [
+ "harmos-domain",
+ "heck",
+ "notify",
+ "process-wrap",
+ "prost-reflect",
+ "protoc-bin-vendored",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tar",
+ "tempfile",
+ "thiserror",
+ "tracing",
+ "wit-component 0.261.0",
 ]
 
 [[package]]
@@ -1442,19 +1444,6 @@ dependencies = [
  "cfg-if",
  "futures-util",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "schematic-storage"
-version = "0.2.0"
-dependencies = [
- "harmos",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
- "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -2255,8 +2244,9 @@ dependencies = [
  "criterion",
  "futures-core",
  "harmos",
- "schematic-storage",
+ "harmos-packaging",
  "schematic-domain",
+ "schematic-storage",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -2272,6 +2262,8 @@ version = "0.2.0"
 dependencies = [
  "clap",
  "harmos",
+ "harmos-domain",
+ "harmos-packaging",
  "schematic-app",
  "schematic-domain",
  "tempfile",
@@ -2295,6 +2287,7 @@ version = "0.2.0"
 dependencies = [
  "harmos-domain",
  "harmos-guest",
+ "harmos-packaging",
  "schematic-domain",
  "serde",
  "serde_json",
@@ -2307,8 +2300,23 @@ name = "schematic-sidecar"
 version = "0.2.0"
 dependencies = [
  "harmos",
+ "harmos-domain",
+ "harmos-packaging",
  "schematic-domain",
  "schematic-guest",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "schematic-storage"
+version = "0.2.0"
+dependencies = [
+ "harmos",
+ "serde",
+ "serde_json",
+ "tempfile",
  "thiserror",
  "tokio",
  "tracing",

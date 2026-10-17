@@ -49,7 +49,7 @@ fn benchmarks(criterion: &mut Criterion) {
     let path = std::env::var_os("HARMOS_BENCH_GUEST")
         .expect("run mise bench to prepare the guest artifact");
     let module = std::fs::read(path).unwrap();
-    let component = harmos::packaging::componentize(&module).unwrap();
+    let component = harmos_packaging::componentize(&module).unwrap();
     let runtime = executor.block_on(async {
         let runtime = app::builder(Schematic::default(), ())
             .runtime()

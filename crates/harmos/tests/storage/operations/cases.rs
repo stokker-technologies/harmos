@@ -124,9 +124,9 @@ fn own_contract() {
                 .into_iter()
                 .filter(|contract| contract.grpc().is_some())
                 .collect::<Vec<_>>();
-            let artifacts = harmos::grpc::Artifacts::new(&contracts).unwrap();
+            let artifacts = harmos_packaging::proto::Artifacts::new(&contracts).unwrap();
             let target = tempfile::tempdir().unwrap();
-            let root = artifacts.export(target.path(), "storage").unwrap();
+            let root = harmos_packaging::proto::generate(&contracts, &target.path().join("grpc/storage")).unwrap();
             let output =
                 std::process::Command::new(protoc_bin_vendored::protoc_bin_path().unwrap())
                     .current_dir(&root)

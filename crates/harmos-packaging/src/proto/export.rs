@@ -31,7 +31,7 @@ use prost_reflect::{
 };
 
 // Local Imports
-use crate::operations::Contract;
+use harmos_domain::operations::Contract;
 
 /* === Constants === */
 const MAX_METHODS: usize = 4096;
@@ -72,8 +72,6 @@ pub enum ExportError {
     Name,
     #[error("unsupported generated protobuf descriptor")]
     Unsupported,
-    #[error("Cargo build script did not supply OUT_DIR")]
-    TargetDirectory,
     #[error("invalid canonical contract export: {0}")]
     Json(#[from] serde_json::Error),
     #[error("descriptor and canonical contract exports differ")]
@@ -224,8 +222,7 @@ impl Artifacts {
         Ok(artifacts)
     }
 
-    #[cfg(feature = "bindings-python")]
-    pub(crate) fn operation_contracts(&self) -> Result<Vec<Contract>, ExportError> {
+    pub fn operation_contracts(&self) -> Result<Vec<Contract>, ExportError> {
         decode_contracts(&self.contracts)
     }
 
@@ -240,23 +237,7 @@ impl Artifacts {
         &self.files
     }
 
-    // Export One Catalog Into The Current Producer Build's Cargo Output Directory.
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn export_build(&self, name: &str) -> Result<PathBuf, ExportError> {
-        let directory = std::env::var_os("OUT_DIR").ok_or(ExportError::TargetDirectory)?;
-        self.export(Path::new(&directory), name)
-    }
-
-    pub fn export(&self, output_directory: &Path, name: &str) -> Result<PathBuf, ExportError> {
-        if name.is_empty()
-            || name.len() > 255
-            || !name
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
-        {
-            return Err(ExportError::Name);
-        }
-        let root = output_directory.join("grpc").join(name);
+    pub(super) fn write(&self, root: &Path) -> Result<PathBuf, ExportError> {
         std::fs::create_dir_all(&root)?;
         let previous = match std::fs::read_to_string(root.join("manifest.txt")) {
             Ok(manifest) => manifest,
@@ -296,7 +277,7 @@ impl Artifacts {
             writeln!(manifest, "{name}").expect("String writer");
         }
         std::fs::write(root.join("manifest.txt"), manifest)?;
-        Ok(root)
+        Ok(root.to_owned())
     }
 }
 

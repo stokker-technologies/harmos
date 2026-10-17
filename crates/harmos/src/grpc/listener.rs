@@ -35,7 +35,7 @@ use tokio::{
 use tonic::transport::server::{Connected, TcpConnectInfo};
 
 // Local Imports
-use super::{ingress::Ingress, manager::Settings, middleware::Middleware};
+use super::{inbound::Inbound, manager::Settings, middleware::Middleware};
 use crate::operations::resident::Activation;
 use crate::operations::{OperationInstance, OperationManager, OperationPolicy, RestartPolicy};
 use crate::services::{Fault, Resident, Service, ServiceDefinition};
@@ -337,7 +337,7 @@ impl<A: Application> Resident<A> for Listener {
                 Some((connection, (listener, slots, stopping)))
             },
         );
-        let ingress = Ingress {
+        let inbound = Inbound {
             routes: self.resources.routes.clone(),
             middleware: self.resources.middleware.clone(),
             timeout: self.resources.settings.request_timeout,
@@ -371,12 +371,12 @@ impl<A: Application> Resident<A> for Listener {
                     .accept_http1(true)
                     .layer(tower::util::option_layer(origins))
                     .layer(tonic_web::GrpcWebLayer::new())
-                    .serve_with_incoming_shutdown(ingress, incoming, shutdown)
+                    .serve_with_incoming_shutdown(inbound, incoming, shutdown)
                     .await
                     .map_err(failure)
             } else {
                 server
-                    .serve_with_incoming_shutdown(ingress, incoming, shutdown)
+                    .serve_with_incoming_shutdown(inbound, incoming, shutdown)
                     .await
                     .map_err(failure)
             }

@@ -175,14 +175,14 @@ fn protobuf_fields(
     schema
 }
 
-#[cfg(feature = "reflection")]
+#[cfg(feature = "grpc")]
 fn schema_descriptor(
     definition: harmos_domain::schema::declaration::Definition,
-) -> harmos_domain::schema::reflection::MessageDescriptor {
+) -> harmos_packaging::proto::reflection::MessageDescriptor {
     let settings = harmos_domain::config::SchemaSettings::default();
     let graph =
         harmos_domain::schema::graph::Schema::from_declaration(definition, &settings).unwrap();
-    harmos_domain::schema::reflection::descriptor_schema(&graph, "harmos.stream", &settings)
+    harmos_packaging::proto::reflection::descriptor_schema(&graph, "harmos.stream", &settings)
         .unwrap()
 }
 
@@ -537,10 +537,11 @@ fn contract_scenario() {
             assert_eq!(value.memory_size(), budget);
         });
     }
-    #[cfg(feature = "reflection")]
+    #[cfg(feature = "grpc")]
     {
         scenario_runtime::check("enums_use_oneof", || {
-            use harmos_domain::schema::{Described, reflection::DynamicMessage};
+            use harmos_domain::schema::Described;
+            use harmos_packaging::proto::reflection::DynamicMessage;
             let schema = schema_descriptor(Choice::DEFINITION);
             assert_eq!(schema.oneofs().count(), 1);
             let value = Choice::Text("reflected".into());
@@ -550,10 +551,11 @@ fn contract_scenario() {
             assert_eq!(Choice::decode(&bytes).unwrap(), value);
         });
     }
-    #[cfg(feature = "reflection")]
+    #[cfg(feature = "grpc")]
     {
         scenario_runtime::check("composites_match_canonical", || {
-            use harmos_domain::schema::{Described, reflection::DynamicMessage};
+            use harmos_domain::schema::Described;
+            use harmos_packaging::proto::reflection::DynamicMessage;
             fn canonical<T: Protobuf + Described>(value: &T) {
                 let encoded = Protobuf::encode_to_vec(value);
                 let reflected =

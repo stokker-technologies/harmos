@@ -17,8 +17,6 @@ mod payload;
 #[cfg(feature = "grpc")]
 mod protobuf;
 
-#[cfg(feature = "reflection")]
-pub mod reflection;
 
 /* === Re-Exports === */
 pub use declaration::{Field, Kind};

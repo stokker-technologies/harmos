@@ -43,13 +43,18 @@ pub struct Arguments {
 /* === Public Functions === */
 pub fn run(
     arguments: Arguments,
-    cancellation: &harmos::packaging::BuildCancellation,
-) -> Result<(), harmos::packaging::Error> {
+    cancellation: &harmos_packaging::BuildCancellation,
+    package: bool,
+) -> Result<(), harmos_packaging::Error> {
     let json = arguments.build.json;
     let settings = arguments
         .build
-        .settings(harmos::config::BuildBackend::Guest);
-    let result = harmos::packaging::build_with_cancellation(&settings, cancellation)?;
+        .settings(harmos_packaging::config::BuildBackend::Guest);
+    let result = if package {
+        harmos_packaging::package_with_cancellation(&settings, cancellation)?
+    } else {
+        harmos_packaging::build_with_cancellation(&settings, cancellation)?
+    };
     crate::output::build(&result, json)
 }
 

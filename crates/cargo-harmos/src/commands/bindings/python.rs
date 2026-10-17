@@ -18,8 +18,8 @@
 use std::{io::Read as _, path::PathBuf};
 // Third Party Imports
 // Local Imports
-use harmos::bindings::{
-    Artifacts,
+use harmos_packaging::{
+    proto::Artifacts,
     python::{self, Settings},
 };
 
@@ -86,7 +86,9 @@ pub fn run(arguments: Arguments) -> Result<(), crate::error::Error> {
         license: arguments.license,
         operations: arguments.operation,
     };
-    let output = python::export(&artifacts, &settings, &arguments.output, &arguments.protoc)?;
+    let contracts = artifacts.operation_contracts().map_err(python::Error::from)?;
+    let catalog = python::Catalog { contracts: &contracts, settings: &settings, protoc: &arguments.protoc };
+    let output = python::generate(catalog, &arguments.output)?;
     println!("{}", output.display());
     Ok(())
 }
@@ -119,7 +121,7 @@ fn selected_export(arguments: &Arguments) -> Result<PathBuf, python::Error> {
     if bytes.len() as u64 > MAX_BUILD_BYTES {
         return Err(python::Error::Limit);
     }
-    let build: harmos::packaging::Build = serde_json::from_slice(&bytes)?;
+    let build: harmos_packaging::Build = serde_json::from_slice(&bytes)?;
     let mut entries = build
         .schemas
         .into_iter()

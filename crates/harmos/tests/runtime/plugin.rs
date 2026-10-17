@@ -18,7 +18,7 @@ use crate::scenario_runtime;
 // Third Party Imports
 use serde_json::json;
 // Local Imports
-use harmos::bundle::{Bundle, Executable, Facility, Identity, Limits, Source};
+use harmos_packaging::bundle::{Bundle, Executable, Facility, Identity, Limits, Source};
 use harmos_domain::Registrar;
 use harmos_domain::inventory::{Declaration, Facility as Inspected};
 
@@ -44,7 +44,7 @@ fn identity() -> Identity {
         name: "cargo_plugin".into(),
         version: "2.3.4".parse().unwrap(),
         description: "Cargo description".into(),
-        package: harmos::bundle::PackageMetadata {
+        package: harmos_packaging::bundle::PackageMetadata {
             authors: vec!["Author <author@example.test>".into()],
             license: Some("Apache-2.0".into()),
             repository: Some("https://example.test/source".into()),

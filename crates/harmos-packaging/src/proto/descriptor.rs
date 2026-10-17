@@ -28,9 +28,9 @@ use prost_reflect::{
 };
 
 // Local Imports
-use crate::config::SchemaSettings;
-use crate::operations::Contract;
-use crate::schema::reflection;
+use harmos_domain::config::SchemaSettings;
+use harmos_domain::operations::Contract;
+use super::reflection;
 
 /* === Constants === */
 

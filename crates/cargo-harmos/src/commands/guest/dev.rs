@@ -45,16 +45,16 @@ pub struct Arguments {
 /* === Public Functions === */
 pub fn run(
     arguments: Arguments,
-    cancellation: &harmos::packaging::BuildCancellation,
-) -> Result<(), harmos::packaging::Error> {
+    cancellation: &harmos_packaging::BuildCancellation,
+) -> Result<(), harmos_packaging::Error> {
     let json = arguments.build.json;
     let settings = arguments
         .build
-        .settings(harmos::config::BuildBackend::Guest);
-    let policy = harmos::config::DevSettings {
+        .settings(harmos_packaging::config::BuildBackend::Guest);
+    let policy = harmos_packaging::config::DevSettings {
         debounce: std::time::Duration::from_millis(arguments.debounce_ms),
     };
-    harmos::packaging::dev(&settings, policy, cancellation, |event| {
+    harmos_packaging::dev(&settings, policy, cancellation, |event| {
         crate::output::dev(event, json)
     })
 }

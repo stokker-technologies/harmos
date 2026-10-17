@@ -56,8 +56,8 @@ pub struct BuildArguments {
 
 /* === Implementations === */
 impl BuildArguments {
-    pub fn settings(self, backend: harmos::config::BuildBackend) -> harmos::config::BuildSettings {
-        harmos::config::BuildSettings {
+    pub fn settings(self, backend: harmos_packaging::config::BuildBackend) -> harmos_packaging::config::BuildSettings {
+        harmos_packaging::config::BuildSettings {
             backend,
             manifest: self.manifest_path,
             packages: self.packages,

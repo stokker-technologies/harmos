@@ -11,16 +11,26 @@
 
 /* === Modules === */
 mod build;
+pub mod bundle;
+pub mod config;
+#[cfg(feature = "guest")]
+mod component;
+#[cfg(feature = "bindings-proto")]
+pub mod proto;
+#[cfg(feature = "bindings-python")]
+pub mod python;
+#[cfg(feature = "bindings-typescript")]
+pub mod typescript;
 mod dev;
 mod metadata;
 mod process;
 
 /* === Re-Exports === */
-pub use build::{Artifact, Build, PackageOutput, Schema, build, build_with_cancellation};
+pub use build::{Artifact, Build, PackageOutput, Schema, build, build_with_cancellation, package_with_cancellation};
 pub use dev::{DevEvent, dev};
 pub use harmos_domain::inventory::{Declaration, DeclarationError, Facility};
-#[cfg(feature = "packaging-guest")]
-pub use harmos_guest::componentize;
+#[cfg(feature = "guest")]
+pub use component::componentize;
 pub use process::BuildCancellation;
 
 /* === Imports === */
@@ -59,7 +69,7 @@ pub enum Error {
     #[error(transparent)]
     Watch(#[from] notify::Error),
     #[error(transparent)]
-    Bundle(#[from] harmos_bundle::Error),
+    Bundle(#[from] bundle::Error),
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]

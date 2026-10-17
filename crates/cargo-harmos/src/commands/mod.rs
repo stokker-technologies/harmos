@@ -46,8 +46,6 @@ pub enum Command {
     #[command(about = "Build Or Watch Sandboxed Guest Plugins.")]
     #[cfg(feature = "guest")]
     Guest(guest::Arguments),
-    #[command(about = "Inspect Embedded Plugin Metadata Without Executing Plugin Code.")]
-    Inspect(inspect::Arguments),
 }
 
 /* === Traits === */
@@ -56,7 +54,7 @@ pub enum Command {
 impl Command {
     pub fn run(
         self,
-        cancellation: &harmos::packaging::BuildCancellation,
+        cancellation: &harmos_packaging::BuildCancellation,
     ) -> Result<(), crate::error::Error> {
         #[cfg(not(any(feature = "sidecar", feature = "guest")))]
         let _ = cancellation;
@@ -66,7 +64,6 @@ impl Command {
             Self::Sidecar(arguments) => sidecar::run(arguments, cancellation).map_err(Into::into),
             #[cfg(feature = "guest")]
             Self::Guest(arguments) => guest::run(arguments, cancellation).map_err(Into::into),
-            Self::Inspect(arguments) => inspect::run(arguments).map_err(Into::into),
         }
     }
 }

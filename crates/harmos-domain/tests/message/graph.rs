@@ -135,7 +135,7 @@ pub fn check() {
         .unwrap();
         protobuf.at(definition).unwrap().validate(&[10, 0]).unwrap();
         assert!(protobuf.at(combined.definitions.len()).is_err());
-        let descriptor = harmos_domain::schema::reflection::descriptor_root(
+        let descriptor = harmos_packaging::proto::reflection::descriptor_root(
             &combined,
             definition,
             "harmos.direction",
@@ -153,7 +153,7 @@ pub fn check() {
             ..SchemaSettings::default()
         };
         assert!(
-            harmos_domain::schema::reflection::descriptor_root(
+            harmos_packaging::proto::reflection::descriptor_root(
                 &combined,
                 definition,
                 "harmos.direction",
@@ -309,7 +309,7 @@ pub fn check() {
         assert_eq!(resolved_preparation.definitions, 164);
         assert_eq!(resolved_preparation.fields, 607);
         assert!(
-            harmos_domain::schema::reflection::descriptor_schema(
+            harmos_packaging::proto::reflection::descriptor_schema(
                 &resolved,
                 "checkpoint",
                 &SchemaSettings::default()
@@ -339,7 +339,7 @@ pub fn check() {
         )
         .unwrap();
         assert!(harmos_domain::MemorySize::memory_size(&protobuf) < 32 * 1024);
-        let descriptor = harmos_domain::schema::reflection::descriptor_schema(
+        let descriptor = harmos_packaging::proto::reflection::descriptor_schema(
             &schema,
             "dokime.checkpoint",
             &SchemaSettings::default(),
@@ -456,7 +456,7 @@ pub fn check() {
         let mut nested = vec![1; 64];
         nested.push(0);
         assert!(validator.validate(&nested).is_err());
-        let descriptor = harmos_domain::schema::reflection::descriptor_schema(
+        let descriptor = harmos_packaging::proto::reflection::descriptor_schema(
             &schema,
             "harmos.recursive",
             &SchemaSettings::default(),

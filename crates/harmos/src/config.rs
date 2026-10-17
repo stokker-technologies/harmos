@@ -128,33 +128,7 @@ pub struct PluginGuestSettings {
     pub instances: NonZeroUsize,
 }
 
-#[cfg(feature = "packaging")]
-#[derive(Clone, Debug)]
-pub struct BuildSettings {
-    pub backend: BuildBackend,
-    pub manifest: std::path::PathBuf,
-    pub packages: Vec<String>,
-    pub target: Option<String>,
-    pub target_directory: Option<std::path::PathBuf>,
-    pub release: bool,
-    pub timings: bool,
-    pub features: Vec<String>,
-    pub default_features: bool,
-}
-
-#[cfg(feature = "packaging")]
-#[derive(Clone, Copy, Debug)]
-pub struct DevSettings {
-    pub debounce: Duration,
-}
-
 /* === Enums === */
-#[cfg(feature = "packaging")]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BuildBackend {
-    Sidecar,
-    Guest,
-}
 
 /* === Traits === */
 
@@ -321,32 +295,6 @@ impl Default for OperationSettings {
             queued: NonZeroUsize::new(256).expect("nonzero ordinary admission bound"),
             lifecycle_queued: NonZeroUsize::new(256).expect("nonzero lifecycle admission bound"),
             preparation_bytes: None,
-        }
-    }
-}
-
-#[cfg(feature = "packaging")]
-impl Default for BuildSettings {
-    fn default() -> Self {
-        Self {
-            backend: BuildBackend::Sidecar,
-            manifest: "Cargo.toml".into(),
-            packages: Vec::new(),
-            target: None,
-            target_directory: None,
-            release: false,
-            timings: false,
-            features: Vec::new(),
-            default_features: true,
-        }
-    }
-}
-
-#[cfg(feature = "packaging")]
-impl Default for DevSettings {
-    fn default() -> Self {
-        Self {
-            debounce: Duration::from_millis(100),
         }
     }
 }

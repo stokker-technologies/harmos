@@ -7,17 +7,15 @@
  * ***
  */
 
-// Generate Transport-Neutral Bindings From Selected Operation Contracts.
-
 /* === Modules === */
-pub mod python;
 
 /* === Re-Exports === */
-pub use crate::grpc::Artifacts;
 
 /* === Imports === */
 // Standard Library Imports
+
 // Third Party Imports
+use wit_component::ComponentEncoder;
 // Local Imports
 
 /* === Constants === */
@@ -35,6 +33,14 @@ pub use crate::grpc::Artifacts;
 /* === Implementations === */
 
 /* === Public Functions === */
+pub fn componentize(module: &[u8]) -> Result<Vec<u8>, String> {
+    ComponentEncoder::default()
+        .module(module)
+        .map_err(|error| format!("{error:#}"))?
+        .validate(true)
+        .encode()
+        .map_err(|error| format!("{error:#}"))
+}
 
 /* === Private Functions === */
 
