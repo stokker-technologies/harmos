@@ -18,7 +18,7 @@ pub mod schematic;
 /* === Re-Exports === */
 pub use common::POLICY;
 pub use directories::ListDirectories;
-pub use schematic::streaming::{AnalyzeUpload, AnalyzeExchange};
+pub use schematic::streaming::{AnalyzeExchange, AnalyzeUpload};
 pub use schematic::{AnalyzeSchematic, ProposeRoute, ValidateSchematic};
 
 /* === Imports === */

@@ -12,10 +12,7 @@ use super::*;
 
 /* === Implementations === */
 impl<C> StorageManager<C> {
-    pub async fn lookup_schema(
-        &self,
-        key: &SchemaKey,
-    ) -> Result<(StorageSchema, RetainedMemory)> {
+    pub async fn lookup_schema(&self, key: &SchemaKey) -> Result<(StorageSchema, RetainedMemory)> {
         let held = Held::default();
         let snapshot = self.snapshot(&self.cursor_saved()).await?;
         crate::query::schema_at(&self.inner, &held, &snapshot, key).await
@@ -258,6 +255,4 @@ impl<C> StorageManager<C> {
             .await
             .map_err(Refusal::into_error)
     }
-
-
 }

@@ -11,8 +11,8 @@
 pub use harmos_domain::operations::instance::*;
 
 /* === Imports === */
-use std::future::Future;
 use super::{OperationDeclaration, Response};
+use std::future::Future;
 
 /* === Traits === */
 // One submitted operation. Dropping an unsettled instance requests its
@@ -39,4 +39,3 @@ pub trait Instance<O: OperationDeclaration>: Send + Sized {
 
     fn detach(self) -> Id;
 }
-

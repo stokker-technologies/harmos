@@ -29,14 +29,14 @@ mod presentation;
 mod refusal;
 mod registration;
 pub mod schema;
-pub mod streams;
 pub mod state;
+pub mod streams;
 mod value;
 
 pub mod __private {
     pub use crate::config::SchemaSettings;
-    pub use crate::{declare, postcard_product};
     pub use crate::plugin::schema_markers as PluginSchemaMarkers;
+    pub use crate::{declare, postcard_product};
     pub extern crate serde;
     pub extern crate serde_json;
     pub use crate::streams::{BatchDefinition, StreamCatalog, StreamRow};
@@ -62,7 +62,6 @@ pub mod __private {
         const FACILITY: &'static str;
     }
 
-    pub use crate::state::{Catalogued, Mutual};
     pub use crate::answer::Answer;
     pub use crate::message::MessageError;
     #[cfg(feature = "grpc")]
@@ -72,6 +71,7 @@ pub mod __private {
         multiply as decoding_multiply, vector as decoding_vector,
     };
     pub use crate::message::postcard::{Reader as PostcardReader, Value as PostcardValue};
+    pub use crate::state::{Catalogued, Mutual};
     pub use crate::with_protobuf;
     #[cfg(feature = "grpc")]
     pub use prost;
@@ -95,7 +95,10 @@ pub use registration::{Registrar, Registration, RegistrationError};
 pub use value::{VALUE_DEPTH, Value, ValueError};
 
 #[cfg(feature = "derive")]
-pub use harmos_macros::{catalog, listener, message, observer, operation, plugin, stream, transaction, transactions, record, records, streams};
+pub use harmos_macros::{
+    catalog, listener, message, observer, operation, plugin, record, records, stream, streams,
+    transaction, transactions,
+};
 #[cfg(feature = "grpc")]
 pub use message::Protobuf;
 pub use message::{MemorySize, Message, MessageError, Portable, Storable, btree_map_memory};

@@ -114,10 +114,12 @@ impl RecordProjection for Projection {
 fn gate(at: StorageCursor) -> harmos_runtime::storage::operations::Query {
     harmos_runtime::storage::operations::Query {
         at,
-        source: harmos_runtime::storage::query::Source::Files(harmos_runtime::storage::query::FileSelection {
-            scope: None,
-            item: None,
-        }),
+        source: harmos_runtime::storage::query::Source::Files(
+            harmos_runtime::storage::query::FileSelection {
+                scope: None,
+                item: None,
+            },
+        ),
         transforms: Vec::new(),
         slice: harmos_runtime::storage::query::RowSlice::default(),
     }

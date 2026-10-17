@@ -263,8 +263,9 @@ fn peak_fits_preflight() {
                 position: Position(7),
             };
             let budget = harmos_domain::listeners::encoding_memory_bytes(context, &row).unwrap();
-            let (encoded, measured) =
-                measure(|| harmos_domain::listeners::encode_borrowed(context, &row, budget).unwrap());
+            let (encoded, measured) = measure(|| {
+                harmos_domain::listeners::encode_borrowed(context, &row, budget).unwrap()
+            });
             assert_eq!(measured.allocations, 2, "{measured:?}");
             assert!(measured.peak <= budget, "{measured:?}, budget {budget}");
             assert_eq!(
@@ -273,7 +274,9 @@ fn peak_fits_preflight() {
             );
             assert_eq!(
                 encoded,
-                harmos_domain::Message::encode_to_vec(&Delivery::<Selections>::new(context, row).unwrap())
+                harmos_domain::Message::encode_to_vec(
+                    &Delivery::<Selections>::new(context, row).unwrap()
+                )
             );
         }
 
@@ -384,7 +387,8 @@ fn listener_decode_borrows() {
                 position: Position(7),
             };
             let encoding = harmos_domain::listeners::encoding_memory_bytes(context, &row).unwrap();
-            let encoded = harmos_domain::listeners::encode_borrowed(context, &row, encoding).unwrap();
+            let encoded =
+                harmos_domain::listeners::encode_borrowed(context, &row, encoding).unwrap();
             let (bound, inspected) = measure(|| {
                 <Delivery<Leaves> as harmos_domain::Message>::decoding_memory(&encoded).unwrap()
             });

@@ -7,7 +7,6 @@
  * ***
  */
 
-
 // Build And Development Process Settings.
 
 /* === Modules === */
@@ -22,7 +21,6 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-
 
 /* === Constants === */
 
@@ -56,27 +54,37 @@ pub enum BuildBackend {
     Guest,
 }
 
-
-
 /* === Enums === */
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum BuildProfile { Dev, Release, Bench }
-
+pub enum BuildProfile {
+    Dev,
+    Release,
+    Bench,
+}
 
 /* === Traits === */
 
 /* === Implementations === */
 impl BuildProfile {
     pub const fn name(self) -> &'static str {
-        match self { Self::Dev => "dev", Self::Release => "release", Self::Bench => "bench" }
+        match self {
+            Self::Dev => "dev",
+            Self::Release => "release",
+            Self::Bench => "bench",
+        }
     }
 }
 
 impl std::str::FromStr for BuildProfile {
     type Err = &'static str;
     fn from_str(value: &str) -> Result<Self, Self::Err> {
-        match value { "dev" => Ok(Self::Dev), "release" => Ok(Self::Release), "bench" => Ok(Self::Bench), _ => Err("profile must be dev, release or bench") }
+        match value {
+            "dev" => Ok(Self::Dev),
+            "release" => Ok(Self::Release),
+            "bench" => Ok(Self::Bench),
+            _ => Err("profile must be dev, release or bench"),
+        }
     }
 }
 
@@ -103,8 +111,6 @@ impl Default for DevSettings {
         }
     }
 }
-
-
 
 /* === Public Functions === */
 

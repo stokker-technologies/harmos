@@ -118,12 +118,15 @@ impl Inner {
     }
 
     pub(crate) async fn bounded<T>(&self, future: StorageFuture<'_, T>) -> Result<T> {
-        self.execution.timeout(IO_TIMEOUT, future).await.map_err(|_| {
-            Error::backend(
-                "storage I/O",
-                crate::BackendFailure::Transient,
-                io::Error::new(io::ErrorKind::TimedOut, "backend deadline exceeded"),
-            )
-        })?
+        self.execution
+            .timeout(IO_TIMEOUT, future)
+            .await
+            .map_err(|_| {
+                Error::backend(
+                    "storage I/O",
+                    crate::BackendFailure::Transient,
+                    io::Error::new(io::ErrorKind::TimedOut, "backend deadline exceeded"),
+                )
+            })?
     }
 }

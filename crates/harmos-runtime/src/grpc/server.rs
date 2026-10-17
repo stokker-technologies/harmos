@@ -111,11 +111,9 @@ impl Settings {
         Calls::validate(self.calls)?;
         self.decode.validate()?;
         self.encode.validate()?;
-        self.input
-            .validate()
+        harmos_sdk::operations::streaming::validate(&self.input)
             .map_err(|error| status(error.into()))?;
-        self.output
-            .validate()
+        harmos_sdk::operations::streaming::validate(&self.output)
             .map_err(|error| status(error.into()))?;
         if self.opening_timeout.is_zero() {
             return Err(Status::invalid_argument(

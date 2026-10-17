@@ -8,18 +8,18 @@
  */
 
 /* === Modules === */
+mod carrier;
 mod cleanup;
 mod configuration;
+mod connection;
 mod exchange;
 mod frames;
 mod handshake;
 mod lifecycle;
-mod publication;
-mod carrier;
-mod connection;
 mod managed;
 mod observers;
 mod physical;
+mod publication;
 
 /* === Re-Exports === */
 pub(crate) use connection::Endpoint;

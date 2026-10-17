@@ -36,4 +36,3 @@ where
     table.bind_owned_lifecycle::<I>(std::sync::Arc::clone(&resources), initialize)?;
     table.bind_owned_lifecycle::<S>(resources, shutdown)
 }
-

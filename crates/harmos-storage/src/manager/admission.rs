@@ -200,7 +200,11 @@ impl<C> StorageManager<C> {
         Ok(last)
     }
 
-    pub(super) async fn flush_domain(&self, domain: Domain, through: Option<&StorageCursor>) -> Result<()> {
+    pub(super) async fn flush_domain(
+        &self,
+        domain: Domain,
+        through: Option<&StorageCursor>,
+    ) -> Result<()> {
         let mut changed = self.inner.changed.subscribe();
         let target = {
             let mut state = self.inner.state.lock().unwrap();
@@ -262,5 +266,4 @@ impl<C> StorageManager<C> {
                 .map_err(|_| Error::NotReady { domain: "storage" })?;
         }
     }
-
 }

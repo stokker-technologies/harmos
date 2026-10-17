@@ -12,7 +12,6 @@ use super::*;
 
 /* === Implementations === */
 impl OperationManager {
-
     pub(in crate::operations) fn entry(&self, id: &str) -> Result<Arc<Entry>> {
         let entry = self.capture_entry(id)?;
         entry.available()?;
@@ -76,7 +75,11 @@ impl OperationManager {
         self.capture_provider(id, None)
     }
 
-    pub(in crate::operations) fn capture_provider(&self, id: &str, owner: Option<&str>) -> Result<Arc<Entry>> {
+    pub(in crate::operations) fn capture_provider(
+        &self,
+        id: &str,
+        owner: Option<&str>,
+    ) -> Result<Arc<Entry>> {
         let state = self
             .registry
             .state
@@ -106,5 +109,4 @@ impl OperationManager {
             })?;
         Ok(entry)
     }
-
 }

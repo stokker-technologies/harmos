@@ -16,7 +16,11 @@ impl<C> StorageManager<C> {
         self.create(metadata, false).await
     }
 
-    pub(super) async fn create(&self, metadata: FileMetadata, resumable: bool) -> Result<StorageFile> {
+    pub(super) async fn create(
+        &self,
+        metadata: FileMetadata,
+        resumable: bool,
+    ) -> Result<StorageFile> {
         let (reference_bytes, base_bytes) = file_bytes(&metadata, self.inner.primary.history())?;
         if base_bytes >= self.inner.settings.request.max_pending_write_bytes.get() {
             return Err(Error::InvalidInput {
@@ -206,4 +210,3 @@ impl<C> StorageManager<C> {
         self.inner.notify();
     }
 }
-

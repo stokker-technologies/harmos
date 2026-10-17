@@ -56,7 +56,11 @@ impl Session {
         }
     }
 
-    pub(super) fn recovered(generation: u64, timeout: Duration, execution: crate::execution::Execution) -> Self {
+    pub(super) fn recovered(
+        generation: u64,
+        timeout: Duration,
+        execution: crate::execution::Execution,
+    ) -> Self {
         Self {
             generation,
             disconnected: true,

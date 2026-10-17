@@ -10,6 +10,9 @@
 // Stored Entry Kinds Shared By Scans And Live Subscriptions
 
 /* === Modules === */
+mod sealed {
+    pub trait Sealed {}
+}
 
 /* === Re-Exports === */
 
@@ -39,13 +42,15 @@ use crate::Identifier;
 /* === Type Aliases === */
 
 /* === Structs === */
+/// One accepted queue operation, opaque outside this crate.
+pub struct Queued<'a>(&'a Operation);
 
 /* === Enums === */
 
 /* === Traits === */
 /// One stored entry kind: how it is scanned, matched, positioned and found in
-/// the accepted queue.
-pub(super) trait Entry: Clone + Serialize + Send + Sync + 'static {
+/// the accepted queue. Sealed: the engine owns every implementation.
+pub trait Entry: Clone + Serialize + Send + Sync + 'static + sealed::Sealed {
     type Selection: Send + Sync;
 
     fn position(&self) -> &StorageCursor;
@@ -54,7 +59,7 @@ pub(super) trait Entry: Clone + Serialize + Send + Sync + 'static {
     fn start(_selection: &Self::Selection) -> u64 {
         0
     }
-    fn pending(operation: &Operation) -> &[Self];
+    fn pending(queued: Queued<'_>) -> &[Self];
     fn scan<'a>(
         backend: &'a dyn StorageBackend,
         snapshot: &'a BackendSnapshot,
@@ -64,6 +69,18 @@ pub(super) trait Entry: Clone + Serialize + Send + Sync + 'static {
 }
 
 /* === Implementations === */
+impl<'a> Queued<'a> {
+    pub(super) fn new(operation: &'a Operation) -> Self {
+        Self(operation)
+    }
+}
+
+impl sealed::Sealed for ObjectEntry {}
+impl sealed::Sealed for StoredRecord {}
+impl sealed::Sealed for StoredRow {}
+impl sealed::Sealed for StorageSchema {}
+impl sealed::Sealed for FileReference {}
+
 impl Entry for ObjectEntry {
     type Selection = ObjectSelection;
 
@@ -84,8 +101,8 @@ impl Entry for ObjectEntry {
                 .is_none_or(|key| key == &self.value.item)
     }
 
-    fn pending(operation: &Operation) -> &[Self] {
-        match operation {
+    fn pending(queued: Queued<'_>) -> &[Self] {
+        match queued.0 {
             Operation::ObjectGroup { objects, .. } => objects,
             _ => &[],
         }
@@ -119,8 +136,8 @@ impl Entry for StoredRecord {
             )
     }
 
-    fn pending(operation: &Operation) -> &[Self] {
-        match operation {
+    fn pending(queued: Queued<'_>) -> &[Self] {
+        match queued.0 {
             Operation::Records(values) => values,
             _ => &[],
         }
@@ -161,8 +178,8 @@ impl Entry for StoredRow {
         selection.after
     }
 
-    fn pending(operation: &Operation) -> &[Self] {
-        match operation {
+    fn pending(queued: Queued<'_>) -> &[Self] {
+        match queued.0 {
             Operation::Stream(values) => values,
             _ => &[],
         }
@@ -189,8 +206,8 @@ impl Entry for StorageSchema {
         selection.schema.as_ref().is_none_or(|key| key == &self.key)
     }
 
-    fn pending(operation: &Operation) -> &[Self] {
-        match operation {
+    fn pending(queued: Queued<'_>) -> &[Self] {
+        match queued.0 {
             Operation::Schema(value) => std::slice::from_ref(value),
             Operation::ObjectGroup { schemas, .. } => schemas,
             _ => &[],
@@ -219,8 +236,8 @@ impl Entry for FileReference {
             && optional(&selection.item, Some(&self.metadata.id))
     }
 
-    fn pending(operation: &Operation) -> &[Self] {
-        match operation {
+    fn pending(queued: Queued<'_>) -> &[Self] {
+        match queued.0 {
             Operation::File(value) => std::slice::from_ref(value),
             _ => &[],
         }

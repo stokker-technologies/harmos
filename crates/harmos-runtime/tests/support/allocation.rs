@@ -60,7 +60,9 @@ use std::time::{Duration, Instant};
 
 // Local Imports
 use feeds::{Narrow, Waveform, Wide};
-use harmos_runtime::{Application, Runtime, state::At, state::Never, streams::Item, streams::Stream};
+use harmos_runtime::{
+    Application, Runtime, state::At, state::Never, streams::Item, streams::Stream,
+};
 
 /* === Constants === */
 const PHASES: [(u64, Duration); 7] = [

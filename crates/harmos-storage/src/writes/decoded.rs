@@ -8,9 +8,9 @@
  */
 
 /* === Imports === */
-use crate::{MemorySize, Result};
-use crate::arrow::ArrowBatch;
 use super::DataBatch;
+use crate::arrow::ArrowBatch;
+use crate::{MemorySize, Result};
 
 /* === Structs === */
 // A Write Batch Whose Arrow IPC Data Has Been Decoded For Admission.
@@ -51,4 +51,3 @@ impl MemorySize for DecodedBatch {
             )
     }
 }
-

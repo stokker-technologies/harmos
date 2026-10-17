@@ -22,8 +22,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 // Third Party Imports
+use crate::digest;
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
 
 // Local Imports
 use super::{BuildCancellation, Error, metadata::Metadata, process::Process};
@@ -87,10 +87,14 @@ struct Capture {
 }
 
 #[derive(Deserialize)]
-struct CaptureInputs { rustc: String }
+struct CaptureInputs {
+    rustc: String,
+}
 
 #[derive(Deserialize)]
-struct CaptureFile { sha256: String }
+struct CaptureFile {
+    sha256: String,
+}
 
 #[derive(Deserialize)]
 struct Message {
@@ -133,7 +137,12 @@ impl Artifact {
         safe_name(&producer)?;
         safe_name(&name)?;
         let sha256 = digest(&read_artifact(&path)?);
-        Ok(Self { producer, name, path, sha256 })
+        Ok(Self {
+            producer,
+            name,
+            path,
+            sha256,
+        })
     }
 }
 
@@ -141,8 +150,16 @@ impl Schema {
     pub fn read(producer: String, catalog: String, directory: PathBuf) -> Result<Self, Error> {
         safe_name(&producer)?;
         safe_name(&catalog)?;
-        let files = schema_files(&directory)?.into_iter().map(|(name, bytes)| (name, digest(&bytes))).collect();
-        Ok(Self { producer, catalog, directory, files })
+        let files = schema_files(&directory)?
+            .into_iter()
+            .map(|(name, bytes)| (name, digest(&bytes)))
+            .collect();
+        Ok(Self {
+            producer,
+            catalog,
+            directory,
+            files,
+        })
     }
 }
 
@@ -158,69 +175,134 @@ impl Build {
         validate_backend(settings)?;
         let receipt: Capture = serde_json::from_reader(receipt)?;
         if receipt.schema != 1 || receipt.command.is_empty() || receipt.target.is_empty() {
-            return Err(Error::Settings("unsupported or incomplete archive producer receipt".into()));
+            return Err(Error::Settings(
+                "unsupported or incomplete archive producer receipt".into(),
+            ));
         }
-        if receipt.profile != settings.profile || settings.target.as_ref().is_some_and(|target| target != &receipt.target) {
-            return Err(Error::Settings("requested profile or target disagrees with archive producer receipt".into()));
+        if receipt.profile != settings.profile
+            || settings
+                .target
+                .as_ref()
+                .is_some_and(|target| target != &receipt.target)
+        {
+            return Err(Error::Settings(
+                "requested profile or target disagrees with archive producer receipt".into(),
+            ));
         }
         let mut message_bytes = Vec::new();
         messages.read_to_end(&mut message_bytes)?;
         let mut metadata_bytes = Vec::new();
         metadata.read_to_end(&mut metadata_bytes)?;
-        if digest(&message_bytes) != receipt.messages.sha256 || digest(&metadata_bytes) != receipt.metadata.sha256 {
-            return Err(Error::Settings("captured Cargo streams disagree with archive producer byte stamps".into()));
+        if digest(&message_bytes) != receipt.messages.sha256
+            || digest(&metadata_bytes) != receipt.metadata.sha256
+        {
+            return Err(Error::Settings(
+                "captured Cargo streams disagree with archive producer byte stamps".into(),
+            ));
         }
         let metadata: Metadata = serde_json::from_slice(&metadata_bytes)?;
         let packages = metadata.select(settings)?;
-        if packages.is_empty() || packages.values().collect::<BTreeSet<_>>().len() != packages.len() {
-            return Err(Error::Settings("collection needs unambiguous selected Cargo packages".into()));
+        if packages.is_empty() || packages.values().collect::<BTreeSet<_>>().len() != packages.len()
+        {
+            return Err(Error::Settings(
+                "collection needs unambiguous selected Cargo packages".into(),
+            ));
         }
         if (settings.backend == BuildBackend::Guest) != receipt.target.starts_with("wasm32-") {
-            return Err(Error::Settings("backend and producer target disagree".into()));
+            return Err(Error::Settings(
+                "backend and producer target disagree".into(),
+            ));
         }
         let (artifacts, outputs) = read_messages(std::io::Cursor::new(message_bytes), &packages)?;
         let profile_directory = match receipt.profile {
             BuildProfile::Dev => "debug",
             BuildProfile::Release | BuildProfile::Bench => "release",
         };
-        let native = receipt.inputs.rustc.lines().find_map(|line| line.strip_prefix("host: "));
-        let expected = metadata.target_directory.join(&receipt.target).join(profile_directory);
+        let native = receipt
+            .inputs
+            .rustc
+            .lines()
+            .find_map(|line| line.strip_prefix("host: "));
+        let expected = metadata
+            .target_directory
+            .join(&receipt.target)
+            .join(profile_directory);
         let host = metadata.target_directory.join(profile_directory);
-        let matches = |path: &Path| path.starts_with(&expected)
-            || (native == Some(receipt.target.as_str()) && path.starts_with(&host));
+        let matches = |path: &Path| {
+            path.starts_with(&expected)
+                || (native == Some(receipt.target.as_str()) && path.starts_with(&host))
+        };
         if artifacts.iter().any(|artifact| !matches(&artifact.path))
             || outputs.iter().any(|(_, directory)| !matches(directory))
         {
-            return Err(Error::Settings("captured artifacts do not match the producer target/profile output directories".into()));
+            return Err(Error::Settings(
+                "captured artifacts do not match the producer target/profile output directories"
+                    .into(),
+            ));
         }
-        let provided = artifacts.iter().map(|artifact| artifact.producer.as_str()).collect::<BTreeSet<_>>();
-        if packages.values().any(|name| !provided.contains(name.as_str())) {
-            return Err(Error::Settings("captured build is missing a selected package artifact".into()));
+        let provided = artifacts
+            .iter()
+            .map(|artifact| artifact.producer.as_str())
+            .collect::<BTreeSet<_>>();
+        if packages
+            .values()
+            .any(|name| !provided.contains(name.as_str()))
+        {
+            return Err(Error::Settings(
+                "captured build is missing a selected package artifact".into(),
+            ));
         }
         if provided.len() != artifacts.len() {
-            return Err(Error::Settings("captured build contains ambiguous package artifacts".into()));
+            return Err(Error::Settings(
+                "captured build contains ambiguous package artifacts".into(),
+            ));
         }
         for artifact in &artifacts {
             if receipt.artifacts.get(&artifact.path) != Some(&artifact.sha256) {
                 return Err(Error::ArtifactChanged(artifact.path.clone()));
             }
         }
-        finish_build(settings.backend, receipt.profile, receipt.target, artifacts, outputs, &BuildCancellation::default(), Some(&receipt.generated))
+        finish_build(
+            settings.backend,
+            receipt.profile,
+            receipt.target,
+            artifacts,
+            outputs,
+            &BuildCancellation::default(),
+            Some(&receipt.generated),
+        )
     }
 
     // Relocation Changes Locations Only; It Never Replaces The Original Byte Stamps.
     pub fn relocate(&mut self, from: &Path, to: &Path) -> Result<(), Error> {
-        let relocate = |path: &Path| path.strip_prefix(from)
-            .map(|relative| to.join(relative))
-            .map_err(|_| Error::Settings("build receipt paths do not share the selected source root".into()));
-        let artifacts = self.artifacts.iter().map(|artifact| relocate(&artifact.path)).collect::<Result<Vec<_>, _>>()?;
-        let schemas = self.schemas.iter().map(|schema| relocate(&schema.directory)).collect::<Result<Vec<_>, _>>()?;
-        for (artifact, path) in self.artifacts.iter_mut().zip(artifacts) { artifact.path = path; }
-        for (schema, directory) in self.schemas.iter_mut().zip(schemas) { schema.directory = directory; }
+        let relocate = |path: &Path| {
+            path.strip_prefix(from)
+                .map(|relative| to.join(relative))
+                .map_err(|_| {
+                    Error::Settings(
+                        "build receipt paths do not share the selected source root".into(),
+                    )
+                })
+        };
+        let artifacts = self
+            .artifacts
+            .iter()
+            .map(|artifact| relocate(&artifact.path))
+            .collect::<Result<Vec<_>, _>>()?;
+        let schemas = self
+            .schemas
+            .iter()
+            .map(|schema| relocate(&schema.directory))
+            .collect::<Result<Vec<_>, _>>()?;
+        for (artifact, path) in self.artifacts.iter_mut().zip(artifacts) {
+            artifact.path = path;
+        }
+        for (schema, directory) in self.schemas.iter_mut().zip(schemas) {
+            schema.directory = directory;
+        }
         Ok(())
     }
 }
-
 
 /* === Public Functions === */
 pub fn build(settings: &BuildSettings) -> Result<Build, Error> {
@@ -313,7 +395,15 @@ pub(super) fn build_resolved(
         return Err(Error::Cargo(status.to_string()));
     }
 
-    finish_build(settings.backend, settings.profile, target, artifacts, outputs, cancellation, None)
+    finish_build(
+        settings.backend,
+        settings.profile,
+        target,
+        artifacts,
+        outputs,
+        cancellation,
+        None,
+    )
 }
 
 fn finish_build(
@@ -338,9 +428,9 @@ fn finish_build(
         ));
     }
     #[cfg(feature = "guest")]
-    let mut components = BTreeMap::new();
+    let mut components: BTreeMap<PathBuf, Vec<u8>> = BTreeMap::new();
     #[cfg(not(feature = "guest"))]
-    let components = BTreeMap::new();
+    let components: BTreeMap<PathBuf, Vec<u8>> = BTreeMap::new();
     // Cargo Emits Core Modules; Consumers Receive Ready-To-Load Components.
     #[cfg(feature = "guest")]
     for artifact in &mut artifacts {
@@ -352,7 +442,9 @@ fn finish_build(
             continue;
         }
         let module = std::fs::read(&artifact.path)?;
-        if digest(&module) != artifact.sha256 { return Err(Error::ArtifactChanged(artifact.path.clone())); }
+        if digest(&module) != artifact.sha256 {
+            return Err(Error::ArtifactChanged(artifact.path.clone()));
+        }
         super::Declaration::inspect(&module, super::Facility::Guest)?;
         if module.starts_with(b"\0asm\x0d\0\x01\0") {
             continue;
@@ -365,9 +457,17 @@ fn finish_build(
         artifact.path = output;
     }
 
-    let expected_schemas = generated.map(|generated| generated.iter().filter(|(path, _)| {
-        outputs.iter().any(|(_, directory)| path.starts_with(directory.join("grpc")))
-    }).map(|(path, sha256)| (path.clone(), sha256.clone())).collect::<BTreeMap<_, _>>());
+    let expected_schemas = generated.map(|generated| {
+        generated
+            .iter()
+            .filter(|(path, _)| {
+                outputs
+                    .iter()
+                    .any(|(_, directory)| path.starts_with(directory.join("grpc")))
+            })
+            .map(|(path, sha256)| (path.clone(), sha256.clone()))
+            .collect::<BTreeMap<_, _>>()
+    });
     let mut schemas = BTreeMap::new();
     for (producer, directory) in outputs {
         let root = directory.join("grpc");
@@ -390,7 +490,10 @@ fn finish_build(
                     Schema {
                         producer: producer.clone(),
                         catalog,
-                        files: schema_files(&entry.path())?.into_iter().map(|(name, bytes)| (name, digest(&bytes))).collect(),
+                        files: schema_files(&entry.path())?
+                            .into_iter()
+                            .map(|(name, bytes)| (name, digest(&bytes)))
+                            .collect(),
                         directory: entry.path(),
                     },
                 )
@@ -402,11 +505,19 @@ fn finish_build(
     }
     let schemas: Vec<_> = schemas.into_values().collect();
     if let Some(expected) = expected_schemas {
-        let actual = schemas.iter().flat_map(|schema| schema.files.iter().map(|(name, sha256)|
-            (schema.directory.join(name), sha256.clone())
-        )).collect::<BTreeMap<_, _>>();
+        let actual = schemas
+            .iter()
+            .flat_map(|schema| {
+                schema
+                    .files
+                    .iter()
+                    .map(|(name, sha256)| (schema.directory.join(name), sha256.clone()))
+            })
+            .collect::<BTreeMap<_, _>>();
         if actual != expected {
-            return Err(Error::Settings("generated schema set differs from the archive producer snapshot".into()));
+            return Err(Error::Settings(
+                "generated schema set differs from the archive producer snapshot".into(),
+            ));
         }
     }
     cancellation.check()?;
@@ -447,7 +558,9 @@ pub fn package_with_cancellation(
     cancellation: &BuildCancellation,
 ) -> Result<Vec<PackageOutput>, Error> {
     if build.artifacts.is_empty() || build.target.is_empty() {
-        return Err(Error::Settings("a stamped build with artifacts and a target is required".into()));
+        return Err(Error::Settings(
+            "a stamped build with artifacts and a target is required".into(),
+        ));
     }
     let artifacts = &build.artifacts;
     let schemas = &build.schemas;
@@ -485,7 +598,10 @@ pub fn package_with_cancellation(
         {
             safe_name(&schema.catalog)?;
             let contents = schema_files(&schema.directory)?;
-            let hashes: BTreeMap<_, _> = contents.iter().map(|(name, bytes)| (name.clone(), digest(bytes))).collect();
+            let hashes: BTreeMap<_, _> = contents
+                .iter()
+                .map(|(name, bytes)| (name.clone(), digest(bytes)))
+                .collect();
             if hashes != schema.files {
                 return Err(Error::ArtifactChanged(schema.directory.clone()));
             }
@@ -531,18 +647,26 @@ pub fn package_with_cancellation(
     for (path, (producer, bundle)) in prepared {
         let sha256 = digest(bundle.bytes());
         publish(&path, bundle.bytes())?;
-        packages.push(PackageOutput { producer, path, sha256 });
+        packages.push(PackageOutput {
+            producer,
+            path,
+            sha256,
+        });
     }
     Ok(packages)
 }
 
-fn digest(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
-}
-
 fn safe_name(name: &str) -> Result<(), Error> {
-    if name.is_empty() || name.len() > 255 || !name.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.')) || matches!(name, "." | "..") {
-        return Err(Error::Settings("artifact names must be single path components".into()));
+    if name.is_empty()
+        || name.len() > 255
+        || !name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
+        || matches!(name, "." | "..")
+    {
+        return Err(Error::Settings(
+            "artifact names must be single path components".into(),
+        ));
     }
     Ok(())
 }
@@ -550,27 +674,46 @@ fn safe_name(name: &str) -> Result<(), Error> {
 fn read_artifact(path: &Path) -> Result<Vec<u8>, Error> {
     use std::io::Read as _;
     let limit = crate::bundle::Limits::default().file_bytes;
-    if path.is_symlink() { return Err(Error::Settings("artifact must be a regular file".into())); }
+    if path.is_symlink() {
+        return Err(Error::Settings("artifact must be a regular file".into()));
+    }
     let file = std::fs::File::open(path)?;
-    if !file.metadata()?.is_file() { return Err(Error::Settings("artifact must be a regular file".into())); }
+    if !file.metadata()?.is_file() {
+        return Err(Error::Settings("artifact must be a regular file".into()));
+    }
     let mut bytes = Vec::new();
     file.take(limit as u64 + 1).read_to_end(&mut bytes)?;
-    if bytes.len() > limit { return Err(Error::Settings("artifact exceeds bundle byte limit".into())); }
+    if bytes.len() > limit {
+        return Err(Error::Settings("artifact exceeds bundle byte limit".into()));
+    }
     Ok(bytes)
 }
 
 fn schema_files(directory: &Path) -> Result<BTreeMap<String, Vec<u8>>, Error> {
     let manifest = read_artifact(&directory.join("manifest.txt"))?;
-    let text = std::str::from_utf8(&manifest).map_err(|_| Error::Settings("schema manifest must be UTF-8".into()))?;
+    let text = std::str::from_utf8(&manifest)
+        .map_err(|_| Error::Settings("schema manifest must be UTF-8".into()))?;
     let names: Vec<_> = text.lines().collect();
-    if names.first() != Some(&"descriptors.bin") || names.len() > crate::bundle::Limits::default().files || names.iter().copied().collect::<BTreeSet<_>>().len() != names.len() || names.contains(&"manifest.txt") {
-        return Err(Error::Settings("schema manifest is incomplete or duplicated".into()));
+    if names.first() != Some(&"descriptors.bin")
+        || names.len() > crate::bundle::Limits::default().files
+        || names.iter().copied().collect::<BTreeSet<_>>().len() != names.len()
+        || names.contains(&"manifest.txt")
+    {
+        return Err(Error::Settings(
+            "schema manifest is incomplete or duplicated".into(),
+        ));
     }
     let mut files = BTreeMap::new();
     for name in names {
         let relative = Path::new(name);
-        if relative.components().any(|part| !matches!(part, std::path::Component::Normal(_))) || name.contains(['\\', ':']) {
-            return Err(Error::Settings("schema manifest contains an unsafe path".into()));
+        if relative
+            .components()
+            .any(|part| !matches!(part, std::path::Component::Normal(_)))
+            || name.contains(['\\', ':'])
+        {
+            return Err(Error::Settings(
+                "schema manifest contains an unsafe path".into(),
+            ));
         }
         files.insert(name.to_owned(), read_artifact(&directory.join(relative))?);
     }
@@ -602,7 +745,9 @@ fn read_messages(
     for line in reader.lines() {
         let message: Message = serde_json::from_str(&line?)?;
         if finished {
-            return Err(Error::Cargo("messages follow the completed Cargo build".into()));
+            return Err(Error::Cargo(
+                "messages follow the completed Cargo build".into(),
+            ));
         }
         if message.reason == "build-finished" {
             if message.success != Some(true) {
@@ -627,7 +772,9 @@ fn read_messages(
             }
             continue;
         }
-        if message.reason != "compiler-artifact" || message.profile.is_some_and(|profile| profile.test) {
+        if message.reason != "compiler-artifact"
+            || message.profile.is_some_and(|profile| profile.test)
+        {
             continue;
         }
         let Some(target) = message.target else {
@@ -650,10 +797,16 @@ fn read_messages(
         }
     }
     if !finished {
-        return Err(Error::Cargo("captured Cargo stream has no successful build-finished event".into()));
+        return Err(Error::Cargo(
+            "captured Cargo stream has no successful build-finished event".into(),
+        ));
     }
-    artifacts.sort_by(|left, right| (&left.producer, &left.name, &left.path).cmp(&(&right.producer, &right.name, &right.path)));
-    artifacts.dedup_by(|left, right| left.producer == right.producer && left.name == right.name && left.path == right.path);
+    artifacts.sort_by(|left, right| {
+        (&left.producer, &left.name, &left.path).cmp(&(&right.producer, &right.name, &right.path))
+    });
+    artifacts.dedup_by(|left, right| {
+        left.producer == right.producer && left.name == right.name && left.path == right.path
+    });
     Ok((artifacts, outputs))
 }
 

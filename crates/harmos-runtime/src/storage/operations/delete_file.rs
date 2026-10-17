@@ -70,7 +70,8 @@ impl<C: 'static> Operation for Handler<C> {
         let result: ::core::result::Result<StagedFile, Self::Error> = async move {
             self.storage
                 .delete_file_once(&request.mutation, &request.file)
-                .await.map_err(Into::into)
+                .await
+                .map_err(Into::into)
         }
         .await;
         result.map(::core::convert::Into::into)

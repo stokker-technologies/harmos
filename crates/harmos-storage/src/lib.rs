@@ -13,6 +13,8 @@ mod arrow_tests;
 #[cfg(test)]
 mod policy_tests;
 mod admissions;
+#[doc(hidden)]
+pub mod aggregate;
 pub mod arrow;
 mod backend;
 mod batch;
@@ -20,6 +22,8 @@ mod batching;
 mod capacity;
 pub mod config;
 mod deletion;
+mod error;
+pub mod execution;
 mod file_checkpoint;
 mod file_follow;
 mod file_reads;
@@ -31,17 +35,13 @@ mod objects;
 pub mod query;
 mod queue;
 mod receipts;
-mod schema;
+mod schema_encoding;
 mod selection;
+pub mod signal;
 mod snapshot;
 mod staging;
 pub mod state;
 mod worker;
-pub mod execution;
-pub mod signal;
-#[doc(hidden)]
-pub mod aggregate;
-mod error;
 pub mod writes;
 
 /* === Re-Exports === */
@@ -50,6 +50,7 @@ pub use backend::{
 };
 pub use batch::{StorageBatch, StorageEntry, StoragePart};
 pub use config::{StorageBudget, StorageRequestSettings, StorageResponseSettings, StorageSettings};
+pub use error::{BackendFailure, Error, Result};
 pub use file_checkpoint::FileCheckpoint;
 pub use file_follow::FileFollower;
 pub use file_reads::FileReader;
@@ -63,19 +64,18 @@ pub use harmos_domain::model::storage::{
     StorageInfo, StoreHistory, StoredObject, StoredRecord, StoredRow, StreamInput, StreamWrite,
 };
 pub use manager::{ErasedCatalog, StorageManager, StorageMetrics, WorkerOwner, encoded_size};
-pub use worker::Worker;
-pub use error::{Error, Result, BackendFailure};
 pub use objects::ObjectGroup;
 pub use query::{ObjectRead, ObjectReader, QueryReader, RecordRead, RecordReader};
 pub use receipts::{MutationReceipt, MutationValue};
 pub use staging::StorageFile;
 #[doc(hidden)]
 pub use staging::checkpoint::FileSave;
+pub use worker::Worker;
 pub use writes::StorageSchema;
 
 // Internal Paths Refer To This Crate's One Canonical Engine Namespace.
 use crate as storage;
 extern crate self as harmos_storage;
-pub use harmos_domain::{Aggregate, Identifier, MemorySize, Message, btree_map_memory, schema};
 #[cfg(feature = "grpc")]
 pub use harmos_domain::Protobuf;
+pub use harmos_domain::{Aggregate, Identifier, MemorySize, Message, btree_map_memory, schema};

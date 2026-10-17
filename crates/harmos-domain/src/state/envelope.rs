@@ -20,7 +20,6 @@ use serde::{Deserialize, Serialize};
 // Local Imports
 use super::entry::{Metadata, Position};
 
-
 /* === Constants === */
 
 /* === Macros === */

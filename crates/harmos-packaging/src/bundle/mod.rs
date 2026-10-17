@@ -87,7 +87,7 @@ impl Bundle {
             {
                 return Err(Error::Limit("registration count"));
             }
-            let sha256 = archive::digest(source.bytes);
+            let sha256 = crate::digest(source.bytes);
             metadata::file_size(
                 source,
                 &sha256,

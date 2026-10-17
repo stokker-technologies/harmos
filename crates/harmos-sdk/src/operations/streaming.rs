@@ -10,7 +10,7 @@
 /* === Modules === */
 
 /* === Re-Exports === */
-pub use crate::config::StreamSettings;
+pub use harmos_domain::config::StreamSettings;
 
 /* === Imports === */
 
@@ -96,18 +96,6 @@ pub enum Error {
 /* === Traits === */
 
 /* === Implementations === */
-impl StreamSettings {
-    pub fn validate(&self) -> Result<()> {
-        if self.bytes.get() > Semaphore::MAX_PERMITS
-            || self.bytes.get() > u32::MAX as usize
-            || self.items.get() > Semaphore::MAX_PERMITS
-        {
-            return Err(Error::Settings);
-        }
-        Ok(())
-    }
-}
-
 impl<T: Send + 'static> super::EndpointSet for StreamInput<T> {
     fn transferred(&self) -> bool {
         self.transferred.load(Ordering::Acquire)
@@ -412,6 +400,16 @@ impl<T: crate::Protobuf + MemorySize, E: From<Error>> StreamOutput<T, E> {
 }
 
 /* === Public Functions === */
+pub fn validate(settings: &StreamSettings) -> Result<()> {
+    if settings.bytes.get() > Semaphore::MAX_PERMITS
+        || settings.bytes.get() > u32::MAX as usize
+        || settings.items.get() > Semaphore::MAX_PERMITS
+    {
+        return Err(Error::Settings);
+    }
+    Ok(())
+}
+
 pub fn stream<T>(settings: StreamSettings) -> Result<(StreamOutput<T>, StreamInput<T>)> {
     channel::<T, Error>(settings)
 }
@@ -420,7 +418,7 @@ pub fn channel<T, E: From<Error>>(
     settings: StreamSettings,
 ) -> Result<(StreamOutput<T, E>, StreamInput<T>), E> {
     let bytes = settings.bytes.get();
-    settings.validate()?;
+    validate(&settings)?;
     let (sender, receiver) = mpsc::channel(settings.items.get());
     let transferred = Arc::new(AtomicBool::new(false));
     Ok((

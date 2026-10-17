@@ -118,8 +118,8 @@ impl WireEndpoints for () {
 
 impl WireStreamLimits {
     pub fn validate(&self) -> Result<(), ServingError> {
-        self.input.validate().map_err(ServingError::Stream)?;
-        self.output.validate().map_err(ServingError::Stream)
+        streaming::validate(&self.input).map_err(ServingError::Stream)?;
+        streaming::validate(&self.output).map_err(ServingError::Stream)
     }
 }
 

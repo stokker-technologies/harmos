@@ -15,8 +15,8 @@ mod reader;
 
 /* === Re-Exports === */
 pub use admission::Permit;
-pub use reader::RecoveryReader;
 pub use config::StorageStateSettings;
+pub use reader::RecoveryReader;
 
 /* === Imports === */
 // Standard Library Imports

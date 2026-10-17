@@ -20,8 +20,8 @@
 use super::manager::encoded_size;
 use super::state::Permit;
 use super::{ReadLimits, RecordWrite};
-use std::{future::Future, pin::Pin};
 use crate::{Error, Result, state::Envelope};
+use std::{future::Future, pin::Pin};
 
 /* === Constants === */
 

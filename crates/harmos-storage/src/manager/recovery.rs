@@ -160,6 +160,4 @@ impl<C> StorageManager<C> {
         }
         Ok(snapshot)
     }
-
-
 }

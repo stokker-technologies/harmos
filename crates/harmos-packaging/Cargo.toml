@@ -27,7 +27,6 @@ sidecar = []
 guest = ["dep:wit-component"]
 bindings-proto = ["dep:heck", "dep:prost-reflect", "harmos-domain/grpc"]
 bindings-python = ["bindings-proto"]
-bindings-typescript = ["bindings-proto"]
 
 # === Dependencies === #
 

@@ -73,7 +73,8 @@ impl<C: 'static> Operation for Handler<C> {
                     &request.schema.key,
                     request.schema.graph(),
                 )
-                .await.map_err(Into::into)
+                .await
+                .map_err(Into::into)
         }
         .await;
         result.map(::core::convert::Into::into)

@@ -30,7 +30,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 /* === Enums === */
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("invalid schematic") ]
+    #[error("invalid schematic")]
     InvalidSchematic,
 }
 

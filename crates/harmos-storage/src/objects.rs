@@ -22,8 +22,8 @@ use super::{
     ObjectCatalog, ObjectEntry, ObjectPoint, ObjectReceipt, ObjectRevision, ObjectValue,
     ObjectVersion, ObjectVersionToken, StorageManager, StorageSchema, StoredObject,
 };
-use crate::catalog::Contains;
 use crate::{Error, MemorySize, Result};
+use harmos_domain::catalog::Contains;
 use harmos_domain::model::storage::catalog::{decode_admitted, object_schema};
 use harmos_domain::model::storage::object_key;
 

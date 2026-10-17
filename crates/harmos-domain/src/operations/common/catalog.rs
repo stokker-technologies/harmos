@@ -41,8 +41,6 @@ pub struct Entry {
 
 pub struct Declarations;
 
-
-
 /* === Enums === */
 
 /* === Traits === */

@@ -299,7 +299,9 @@ impl Reservation {
         let inner = Arc::clone(&self.inner);
         let mut waiting: Option<Waiting> = None;
         let result = inner
-            .wait(deadline, |state| self.grow_step(state, additional, &mut waiting))
+            .wait(deadline, |state| {
+                self.grow_step(state, additional, &mut waiting)
+            })
             .await;
         drop(waiting);
         result
@@ -344,17 +346,27 @@ impl Reservation {
         RetainedMemory::new(owner)
     }
 
-    fn grow_step(&mut self, state: &mut State, additional: usize, waiting: &mut Option<Waiting>) -> Attempt<()> {
+    fn grow_step(
+        &mut self,
+        state: &mut State,
+        additional: usize,
+        waiting: &mut Option<Waiting>,
+    ) -> Attempt<()> {
         match self.attempt(state, additional) {
             Attempt::Wait if waiting.is_none() && self.held.bytes() != 0 => {
                 match Waiting::join(&self.inner, state, self.pool, &self.held, additional) {
-                    Some(joined) => { *waiting = Some(joined); Attempt::Wait }
+                    Some(joined) => {
+                        *waiting = Some(joined);
+                        Attempt::Wait
+                    }
                     None => Attempt::Refuse(Refusal::Cycle),
                 }
             }
             attempt => {
-                if !matches!(&attempt, Attempt::Wait) {
-                    if let Some(waiting) = waiting { waiting.leave(state); }
+                if !matches!(&attempt, Attempt::Wait)
+                    && let Some(waiting) = waiting
+                {
+                    waiting.leave(state);
                 }
                 attempt
             }
@@ -532,19 +544,23 @@ mod capacity_backend;
 
 #[cfg(test)]
 mod tests {
+    use super::capacity_backend::{Data, Recovery, history, storage_settings};
     use super::*;
     use std::num::NonZeroUsize;
-    use super::capacity_backend::{Data, Recovery, history, storage_settings};
 
     #[test]
     fn admitted_grower_is_not_counted_in_a_later_cycle_decision() {
         let mut settings = storage_settings();
         settings.budget.read_memory_bytes = NonZeroUsize::new(100).unwrap();
         settings.response.batch_bytes = NonZeroUsize::new(40).unwrap();
-        let storage = crate::StorageManager::<()>::new(crate::StorageBackends {
-            primary: Arc::new(Data::<()>::new(history())),
-            state: Arc::new(Recovery::new(history())),
-        }, settings).unwrap();
+        let storage = crate::StorageManager::<()>::new(
+            crate::StorageBackends {
+                primary: Arc::new(Data::<()>::new(history())),
+                state: Arc::new(Recovery::new(history())),
+            },
+            settings,
+        )
+        .unwrap();
         let inner = &storage.inner;
         {
             let mut state = inner.state.lock().unwrap();
@@ -558,19 +574,31 @@ mod tests {
         let mut waiting_b = None;
         {
             let mut state = inner.state.lock().unwrap();
-            assert!(matches!(a.grow_step(&mut state, 40, &mut waiting_a), Attempt::Wait));
-            assert!(matches!(b.grow_step(&mut state, 40, &mut waiting_b), Attempt::Wait));
+            assert!(matches!(
+                a.grow_step(&mut state, 40, &mut waiting_a),
+                Attempt::Wait
+            ));
+            assert!(matches!(
+                b.grow_step(&mut state, 40, &mut waiting_b),
+                Attempt::Wait
+            ));
         }
         drop(external);
         let mut waiting_c = None;
         let mut c = Reservation::empty(inner, Pool::Read, &Held::default());
         {
             let mut state = inner.state.lock().unwrap();
-            assert!(matches!(a.grow_step(&mut state, 40, &mut waiting_a), Attempt::Ready(())));
+            assert!(matches!(
+                a.grow_step(&mut state, 40, &mut waiting_a),
+                Attempt::Ready(())
+            ));
             // A Has Not Dropped Its Wait Guard. Its Successful Admission Must
             // Already Have Left The Ledger Before C Can Enter The Same Lock.
             assert!(matches!(c.attempt(&mut state, 10), Attempt::Ready(())));
-            assert!(matches!(c.grow_step(&mut state, 15, &mut waiting_c), Attempt::Wait));
+            assert!(matches!(
+                c.grow_step(&mut state, 15, &mut waiting_c),
+                Attempt::Wait
+            ));
         }
         drop((waiting_a, waiting_b, waiting_c));
         drop((a, b, c));

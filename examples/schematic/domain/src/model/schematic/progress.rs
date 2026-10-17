@@ -7,7 +7,6 @@
  * ***
  */
 
-
 // Progress Published By The Native Analysis Sidecar.
 
 /* === Modules === */
@@ -21,7 +20,6 @@
 // Third Party Imports
 
 // Local Imports
-
 
 /* === Constants === */
 
@@ -38,13 +36,7 @@ pub struct AnalysisProgress {
     pub checked: u32,
 }
 
-
 /* === Enums === */
-#[harmos_domain::catalog]
-pub enum Streams {
-    Progress(AnalysisProgress),
-}
-
 
 /* === Traits === */
 

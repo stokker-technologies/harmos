@@ -309,12 +309,15 @@ crate::postcard_product!(FileMetadata {
     expected_sha256: Option<[u8; 32]>,
 });
 
-crate::postcard_product!(FileReference {
-    position: StorageCursor,
-    metadata: FileMetadata,
-    length: u64,
-    sha256: [u8; 32],
-}, validate = FileReference::check_native);
+crate::postcard_product!(
+    FileReference {
+        position: StorageCursor,
+        metadata: FileMetadata,
+        length: u64,
+        sha256: [u8; 32],
+    },
+    validate = FileReference::check_native
+);
 
 impl Described for FileMetadata {
     const NAME: &'static str = concat!(module_path!(), "::", stringify!(FileMetadata));

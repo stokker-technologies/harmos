@@ -51,7 +51,6 @@ pub fn build(build: &harmos_packaging::Build, json: bool) -> Result<(), harmos_p
                 schema.directory.display()
             );
         }
-
     }
     Ok(())
 }

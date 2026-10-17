@@ -43,10 +43,7 @@ pub(crate) struct FileSnapshot {
 
 /* === Implementations === */
 impl<C> StorageManager<C> {
-    pub fn capture_files(
-        &self,
-        through: Option<&StorageCursor>,
-    ) -> Result<Option<FileSave>> {
+    pub fn capture_files(&self, through: Option<&StorageCursor>) -> Result<Option<FileSave>> {
         let mut state = self.inner.state.lock().unwrap();
         if !state.ready || state.status.closed {
             return Err(Error::NotReady { domain: "storage" });
@@ -282,10 +279,7 @@ impl State {
 }
 
 impl FileSnapshot {
-    pub(crate) async fn persist(
-        &self,
-        inner: &Arc<super::super::manager::Inner>,
-    ) -> Result<()> {
+    pub(crate) async fn persist(&self, inner: &Arc<super::super::manager::Inner>) -> Result<()> {
         for checkpoint in &self.checkpoints {
             inner
                 .bounded(inner.primary.save_production(checkpoint))

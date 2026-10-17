@@ -931,6 +931,7 @@ dependencies = [
  "arrow-select",
  "base64",
  "flatbuffers",
+ "getrandom 0.4.3",
  "harmos-domain",
  "postcard",
  "serde",

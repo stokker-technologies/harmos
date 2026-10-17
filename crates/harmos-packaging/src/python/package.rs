@@ -27,7 +27,6 @@ use heck::{ToShoutySnakeCase, ToUpperCamelCase};
 use prost_reflect::{
     DescriptorPool, MessageDescriptor, prost::Message as _, prost_types::FileDescriptorSet,
 };
-use sha2::{Digest, Sha256};
 // Local Imports
 use super::{Error, Settings, identifier, python_version};
 use crate::proto::Artifacts;
@@ -363,10 +362,7 @@ fn bindings(
         let rpc_request = message_expression(&method.input(), module, &mut imports)?;
         let rpc_response = message_expression(&method.output(), module, &mut imports)?;
         let encoded = serde_json::to_string(contract)?;
-        let mut fingerprint = String::with_capacity(64);
-        for byte in Sha256::digest(encoded.as_bytes()) {
-            write!(fingerprint, "{byte:02x}").expect("String writer");
-        }
+        let fingerprint = crate::digest(encoded.as_bytes());
         let input_type = input.map_or("Message", String::as_str);
         let output_type = output.map_or("Message", String::as_str);
         writeln!(

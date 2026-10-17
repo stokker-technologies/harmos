@@ -12,7 +12,6 @@ use super::*;
 
 /* === Implementations === */
 impl OperationManager {
-
     pub async fn unregister(&self, id: &str) -> Result<()> {
         self.unregister_selected(id, None).await
     }
@@ -166,11 +165,13 @@ impl OperationManager {
         feature = "plugin-guest",
         feature = "plugin-sidecar"
     ))]
-    pub(in crate::operations) async fn settle_owned_entries(&self, entries: &[Arc<Entry>]) -> Result<()> {
+    pub(in crate::operations) async fn settle_owned_entries(
+        &self,
+        entries: &[Arc<Entry>],
+    ) -> Result<()> {
         for entry in entries {
             settle(entry).await?;
         }
         Ok(())
     }
-
 }

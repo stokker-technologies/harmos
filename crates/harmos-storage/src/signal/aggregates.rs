@@ -13,6 +13,7 @@
 // Third Party Imports
 
 // Local Imports
+use super::{Series, Summary};
 use crate::{Aggregate, aggregate};
 
 /* === Constants === */

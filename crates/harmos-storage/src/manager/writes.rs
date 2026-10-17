@@ -117,7 +117,10 @@ impl<C> StorageManager<C> {
         }))
     }
 
-    pub(super) fn batch_prefix(&self, sizes: impl Iterator<Item = Result<(usize, usize)>>) -> Result<usize> {
+    pub(super) fn batch_prefix(
+        &self,
+        sizes: impl Iterator<Item = Result<(usize, usize)>>,
+    ) -> Result<usize> {
         let mut bytes = 0usize;
         let mut rows = 0usize;
         let mut resident = 0usize;
@@ -227,6 +230,4 @@ impl<C> StorageManager<C> {
             .await?;
         Ok(self.position(sequence))
     }
-
-
 }

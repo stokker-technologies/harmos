@@ -12,7 +12,6 @@ use super::*;
 
 /* === Implementations === */
 impl OperationManager {
-
     #[cfg(any(
         feature = "plugin",
         feature = "plugin-guest",
@@ -153,5 +152,4 @@ impl OperationManager {
         drop(retired);
         result
     }
-
 }

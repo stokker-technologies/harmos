@@ -35,6 +35,8 @@ thiserror = { workspace = true, default-features = true }
 tracing = { workspace = true, default-features = true }
 
 # Utilities
+# Retry Windows Use Native Entropy Or Web Crypto On Browser WebAssembly.
+getrandom = { workspace = true, features = ["std", "wasm_js"] }
 sha2 = { workspace = true, default-features = true }
 rustfft = { workspace = true, default-features = true, optional = true }
 

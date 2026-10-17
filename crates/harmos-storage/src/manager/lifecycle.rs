@@ -22,13 +22,24 @@ impl<C> StorageManager<C> {
         let mut lifecycle = self.inner.lifecycle.write().await;
         {
             let state = self.inner.state.lock().unwrap();
-            if state.status.closing { return Err(Error::Closing { domain: "storage" }); }
-            if state.ready && lifecycle.startup_complete { return Ok(()); }
-            if state.ready { return Err(Error::AlreadyRegistered { domain: "storage", name: WORKER_NAME.into() }); }
+            if state.status.closing {
+                return Err(Error::Closing { domain: "storage" });
+            }
+            if state.ready && lifecycle.startup_complete {
+                return Ok(());
+            }
+            if state.ready {
+                return Err(Error::AlreadyRegistered {
+                    domain: "storage",
+                    name: WORKER_NAME.into(),
+                });
+            }
         }
         self.acquire_locked(&mut lifecycle).await?;
         let mut state = self.inner.state.lock().unwrap();
-        if state.status.closing { return Err(Error::Closing { domain: "storage" }); }
+        if state.status.closing {
+            return Err(Error::Closing { domain: "storage" });
+        }
         let worker = spawn(Worker(self.erased()))?;
         state.ready = true;
         state.status.running = true;
@@ -39,7 +50,9 @@ impl<C> StorageManager<C> {
         Ok(())
     }
 
-    pub fn settings(&self) -> &StorageSettings { &self.inner.settings }
+    pub fn settings(&self) -> &StorageSettings {
+        &self.inner.settings
+    }
 
     pub async fn acquire(&self) -> Result<()> {
         let mut lifecycle = self.inner.lifecycle.write().await;
@@ -119,6 +132,4 @@ impl<C> StorageManager<C> {
     pub fn status(&self) -> StorageMetrics {
         self.inner.state.lock().unwrap().status.clone()
     }
-
-
 }

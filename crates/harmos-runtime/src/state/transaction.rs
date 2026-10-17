@@ -148,7 +148,9 @@ pub(crate) mod dispatch {
 }
 
 /* === Re-Exports === */
-pub use harmos_domain::state::{Catalogued, DecodeError, Invert, Mutual, Never, Transaction, TransactionCatalog, Undoable};
+pub use harmos_domain::state::{
+    Catalogued, DecodeError, Invert, Mutual, Never, Transaction, TransactionCatalog, Undoable,
+};
 
 /* === Imports === */
 use crate::Application;
@@ -161,4 +163,3 @@ pub(crate) type Inverting<A> = fn(
 
 pub(crate) type TransactionError<A> =
     <<A as Application>::Transaction as Transaction<<A as Application>::State>>::Error;
-

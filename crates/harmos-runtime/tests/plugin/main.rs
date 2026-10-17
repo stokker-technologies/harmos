@@ -193,7 +193,10 @@ const RUN_MARKER: &[u8] = &harmos_runtime::schema::declaration::encode::<
             <RunRequest as harmos_runtime::schema::Described>::FIELDS,
         )
     },
->(RUN_NAME, <RunRequest as harmos_runtime::schema::Described>::FIELDS);
+>(
+    RUN_NAME,
+    <RunRequest as harmos_runtime::schema::Described>::FIELDS,
+);
 
 impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> Run<OWNER, MILLIS, PRIVATE> {
     fn wire(&self) -> RunRequest {
@@ -212,7 +215,9 @@ impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> harmos_runtime:
     fn encoded_len(&self) -> usize {
         harmos_runtime::Message::encoded_len(&self.wire())
     }
-    fn decoding_memory(bytes: &[u8]) -> ::core::result::Result<usize, harmos_runtime::MessageError> {
+    fn decoding_memory(
+        bytes: &[u8],
+    ) -> ::core::result::Result<usize, harmos_runtime::MessageError> {
         <RunRequest as harmos_runtime::Message>::decoding_memory(bytes)
     }
     fn decode(bytes: &[u8]) -> ::core::result::Result<Self, harmos_runtime::MessageError> {
@@ -232,7 +237,9 @@ impl<const OWNER: usize, const MILLIS: u64, const PRIVATE: bool> harmos_runtime:
     fn encoded_len(&self) -> usize {
         harmos_runtime::Protobuf::encoded_len(&self.wire())
     }
-    fn decoding_memory(bytes: &[u8]) -> ::core::result::Result<usize, harmos_runtime::MessageError> {
+    fn decoding_memory(
+        bytes: &[u8],
+    ) -> ::core::result::Result<usize, harmos_runtime::MessageError> {
         <RunRequest as harmos_runtime::Protobuf>::decoding_memory(bytes)
     }
     fn decode(bytes: &[u8]) -> ::core::result::Result<Self, harmos_runtime::MessageError> {
@@ -582,7 +589,9 @@ fn plan() -> PluginGraph {
             id: id.to_owned(),
             version: "1.0.0".parse().unwrap(),
             artifact: match kind {
-                PluginKind::Guest => harmos_runtime::plugin::PluginArtifact::Guest { sha256: [0; 32] },
+                PluginKind::Guest => {
+                    harmos_runtime::plugin::PluginArtifact::Guest { sha256: [0; 32] }
+                }
                 PluginKind::Sidecar => harmos_runtime::plugin::PluginArtifact::LocalSidecar {
                     revision: "fixture".into(),
                 },

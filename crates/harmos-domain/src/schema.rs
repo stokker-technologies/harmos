@@ -17,7 +17,6 @@ mod payload;
 #[cfg(feature = "grpc")]
 mod protobuf;
 
-
 /* === Re-Exports === */
 pub use declaration::{Field, Kind};
 pub use payload::{Event, PathElement, PayloadError, Scalar, Validator, VisitError};

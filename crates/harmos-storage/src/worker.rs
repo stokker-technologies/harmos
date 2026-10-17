@@ -63,7 +63,6 @@ enum Completed {
 
 /* === Implementations === */
 impl Worker {
-
     pub async fn cleanup(&mut self) -> Result<()> {
         // StorageManager owns physical backend teardown before this worker's
         // lease retires. An early stop cannot claim that teardown completed.
@@ -372,9 +371,11 @@ impl Worker {
                     .unwrap()
                     .file_deadline()
                     .map_or(deadline, |file| file.min(deadline));
-                let mut sleep = Box::pin(inner.execution.sleep(
-                    deadline.saturating_duration_since(inner.execution.now()),
-                ));
+                let mut sleep = Box::pin(
+                    inner
+                        .execution
+                        .sleep(deadline.saturating_duration_since(inner.execution.now())),
+                );
                 let mut wake = Box::pin(changed.changed());
                 let wait = std::future::poll_fn(|cx| {
                     if wake.as_mut().poll(cx).is_ready() || sleep.as_mut().poll(cx).is_ready() {

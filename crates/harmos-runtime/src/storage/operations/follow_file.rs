@@ -70,7 +70,7 @@ impl<C: 'static> Operation for Handler<C> {
             .storage
             .follow_file(&request.file, request.offset)
             .await?;
-        let batch_bytes = self.storage.inner.settings.response.batch_bytes;
+        let batch_bytes = self.storage.settings().response.batch_bytes;
         while let Some(batch) = follower.next_batch(batch_bytes).await? {
             output.send_with(batch.memory_size(), || Ok(batch)).await?;
         }

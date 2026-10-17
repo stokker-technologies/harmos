@@ -79,7 +79,9 @@ impl Fixture {
         assert!(
             self.runtime
                 .operations
-                .resident(&harmos_runtime::operations::resident::Key::root("harmos-storage"))
+                .resident(&harmos_runtime::operations::resident::Key::root(
+                    "harmos-storage"
+                ))
                 .is_none()
         );
         self.runtime.stop().await.unwrap();

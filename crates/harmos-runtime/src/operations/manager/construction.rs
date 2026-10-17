@@ -12,7 +12,6 @@ use super::*;
 
 /* === Implementations === */
 impl OperationManager {
-
     pub(crate) fn new(
         instances: Arc<Instances>,
         settings: &crate::operations::Settings,
@@ -21,7 +20,9 @@ impl OperationManager {
     ) -> Self {
         Self {
             resident: crate::operations::resident::Registry::new(&instances, reserved, identity),
-            context: Arc::new(std::sync::OnceLock::from(crate::operations::CallContext::default())),
+            context: Arc::new(std::sync::OnceLock::from(
+                crate::operations::CallContext::default(),
+            )),
             instances,
             preparation: settings
                 .preparation_bytes
@@ -70,7 +71,10 @@ impl OperationManager {
         endpoints: P,
     ) -> Result<OperationInstance<O>> {
         self.admit::<O, P>(
-            (crate::operations::binding::Request::charged(request)?, endpoints),
+            (
+                crate::operations::binding::Request::charged(request)?,
+                endpoints,
+            ),
             None,
             &[],
             &Source::Host.external()?,
@@ -84,7 +88,10 @@ impl OperationManager {
         origin: &Origin,
     ) -> Result<Option<harmos_domain::inventory::contracts::Required>> {
         #[cfg(feature = "grpc")]
-        if matches!(origin.identity, crate::operations::caller::Identity::External(_)) {
+        if matches!(
+            origin.identity,
+            crate::operations::caller::Identity::External(_)
+        ) {
             let Some(authorizer) = self.registry.middleware.authorizer() else {
                 // Preserve Existing Explicit Anonymous Routes When No Policy Is Configured.
                 return Ok(None);
@@ -156,5 +163,4 @@ impl OperationManager {
                 resource: "operation preparation bytes",
             })
     }
-
 }

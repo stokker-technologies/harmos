@@ -74,7 +74,8 @@ impl<C: 'static> Operation for Handler<C> {
                     request.offset,
                     &request.bytes,
                 )
-                .await.map_err(Into::into)
+                .await
+                .map_err(Into::into)
         }
         .await;
         result.map(::core::convert::Into::into)

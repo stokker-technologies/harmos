@@ -230,7 +230,8 @@ impl OperationDeclaration for Slow {
 }
 
 impl OperationDeclaration for Parent {
-    const VISIBILITY: harmos_runtime::operations::Visibility = harmos_runtime::operations::Visibility::Shared;
+    const VISIBILITY: harmos_runtime::operations::Visibility =
+        harmos_runtime::operations::Visibility::Shared;
     type Response = Response;
     type Input = harmos_runtime::operations::NoStream;
     type Output = harmos_runtime::operations::NoStream;

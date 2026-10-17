@@ -67,7 +67,6 @@ pub struct Contracts;
 
 // Wire Contracts Projected From Resource-Bound Operation Handlers.
 
-
 /* === Enums === */
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

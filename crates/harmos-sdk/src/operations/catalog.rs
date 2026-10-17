@@ -8,9 +8,9 @@
  */
 
 /* === Imports === */
-use harmos_domain::catalog::{Catalog, Member, Visitor};
 use super::{Contract, ContractError, Contracts, Declarations, Definition, Entry, WireDeclaration};
 use harmos_domain::Result;
+use harmos_domain::catalog::{Catalog, Member, Visitor};
 
 /* === Structs === */
 pub struct AuthoredDeclarations;
@@ -40,8 +40,7 @@ impl<T: super::Operation> Member<T> for AuthoredContracts {
 }
 
 impl AuthoredContracts {
-    pub fn of<C: Catalog<Self>>() -> Result<Vec<Contract>, ContractError> {
+    pub fn of<C: Catalog<Self>>() -> std::result::Result<Vec<Contract>, ContractError> {
         Contracts::from_projection(&C::ENTRIES)
     }
 }
-

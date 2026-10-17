@@ -105,7 +105,11 @@ pub(super) enum ReceiptState {
 
 /* === Implementations === */
 impl Receipts {
-    pub(super) fn new(retention: Duration, bound: NonZeroUsize, execution: crate::execution::Execution) -> Result<Self> {
+    pub(super) fn new(
+        retention: Duration,
+        bound: NonZeroUsize,
+        execution: crate::execution::Execution,
+    ) -> Result<Self> {
         let now = execution.now();
         let wall = SystemTime::now();
         Ok(Self {

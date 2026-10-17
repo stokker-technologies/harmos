@@ -239,7 +239,6 @@ where
     }
 }
 
-
 impl<A: Application> Inspection<A> {
     pub async fn read<R>(&self, read: impl FnOnce(&A::State) -> R) -> Result<At<R>, Error> {
         Ok(At {

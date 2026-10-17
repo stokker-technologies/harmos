@@ -7,7 +7,6 @@
  * ***
  */
 
-
 // The Public Harmos Facade Composes Its Domain And Runtime Libraries.
 
 /* === Modules === */
@@ -23,7 +22,6 @@ pub use harmos_runtime::*;
 // Third Party Imports
 
 // Local Imports
-
 
 /* === Constants === */
 

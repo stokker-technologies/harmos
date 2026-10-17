@@ -21,12 +21,17 @@ mod policy;
 /* === Re-Exports === */
 pub use crate::observers;
 pub use catalog::{Declarations, Entry};
-pub use context::{CallContext, CallValue, ContextError, ContextValue, PORTABLE_BYTES, PORTABLE_VALUES};
+pub use context::{
+    CallContext, CallValue, ContextError, ContextValue, PORTABLE_BYTES, PORTABLE_VALUES,
+};
 pub use contract::{Codec, Contract, ContractError, Contracts, WireDeclaration};
 pub use direction::{Direction, NoStream, Stream, item_types};
 pub use grpc::Grpc;
 pub use key::{CacheKey, CacheKeyError, MAX_CACHE_KEY_BYTES};
-pub use policy::{Backoff, FailureKind, Jitter, OperationPolicy, PolicyError, ReplaySafety, RestartPolicy, RetryPolicy};
+pub use policy::{
+    Backoff, FailureKind, Jitter, OperationPolicy, PolicyError, ReplaySafety, RestartPolicy,
+    RetryPolicy,
+};
 
 /* === Imports === */
 // Standard Library Imports

@@ -211,4 +211,3 @@ impl<A: Application, S: Clone, H> Clone for Supervised<A, S, H> {
         }
     }
 }
-
