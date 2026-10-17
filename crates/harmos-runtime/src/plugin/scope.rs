@@ -47,6 +47,9 @@ pub struct PluginScope {
     listeners: Arc<[harmos_domain::listeners::Definition]>,
     lifecycle: Arc<Option<[harmos_domain::operations::lifecycle::Descriptor; 2]>>,
     activation: Arc<Mutex<Option<Weak<crate::streams::Activation>>>>,
+    // The live native call surface of this generation, answering its host publications.
+    #[cfg(feature = "plugin-sidecar")]
+    native: Arc<Mutex<Weak<crate::services::NativeEndpoint>>>,
 }
 
 /* === Enums === */
@@ -126,7 +129,19 @@ impl PluginScope {
             listeners: Arc::from([]),
             lifecycle: Arc::new(None),
             activation: Arc::new(Mutex::new(None)),
+            #[cfg(feature = "plugin-sidecar")]
+            native: Arc::new(Mutex::new(Weak::new())),
         }
+    }
+
+    #[cfg(feature = "plugin-sidecar")]
+    pub(crate) fn bind_native(&self, endpoint: &Arc<crate::services::NativeEndpoint>) {
+        *self.native.lock().expect("native endpoint binding is healthy") = Arc::downgrade(endpoint);
+    }
+
+    #[cfg(feature = "plugin-sidecar")]
+    pub(crate) fn native(&self) -> Option<Arc<crate::services::NativeEndpoint>> {
+        self.native.lock().expect("native endpoint binding is healthy").upgrade()
     }
 
     pub(super) fn with_dependencies(owner: &str, generation: PluginGeneration, requirements: &[super::Requirement]) -> Self {

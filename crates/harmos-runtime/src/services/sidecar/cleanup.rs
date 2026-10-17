@@ -106,6 +106,9 @@ impl Calls {
             None => endpoint,
         };
         let endpoint = Arc::new(endpoint);
+        if let Some(scope) = endpoint.scope() {
+            scope.bind_native(&endpoint);
+        }
         let mut current = self.live.lock().expect("the sidecar call lock is healthy");
         let previous = current.replace(endpoint.clone());
         if let Some(previous) = previous.as_ref() {

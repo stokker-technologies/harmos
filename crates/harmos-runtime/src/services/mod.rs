@@ -30,6 +30,8 @@ pub(crate) use sidecar::Endpoint as NativeEndpoint;
 pub(crate) use sidecar::RuntimeDriver;
 
 #[cfg(feature = "plugin-sidecar")]
+pub(crate) use sidecar::HostPublish;
+#[cfg(feature = "plugin-sidecar")]
 pub use sidecar::{DemandLease, DemandSource, Managed, ManagedError, Notice, Publish, SidecarError, Supervised};
 
 /* === Imports === */

@@ -53,3 +53,30 @@ where
         result.map(::core::convert::Into::into)
     }
 }
+
+impl crate::operations::Declares for HostPublish {
+    type Declaration = crate::operations::streams::Publish;
+}
+
+// The host-wide `host.publish` provider: each call reaches the caller generation's live native endpoint.
+impl crate::operations::Operation for HostPublish {
+    type Declaration = crate::operations::streams::Publish;
+    type Resources = ();
+    type Error = crate::Error;
+    type Endpoints = ();
+    type Context<'a> = crate::operations::Context<'a>;
+
+    async fn initialize<'ctx>(_: Arc<()>, _: Self::Context<'ctx>) -> crate::Result<Self> {
+        Ok(Self)
+    }
+
+    async fn run<'ctx>(
+        &mut self, context: Self::Context<'ctx>, request: &mut crate::operations::streams::Publish, _endpoints: &mut Self::Endpoints,
+    ) -> crate::Result<crate::operations::Response<()>> {
+        let scope = context
+            .caller_scope()
+            .ok_or(crate::Error::InvalidInput { field: "native publication", reason: "the original plugin caller is required" })?;
+        let endpoint = scope.native().ok_or(crate::Error::NotReady { domain: "native publication endpoint" })?;
+        endpoint.publish(scope, request, &context).await.map(::core::convert::Into::into)
+    }
+}

@@ -76,6 +76,7 @@ impl<A: Application> PluginHost<A> {
         let mut definition = PluginDefinition::sidecar(&executable, settings.plugin.configuration.clone())
             .map_err(|source| failed(executable.declaration().id.as_str(), source))?;
         definition.requires = settings.plugin.requires.clone();
+        self.serve_publications(&definition, lane.clone())?;
         let declarations = Declarations::of::<C>().map_err(|source| failed(&definition.id, source))?;
         harmos_domain::inventory::operations::validate_match(&declarations, &definition.contributions.operations).map_err(|_| {
             Error::InvalidInput { field: "native plugin catalog", reason: "typed catalog differs from the inspected operation inventory" }
@@ -103,6 +104,25 @@ impl<A: Application> PluginHost<A> {
             Ok(Box::new(Native { driver }))
         });
         self.register(definition, factory, grants, restart, replace).await
+    }
+}
+
+impl<A: Application> PluginHost<A> {
+    // A sidecar that requires `host.publish` reaches the one host-wide provider, served once on first need.
+    fn serve_publications(&self, definition: &PluginDefinition, lane: impl Lane) -> Result<()> {
+        let publish = crate::operations::WireDeclaration::of::<crate::operations::streams::Publish>()
+            .contract()
+            .map_err(|source| failed("host.publish", source))?;
+        let required = definition.contributions.required_contracts.iter().flatten().any(|required| required.contract == publish);
+        if !required {
+            return Ok(());
+        }
+        match self.shared.operations.definition(publish.operation().id.as_str()) {
+            Err(Error::NotRegistered { .. }) => {
+                self.shared.operations.register_wire_operation::<crate::services::HostPublish>("harmos", lane, Arc::new(()))
+            }
+            _ => Ok(()),
+        }
     }
 }
 

@@ -74,6 +74,9 @@ struct Inbound<A: Application> {
     demands: BTreeMap<&'static str, fn(&StreamManager<A>) -> Demand>,
 }
 
+// Serves `host.publish` for every native generation that requires it.
+pub struct HostPublish;
+
 pub struct Publish<A: Application, S, H> {
     _resources: Arc<Supervised<A, S, H>>,
     endpoint: Arc<Endpoint>,
