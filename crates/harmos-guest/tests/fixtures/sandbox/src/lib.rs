@@ -176,7 +176,7 @@ impl harmos_guest::Plugin for Sandbox {
         // Dependency Mode
         if self.config == "dependencies" {
             context
-                .call_as::<ProviderEcho>(Echo {
+                .call(ProviderEcho {
                     say: "initialize".into(),
                 })
                 .await
@@ -207,7 +207,7 @@ impl harmos_guest::Plugin for Sandbox {
         }
         if self.check_dependency_revocation {
             let result = context
-                .call_as::<ProviderEcho>(Echo {
+                .call(ProviderEcho {
                     say: "cleanup".into(),
                 })
                 .await;
@@ -254,7 +254,7 @@ impl Echoing {
         if let Some(value) = request.say.strip_prefix("saved-dependency:") {
             let saved = self.saved()?;
             return saved
-                .call_as::<ProviderEcho>(Echo { say: value.into() })
+                .call(ProviderEcho { say: value.into() })
                 .await
                 .map(harmos_guest::operations::Response::into_owned);
         }
@@ -262,7 +262,7 @@ impl Echoing {
         // Calls Through The Current Context
         if let Some(say) = request.say.strip_prefix("dependency:") {
             return context
-                .call_as::<ProviderEcho>(Echo {
+                .call(ProviderEcho {
                     say: say.to_owned(),
                 })
                 .await
@@ -337,7 +337,7 @@ impl Waiting {
     // The Provider Answers Slowly; Nothing Here Burns Fuel While It Waits
     async fn run(&mut self, context: &Context, _: &mut Wait) -> Result<Echoed, OperationRefusal> {
         let _ = context
-            .call_as::<ProviderEcho>(Echo { say: "slow".into() })
+            .call(ProviderEcho { say: "slow".into() })
             .await;
         // Resuming Reaches The Epoch Check A Suspended Guest Could Not
         for step in 0..4096u32 {
@@ -370,7 +370,7 @@ impl Reading {
         let mut saved = None;
         if owner.child_initialize.swap(false, Ordering::SeqCst) {
             let child = context
-                .call_as::<Read>(Value {
+                .call(Read {
                     value: "leaf".into(),
                 })
                 .await
@@ -387,7 +387,7 @@ impl Reading {
         })
     }
 
-    async fn run(&mut self, context: &Context, value: &mut Value) -> Result<Value, std::io::Error> {
+    async fn run(&mut self, context: &Context, value: &mut Read) -> Result<Value, std::io::Error> {
         self.value.clone_from(&value.value);
         self.owner.ran.fetch_add(1, Ordering::SeqCst);
 
@@ -398,7 +398,7 @@ impl Reading {
                 .as_ref()
                 .expect("original initialization context");
             let retired = saved
-                .call_as::<Read>(Value {
+                .call(Read {
                     value: "leaf".into(),
                 })
                 .await;
@@ -421,7 +421,7 @@ impl Reading {
                 .with_value(Stage { id: "child".into() })
                 .map_err(std::io::Error::other)?;
             let child = caller
-                .call_as::<Read>(Value {
+                .call(Read {
                     value: "context-leaf".into(),
                 })
                 .await
@@ -442,7 +442,7 @@ impl Reading {
         if self.value == "parent" {
             if let Some(saved) = &self.saved {
                 let stale = saved
-                    .call_as::<Read>(Value {
+                    .call(Read {
                         value: "leaf".into(),
                     })
                     .await;
@@ -451,7 +451,7 @@ impl Reading {
                 }
             }
             let child = context
-                .call_as::<Read>(Value {
+                .call(Read {
                     value: "leaf".into(),
                 })
                 .await
@@ -496,7 +496,7 @@ impl Counting {
         Self { owner }
     }
 
-    async fn run(&mut self, _: &Context, _: &mut Value) -> Result<Value, std::io::Error> {
+    async fn run(&mut self, _: &Context, _: &mut Counts) -> Result<Value, std::io::Error> {
         let owner = &self.owner;
         Ok(Value {
             value: format!(
@@ -524,10 +524,10 @@ async fn progress(context: &Context, value: &str) -> Result<(), PublishError> {
 async fn submitted(context: &Context) -> Result<(), std::io::Error> {
     use harmos_guest::operations::Instance;
     use harmos_guest::operations::instance::Phase;
-    let request = |say: &str| Echo { say: say.into() };
+    let request = |say: &str| ProviderEcho { say: say.into() };
 
     let joined = context
-        .submit_as::<ProviderEcho>(request("joined"))
+        .submit(request("joined"))
         .await
         .map_err(std::io::Error::other)?;
     let status = joined.status().await.map_err(std::io::Error::other)?;
@@ -543,7 +543,7 @@ async fn submitted(context: &Context) -> Result<(), std::io::Error> {
     }
 
     let cancelled = context
-        .submit_as::<ProviderEcho>(request("cancelled"))
+        .submit(request("cancelled"))
         .await
         .map_err(std::io::Error::other)?;
     if Instance::cancel_and_join(cancelled).await.is_ok() {
@@ -551,13 +551,13 @@ async fn submitted(context: &Context) -> Result<(), std::io::Error> {
     }
 
     let dropped = context
-        .submit_as::<ProviderEcho>(request("dropped"))
+        .submit(request("dropped"))
         .await
         .map_err(std::io::Error::other)?;
     drop(dropped);
 
     let detached = context
-        .submit_as::<ProviderEcho>(request("detached"))
+        .submit(request("detached"))
         .await
         .map_err(std::io::Error::other)?;
     Instance::detach(detached);

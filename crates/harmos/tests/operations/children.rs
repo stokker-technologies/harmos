@@ -230,7 +230,7 @@ async fn parent_joins_child() {
     let exits = [(Exit::Return, false), (Exit::Fail, false), (Exit::Wait, false), (Exit::Wait, true)];
     for (exit, cancel) in exits {
         let (runtime, trace) = runtime(false).await;
-        let parent = runtime.operations.submit_as::<ParentContract>(exit).unwrap();
+        let parent = runtime.operations.submit(ParentContract { exit: exit }).unwrap();
         if cancel {
             trace.parent_ready.notified().await;
             parent.cancel();

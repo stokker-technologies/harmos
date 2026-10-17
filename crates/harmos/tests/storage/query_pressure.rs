@@ -21,7 +21,6 @@ use std::sync::{Arc, atomic::Ordering};
 
 // Third Party Imports
 use arrow_array::{Float64Array, UInt64Array};
-use tokio::sync::Notify;
 
 // Local Imports
 use super::backend::{Data, history, storage_settings};
@@ -36,12 +35,15 @@ use harmos::storage::query::transform::{
     aggregate::{Aggregate, Measure},
     filter::{Clause, Compare, Condition, Filter, Term},
 };
-use harmos::storage::query::{QueryArrow, QueryReader, RowSlice, Source, StreamSelection};
+use harmos::storage::query::{QueryArrow, QueryReader, RecordSelection, RowSlice, Source, StreamSelection};
 use harmos::storage::*;
 
 /* === Constants === */
-const CONTENTION_BUDGET: usize = 1024 * 1024;
-const CONTENTION_PERIODS: usize = 2;
+const CONTENTION_BUDGET: usize = 4 * 1024 * 1024;
+const CONTENTION_PERIODS: usize = 13;
+const FITTING_PERIODS: usize = 6;
+const CONTENTION_QUERIES: usize = 64;
+const SMALL_READERS: usize = 15;
 
 /* === Macros === */
 
@@ -285,95 +287,29 @@ async fn cancelled_advance_poisons() {
 }
 
 #[tokio::test]
-async fn captures_never_deadlock() {
-    // Each Capture Retains Every Batch, As A Report Materialization Does, And
-    // Announces A Refusal Before Releasing What It Holds.
-    async fn capture(
-        mut reader: QueryReader,
-        mut kept: Vec<QueryArrow>,
-        refused: &Notify,
-    ) -> harmos::Result<usize> {
-        loop {
-            match reader.next().await {
-                Ok(Some(output)) => kept.push(output),
-                Ok(None) => return Ok(kept.len()),
-                Err(error) => {
-                    refused.notify_one();
-                    return Err(error);
-                }
-            }
-        }
-    }
-
-    let mut settings = storage_settings();
-    settings.budget.read_memory_bytes = NonZeroUsize::new(CONTENTION_BUDGET).unwrap();
-    let f = super::fixture::Fixture::new(settings).await;
-    let schema = waveforms::schema();
-    f.storage
-        .write_schema(&schema, &waveforms::definition())
-        .await
-        .unwrap();
-    let samples = waveforms::samples(CONTENTION_PERIODS);
-    let inputs = waveforms::inputs(&samples);
-    let borrowed: Vec<_> = inputs.iter().map(StreamInput::borrowed).collect();
-    f.storage.write_stream(&borrowed).await.unwrap();
-    let at = f.storage.flush().await.unwrap();
-    let baseline = f.storage.status().read_bytes;
-    let query = || Query {
-        at: at.clone(),
-        source: Source::Stream(StreamSelection {
-            schema: schema.clone(),
-            scope: None,
-            item: None,
-            stream: None,
-            source_start: None,
-            source_end: None,
-            after: 0,
-        }),
-        transforms: vec![],
-        slice: RowSlice::default(),
-    };
-
-    // Alone, One Capture Fits The Budget.
-    let mut alone = f.storage.query(query()).await.unwrap();
-    let mut batches = 0;
-    while alone.next().await.unwrap().is_some() {
-        batches += 1;
-    }
-    drop(alone);
-    assert_eq!(f.storage.status().read_bytes, baseline);
-
-    // Both Captures Hold Their Plan And Schema, And The Rest Of The Pool Is
-    // Taken, So Each Must Wait To Grow While Retaining What The Other Needs.
-    let mut first = f.storage.query(query()).await.unwrap();
-    let mut second = f.storage.query(query()).await.unwrap();
-    let first_kept = vec![first.next().await.unwrap().unwrap()];
-    let second_kept = vec![second.next().await.unwrap().unwrap()];
-    assert!(matches!(first_kept[0], QueryArrow::Schema(_)));
-    assert!(matches!(second_kept[0], QueryArrow::Schema(_)));
-    let occupied = f.storage.status().read_bytes;
-    let probe = f.storage.reserve_arrow_memory(0).unwrap();
-    let overhead = f.storage.status().read_bytes - occupied;
-    drop(probe);
-    let mut external = Some(
-        f.storage
-            .reserve_arrow_memory(CONTENTION_BUDGET - occupied - overhead)
-            .unwrap(),
+async fn captures_refuse_cycles() {
+    // Each Capture Alone Fits, But Together They Exceed The Budget.
+    let (f, query) = loaded(CONTENTION_PERIODS).await;
+    let (batches, retained) = alone(&f, &query).await;
+    assert!(
+        retained * 2 > CONTENTION_BUDGET,
+        "capture retains {retained} of {CONTENTION_BUDGET} bytes"
     );
-    assert_eq!(f.storage.status().read_bytes, CONTENTION_BUDGET);
 
-    // The Other Pool Holder Leaves Once A Capture Is Refused; Only Then Can Any Grow.
-    let refused = Notify::new();
-    let release = async {
-        refused.notified().await;
-        external.take();
-    };
-    let (first, second, ()) = tokio::join!(
-        capture(first, first_kept, &refused),
-        capture(second, second_kept, &refused),
-        release
-    );
-    let outcomes = [first, second];
+    // Both Hold A Third Of Their Capture Before Advancing Together: One Must Be
+    // Refused Rather Than Both Waiting On Each Other's Retained Batches.
+    let mut first = f.storage.query(query.clone()).await.unwrap();
+    let mut second = f.storage.query(query.clone()).await.unwrap();
+    let mut first_kept = Vec::new();
+    let mut second_kept = Vec::new();
+    for _ in 0..batches / 3 {
+        first_kept.push(first.next().await.unwrap().unwrap());
+    }
+    for _ in 0..batches / 3 {
+        second_kept.push(second.next().await.unwrap().unwrap());
+    }
+    let outcomes = tokio::join!(capture(first, first_kept), capture(second, second_kept));
+    let outcomes = [outcomes.0, outcomes.1];
     assert_eq!(
         outcomes
             .iter()
@@ -388,6 +324,195 @@ async fn captures_never_deadlock() {
             .any(|outcome| matches!(outcome, Err(harmos::Error::ResourceExhausted { .. }))),
         "{outcomes:?}"
     );
-    assert_eq!(f.storage.status().read_bytes, baseline);
+    assert_eq!(f.storage.status().read_bytes, 0);
     f.finish().await;
+}
+
+#[tokio::test]
+async fn fitting_captures_complete() {
+    // Two Captures That Fit Together Advance In Alternation Without Refusal.
+    let (f, query) = loaded(FITTING_PERIODS).await;
+    let (batches, retained) = alone(&f, &query).await;
+    assert!(
+        retained * 3 < CONTENTION_BUDGET,
+        "capture retains {retained} of {CONTENTION_BUDGET} bytes"
+    );
+    let first = f.storage.query(query.clone()).await.unwrap();
+    let second = f.storage.query(query.clone()).await.unwrap();
+    let outcomes = tokio::join!(capture(first, Vec::new()), capture(second, Vec::new()));
+    assert_eq!(outcomes.0.unwrap(), batches);
+    assert_eq!(outcomes.1.unwrap(), batches);
+    assert_eq!(f.storage.status().read_bytes, 0);
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn settlement_preserves_readers() {
+    let (f, query) = loaded(1).await;
+    let inputs = waveforms::inputs(&waveforms::samples(1));
+    let records = |range: std::ops::Range<usize>| {
+        inputs[range]
+            .iter()
+            .map(|input| input.record.borrowed())
+            .collect::<Vec<_>>()
+    };
+    let saved = f.storage.write_records(&records(0..9)).await.unwrap();
+    f.storage.await_durable(&saved).await.unwrap();
+
+    // A Query Holding Its Schema And A Record Reader Holding Its Description
+    // Both Wait For Growth While The Pool Is Taken.
+    let mut reader = f.storage.query(query).await.unwrap();
+    assert!(matches!(
+        reader.next().await.unwrap(),
+        Some(QueryArrow::Schema(_))
+    ));
+    let typed = f
+        .storage
+        .read_records::<waveforms::Sample>(RecordRead {
+            at: saved,
+            selection: RecordSelection {
+                schema: waveforms::schema(),
+                scope: None,
+                item: None,
+                source_start: None,
+                source_end: None,
+            },
+            after: 0,
+        })
+        .await
+        .unwrap();
+    let external = fill(&f);
+    let mut waiting = Box::pin(reader.next());
+    assert!(pending(waiting.as_mut()).await);
+    let mut settlement = Box::pin(typed.collect());
+    assert!(pending(settlement.as_mut()).await);
+
+    // Further Records Settle Durably Meanwhile; Releasing The Pool Lets Both Readers Finish.
+    let later = f.storage.write_records(&records(9..18)).await.unwrap();
+    f.storage.await_durable(&later).await.unwrap();
+    drop(external);
+    let (read, settled) = tokio::join!(waiting, settlement);
+    assert!(matches!(read.unwrap(), Some(QueryArrow::Batch(_))));
+    assert_eq!(settled.unwrap().len(), 9);
+    drop(reader);
+    assert_eq!(f.storage.status().read_bytes, 0);
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn small_readers_progress() {
+    // A Report Capture Holds Most Of Its Rows While Small Readers Hold Only Their Schemas.
+    let (f, query) = loaded(FITTING_PERIODS).await;
+    let (batches, _) = alone(&f, &query).await;
+    let mut report = f.storage.query(query.clone()).await.unwrap();
+    let mut kept = Vec::new();
+    for _ in 0..batches / 2 {
+        kept.push(report.next().await.unwrap().unwrap());
+    }
+    let mut readers = Vec::new();
+    for _ in 0..SMALL_READERS {
+        let mut reader = f.storage.query(query.clone()).await.unwrap();
+        assert!(matches!(
+            reader.next().await.unwrap(),
+            Some(QueryArrow::Schema(_))
+        ));
+        readers.push(reader);
+    }
+
+    // With The Pool Taken, Every One Of Them Waits To Grow; None Is Refused.
+    let external = fill(&f);
+    let mut report = Box::pin(capture(report, kept));
+    assert!(pending(report.as_mut()).await);
+    let mut small = readers
+        .into_iter()
+        .map(|reader| Box::pin(capture(reader, Vec::new())))
+        .collect::<Vec<_>>();
+    for reader in &mut small {
+        assert!(pending(reader.as_mut()).await);
+    }
+    drop(external);
+    assert_eq!(report.await.unwrap(), batches);
+    // Their Schemas Were Already Delivered.
+    for reader in small {
+        assert_eq!(reader.await.unwrap(), batches - 1);
+    }
+    assert_eq!(f.storage.status().read_bytes, 0);
+    f.finish().await;
+}
+
+// A Manager With A Bounded Read Budget And Saved Waveform Stream Rows.
+async fn loaded(periods: usize) -> (super::fixture::Fixture, Query) {
+    let mut settings = storage_settings();
+    settings.budget.read_memory_bytes = NonZeroUsize::new(CONTENTION_BUDGET).unwrap();
+    settings.request.max_active_queries = NonZeroUsize::new(CONTENTION_QUERIES).unwrap();
+    let f = super::fixture::Fixture::new(settings).await;
+    let schema = waveforms::schema();
+    f.storage
+        .write_schema(&schema, &waveforms::definition())
+        .await
+        .unwrap();
+    let inputs = waveforms::inputs(&waveforms::samples(periods));
+    let borrowed: Vec<_> = inputs.iter().map(StreamInput::borrowed).collect();
+    f.storage.write_stream(&borrowed).await.unwrap();
+    let at = f.storage.flush().await.unwrap();
+    assert_eq!(f.storage.status().read_bytes, 0);
+    let query = Query {
+        at,
+        source: Source::Stream(StreamSelection {
+            schema,
+            scope: None,
+            item: None,
+            stream: None,
+            source_start: None,
+            source_end: None,
+            after: 0,
+        }),
+        transforms: vec![],
+        slice: RowSlice::default(),
+    };
+    (f, query)
+}
+
+// One Capture Alone: Its Batch Count And The Bytes It Retains At The End.
+async fn alone(f: &super::fixture::Fixture, query: &Query) -> (usize, usize) {
+    let mut reader = f.storage.query(query.clone()).await.unwrap();
+    let mut kept = Vec::new();
+    while let Some(output) = reader.next().await.unwrap() {
+        kept.push(output);
+    }
+    drop(reader);
+    let retained = f.storage.status().read_bytes;
+    let batches = kept.len();
+    drop(kept);
+    assert_eq!(f.storage.status().read_bytes, 0);
+    (batches, retained)
+}
+
+// Retain Every Batch, As A Report Materialization Does, Yielding After Each.
+async fn capture(mut reader: QueryReader, mut kept: Vec<QueryArrow>) -> harmos::Result<usize> {
+    while let Some(output) = reader.next().await? {
+        kept.push(output);
+        tokio::task::yield_now().await;
+    }
+    Ok(kept.len())
+}
+
+// Take Every Remaining Byte Of The Read Pool With A Non-Waiting Reservation.
+fn fill(f: &super::fixture::Fixture) -> harmos::storage::arrow::RetainedMemory {
+    let occupied = f.storage.status().read_bytes;
+    let probe = f.storage.reserve_arrow_memory(0).unwrap();
+    let overhead = f.storage.status().read_bytes - occupied;
+    drop(probe);
+    let external = f
+        .storage
+        .reserve_arrow_memory(CONTENTION_BUDGET - occupied - overhead)
+        .unwrap();
+    assert_eq!(f.storage.status().read_bytes, CONTENTION_BUDGET);
+    external
+}
+
+// Whether One Poll Leaves The Future Waiting.
+async fn pending<F: std::future::Future>(future: std::pin::Pin<&mut F>) -> bool {
+    let mut future = future;
+    std::future::poll_fn(|cx| Poll::Ready(future.as_mut().poll(cx).is_pending())).await
 }

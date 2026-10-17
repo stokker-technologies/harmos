@@ -251,7 +251,7 @@ async fn init_failure_skips_stop() {
     // A failed initialization owns no instance, so a failing
     // stop cannot retain one.
     trace.fail_stop.store(true, Ordering::SeqCst);
-    let mut instance = runtime.operations.submit_as::<ReadContract>(Mode::Complete).unwrap();
+    let mut instance = runtime.operations.submit(ReadContract { mode: Mode::Complete }).unwrap();
     assert!(matches!((&mut instance).await, Err(Error::OperationFailed { .. })));
     instance.settle().await.unwrap();
     assert_eq!(instance.status().phase(), OperationPhase::Settled);
@@ -396,7 +396,7 @@ async fn dropped_response_retains() {
     for polled in [false, true] {
         let (runtime, trace) = runtime().await;
         trace.block_finalize.store(true, Ordering::SeqCst);
-        let instance = runtime.operations.submit_as::<ReadContract>(Mode::WaitRun).unwrap();
+        let instance = runtime.operations.submit(ReadContract { mode: Mode::WaitRun }).unwrap();
         let id = instance.id();
         // Only a constructed instance has cleanup to retain.
         trace.running.notified().await;

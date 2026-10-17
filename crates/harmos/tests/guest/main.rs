@@ -19,7 +19,7 @@ mod lifecycle;
 mod limits;
 mod operations;
 mod publications;
-mod schematic;
+use schematic_domain as schematic;
 
 /* === Re-Exports === */
 
@@ -32,7 +32,7 @@ use std::sync::OnceLock;
 use harmos::Runtime;
 use harmos::guest::Error;
 use schematic::model::Point;
-use schematic::operations::propose;
+use schematic::operations::schematic::propose;
 use support::Bank;
 use support::fixtures::component as load;
 
@@ -84,8 +84,8 @@ fn sandbox() -> Vec<u8> {
 }
 
 // A Route From The Origin To `(x, 4)` Turns At `(x, 0)`
-fn route(x: i32) -> propose::Request {
-    propose::Request {
+fn route(x: i32) -> propose::ProposeRoute {
+    propose::ProposeRoute {
         from: Point { x: 0, y: 0 },
         to: Point { x, y: 4 },
     }

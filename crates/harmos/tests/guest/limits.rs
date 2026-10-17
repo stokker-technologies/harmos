@@ -82,7 +82,7 @@ async fn memory_growth_bounded() {
     manager.initialize(&mut lifecycle).await.unwrap();
     let refused = runtime
         .operations
-        .call_as::<Echo>(Echo { say: "grow".into() })
+        .call(Echo { say: "grow".into() })
         .await
         .unwrap_err();
     assert!(
@@ -105,7 +105,7 @@ async fn fuel_retains_cause() {
     manager.initialize(&mut lifecycle).await.unwrap();
     let spun = runtime
         .operations
-        .call_as::<Spin>(Spin {})
+        .call(Spin {})
         .await
         .unwrap_err();
     assert_eq!(
@@ -126,7 +126,7 @@ async fn manager_bounds_wait() {
     manager.initialize(&mut lifecycle).await.unwrap();
     let waited = runtime
         .operations
-        .call_as::<Wait>(Wait {})
+        .call(Wait {})
         .await
         .unwrap_err();
     assert!(
@@ -149,7 +149,7 @@ async fn trap_discards_instance() {
     manager.initialize(&mut lifecycle).await.unwrap();
     let trapped = runtime
         .operations
-        .call_as::<Fail>(Fail {})
+        .call(Fail {})
         .await
         .unwrap_err();
     assert_ne!(
@@ -163,7 +163,7 @@ async fn trap_discards_instance() {
     );
     let after = runtime
         .operations
-        .call_as::<Echo>(Echo {
+        .call(Echo {
             say: "anyone".into(),
         })
         .await
@@ -185,7 +185,7 @@ async fn refusal_keeps_classification() {
     manager.initialize(&mut lifecycle).await.unwrap();
     let refused = runtime
         .operations
-        .call_as::<Decline>(Decline {})
+        .call(Decline {})
         .await
         .unwrap_err();
     let harmos::operations::ComponentError::Remote(failure) = component_error(&refused) else {
@@ -194,7 +194,7 @@ async fn refusal_keeps_classification() {
     assert_eq!(failure.cause(), "the probe declines");
     let answered = runtime
         .operations
-        .call_as::<Echo>(Echo { say: "two".into() })
+        .call(Echo { say: "two".into() })
         .await
         .unwrap();
     assert_eq!(answered.said, "two", "a declined call keeps the instance");

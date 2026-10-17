@@ -20,7 +20,7 @@
 use super::lifecycle::{GuestOperations, Lifecycle, Manager, serve_host};
 use super::sandbox::{Counts, Read, Stage, Value};
 use super::schematic::model::{Connection, Point, Snapshot};
-use super::schematic::operations::{analyze, propose, validate};
+use super::schematic::operations::schematic::{analyze, propose, validate};
 use super::{GuestLanes, corner, route, runtime, sandbox};
 use harmos::Message;
 use harmos::operations::{ComponentError, ComponentOperation, FailureKind, OperationDeclaration};
@@ -76,7 +76,7 @@ async fn inert_plan_denies() {
     assert!(matches!(
         runtime
             .operations
-            .call_as::<propose::ProposeRoute>(route(4))
+            .call(route(4))
             .await,
         Err(harmos::Error::NotRegistered {
             domain: "operation",
@@ -98,7 +98,7 @@ async fn inert_plan_denies() {
     assert!(manager.caller("schematic-tools").is_ok());
     let response = runtime
         .operations
-        .call_as::<propose::ProposeRoute>(route(3))
+        .call(route(3))
         .await
         .unwrap();
     assert_eq!(response.points, corner(3));
@@ -115,7 +115,7 @@ async fn declared_operation_roundtrip() {
     manager.initialize(&mut lifecycle).await.unwrap();
     let answered = runtime
         .operations
-        .call_as::<propose::ProposeRoute>(route(3))
+        .call(route(3))
         .await
         .unwrap();
     assert_eq!(answered.points, corner(3));
@@ -126,7 +126,7 @@ async fn declared_operation_roundtrip() {
         .operations
         .call_encoded(
             &operation,
-            propose::Request {
+            propose::ProposeRoute {
                 from: Point { x: 0, y: 0 },
                 to: Point { x: 0, y: 4 },
             }
@@ -135,7 +135,7 @@ async fn declared_operation_roundtrip() {
         .await
         .unwrap();
     assert_eq!(
-        propose::Response::decode(encoded.as_slice())
+        propose::Route::decode(encoded.as_slice())
             .unwrap()
             .points,
         [Point { x: 0, y: 0 }, Point { x: 0, y: 4 }]
@@ -153,7 +153,7 @@ async fn declared_operation_roundtrip() {
 
     let validated = runtime
         .operations
-        .call_as::<validate::ValidateSchematic>(validate::Request {
+        .call(validate::ValidateSchematic {
             schematic: Snapshot {
                 symbols: vec![1, 1],
                 connections: vec![Connection { from: 1, to: 2 }],
@@ -232,7 +232,7 @@ async fn shutdown_retains_cleanup() {
     assert!(
         runtime
             .operations
-            .call_as::<Read>(Value {
+            .call(Read {
                 value: "fenced".into()
             })
             .await
@@ -259,7 +259,7 @@ async fn overlay_preserves_parent() {
         .unwrap();
     let caller = runtime.operations.with_context(context.clone());
     let answer = caller
-        .call_as::<Read>(Value {
+        .call(Read {
             value: "context-parent".into(),
         })
         .await
@@ -280,7 +280,7 @@ async fn phases_retain_capacity() {
     assert_eq!(
         runtime
             .operations
-            .call_as::<Read>(Value {
+            .call(Read {
                 value: "value".into()
             })
             .await
@@ -293,14 +293,14 @@ async fn phases_retain_capacity() {
     // Retain Both Original Receipts While Their Physical Cleanup Owns The Table
     let mut first = runtime
         .operations
-        .submit_as::<Read>(Value {
+        .submit(Read {
             value: "cleanup".into(),
         })
         .unwrap();
     let first_error = (&mut first).await.unwrap_err();
     let mut second = runtime
         .operations
-        .submit_as::<Read>(Value {
+        .submit(Read {
             value: "cleanup".into(),
         })
         .unwrap();
@@ -330,7 +330,7 @@ async fn phases_retain_capacity() {
     }
     let error = runtime
         .operations
-        .call_as::<Read>(Value {
+        .call(Read {
             value: "later".into(),
         })
         .await
@@ -380,7 +380,7 @@ async fn phases_retain_capacity() {
     assert_eq!(
         runtime
             .operations
-            .call_as::<Read>(Value {
+            .call(Read {
                 value: "later".into()
             })
             .await
@@ -444,7 +444,7 @@ async fn children_retire_authority() {
         manager.initialize(&mut lifecycle).await.unwrap();
         let result = runtime
             .operations
-            .call_as::<Read>(Value {
+            .call(Read {
                 value: "parent".into(),
             })
             .await;
@@ -467,7 +467,7 @@ async fn initialization_cleans_failure() {
     manager.initialize(&mut lifecycle).await.unwrap();
     let mut invocation = runtime
         .operations
-        .submit_as::<Read>(Value {
+        .submit(Read {
             value: "initialize-fail".into(),
         })
         .unwrap();
@@ -484,7 +484,7 @@ async fn initialization_cleans_failure() {
     );
     let counts = runtime
         .operations
-        .call_as::<Counts>(Value {
+        .call(Counts {
             value: "counts".into(),
         })
         .await
@@ -504,7 +504,7 @@ async fn initialization_children_retired() {
     manager.initialize(&mut lifecycle).await.unwrap();
     let result = runtime
         .operations
-        .call_as::<Read>(Value {
+        .call(Read {
             value: "initialize-child".into(),
         })
         .await
@@ -512,7 +512,7 @@ async fn initialization_children_retired() {
     assert_eq!(result.value, "initialize-child:2");
     let counts = runtime
         .operations
-        .call_as::<Counts>(Value {
+        .call(Counts {
             value: "counts".into(),
         })
         .await
@@ -595,8 +595,8 @@ async fn grpc_original_owner() {
     client.ready().await.unwrap();
     let settings = harmos::grpc::server::Settings::default();
     let codec = harmos::grpc::Codec::<
-        propose::Response,
-        harmos::operations::Response<propose::Request>,
+        propose::Route,
+        harmos::operations::Response<propose::ProposeRoute>,
     >::new(settings.decode, settings.encode)
     .unwrap();
     let response = client
@@ -626,7 +626,7 @@ async fn stream_lifecycle_preserved() {
         items: std::num::NonZeroUsize::MIN,
         bytes: std::num::NonZeroUsize::new(4096).unwrap(),
     };
-    let request = analyze::Request {
+    let request = analyze::AnalyzeSchematic {
         schematic: Snapshot {
             symbols: vec![1, 2],
             connections: vec![Connection { from: 1, to: 2 }],

@@ -1464,7 +1464,7 @@ async fn cancellation_settles_handlers() {
     manager.initialize(&mut lifecycle).await.unwrap();
     let invocation = runtime
         .operations
-        .submit_as::<Forward<true>>(Amplify { value: 0 })
+        .submit(Forward { value: 0 })
         .unwrap();
     tokio::time::timeout(Duration::from_secs(1), provider.started.notified())
         .await
@@ -1480,7 +1480,7 @@ async fn cancellation_settles_handlers() {
     assert_eq!(
         runtime
             .operations
-            .call_as::<Forward<true>>(Amplify { value: 9 })
+            .call(Forward { value: 9 })
             .await
             .unwrap()
             .value,
@@ -1489,7 +1489,7 @@ async fn cancellation_settles_handlers() {
 
     let timed = runtime
         .operations
-        .call_as::<Amplify>(Amplify { value: 0 })
+        .call(Amplify { value: 0 })
         .await;
     assert!(matches!(
         timed,
@@ -1501,7 +1501,7 @@ async fn cancellation_settles_handlers() {
     assert_eq!(
         runtime
             .operations
-            .call_as::<Amplify>(Amplify { value: 10 })
+            .call(Amplify { value: 10 })
             .await
             .unwrap()
             .value,

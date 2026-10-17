@@ -187,7 +187,7 @@ async fn cleanup_failure_retains() {
     let owner = Arc::new(owner);
     runtime.operations.register_operation::<Finishing>("app", Lanes::Serial, owner).unwrap();
     let failed_request = Request { fail_attempt: true, ..request() };
-    let first = runtime.operations.submit_as::<Finish>(failed_request).unwrap();
+    let first = runtime.operations.submit(failed_request).unwrap();
 
     let error = first.await.unwrap_err();
 
@@ -217,7 +217,7 @@ async fn unregister_refuses_failing() {
     counters.fail.store(true, Ordering::SeqCst);
     let owner = Arc::new(Owner(Arc::clone(&counters)));
     runtime.operations.register_operation::<Finishing>("app", Lanes::Serial, owner).unwrap();
-    let invocation = runtime.operations.submit_as::<Finish>(request()).unwrap();
+    let invocation = runtime.operations.submit(request()).unwrap();
     assert!(invocation.await.is_err());
 
     // A retried cleanup that fails again refuses the unregister and keeps the state.
@@ -515,8 +515,8 @@ async fn reregister_renews_generation() {
     let runtime = runtime().await;
     let counters = Arc::new(Counters::default());
     runtime.operations.register_operation::<Finishing>("app", Lanes::Serial, Arc::new(Owner(Arc::clone(&counters)))).unwrap();
-    let first = runtime.operations.submit_as::<Finish>(request()).unwrap();
-    let second = runtime.operations.submit_as::<Finish>(request()).unwrap();
+    let first = runtime.operations.submit(request()).unwrap();
+    let second = runtime.operations.submit(request()).unwrap();
     assert_ne!(first.id(), second.id());
     assert_eq!(first.generation(), second.generation());
     let id = second.id();
@@ -526,7 +526,7 @@ async fn reregister_renews_generation() {
 
     runtime.operations.unregister(Finish::ID).await.unwrap();
     runtime.operations.register_operation::<Finishing>("app", Lanes::Serial, Arc::new(Owner(Arc::clone(&counters)))).unwrap();
-    let replacement = runtime.operations.submit_as::<Finish>(request()).unwrap();
+    let replacement = runtime.operations.submit(request()).unwrap();
 
     assert_ne!(replacement.generation(), generation);
     assert_ne!(replacement.id(), id);

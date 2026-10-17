@@ -8,8 +8,7 @@
  */
 
 /* === Modules === */
-#[path = "../guest/schematic.rs"]
-mod schematic;
+use schematic_domain as schematic;
 
 /* === Re-Exports === */
 
@@ -23,7 +22,8 @@ use crate::support;
 use harmos::Runtime;
 use harmos::plugin::PluginState;
 use schematic::model::{Connection, Point, Snapshot};
-use schematic::operations::{Operations, analyze, propose, validate};
+use schematic::operations::Operations;
+use schematic::operations::schematic::{analyze, propose, validate};
 
 /* === Constants === */
 const PLUGIN: &str = "schematic-tools";
@@ -48,8 +48,8 @@ enum Lanes {
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn route() -> propose::Request {
-    propose::Request {
+fn route() -> propose::ProposeRoute {
+    propose::ProposeRoute {
         from: Point { x: 0, y: 0 },
         to: Point { x: 3, y: 4 },
     }
@@ -112,7 +112,7 @@ async fn guest_composition_walks() {
     // Scene 4: A Typed Caller Routes Through The Guest
     let routed = runtime
         .operations
-        .call_as::<propose::ProposeRoute>(route())
+        .call(route())
         .await
         .unwrap();
     assert_eq!(routed.points, corner());
@@ -120,7 +120,7 @@ async fn guest_composition_walks() {
     // Scene 5: Validation Reports Every Diagnostic Of A Broken Schematic
     let validated = runtime
         .operations
-        .call_as::<validate::ValidateSchematic>(validate::Request {
+        .call(validate::ValidateSchematic {
             schematic: Snapshot {
                 symbols: vec![1, 1],
                 connections: vec![Connection { from: 1, to: 2 }],
@@ -141,7 +141,7 @@ async fn guest_composition_walks() {
         items: NonZeroUsize::MIN,
         bytes: NonZeroUsize::new(4096).unwrap(),
     };
-    let request = analyze::Request {
+    let request = analyze::AnalyzeSchematic {
         schematic: Snapshot {
             symbols: vec![1, 2],
             connections: vec![Connection { from: 1, to: 2 }],
@@ -164,7 +164,7 @@ async fn guest_composition_walks() {
     assert_ne!(reloaded.generation, ready.generation);
     let routed = runtime
         .operations
-        .call_as::<propose::ProposeRoute>(route())
+        .call(route())
         .await
         .unwrap();
     assert_eq!(routed.points, corner());
@@ -174,7 +174,7 @@ async fn guest_composition_walks() {
     assert!(
         runtime
             .operations
-            .call_as::<propose::ProposeRoute>(route())
+            .call(route())
             .await
             .is_err()
     );

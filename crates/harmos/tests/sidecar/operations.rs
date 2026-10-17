@@ -1048,7 +1048,7 @@ async fn runner_retry_finalization() {
     let counts = Arc::new(Counts::default());
     let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
     fixture.initialize().await.unwrap();
-    fixture.call_as::<Read>(()).await.unwrap();
+    fixture.call(Read {}).await.unwrap();
     assert_eq!(counts.prepared.load(Ordering::SeqCst), 1);
     assert_eq!(counts.runs.load(Ordering::SeqCst), 2);
     assert_eq!(counts.operation_initialized.load(Ordering::SeqCst), 1);
@@ -1064,7 +1064,7 @@ async fn portable_call_context() {
     let counts = Arc::new(Counts::default());
     let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
     fixture.initialize().await.unwrap();
-    fixture.call_as::<Read>(()).await.unwrap();
+    fixture.call(Read {}).await.unwrap();
     let mut context = harmos::operations::CallContext::default();
     context.insert(Principal).unwrap();
     context
@@ -1089,7 +1089,7 @@ async fn submitted_child_controls() {
     harmos::builtin::Catalog::register(&fixture.runtime.operations, "host", Lanes::NativeOpen)
         .unwrap();
     fixture.initialize().await.unwrap();
-    fixture.call_as::<Read>(()).await.unwrap();
+    fixture.call(Read {}).await.unwrap();
     assert_eq!(counts.children.load(Ordering::SeqCst), 4);
     assert_eq!(counts.refresh_completed.load(Ordering::SeqCst), 2);
     assert_eq!(counts.refresh_cleaned.load(Ordering::SeqCst), 4);
@@ -1107,7 +1107,7 @@ async fn cleanup_retry_once() {
     let runtime = &fixture.runtime;
     counts.fail_cleanup.store(true, Ordering::SeqCst);
     assert!(matches!(
-        fixture.call_as::<Read>(()).await,
+        fixture.call(Read {}).await,
         Err(harmos::Error::OperationFinalization { .. })
     ));
     assert!(runtime.operations.unregister(Read::ID).await.is_err());
@@ -1130,7 +1130,7 @@ async fn preparation_refusal_state() {
     let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
     fixture.initialize().await.unwrap();
     counts.fail_prepare.store(true, Ordering::SeqCst);
-    let Err(harmos::Error::OperationFailed { source, .. }) = fixture.call_as::<Read>(()).await
+    let Err(harmos::Error::OperationFailed { source, .. }) = fixture.call(Read {}).await
     else {
         panic!("preparation is refused before any attempt")
     };
@@ -1157,7 +1157,7 @@ async fn children_attempt_lifetime() {
         };
         let mut fixture = Managed::new(source(counts.clone()), lane).await;
         fixture.initialize().await.unwrap();
-        let result = fixture.call_as::<Read>(()).await;
+        let result = fixture.call(Read {}).await;
         if serial {
             assert!(matches!(result, Err(harmos::Error::OperationFailed { .. })));
             assert_eq!(counts.children.load(Ordering::SeqCst), 0);
@@ -1169,7 +1169,7 @@ async fn children_attempt_lifetime() {
             assert_eq!(counts.finalized.load(Ordering::SeqCst), 1);
         }
         let saved = counts.saved.lock().unwrap().take().unwrap();
-        assert!(saved.call_as::<Refresh>(()).await.is_err());
+        assert!(saved.call(Refresh {}).await.is_err());
         fixture.shutdown().await.unwrap();
         fixture.runtime.stop().await.unwrap();
     }
@@ -1181,7 +1181,7 @@ async fn initialization_failure_skips_cleanup() {
     let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
     fixture.initialize().await.unwrap();
     counts.fail_initialize.store(true, Ordering::SeqCst);
-    let Err(harmos::Error::OperationFailed { source, .. }) = fixture.call_as::<Read>(()).await
+    let Err(harmos::Error::OperationFailed { source, .. }) = fixture.call(Read {}).await
     else {
         panic!("initialization returns the original failure")
     };
@@ -1205,7 +1205,7 @@ async fn initialization_child_expires() {
     let mut fixture = Managed::new(source(counts.clone()), Lanes::NativeOpen).await;
     fixture.initialize().await.unwrap();
     counts.initialization_child.store(true, Ordering::SeqCst);
-    fixture.call_as::<Read>(()).await.unwrap();
+    fixture.call(Read {}).await.unwrap();
     assert_eq!(counts.operation_initialized.load(Ordering::SeqCst), 1);
     assert_eq!(counts.children.load(Ordering::SeqCst), 1);
     assert_eq!(counts.stale_refused.load(Ordering::SeqCst), 1);

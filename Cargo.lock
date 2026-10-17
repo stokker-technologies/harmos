@@ -1052,6 +1052,7 @@ dependencies = [
  "prost-reflect",
  "protoc-bin-vendored",
  "semver",
+ "schematic-domain",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -2128,6 +2129,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
 dependencies = [
  "winapi-util",
+]
+
+[[package]]
+name = "schematic-domain"
+version = "0.2.0"
+dependencies = [
+ "harmos-domain",
+ "serde",
+ "thiserror",
 ]
 
 [[package]]

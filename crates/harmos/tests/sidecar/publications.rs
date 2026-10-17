@@ -980,7 +980,7 @@ async fn capture_survives_reload() {
     fixture.initialize().await.unwrap();
     ready(fixture.ready().clone()).await;
     fixture
-        .call_as::<PublishPulse>(PublishPulse { sample: 41 })
+        .call(PublishPulse { sample: 41 })
         .await
         .unwrap();
     let stream = fixture
@@ -1005,7 +1005,7 @@ async fn capture_survives_reload() {
     fixture.initialize().await.unwrap();
     ready(fixture.ready().clone()).await;
     fixture
-        .call_as::<PublishPulse>(PublishPulse { sample: 42 })
+        .call(PublishPulse { sample: 42 })
         .await
         .unwrap();
     let samples: Vec<_> = stream

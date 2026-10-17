@@ -150,9 +150,9 @@ async fn queue_refuses_construction() {
     let started = first_request.started.clone();
     let first = runtime.operations.submit(first_request).unwrap();
     started.notified().await;
-    let second = runtime.operations.submit_as::<HoldContract>(request(true)).unwrap();
+    let second = runtime.operations.submit(request(true)).unwrap();
     assert!(matches!(
-        runtime.operations.submit_as::<HoldContract>(request(false)),
+        runtime.operations.submit(request(false)),
         Err(Error::ResourceExhausted { resource: "operation admission queue" })
     ));
 
@@ -171,7 +171,7 @@ async fn queued_cancel_unbuilt() {
     started.notified().await;
     let second_request = request(false);
     counts.fail_cleanup.store(true, Ordering::SeqCst);
-    let mut second = runtime.operations.submit_as::<HoldContract>(second_request).unwrap();
+    let mut second = runtime.operations.submit(second_request).unwrap();
     assert_eq!(second.status().phase(), OperationPhase::Queued);
     second.cancel();
     second.cancel();

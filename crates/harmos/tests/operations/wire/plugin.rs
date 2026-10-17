@@ -115,36 +115,11 @@ struct Host {
     cleanup: Option<Arc<CleanupOwner>>,
 }
 
-/// A Plugin Holding A Cleanup Callback And An Echo Callback Over One Preparation Budget.
-struct Credit {
-    runtime: harmos::Runtime<super::Bank>,
-    manager: PluginManager<Resources, Resources, Resources>,
-    host: Host,
-    cleanup: Arc<CleanupOwner>,
-    target: harmos::operations::PluginCallback,
-    echo: harmos::operations::PluginCallback,
-}
-
-/// A Plugin Whose Receipt Is Dropped At Shutdown While A Gated Compute Runs.
-struct Running {
-    runtime: harmos::Runtime<super::Bank>,
-    manager: PluginManager<Resources, Resources, Resources>,
-    host: Host,
-    gate: Arc<tokio::sync::Notify>,
-    invocation: harmos::operations::OperationInstance<Response>,
-}
-
 /* === Enums === */
 /* === Traits === */
 
 /* === Implementations === */
-impl OperationDeclaration for Selected {
-    type Request = Text;
-    type Response = String;
-    const ID: &'static str = "fixture.selected_provider";
-    const POLICY: OperationPolicy = super::cases::Echo::POLICY;
-    const VISIBILITY: Visibility = Visibility::Shared;
-}
+
 
 impl From<&str> for Selected {
     fn from(value: &str) -> Self {
@@ -246,16 +221,9 @@ impl harmos::operations::Operation for SharedCall {
     }
 }
 
-impl OperationDeclaration for Cleanup {
-    type Request = Text;
-    type Response = String;
-    const ID: &'static str = "fixture.callback_cleanup";
-    const POLICY: OperationPolicy = super::cases::Echo::POLICY;
-}
 
-impl WireOperation for Cleanup {
-    const VERSION: u32 = 1;
-}
+
+
 
 #[harmos::catalog]
 enum CleaningOperations {
@@ -436,7 +404,7 @@ impl Running {
         let opened = Arc::new(tokio::sync::Notify::new());
         let gate = Arc::new(tokio::sync::Notify::new());
         let invocation =
-            runtime.operations.submit_as::<Compute>(super::Request { gate: Some((opened.clone(), gate.clone())), ..request() }).unwrap();
+            runtime.operations.submit(super::Request { gate: Some((opened.clone(), gate.clone())), ..request() }).unwrap();
         opened.notified().await;
         Self { runtime, manager, host, gate, invocation }
     }
@@ -879,9 +847,9 @@ async fn queued_operations_recheck() {
     let source = runtime.operations.caller(&host.callers["client"]).unwrap();
     let opened = Arc::new(tokio::sync::Notify::new());
     let gate = Arc::new(tokio::sync::Notify::new());
-    let held = runtime.operations.submit_as::<Shared>(Request { gate: Some((opened.clone(), gate.clone())), ..request() }).unwrap();
+    let held = runtime.operations.submit(Shared(Request { gate: Some((opened.clone(), gate.clone())), ..request() })).unwrap();
     opened.notified().await;
-    let queued = source.submit_as::<Shared>(request()).unwrap();
+    let queued = source.submit(Shared(request())).unwrap();
     manager.reload(with_clients(false), &mut host).await.unwrap();
 
     gate.notify_one();

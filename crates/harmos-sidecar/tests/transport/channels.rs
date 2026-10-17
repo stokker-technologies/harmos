@@ -221,12 +221,12 @@ async fn binary_sdk_lifecycle() {
     ));
     let Connection { sender, mut receiver, mut driver } = Connection::new(io(host_data), io(host_control));
     let driving = tokio::spawn(async move { driver.run().await });
-    let initialization = InitializeRequest { config_json: b"null".to_vec(), generation_context: Vec::new() };
-    binary_invoke(&sender, &mut receiver, 1, Initialize::<TransportPlugin>::ID, initialization.encode_to_vec()).await;
+    let initialization = Initialize { config_json: b"null".to_vec(), generation_context: Vec::new() };
+    binary_invoke(&sender, &mut receiver, 1, Initialize::ID, initialization.encode_to_vec()).await;
     let request = Echo { nonce: 7, payload: vec![42; 65536] };
     let result = binary_invoke(&sender, &mut receiver, 2, Echo::ID, request.encode_to_vec()).await;
     assert_eq!(Echo::decode(&result).unwrap(), request);
-    binary_invoke(&sender, &mut receiver, 3, Shutdown::<TransportPlugin>::ID, Vec::new()).await;
+    binary_invoke(&sender, &mut receiver, 3, Shutdown::ID, Vec::new()).await;
     assert!(matches!(
         binary_phase(
             &sender,

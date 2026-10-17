@@ -161,6 +161,8 @@ tower-http = { workspace = true, optional = true }
 # Local
 harmos-guest = { workspace = true, features = ["componentize"] }
 
+schematic-domain = { path = "../../examples/schematic/domain" }
+
 # Git
 
 # Error Handling

@@ -72,7 +72,7 @@ async fn publications_survive_unload() {
     );
     runtime
         .operations
-        .call_as::<wire::Echo>(wire::Echo {
+        .call(wire::Echo {
             say: "publish:route".into(),
         })
         .await
@@ -88,7 +88,7 @@ async fn publications_survive_unload() {
     replacement.initialize(&mut lifecycle).await.unwrap();
     runtime
         .operations
-        .call_as::<wire::Echo>(wire::Echo {
+        .call(wire::Echo {
             say: "publish:replacement".into(),
         })
         .await
@@ -113,7 +113,7 @@ async fn replacement_preserves_owner() {
     let plan = manager.plan_reload(candidate).unwrap();
     runtime
         .operations
-        .call_as::<wire::Echo>(wire::Echo {
+        .call(wire::Echo {
             say: "publish:original".into(),
         })
         .await
@@ -122,7 +122,7 @@ async fn replacement_preserves_owner() {
     manager.apply_reload(plan, &mut lifecycle).await.unwrap();
     runtime
         .operations
-        .call_as::<wire::Echo>(wire::Echo {
+        .call(wire::Echo {
             say: "publish:replacement".into(),
         })
         .await
@@ -153,7 +153,7 @@ async fn initialization_aborts_staging() {
     let stream = runtime.streams.publication("progress", 1).unwrap();
     runtime
         .operations
-        .call_as::<wire::Echo>(wire::Echo {
+        .call(wire::Echo {
             say: "publish:replacement".into(),
         })
         .await
@@ -174,7 +174,7 @@ async fn bounded_window_gaps() {
     let mut rows = stream.watch();
     runtime
         .operations
-        .call_as::<wire::Echo>(wire::Echo {
+        .call(wire::Echo {
             say: "publish-many".into(),
         })
         .await
@@ -208,7 +208,7 @@ async fn saved_context_generation() {
     let stream = runtime.streams.publication("progress", 1).unwrap();
     let published = runtime
         .operations
-        .call_as::<wire::Echo>(wire::Echo {
+        .call(wire::Echo {
             say: "saved-publish:original".into(),
         })
         .await
@@ -217,7 +217,7 @@ async fn saved_context_generation() {
     assert_eq!(values(&stream).await, ["original"]);
     let dependency = runtime
         .operations
-        .call_as::<wire::Echo>(wire::Echo {
+        .call(wire::Echo {
             say: "saved-dependency:original".into(),
         })
         .await

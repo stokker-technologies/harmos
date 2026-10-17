@@ -91,8 +91,8 @@ async fn cache_serves_hits() {
     runtime.operations.register_operation::<ComputeCall>("app", Lanes::Open, Arc::clone(&owner)).unwrap();
     let keyed = || Request { keyed: true, ..request() };
 
-    let first = runtime.operations.call_as::<Compute>(keyed()).await.unwrap();
-    let second = runtime.operations.call_as::<Compute>(keyed()).await.unwrap();
+    let first = runtime.operations.call(keyed()).await.unwrap();
+    let second = runtime.operations.call(keyed()).await.unwrap();
 
     // A hit reuses the cached response without constructing the operation.
     assert!(first.ptr_eq(&second));
@@ -110,13 +110,13 @@ async fn uncacheable_calls_rerun() {
     // Invalid Requests Bypass The Cache
     let invalid = || Request { keyed: true, valid: false, ..request() };
     for _ in 0..2 {
-        assert!(matches!(runtime.operations.call_as::<Compute>(invalid()).await, Err(Error::OperationFailed { .. })));
+        assert!(matches!(runtime.operations.call(invalid()).await, Err(Error::OperationFailed { .. })));
     }
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 2);
 
     // Unkeyed Requests Always Run
     for _ in 0..2 {
-        runtime.operations.call_as::<Compute>(request()).await.unwrap();
+        runtime.operations.call(request()).await.unwrap();
     }
     assert_eq!(owner.runs.load(Ordering::SeqCst), 2);
 
@@ -124,7 +124,7 @@ async fn uncacheable_calls_rerun() {
     runtime.operations.set_cache_capacity(0);
     let keyed = || Request { keyed: true, ..request() };
     for _ in 0..2 {
-        runtime.operations.call_as::<Compute>(keyed()).await.unwrap();
+        runtime.operations.call(keyed()).await.unwrap();
     }
     assert_eq!(owner.runs.load(Ordering::SeqCst), 4);
     runtime.stop().await.unwrap();
@@ -211,7 +211,7 @@ async fn handler_panic_settles() {
     let runtime = runtime().await;
     runtime.operations.register_operation::<ComputeCall>("app", Lanes::Open, Arc::new(Owner::default())).unwrap();
     assert!(matches!(
-        runtime.operations.call_as::<Compute>(Request { value: usize::MAX, ..request() }).await,
+        runtime.operations.call(Request { value: usize::MAX, ..request() }).await,
         Err(Error::OperationPanicked { .. })
     ));
     runtime.operations.unregister(Compute::ID).await.unwrap();

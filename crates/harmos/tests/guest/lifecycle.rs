@@ -114,7 +114,7 @@ impl Operation for Echo {
     async fn run<'ctx>(
         &mut self,
         _: Self::Context<'ctx>,
-        request: &mut wire::Echo,
+        request: &mut wire::ProviderEcho,
         _endpoints: &mut Self::Endpoints,
     ) -> harmos::Result<harmos::operations::Response<wire::Echoed>> {
         let result: ::core::result::Result<wire::Echoed, Self::Error> = async move {
@@ -286,7 +286,7 @@ impl Resources {
                 &definition.configuration,
                 NonZeroUsize::new(
                     2 * definition.configuration.len()
-                        + std::mem::size_of::<harmos::operations::lifecycle::InitializeRequest>()
+                        + std::mem::size_of::<harmos::operations::lifecycle::Initialize>()
                         + 64
                         + 20,
                 )

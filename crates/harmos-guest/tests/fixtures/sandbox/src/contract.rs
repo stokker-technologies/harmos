@@ -23,7 +23,6 @@ use std::time::Duration;
 use harmos_domain::StreamSpec;
 use harmos_domain::operations::{
     Backoff, Jitter, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility,
-    WireOperation,
 };
 
 /* === Constants === */
@@ -41,6 +40,7 @@ const PROBE: OperationPolicy = OperationPolicy {
 /* === Structs === */
 #[harmos_guest::message(harmos_path = ::harmos_guest)]
 #[derive(Clone, PartialEq)]
+#[harmos_domain::operation(id = "probe.echo", version = 1, response = Echoed, policy = PROBE, visibility = Visibility::Shared)]
 pub struct Echo {
     pub say: String,
 }
@@ -53,18 +53,32 @@ pub struct Echoed {
 
 #[harmos_guest::message(harmos_path = ::harmos_guest)]
 #[derive(Clone, PartialEq)]
+#[harmos_domain::operation(id = "probe.decline", version = 1, response = Echoed, policy = PROBE)]
 pub struct Decline {}
 
 #[harmos_guest::message(harmos_path = ::harmos_guest)]
 #[derive(Clone, PartialEq)]
+#[harmos_domain::operation(id = "probe.spin", version = 1, response = Echoed, policy = OperationPolicy {
+        timeout: Duration::from_secs(600),
+        attempt_timeout: Duration::from_secs(600),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    })]
 pub struct Spin {}
 
 #[harmos_guest::message(harmos_path = ::harmos_guest)]
 #[derive(Clone, PartialEq)]
+#[harmos_domain::operation(id = "probe.wait", version = 1, response = Echoed, policy = OperationPolicy {
+        timeout: Duration::from_millis(5),
+        attempt_timeout: Duration::from_millis(5),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    })]
 pub struct Wait {}
 
 #[harmos_guest::message(harmos_path = ::harmos_guest)]
 #[derive(Clone, PartialEq)]
+#[harmos_domain::operation(id = "probe.fail", version = 1, response = Echoed, policy = PROBE)]
 pub struct Fail {}
 
 #[harmos_guest::message(harmos_path = ::harmos_guest)]
@@ -77,9 +91,34 @@ pub struct Stage {
     pub id: String,
 }
 
-pub struct ProviderEcho;
-pub struct Read;
-pub struct Counts;
+#[harmos_guest::message(harmos_path = ::harmos_guest)]
+#[derive(Clone, PartialEq)]
+#[harmos_domain::operation(id = "provider.echo", version = 1, response = Echoed, policy = OperationPolicy {
+        timeout: Duration::from_millis(100),
+        attempt_timeout: Duration::from_millis(100),
+        retries: RetryPolicy::Never,
+        restart: RestartPolicy::Never,
+    }, visibility = Visibility::Shared)]
+pub struct ProviderEcho { pub say: String }
+#[harmos_guest::message(harmos_path = ::harmos_guest)]
+#[derive(Clone, PartialEq)]
+#[harmos_domain::operation(id = "fixture.read", version = 1, response = Value, policy = OperationPolicy {
+        timeout: Duration::from_secs(2),
+        attempt_timeout: Duration::from_millis(500),
+        retries: RetryPolicy::OnTransient {
+            max_retries: 1,
+            backoff: Backoff::Fixed {
+                delay: Duration::from_millis(1),
+                jitter: Jitter::None,
+            },
+        },
+        restart: RestartPolicy::Never,
+    })]
+pub struct Read { pub value: String }
+#[harmos_guest::message(harmos_path = ::harmos_guest)]
+#[derive(Clone, PartialEq)]
+#[harmos_domain::operation(id = "fixture.counts", version = 1, response = Value, policy = Read::POLICY)]
+pub struct Counts { pub value: String }
 
 /* === Enums === */
 #[harmos_guest::catalog(harmos_path = ::harmos_guest)]
@@ -107,121 +146,37 @@ impl harmos_guest::operations::ContextValue for Stage {
     const KEY: &'static str = "fixture.stage";
 }
 
-impl OperationDeclaration for ProviderEcho {
-    const VISIBILITY: Visibility = Visibility::Shared;
-    type Request = Echo;
-    type Response = Echoed;
-    const ID: &'static str = "provider.echo";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_millis(100),
-        attempt_timeout: Duration::from_millis(100),
-        retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
-    };
-}
 
-impl OperationDeclaration for Echo {
-    const VISIBILITY: Visibility = Visibility::Shared;
-    type Request = Self;
-    type Response = Echoed;
-    const ID: &'static str = "probe.echo";
-    const POLICY: OperationPolicy = PROBE;
-}
 
-impl OperationDeclaration for Decline {
-    type Request = Self;
-    type Response = Echoed;
-    const ID: &'static str = "probe.decline";
-    const POLICY: OperationPolicy = PROBE;
-}
 
-impl OperationDeclaration for Spin {
-    type Request = Self;
-    type Response = Echoed;
-    const ID: &'static str = "probe.spin";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(600),
-        attempt_timeout: Duration::from_secs(600),
-        retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
-    };
-}
 
-impl OperationDeclaration for Wait {
-    type Request = Self;
-    type Response = Echoed;
-    const ID: &'static str = "probe.wait";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_millis(5),
-        attempt_timeout: Duration::from_millis(5),
-        retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
-    };
-}
 
-impl OperationDeclaration for Fail {
-    type Request = Self;
-    type Response = Echoed;
-    const ID: &'static str = "probe.fail";
-    const POLICY: OperationPolicy = PROBE;
-}
 
-impl OperationDeclaration for Read {
-    type Request = Value;
-    type Response = Value;
-    const ID: &'static str = "fixture.read";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(2),
-        attempt_timeout: Duration::from_millis(500),
-        retries: RetryPolicy::OnTransient {
-            max_retries: 1,
-            backoff: Backoff::Fixed {
-                delay: Duration::from_millis(1),
-                jitter: Jitter::None,
-            },
-        },
-        restart: RestartPolicy::Never,
-    };
-}
 
-impl OperationDeclaration for Counts {
-    type Request = Value;
-    type Response = Value;
-    const ID: &'static str = "fixture.counts";
-    const POLICY: OperationPolicy = Read::POLICY;
-}
 
-impl WireOperation for ProviderEcho {
-    const VERSION: u32 = 1;
-}
 
-impl WireOperation for Echo {
-    const VERSION: u32 = 1;
-}
 
-impl WireOperation for Decline {
-    const VERSION: u32 = 1;
-}
 
-impl WireOperation for Spin {
-    const VERSION: u32 = 1;
-}
 
-impl WireOperation for Wait {
-    const VERSION: u32 = 1;
-}
 
-impl WireOperation for Fail {
-    const VERSION: u32 = 1;
-}
 
-impl WireOperation for Read {
-    const VERSION: u32 = 1;
-}
 
-impl WireOperation for Counts {
-    const VERSION: u32 = 1;
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /* === Public Functions === */
 

@@ -31,7 +31,7 @@ use harmos_domain::inventory::{Declaration, Facility};
 use harmos_domain::operations::lifecycle::InstanceState;
 use harmos_domain::operations::{
     WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCommand,
-    lifecycle::InitializeRequest,
+    lifecycle::Initialize,
 };
 use harmos_domain::{Message, Refusal};
 use sandbox::{Echo, Echoed};
@@ -259,7 +259,7 @@ impl Session {
         }
     }
     async fn initialize(&mut self, config: &str) -> Result<(), String> {
-        let request = InitializeRequest {
+        let request = Initialize {
             config_json: config.as_bytes().to_vec(),
             generation_context: vec![2; 32],
         };

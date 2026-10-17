@@ -43,9 +43,7 @@ static NATIVE_SEEDS: std::sync::Mutex<
 /* === Traits === */
 
 /* === Implementations === */
-impl harmos::operations::WireOperation for Forward {
-    const VERSION: u32 = 1;
-}
+
 
 /* === Public Functions === */
 
@@ -105,7 +103,7 @@ impl harmos::operations::Operation for EmbeddedReading {
     async fn run<'ctx>(
         &mut self,
         _: Self::Context<'ctx>,
-        request: &mut Echo,
+        request: &mut ProviderEcho,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Echoed>, Self::Error> {
         let result: ::core::result::Result<Echoed, Self::Error> = async move {
@@ -120,7 +118,7 @@ impl harmos::operations::Operation for EmbeddedReading {
     }
 }
 impl ProviderOwner {
-    async fn answer(&self, state: &Echo) -> Result<Echoed, harmos_domain::Refusal> {
+    async fn answer(&self, state: &ProviderEcho) -> Result<Echoed, harmos_domain::Refusal> {
         if state.say == "cancel" {
             let _cancelled = Cancelled(self.cancelled.clone());
             self.started.notify_one();
@@ -157,14 +155,12 @@ impl ProviderOwner {
         Ok(())
     }
 }
-struct Forward;
-impl OperationDeclaration for Forward {
-    type Request = Echo;
-    type Response = Echoed;
-    const ID: &'static str = "client.forward";
-    const POLICY: OperationPolicy = Echo::POLICY;
-    const VISIBILITY: harmos::operations::Visibility = harmos::operations::Visibility::Shared;
-}
+#[harmos::message]
+#[harmos::operation(id = "client.forward", version = 1, response = Echoed, policy = Echo::POLICY,
+    visibility = harmos::operations::Visibility::Shared)]
+#[derive(Clone)]
+struct Forward { say: String }
+
 #[harmos::catalog]
 enum ForwardOperations {
     Forward(Forward),
@@ -197,7 +193,7 @@ impl harmos::operations::Operation for NativeReading {
     async fn run<'ctx>(
         &mut self,
         _: Self::Context<'ctx>,
-        request: &mut Echo,
+        request: &mut ProviderEcho,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Echoed>, Self::Error> {
         let result: ::core::result::Result<Echoed, Self::Error> = async move {
@@ -231,11 +227,11 @@ impl harmos::operations::Operation for NativeForwarding {
     async fn run<'ctx>(
         &mut self,
         host: Self::Context<'ctx>,
-        request: &mut Echo,
+        request: &mut Forward,
         _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Echoed>, Self::Error> {
         let result: ::core::result::Result<Echoed, Self::Error> = async move {
-            host.call(request.clone())
+            host.call(ProviderEcho { say: request.say.clone() })
                 .await
                 .map(harmos::operations::Response::into_owned)
                 .map_err(Self::Error::of)
@@ -587,7 +583,7 @@ impl harmos::plugin::PluginLifecycle for DependencyHost {
                             std::num::NonZeroUsize::new(
                                 2 * definition.configuration.len()
                                     + std::mem::size_of::<
-                                        harmos::operations::lifecycle::InitializeRequest,
+                                        harmos::operations::lifecycle::Initialize,
                                     >()
                                     + 64
                                     + 20,
@@ -743,7 +739,7 @@ async fn dependencies_share_admission() {
     assert_eq!(
         runtime
             .operations
-            .call_as::<Echo>(Echo {
+            .call(Echo {
                 say: "dependency:normal".into()
             })
             .await
@@ -757,7 +753,7 @@ async fn dependencies_share_admission() {
     ] {
         let error = runtime
             .operations
-            .call_as::<Echo>(Echo {
+            .call(Echo {
                 say: format!("dependency:{say}"),
             })
             .await
@@ -785,7 +781,7 @@ async fn cancelled_dependency_admission() {
     manager.initialize(&mut lifecycle).await.unwrap();
     let invocation = runtime
         .operations
-        .submit_as::<Echo>(Echo {
+        .submit(Echo {
             say: "dependency:cancel".into(),
         })
         .unwrap();
@@ -798,7 +794,7 @@ async fn cancelled_dependency_admission() {
     provider.cancelled.notified().await;
     let after = runtime
         .operations
-        .call_as::<Echo>(Echo {
+        .call(Echo {
             say: "after cancellation".into(),
         })
         .await
@@ -828,7 +824,7 @@ async fn background_cleanup_retained() {
     // The Saved Initialization Context Uses The Original Generation And Provider.
     let answered = runtime
         .operations
-        .call_as::<Echo>(Echo {
+        .call(Echo {
             say: "saved-dependency:original-background".into(),
         })
         .await
@@ -837,7 +833,7 @@ async fn background_cleanup_retained() {
     provider.fail_cleanup.store(true, Ordering::SeqCst);
     let refused = runtime
         .operations
-        .call_as::<Echo>(Echo {
+        .call(Echo {
             say: "saved-dependency:physical-cleanup".into(),
         })
         .await
@@ -852,7 +848,7 @@ async fn background_cleanup_retained() {
     // Destroying The Actual Guest Store Does Not Settle Its Failed Host Debt.
     let trapped = runtime
         .operations
-        .call_as::<Fail>(Fail {})
+        .call(Fail {})
         .await
         .unwrap_err();
     assert!(
@@ -989,7 +985,7 @@ async fn shutdown_fences_callers() {
     assert_eq!(
         runtime
             .operations
-            .call_as::<Forward>(Echo {
+            .call(Forward {
                 say: "dependency:roundtrip".into()
             })
             .await
@@ -1004,7 +1000,7 @@ async fn shutdown_fences_callers() {
     );
     assert!(
         stale
-            .call_as::<Echo>(Echo {
+            .call(Echo {
                 say: "closed".into()
             })
             .await
@@ -1039,7 +1035,7 @@ async fn cancelled_shutdown_cleanup() {
     provider.hold_cleanup.store(true, Ordering::SeqCst);
     let invocation = runtime
         .operations
-        .submit_as::<ProviderEcho>(Echo {
+        .submit(ProviderEcho {
             say: "physical-cleanup".into(),
         })
         .unwrap();
@@ -1056,7 +1052,7 @@ async fn cancelled_shutdown_cleanup() {
     assert!(
         runtime
             .operations
-            .call_as::<Echo>(Echo {
+            .call(Echo {
                 say: "closed".into()
             })
             .await

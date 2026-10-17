@@ -114,17 +114,9 @@ impl harmos::operations::Operation for CorePublication {
     }
 }
 
-impl OperationDeclaration for Control {
-    type Request = Text;
-    type Response = String;
-    const ID: &'static str = "fixture.host_control";
-    const POLICY: OperationPolicy = super::cases::Echo::POLICY;
-    const VISIBILITY: Visibility = Visibility::Host;
-}
 
-impl WireOperation for Control {
-    const VERSION: u32 = 1;
-}
+
+
 
 #[harmos::catalog]
 enum ImplementedControls {

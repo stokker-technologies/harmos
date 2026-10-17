@@ -73,8 +73,8 @@ async fn file_receipts_replay() {
     let finish = FinishFile { mutation: key(&f, "finish"), session: producer.session.clone() };
     let reference = f.runtime.operations.call(finish.clone()).await.unwrap();
     assert_eq!(reference.length, 6);
-    assert_eq!(*f.runtime.operations.call_as::<FinishFile>(finish.clone()).await.unwrap(), *reference);
-    assert_eq!(*f.runtime.operations.call_as::<CreateFile>(create).await.unwrap(), *producer);
+    assert_eq!(*f.runtime.operations.call(finish.clone()).await.unwrap(), *reference);
+    assert_eq!(*f.runtime.operations.call(create).await.unwrap(), *producer);
     let identity = StagedFile { history: producer.session.history.clone(), id: producer.session.id.clone() };
     let mut reader = f.storage.follow_file(&identity, 0).await.unwrap();
     assert_eq!(reader.next_batch(NonZeroUsize::new(16).unwrap()).await.unwrap().unwrap().bytes, b"onetwo");
@@ -107,7 +107,7 @@ async fn lost_responses_retry() {
         mutation: key(&f, "delete"),
         file: StagedFile { history: producer.session.history.clone(), id: producer.session.id.clone() },
     };
-    let deleted = f.runtime.operations.call_as::<DeleteFile>(delete.clone()).await.unwrap();
+    let deleted = f.runtime.operations.call(delete.clone()).await.unwrap();
     assert_eq!(*deleted, delete.file);
     assert_eq!(f.data.control.delete_failures.load(Ordering::SeqCst), 0);
     f.finish().await;

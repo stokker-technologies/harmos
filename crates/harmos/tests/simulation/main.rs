@@ -689,7 +689,7 @@ fn backoff_delays_restart() {
 #[test]
 fn attempt_deadline_expires() {
     let mut sim = bank(7).simulate().expect("the simulation boots");
-    let deadline = sim.submit_as::<Pending>(Pending).unwrap();
+    let deadline = sim.submit(Pending {}).unwrap();
     sim.advance_ms(5);
     assert!(matches!(sim.settle(deadline), Err(harmos::Error::OperationRefused(harmos::Refusal::TimedOut))));
 }

@@ -177,7 +177,42 @@ pub(super) struct Nested {
     pub value: String,
 }
 
-struct Codec;
+#[harmos::message]
+#[harmos::operation(
+    id = "fixture.detached_echo",
+    version = 1,
+    response = String,
+    policy = NESTED_POLICY
+)]
+#[derive(Debug)]
+pub(super) struct Detached {
+    pub value: String,
+}
+
+#[harmos::message]
+#[harmos::operation(
+    id = "fixture.same_lane_echo",
+    version = 1,
+    response = String,
+    policy = NESTED_POLICY
+)]
+#[derive(Debug)]
+struct SameLane {
+    pub value: String,
+}
+
+struct Joined<'a>(&'a std::sync::atomic::AtomicUsize);
+
+#[harmos::operation(id = "fixture.codec", version = 1, response = Payload, policy = CODEC_POLICY)]
+struct Codec(Text);
+
+#[harmos::operation(
+    id = "fixture.short_codec",
+    version = 1,
+    response = Payload,
+    policy = SHORT_CODEC_POLICY
+)]
+struct ShortCodec(Text);
 
 pub(super) struct Payload(Text);
 
@@ -197,6 +232,7 @@ pub(super) enum Leaves {
     Echo(Echo),
     PrivateEcho(PrivateEcho),
     Nested(Nested),
+    Detached(Detached),
 }
 
 #[harmos::catalog]
@@ -218,6 +254,7 @@ pub(super) enum ImplementedLeaves {
     Echo(Echoing),
     PrivateEcho(PrivateEchoing),
     Nested(Nesting),
+    Detached(Detaching),
 }
 
 #[harmos::catalog]
@@ -235,8 +272,20 @@ pub(super) enum Implemented {
 }
 
 #[harmos::catalog]
+enum ImplementedCodecs {
+    Codec(Coding),
+    ShortCodec(ShortCoding),
+}
+
+#[harmos::catalog]
 enum ImplementedCodec {
     Codec(Coding),
+}
+
+#[harmos::catalog]
+enum ImplementedSerial {
+    SameLane(SameLaneCall),
+    PrivateEcho(PrivateEchoing),
 }
 
 /* === Traits === */
@@ -282,33 +331,15 @@ impl harmos::schema::Described for Payload {
     >(Self::NAME, Self::FIELDS);
 }
 
-impl harmos::operations::WireOperation for Codec {
-    const VERSION: u32 = 1;
-}
 
-impl harmos::operations::WireOperation for Echo {
-    const VERSION: u32 = 1;
-}
 
-impl harmos::operations::WireOperation for PrivateEcho {
-    const VERSION: u32 = 1;
-}
 
-impl harmos::operations::WireOperation for Nested {
-    const VERSION: u32 = 1;
-}
 
-impl OperationDeclaration for Codec {
-    type Request = Payload;
-    type Response = Payload;
-    const ID: &'static str = "fixture.codec";
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(2),
-        attempt_timeout: Duration::from_secs(1),
-        retries: RetryPolicy::Never,
-        restart: RestartPolicy::Never,
-    };
-}
+
+
+
+
+
 
 struct Coding {
     resources: Arc<Owner>,
@@ -338,32 +369,9 @@ impl Operation for Coding {
     }
 }
 
-impl OperationDeclaration for Echo {
-    type Request = Text;
-    type Response = String;
-    const ID: &'static str = "fixture.echo";
-    const VISIBILITY: Visibility = Visibility::Shared;
-    const POLICY: OperationPolicy = OperationPolicy {
-        timeout: Duration::from_secs(2),
-        attempt_timeout: Duration::from_secs(1),
-        retries: RetryPolicy::OnTransient {
-            max_retries: 1,
-            backoff: Backoff::Fixed { delay: Duration::from_millis(1), jitter: Jitter::None },
-        },
-        restart: RestartPolicy::Never,
-    };
 
-    fn key(request: &Text) -> Option<CacheKey> {
-        (request.value == "retry").then(|| CacheKey::new(request.value.as_bytes().to_vec()).unwrap())
-    }
-}
 
-impl OperationDeclaration for PrivateEcho {
-    type Request = Text;
-    type Response = String;
-    const ID: &'static str = "fixture.private_echo";
-    const POLICY: OperationPolicy = Echo::POLICY;
-}
+
 
 pub(super) struct Echoing {
     resources: Arc<Owner>,
@@ -433,13 +441,7 @@ impl Operation for PrivateEchoing {
     }
 }
 
-impl OperationDeclaration for Nested {
-    type Request = Text;
-    type Response = String;
-    const ID: &'static str = "fixture.nested_echo";
-    const VISIBILITY: Visibility = Visibility::Shared;
-    const POLICY: OperationPolicy = OperationPolicy { retries: RetryPolicy::Never, ..Echo::POLICY };
-}
+
 
 pub(super) struct Nesting {
     _resources: Arc<Owner>,

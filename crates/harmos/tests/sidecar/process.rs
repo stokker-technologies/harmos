@@ -28,7 +28,7 @@ use super::{HostLanes, assembly, operations, service_status};
 use crate::support::Bank;
 use crate::witness::Witness;
 use harmos::operations::{
-    Context, Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireOperation, WireTable,
+    Context, Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireTable,
 };
 use harmos::sidecar::{Notice, Refusal, Supervised, Supervisor};
 use harmos::{Runtime, services::Service, services::ServiceStatus};
@@ -52,16 +52,14 @@ const ABANDON: u64 = u64::MAX;
 /* === Macros === */
 macro_rules! operation {
     ($name:ident, $id:literal, $visibility:ident) => {
-        pub struct $name;
-        impl OperationDeclaration for $name {
-            type Request = Blob;
-            type Response = Blob;
-            const ID: &'static str = $id;
-            const POLICY: OperationPolicy = POLICY;
-            const VISIBILITY: Visibility = Visibility::$visibility;
-        }
-        impl WireOperation for $name {
-            const VERSION: u32 = 1;
+        #[harmos::message]
+        #[harmos::operation(id = $id, version = 1, response = Blob, policy = POLICY,
+            visibility = Visibility::$visibility)]
+        #[derive(Clone)]
+        pub struct $name { pub id: u64, pub data: Vec<u8> }
+
+        impl From<Blob> for $name {
+            fn from(value: Blob) -> Self { Self { id: value.id, data: value.data } }
         }
     };
 }
@@ -210,7 +208,7 @@ impl Operation for Echoing {
     }
 
     async fn run<'ctx>(
-        &mut self, host: Self::Context<'ctx>, request: &mut Blob, _endpoints: &mut Self::Endpoints,
+        &mut self, host: Self::Context<'ctx>, request: &mut Echo, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Blob>, Refusal> {
         self.id = Some(request.id);
         self.marks.mark(&format!("echo-prepared-{}", request.id));
@@ -223,7 +221,7 @@ impl Operation for Echoing {
         if request.id == PENDING || request.id == ABANDON {
             std::future::pending::<()>().await;
         }
-        Ok(request.clone().into())
+        Ok(Blob { id: request.id, data: request.data.clone() }.into())
     }
 
     async fn cleanup(&mut self) -> Result<(), Refusal> {
@@ -252,12 +250,12 @@ impl Operation for Publishing {
     }
 
     async fn run<'ctx>(
-        &mut self, host: Self::Context<'ctx>, request: &mut Blob, _endpoints: &mut Self::Endpoints,
+        &mut self, host: Self::Context<'ctx>, request: &mut Nested, _endpoints: &mut Self::Endpoints,
     ) -> Result<harmos::operations::Response<Blob>, Refusal> {
         self.id = Some(request.id);
         self.marks.mark(&format!("nested-prepared-{}", request.id));
-        host.publisher::<Process>().publish_on::<Blob>(&*request).await.map_err(Refusal::from)?;
-        Ok(request.clone().into())
+        host.publisher::<Process>().publish_on::<Blob>(&Blob { id: request.id, data: request.data.clone() }).await.map_err(Refusal::from)?;
+        Ok(Blob { id: request.id, data: request.data.clone() }.into())
     }
 
     async fn cleanup(&mut self) -> Result<(), Refusal> {
@@ -283,11 +281,11 @@ impl Operation for CallbackPublication {
     }
 
     async fn run<'ctx>(
-        &mut self, context: Self::Context<'ctx>, request: &mut harmos::operations::streams::Publication, endpoints: &mut Self::Endpoints,
+        &mut self, context: Self::Context<'ctx>, request: &mut harmos::operations::streams::Publish, endpoints: &mut Self::Endpoints,
     ) -> harmos::Result<harmos::operations::Response<()>> {
         self.owner.calls.fetch_add(1, Ordering::SeqCst);
         let id = self.owner.echo.forced().unwrap_or_else(|| request.sequence.unwrap());
-        let echoed = context.call_as::<Echo>(Blob { id, data: request.payload.clone() }).await?;
+        let echoed = context.call(Echo::from(Blob { id, data: request.payload.clone() })).await?;
         assert_eq!(echoed.data, request.payload, "the original connection carried the nested response");
         self.publication.run(context, request, endpoints).await
     }
@@ -393,7 +391,7 @@ async fn nested_calls_reenter() {
     let fixture = Fixture::new().await;
     let request = blob(41, 256 * 1024);
 
-    let result = fixture.runtime.operations.call_as::<Nested>(request.clone()).await.unwrap();
+    let result = fixture.runtime.operations.call(Nested::from(request.clone())).await.unwrap();
 
     assert_eq!(*result, request);
     assert_eq!(fixture.calls.load(Ordering::SeqCst), 1);
@@ -409,7 +407,7 @@ async fn nested_calls_reenter() {
 async fn cancellation_settles_slots() {
     let fixture = Fixture::new().await;
     fixture.echo.store(Some(PENDING));
-    let pending = fixture.runtime.operations.submit_as::<Nested>(blob(42, 512)).unwrap();
+    let pending = fixture.runtime.operations.submit(Nested::from(blob(42, 512))).unwrap();
 
     // Cancelling The Outer Call Settles The Nested Slot It Holds
     fixture.marks.marked("echo-started-0").await;
@@ -423,7 +421,7 @@ async fn cancellation_settles_slots() {
 
     // The Settled Slots Serve The Next Call
     fixture.echo.store(None);
-    assert_eq!(*fixture.runtime.operations.call_as::<Nested>(blob(43, 512)).await.unwrap(), blob(43, 512));
+    assert_eq!(*fixture.runtime.operations.call(Nested::from(blob(43, 512))).await.unwrap(), blob(43, 512));
     assert_eq!(fixture.calls.load(Ordering::SeqCst), 2);
     fixture.finish().await;
 }
@@ -432,7 +430,7 @@ async fn cancellation_settles_slots() {
 async fn deadline_settles_nested() {
     let fixture = Fixture::new().await;
     fixture.echo.store(Some(PENDING));
-    let pending = fixture.runtime.operations.submit_as::<Nested>(blob(48, 512)).unwrap();
+    let pending = fixture.runtime.operations.submit(Nested::from(blob(48, 512))).unwrap();
     fixture.marks.marked("echo-started-0").await;
 
     // The Original Operation Deadline Settles The Pending Nested Call
@@ -447,7 +445,7 @@ async fn deadline_settles_nested() {
 
     // The Deadline Refuses One Caller; The Service Serves The Next
     fixture.echo.store(None);
-    assert_eq!(*fixture.runtime.operations.call_as::<Nested>(blob(49, 512)).await.unwrap(), blob(49, 512));
+    assert_eq!(*fixture.runtime.operations.call(Nested::from(blob(49, 512))).await.unwrap(), blob(49, 512));
     assert_eq!(fixture.calls.load(Ordering::SeqCst), 2);
     fixture.finish().await;
 }
@@ -458,7 +456,7 @@ async fn disconnect_no_replay() {
     fixture.echo.store(Some(ABANDON));
 
     // The Abandoned Generation Fails The Call In Flight
-    let outcome = fixture.runtime.operations.call_as::<Nested>(blob(46, 512)).await;
+    let outcome = fixture.runtime.operations.call(Nested::from(blob(46, 512))).await;
     assert!(outcome.is_err());
     service_status(fixture.runtime.operations.watch_residents(), "process", |status| matches!(status, ServiceStatus::Inactive { .. }))
         .await;
