@@ -612,7 +612,7 @@ mod listed {
 
     #[tokio::test]
     async fn restore_defers_borrow() {
-        let runtime = crate::fixture::runtime().await;
+        let runtime = crate::operations::fixture::runtime().await;
         let observed = Arc::new(runtime.operations.clone());
         let owner = Arc::new(BorrowOwner {
             value: 7,
@@ -620,7 +620,7 @@ mod listed {
             ran: std::sync::atomic::AtomicUsize::new(0),
             operations: Arc::downgrade(&observed),
         });
-        runtime.operations.register_operation::<CachedOwner>("owner", crate::fixture::Lanes::Open, owner.clone()).unwrap();
+        runtime.operations.register_operation::<CachedOwner>("owner", crate::operations::fixture::Lanes::Open, owner.clone()).unwrap();
         let first = runtime.operations.call(CachedOwnerDeclaration { value: 0 }).await.unwrap();
         let cached = runtime.operations.call(CachedOwnerDeclaration { value: 0 }).await.unwrap();
         assert!(first.ptr_eq(&cached));
@@ -638,10 +638,10 @@ mod listed {
 
     #[tokio::test]
     async fn macro_retains_owner() {
-        let runtime = crate::fixture::runtime().await;
+        let runtime = crate::operations::fixture::runtime().await;
         let original = Arc::new(7_u32);
-        runtime.operations.register_operation::<InferredOwned>("owner", crate::fixture::Lanes::Open, original.clone()).unwrap();
-        runtime.operations.register_operation::<DeclaredOwned>("owner", crate::fixture::Lanes::Open, original.clone()).unwrap();
+        runtime.operations.register_operation::<InferredOwned>("owner", crate::operations::fixture::Lanes::Open, original.clone()).unwrap();
+        runtime.operations.register_operation::<DeclaredOwned>("owner", crate::operations::fixture::Lanes::Open, original.clone()).unwrap();
         let inferred = runtime.operations.call(InferredOwnedDeclaration { value: 0 }).await.unwrap();
         let declared = runtime.operations.call(DoublingDeclaration { value: 0 }).await.unwrap();
         assert_eq!(*inferred, 7_u32);

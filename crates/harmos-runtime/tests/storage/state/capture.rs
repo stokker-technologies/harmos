@@ -21,7 +21,7 @@ use std::sync::{
 // Third Party Imports
 
 // Local Imports
-use crate::{Data, Recovery, config, history, record, schema};
+use crate::storage::{Data, Recovery, config, history, record, schema};
 use harmos_runtime::storage::*;
 use harmos_runtime::{Identifier, Runtime, state::Envelope, state::Position};
 

@@ -20,7 +20,7 @@ use std::time::Duration;
 use tokio::sync::Notify;
 // Local Imports
 use super::closed;
-use crate::{
+use crate::storage::{
     Bank, Data, Ledger, Recovery as Backend, Runtime, StorageBackends, StorageManager, catalog,
     config, history, write,
 };
@@ -511,8 +511,8 @@ async fn deadline_awaits_service_cleanup() {
                 gate.release.notified().await;
                 let receipt = context
                     .state()
-                    .commit(crate::support::Deposit {
-                        account: crate::support::HOUSE,
+                    .commit(crate::storage::support::Deposit {
+                        account: crate::storage::support::HOUSE,
                         amount: 1,
                     })
                     .await;

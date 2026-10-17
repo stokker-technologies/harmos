@@ -18,7 +18,7 @@
 // Third Party Imports
 
 // Local Imports
-use crate::support::{Bank, HOUSE, alice, deposit, runtime};
+use crate::state::support::{Bank, HOUSE, alice, deposit, runtime};
 use harmos_runtime::{
     Application, Runtime, state::Focus, state::ManagedState, state::Never, state::Position,
 };

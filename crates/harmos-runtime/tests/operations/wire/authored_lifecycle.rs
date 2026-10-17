@@ -49,7 +49,7 @@ struct Request {
     value: u32,
     events: Arc<Mutex<Vec<&'static str>>>,
 }
-crate::in_process!(Request);
+crate::operations::in_process!(Request);
 impl harmos_runtime::MemorySize for Request {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
@@ -145,7 +145,7 @@ impl Operation for Read {
 
 #[tokio::test(start_paused = true)]
 async fn request_outlives_cleanup() {
-    let runtime = harmos_runtime::Runtime::<crate::probe::Editor>::builder(crate::probe::Sheet::default(), ())
+    let runtime = harmos_runtime::Runtime::<crate::operations::probe::Editor>::builder(crate::operations::probe::Sheet::default(), ())
         .register(LifecycleLanes::catalog())
         .runtime()
         .await
@@ -165,7 +165,7 @@ async fn transfer_blocks_retry() {
         num::NonZeroUsize,
         sync::atomic::{AtomicUsize, Ordering},
     };
-    let runtime = harmos_runtime::Runtime::<crate::probe::Editor>::builder(crate::probe::Sheet::default(), ())
+    let runtime = harmos_runtime::Runtime::<crate::operations::probe::Editor>::builder(crate::operations::probe::Sheet::default(), ())
         .register(LifecycleLanes::catalog())
         .runtime()
         .await

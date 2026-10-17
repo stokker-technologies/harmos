@@ -208,7 +208,7 @@ impl Mixed {
 /* === Public Functions === */
 
 /* === Private Functions === */
-fn observers(runtime: &harmos_runtime::Runtime<crate::support::Bank>) -> std::collections::BTreeMap<Key, Snapshot> {
+fn observers(runtime: &harmos_runtime::Runtime<crate::sidecar::support::Bank>) -> std::collections::BTreeMap<Key, Snapshot> {
     runtime.operations.residents().into_iter().filter(|(_, status)| status.kind == Kind::Observer).collect()
 }
 

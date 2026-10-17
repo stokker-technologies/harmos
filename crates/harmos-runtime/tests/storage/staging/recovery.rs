@@ -19,7 +19,7 @@ use std::time::Duration;
 // Third Party Imports
 // Local Imports
 use super::metadata;
-use crate::{Bank, Data, Fixture, Ledger, Recovery, Runtime, catalog, config, operations};
+use crate::storage::{Bank, Data, Fixture, Ledger, Recovery, Runtime, catalog, config, operations};
 use harmos_runtime::storage::{StagedFile, StorageBackends, StorageManager};
 
 /* === Constants === */

@@ -21,7 +21,7 @@ use std::sync::Mutex;
 
 // Local Imports
 use super::*;
-use crate::witness::Witness;
+use crate::sidecar::witness::Witness;
 use harmos_runtime::sidecar::{Registrar, Registration, RegistrationError};
 
 /* === Constants === */

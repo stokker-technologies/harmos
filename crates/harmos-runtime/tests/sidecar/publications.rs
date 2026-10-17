@@ -903,7 +903,7 @@ pub(super) async fn ready(mut ready: tokio::sync::watch::Receiver<bool>) {
 
 /* === Private Functions === */
 fn observers(
-    runtime: &harmos_runtime::Runtime<crate::support::Bank>,
+    runtime: &harmos_runtime::Runtime<crate::sidecar::support::Bank>,
 ) -> std::collections::BTreeMap<
     harmos_runtime::operations::resident::Key,
     harmos_runtime::operations::resident::Snapshot,
@@ -917,7 +917,7 @@ fn observers(
 }
 
 fn observer_definitions(
-    runtime: &harmos_runtime::Runtime<crate::support::Bank>,
+    runtime: &harmos_runtime::Runtime<crate::sidecar::support::Bank>,
 ) -> Vec<harmos_runtime::operations::resident::Definition> {
     runtime
         .operations

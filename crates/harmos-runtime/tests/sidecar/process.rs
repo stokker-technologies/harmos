@@ -25,8 +25,8 @@ use std::time::Duration;
 
 // Local Imports
 use super::{HostLanes, assembly, operations, service_status};
-use crate::support::Bank;
-use crate::witness::Witness;
+use crate::sidecar::support::Bank;
+use crate::sidecar::witness::Witness;
 use harmos_runtime::operations::{
     Context, Operation, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy, Visibility, WireTable,
 };

@@ -16,7 +16,7 @@
 
 /* === Imports === */
 use harmos_runtime::{Builder, services::Fault, simulation::SimulatedRuntime};
-use crate::support::{Bank, Deposit, Noted, alice, pulse};
+use super::support::{Bank, Deposit, Noted, alice, pulse};
 
 // Standard Library Imports
 
@@ -42,7 +42,7 @@ use crate::support::{Bank, Deposit, Noted, alice, pulse};
 /* === Public Functions === */
 pub(crate) fn scripted(builder: Builder<Bank>) -> SimulatedRuntime<Bank> {
     let mut sim = builder.simulated_service("adapter", resident).simulate().expect("the simulation boots");
-    sim.commit(alice(), Deposit { account: crate::support::HOUSE, amount: 7 }).expect("the scripted commit lands");
+    sim.commit(alice(), Deposit { account: super::support::HOUSE, amount: 7 }).expect("the scripted commit lands");
     sim.record(alice(), Noted("seeded".to_owned())).expect("the scripted record lands");
     sim.publish(pulse(4)).expect("the row catalog is frozen");
     sim.fault("adapter", Fault::Environmental("bus reset")).expect("the running service receives its exit");

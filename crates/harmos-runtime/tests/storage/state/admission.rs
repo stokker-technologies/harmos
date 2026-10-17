@@ -24,8 +24,8 @@ use std::task::Poll;
 // Third Party Imports
 
 // Local Imports
-use crate::fixture::*;
-use crate::waveforms;
+use crate::storage::fixture::*;
+use crate::storage::waveforms;
 use harmos_runtime::state::Envelope;
 use harmos_runtime::{Application, Message};
 

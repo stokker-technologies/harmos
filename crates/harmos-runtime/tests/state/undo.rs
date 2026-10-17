@@ -17,7 +17,7 @@
 // Third Party Imports
 use support::{Change, Refusal, VAULT, alice, bob, deposit, deposit_to, ledger, runtime, withdraw};
 // Local Imports
-use crate::support;
+use crate::state::support;
 use harmos_runtime::{Error, state::At, state::Focus, state::Position, state::Reversals};
 
 /* === Constants === */

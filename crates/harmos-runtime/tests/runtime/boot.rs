@@ -18,7 +18,7 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use crate::probe::{Change, EXPORTED, Editor, Note, RENAME, Sheet, inverses, named, rename};
+use crate::runtime::probe::{Change, EXPORTED, Editor, Note, RENAME, Sheet, inverses, named, rename};
 use harmos_runtime::state::{
     CorrelationId, DecodeError, Entry, Envelope, Focus, Kind, Link, Position, PrincipalId,
     Recorded, Timestamp,

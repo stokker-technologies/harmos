@@ -35,8 +35,8 @@ use tokio::io::{AsyncRead, ReadBuf};
 use tokio::sync::Notify;
 // Local Imports
 use super::{HostLanes, assembly, operations, service_status};
-use crate::support::Bank;
-use crate::witness::Witness;
+use crate::sidecar::support::Bank;
+use crate::sidecar::witness::Witness;
 use harmos_runtime::operations::OperationDeclaration;
 use harmos_runtime::operations::OperationPolicy;
 use harmos_runtime::sidecar::{Attach, Attached, Notice, Refusal, Supervised, Supervisor};

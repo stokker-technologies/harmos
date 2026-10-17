@@ -2,6 +2,7 @@
 
 [package]
 name = "harmos-sidecar"
+autotests = false
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -238,19 +239,8 @@ windows-sys = { workspace = true, default-features = true, optional = true }
 # === Test Targets ===
 
 [[test]]
-name = "kit"
-path = "tests/kit/main.rs"
-required-features = ["kit"]
-
-[[test]]
-name = "attach"
-path = "tests/attach/main.rs"
-required-features = ["transport"]
-
-[[test]]
-name = "transport"
-path = "tests/transport/main.rs"
-required-features = ["kit"]
+name = "integration"
+path = "tests/integration/main.rs"
 
 # === Bench Targets ===
 

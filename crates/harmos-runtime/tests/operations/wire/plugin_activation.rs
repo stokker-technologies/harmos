@@ -45,8 +45,8 @@ use super::*;
 /* === Tests === */
 #[tokio::test]
 async fn callback_requires_budget() {
-    let runtime = harmos_runtime::Runtime::<crate::support::Bank>::builder(crate::support::Ledger::default(), ())
-        .register(crate::support::catalog())
+    let runtime = harmos_runtime::Runtime::<crate::operations::support::Bank>::builder(crate::operations::support::Ledger::default(), ())
+        .register(crate::operations::support::catalog())
         .register(Lanes::catalog())
         .runtime()
         .await

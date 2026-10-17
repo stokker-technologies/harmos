@@ -88,7 +88,7 @@ trait Shape {
 }
 
 /* === Implementations === */
-crate::in_process!(ParentDeclaration);
+crate::operations::in_process!(ParentDeclaration);
 
 impl harmos_runtime::MemorySize for ParentDeclaration {
     fn memory_size(&self) -> usize {

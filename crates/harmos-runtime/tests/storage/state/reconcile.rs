@@ -22,8 +22,8 @@ use std::sync::{
 use tokio::sync::Notify;
 // Local Imports
 use super::closed;
-use crate::support::{HOUSE, Noted, deposit};
-use crate::{Bank, Data, Ledger, Recovery, StorageBackends, StorageManager, catalog, config, history, record, schema};
+use crate::storage::support::{HOUSE, Noted, deposit};
+use crate::storage::{Bank, Data, Ledger, Recovery, StorageBackends, StorageManager, catalog, config, history, record, schema};
 use harmos_runtime::storage::ReadLimits;
 use harmos_runtime::{Builder, Error, Identifier, Runtime, services::Fault, services::Service, state::Position};
 

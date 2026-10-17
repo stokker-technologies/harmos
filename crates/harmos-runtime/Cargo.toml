@@ -236,68 +236,16 @@ tokio = { workspace = true, default-features = true, features = [
 # === Test Targets ===
 
 [[test]]
-name = "plugin"
-path = "tests/plugin/main.rs"
-required-features = ["plugin"]
-
-[[test]]
-name = "state"
-path = "tests/state/main.rs"
-
-[[test]]
-name = "streams"
-path = "tests/streams/main.rs"
-
-[[test]]
-name = "storage"
-path = "tests/storage/main.rs"
-
-[[test]]
-name = "observers"
-path = "tests/observers/main.rs"
-
-[[test]]
-name = "services"
-path = "tests/services/main.rs"
-
-[[test]]
-name = "operations"
-path = "tests/operations/main.rs"
-
-[[test]]
-name = "evidence"
-path = "tests/evidence/main.rs"
-
-[[test]]
-name = "application"
-path = "tests/application/main.rs"
-
-[[test]]
-name = "runtime"
-path = "tests/runtime/main.rs"
-
-[[test]]
-name = "sidecar"
-path = "tests/sidecar/main.rs"
-required-features = ["plugin-sidecar"]
-
-[[test]]
-name = "guest"
-path = "tests/guest/main.rs"
-required-features = ["plugin-guest", "plugin-sidecar"]
-
-[[test]]
-name = "simulation"
-path = "tests/simulation/main.rs"
-required-features = ["simulation"]
-
-[[test]]
-name = "system"
-path = "tests/system/main.rs"
+name = "integration"
+path = "tests/integration/main.rs"
 
 [[test]]
 name = "acceptance"
 path = "tests/acceptance/main.rs"
+
+[[test]]
+name = "system"
+path = "tests/system/main.rs"
 
 # === Bench Targets ===
 

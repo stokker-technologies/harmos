@@ -358,7 +358,7 @@ async fn stop_seals_registration() {
         let stop = f.runtime.stop();
         tokio::pin!(stop);
         assert!(
-            crate::pending(stop.as_mut()).await,
+            crate::storage::pending(stop.as_mut()).await,
             "shutdown retains the participant and startup owners"
         );
     }

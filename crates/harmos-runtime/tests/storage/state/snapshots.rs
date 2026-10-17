@@ -19,8 +19,8 @@ use std::sync::{Arc, atomic::Ordering};
 
 // Local Imports
 use super::closed;
-use crate::support::{Change, Fact, HOUSE, Noted, deposit};
-use crate::{
+use crate::storage::support::{Change, Fact, HOUSE, Noted, deposit};
+use crate::storage::{
     Bank, Data, Ledger, Recovery, StorageBackends, StorageManager, catalog, config, history, schema,
 };
 use harmos_runtime::state::SnapshotPolicy;

@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 // Local Imports
 use super::contract;
-use crate::witness::Witness;
+use crate::sidecar::witness::Witness;
 use contract::{POLICY, Probe, Queries, Read, Readings, Step};
 use harmos_runtime::operations::Host as _;
 use harmos_runtime::operations::{Operation, OperationPolicy, WireTable};

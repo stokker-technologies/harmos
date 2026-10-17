@@ -429,7 +429,7 @@ async fn exact_live_bindings() {
 async fn children_retire_authority() {
     for serial in [false, true] {
         let runtime =
-            harmos_runtime::Runtime::<crate::support::Bank>::builder(crate::support::Ledger::default(), ())
+            harmos_runtime::Runtime::<crate::guest::support::Bank>::builder(crate::guest::support::Ledger::default(), ())
                 .operation_settings(harmos_runtime::operations::Settings {
                     preparation_bytes: Some(std::num::NonZeroUsize::new(4096).unwrap()),
                     ..Default::default()

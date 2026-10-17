@@ -22,9 +22,9 @@ use std::sync::atomic::Ordering;
 use tokio::sync::{Notify, Semaphore};
 
 // Local Imports
-use crate::boot::catalog;
-use crate::mirror::Mirror;
-use crate::probe::{Change, Editor, Sheet, rename};
+use crate::runtime::boot::catalog;
+use crate::runtime::mirror::Mirror;
+use crate::runtime::probe::{Change, Editor, Sheet, rename};
 use harmos_runtime::state::{Entry, Position, Recorded};
 use harmos_runtime::storage::JournalConsumer;
 use harmos_runtime::{Error, Runtime};

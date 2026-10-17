@@ -28,7 +28,7 @@ use tokio::sync::Notify;
 
 // Local Imports
 use super::{assembly, service_status};
-use crate::support::Bank;
+use crate::sidecar::support::Bank;
 use harmos_runtime::operations::Host as _;
 use harmos_runtime::operations::{
     Declarations, Definition, Operation, OperationDeclaration, OperationPolicy, RestartPolicy,

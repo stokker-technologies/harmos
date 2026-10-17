@@ -41,7 +41,7 @@ macro_rules! inert_plugin {
             };
             const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
         }
-        #[harmos_runtime::plugin(id = $id, description = "Inert Inventory Fixture", provides = $provided, requires = (), harmos_path = crate::wire::artifact::facade::__harmos)]
+        #[harmos_runtime::plugin(id = $id, description = "Inert Inventory Fixture", provides = $provided, requires = (), harmos_path = crate::operations::wire::artifact::facade::__harmos)]
         impl harmos_runtime::Plugin for $name {
             type Config = ();
             type Error = std::convert::Infallible;

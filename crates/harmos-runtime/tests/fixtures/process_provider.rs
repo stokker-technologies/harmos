@@ -19,7 +19,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 // Local Imports
 use super::contract;
-use crate::witness::Witness;
+use crate::sidecar::witness::Witness;
 use contract::{POLICY, Read, Readings, Step};
 use harmos_runtime::operations::{Operation, OperationPolicy, WireTable};
 use harmos_runtime::sidecar::{Refusal, Supervisor};

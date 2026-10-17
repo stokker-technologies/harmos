@@ -2,6 +2,7 @@
 
 [package]
 name = "harmos-domain"
+autotests = false
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -108,7 +109,7 @@ tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
 # === Test Targets ===
 
 [[test]]
-name = "message"
+name = "integration"
 path = "tests/message/main.rs"
 required-features = ["derive", "grpc"]
 

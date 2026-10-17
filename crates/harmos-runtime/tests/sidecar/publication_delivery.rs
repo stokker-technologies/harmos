@@ -252,8 +252,8 @@ async fn batches_keep_order() {
     let definitions = super::super::operations::inspected(&source, serde_json::to_vec(&()).unwrap());
     let resident = harmos_runtime::sidecar::Supervised::new(
         source,
-        (|_: &harmos_runtime::services::Service<crate::support::Bank>, _: harmos_runtime::sidecar::Notice| {})
-            as fn(&harmos_runtime::services::Service<crate::support::Bank>, _),
+        (|_: &harmos_runtime::services::Service<crate::sidecar::support::Bank>, _: harmos_runtime::sidecar::Notice| {})
+            as fn(&harmos_runtime::services::Service<crate::sidecar::support::Bank>, _),
     );
     let mut fixture = Managed::from_runtime(
         runtime,

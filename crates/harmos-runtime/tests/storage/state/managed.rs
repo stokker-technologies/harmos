@@ -20,8 +20,8 @@ use std::sync::atomic::Ordering;
 
 // Local Imports
 use super::closed;
-use crate::support::{Change, Fact, HOUSE, Noted, deposit};
-use crate::{
+use crate::storage::support::{Change, Fact, HOUSE, Noted, deposit};
+use crate::storage::{
     Bank, Data, Ledger, Recovery, Runtime, StorageBackends, StorageManager, catalog, config,
     history,
 };
@@ -551,7 +551,7 @@ async fn file_finish_interleaves() {
         let storage = storage.clone();
         tokio::spawn(async move {
             for n in 0..20 {
-                crate::write(&storage, &format!("item-{n}")).await;
+                crate::storage::write(&storage, &format!("item-{n}")).await;
             }
         })
     };

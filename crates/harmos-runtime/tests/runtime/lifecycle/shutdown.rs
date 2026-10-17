@@ -22,8 +22,8 @@ use std::time::Duration;
 use tokio::sync::Notify;
 
 // Local Imports
-use crate::boot::catalog;
-use crate::probe::{Editor, Sheet};
+use crate::runtime::boot::catalog;
+use crate::runtime::probe::{Editor, Sheet};
 use harmos_runtime::state::{Entry, Position, Recorded};
 use harmos_runtime::storage::JournalConsumer;
 use harmos_runtime::{Error, Runtime};
@@ -190,7 +190,7 @@ async fn budget_retains_journal() {
         .await
         .unwrap();
     assert!(matches!(runtime.stop_with_timeout(Duration::ZERO).await, Err(Error::InvalidInput { field: "runtime shutdown timeout", .. })));
-    let accepted = runtime.state.commit(crate::probe::rename("open")).await.unwrap();
+    let accepted = runtime.state.commit(crate::runtime::probe::rename("open")).await.unwrap();
     assert_eq!(accepted.position, Position(1));
     for _ in 0..2 {
         assert!(matches!(runtime.stop_with_timeout(Duration::from_millis(10)).await, Err(Error::ShutdownTimeout { phase: "journal" })));

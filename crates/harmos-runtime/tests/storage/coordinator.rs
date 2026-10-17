@@ -101,7 +101,7 @@ async fn recovery_share_backpressure() {
     {
         let blocked = f.storage.write_recovery(&[b"state"]);
         tokio::pin!(blocked);
-        assert!(crate::pending(blocked.as_mut()).await);
+        assert!(crate::storage::pending(blocked.as_mut()).await);
     }
     assert_eq!(f.storage.status().recovery_accepted.sequence, 0);
     assert_eq!(f.storage.status().pending_batches, 1);
@@ -242,7 +242,7 @@ async fn cancelled_close_retains() {
     let inputs = [record(&key, &item, &[1])];
     let producer = f.storage.write_records(&inputs);
     tokio::pin!(producer);
-    assert!(crate::pending(producer.as_mut()).await, "queue is full");
+    assert!(crate::storage::pending(producer.as_mut()).await, "queue is full");
     {
         let close = f.storage.close();
         tokio::pin!(close);
@@ -347,7 +347,7 @@ async fn close_seals_admission() {
     let close = storage.close();
     tokio::pin!(close);
     assert!(
-        crate::pending(close.as_mut()).await,
+        crate::storage::pending(close.as_mut()).await,
         "read holds the lifecycle lock"
     );
     assert!(f.storage.status().closing);

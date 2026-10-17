@@ -58,8 +58,8 @@ fn retired_header(history: &StoreHistory) -> Vec<u8> {
 #[tokio::test]
 async fn checkpoint_tail_survives_reopen() {
     let root = tempfile::tempdir().unwrap();
-    let history = crate::history();
-    let settings = crate::state_settings();
+    let history = crate::storage::history();
+    let settings = crate::storage::state_settings();
     let backend = FileBackend::new(root.path().to_owned(), history.clone(), settings);
     let at = |sequence| RecoveryPosition {
         history: history.clone(),
@@ -128,8 +128,8 @@ async fn checkpoint_tail_survives_reopen() {
 #[tokio::test]
 async fn corruption_refused_preserved() {
     let root = tempfile::tempdir().unwrap();
-    let history = crate::history();
-    let settings = crate::state_settings();
+    let history = crate::storage::history();
+    let settings = crate::storage::state_settings();
     let backend = FileBackend::new(root.path().to_owned(), history.clone(), settings);
     backend.open().await.unwrap();
     let position = RecoveryPosition {
@@ -168,8 +168,8 @@ async fn corruption_refused_preserved() {
 #[tokio::test]
 async fn state_root_exclusive() {
     let root = tempfile::tempdir().unwrap();
-    let history = crate::history();
-    let settings = crate::state_settings();
+    let history = crate::storage::history();
+    let settings = crate::storage::state_settings();
     let first = FileBackend::new(root.path().to_owned(), history.clone(), settings);
     let second = FileBackend::new(root.path().to_owned(), history.clone(), settings);
     first.open().await.unwrap();
@@ -220,7 +220,7 @@ async fn state_root_exclusive() {
 
 #[tokio::test]
 async fn limits_bound_records() {
-    let history = crate::history();
+    let history = crate::storage::history();
     let at = |sequence| RecoveryPosition {
         history: history.clone(),
         sequence,
@@ -248,7 +248,7 @@ async fn limits_bound_records() {
     let backend = FileBackend::new(
         measured.path().to_owned(),
         history.clone(),
-        crate::state_settings(),
+        crate::storage::state_settings(),
     );
     backend.open().await.unwrap();
     let header = std::fs::metadata(&journal).unwrap().len();
@@ -301,10 +301,10 @@ async fn limits_bound_records() {
 #[tokio::test]
 async fn retired_format_refused() {
     let root = tempfile::tempdir().unwrap();
-    let history = crate::history();
+    let history = crate::storage::history();
     std::fs::write(root.path().join("state.jsonl"), retired_header(&history)).unwrap();
 
-    let backend = FileBackend::new(root.path().to_owned(), history, crate::state_settings());
+    let backend = FileBackend::new(root.path().to_owned(), history, crate::storage::state_settings());
     let error = backend.open().await.unwrap_err();
     assert!(error.to_string().contains("fresh state root"), "{error}");
 }

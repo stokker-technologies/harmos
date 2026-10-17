@@ -10,6 +10,7 @@
 
 [package]
 name = "harmos-packaging"
+autotests = false
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -92,15 +93,8 @@ protoc-bin-vendored = { workspace = true }
 # === Test Targets === #
 
 [[test]]
-name = "build"
-path = "tests/build/main.rs"
-required-features = ["sidecar"]
-
-[[test]]
-name = "grpc"
-path = "tests/grpc/main.rs"
-required-features = ["bindings-proto"]
-
+name = "integration"
+path = "tests/integration/main.rs"
 
 [[test]]
 name = "acceptance"
