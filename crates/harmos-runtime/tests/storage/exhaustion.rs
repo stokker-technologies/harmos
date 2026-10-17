@@ -16,7 +16,8 @@ use std::sync::Arc;
 
 // Third Party Imports
 use harmos_runtime::storage::*;
-use harmos_runtime::{Error, Identifier, Runtime};
+use harmos_storage::Error;
+use harmos_runtime::{Identifier, Runtime};
 
 // Local Imports
 use super::backend::{Data, Recovery, history, storage_settings};

@@ -145,7 +145,7 @@ async fn close_retains_writes() {
     let item = Identifier::new("late").unwrap();
     assert!(matches!(
         f.storage.write_records(&[record(&key, &item, &[4])]).await,
-        Err(Error::Closing { domain: "storage" })
+        Err(harmos_storage::Error::Closing { domain: "storage" })
     ));
     f.data.control.permanent.store(false, Ordering::SeqCst);
     f.storage.close().await.unwrap();
@@ -250,7 +250,7 @@ async fn cancelled_close_retains() {
     }
     assert!(matches!(
         producer.await,
-        Err(Error::Closing { domain: "storage" })
+        Err(harmos_storage::Error::Closing { domain: "storage" })
     ));
     f.data.control.block_flush.store(false, Ordering::SeqCst);
     f.data.control.flush_release.notify_one();
@@ -323,7 +323,7 @@ async fn deadline_retains_admitted() {
     write(&f.storage, "one").await;
     let error = f.storage.flush().await.unwrap_err();
     assert!(
-        matches!(error, Error::Persistence { source } if matches!(source.as_ref(), Error::Backend { kind: BackendFailure::Transient, .. }))
+        matches!(error, harmos_storage::Error::Persistence { source } if matches!(source.as_ref(), harmos_storage::Error::Backend { kind: BackendFailure::Transient, .. }))
     );
     assert_eq!(f.storage.status().accepted.sequence, 1);
     assert!(f.storage.status().pending_bytes > 0);
@@ -353,7 +353,7 @@ async fn close_seals_admission() {
     assert!(f.storage.status().closing);
     assert!(matches!(
         f.storage.write_recovery(&[b"late"]).await,
-        Err(Error::Closing { domain: "storage" })
+        Err(harmos_storage::Error::Closing { domain: "storage" })
     ));
 
     f.recovery.control.read_release.notify_one();

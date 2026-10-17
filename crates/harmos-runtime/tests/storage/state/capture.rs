@@ -103,7 +103,7 @@ impl harmos_runtime::state::Transaction<u64> for Advance {
 }
 
 impl RecordProjection for Projection {
-    fn project<'a>(&'a self, entry: &'a Envelope<&serde_json::Value>, output: &'a mut ProjectedRecords<'_>) -> StorageFuture<'a, ()> {
+    fn project<'a>(&'a self, entry: &'a Envelope<&serde_json::Value>, output: &'a mut ProjectedRecords<'_>) -> std::pin::Pin<Box<dyn std::future::Future<Output = harmos_runtime::Result<()>> + Send + 'a>> {
         Box::pin(async move {
             self.calls.fetch_add(1, Ordering::SeqCst);
             let bytes = serde_json::to_vec(entry).unwrap();
@@ -119,7 +119,7 @@ impl RecordProjection for Projection {
 }
 
 impl RecordProjection for IncrementalProjection {
-    fn project<'a>(&'a self, _: &'a Envelope<&serde_json::Value>, output: &'a mut ProjectedRecords<'_>) -> StorageFuture<'a, ()> {
+    fn project<'a>(&'a self, _: &'a Envelope<&serde_json::Value>, output: &'a mut ProjectedRecords<'_>) -> std::pin::Pin<Box<dyn std::future::Future<Output = harmos_runtime::Result<()>> + Send + 'a>> {
         Box::pin(async move {
             self.calls.fetch_add(1, Ordering::SeqCst);
             let payload = vec![0; 100 * 1024];

@@ -171,7 +171,7 @@ async fn integrity_failure_unpublished() {
     let f = Fixture::new(config()).await;
     let mut file = f.storage.create_file(metadata("bad", b"right")).await.unwrap();
     file.write_all(b"wrong").await.unwrap();
-    assert!(matches!(file.finish().await, Err(Error::InvalidInput { field: "file integrity", .. })));
+    assert!(matches!(file.finish().await, Err(harmos_storage::Error::InvalidInput { field: "file integrity", .. })));
     file.abort().await.unwrap();
     assert_eq!(f.storage.status().accepted.sequence, 0);
     assert!(f.data.files.lock().unwrap().is_empty());

@@ -339,7 +339,7 @@ fn ambiguous_catalog_refused() {
     );
     assert!(matches!(
         result,
-        Err(harmos_runtime::Error::InvalidInput {
+        Err(harmos_storage::Error::InvalidInput {
             field: "object catalog",
             ..
         })

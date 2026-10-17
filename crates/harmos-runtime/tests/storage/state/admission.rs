@@ -93,7 +93,7 @@ impl RecordProjection for Projection {
         &'a self,
         entry: &'a Envelope<&serde_json::Value>,
         output: &'a mut ProjectedRecords<'_>,
-    ) -> StorageFuture<'a, ()> {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = harmos_runtime::Result<()>> + Send + 'a>> {
         Box::pin(async move {
             let schema = waveforms::schema();
             let item = Identifier::new(format!("observed-{}", entry.position.0)).unwrap();

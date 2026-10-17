@@ -133,7 +133,7 @@ impl RecordProjection for Projection {
         &'a self,
         entry: &'a Envelope<&serde_json::Value>,
         output: &'a mut ProjectedRecords<'_>,
-    ) -> StorageFuture<'a, ()> {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = harmos_runtime::Result<()>> + Send + 'a>> {
         Box::pin(async move {
             let payload = serde_json::to_vec(entry).unwrap();
             let item = Identifier::new(format!("record-{}", entry.position.0)).unwrap();

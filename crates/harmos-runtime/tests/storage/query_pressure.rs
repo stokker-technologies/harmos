@@ -321,7 +321,7 @@ async fn captures_refuse_cycles() {
     assert!(
         outcomes
             .iter()
-            .any(|outcome| matches!(outcome, Err(harmos_runtime::Error::ResourceExhausted { .. }))),
+            .any(|outcome| matches!(outcome, Err(harmos_storage::Error::ResourceExhausted { .. }))),
         "{outcomes:?}"
     );
     assert_eq!(f.storage.status().read_bytes, 0);
@@ -489,7 +489,7 @@ async fn alone(f: &super::fixture::Fixture, query: &Query) -> (usize, usize) {
 }
 
 // Retain Every Batch, As A Report Materialization Does, Yielding After Each.
-async fn capture(mut reader: QueryReader, mut kept: Vec<QueryArrow>) -> harmos_runtime::Result<usize> {
+async fn capture(mut reader: QueryReader, mut kept: Vec<QueryArrow>) -> harmos_storage::Result<usize> {
     while let Some(output) = reader.next().await? {
         kept.push(output);
         tokio::task::yield_now().await;

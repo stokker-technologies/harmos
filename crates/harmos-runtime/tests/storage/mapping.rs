@@ -291,7 +291,7 @@ async fn expansion_exceeds_budget() {
     ));
     let failure = reader.next().await.unwrap_err();
     assert!(
-        matches!(failure, harmos_runtime::Error::ResourceExhausted { .. }),
+        matches!(failure, harmos_storage::Error::ResourceExhausted { .. }),
         "expanded row must be refused by memory admission: {failure:?}"
     );
     assert!(reader.completion().is_err());

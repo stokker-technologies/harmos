@@ -34,7 +34,8 @@ use harmos_runtime::storage::{
     ObjectRead, ObjectReceipt, ObjectVersion, RecordRead, StorageBackends, StorageManager,
     StorageSettings,
 };
-use harmos_runtime::{Aggregate, Error, Runtime};
+use harmos_storage::Error;
+use harmos_runtime::{Aggregate, Runtime};
 
 /* === Constants === */
 

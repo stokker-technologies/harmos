@@ -123,7 +123,7 @@ async fn labels<C>(
     at: &StorageCursor,
     schema: &SchemaKey,
     versions: ObjectVersions,
-) -> harmos_runtime::Result<Vec<String>> {
+) -> harmos_storage::Result<Vec<String>> {
     let mut reader = storage
         .query(Query {
             at: at.clone(),
