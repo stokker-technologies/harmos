@@ -12,7 +12,6 @@
 
 # Standard Library Imports
 import argparse
-import hashlib
 import os
 import stat
 import json
@@ -21,7 +20,7 @@ import sys
 # Third Party Imports
 
 # Local Imports
-from ..build.fixtures import FIXTURES, STAMP
+from ..build.fixtures import FIXTURES, ROOT, STAMP
 from . import archive
 
 # Type Checking Imports
@@ -44,25 +43,15 @@ def main(arguments: list[str] | None = None) -> None:
     if not STAMP.is_file():
         sys.exit(f"fixture stamp {STAMP} is absent; run mise run build")
     stamp = json.loads(STAMP.read_text(encoding="utf-8"))
-    if stamp["tree"] != archive.tree(FIXTURES.parents[1]):
-        sys.exit("fixture stamp is stale: sources changed since the last build; run mise run build")
-    if stamp["profile"] != profile:
-        sys.exit(f"fixture profile is {stamp["profile"]}, expected {profile}; rebuild the fixtures")
-    hashes = stamp["hashes"]
-    for relative in (*stamp["artifacts"].values(), *stamp["libraries"].values()):
-        if relative not in hashes:
-            sys.exit(f"fixture {relative} has no build digest; run mise run build")
-    for relative, expected in hashes.items():
-        path = FIXTURES / relative
-        if not path.is_file():
-            sys.exit(f"stamped fixture {relative} is missing; run mise run build")
-        with path.open("rb") as stream:
-            actual = hashlib.file_digest(stream, "sha256").hexdigest()
-        if actual != expected:
-            sys.exit(f"stamped fixture {relative} differs from the build; run mise run build")
-
+    selectors = stamp["metadata"]
+    selected = [*selectors["artifacts"].values(), *selectors["libraries"].values(),
+                *selectors["builds"].values(), selectors["vendor"], selectors["wheels"], selectors["requirements"]]
+    hosts = [(FIXTURES / relative).relative_to(ROOT).as_posix() for relative in selected]
+    archive.fixtures(ROOT, archive.tree(ROOT), profile, hosts)
+    if not set(selectors["executables"]).issubset(selectors["artifacts"].values()):
+        sys.exit("executable fixture selectors must name verified artifacts")
     if os.name != "nt":
-        for relative in stamp["executables"]:
+        for relative in selectors["executables"]:
             path = FIXTURES / relative
             path.chmod(path.stat().st_mode | stat.S_IXUSR)
 

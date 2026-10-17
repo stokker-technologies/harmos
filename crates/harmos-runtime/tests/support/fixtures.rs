@@ -40,7 +40,7 @@ use serde_json::Value;
 
 /* === Public Functions === */
 pub fn artifact(name: &str) -> PathBuf {
-    let path = stamp()["artifacts"][name]
+    let path = stamp()["metadata"]["artifacts"][name]
         .as_str()
         .unwrap_or_else(|| panic!("the fixture stamp has no {name}"));
     directory().join(path)
@@ -52,12 +52,12 @@ pub fn component(name: &str) -> Vec<u8> {
 }
 
 pub fn input(name: &str) -> PathBuf {
-    directory().join(stamp()[name].as_str().unwrap_or_else(|| panic!("fixture stamp has no {name} input")))
+    directory().join(stamp()["metadata"][name].as_str().unwrap_or_else(|| panic!("fixture stamp has no {name} input")))
 }
 
 pub fn library(name: &str) -> PathBuf {
     directory().join(
-        stamp()["libraries"][name]
+        stamp()["metadata"]["libraries"][name]
             .as_str()
             .unwrap_or_else(|| panic!("the fixture stamp has no {name} library")),
     )
@@ -65,7 +65,7 @@ pub fn library(name: &str) -> PathBuf {
 
 pub fn dependencies() -> PathBuf {
     directory().join(
-        stamp()["dependencies"]
+        stamp()["metadata"]["dependencies"]
             .as_str()
             .expect("the fixture stamp names the dependency directory"),
     )

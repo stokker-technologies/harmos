@@ -45,6 +45,7 @@ def main() -> None:
     profile = parser.parse_args().profile
     preflight.main(["--profile", profile])
     stamp = json.loads(STAMP.read_text(encoding="utf-8"))
+    selectors = stamp["metadata"]
     destination = ROOT / "dist" / profile
     shutil.rmtree(destination, ignore_errors=True)
     destination.mkdir(parents=True)
@@ -64,13 +65,15 @@ def main() -> None:
 
     # Keep The Product Tool And The Shipped Example Beside Their Native Bundles
     for name in ("cargo-harmos", "schematic-cli"):
-        source = FIXTURES / stamp["artifacts"][name]
+        source = FIXTURES / selectors["artifacts"][name]
         shutil.copy2(source, destination / source.name)
-    tool = FIXTURES / stamp["artifacts"]["cargo-harmos"]
+    tool = FIXTURES / selectors["artifacts"]["cargo-harmos"]
     for name, backend in (("schematic-sidecar", "sidecar"), ("schematic-guest", "guest")):
-        receipt = FIXTURES / stamp["builds"][name]
+        receipt = FIXTURES / selectors["builds"][name]
         subprocess.run(
-            [str(tool), "harmos", backend, "package", "--build-json", str(receipt), "--output", str(destination)],
+            [str(tool), "harmos", backend, "package", "--build-json", str(receipt),
+             "--relocate-from", selectors["build_roots"][name], "--relocate-to", str(FIXTURES / "builds" / name),
+             "--output", str(destination)],
             cwd=ROOT, check=True,
         )
 
